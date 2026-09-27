@@ -304,6 +304,18 @@ are scoped or reviewed.
 
 ### Changed
 
+- `ripr doctor` now separates installed-binary analysis readiness from the
+  prerequisites for building RIPR from source. The default `analysis` profile
+  reports a missing `cargo` or `rustc`, or a workspace `rustc` older than
+  RIPR's build MSRV (1.95), as `advisory` and exits `0`, so a workspace pinned
+  to an older toolchain is no longer told it cannot be analyzed; a missing
+  `cargo` still discloses that evidence read from `cargo metadata` is
+  withheld. `--profile source-build` fails on those conditions and exits `2`.
+  Both toolchain probes run in the selected root. `ripr doctor --json` moves
+  to schema `0.3`, with top-level `profile`, `ripr_version`, and `ripr_build_msrv`
+  fields and an `advisory` check status
+  ([#3907](https://github.com/EffortlessMetrics/ripr-swarm/issues/3907)).
+
 - xtask tests no longer discard `remove_dir_all`, `remove_file`, or
   panic-path `set_current_dir` with `let _ =`. Directory cleanup matches
   the `io::Result` in `ignore_remove_dir_all` and still ignores a failure.

@@ -16,14 +16,28 @@ use std::path::{Path, PathBuf};
 
 pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     let mut json_output = false;
+    let mut profile = output::doctor::DoctorProfile::Analysis;
     let mut root_args: Vec<&str> = Vec::new();
-    for arg in args {
+    let mut arguments = args.iter();
+    while let Some(arg) = arguments.next() {
         match arg.as_str() {
             "--help" | "-h" => {
                 help::print_doctor_help();
                 return Ok(());
             }
             "--json" => json_output = true,
+            "--profile" => {
+                profile = match arguments.next().map(String::as_str) {
+                    Some("analysis") => output::doctor::DoctorProfile::Analysis,
+                    Some("source-build") => output::doctor::DoctorProfile::SourceBuild,
+                    Some(other) => {
+                        return Err(format!(
+                            "unknown doctor profile `{other}`; expected analysis or source-build"
+                        ));
+                    }
+                    None => return Err("missing value for --profile".to_string()),
+                };
+            }
             _ => root_args.push(arg.as_str()),
         }
     }
@@ -35,12 +49,15 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     };
 
     if json_output {
-        return doctor_json(&root);
+        return doctor_json(&root, profile);
     }
 
     // Human-readable path.
-    let core_evaluation =
-        output::doctor::evaluate_doctor_core_with_config(&root, &detect_languages(&root));
+    let core_evaluation = output::doctor::evaluate_doctor_core_with_config_for_profile(
+        &root,
+        &detect_languages(&root),
+        profile,
+    );
     let mut report = core_evaluation.report;
     let core_report = &report;
     let mut ok = matches!(core_report.status, output::doctor::DoctorStatus::Pass);
@@ -50,6 +67,15 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     for line in output::doctor_binary::probe_binary_identity().human_lines() {
         println!("{line}");
     }
+    println!(
+        "- RIPR {} (source build requires Rust {})",
+        report.ripr_version, report.ripr_build_msrv
+    );
+    let profile_name = match profile {
+        output::doctor::DoctorProfile::Analysis => "analysis",
+        output::doctor::DoctorProfile::SourceBuild => "source-build",
+    };
+    println!("- profile: {profile_name}");
 
     ok &= report_doctor_core_check(core_report, "root_directory");
     ok &= report_doctor_core_check(core_report, "cargo_toml");
@@ -82,9 +108,12 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
 /// probes as structured values. Deeper sub-checks (cache, Perl, and test
 /// surfaces) remain on the human-oriented path for a follow-up PR to type
 /// individually. See #1771 / #1614.
-fn doctor_json(root: &Path) -> Result<(), String> {
-    let evaluation =
-        output::doctor::evaluate_doctor_core_with_config(root, &detect_languages(root));
+fn doctor_json(root: &Path, profile: output::doctor::DoctorProfile) -> Result<(), String> {
+    let evaluation = output::doctor::evaluate_doctor_core_with_config_for_profile(
+        root,
+        &detect_languages(root),
+        profile,
+    );
     let mut report = evaluation.report;
     report.binary = Some(output::doctor_binary::probe_binary_identity());
     let enabled_languages = enabled_languages(&evaluation.config);
@@ -111,6 +140,7 @@ fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -
     let marker = match check.status {
         output::doctor::DoctorCheckStatus::Pass => "✓",
         output::doctor::DoctorCheckStatus::Fail => "!",
+        output::doctor::DoctorCheckStatus::Advisory => "~",
         output::doctor::DoctorCheckStatus::Skipped => "-",
     };
     println!(
@@ -298,7 +328,11 @@ where
     let mut ok = true;
     for (language, tool, hint) in language_runtime_probes_for(root, enabled) {
         let (status, evidence) = probe(tool, tool == "yarn");
-        let required = runtime_probe_is_required(language, tool, enabled);
+        // A language runtime is an analysis capability, not a prerequisite
+        // for building RIPR from source: the source-build profile keeps the
+        // probe visible but never lets it decide that profile's status.
+        let required = report.profile == output::doctor::DoctorProfile::Analysis
+            && runtime_probe_is_required(language, tool, enabled);
         report.add_runtime_probe(language, tool, status, &evidence, required, hint);
         if required && status == output::doctor::DoctorStatus::Fail {
             ok = false;
@@ -1570,6 +1604,83 @@ mod tests {
     }
 
     #[test]
+    fn source_build_profile_keeps_enabled_language_runtime_failure_advisory() -> Result<(), String>
+    {
+        // PR #4196 review: an enabled TypeScript root with no node is an
+        // analysis failure, but not a RIPR source-build prerequisite. The
+        // same probe outcome must fail analysis and stay advisory for
+        // source-build, while still being reported.
+        let root = unique_command_test_dir("runtime-probe-source-build");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::write(root.join("package.json"), "{}")
+            .map_err(|err| format!("write package marker: {err}"))?;
+        let missing_node = |tool: &str, _isolated: bool| {
+            if tool == "node" {
+                (
+                    output::doctor::DoctorStatus::Fail,
+                    "node not available".to_string(),
+                )
+            } else {
+                (
+                    output::doctor::DoctorStatus::Pass,
+                    format!("{tool} available"),
+                )
+            }
+        };
+        let mut outcomes = Vec::new();
+        for profile in [
+            output::doctor::DoctorProfile::Analysis,
+            output::doctor::DoctorProfile::SourceBuild,
+        ] {
+            let mut report = output::doctor::DoctorReport::new(&root.display().to_string());
+            report.profile = profile;
+            let ok = add_language_runtime_probes(
+                &root,
+                &[LanguageId::TypeScript],
+                &mut report,
+                false,
+                missing_node,
+            );
+            let node = report
+                .runtime_probes
+                .iter()
+                .find(|probe| probe.tool == "node")
+                .ok_or_else(|| format!("missing node probe for {profile:?}"))?;
+            outcomes.push((
+                profile,
+                ok,
+                report.status,
+                node.required,
+                node.status,
+                output::doctor::doctor_report_result(&report).is_ok(),
+            ));
+        }
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        assert_eq!(
+            outcomes,
+            vec![
+                (
+                    output::doctor::DoctorProfile::Analysis,
+                    false,
+                    output::doctor::DoctorStatus::Fail,
+                    true,
+                    output::doctor::DoctorStatus::Fail,
+                    false,
+                ),
+                (
+                    output::doctor::DoctorProfile::SourceBuild,
+                    true,
+                    output::doctor::DoctorStatus::Pass,
+                    false,
+                    output::doctor::DoctorStatus::Fail,
+                    true,
+                ),
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
     #[cfg(all(feature = "lang-python", feature = "lang-typescript"))]
     fn doctor_reports_unittest_and_package_only_ts_frameworks() -> Result<(), String> {
         // #2106 review: doctor output coverage for frameworks only visible
@@ -1825,7 +1936,7 @@ mod tests {
         std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
         std::fs::write(dir.join(CONFIG_FILE_NAME), "[invalid\n")
             .map_err(|err| format!("write invalid config: {err}"))?;
-        if doctor_json(&dir).is_ok() {
+        if doctor_json(&dir, output::doctor::DoctorProfile::Analysis).is_ok() {
             let _ = std::fs::remove_dir_all(&dir);
             return Err("invalid JSON doctor report unexpectedly passed".to_string());
         }

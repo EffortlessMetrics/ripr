@@ -41,7 +41,7 @@ map is:
 | `ripr check --format json` | `schema_version` | `0.2` |
 | `ripr check --format sarif` | `version` | `2.1.0` (standard SARIF envelope) |
 | `ripr gate evaluate` | `schema_version` | `0.1` |
-| `ripr doctor --json` | `schema_version` | `0.2` |
+| `ripr doctor --json` | `schema_version` | `0.3` |
 | `ripr agent packet` | `schema_version` | `0.4` |
 | `ripr agent receipt` | `schema_version` | `0.5` |
 | `ripr agent verify` | `schema_version` | `0.3` |
@@ -78,7 +78,17 @@ Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
 
 `ripr doctor --json` top-level `status` and `runtime_probes[].status` are
-`pass` or `fail`. Each `checks[].status` is `pass`, `fail`, or `skipped`;
+`pass` or `fail`. The `profile` is `analysis` by default or `source-build`
+when requested. Schema `0.3` also adds top-level `ripr_version`, the running
+binary's package version, and `ripr_build_msrv`, the minimum rustc that can
+build that version from source. Each `checks[].status` is `pass`, `fail`, `advisory`, or `skipped`;
+`advisory` (added in schema `0.3`) reports an unavailable Cargo/rustc
+capability without failing installed-binary analysis. The source-build profile
+fails on missing tools or rustc below RIPR's build MSRV, and reports its
+language `runtime_probes` with `required: false` because a language runtime is
+an analysis capability, not a build prerequisite. It does not establish
+whether project verification will succeed; that requires running the selected
+project verification command with its own toolchain.
 `skipped` (additive in schema `0.2`) marks a check that does not apply to the
 root, such as the `cargo_toml`, `tool_cargo`, and `tool_rustc` checks on a
 root where Rust is not in scope. A skipped check never fails the report, and

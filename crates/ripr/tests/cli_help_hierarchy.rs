@@ -15,6 +15,7 @@ use std::process::Command;
 const COMMAND_HIERARCHY_DOC: &str = include_str!("../../../docs/COMMAND_HIERARCHY.md");
 const ROOT_README: &str = include_str!("../../../README.md");
 const QUICKSTART_DOC: &str = include_str!("../../../docs/QUICKSTART.md");
+const EXIT_CODES_DOC: &str = include_str!("../../../docs/EXIT_CODES.md");
 
 fn rendered_help(args: &[&str]) -> Result<String, String> {
     let output = Command::new(env!("CARGO_BIN_EXE_ripr"))
@@ -435,6 +436,35 @@ fn first_run_guard_does_not_credit_a_later_correct_example() -> Result<(), Strin
     if first_bash_block(&wrong)? == "ripr check" {
         return Err(
             "the CLI section credited a later check instead of its first command".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// PR #4196 review: the doctor exit-code guide must describe both profiles.
+/// The default analysis profile keeps a missing or old toolchain advisory
+/// (exit `0`); only `--profile source-build` fails on it. A guide that still
+/// says a Rust root fails on a missing toolchain contradicts the binary.
+#[test]
+fn doctor_exit_code_guide_distinguishes_analysis_and_source_build() -> Result<(), String> {
+    let section = normalized(&doc_section(EXIT_CODES_DOC, "## `ripr doctor` exit codes")?);
+    let help = normalized(&rendered_help(&["doctor", "--help"])?);
+    for needle in [
+        "--profile source-build",
+        "`advisory`",
+        "does not change the exit code",
+    ] {
+        assert_contains("docs/EXIT_CODES.md doctor section", &section, needle)?;
+    }
+    assert_contains(
+        "ripr doctor --help",
+        &help,
+        "--profile analysis|source-build",
+    )?;
+    if section.contains("fail on a missing manifest or toolchain") {
+        return Err(
+            "docs/EXIT_CODES.md still says the default doctor fails on a missing toolchain"
+                .to_string(),
         );
     }
     Ok(())

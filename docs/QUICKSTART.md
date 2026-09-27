@@ -23,10 +23,9 @@ Rust 1.95 is RIPR's build/install MSRV, not a minimum compiler version for the
 repository being analyzed. An already-built CLI or bundled server can perform
 static analysis for a repository that pins an older Rust toolchain. Project
 verification still uses that repository's selected toolchain and can succeed,
-fail, or be unavailable independently. Current 0.11 development builds can
-still report an older workspace compiler as a `doctor` failure; that is a known
-pre-release defect, not evidence that `ripr check` invoked or required that
-compiler.
+fail, or be unavailable independently. `ripr doctor` discloses an older or
+missing workspace compiler as an advisory for installed-binary analysis;
+`ripr doctor --profile source-build` checks RIPR's build prerequisites.
 
 The latest GitHub release is [0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0).
 This guide describes **0.11 development**, including `--worktree`, bounded

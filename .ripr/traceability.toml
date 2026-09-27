@@ -592,7 +592,13 @@ tests = [
   "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_names_non_missing_launch_failure",
   "crates/ripr/src/output/doctor.rs::tests::doctor_spawn_failure_retry_policy_covers_transient_kinds",
   "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_fails_closed_for_guaranteed_missing_tool",
-  "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_times_out_a_hanging_tool_100_times"
+  "crates/ripr/src/output/doctor.rs::tests::doctor_tool_check_times_out_a_hanging_tool_100_times",
+  "crates/ripr/src/output/doctor.rs::tests::old_workspace_compiler_is_advisory_for_analysis_and_fails_source_build",
+  "crates/ripr/src/output/doctor.rs::tests::rust_root_with_missing_cargo_discloses_verification_limitation",
+  "crates/ripr/src/output/doctor.rs::tests::doctor_cargo_probe_uses_selected_root",
+  "crates/ripr/src/cli/commands/doctor.rs::tests::source_build_profile_keeps_enabled_language_runtime_failure_advisory",
+  "crates/ripr/tests/cli_smoke.rs::doctor_discloses_missing_verification_tools_but_still_checks_manifest",
+  "crates/ripr/tests/cli_help_hierarchy.rs::doctor_exit_code_guide_distinguishes_analysis_and_source_build"
 ]
 fixtures = []
 code = [
@@ -600,6 +606,7 @@ code = [
   "crates/ripr/src/app.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/output/doctor.rs",
+  "crates/ripr/src/cli/commands/doctor.rs",
   "crates/ripr/src/lsp/config.rs",
   "crates/ripr/src/lsp/backend.rs",
   "crates/ripr/src/lsp/diagnostics.rs",
@@ -614,6 +621,7 @@ code = [
 outputs = [
   "docs/CONFIGURATION.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/EXIT_CODES.md",
   "docs/CAPABILITY_MATRIX.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",

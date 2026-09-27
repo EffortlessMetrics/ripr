@@ -7281,8 +7281,11 @@ fn doctor_json_reports_current_schema() -> Result<(), String> {
 
     let report: serde_json::Value = serde_json::from_slice(&output.stdout)
         .map_err(|err| format!("doctor JSON did not parse: {err}"))?;
-    assert_eq!(report["schema_version"], "0.2");
+    assert_eq!(report["schema_version"], "0.3");
     assert_eq!(report["tool"], "ripr");
+    assert_eq!(report["profile"], "analysis");
+    assert_eq!(report["ripr_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(report["ripr_build_msrv"], env!("CARGO_PKG_RUST_VERSION"));
     assert!(
         report["runtime_probes"].is_array(),
         "doctor JSON must expose typed runtime probe results: {report}"
@@ -7523,7 +7526,7 @@ fn doctor_passes_typescript_root_without_rust_toolchain() -> Result<(), String> 
 /// a Cargo.toml still fail the Cargo.toml check.
 #[test]
 #[cfg(unix)]
-fn doctor_still_fails_rust_roots_without_cargo_or_manifest() -> Result<(), String> {
+fn doctor_discloses_missing_verification_tools_but_still_checks_manifest() -> Result<(), String> {
     let workspace = unique_temp_workspace("doctor-rust-no-toolchain");
     let path = doctor_path_without_rust_toolchain(&workspace)?;
 
@@ -7540,13 +7543,44 @@ fn doctor_still_fails_rust_roots_without_cargo_or_manifest() -> Result<(), Strin
     let output = run_doctor_with_path(&with_manifest, &path, true)?;
     let report: serde_json::Value = serde_json::from_slice(&output.stdout)
         .map_err(|error| format!("doctor JSON did not parse: {error}"))?;
-    let manifest_result = if output.status.success()
-        || report["status"] != "fail"
+    let manifest_result = if !output.status.success()
+        || report["status"] != "pass"
         || doctor_check_status(&report, "cargo_toml") != "pass"
-        || doctor_check_status(&report, "tool_cargo") != "fail"
-        || doctor_check_status(&report, "tool_rustc") != "fail"
+        || doctor_check_status(&report, "tool_cargo") != "advisory"
+        || doctor_check_status(&report, "tool_rustc") != "advisory"
     {
-        Err(format!("a Rust root without cargo must fail: {report}"))
+        Err(format!(
+            "an installed binary must keep analysis available: {report}"
+        ))
+    } else {
+        Ok(())
+    };
+
+    let source_build = run_command_with_env(
+        env!("CARGO_BIN_EXE_ripr"),
+        &with_manifest,
+        &[
+            "doctor",
+            "--root",
+            &with_manifest.display().to_string(),
+            "--profile",
+            "source-build",
+            "--json",
+        ],
+        &[("PATH", path.as_str())],
+    )
+    .map_err(|error| format!("run source-build doctor: {error}"))?;
+    let source_report: serde_json::Value = serde_json::from_slice(&source_build.stdout)
+        .map_err(|error| format!("source-build doctor JSON did not parse: {error}"))?;
+    let source_result = if source_build.status.success()
+        || source_report["status"] != "fail"
+        || source_report["profile"] != "source-build"
+        || doctor_check_status(&source_report, "tool_cargo") != "fail"
+        || doctor_check_status(&source_report, "tool_rustc") != "fail"
+    {
+        Err(format!(
+            "source-build must require cargo and rustc: {source_report}"
+        ))
     } else {
         Ok(())
     };
@@ -7567,7 +7601,7 @@ fn doctor_still_fails_rust_roots_without_cargo_or_manifest() -> Result<(), Strin
     };
 
     ignore_remove_dir_all(&workspace);
-    manifest_result.and(sources_result)
+    manifest_result.and(source_result).and(sources_result)
 }
 
 #[test]
