@@ -74,5 +74,7 @@ pub use model::{
     ResolvedIncludeParent, ReturnFact, RustIncludeLimitation, RustIndex, SourceRoleProvenance,
     SourceRoleProvenanceEdge, SourceRoleProvenanceEdgeKind, TestFact, TestSummary,
 };
+// Hot evidence loops hash each indexed file once and validate by digest.
+pub(crate) use model::source_digest;
 #[cfg(test)]
 pub(crate) use model::{WorkspaceFileAuthority, WorkspaceRootAuthority};

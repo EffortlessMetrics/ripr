@@ -1,5 +1,7 @@
 use super::*;
+use crate::analysis::value_resolution::{FileValueScan, ValueEnvFacts};
 use std::cell::{OnceCell, RefCell};
+use std::sync::{Arc, OnceLock};
 
 /// Precomputed per-test facts for repo seam evidence consumers. This
 /// avoids repeatedly tokenizing the same test assertions and import
@@ -19,6 +21,8 @@ pub(crate) struct CompactGripContext<'a> {
     name_module_candidates: NameModuleCandidateIndex,
     owner_named_cache: RefCell<BTreeMap<String, Vec<usize>>>,
     same_module_cache: RefCell<BTreeMap<String, Vec<usize>>>,
+    pub(in crate::analysis::test_grip_evidence) source_digest_cache:
+        RefCell<BTreeMap<&'a Path, String>>,
 }
 
 /// Candidate generation only: the existing `contains` and `same_module`
@@ -111,8 +115,27 @@ pub(in crate::analysis::test_grip_evidence) struct CompactTest<'a> {
     pub(in crate::analysis::test_grip_evidence) ambiguous_target_affinity_owner_call_names:
         BTreeSet<String>,
     pub(in crate::analysis::test_grip_evidence) code_lines: Vec<String>,
-    pub(in crate::analysis::test_grip_evidence) value_facts:
-        OnceCell<crate::analysis::value_resolution::ValueEnvFacts>,
+    /// Per-test facts; build through [`CompactTest::value_facts`] so the
+    /// whole-file part comes from `file_value_scan`, never a fresh scan.
+    value_facts: OnceCell<ValueEnvFacts>,
+    /// Shared by every test in the same file.
+    pub(in crate::analysis::test_grip_evidence) file_value_scan: Arc<OnceLock<FileValueScan>>,
+}
+
+impl CompactTest<'_> {
+    /// Per-test value-resolution facts, built on first use. The whole-file
+    /// part is built once per file and shared across that file's tests.
+    pub(in crate::analysis::test_grip_evidence) fn value_facts(
+        &self,
+        index: &RustIndex,
+    ) -> &ValueEnvFacts {
+        self.value_facts.get_or_init(|| {
+            let file_scan = self
+                .file_value_scan
+                .get_or_init(|| FileValueScan::build(self.test, index));
+            ValueEnvFacts::build(self.test, file_scan)
+        })
+    }
 }
 
 impl<'a> CompactGripContext<'a> {
@@ -153,6 +176,7 @@ impl<'a> CompactGripContext<'a> {
             local_function_names_by_file: &function_names_by_file,
             direct_helper_import_aliases_by_file: &direct_helper_import_aliases_by_file,
         };
+        let mut file_value_scans: BTreeMap<&Path, Arc<OnceLock<FileValueScan>>> = BTreeMap::new();
         let tests: Vec<CompactTest<'a>> = index
             .tests
             .iter()
@@ -270,6 +294,9 @@ impl<'a> CompactGripContext<'a> {
                     ambiguous_target_affinity_owner_call_names,
                     code_lines,
                     value_facts: OnceCell::new(),
+                    file_value_scan: Arc::clone(
+                        file_value_scans.entry(test.file.as_path()).or_default(),
+                    ),
                 }
             })
             .collect();
@@ -293,7 +320,28 @@ impl<'a> CompactGripContext<'a> {
             name_module_candidates,
             owner_named_cache: RefCell::new(BTreeMap::new()),
             same_module_cache: RefCell::new(BTreeMap::new()),
+            source_digest_cache: RefCell::new(BTreeMap::new()),
         }
+    }
+
+    /// SHA-256 of an indexed file's source, computed once per context.
+    /// The context borrows the index immutably, so the bytes cannot change
+    /// while it lives. Without this memo, every seam x related-test pair
+    /// re-hashed the whole test file, which dominated cold repo evidence on
+    /// files with large inline test modules.
+    pub(in crate::analysis::test_grip_evidence) fn indexed_source_digest(
+        &self,
+        path: &Path,
+    ) -> Option<String> {
+        let (path, facts) = self.index.files.get_key_value(path)?;
+        if let Some(digest) = self.source_digest_cache.borrow().get(path.as_path()) {
+            return Some(digest.clone());
+        }
+        let digest = crate::analysis::facts::source_digest(facts.source.as_bytes());
+        self.source_digest_cache
+            .borrow_mut()
+            .insert(path.as_path(), digest.clone());
+        Some(digest)
     }
 
     pub(super) fn owner_named_indices(&self, owner_name_lower: &str) -> Vec<usize> {

@@ -97,6 +97,17 @@ impl WorkspaceRootAuthority {
         seam_file: &Path,
         source: &str,
     ) -> bool {
+        self.validates_target_digest(test_file, seam_file, &source_digest(source.as_bytes()))
+    }
+
+    /// `validates_target` for a caller that already holds the SHA-256 of the
+    /// test file's indexed source, so a hot loop can hash each file once.
+    pub(crate) fn validates_target_digest(
+        &self,
+        test_file: &Path,
+        seam_file: &Path,
+        test_source_digest: &str,
+    ) -> bool {
         let Some(file) = self.files.get(test_file) else {
             return false;
         };
@@ -108,7 +119,7 @@ impl WorkspaceRootAuthority {
         }
         let test_current = self.current_file_is_current(test_file, file);
         let seam_current = self.current_file_is_current(seam_file, seam);
-        test_current && seam_current && source_digest(source.as_bytes()) == file.source_digest
+        test_current && seam_current && test_source_digest == file.source_digest
     }
 
     fn current_file_is_current(&self, path: &Path, authority: &WorkspaceFileAuthority) -> bool {
@@ -172,7 +183,7 @@ fn append_metadata_fingerprint(output: &mut String, path: &Path) {
     }
 }
 
-fn source_digest(bytes: &[u8]) -> String {
+pub(crate) fn source_digest(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     format!("sha256:{digest:x}")
 }

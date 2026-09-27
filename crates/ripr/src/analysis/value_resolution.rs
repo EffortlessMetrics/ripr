@@ -114,19 +114,35 @@ impl SourcePosition {
     }
 }
 
-impl ValueEnvFacts {
+/// Whole-file scans shared by every test in one file. Evidence builds this
+/// once per file per pass: rebuilding it per test re-scanned large files
+/// with many inline tests once for each of those tests.
+#[derive(Default)]
+pub(crate) struct FileValueScan {
+    module_constants: BTreeMap<String, String>,
+    path_constructor_imports: PathConstructorImports,
+}
+
+impl FileValueScan {
     pub(crate) fn build(test: &TestSummary, index: &RustIndex) -> Self {
+        file_facts_for(test, index)
+            .map(|facts| Self {
+                module_constants: extract_module_constants(&facts.source),
+                path_constructor_imports: extract_path_constructor_imports(&facts.source),
+            })
+            .unwrap_or_default()
+    }
+}
+
+impl ValueEnvFacts {
+    pub(crate) fn build(test: &TestSummary, file_scan: &FileValueScan) -> Self {
         let body_clean = strip_comments_and_strings(&test.body);
         let let_bindings = extract_let_bindings(&body_clean);
         let (rstest_cases, case_param_names) = extract_rstest_cases(test);
         let test_param_names = extract_fn_param_names(&body_clean);
         let table_bindings = extract_table_bindings(&body_clean);
-        let module_constants = file_facts_for(test, index)
-            .map(|facts| extract_module_constants(&facts.source))
-            .unwrap_or_default();
-        let path_constructor_imports = file_facts_for(test, index)
-            .map(|facts| extract_path_constructor_imports(&facts.source))
-            .unwrap_or_default();
+        let module_constants = file_scan.module_constants.clone();
+        let path_constructor_imports = file_scan.path_constructor_imports;
         let (struct_field_bindings, struct_field_invalidations) =
             extract_struct_field_bindings(&body_clean, test.start_line, &test_param_names);
         let local_binding_positions = extract_local_binding_positions(&body_clean, test.start_line);
@@ -436,7 +452,7 @@ fn file_facts_for<'a>(test: &TestSummary, index: &'a RustIndex) -> Option<&'a Fi
     index.files.get(&test.file)
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 struct PathConstructorImports {
     path: bool,
     path_buf: bool,

@@ -11,6 +11,7 @@ use std::os::unix::fs::symlink as symlink_file;
 #[cfg(windows)]
 use std::os::windows::fs::symlink_file;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn index_from_files(files: &[(PathBuf, &str)]) -> Result<FixtureIndex, String> {
@@ -122,6 +123,18 @@ fn authority_fixture_target(root: &Path) -> Result<(RustIndex, RepoSeam, String)
     ))
 }
 
+/// Resolve one test target through a fresh evidence context, as the
+/// production seam loop does; fresh so each call sees the index as mutated.
+fn target_for_index(
+    index: &RustIndex,
+    seam: &RepoSeam,
+    test: &TestSummary,
+    relation: RelationReason,
+) -> Option<TestTargetEvidence> {
+    let context = CompactGripContext::new(index);
+    test_target_evidence(&context, seam, test, relation)
+}
+
 #[test]
 fn production_manifestless_directories_keep_distinct_package_identity() -> Result<(), String> {
     struct FixtureCleanup(PathBuf);
@@ -218,6 +231,128 @@ fn production_target_evidence_carries_portable_root_and_currentness_authority() 
 }
 
 #[test]
+fn production_target_evidence_hashes_each_test_file_once_per_context() -> Result<(), String> {
+    let root = authority_fixture_root("digest-memo")?;
+    fs::write(
+        root.join("src/lib.rs"),
+        "pub fn score(amount: i32, threshold: i32) -> i32 { if amount >= threshold { 1 } else { 0 } }\n#[cfg(test)]\nmod tests {\n#[test] fn score_boundary() { assert_eq!(super::score(1, 1), 1); }\n#[test] fn score_below() { assert_eq!(super::score(0, 1), 0); }\n}\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let (index, seam, _) = authority_fixture_target(&root)?;
+    let file = PathBuf::from("src/lib.rs");
+    let authority_digest = index
+        .workspace_authority
+        .as_ref()
+        .and_then(|authority| authority.files.get(&file))
+        .map(|file| file.source_digest.clone())
+        .ok_or_else(|| "missing file authority".to_string())?;
+    let context = CompactGripContext::new(&index);
+    let related = context
+        .tests
+        .iter()
+        .filter(|indexed| indexed.test.file == file)
+        .map(|indexed| indexed.test)
+        .collect::<Vec<_>>();
+    if related.len() < 2 {
+        return Err(format!(
+            "fixture needs two tests in one file, got {}",
+            related.len()
+        ));
+    }
+    for test in &related {
+        if test_target_evidence(&context, &seam, test, RelationReason::DirectOwnerCall).is_none() {
+            return Err(format!("current target `{}` was rejected", test.name));
+        }
+    }
+    let cache = context.source_digest_cache.borrow();
+    if cache.len() != 1 || cache.get(file.as_path()) != Some(&authority_digest) {
+        return Err(format!(
+            "expected one memoized digest equal to the authority digest, got {cache:?}"
+        ));
+    }
+    drop(cache);
+    // Reuse, not just presence: a poisoned memo entry must decide the next
+    // validation, so a lookup that recomputes the digest would be caught.
+    context
+        .source_digest_cache
+        .borrow_mut()
+        .insert(file.as_path(), "sha256:poisoned".to_string());
+    if test_target_evidence(&context, &seam, related[0], RelationReason::DirectOwnerCall).is_some()
+    {
+        return Err("validation recomputed the digest instead of reusing the memo".to_string());
+    }
+    if context
+        .indexed_source_digest(Path::new("src/unindexed.rs"))
+        .is_some()
+    {
+        return Err("unindexed file produced a digest".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn value_facts_share_one_file_scan_per_file() -> Result<(), String> {
+    let root = authority_fixture_root("file-scan-memo")?;
+    fs::write(
+        root.join("src/lib.rs"),
+        "const LIMIT: i32 = 7;\npub fn score(amount: i32, threshold: i32) -> i32 { if amount >= threshold { 1 } else { 0 } }\n#[cfg(test)]\nmod tests {\n#[test] fn score_boundary() { assert_eq!(super::score(LIMIT, LIMIT), 1); }\n#[test] fn score_below() { assert_eq!(super::score(0, LIMIT), 0); }\n}\n",
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        root.join("src/other.rs"),
+        "#[test] fn other_score() { assert_eq!(crate::score(2, 1), 1); }\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let files = [PathBuf::from("src/lib.rs"), PathBuf::from("src/other.rs")];
+    let index = build_index(&root, &files)?;
+    let context = CompactGripContext::new(&index);
+    let in_file = |file: &Path| {
+        context
+            .tests
+            .iter()
+            .filter(|indexed| indexed.test.file == file)
+            .collect::<Vec<_>>()
+    };
+    let lib_tests = in_file(&files[0]);
+    let other_tests = in_file(&files[1]);
+    let ([first, second], [other]) = (lib_tests.as_slice(), other_tests.as_slice()) else {
+        return Err(format!(
+            "fixture expects two lib tests and one other test, got {} and {}",
+            lib_tests.len(),
+            other_tests.len()
+        ));
+    };
+    if !Arc::ptr_eq(&first.file_value_scan, &second.file_value_scan) {
+        return Err("tests in one file must share one file scan".to_string());
+    }
+    if Arc::ptr_eq(&first.file_value_scan, &other.file_value_scan) {
+        return Err("tests in different files must not share a file scan".to_string());
+    }
+    first.value_facts(&index);
+    if second.file_value_scan.get().is_none() {
+        return Err("first test's facts did not populate the shared file scan".to_string());
+    }
+    // Identity alone would pass with an empty shared scan: both tests must
+    // still resolve the same-file constant through it.
+    let seam = inventory_seams_from_index(&files[..1], &index)
+        .into_iter()
+        .next()
+        .ok_or_else(|| "expected a fixture seam".to_string())?;
+    for indexed in [first, second] {
+        let env =
+            crate::analysis::value_resolution::ValueEnv::new(&seam, indexed.value_facts(&index));
+        let resolved = env.resolve("LIMIT");
+        if !resolved.iter().any(|(value, _)| value == "7") {
+            return Err(format!(
+                "`{}` did not resolve LIMIT through the shared scan: {resolved:?}",
+                indexed.test.name
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn production_target_evidence_rejects_authority_failures() -> Result<(), String> {
     let root = authority_fixture_root("negative")?;
     let (mut index, seam, source) = authority_fixture_target(&root)?;
@@ -228,18 +363,18 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         .and_then(|facts| facts.tests.first())
         .cloned()
         .ok_or_else(|| "missing fixture test".to_string())?;
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_none() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_none() {
         return Err("baseline authority target unexpectedly missing".to_string());
     }
 
     fs::write(root.join(&file), format!("{source}// stale\n"))
         .map_err(|error| error.to_string())?;
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("stale source was accepted".to_string());
     }
     fs::write(root.join(&file), &source).map_err(|error| error.to_string())?;
     fs::remove_file(root.join(&file)).map_err(|error| error.to_string())?;
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("missing source was accepted".to_string());
     }
     fs::write(root.join(&file), &source).map_err(|error| error.to_string())?;
@@ -249,7 +384,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         .as_mut()
         .ok_or_else(|| "missing authority".to_string())?
         .root = root.join("wrong-root");
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("wrong root authority was accepted".to_string());
     }
     index
@@ -286,7 +421,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         seam.required_discriminator().clone(),
         seam.expected_sink(),
     );
-    if test_target_evidence(
+    if target_for_index(
         &index,
         &mismatch_seam,
         &test,
@@ -327,7 +462,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
         .ok_or_else(|| "missing file facts".to_string())?
         .functions
         .push(duplicate);
-    if test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall).is_some() {
         return Err("duplicate target identity was accepted".to_string());
     }
 
@@ -340,7 +475,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
     if authority.validates_target(&traversal.file, seam.file(), &source) {
         return Err("authority accepted traversal target".to_string());
     }
-    if test_target_evidence(&index, &seam, &traversal, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &traversal, RelationReason::DirectOwnerCall).is_some() {
         return Err("traversal target was accepted".to_string());
     }
     let mut absolute = test;
@@ -348,7 +483,7 @@ fn production_target_evidence_rejects_authority_failures() -> Result<(), String>
     if authority.validates_target(&absolute.file, seam.file(), &source) {
         return Err("authority accepted absolute target".to_string());
     }
-    if test_target_evidence(&index, &seam, &absolute, RelationReason::DirectOwnerCall).is_some() {
+    if target_for_index(&index, &seam, &absolute, RelationReason::DirectOwnerCall).is_some() {
         return Err("absolute target was accepted".to_string());
     }
     Ok(())
@@ -3239,7 +3374,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         ExpectedSink::ReturnValue,
     );
 
-    assert!(test_target_evidence(&index, &seam, &test, RelationReason::DirectOwnerCall,).is_none());
+    assert!(target_for_index(&index, &seam, &test, RelationReason::DirectOwnerCall,).is_none());
     Ok(())
 }
 

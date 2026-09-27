@@ -247,7 +247,7 @@ fn evidence_for_seam_with_context(
 
     let related_tests: Vec<RelatedTestGrip> = related_with_reason
         .iter()
-        .map(|(indexed, reason)| related_test_grip(seam, indexed.test, *reason, context.index))
+        .map(|(indexed, reason)| related_test_grip(seam, indexed.test, *reason, context))
         .collect();
 
     TestGripEvidence {
@@ -592,9 +592,7 @@ fn observed_value_facts_for_test(
     // Per-test resolution facts (let bindings, rstest cases, table
     // rows, same-file consts) are built lazily and then reused across
     // all owner calls in this test. Per `analysis/value-extraction-v2`.
-    let value_facts = indexed
-        .value_facts
-        .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
+    let value_facts = indexed.value_facts(index);
     let env = super::value_resolution::ValueEnv::new(seam, value_facts);
     for call in &indexed.test.calls {
         if call.name != owner_name {
@@ -665,9 +663,7 @@ fn field_assignment_value_unresolved_for_test(
     let ObservedArgumentSelection::ArgumentOperands(operands) = selection else {
         return false;
     };
-    let value_facts = indexed
-        .value_facts
-        .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
+    let value_facts = indexed.value_facts(index);
     let env = super::value_resolution::ValueEnv::new(seam, value_facts);
     indexed.test.calls.iter().any(|call| {
         if call.name != owner_name {
@@ -1175,9 +1171,7 @@ fn resolved_argument_values(
     if !values.is_empty() {
         return values;
     }
-    let value_facts = indexed
-        .value_facts
-        .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
+    let value_facts = indexed.value_facts(index);
     let env = super::value_resolution::ValueEnv::new(seam, value_facts);
     env.resolve_at_call(arg, call.line, &call.name, &call.text)
         .into_iter()
@@ -2347,7 +2341,7 @@ fn related_test_grip(
     seam: &RepoSeam,
     test: &TestSummary,
     reason: RelationReason,
-    index: &RustIndex,
+    context: &CompactGripContext<'_>,
 ) -> RelatedTestGrip {
     let (kind, strength) = best_oracle(test, seam);
     let summary = if matches!(strength, OracleStrength::None) {
@@ -2371,7 +2365,7 @@ fn related_test_grip(
         test_name: test.name.clone(),
         file: test.file.clone(),
         line: test.start_line,
-        test_target: test_target_evidence(index, seam, test, reason),
+        test_target: test_target_evidence(context, seam, test, reason),
         oracle_kind: kind,
         oracle_strength: strength,
         evidence_summary: summary,
@@ -2381,11 +2375,12 @@ fn related_test_grip(
 }
 
 fn test_target_evidence(
-    index: &RustIndex,
+    context: &CompactGripContext<'_>,
     seam: &RepoSeam,
     test: &TestSummary,
     relation: RelationReason,
 ) -> Option<TestTargetEvidence> {
+    let index = context.index;
     let file = index.files.get(&test.file)?;
     let matches: Vec<&FunctionSummary> = file
         .functions
@@ -2400,7 +2395,8 @@ fn test_target_evidence(
         return None;
     }
     let authority = index.workspace_authority.as_ref()?;
-    if !authority.validates_target(&test.file, seam.file(), &file.source) {
+    let test_source_digest = context.indexed_source_digest(&test.file)?;
+    if !authority.validates_target_digest(&test.file, seam.file(), &test_source_digest) {
         return None;
     }
     let function = matches[0];
