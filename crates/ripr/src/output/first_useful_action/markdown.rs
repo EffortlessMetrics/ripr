@@ -89,6 +89,15 @@ pub(crate) fn render_first_useful_action_markdown(report: &FirstUsefulActionRepo
         out.push_str(&format!("`{receipt}`\n\n"));
     }
 
+    // Routes that cannot name one producing command (stale evidence, an
+    // incomplete receipt) hand off to `agent status`, which names the command
+    // for each missing workflow artifact. Show it so the Markdown reader is not
+    // left without a next step.
+    if let Some(status) = &report.commands.status {
+        out.push_str("## Check Workflow Status\n\n");
+        out.push_str(&format!("`{status}`\n\n"));
+    }
+
     if report.status != "actionable"
         && report.status != "unchanged_after_attempt"
         && let Some(fallback) = &report.fallback

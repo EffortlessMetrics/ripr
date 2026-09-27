@@ -90,6 +90,14 @@ fn first_useful_action_matches_unchanged_after_attempt_fixture() -> Result<(), S
     let rendered = render_first_useful_action_json(&report)?;
     assert!(rendered.contains(r#""status": "missing_required_artifact""#));
     assert!(rendered.contains("receipt movement `unchanged` is not promotable"));
+    // The proof is present; what is missing is a complete receipt. The copy
+    // and the commands must send the agent there, not back to the proof
+    // (#4268).
+    assert_eq!(
+        report.title,
+        "Regenerate a complete agent receipt before routing"
+    );
+    assert_receipt_recovery_routes_to_agent_status(&report);
     Ok(())
 }
 
@@ -163,6 +171,17 @@ fn first_useful_action_routes_missing_assistant_proof() -> Result<(), String> {
     assert!(rendered.contains(r#""status": "missing_required_artifact""#));
     assert!(rendered.contains(r#""action_kind": "generate_missing_artifact""#));
     assert!(rendered.contains(DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT));
+    assert_eq!(report.title, "Generate assistant proof before routing");
+    let proof = report
+        .commands
+        .assistant_proof
+        .as_deref()
+        .unwrap_or_default();
+    assert!(
+        proof.starts_with("ripr assistant-loop proof "),
+        "proof: {proof}"
+    );
+    assert_eq!(report.commands.receipt, None);
     Ok(())
 }
 
@@ -526,7 +545,44 @@ fn read_error_triggers_missing_required_report() -> Result<(), String> {
         rendered.contains("guidance.json"),
         "expected missing path in report"
     );
+    // An unreadable input is named; no producing command is guessed for it.
+    assert_eq!(report.title, "Supply a readable PR guidance before routing");
+    assert_eq!(report.commands.assistant_proof, None);
+    assert_eq!(report.commands.receipt, None);
     Ok(())
+}
+
+#[test]
+fn unreadable_receipt_asks_for_a_complete_receipt() -> Result<(), String> {
+    let mut input = bare_input();
+    input.receipt_path = Some("receipt.json".to_string());
+    input.receipt_json = Some(Ok("not json".to_string()));
+    let report = build_first_useful_action_report(input);
+    assert_eq!(report.status, "missing_required_artifact");
+    assert_eq!(
+        report.title,
+        "Regenerate a complete agent receipt before routing"
+    );
+    assert_receipt_recovery_routes_to_agent_status(&report);
+    Ok(())
+}
+
+/// A complete receipt needs a persisted verify file and its sibling analysis
+/// outcome, and an unreadable receipt carries no seam. A bare verify/receipt
+/// pair cannot produce one, so recovery routes to `agent status`, which names
+/// the command for each missing workflow artifact.
+fn assert_receipt_recovery_routes_to_agent_status(report: &FirstUsefulActionReport) {
+    let status = report.commands.status.as_deref().unwrap_or_default();
+    assert!(status.starts_with("ripr agent status "), "status: {status}");
+    assert_eq!(report.commands.assistant_proof, None);
+    assert_eq!(report.commands.verify, None);
+    assert_eq!(report.commands.receipt, None);
+    assert_eq!(report.commands.after_snapshot, None);
+    let markdown = render_first_useful_action_markdown(report);
+    assert!(
+        markdown.contains(&format!("## Check Workflow Status\n\n`{status}`")),
+        "markdown must show the status command: {markdown}"
+    );
 }
 
 // ── receipt_report: improved/resolved ────────────────────────────────────

@@ -1596,6 +1596,8 @@ tests = [
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_reports_stale_editor_context_first",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_routes_missing_assistant_proof",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_routes_gap_record_without_assistant_proof",
+  "crates/ripr/src/output/first_useful_action.rs::unreadable_receipt_asks_for_a_complete_receipt",
+  "crates/ripr/tests/cli_smoke.rs::first_action_routes_live_unchanged_receipt_to_revise_focused_test",
   "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report",
   "crates/ripr/src/cli/commands.rs::first_action_cli_writes_gap_record_report",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",

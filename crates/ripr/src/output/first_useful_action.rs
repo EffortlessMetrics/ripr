@@ -19,7 +19,7 @@ use model::{
     ActionSelected, ActionTarget,
 };
 pub(crate) use model::{FirstUsefulActionInput, FirstUsefulActionReport};
-use parsing::{ParsedSources, parse_sources};
+use parsing::{ASSISTANT_PROOF_LABEL, ParsedSources, RECEIPT_LABEL, parse_sources};
 use selection::select_report;
 
 const SCHEMA_VERSION: &str = "0.1";
@@ -117,13 +117,14 @@ fn read_error_report(
     inputs: &ActionInputs,
     generated_at: &str,
 ) -> Option<FirstUsefulActionReport> {
-    let (_label, path) = parsed.read_errors.first()?;
+    let (label, path) = parsed.read_errors.first()?;
     let mut warnings = Vec::new();
     warnings.push(format!("missing required artifact: {path}"));
     Some(missing_required_report(
         input,
         inputs,
         generated_at,
+        MissingRequired::for_input_label(label),
         path,
         warnings,
     ))
@@ -142,6 +143,7 @@ fn receipt_report(
             input,
             inputs,
             generated_at,
+            MissingRequired::CompleteReceipt,
             "receipt verify/artifact evidence",
             vec![format!(
                 "receipt movement `{movement}` is not promotable: {reason}"
@@ -703,6 +705,7 @@ fn missing_assistant_proof_report(
         input,
         inputs,
         generated_at,
+        MissingRequired::AssistantProof,
         DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT,
         warnings,
     ))
@@ -912,13 +915,80 @@ fn no_actionable_report(
     )
 }
 
+/// The artifact a fail-closed report asks for. The title, the reason and the
+/// offered command all come from this, so an agent is sent to regenerate the
+/// artifact that is actually missing rather than one it already has (#4268).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MissingRequired<'a> {
+    /// No joined assistant proof exists yet.
+    AssistantProof,
+    /// A receipt was supplied but carries no promotable verify evidence.
+    CompleteReceipt,
+    /// A supplied input could not be read or parsed.
+    UnreadableInput(&'a str),
+}
+
+impl<'a> MissingRequired<'a> {
+    /// Maps a `read_errors` label to the artifact the agent must regenerate.
+    /// The proof and receipt have producing commands; any other input is named
+    /// so it can be supplied again, with no command guessed for it.
+    fn for_input_label(label: &'a str) -> Self {
+        match label {
+            ASSISTANT_PROOF_LABEL => Self::AssistantProof,
+            RECEIPT_LABEL => Self::CompleteReceipt,
+            other => Self::UnreadableInput(other),
+        }
+    }
+}
+
 fn missing_required_report(
     input: &FirstUsefulActionInput,
     inputs: &ActionInputs,
     generated_at: &str,
+    required: MissingRequired<'_>,
     missing: &str,
     warnings: Vec<String>,
 ) -> FirstUsefulActionReport {
+    let (title, why, why_first, commands) = match required {
+        MissingRequired::AssistantProof => (
+            "Generate assistant proof before routing".to_string(),
+            "Required joined proof input is missing.",
+            vec![
+                "Required joined proof input is missing.",
+                "The report must not infer proof state from a raw artifact chain.",
+            ],
+            ActionCommands {
+                assistant_proof: Some(assistant_proof_command()),
+                ..ActionCommands::default()
+            },
+        ),
+        MissingRequired::CompleteReceipt => (
+            "Regenerate a complete agent receipt before routing".to_string(),
+            "The supplied receipt carries no promotable verify evidence.",
+            vec![
+                "Receipt movement routes only from a complete analysis outcome.",
+                "The report must not promote receipt movement it cannot validate.",
+            ],
+            // A complete receipt needs a persisted verify file and its sibling
+            // analysis outcome, and the seam may be unknown when the receipt
+            // is unreadable. `agent status` owns that sequence and names the
+            // command for each missing workflow artifact, so route there
+            // rather than offer a partial chain.
+            ActionCommands {
+                status: Some(loop_commands::agent_status_command(&input.root, None)),
+                ..ActionCommands::default()
+            },
+        ),
+        MissingRequired::UnreadableInput(label) => (
+            format!("Supply a readable {label} before routing"),
+            "A supplied input could not be read.",
+            vec![
+                "A supplied input could not be read.",
+                "The report must not route from a partial artifact set.",
+            ],
+            ActionCommands::default(),
+        ),
+    };
     base_report(
         input,
         inputs,
@@ -927,17 +997,11 @@ fn missing_required_report(
         "agent",
         "generate_missing_artifact",
         None,
-        "Generate assistant proof before routing",
-        "Required joined proof input is missing.",
-        vec![
-            "Required joined proof input is missing.",
-            "The report must not infer proof state from a raw artifact chain.",
-        ],
+        &title,
+        why,
+        why_first,
         None,
-        ActionCommands {
-            assistant_proof: Some(assistant_proof_command()),
-            ..ActionCommands::default()
-        },
+        commands,
         evidence(input, "unknown"),
         Some(ActionFallback {
             kind: "missing_required_artifact".to_string(),

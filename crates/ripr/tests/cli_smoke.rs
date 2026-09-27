@@ -2686,6 +2686,110 @@ fn agent_packet_expands_one_brief_seam_by_id() -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
+/// The `unchanged_after_attempt` route is reachable only from a promotable
+/// receipt: a live verify pair, its analysis outcome, and a receipt bound to
+/// both (#4268). The committed unchanged-after-attempt receipt is
+/// portable-normalized and fails closed, so this chain is the route's proof.
+#[test]
+fn first_action_routes_live_unchanged_receipt_to_revise_focused_test()
+-> Result<(), Box<dyn std::error::Error>> {
+    let seam_id = "67fc764ba37d77bd";
+    // Own directory: the improved-receipt chain above writes its own
+    // verify pair and analysis outcome under `test-agent-verify`.
+    let artifact_rel = "target/ripr/test-agent-verify-unchanged";
+    let artifact_dir = workspace_root().join(artifact_rel);
+    std::fs::create_dir_all(&artifact_dir)?;
+    // The same pre-attempt snapshot on both sides: the attempt moved nothing.
+    let snapshot = workspace_root()
+        .join("fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json");
+    for side in ["before", "after"] {
+        bind_repo_exposure_fixture_with_worktree(
+            &workspace_root(),
+            &snapshot,
+            &artifact_dir.join(format!("{side}.repo-exposure.json")),
+            "dirty",
+        )?;
+    }
+    let before_path = format!("{artifact_rel}/before.repo-exposure.json");
+    let after_path = format!("{artifact_rel}/after.repo-exposure.json");
+    let verify = run_ripr_in_workspace(&[
+        "agent",
+        "verify",
+        "--root",
+        ".",
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ])?;
+    assert_success(&verify);
+    std::fs::write(artifact_dir.join("agent-verify.json"), &verify.stdout)?;
+    let analysis_outcome = run_ripr_in_workspace(&[
+        "check", "--root", ".", "--mode", "draft", "--base", "HEAD", "--format", "json",
+    ])?;
+    assert_success(&analysis_outcome);
+    std::fs::write(
+        artifact_dir.join("analysis-outcome.json"),
+        &analysis_outcome.stdout,
+    )?;
+
+    let out_dir = unique_temp_workspace("first-action-unchanged-receipt");
+    std::fs::create_dir_all(&out_dir)?;
+    let receipt_path = out_dir.join("agent-receipt.json");
+    let receipt_arg = receipt_path
+        .to_str()
+        .ok_or("receipt path should be utf-8")?;
+    let verify_path = format!("{artifact_rel}/agent-verify.json");
+    let receipt = run_ripr_in_workspace(&[
+        "agent",
+        "receipt",
+        "--root",
+        ".",
+        "--verify-json",
+        &verify_path,
+        "--seam-id",
+        seam_id,
+        "--json",
+        "--out",
+        receipt_arg,
+    ])?;
+    assert_success(&receipt);
+    let receipt_value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&receipt_path)?)?;
+    // Assert the stimulus before the route: a complete receipt that records
+    // unchanged movement for the seam.
+    assert_eq!(receipt_value["analysis_outcome_status"], "complete");
+    assert_eq!(receipt_value["provenance"]["movement"], "unchanged");
+
+    let first_action_out = out_dir.join("first-action.json");
+    let first_action_md = out_dir.join("first-action.md");
+    let first_action = run_ripr_in_workspace(&[
+        "first-action",
+        "--root",
+        ".",
+        "--receipt",
+        receipt_arg,
+        "--out",
+        first_action_out
+            .to_str()
+            .ok_or("first-action output path should be utf-8")?,
+        "--out-md",
+        first_action_md
+            .to_str()
+            .ok_or("first-action markdown path should be utf-8")?,
+    ])?;
+    assert_success(&first_action);
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&first_action_out)?)?;
+    assert_eq!(report["status"], "unchanged_after_attempt", "{report:#}");
+    assert_eq!(report["action_kind"], "revise_focused_test");
+    assert_eq!(report["evidence"]["static_movement"], "unchanged");
+    assert_eq!(report["fallback"]["kind"], "unchanged_after_attempt");
+    std::fs::remove_dir_all(out_dir)?;
+    Ok(())
+}
+
 #[test]
 fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std::error::Error>> {
     let base = "fixtures/boundary_gap/expected/editor-agent-loop";

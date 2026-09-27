@@ -18,11 +18,11 @@
     "editor_context": null
   },
   "selected": null,
-  "title": "Generate assistant proof before routing",
-  "why": "Required joined proof input is missing.",
+  "title": "Regenerate a complete agent receipt before routing",
+  "why": "The supplied receipt carries no promotable verify evidence.",
   "why_first": [
-    "Required joined proof input is missing.",
-    "The report must not infer proof state from a raw artifact chain."
+    "Receipt movement routes only from a complete analysis outcome.",
+    "The report must not promote receipt movement it cannot validate."
   ],
   "target": null,
   "commands": {
@@ -30,7 +30,7 @@
     "after_snapshot": null,
     "verify": null,
     "receipt": null,
-    "assistant_proof": "ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json --ledger target/ripr/reports/pr-evidence-ledger.json --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md"
+    "status": "ripr agent status --root fixtures/boundary_gap/input --json"
   },
   "evidence": {
     "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",

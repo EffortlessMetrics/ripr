@@ -16,6 +16,11 @@ pub(super) struct ParsedSources {
     pub(super) read_errors: Vec<(String, String)>,
 }
 
+/// Input labels that `read_errors` carries and the fail-closed report maps
+/// back to a producing command.
+pub(super) const ASSISTANT_PROOF_LABEL: &str = "assistant proof";
+pub(super) const RECEIPT_LABEL: &str = "receipt";
+
 pub(super) fn parse_sources(input: &FirstUsefulActionInput) -> ParsedSources {
     let mut parsed = ParsedSources::default();
     parsed.pr_guidance = parse_optional_json(
@@ -25,7 +30,7 @@ pub(super) fn parse_sources(input: &FirstUsefulActionInput) -> ParsedSources {
         &mut parsed,
     );
     parsed.assistant_proof = parse_optional_json(
-        "assistant proof",
+        ASSISTANT_PROOF_LABEL,
         input.assistant_proof_path.as_deref(),
         &input.assistant_proof_json,
         &mut parsed,
@@ -49,7 +54,7 @@ pub(super) fn parse_sources(input: &FirstUsefulActionInput) -> ParsedSources {
         &mut parsed,
     );
     parsed.receipt = parse_optional_json(
-        "receipt",
+        RECEIPT_LABEL,
         input.receipt_path.as_deref(),
         &input.receipt_json,
         &mut parsed,

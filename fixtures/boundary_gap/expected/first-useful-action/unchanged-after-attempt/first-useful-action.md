@@ -6,14 +6,14 @@ Action: generate_missing_artifact
 
 ## Next
 
-Generate assistant proof before routing.
+Regenerate a complete agent receipt before routing.
 
 ## One-Screen Recommendation
 
-- Changed behavior: Required joined proof input is missing.
+- Changed behavior: The supplied receipt carries no promotable verify evidence.
 - Current evidence strength: `missing_required_artifact`
 - Missing discriminator: missing discriminator unavailable
-- Focused proof intent: Generate assistant proof before routing
+- Focused proof intent: Regenerate a complete agent receipt before routing
 - Verify after the test edit: `not_available`
 - Receipt after verify: `not_available`
 - Artifacts: `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json`, `fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/assistant-proof.json`, `fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json`
@@ -21,8 +21,12 @@ Generate assistant proof before routing.
 
 ## Why First
 
-- Required joined proof input is missing.
-- The report must not infer proof state from a raw artifact chain.
+- Receipt movement routes only from a complete analysis outcome.
+- The report must not promote receipt movement it cannot validate.
+
+## Check Workflow Status
+
+`ripr agent status --root fixtures/boundary_gap/input --json`
 
 ## Fallback
 

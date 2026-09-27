@@ -24,6 +24,10 @@ Refresh RIPR evidence before acting.
 - Stale evidence blocks first-action routing.
 - The report must not present stale seam evidence as current.
 
+## Check Workflow Status
+
+`ripr agent status --root fixtures/boundary_gap/input --json`
+
 ## Fallback
 
 Refresh RIPR evidence before selecting a focused-test action.

@@ -350,9 +350,15 @@ Next: refresh RIPR evidence before acting on this recommendation.
   unsuppressed PR-local work.
 - A receipt with improved or resolved static movement returns
   `status = "already_improved"` and `action_kind = "no_action"`.
-- A receipt with unchanged static movement returns
+- A complete receipt with unchanged static movement returns
   `status = "unchanged_after_attempt"` and
   `action_kind = "revise_focused_test"`.
+- A receipt that is unreadable or lacks a complete analysis outcome returns
+  `status = "missing_required_artifact"`, names the receipt rather than the
+  assistant proof, and hands off to `ripr agent status`, which names the
+  producing command for each missing workflow artifact. It does not offer a
+  bare verify/receipt pair, which can neither persist the verify output nor
+  write the sibling analysis outcome.
 - No actionable seam returns `status = "no_actionable_seam"` and
   `action_kind = "no_action"`.
 
