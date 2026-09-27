@@ -112,6 +112,25 @@ pub(crate) struct TypeScriptTest {
     /// file. Used only to map relative named or namespace imports back to a
     /// source owner before considering alias calls related.
     pub(crate) imports_in_file: Vec<TypeScriptImport>,
+    /// Names the enclosing scopes bind for this test (declarations,
+    /// `beforeEach`/`beforeAll` assignments, callback parameters), each
+    /// resolved to its innermost scope. Used only to find receivers built
+    /// outside the test body and to detect shadowed constructor names; owner
+    /// calls and assertions must still sit in `body_text`.
+    pub(crate) scope_bindings: Vec<TypeScriptScopeBinding>,
+}
+
+/// One name an enclosing test scope binds, resolved to its innermost scope.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptScopeBinding {
+    pub(crate) name: String,
+    /// The constructor (`Cart`, `shop.Cart`) `name` holds when a test in the
+    /// scope starts: the last hook write in its innermost scope, or else every
+    /// declaration there. `None` when that value is anything else, is
+    /// ambiguous (a conditional write, or a write that can run between
+    /// tests), is only declared, or anything else in the file could rebind
+    /// the name or the class.
+    pub(crate) constructed_by: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

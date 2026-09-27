@@ -220,8 +220,10 @@ from reading `--base` or `--diff` as a size bound for repo-scoped formats.
 `ripr first-pr --check` validates an existing start-here packet. It does not
 create one. If the expected packet is missing, the error names validate-only
 mode, prints the missing path, and shows a create-and-validate command using
-the same root, base, head, check-output, out-dir, and explicit gap-ledger
-inputs where present.
+the same root, head, check-output, out-dir, and explicit base and gap-ledger
+inputs where present. An omitted `--base` stays omitted from that command, and
+the recovery is printed before an omitted base is resolved, so a checkout with
+no resolvable default branch still gets it (#4285).
 
 ## Non-Claims
 

@@ -538,6 +538,27 @@ are scoped or reviewed.
 
 ### Fixed
 
+- TypeScript/JavaScript preview: a class method tested through an instance
+  built outside the test body is no longer reported `no_static_path`. The
+  receiver may now come from the enclosing `describe` scope, a
+  `beforeEach`/`beforeAll` hook, a default import of the owner's
+  default-exported class, or a namespace import (`new shop.Cart()`). Scope
+  bindings are read from the syntax tree and resolved to the innermost scope,
+  where the last hook write wins over the declaration's initializer. The
+  receiver is withheld when anything in the file could rebind it outside a
+  recognized declaration or hook write: a write anywhere else (including
+  destructuring, casts and closures), a parameter or redeclaration of the
+  same name, a second hook of the same kind writing it, a hook the file
+  defines or imports under another name, or a declaration or write of the
+  class name itself (`class Cart` or `function Cart` in a hook), a method
+  assignment such as `cart.total = ...` or any use of `Cart.prototype` (a
+  spy or replaced method), a hook write that follows a possible early
+  `return`, a generator hook, or any `eval` or escaped identifier in the
+  file. Member
+  reads, `expect(cart)`, `typeof cart`, comments, import paths and
+  describe/test/mock name strings do not count; any other string or template
+  that mentions the name does.
+
 - A generated command prints no PowerShell form only when PowerShell reads it
   the same way. Commands with a quoted program path, `$` expansion, globs,
   braces, `~`, `@`, comments, `--%`, non-spaced `>` forms, a second redirect or

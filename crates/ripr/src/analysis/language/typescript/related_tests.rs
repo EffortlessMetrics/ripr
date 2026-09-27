@@ -615,7 +615,22 @@ pub(crate) fn receiver_owner_call_relation(
     }
     let constructor_names =
         constructor_names_for_method_owner(test, owner, alias_map, workspace_root);
-    let receiver_names = receiver_names_for_constructor_calls(&test.body_text, &constructor_names);
+    let mut receiver_names =
+        receiver_names_for_constructor_calls(&test.body_text, &constructor_names);
+    // A receiver built in the enclosing scope (`const cart = new Cart()` in a
+    // `describe`, `cart = new Cart()` in a `beforeEach`) is the object the
+    // body calls, unless the body declares or reassigns that name itself.
+    for binding in &test.scope_bindings {
+        if binding
+            .constructed_by
+            .as_ref()
+            .is_some_and(|constructor| constructor_names.contains(constructor))
+            && !local_identifier_declared_in_test_body(&test.body_text, &binding.name)
+            && !super::tests_extract::identifier_written_in(&test.body_text, &binding.name)
+        {
+            push_unique_string(&mut receiver_names, binding.name.clone());
+        }
+    }
     if receiver_names
         .iter()
         .any(|receiver| contains_member_call_name(&test.body_text, receiver, &owner.name))
@@ -699,15 +714,33 @@ pub(crate) fn constructor_names_for_method_owner(
         push_unique_string(&mut names, class_name.to_string());
     }
     for import in &test.imports_in_file {
-        if import.namespace
-            || !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root)
-        {
+        if !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root) {
             continue;
         }
-        if import.imported.as_deref() == Some(class_name) {
+        if import.namespace {
+            // `import * as shop from './cart'` + `new shop.Cart()`. A
+            // default-exported class is `shop.default`, never `shop.Cart`.
+            if !owner.class_default_export {
+                push_unique_string(&mut names, format!("{}.{class_name}", import.local));
+            }
+        } else if import.imported.as_deref() == Some(class_name)
+            || (owner.class_default_export && import.imported.as_deref() == Some("default"))
+        {
+            // A named import, or a default import of the owner's
+            // default-exported class under any local name.
             push_unique_string(&mut names, import.local.clone());
         }
     }
+    // A constructor name the test scope or body rebinds (`const Cart =
+    // class {}`, `const shop = {...}`) constructs something else.
+    names.retain(|name| {
+        let local = name.split('.').next().unwrap_or(name);
+        !test
+            .scope_bindings
+            .iter()
+            .any(|binding| binding.name == local)
+            && !local_identifier_declared_in_test_body(&test.body_text, local)
+    });
     names
 }
 
