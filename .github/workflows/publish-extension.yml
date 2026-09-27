@@ -9,14 +9,13 @@ on:
       publish_vs_marketplace:
         description: "Publish to VS Marketplace"
         required: false
-        default: "true"
+        default: "false"
       publish_open_vsx:
         description: "Publish to Open VSX"
         required: false
-        default: "true"
-  push:
-    tags:
-      - "v*"
+        default: "false"
+  # No tag trigger and no default-on marketplace: each channel is dispatched
+  # explicitly per docs/RELEASE_TRANSACTION.md (#1646 owns the full topology).
 
 permissions:
   contents: write
@@ -79,7 +78,7 @@ jobs:
 
   publish-vs-marketplace:
     needs: [package, server-assets-ready]
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_vs_marketplace != 'false' }}
+    if: ${{ github.event.inputs.publish_vs_marketplace == 'true' }}
     runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
@@ -118,7 +117,7 @@ jobs:
 
   publish-open-vsx:
     needs: [package, server-assets-ready]
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_open_vsx != 'false' }}
+    if: ${{ github.event.inputs.publish_open_vsx == 'true' }}
     runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
@@ -157,8 +156,19 @@ jobs:
 
       - name: Attach VSIX to GitHub Release
         run: |
-          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" --title "ripr ${{ github.ref_name }}"
-          gh release upload "${{ github.ref_name }}" dist/*.vsix --clobber
+          # The GitHub Release has exactly one creator (the release transaction).
+          # Attach to it only; never create it or replace an existing asset, so
+          # a second channel dispatch keeps the first attached VSIX.
+          set -euo pipefail
+          existing="$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')"
+          for vsix in dist/*.vsix; do
+            name="$(basename "$vsix")"
+            if printf '%s\n' "$existing" | grep -Fxq "$name"; then
+              echo "$name is already attached to ${{ github.ref_name }}; leaving it in place"
+            else
+              gh release upload "${{ github.ref_name }}" "$vsix"
+            fi
+          done
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

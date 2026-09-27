@@ -344,6 +344,15 @@ git tag v0.8.0
 git push origin v0.8.0
 ```
 
+Pushing the tag publishes nothing by itself. The release workflows run only by
+`workflow_dispatch`, one channel at a time, in the order and with the receipts
+that [RELEASE_TRANSACTION.md](RELEASE_TRANSACTION.md) gives: create the GitHub
+Release, then dispatch `release-server-binaries.yml`, then
+`publish-extension.yml` with exactly one of `publish_vs_marketplace=true` or
+`publish_open_vsx=true`. Both marketplace inputs default to `false`, and the
+extension workflow attaches its VSIX to the existing Release without creating
+or replacing it.
+
 Update docs or release notes if the install command or package metadata changed.
 
 ## Public-Surface Copy

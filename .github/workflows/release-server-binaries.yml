@@ -6,9 +6,9 @@ on:
       version:
         description: "Release version, for example 0.2.0 or v0.2.0"
         required: true
-  push:
-    tags:
-      - "v*"
+  # No tag trigger: a pushed `v*` tag must not start publication. Each channel
+  # is dispatched explicitly, one at a time, per docs/RELEASE_TRANSACTION.md
+  # (#1646 owns the full single-writer topology).
 
 jobs:
   build:
