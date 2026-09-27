@@ -18,7 +18,8 @@ cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --a
 `cargo xtask dogfood` is the stable advisory loop. It runs `ripr check --mode
 fast` against checked fixture diffs, writes actual outputs under
 `target/ripr/dogfood/`, and writes `target/ripr/reports/dogfood.md` plus
-`target/ripr/reports/dogfood.json`. It also checks repo-local finding-alignment
+`target/ripr/reports/dogfood.json`. The command exits non-zero whenever the
+report status is `warn` (any scenario recorded errors). It also checks repo-local finding-alignment
 receipts under `fixtures/finding-alignment-dogfood/` so real RIPR PR examples
 preserve the Lane 1 split between raw findings, canonical evidence items, and
 actionable canonical gaps. Python repair-routing eval receipts live under

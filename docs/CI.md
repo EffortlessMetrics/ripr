@@ -591,8 +591,10 @@ writes advisory Markdown and JSON summaries of semantic expected-output drift
 for reviewers. `test-oracle-report` writes an advisory baseline for the strength
 of `ripr`'s own Rust test oracles. If no tests are selected, both report formats
 use status `not_run` and explain that oracle evidence was not established; this
-is distinct from a nonempty all-strong `pass` and remains advisory. `dogfood` writes a non-blocking
-`ripr`-on-`ripr` report from stable fixture diffs. `critic` writes an advisory
+is distinct from a nonempty all-strong `pass` and remains advisory. `dogfood` writes a
+`ripr`-on-`ripr` report from stable fixture diffs; its findings stay advisory,
+but the command, and `ci-full`, fails when any scenario records errors (report
+status `warn`). `critic` writes an advisory
 adversarial review packet from the current diff, reports, and receipts.
 `reports index` writes a reviewer front door for generated reports and includes
 the repo-ops packet statuses for command mutability, PR-ready, worktree doctor,

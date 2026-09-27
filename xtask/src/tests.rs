@@ -103,10 +103,10 @@ use super::{
     dogfood_bun_ub_cross_language_run, dogfood_bun_ub_cross_language_scenarios,
     dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
     dogfood_editor_first_pr_bridge_scenarios, dogfood_editor_gap_cockpit_run,
-    dogfood_editor_gap_cockpit_scenarios, dogfood_finding_alignment_run,
+    dogfood_editor_gap_cockpit_scenarios, dogfood_failed_families, dogfood_finding_alignment_run,
     dogfood_finding_alignment_scenarios, dogfood_first_action_run, dogfood_first_action_scenarios,
     dogfood_first_pr_metrics, dogfood_first_pr_run, dogfood_first_pr_scenarios,
-    dogfood_gate_adoption_run, dogfood_gate_adoption_scenarios,
+    dogfood_gate_adoption_run, dogfood_gate_adoption_scenarios, dogfood_gate_result,
     dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
     dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
     dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
@@ -116,7 +116,7 @@ use super::{
     dogfood_python_repair_routing_quality_summary, dogfood_python_static_limit_eval_run,
     dogfood_python_static_limit_eval_scenarios, dogfood_real_repair_attempt_run,
     dogfood_real_repair_attempt_scenarios, dogfood_report_json, dogfood_report_markdown,
-    dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+    dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios, dogfood_report_status,
     dogfood_surface_projection_alignment_run, dogfood_surface_projection_alignment_scenarios,
     dogfood_typescript_preview_repair_loop_run, dogfood_typescript_preview_repair_loop_scenarios,
     dogfood_user_surface_projection_run, dogfood_user_surface_projection_scenarios,
@@ -13604,6 +13604,39 @@ fn dogfood_reports_are_advisory() -> Result<(), String> {
     };
     let markdown = dogfood_report_markdown(&markdown_inputs);
     let json = dogfood_report_json(&json_inputs);
+    assert!(dogfood_failed_families(&json_inputs).is_empty());
+    assert_eq!(dogfood_report_status(&json_inputs), "pass");
+    // A failing family the #2411 exit list used to skip must still fail the
+    // command, and through the same owner as the report status (#4309).
+    let failing_generated_ci_runs = [dogfood_generated_ci_cockpit_run_from_workflow(
+        "generated-pr-ci-review-workflow",
+        "cargo run --quiet -p ripr -- init --ci github --dry-run",
+        10,
+        "name: RIPR",
+    )];
+    let failing_preview_projection_runs = DogfoodPreviewProjectionRuns {
+        generated_ci_cockpit: &failing_generated_ci_runs,
+        ..preview_projection_runs
+    };
+    let failing_inputs = DogfoodReportInputs {
+        preview_projection_runs: &failing_preview_projection_runs,
+        ..json_inputs
+    };
+    let failed = dogfood_failed_families(&failing_inputs);
+    assert_eq!(failed.len(), 1, "{failed:?}");
+    assert!(
+        failed[0].starts_with("generated-pr-ci-review-workflow: "),
+        "{failed:?}"
+    );
+    assert_eq!(dogfood_report_status(&failing_inputs), "warn");
+    assert_eq!(dogfood_gate_result(&json_inputs), Ok(()));
+    let gate_error = dogfood_gate_result(&failing_inputs)
+        .err()
+        .unwrap_or_default();
+    assert!(
+        gate_error.contains("generated-pr-ci-review-workflow: "),
+        "{gate_error}"
+    );
     // Families that run no producer say so, so they cannot read as producer
     // evidence (#4267).
     let report: serde_json::Value =
