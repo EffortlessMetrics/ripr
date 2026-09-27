@@ -1201,8 +1201,8 @@ fn given_strict_boundary_seam_when_tests_skip_equal_value_then_grip_names_missin
 /// #4228: a reversed literal (`100 < amount`) or a local boundary
 /// (`let limit = 100;`) names its boundary and closes only when a test
 /// passes the boundary value. The same shapes close in `check`
-/// (`classify::activation` tests). A local no evaluator can fold, or a
-/// local on the left of a reversed predicate, stays a static limitation,
+/// (`classify::activation` tests), including a folded local on the left
+/// (#4270). A local no evaluator can fold stays a static limitation,
 /// never strongly gripped.
 #[test]
 fn given_reversed_or_local_boundary_when_test_hits_boundary_then_grip_closes() -> Result<(), String>
@@ -1237,6 +1237,20 @@ fn given_reversed_or_local_boundary_when_test_hits_boundary_then_grip_closes() -
         ),
         (
             "    let limit = 100;\n    if limit < amount { 0 } else { 5 }",
+            "limit < amount",
+            false,
+            Some("limit"),
+        ),
+        (
+            "    let limit = 100;\n    if limit <= amount { 0 } else { 5 }",
+            "limit <= amount",
+            true,
+            Some("limit"),
+        ),
+        // #4270: only a local the evaluator folds orients the predicate;
+        // an input-derived left-hand local stays a static limitation.
+        (
+            "    let limit = amount / 2 + 50;\n    if limit < amount { 0 } else { 5 }",
             "limit < amount",
             false,
             None,
@@ -1354,6 +1368,54 @@ fn given_whole_literal_or_later_shadow_when_test_hits_boundary_then_grip_closes(
             "fee(-99)",
             "fee(-100)",
             "-100",
+        ),
+        // #4271: a decimal boundary is read whole, so a test at `1.2`
+        // does not stand in for the boundary `1.5`.
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if amount > 1.5 { 0 } else { 5 }\n}\n",
+            "amount > 1.5",
+            "fee(1.2)",
+            "fee(1.5)",
+            "1.5",
+        ),
+        // A suffixed decimal keeps its fraction too: `fee(1.0)` does not
+        // hit `1.5f64`.
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if amount > 1.5f64 { 0 } else { 5 }\n}\n",
+            "amount > 1.5f64",
+            "fee(1.0)",
+            "fee(1.5)",
+            "1.5",
+        ),
+        // A type suffix is not a second literal: `9.5f64` is 9.5, not 64,
+        // and `99u32` is 99, not 32.
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if amount > 9.5f64 { 0 } else { 5 }\n}\n",
+            "amount > 9.5f64",
+            "fee(64)",
+            "fee(9.5)",
+            "9.5",
+        ),
+        (
+            "pub fn fee(amount: u32) -> u64 {\n    if amount > 99u32 { 0 } else { 5 }\n}\n",
+            "amount > 99u32",
+            "fee(32)",
+            "fee(99)",
+            "99",
+        ),
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if 1.5f64 < amount { 0 } else { 5 }\n}\n",
+            "1.5f64 < amount",
+            "fee(1.0)",
+            "fee(1.5)",
+            "1.5",
+        ),
+        (
+            "pub fn fee(amount: f64) -> u64 {\n    if -1.5 < amount { 0 } else { 5 }\n}\n",
+            "-1.5 < amount",
+            "fee(-1.2)",
+            "fee(-1.5)",
+            "-1.5",
         ),
         (
             "pub fn fee(grade: char) -> u64 {\n    if 'm' < grade { 0 } else { 5 }\n}\n",
@@ -11450,7 +11512,7 @@ pub fn discounted_total(raw_amount: Option<i32>, raw_amount_extra: Option<i32>, 
 }
 
 #[test]
-fn given_boundary_owner_call_when_match_alias_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_match_alias_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11462,7 +11524,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11476,22 +11538,11 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "commented match aliases must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved commented match alias should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
-    Ok(())
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
 }
 
 #[test]
-fn given_boundary_owner_call_when_inline_match_alias_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_inline_match_alias_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11503,7 +11554,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11517,22 +11568,11 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "inline commented match aliases must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved inline commented match alias should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
-    Ok(())
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
 }
 
 #[test]
-fn given_boundary_owner_call_when_match_wrapper_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_match_wrapper_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11545,7 +11585,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11559,22 +11599,11 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "commented wrapper patterns must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved commented wrapper pattern should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
-    Ok(())
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
 }
 
 #[test]
-fn given_boundary_owner_call_when_inline_match_wrapper_is_comment_then_operand_stays_unresolved()
+fn given_boundary_owner_call_when_inline_match_wrapper_is_comment_then_local_boundary_stays_open()
 -> Result<(), String> {
     let prod_src = r#"
 pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
@@ -11586,7 +11615,7 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
     let test = (
         "tests/pricing_tests.rs",
         "#[test] fn at_threshold() { \
-                 assert_eq!(discounted_total(Some(50), 50), -9); \
+                 assert_eq!(discounted_total(Some(50), 50), 1); \
              }\n",
     );
     let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
@@ -11600,17 +11629,40 @@ pub fn discounted_total(raw_amount: Option<i32>, threshold: i32) -> i32 {
                 && s.expression().contains("amount >= threshold")
         })
         .ok_or_else(|| "amount predicate seam present".to_string())?;
-    let evidence = evidence_for_seam(predicate, &index);
-    assert!(
-        evidence.observed_values.is_empty(),
-        "inline commented wrapper patterns must not resolve boundary operands; got {:?}",
-        evidence.observed_values
-    );
-    assert!(
-        evidence.missing_discriminators.is_empty(),
-        "unresolved inline commented wrapper should stay a limitation, not an exact repair candidate; got {:?}",
-        evidence.missing_discriminators
-    );
+    assert_commented_alias_leaves_local_boundary_open(predicate, &index)
+}
+
+/// #4270: with the commented alias ignored, `amount` is the local
+/// `let amount = 1;`, so both owners compare `threshold` against 1. The
+/// test passes `threshold = 50` while `raw_amount` is also 50: reading the
+/// commented alias would make `amount` equal `threshold` and close the
+/// boundary. The local reading leaves `amount == threshold` open, as
+/// `check` reports it (`classify::activation` commented-alias test).
+fn assert_commented_alias_leaves_local_boundary_open(
+    predicate: &RepoSeam,
+    index: &RustIndex,
+) -> Result<(), String> {
+    let evidence = evidence_for_seam(predicate, index);
+    let observed: Vec<&str> = evidence
+        .observed_values
+        .iter()
+        .map(|fact| fact.value.as_str())
+        .collect();
+    let missing: Vec<&str> = evidence
+        .missing_discriminators
+        .iter()
+        .map(|fact| fact.value.as_str())
+        .collect();
+    let class = crate::analysis::seam_classification::classify_seam(predicate, &evidence);
+    if observed != ["50"]
+        || missing != ["amount (equality boundary)"]
+        || class == SeamGripClass::StronglyGripped
+    {
+        return Err(format!(
+            "a commented alias must not close `amount >= threshold`; expected the local boundary open, got {} observed {observed:?} missing {missing:?}",
+            class.as_str()
+        ));
+    }
     Ok(())
 }
 

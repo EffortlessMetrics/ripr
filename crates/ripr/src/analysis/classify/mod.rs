@@ -15,7 +15,9 @@ mod text;
 mod transitive_reach;
 mod value_transfer;
 
-pub(in crate::analysis) use activation::{LocalBoundary, activation_evidence, local_boundary};
+pub(in crate::analysis) use activation::{
+    LocalBoundary, activation_evidence, literal_operand_value, local_boundary,
+};
 pub(in crate::analysis) use context::ProbeContext;
 pub(in crate::analysis) use decision::{
     classify, confidence_score, ensure_unknown_stop_reason, missing_evidence,

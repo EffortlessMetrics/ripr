@@ -746,7 +746,7 @@ fn observed_argument_selection(
         return ObservedArgumentSelection::ArgumentOperands(vec![left_operand]);
     }
     if let Some(right_operand) = boundary_operand_argument(owner_fn, &parameters, &right)
-        && !scalar_values(&left).is_empty()
+        && left_is_boundary_value(owner_fn, &left, seam.display_line())
     {
         return ObservedArgumentSelection::ArgumentOperands(vec![right_operand]);
     }
@@ -1431,9 +1431,10 @@ fn predicate_boundary_operand(
     let (left, right) = comparison_operands(seam.expression())?;
     let parameters = function_parameters(owner_fn);
     // The reversed shape `observed_argument_selection` observes: a literal
-    // on the left compared against a parameter on the right.
+    // or input-free local on the left compared against a parameter on the
+    // right.
     let reversed = boundary_operand_argument(owner_fn, &parameters, &left).is_none()
-        && !scalar_values(&left).is_empty()
+        && left_is_boundary_value(owner_fn, &left, seam.display_line())
         && boundary_operand_argument(owner_fn, &parameters, &right).is_some();
     let token = boundary_token(if reversed { &left } else { &right });
     if token.is_empty() {
@@ -1441,6 +1442,24 @@ fn predicate_boundary_operand(
     }
     let local = super::classify::local_boundary(owner_fn, &token, seam.display_line());
     Some(PredicateBoundaryOperand { token, local })
+}
+
+/// Whether the left operand of a predicate is a boundary value rather than
+/// the tested input: a literal (`100 < amount`, `1.5f64 < amount`) or a
+/// local whose initializer folds without test input (`let limit = 100;
+/// limit < amount`), the value `check` evaluates per row (#4270). A local
+/// that depends on inputs, or that the evaluator cannot fold, is not one.
+fn left_is_boundary_value(owner_fn: &FunctionSummary, left: &str, predicate_line: usize) -> bool {
+    numeric_boundary_literal(left).is_some()
+        || !scalar_values(left).is_empty()
+        || matches!(
+            super::classify::local_boundary(
+                owner_fn,
+                &boundary_identifier_prefix(left),
+                predicate_line
+            ),
+            super::classify::LocalBoundary::Exact(_)
+        )
 }
 
 /// Best-effort right-hand-side identifier for a boundary predicate.
@@ -1458,15 +1477,31 @@ fn boundary_rhs_token(expression: &str) -> String {
 }
 
 /// The boundary operand as observed values spell it: a whole integer,
-/// char or string literal (`-100`, `'m'`), else its identifier prefix.
-/// Decimal literals and enum paths keep the identifier-prefix spelling
-/// because `check` does not read them as whole values either; widening
-/// one owner alone would split grip from `check` (#4228).
+/// decimal, char or string literal (`-100`, `1.5`, `'m'`), else its
+/// identifier prefix. Decimals are whole in both owners (#4271); enum
+/// paths keep the identifier-prefix spelling because `check` does not
+/// read them as whole values either (#4228).
 fn boundary_token(operand: &str) -> String {
+    if let Some(literal) = numeric_boundary_literal(operand) {
+        return literal;
+    }
     match scalar_values(operand).into_iter().next() {
-        Some(literal) if !literal.contains('.') && !literal.contains("::") => literal,
+        Some(literal) if !literal.contains("::") => literal,
         _ => boundary_identifier_prefix(operand),
     }
+}
+
+/// A numeric boundary read by `check`'s own literal reader, so a suffixed
+/// literal (`1.5f64`, `100u32`) spells the same value in both owners
+/// instead of grip's identifier prefix (`1`, `100u32`).
+fn numeric_boundary_literal(operand: &str) -> Option<String> {
+    let trimmed = operand.trim();
+    trimmed
+        .strip_prefix('-')
+        .unwrap_or(trimmed)
+        .starts_with(|ch: char| ch.is_ascii_digit())
+        .then(|| super::classify::literal_operand_value(trimmed))
+        .flatten()
 }
 
 /// An operand up to its first non-identifier character.
