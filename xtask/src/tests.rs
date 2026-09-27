@@ -19419,6 +19419,20 @@ jobs:
             .iter()
             .any(|error| error.contains("regeneration commands"))
     );
+
+    // Generated CI names the PR range since #4260; the unscoped form it
+    // replaced must not satisfy the first-pr repair command.
+    let unscoped = workflow.replace(
+        GENERATED_CI_FIRST_PR_REPAIR,
+        "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports",
+    );
+    let stale = dogfood_generated_ci_cockpit_run_from_workflow(
+        "unscoped-first-pr",
+        "cargo run --quiet -p ripr -- init --ci github --dry-run",
+        10,
+        &unscoped,
+    );
+    assert_eq!(stale.repair_commands, 3);
 }
 
 #[test]
