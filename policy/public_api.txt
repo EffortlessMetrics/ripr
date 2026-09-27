@@ -195,6 +195,11 @@ pub use ripr::analysis::PartialDiffStopReason
 # cargo test -p xtask badge_diff_reader, cargo xtask check-public-api.
 pub use ripr::analysis::PathRecordError
 pub use ripr::analysis::StatusRecord
+# PR #4192: owner analysis/seam_cache; reason: share the producer-owned cache
+# layer inventory with the xtask cache reporter without a second name list;
+# covered_by: cargo test -p ripr --lib producer_directories_match_the_maintenance_inventory,
+# cargo xtask check-public-api.
+pub use ripr::analysis::cache_layer_names
 pub use ripr::analysis::load_diff_range
 pub use ripr::analysis::load_pr_evidence_diff_range
 pub use ripr::analysis::parse_git_path_records

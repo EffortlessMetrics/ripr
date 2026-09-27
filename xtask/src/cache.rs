@@ -5,6 +5,7 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ripr::analysis::cache_layer_names;
 use serde_json::{Value, json};
 
 const DEFAULT_MAX_SIZE_GB: u64 = 20;
@@ -17,18 +18,6 @@ const SHARD_MANIFEST_FILE: &str = "manifest.json";
 const SHARD_FILE_PREFIX: &str = "shard-";
 const MAX_REPORT_ROWS: usize = 20;
 
-/// Directory names `ripr` itself creates under the cache base directory.
-/// Mirrors `crates/ripr/src/cli/commands/cache.rs` `CACHE_ROOT_MARKERS` so
-/// xtask GC/report stay conservative for a relocated `RIPR_CACHE_DIR`.
-const CACHE_ROOT_MARKERS: &[&str] = &[
-    "repo-seam-facts",
-    "repo-seam-facts-sharded",
-    "repo-compact-classified-seams",
-    "repo-compact-classified-seams-sharded",
-    "repo-corpus-fingerprint",
-    "repo-file-facts",
-    "repo-seam-counts",
-];
 const DEFAULT_CACHE_ROOT_SUFFIX: &[&str] = &["target", "ripr", "cache"];
 
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
@@ -778,7 +767,7 @@ fn is_default_cache_layout(cache_dir: &Path) -> bool {
 
 fn is_recognized_cache_root(cache_dir: &Path) -> bool {
     is_default_cache_layout(cache_dir)
-        || CACHE_ROOT_MARKERS
+        || cache_layer_names()
             .iter()
             .any(|marker| cache_dir.join(marker).is_dir())
 }

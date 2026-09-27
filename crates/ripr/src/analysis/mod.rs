@@ -52,6 +52,7 @@ pub use language::{
     PartialDiffStopReason,
 };
 pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
+pub use seam_cache::cache_layer_names;
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
 pub(crate) use seam_classification::SeamGripClassCounts;
