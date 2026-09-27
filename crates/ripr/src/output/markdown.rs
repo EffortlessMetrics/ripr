@@ -7,7 +7,7 @@
 /// `agent_workflow` disclosure so every generated-command surface states the
 /// same contract. Shared here — beside the translation it describes — so the
 /// fenced command surfaces do not fork one disclosure per module.
-pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Commands are written for Bash, with POSIX single-quote quoting and `>` redirection. A PowerShell form follows a command only when PowerShell needs a different one: doubled-quote escaping, or a guarded BOM-free UTF-8 write in place of `>`. A command with no PowerShell form after it runs unchanged in PowerShell, unless a line says its PowerShell form is unavailable. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
+pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Commands are written for Bash, with POSIX single-quote quoting and `>` redirection. A PowerShell form follows a command only when PowerShell needs a different one: doubled-quote escaping, the `&` call operator before a quoted program path, or a guarded BOM-free UTF-8 write in place of `>`. A command with no PowerShell form after it runs unchanged in PowerShell, unless a line says its PowerShell form is unavailable. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
 
 pub(crate) fn render_string_section(out: &mut String, title: &str, values: &[String]) {
     out.push_str(&format!("\n## {title}\n\n"));
@@ -25,11 +25,11 @@ pub(crate) fn markdown_text(value: &str) -> String {
 }
 
 /// One-line disclosure emitted in place of a PowerShell variant when the bash
-/// command is compound and no honest translation exists (#2628). Standalone
-/// emitters append the sentence period; emitters that name the command append
-/// `: <command>`.
+/// command is unsupported or compound and no honest translation exists
+/// (#2628). Standalone emitters append the sentence period; emitters that
+/// name the command append `: <command>`.
 pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
-    "PowerShell form unavailable for compound commands";
+    "PowerShell form unavailable for unsupported or compound commands";
 
 /// What a generated-command surface prints after a Bash command.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,6 +80,8 @@ pub(crate) fn powershell_form(command: &str) -> PowershellForm {
 ///   path is a parse error (PR #3617 review) — and the redirect is detected
 ///   only outside single- and double-quoted regions, so a quoted `>` inside
 ///   an argument cannot hijack it. A quote of the other kind is literal data.
+///   A second redirect withholds: anything after the first operator is the
+///   artifact path, and `>` is not a valid Windows filename character.
 /// - The artifact write is guarded: the invocation's output is captured, the
 ///   write happens only `if ($LASTEXITCODE -eq 0)`, and a nonzero status
 ///   throws `"ripr exited with code $LASTEXITCODE"`. Without the guard, a
@@ -103,22 +105,49 @@ pub(crate) fn powershell_form(command: &str) -> PowershellForm {
 /// lives beside the markdown render helpers because every generated-command
 /// surface renders both shell variants from this one implementation.
 ///
-/// Disclosed limitation: the tests pin these forms as strings, and the CI
-/// environment that runs them cannot assume a pwsh runtime oracle, so the
-/// guard and the translations carry no executed regression on that lane.
+/// Test depth: the string pins below run on every lane, and the
+/// Windows-gated `powershell_translation_preserves_native_argv_and_artifact_bytes`
+/// executes the translated lines under a real `pwsh` on the Windows lane,
+/// where a missing `pwsh` fails closed instead of skipping.
 pub(crate) fn powershell_command(command: &str) -> Option<String> {
     if is_compound_bash_command(command) {
         return None;
     }
     let command = command.replace("'\\''", "''");
     if let Some(index) = powershell_redirect_offset(&command) {
-        let invocation = command[..index].trim_end();
-        let output = powershell_literal(command[index + 1..].trim());
+        let invocation = invoke_quoted_program(command[..index].trim_end());
+        let target = command[index + 1..].trim();
+        // A second redirect leaves `>` inside the artifact path, which has
+        // no Windows translation (`>` is not a valid filename character
+        // there), so the whole form withholds instead of emitting a
+        // WriteAllText call that rejects its own path.
+        if target.contains('>') {
+            return None;
+        }
+        let output = powershell_literal(target);
         return Some(format!(
             "$ripr = (({invocation}) | Out-String); if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText({output}, $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
         ));
     }
-    Some(command)
+    Some(invoke_quoted_program(&command))
+}
+
+/// A quoted program path in command position is a string expression in
+/// PowerShell, not an invocation: without the call operator the copied line
+/// echoes the path and exits 0 without running anything (native proof,
+/// #1672 — the recorder never ran, so no stdout marker and no argv record
+/// appeared). The quote may follow leading whitespace, which the compound
+/// check accepts; the operator still applies and the spacing is preserved.
+/// Unquoted program names invoke directly and need no operator.
+fn invoke_quoted_program(invocation: &str) -> String {
+    if matches!(
+        invocation.trim_start().chars().next(),
+        Some('\'') | Some('"')
+    ) {
+        format!("& {invocation}")
+    } else {
+        invocation.to_string()
+    }
 }
 
 /// Find the generated ` > ` operator after apostrophe translation. This is
@@ -168,12 +197,23 @@ fn powershell_redirect_offset(command: &str) -> Option<usize> {
 /// PR #3625 review round 3, devin); inside double quotes, where bash still
 /// expands them: `$(` and backtick. The one exception is `\'` outside quotes,
 /// which is the close-escape-reopen idiom inside a `'\''`-escaped token and
-/// must keep translating. When in doubt the caller under-emits: a false
-/// "compound" costs one disclosure line, a false "simple" would publish an
-/// invalid or semantically different PowerShell line. Unquoted LF, CRLF, and
-/// bare CR are withheld before redirect parsing: a command list must not be
-/// folded into one invocation or mistaken for part of an artifact path. Quoted
-/// line separators are argument data and keep the normal translation path.
+/// must keep translating. Shell-expansion forms that PowerShell would read
+/// differently are withheld too: glob characters (`*`, `?`, `[`, `]`), brace
+/// expansion (`{`, `}`), subshell and grouping parentheses, `@` splatting,
+/// `~` expansion, `#` comments, `$` expansion anywhere (including inside
+/// double quotes), and any `>` that is not the spaced ` > ` redirect operator
+/// (`2>err`, `>&2`, `>>`). Anything else outside the allowlist
+/// (alphanumerics, whitespace, `.`, `/`, `_`, `-`, `:`) fails closed: an
+/// unlisted character withholds the translation, so `--%`, `KEY=value`, and
+/// other unsupported tokens never ship a line the shells would read
+/// differently. A trailing unbalanced quote withholds as well: the bash form
+/// is malformed there, so there is no honest line to translate. When in doubt
+/// the caller under-emits: a false "compound" costs one disclosure line, a
+/// false "simple" would publish an invalid or semantically different
+/// PowerShell line. Unquoted LF, CRLF, and bare CR are withheld before
+/// redirect parsing: a command list must not be folded into one invocation or
+/// mistaken for part of an artifact path. Quoted line separators are argument
+/// data and keep the normal translation path.
 fn is_compound_bash_command(command: &str) -> bool {
     let chars: Vec<char> = command.chars().collect();
     let mut index = 0;
@@ -193,10 +233,13 @@ fn is_compound_bash_command(command: &str) -> bool {
                 // Bash treats `\$` inside double quotes as literal data, but
                 // PowerShell evaluates `$(...)` as a subexpression — the
                 // same text changes meaning across shells, so any
-                // double-quoted backslash under-emits (#3625 review).
+                // double-quoted backslash under-emits (#3625 review). Any
+                // double-quoted `$` under-emits too: PowerShell would expand
+                // `$VAR` and `$()` forms that bash may leave literal, so the
+                // same pasted text can run differently across shells.
                 '\\' => return true,
                 '`' => return true,
-                '$' if next == Some('(') => return true,
+                '$' => return true,
                 _ => {}
             }
             index += 1;
@@ -205,27 +248,66 @@ fn is_compound_bash_command(command: &str) -> bool {
                 '\'' => in_single_quote = true,
                 '"' => in_double_quote = true,
                 '\\' => match chars.get(index + 1).copied() {
-                    // `\'` outside quotes closes, escapes, and reopens a
-                    // single-quoted region (`'it'\''s'`); it is quoting, not
-                    // a compound form.
-                    Some('\'') => index += 1,
+                    // `\'` outside quotes is quoting only as the middle of
+                    // the close-escape-reopen idiom `'\''` (`'it'\''s'`),
+                    // which `powershell_command` rewrites to `''`. A bare
+                    // `a\'b` is one Bash argument but an unmatched quote in
+                    // PowerShell, so it withholds.
+                    Some('\'')
+                        if index > 0
+                            && chars[index - 1] == '\''
+                            && chars.get(index + 2) == Some(&'\'') =>
+                    {
+                        index += 1;
+                    }
                     // Any other escape (`\;`, `\&`, `\ `, `\\`...) changes
                     // how the shells tokenize the line.
                     Some(_) => return true,
                     None => index += 1,
                 },
                 ';' | '\n' | '\r' => return true,
+                '>' => {
+                    // Only the spaced ` > ` operator translates (detected by
+                    // `powershell_redirect_offset`); any other `>` form
+                    // (`2>err`, `>&2`, `>>`, `a>b`) tokenizes differently
+                    // across shells.
+                    let previous = index.checked_sub(1).and_then(|offset| chars.get(offset));
+                    if previous != Some(&' ') || next != Some(' ') {
+                        return true;
+                    }
+                }
                 '&' => return true,
                 '|' => return true,
                 '<' => return true,
                 '`' => return true,
-                '$' if next == Some('(') => return true,
-                _ => {}
+                '$' => return true,
+                '#' if index == 0
+                    || chars
+                        .get(index - 1)
+                        .is_some_and(|character| character.is_whitespace()) =>
+                {
+                    return true;
+                }
+                '*' | '?' | '[' | ']' => return true,
+                '{' | '}' => return true,
+                '(' | ')' => return true,
+                '@' => return true,
+                '~' if index == 0
+                    || chars
+                        .get(index - 1)
+                        .is_some_and(|character| character.is_whitespace()) =>
+                {
+                    return true;
+                }
+                _ if ch.is_alphanumeric()
+                    || ch.is_ascii_whitespace()
+                    || matches!(ch, '.' | '/' | '_' | '-' | ':') => {}
+                _ => return true,
             }
             index += 1;
         }
     }
-    false
+    in_single_quote || in_double_quote
 }
 
 /// Render one value as a PowerShell single-quoted string literal.
@@ -327,10 +409,41 @@ mod tests {
             powershell_command(bash),
             Some("ripr receipt write --gap 'it''s'".to_string())
         );
+        // A bare escaped apostrophe outside the idiom is one Bash argument
+        // (`a'b`) but an unmatched quote in PowerShell: withhold it.
+        assert_eq!(powershell_command("cargo test a\\'b"), None);
+        assert_eq!(powershell_command("cargo test 'a'\\'b"), None);
         // A quoted `>` inside an argument must not be mistaken for a redirect.
         assert_eq!(
             powershell_command("ripr receipt write --gap 'gap > file'"),
             Some("ripr receipt write --gap 'gap > file'".to_string())
+        );
+    }
+
+    /// A quoted program path in command position needs the call operator:
+    /// PowerShell reads a bare quoted string as a string expression, so the
+    /// translated line would echo the path and exit 0 without executing
+    /// anything (native proof, #1672). Unquoted program names invoke
+    /// directly and keep the line unchanged.
+    #[test]
+    fn powershell_command_invokes_quoted_program_paths_with_call_operator() {
+        assert_eq!(
+            powershell_command("'my tools\\recorder.exe' --gap 'it''s'"),
+            Some("& 'my tools\\recorder.exe' --gap 'it''s'".to_string())
+        );
+        assert_eq!(
+            powershell_command("'my tools\\recorder.exe' --gap > 'out\\after.json'"),
+            Some("$ripr = ((& 'my tools\\recorder.exe' --gap) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('out\\after.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+        );
+        assert_eq!(
+            powershell_command("cargo test --gap"),
+            Some("cargo test --gap".to_string())
+        );
+        // Leading whitespace does not hide the quoted program: the operator
+        // still applies and the spacing is preserved.
+        assert_eq!(
+            powershell_command("  'my tools\\recorder.exe' --gap"),
+            Some("&   'my tools\\recorder.exe' --gap".to_string())
         );
     }
 
@@ -354,14 +467,58 @@ mod tests {
     /// through with its interior `''` doubling intact.
     #[test]
     fn powershell_command_redirect_target_escapes_embedded_quotes() {
-        assert_eq!(
-            powershell_command("ripr check --root . > it's.json"),
-            Some("$ripr = ((ripr check --root .) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('it''s.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
-        );
+        // An unbalanced quote withholds: the bash form is malformed there
+        // (the `'` opens a quote that never closes), so there is no honest
+        // line to translate — the caller discloses instead.
+        assert_eq!(powershell_command("ripr check --root . > it's.json"), None);
         assert_eq!(
             powershell_command("ripr check --root . > 'it'\\''s.json'"),
             Some("$ripr = ((ripr check --root .) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('it''s.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
+    }
+
+    /// Fail-closed shell-expansion guards: forms PowerShell would read
+    /// differently never ship a translated line. Quoted forms stay data and
+    /// keep translating.
+    #[test]
+    fn powershell_command_withholds_shell_expansion_forms() {
+        for command in [
+            "ripr check {a,b}",
+            "ripr check (echo literal)",
+            "ripr check @missing",
+            "ripr check --% data",
+            "ripr check KEY=value",
+            "ripr check --root ~/report",
+            "ripr check ~",
+            "ripr check # diagnostic",
+            "ripr check $HOME",
+            "cargo test \"prefix $HOME suffix\"",
+            "cargo test \"$HOME\"",
+            "ripr check *.rs",
+            "ripr check a?b",
+            "ripr check 2>err.json",
+            "ripr check a>b.json",
+            "ripr check > first.json > second.json",
+            "ripr check !important",
+        ] {
+            assert_eq!(
+                powershell_command(command),
+                None,
+                "must withhold {command:?}"
+            );
+        }
+        // Quoted expansion characters are argument data, not shell syntax.
+        for command in [
+            "cargo test '{a,b}'",
+            "cargo test '(echo literal)'",
+            "ripr receipt write --gap 'a;b'",
+            "cargo test '$HOME'",
+        ] {
+            assert!(
+                powershell_command(command).is_some(),
+                "must translate quoted data {command:?}"
+            );
+        }
     }
 
     /// The artifact write must sit inside the success branch, and a nonzero
@@ -372,9 +529,9 @@ mod tests {
     /// follow-up review): `throw` aborts a pasted or scripted block — in a
     /// composed fence a failed snapshot stops the sequence before its outcome
     /// command — while leaving an interactive session open, where `exit`
-    /// would close the reader's shell. String-pinned only — see the disclosed
-    /// limitation on [`powershell_command`] for why no pwsh runtime oracle
-    /// backs this.
+    /// would close the reader's shell. String-pinned here; the native
+    /// execution of the guard is covered by
+    /// `powershell_translation_preserves_native_argv_and_artifact_bytes`.
     #[test]
     fn powershell_command_guard_only_writes_the_artifact_on_success() -> Result<(), String> {
         let line = powershell_command(
@@ -510,5 +667,279 @@ mod tests {
             powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'"),
             Some("$ripr = ((ripr check --root 'café\nrepo') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
+    }
+
+    /// Benign argv recorder for the native Windows proof (#1672): writes each
+    /// received argument length-prefixed so the test compares bytes exactly,
+    /// prints one stdout marker, and exits with the `RIPR_EXIT_CODE` status
+    /// (default 0). No network, no credentials, no writes outside the
+    /// `RIPR_ARGV_RECORD` path. Compiled at test time with the same `rustc`
+    /// that runs the suite, into a disposable root.
+    const NATIVE_PROOF_RECORDER: &str = r#"use std::env;
+use std::fs;
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
+    let mut out: Vec<u8> = Vec::new();
+    for arg in env::args_os().skip(1) {
+        let bytes = arg.as_encoded_bytes();
+        out.extend_from_slice(bytes.len().to_string().as_bytes());
+        out.push(b':');
+        out.extend_from_slice(bytes);
+        out.push(b'\n');
+    }
+    if let Ok(record) = env::var("RIPR_ARGV_RECORD") {
+        if !record.is_empty() {
+            fs::write(&record, &out).unwrap();
+        }
+    }
+    println!("RECORDER_OK");
+    let code: u8 = env::var("RIPR_EXIT_CODE")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    ExitCode::from(code)
+}
+"#;
+
+    /// Removes a native-proof root when the case ends, pass or fail, so
+    /// repeated runs do not accumulate compiled recorders under the temp dir.
+    struct RemoveOnDrop(std::path::PathBuf);
+
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Disposable root for one native-proof case. Unique per call (timestamp
+    /// plus pid) so parallel tests never share it.
+    fn native_proof_root(name: &str) -> Result<std::path::PathBuf, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-pwsh-proof-{name}-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir)
+            .map_err(|error| format!("failed to create proof root: {error}"))?;
+        Ok(dir)
+    }
+
+    /// Compile the recorder into the disposable root. A missing or broken
+    /// `rustc` fails the proof: without the fixture executable there is no
+    /// native observation to assert.
+    fn compile_native_proof_recorder(root: &std::path::Path) -> Result<std::path::PathBuf, String> {
+        let source = root.join("recorder.rs");
+        std::fs::write(&source, NATIVE_PROOF_RECORDER)
+            .map_err(|error| format!("failed to stage recorder source: {error}"))?;
+        let exe = root.join("recorder.exe");
+        let output = std::process::Command::new("rustc")
+            .arg("--edition=2021")
+            .arg("-O")
+            .arg(&source)
+            .arg("-o")
+            .arg(&exe)
+            .output()
+            .map_err(|error| format!("failed to spawn rustc for recorder: {error}"))?;
+        if !output.status.success() || !exe.exists() {
+            return Err(format!(
+                "recorder did not compile: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(exe)
+    }
+
+    /// Resolve a `pwsh` instrument by actually running it. A missing
+    /// instrument fails the proof — it never passes through a skip (#1672).
+    fn resolve_pwsh(program: &str) -> Result<(), String> {
+        match std::process::Command::new(program)
+            .arg("--version")
+            .output()
+        {
+            Ok(output) if output.status.success() => Ok(()),
+            _ => Err(format!("{program} is not runnable")),
+        }
+    }
+
+    /// The recorder source must stay compilable on every lane, including
+    /// lanes without `pwsh`: this guards the fixture against rot where the
+    /// native test itself cannot run.
+    #[test]
+    fn native_proof_recorder_source_compiles() -> Result<(), String> {
+        let root = native_proof_root("compile")?;
+        let _cleanup = RemoveOnDrop(root.clone());
+        let exe = compile_native_proof_recorder(&root)?;
+        assert!(exe.exists(), "recorder executable missing after compile");
+        Ok(())
+    }
+
+    /// The instrument resolver must report an absent program instead of
+    /// passing silently.
+    #[test]
+    fn native_proof_pwsh_resolver_reports_absent_instrument() {
+        assert!(resolve_pwsh("ripr-nonexistent-pwsh-probe").is_err());
+    }
+
+    #[cfg(windows)]
+    fn run_pwsh_line(
+        line: &str,
+        cwd: &std::path::Path,
+        record: &std::path::Path,
+        exit_code: &str,
+    ) -> Result<std::process::Output, String> {
+        std::process::Command::new("pwsh")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(line)
+            .current_dir(cwd)
+            .env("RIPR_ARGV_RECORD", record)
+            .env("RIPR_EXIT_CODE", exit_code)
+            .output()
+            .map_err(|error| format!("failed to spawn pwsh: {error}"))
+    }
+
+    #[cfg(windows)]
+    fn recorded_argv_matches(record: &std::path::Path, expected: &[&str]) -> Result<(), String> {
+        let bytes = std::fs::read(record)
+            .map_err(|error| format!("failed to read argv record: {error}"))?;
+        let mut want: Vec<u8> = Vec::new();
+        for arg in expected {
+            want.extend_from_slice(arg.len().to_string().as_bytes());
+            want.push(b':');
+            want.extend_from_slice(arg.as_bytes());
+            want.push(b'\n');
+        }
+        if bytes != want {
+            return Err(format!(
+                "native argv mismatch: observed {bytes:?}, wanted {want:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Native Windows proof (#1672): the translated lines are executed by a
+    /// real `pwsh`, not compared as strings. The bash input is built with the
+    /// production [`crate::agent::loop_commands::shell_arg`] renderer, the
+    /// translation comes from [`powershell_command`], and the oracle compares
+    /// observed argv/artifact bytes against semantic inputs — never against
+    /// translator-derived expectations.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_translation_preserves_native_argv_and_artifact_bytes() -> Result<(), String> {
+        use crate::agent::loop_commands::shell_arg;
+
+        let root = native_proof_root("argv")?;
+        let _cleanup = RemoveOnDrop(root.clone());
+        let recorder = compile_native_proof_recorder(&root)?;
+        resolve_pwsh("pwsh").map_err(|_| {
+            "pwsh is required for the native proof and was not found: failing closed instead of skipping"
+                .to_string()
+        })?;
+        let recorder_arg = shell_arg(
+            recorder
+                .to_str()
+                .ok_or_else(|| "recorder path is not UTF-8".to_string())?,
+        );
+        // Positive controls: spaces, apostrophe, Unicode, empty, and
+        // shell-special data plus one plain token.
+        let args = ["--gap", "it's", "café", "", "--verify=x;y", "plain"];
+        let mut bash = recorder_arg.clone();
+        for arg in args {
+            bash.push(' ');
+            bash.push_str(&shell_arg(arg));
+        }
+        let line = powershell_command(&bash)
+            .ok_or_else(|| format!("supported invocation must translate: {bash}"))?;
+        let record = root.join("argv.record");
+        let output = run_pwsh_line(&line, &root, &record, "0")?;
+        if !output.status.success() {
+            return Err(format!(
+                "translated invocation failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        if !output
+            .stdout
+            .windows(b"RECORDER_OK".len())
+            .any(|window| window == b"RECORDER_OK")
+        {
+            return Err("recorder stdout marker missing from pwsh output".to_string());
+        }
+        recorded_argv_matches(&record, &args)?;
+
+        // Redirect control: the artifact carries the invocation's output
+        // bytes as BOM-free UTF-8.
+        let artifact = root.join("after.json");
+        let redirect_bash = format!(
+            "{bash} > {}",
+            shell_arg(
+                artifact
+                    .to_str()
+                    .ok_or_else(|| "artifact path is not UTF-8".to_string())?
+            )
+        );
+        let redirect_line = powershell_command(&redirect_bash)
+            .ok_or_else(|| format!("supported redirect must translate: {redirect_bash}"))?;
+        let redirect_record = root.join("redirect.record");
+        let redirect_output = run_pwsh_line(&redirect_line, &root, &redirect_record, "0")?;
+        if !redirect_output.status.success() {
+            return Err(format!(
+                "translated redirect failed: {}",
+                String::from_utf8_lossy(&redirect_output.stderr)
+            ));
+        }
+        recorded_argv_matches(&redirect_record, &args)?;
+        let artifact_bytes = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to read artifact: {error}"))?;
+        if artifact_bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+            return Err("artifact carries a UTF-8 BOM".to_string());
+        }
+        // Byte-exact: `Out-String` ends the captured line with CRLF, so this
+        // fails if the `.Replace` LF normalization is dropped or altered.
+        if artifact_bytes != b"RECORDER_OK\n" {
+            return Err(format!(
+                "artifact bytes {artifact_bytes:?} are not exactly RECORDER_OK LF"
+            ));
+        }
+
+        // Failure control: a nonzero invocation throws without publishing
+        // the artifact over the pre-existing bytes.
+        std::fs::write(&artifact, b"SENTINEL")
+            .map_err(|error| format!("failed to stage sentinel artifact: {error}"))?;
+        let failure_record = root.join("failure.record");
+        let failure_output = run_pwsh_line(&redirect_line, &root, &failure_record, "1")?;
+        if failure_output.status.success() {
+            return Err("failing invocation must not exit zero".to_string());
+        }
+        let preserved = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to re-read artifact: {error}"))?;
+        if preserved != b"SENTINEL" {
+            return Err("failing invocation published over the artifact".to_string());
+        }
+
+        // Withholding controls: unsupported forms never reach a subprocess.
+        // There is nothing to execute, so the proof is that translation
+        // withholds and the would-be artifact is never created.
+        let ghost = root.join("ghost.record");
+        for withheld in [
+            format!("{bash} && {bash}"),
+            format!("{bash} > {} > {}", shell_arg("a.json"), shell_arg("b.json")),
+            format!("{bash} < {}", shell_arg("input.json")),
+            format!("{bash} --gap 'unterminated"),
+        ] {
+            assert!(
+                powershell_command(&withheld).is_none(),
+                "must withhold: {withheld:?}"
+            );
+        }
+        assert!(
+            !ghost.exists(),
+            "withheld forms must take no subprocess/output action"
+        );
+        Ok(())
     }
 }

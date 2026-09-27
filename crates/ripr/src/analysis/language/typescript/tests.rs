@@ -12934,7 +12934,7 @@ fn analyze_diff_emits_test_extraction_partial_for_template_literal_title() -> Re
     let result = adapter.analyze_diff(
         &options,
         &OraclePolicy::default(),
-        &[changed("src/calc.ts")],
+        &[changed_with_lines("src/calc.ts", &[(2, "  return a + b;")])],
     )?;
     assert!(
         result.limitations.iter().any(|limitation| {
@@ -12971,7 +12971,10 @@ fn analyze_diff_discloses_valid_tagged_template_each() -> Result<(), String> {
     let result = adapter.analyze_diff(
         &options,
         &OraclePolicy::default(),
-        &[changed("src/pricing.ts")],
+        &[changed_with_lines(
+            "src/pricing.ts",
+            &[(2, "  if (amount >= 150) {")],
+        )],
     )?;
     assert!(
         result.limitations.iter().any(|limitation| {
@@ -12982,6 +12985,73 @@ fn analyze_diff_discloses_valid_tagged_template_each() -> Result<(), String> {
         }),
         "a valid tagged-template .each file must disclose the partial test extraction e2e, got {:?}",
         result.limitations
+    );
+    Ok(())
+}
+
+/// #4261: the test index is workspace-wide, so a diff that classified
+/// nothing against it must not be reported partial by an unrelated test
+/// shape. Same unextractable file as above; only the changed path differs.
+/// A Rust-only diff, a TS test-file-only diff and an import-only TS change
+/// stay complete, while the owner change above still discloses.
+#[test]
+fn analyze_diff_withholds_extraction_partial_when_no_typescript_owner_changed() -> Result<(), String>
+{
+    let root = ts_unique_tempdir("extract-scope")?;
+    ts_write_file(
+        &root.join("src/pricing.ts"),
+        "export function tier(amount: number): string {\n  if (amount >= 150) {\n    return 'premium';\n  }\n  return 'standard';\n}\n",
+    )?;
+    ts_write_file(
+        &root.join("tests/tiers.test.ts"),
+        "import { expect, test } from 'vitest';\nimport { tier } from '../src/pricing';\n\ntest.each`\n  amount | expected\n  ${100} | ${'standard'}\n  ${150} | ${'premium'}\n`('computes the boundary case', ({ amount, expected }) => {\n  expect(tier(amount)).toBe(expected);\n});\n",
+    )?;
+    ts_write_file(
+        &root.join("src/lib.rs"),
+        "pub fn tier(amount: u32) -> bool {\n    amount >= 150\n}\n",
+    )?;
+    ts_write_file(
+        &root.join("src/index.ts"),
+        "import { tier } from './pricing';\n\nexport { tier };\n",
+    )?;
+    let adapter = TypeScriptAdapter;
+    let options = ts_analysis_options(root.clone());
+    let discloses = |changed_file: ChangedFile| -> Result<bool, String> {
+        let result = adapter.analyze_diff(&options, &OraclePolicy::default(), &[changed_file])?;
+        Ok(result.limitations.iter().any(|limitation| {
+            limitation
+                .bounded_detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("typescript_test_extraction_partial"))
+        }))
+    };
+    assert!(
+        discloses(changed_with_lines(
+            "src/pricing.ts",
+            &[(2, "  if (amount >= 150) {")]
+        ))?,
+        "a changed TS owner must still disclose the partial test index"
+    );
+    assert!(
+        !discloses(changed_with_lines(
+            "src/lib.rs",
+            &[(2, "    amount >= 150")]
+        ))?,
+        "a Rust-only diff never consulted the TS test index"
+    );
+    assert!(
+        !discloses(changed_with_lines(
+            "tests/tiers.test.ts",
+            &[(9, "  expect(tier(amount)).toBe(expected);")]
+        ))?,
+        "a TS test-file-only diff classifies no owner against the index"
+    );
+    assert!(
+        !discloses(changed_with_lines(
+            "src/index.ts",
+            &[(1, "import { tier } from './pricing';")]
+        ))?,
+        "an import-only TS change classifies nothing against the index"
     );
     Ok(())
 }
