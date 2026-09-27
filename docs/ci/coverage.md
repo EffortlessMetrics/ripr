@@ -56,9 +56,14 @@ upload because repository secrets are unavailable.
 To generate coverage and inspect artifacts locally:
 
 ```bash
+cargo build -p ripr
 cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 ls -lh lcov.info
 ```
+
+Build `ripr` first. Tests that spawn the binary look for a pre-built
+`target/debug/ripr`, and `cargo llvm-cov` builds into its own target directory,
+so from a clean checkout those tests fail without it.
 
 To view the LCOV report in a browser (if you have `genhtml` installed):
 
