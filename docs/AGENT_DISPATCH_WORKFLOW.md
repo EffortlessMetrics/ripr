@@ -43,7 +43,7 @@ testing, which is a separate calibration step.
 4. Copy the targeted test brief or seam packet for the gap you want to close.
 5. Hand the packet to a coding agent (or to yourself).
 6. Agent writes the targeted test.
-7. Rerun ripr and generate a targeted-test outcome receipt.
+7. Rerun ripr and write the agent-loop receipt.
 8. Optionally align SARIF, badge, and cargo-mutants calibration artifacts.
 ```
 
@@ -294,10 +294,34 @@ test.
 
 ### 7. Rerun `ripr` and write the receipt
 
-After the test lands locally:
+After the test lands locally, rerun the after snapshot:
 
 ```bash
 cargo run -p ripr -- check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json
+```
+
+The receipt that closes the loop is the attempt-bound receipt: one carrying a
+`repair_attempt` block that names the attempt, its after head, and the delta
+and packet digests its finish measured. `ripr agent status` matches that block
+against an attempt's after verdict, so the bound receipt, not the raw verify
+artifact, is what tells status the attempt's outcome. The repair transaction
+writes it, and its ordering matters: the before phase captures the current
+checkout as its baseline, so the transaction must start **before** the focused
+test edit — run `ripr agent repair --phase before`, make the focused edit,
+then run the `--attempt ... --phase after` command it printed. The after phase
+runs the verify and receipt plumbing, binds the receipt, and writes it to
+`target/ripr/reports/agent-receipt.json`. A transaction started only after the
+test has landed sees no repository movement between its phases and refuses
+the receipt. Because this section's rerun happens after the test has landed,
+the commands below close out with the bare receipt instead; the
+**First-hour repair path: `ripr agent repair`** section below is where a
+bound receipt is produced end to end.
+
+The lower-level commands stay available as the explicit-control fallback
+(they are the plumbing the repair transaction drives, and they remain useful
+for debugging):
+
+```bash
 cargo run -p ripr -- agent verify \
   --root . \
   --before target/ripr/workflow/before.repo-exposure.json \
@@ -312,6 +336,30 @@ cargo run -p ripr -- agent receipt \
   --json \
   --out target/ripr/reports/agent-receipt.json
 ```
+
+The binding is conditional. `ripr agent receipt` binds the receipt to a repair
+attempt only when the workflow packet exists at
+`target/ripr/workflow/agent-packet.json` — the public command always reads
+that file and has no packet override — and then only when exactly one attempt
+manifest exists for the seam across all states and that attempt is
+receipt-ready (finished, with a current after head and a compliant cage
+verdict). Two retained attempts for the same seam fail closed; inspect them
+with `ripr agent status --json`. Run it before any repair attempt exists and
+the receipt is written **unbound**: it
+carries no `repair_attempt` block. That is a legacy shape, not a finished
+loop: status matches a receipt to an attempt by that block, so it treats the
+unbound file the same as a missing one. If you later finish a real attempt
+while only the unbound receipt is in place, `ripr agent status` reports for
+that attempt:
+
+```text
+no receipt at `target/ripr/reports/agent-receipt.json` was issued for its after verdict
+```
+
+Prefer the repair transaction for the first receipt; it satisfies the binding
+preconditions by construction. The bare command is for rerunning the receipt
+when exactly one finished attempt for the seam exists and the workflow packet
+is still in place — anything else fails closed rather than guessing.
 
 The JSON printed by `ripr agent verify` shows whether matched seams improved,
 stayed unchanged, regressed, appeared, or disappeared from the after snapshot.
@@ -361,7 +409,8 @@ ripr agent repair --root . --attempt <repair-attempt-id> --phase after
   transaction.
 - **Phase `after`** consumes that exact attempt's retained inputs, verifies
   their recorded digests and the edit-cage delta, then writes the static
-  review receipt. `--seam-id <id> --phase after` remains a compatibility
+  review receipt to `target/ripr/reports/agent-receipt.json`.
+  `--seam-id <id> --phase after` remains a compatibility
   route and requires exactly one awaiting attempt for that seam — zero or
   multiple matches fail closed; RIPR does not guess.
 - **Refusal paths.** An after phase that selected the attempt but then refused
@@ -383,6 +432,30 @@ The lower-level `agent start`, `brief`, `packet`, `verify`,
 available as the explicit-control fallback behind the steps above — useful
 for compatibility and debugging, not the first-hour path. See
 [Public command hierarchy](COMMAND_HIERARCHY.md) for the task map.
+
+## Where receipts live
+
+Two receipt families share the name but not the directory. Each consumer
+reads exactly one family, so point commands at the right one:
+
+| Receipt family | Written by | Default path | Read by |
+|---|---|---|---|
+| Gap receipt (RIPR-SPEC-0079) | `ripr receipt write` | `target/ripr/receipts/<sanitized canonical_gap_id>.json` — one file per gap; the filename percent-encodes characters that are unsafe in paths | `ripr receipt check`, which resolves this same default when you pass `--gap <canonical_gap_id>` without `--path` |
+| Agent-loop receipt | `ripr agent repair --phase after`, or the lower-level `ripr agent receipt --out target/ripr/reports/agent-receipt.json` | `target/ripr/reports/agent-receipt.json` — one file; each after phase replaces it | `ripr agent status` and `ripr agent review-summary` |
+
+Notes:
+
+- `ripr receipt write --out <path>` overrides the gap-receipt default.
+- `ripr agent receipt` without `--out` prints the receipt to stdout instead
+  of writing a file.
+- The editor surface hands out agent artifact commands that write under
+  `target/ripr/agent/` (for example `target/ripr/agent/agent-receipt.json`).
+  Those are copies for the editor session; the `agent status` and
+  `review-summary` consumers read `target/ripr/reports/agent-receipt.json`.
+  A file under `target/ripr/receipts/` is never an agent-loop receipt, and
+  the loop consumers never read that directory.
+- See [Targeted test workflow](TARGETED_TEST_WORKFLOW.md) for how the
+  editor, CI, and repair routes split these paths in practice.
 
 ## Examples by seam kind
 

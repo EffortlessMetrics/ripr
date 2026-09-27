@@ -52,7 +52,7 @@ typed manifests:
 | Product truth | What `ripr` must do (durable behavior contracts). | `docs/specs/`, `docs/OUTPUT_SCHEMA.md`, `docs/STATIC_EXPOSURE_MODEL.md`, `docs/CONFIGURATION.md`. |
 | Decision | Why a load-bearing decision was made and what it constrains. | `docs/adr/`. |
 | Execution | What the agent or operator should work on now. | `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, GitHub issues and PRs. `.allow/spec-system/slices/` is PR-local scope after that selection, not live work selection. |
-| Evidence | What actually happened, with provenance. | `target/ripr/reports/`, `target/ripr/receipts/`, `fixtures/`, `metrics/`, `.ripr/traceability.toml`, `docs/handoffs/`, `docs/LEARNINGS.md`. |
+| Evidence | What actually happened, with provenance. | `target/ripr/reports/` (agent-loop receipts, `agent-receipt.json`), `target/ripr/receipts/` (per-gap receipts from `ripr receipt write`), `fixtures/`, `metrics/`, `.ripr/traceability.toml`, `docs/handoffs/`, `docs/LEARNINGS.md`. The two receipt directories are separate families with separate consumers; see the receipt map in [`AGENT_DISPATCH_WORKFLOW.md`](../AGENT_DISPATCH_WORKFLOW.md). |
 
 A doc lives in exactly one layer. A spec is not a plan; a plan is not a
 decision; an ADR is not a closeout. Layer separation is the discipline
