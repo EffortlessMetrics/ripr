@@ -554,10 +554,9 @@ are scoped or reviewed.
   assignment such as `cart.total = ...` or any use of `Cart.prototype` (a
   spy or replaced method), a hook write that follows a possible early
   `return`, a generator hook, or any `eval` or escaped identifier in the
-  file. Member
-  reads, `expect(cart)`, `typeof cart`, comments, import paths and
-  describe/test/mock name strings do not count; any other string or template
-  that mentions the name does.
+  file. Member reads, `expect(cart)`, `typeof cart`, comments, import paths
+  and describe/test/mock name strings do not count; any other string or
+  template that mentions the name does.
 
 - A generated command prints no PowerShell form only when PowerShell reads it
   the same way. Commands with a quoted program path, `$` expansion, globs,
@@ -594,6 +593,15 @@ are scoped or reviewed.
   passes, and `verification` carries `status: "verification_not_run"` and the
   non-claim `static_only_assurance`
   ([#4234](https://github.com/EffortlessMetrics/ripr-swarm/issues/4234)).
+
+- TypeScript/JavaScript preview: a changed ambient declaration
+  (`declare function`, `export declare const`, `declare module`) or any
+  change in a `.d.ts`/`.d.mts`/`.d.cts` declaration file no longer yields a
+  `predicate` probe reading `no_static_path`. These are type-only and erased
+  at compile time; declaration files still count as changed files. Ambient
+  statements are found from the syntax tree, so `declare` used as a
+  JavaScript identifier, or at the start of a template-literal line, is still
+  probed.
 
 - `cargo xtask vscode-package` now reads the built VSIX and fails if it
   carries workspace build output (anything under `extension/target/`, Cargo

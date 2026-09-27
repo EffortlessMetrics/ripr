@@ -2179,6 +2179,9 @@ spec = "docs/specs/RIPR-SPEC-0027-typescript-preview-static-facts.md"
 tests = [
   "crates/ripr/src/analysis/language/typescript/mod.rs",
   "crates/ripr/src/analysis/language/typescript/tests.rs::tests::analyze_diff_credits_cross_extension_related_test_oracle_for_mts_sources",
+  "crates/ripr/src/analysis/language/typescript/ambient_declaration_tests.rs::declaration_file_change_produces_no_probe_but_is_counted",
+  "crates/ripr/src/analysis/language/typescript/ambient_declaration_tests.rs::declare_line_in_source_file_is_ignored_but_runtime_line_is_probed",
+  "crates/ripr/src/analysis/language/typescript/ambient_declaration_tests.rs::only_parsed_ambient_declarations_are_skipped",
   "crates/ripr/src/analysis/language/typescript/related_tests.rs::module_extension_tests",
   "crates/ripr/src/analysis/language/typescript/related_tests.rs::module_extension_tests::strip_typescript_module_extension_covers_every_routed_suffix",
   "crates/ripr/src/analysis/repair_route.rs::tests::modern_ts_related_tests_keep_the_repair_packet_fail_closed",

@@ -721,6 +721,42 @@ pub(crate) fn detect_owner_extraction_gap(
     })
 }
 
+/// 1-based inclusive line ranges of top-level ambient declarations
+/// (`declare function`, `export declare const`, `declare module 'x' { ... }`,
+/// `declare global { ... }`), read from the syntax tree. They are type-only
+/// and erased at compile time, so a changed line inside one has no runtime
+/// behavior to probe. A file that does not parse yields no ranges, so its
+/// lines stay probed.
+pub(crate) fn ambient_declaration_lines(file: &Path, source: &str) -> Vec<(usize, usize)> {
+    parse_on_worker(file, source, |file, source, allocator| {
+        let ret = Parser::new(allocator, source, source_type_for(file)).parse();
+        if !ret.errors.is_empty() {
+            return Vec::new();
+        }
+        ret.program
+            .body
+            .iter()
+            .filter(|stmt| match stmt {
+                Statement::ExportNamedDeclaration(export) => export
+                    .declaration
+                    .as_ref()
+                    .is_some_and(|declaration| declaration.declare()),
+                _ => stmt
+                    .as_declaration()
+                    .is_some_and(|declaration| declaration.declare()),
+            })
+            .map(|stmt| {
+                let span = stmt.span();
+                (
+                    line_for_offset(source, span.start as usize),
+                    line_for_offset(source, span.end as usize),
+                )
+            })
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
 /// Walk top-level statements for unsupported owner shapes intersecting a
 /// changed line. Returns `(sample_line, shape, (span_start, span_end))`.
 fn find_owner_extraction_gap(

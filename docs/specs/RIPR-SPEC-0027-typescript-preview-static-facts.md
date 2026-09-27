@@ -208,7 +208,13 @@ Probes the adapter must generate (syntax-first):
   resolved through a syntactic `vi.fn()` / `jest.fn()` initializer
 
 Added lines that are blank, comment-only, or punctuation-only (`}`, `});`,
-`)`) produce no probe. An unrecognised line keeps the non-specific predicate
+`)`) produce no probe. Neither do lines inside a top-level ambient
+declaration found in the parsed syntax tree (`declare function`,
+`export declare const`, `declare module 'x' { ... }`, `declare global`), or
+any line of a `.d.ts`/`.d.mts`/`.d.cts` declaration file: these are type-only
+and erased at compile time. Declaration files still count as changed files.
+`declare` used as a runtime identifier, or at the start of a template-literal
+line, is still probed. An unrecognised line keeps the non-specific predicate
 fallback and is never classified `exposed`.
 
 A changed predicate is `exposed` only when a strong, family-matching
