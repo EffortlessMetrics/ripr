@@ -1788,9 +1788,14 @@ impl RustAdapter {
             // subjects and explicitly opted-in production-like targets
             // seed diff probes; Cargo benches, examples, integration
             // tests, and confirmed test-target files stay indexed
-            // evidence without harness-plumbing obligations.
+            // evidence without harness-plumbing obligations. Changed
+            // root `xtask/` sources still seed probes: automation changes
+            // are reviewed behavior (pre-#3283 diff behavior), while the
+            // evidence role keeps governing repo-mode indexing.
             let role = workspace::classify_with(&changed.path, &source_role_context);
-            if !role.seeds_production_findings() {
+            if !role.seeds_production_findings()
+                && !workspace::is_repo_automation_subject(&changed.path, role)
+            {
                 continue;
             }
             // Cooperative cancellation (#1972): check once per changed file
@@ -4649,6 +4654,109 @@ let _ = (result, note, raw);"##,
             "bench harness plumbing must not become production probes: {:?}",
             result.findings
         );
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_seeds_probes_for_changed_repo_automation_files() -> Result<(), String> {
+        // `xtask/` is evidence role for repo-mode indexing, but a changed
+        // automation file is reviewed behavior. Without the automation
+        // exemption the whole diff counted as a changed Rust file yet
+        // produced zero candidate lines and no disclosure (the 0.11 Rust
+        // challenge p1745 case: 329 changed xtask lines, 0 probes). The
+        // exemption must not reach xtask's own integration tests: an
+        // unannotated helper under `xtask/tests/` stays evidence.
+        let root = temp_root("xtask-automation-seeds")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers = ['xtask']\nresolver = '2'\n",
+        )?;
+        write(
+            &root.join("xtask/Cargo.toml"),
+            "[package]\nname='xtask'\nversion='0.1.0'\nedition='2024'\n",
+        )?;
+        write(
+            &root.join("xtask/src/main.rs"),
+            "fn wedged(stuck: usize, limit: usize) -> bool {\n    stuck > limit\n}\nfn main() {\n    let _ = wedged(1, 0);\n}\n",
+        )?;
+        write(
+            &root.join("xtask/tests/help.rs"),
+            "fn rendered(ok: bool) -> &'static str {\n    if ok { \"out\" } else { \"err\" }\n}\n#[test]\nfn help_renders() {\n    assert_eq!(rendered(true), \"out\");\n}\n",
+        )?;
+        let changed_files = diff::parse_unified_diff(
+            "diff --git a/xtask/src/main.rs b/xtask/src/main.rs\n\
+         new file mode 100644\n\
+         --- /dev/null\n\
+         +++ b/xtask/src/main.rs\n\
+         @@ -0,0 +1,6 @@\n\
+         +fn wedged(stuck: usize, limit: usize) -> bool {\n\
+         +    stuck > limit\n\
+         +}\n\
+         +fn main() {\n\
+         +    let _ = wedged(1, 0);\n\
+         +}\n\
+         diff --git a/xtask/tests/help.rs b/xtask/tests/help.rs\n\
+         new file mode 100644\n\
+         --- /dev/null\n\
+         +++ b/xtask/tests/help.rs\n\
+         @@ -0,0 +1,7 @@\n\
+         +fn rendered(ok: bool) -> &'static str {\n\
+         +    if ok { \"out\" } else { \"err\" }\n\
+         +}\n\
+         +#[test]\n\
+         +fn help_renders() {\n\
+         +    assert_eq!(rendered(true), \"out\");\n\
+         +}\n",
+        );
+
+        let result = RustAdapter.analyze_diff(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Ready,
+                resolved_subject_identity: None,
+                include_unchanged_tests: true,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
+            },
+            &OraclePolicy::default(),
+            &changed_files,
+        )?;
+
+        assert_eq!(result.changed_files, 2);
+        assert!(
+            result.candidate_line_count > 0,
+            "a changed automation file must seed candidate lines"
+        );
+        assert!(
+            result.findings.iter().any(|finding| finding
+                .probe
+                .location
+                .file
+                .to_string_lossy()
+                .replace('\\', "/")
+                .ends_with("xtask/src/main.rs")
+                && finding.probe.location.line == 2),
+            "the changed xtask predicate must become a probe: {:?}",
+            result.findings
+        );
+        assert!(
+            result.findings.iter().all(|finding| !finding
+                .probe
+                .location
+                .file
+                .to_string_lossy()
+                .replace('\\', "/")
+                .contains("xtask/tests/")),
+            "xtask integration-test helpers must stay evidence: {:?}",
+            result.findings
+        );
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
         Ok(())
     }
 

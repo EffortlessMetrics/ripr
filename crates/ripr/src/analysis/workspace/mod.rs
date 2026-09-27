@@ -12,7 +12,9 @@ pub(crate) use cargo_targets::{
 pub(crate) use path_dependencies::{
     PathDependencyAdjacency, PathDependencyGraphStatus, reverse_dependent_scope_expansion,
 };
-pub(crate) use source_role::{SourceRole, SourceRoleContext, classify_with, is_test_surface_path};
+pub(crate) use source_role::{
+    SourceRole, SourceRoleContext, classify_with, is_repo_automation_subject, is_test_surface_path,
+};
 
 pub(crate) use classify::{normalize_path, package_root};
 pub(crate) use discover::discover_preview_language_files;

@@ -74,7 +74,16 @@ Role is derived from authoritative context in priority order:
 Both diff probe seeding and the repo seam-inventory production set route
 through `classify_with`; `benches/**`/`examples/**` harness plumbing no
 longer seeds production obligations, closing the diff gap while the repo
-exclusion stays consistent. Evidence-role files remain fully indexed:
+exclusion stays consistent. One diff-only exemption applies: a changed
+file under the root `xtask/` directory whose resolved role is the `xtask`
+catch-all, and whose path inside `xtask/` the layout would treat as
+production, still seeds diff probes. Repository automation changes are
+reviewed behavior, and without the exemption a 329-line `xtask/` diff
+(the 0.11 Rust challenge case p1745) counted as changed Rust files yet
+yielded zero candidate lines and no disclosure. `xtask/tests/**`,
+`tests.rs` stems, benches, examples, non-`src` files, and `xtask`
+segments nested under other directories keep their evidence role, and
+repo-mode seam inventory still excludes `xtask/`. Evidence-role files remain fully indexed:
 functions stay available for owner relations, activation input,
 sink/oracle evidence, and selectors. `TestFact` semantics are untouched
 — source role never registers a helper as an executable test selector.
@@ -171,6 +180,11 @@ The #3532 harness registry joined the same identity as FindingAffecting
   undeclared `src/unconfirmed_test.rs` stays a production subject;
   disabling the declared-target branch makes the fixture fail
   (discriminating-power proof).
+- A changed root `xtask/src/**` file seeds diff probes while a changed
+  unannotated helper under `xtask/tests/` in the same diff seeds none;
+  removing the exemption drops the automation file to zero candidate
+  lines, and widening it to any `xtask` path component makes the
+  `xtask/tests/` helper produce findings (both verified failing).
 - The opt-in restores production analysis for the selected target only;
   sibling test targets stay evidence-only.
 - Layout pins: nested `examples/<dir>/src/**` and

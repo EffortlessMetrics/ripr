@@ -239,6 +239,30 @@ pub(crate) fn classify(path: &Path) -> SourceRole {
     SourceRole::ProductionSubject
 }
 
+/// Whether a changed file is repository automation source that the Rust
+/// diff loop still probes. `xtask/` is evidence role for repo-mode
+/// indexing, but a *changed* automation source file is reviewed behavior:
+/// the pre-#3283 diff loop seeded probes for every non-test changed file,
+/// and `diff_analysis_seeds_probes_for_changed_repo_automation_files` pins
+/// the p1745 regression where a 329-line `xtask/` diff yielded no probes.
+///
+/// The exemption is narrow: only the root `xtask/` directory, only files
+/// whose resolved role is the `xtask` catch-all (declared targets and
+/// harness registrations still win), and only paths the layout would
+/// treat as production inside `xtask/`. `xtask/tests/**`, `tests.rs`
+/// stems, autodiscovered benches/examples, and non-`src` files keep
+/// their evidence role; an `xtask` segment nested under `fixtures/` or
+/// any other directory is not repository automation.
+pub(crate) fn is_repo_automation_subject(path: &Path, role: SourceRole) -> bool {
+    if role != SourceRole::FixtureOrReceiptEvidence {
+        return false;
+    }
+    let normalized = normalize(path);
+    normalized
+        .strip_prefix("xtask")
+        .is_ok_and(|inner| classify(inner) == SourceRole::ProductionSubject)
+}
+
 fn component_name(component: &std::path::Component) -> String {
     component.as_os_str().to_string_lossy().to_string()
 }
@@ -508,6 +532,21 @@ mod tests {
             SourceRole::TestEvidence,
             "normalized identity compares across separators"
         );
+    }
+
+    #[test]
+    fn repo_automation_subjects_are_root_xtask_sources_only() {
+        let subject = |path: &str| super::is_repo_automation_subject(Path::new(path), role(path));
+        assert!(subject("xtask/src/windows_advisory.rs"));
+        assert!(subject("xtask\\src\\main.rs"));
+        // Evidence roles inside xtask keep their role.
+        assert!(!subject("xtask/tests/help_hierarchy.rs"));
+        assert!(!subject("xtask/src/tests.rs"));
+        assert!(!subject("xtask/benches/scan.rs"));
+        assert!(!subject("xtask/build.rs"));
+        // A nested `xtask` segment is not repository automation.
+        assert!(!subject("fixtures/case/input/xtask/src/main.rs"));
+        assert!(!subject("crates/ripr/src/lib.rs"));
     }
 
     #[test]
