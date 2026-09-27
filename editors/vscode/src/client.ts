@@ -11,7 +11,7 @@ import {
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
 import { requestedServerVersion, resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
-import { setupFilePath, hasUnsafeShellMetacharacter, redirectTargetMatches, serverShellArg, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
+import { setupFilePath, hasUnsafeShellMetacharacter, redirectTargetMatches, redirectStaysInWorkspace, serverShellArg, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
 import { riprDocumentSelectorsForWorkspace, extensionVersion, traceFromConfig, currentWorkspaceRootState, workspaceRootStateNoWorkspace, workspaceRootStateLabel, workspaceRootStateDetail, workspaceRootPickItems } from './workspaceHelpers';
 import type { WorkspaceRootPickItem } from './workspaceHelpers';
 import { statusText, statusSummary, statusBarColors, canProjectFirstUsefulAction } from './statusRender';
@@ -1084,7 +1084,7 @@ export class RiprClientController {
       return;
     }
 
-    const command = validatedAgentLoopCommand(target, await agentLoopRedirectRoots(this.workspaceRoot));
+    const command = validatedAgentLoopCommand(target, await workspaceRedirectRoots(this.workspaceRoot));
     if (!command) {
       this.runtime.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
       return;
@@ -3607,13 +3607,14 @@ export async function readActionableGapQueueStatus(
       detail: 'actionable-gaps queue missing; run cargo xtask evidence-quality-audit'
     };
   }
-  return validateActionableGapQueue(raw, workspaceRoot, filePath);
+  return validateActionableGapQueue(raw, workspaceRoot, filePath, await workspaceRedirectRoots(workspaceRoot));
 }
 
 function validateActionableGapQueue(
   raw: string,
   workspaceRoot: string,
-  filePath: string
+  filePath: string,
+  redirectRoots: readonly string[]
 ): RiprActionableGapQueueStatus {
   const base = {
     relativePath: ACTIONABLE_GAP_QUEUE_RELATIVE_PATH,
@@ -3721,7 +3722,7 @@ function validateActionableGapQueue(
       };
     }
     for (const command of actionableGapQueuePacketCommands(packetObject)) {
-      if (!actionableGapQueueCommandIsSafe(command)) {
+      if (!actionableGapQueueCommandIsSafe(command, redirectRoots)) {
         return {
           ...base,
           state: 'unsafeCommand',
@@ -3897,7 +3898,8 @@ export async function readFirstPrPacketStatus(
       artifact.jsonRelativePath,
       artifact.markdownRelativePath,
       jsonPath,
-      setupFilePath(workspaceRoot, artifact.markdownRelativePath)
+      setupFilePath(workspaceRoot, artifact.markdownRelativePath),
+      await workspaceRedirectRoots(workspaceRoot)
     );
   }
   return {
@@ -4023,10 +4025,11 @@ function firstRawFindingString(packet: Record<string, unknown>, field: string): 
   return undefined;
 }
 
-function actionableGapQueueCommandIsSafe(command: string): boolean {
+function actionableGapQueueCommandIsSafe(command: string, redirectRoots: readonly string[]): boolean {
   const normalized = command.trim().replace(/\s+/g, ' ');
   return normalized !== ''
     && !hasUnsafeShellMetacharacter(normalized)
+    && redirectStaysInWorkspace(normalized, redirectRoots)
     && ACTIONABLE_QUEUE_SAFE_COMMAND_PREFIXES.some((prefix) =>
       normalized === prefix || normalized.startsWith(`${prefix} `)
     );
@@ -4366,11 +4369,11 @@ export function validatedAgentLoopCommand(
 }
 
 /**
- * Roots the server may have anchored a `--root .` redirect at: its cwd, which
- * is the session workspace root. The server reads that cwd back from the OS,
- * which resolves symlinks, so the real path is accepted too.
+ * Roots a `--root .` redirect may be anchored at: the cwd of the server or
+ * CLI that rendered it, which is the workspace root. That cwd is read back
+ * from the OS, which resolves symlinks, so the real path is accepted too.
  */
-async function agentLoopRedirectRoots(workspaceRoot: string | undefined): Promise<string[]> {
+async function workspaceRedirectRoots(workspaceRoot: string | undefined): Promise<string[]> {
   if (!workspaceRoot) {
     return [];
   }

@@ -74,14 +74,8 @@ export function redirectTargetMatches(
   artifact: string,
   roots: readonly string[]
 ): boolean {
-  const quoted = /^'([^']*)'$/.exec(tail);
-  const target = quoted ? quoted[1] : /^[A-Za-z0-9._/:-]+$/.test(tail) ? tail : undefined;
-  // The quoted span may hold a workspace path's `&`, `;` or `$`: that text
-  // must equal a local root below, so the server cannot choose it (#4225).
-  // Line breaks, backslashes and typographic quotes are still refused, since
-  // they end or escape the span in some shell (fish reads `\'` inside single
-  // quotes as an escape; PowerShell closes a span on U+2018..U+201B).
-  if (target === undefined || /[\r\n\0\\\u2018-\u201f]/.test(target)) {
+  const target = redirectTailPath(tail);
+  if (target === undefined) {
     return false;
   }
   if (target === artifact) {
@@ -92,6 +86,66 @@ export function redirectTargetMatches(
   }
   const expected = normalizePath(target);
   return roots.some((root) => normalizePath(path.join(root, artifact)) === expected);
+}
+
+/**
+ * The path a redirect tail names: one bare `shell_arg` token, or one
+ * single-quoted span. The quoted span may hold a workspace path's `&`, `;` or
+ * `$`, since callers compare it with a local root (#4225). Line breaks,
+ * backslashes and typographic quotes are refused, since they end or escape
+ * the span in some shell (fish reads `\'` inside single quotes as an escape;
+ * PowerShell closes a span on U+2018..U+201B).
+ */
+function redirectTailPath(tail: string): string | undefined {
+  const quoted = /^'([^']*)'$/.exec(tail);
+  const target = quoted ? quoted[1] : /^[A-Za-z0-9._/:-]+$/.test(tail) ? tail : undefined;
+  return target === undefined || target === '' || /[\r\n\0\\\u2018-\u201f]/.test(target)
+    ? undefined
+    : target;
+}
+
+/**
+ * Whether every shell redirect in `command` writes inside the workspace
+ * (#4265). Call it only on a command `hasUnsafeShellMetacharacter` accepts:
+ * with `"` and `\` refused, single quotes alone delimit the spans a shell
+ * leaves literal, so a quoted `>` (a gap id such as `'amount>=threshold'`,
+ * or a quoted `--verify-command`) is not a redirect.
+ *
+ * Outside those spans there is no `<`, and at most one `>`, written ` > `
+ * and followed by exactly one final token: no `>>`, `2>`, second redirect or
+ * trailing argument. The target is either relative with no `..` segment and
+ * no `:` (a drive-relative `C:x` leaves the directory), or absolute under
+ * one of `roots`.
+ */
+export function redirectStaysInWorkspace(command: string, roots: readonly string[]): boolean {
+  let at = -1;
+  let quoted = false;
+  for (let index = 0; index < command.length && at < 0; index += 1) {
+    const character = command[index];
+    if (character === "'") {
+      quoted = !quoted;
+    } else if (!quoted && character === '<') {
+      return false;
+    } else if (!quoted && character === '>') {
+      at = index;
+    }
+  }
+  if (at < 0) {
+    return true;
+  }
+  // The tail must be one token, so a second `>` or `<` after it fails there.
+  if (command[at - 1] !== ' ' || command[at + 1] !== ' ') {
+    return false;
+  }
+  const target = redirectTailPath(command.slice(at + 2));
+  if (target === undefined || target.split('/').includes('..')) {
+    return false;
+  }
+  if (!path.isAbsolute(target) && !path.posix.isAbsolute(target)) {
+    return !target.includes(':');
+  }
+  const normalized = normalizePath(target);
+  return roots.some((root) => normalized.startsWith(`${normalizePath(root).replace(/\/$/, '')}/`));
 }
 
 /**

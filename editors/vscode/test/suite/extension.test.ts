@@ -11,7 +11,7 @@ import {
   readFirstPrPacketStatus,
   validatedAgentLoopCommand
 } from '../../src/client';
-import { hasUnsafeShellMetacharacter, redirectTargetMatches, serverShellArg } from '../../src/packetJson';
+import { hasUnsafeShellMetacharacter, redirectStaysInWorkspace, redirectTargetMatches, serverShellArg } from '../../src/packetJson';
 import { compatibleLspEvidence } from './testCompatibility';
 
 suite('Extension Smoke', () => {
@@ -1781,6 +1781,25 @@ suite('Extension Smoke', () => {
     }));
     assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
 
+    // #4265: the CLI anchors the packet redirect at --root; a redirect that
+    // leaves the workspace is refused even though no metacharacter is.
+    const agentPacketTo = (target: string) => firstPrPacket({
+      commands: {
+        verify: 'cargo xtask fixtures boundary_gap',
+        agent_packet: `ripr agent packet --root . --gap-id 'gap:pr:amount>=threshold' --json > ${target}`
+      }
+    });
+    const anchoredPacket = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': agentPacketTo(
+        serverShellArg(`${workspaceRoot.replace(/\\/g, '/')}/target/ripr/workflow/agent-packet.json`)
+      )
+    }));
+    assert.strictEqual(anchoredPacket.state, 'topRepairableGap');
+    const escapingPacket = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': agentPacketTo(`${path.resolve('/elsewhere').replace(/\\/g, '/')}/.bashrc`)
+    }));
+    assert.strictEqual(escapingPacket.state, 'unsafeCommand');
+
     const unsafePathPacket = JSON.parse(firstPrPacket({})) as Record<string, unknown>;
     unsafePathPacket.selected = {
       ...(unsafePathPacket.selected as Record<string, unknown>),
@@ -1930,6 +1949,18 @@ suite('Extension Smoke', () => {
       'target/ripr/reports/actionable-gaps.json': JSON.stringify(unsafeCommandPacket)
     }));
     assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
+
+    // #4265: a queue command may redirect into the workspace, not out of it.
+    const queueVerifyTo = async (target: string) => {
+      const queue = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+      (queue.packets as Array<Record<string, unknown>>)[0].verify_command =
+        `ripr agent verify --root . --json > ${target}`;
+      return (await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+        'target/ripr/reports/actionable-gaps.json': JSON.stringify(queue)
+      }))).state;
+    };
+    assert.notStrictEqual(await queueVerifyTo('target/ripr/agent/agent-verify.json'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyTo('../outside/agent-verify.json'), 'unsafeCommand');
 
     const unsafePathPacket = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
     (unsafePathPacket.packets as Array<Record<string, unknown>>)[0].target_test =
@@ -3596,6 +3627,37 @@ suite('Extension Smoke', () => {
     assert.ok(!redirectTargetMatches(`${slash(root)}/sub/../${artifact}`, artifact, [root]));
     assert.ok(!redirectTargetMatches(`${slash(root)}/${artifact} extra`, artifact, [root]));
     assert.ok(!redirectTargetMatches('target/ripr/agent/../agent/agent-packet.json', artifact, [root]));
+  });
+
+  test('redirectStaysInWorkspace keeps every redirect inside the workspace (#4265)', () => {
+    const root = path.resolve('/work/repo');
+    const inRoot = `${root.replace(/\\/g, '/')}/target/ripr/out.json`;
+    const accepts = (command: string) => redirectStaysInWorkspace(command, [root]);
+
+    assert.ok(accepts('ripr first-pr --json'));
+    assert.ok(accepts('ripr agent verify --root . --json > target/ripr/out.json'));
+    assert.ok(accepts(`ripr agent verify --root . --json > ${serverShellArg(inRoot)}`));
+    // A quoted `>` is an argument, not a redirect.
+    assert.ok(accepts("ripr receipt write --gap 'gap:amount>=threshold' --verify-command 'cargo test > log' --status not_run"));
+    assert.ok(accepts("ripr agent packet --gap-id 'gap:a>b' --json > target/ripr/agent-packet.json"));
+
+    for (const command of [
+      'ripr first-pr --json > /etc/profile',
+      `ripr first-pr --json > '${path.resolve('/work/repo-other').replace(/\\/g, '/')}/out.json'`,
+      'ripr first-pr --json > ../outside.json',
+      'ripr first-pr --json > target/../../outside.json',
+      'ripr first-pr --json > C:outside.json',
+      'ripr first-pr --json >> target/ripr/out.json',
+      'ripr first-pr --json >/etc/passwd',
+      'ripr first-pr --json 2> target/ripr/out.json',
+      'ripr first-pr --json > target/ripr/out.json extra',
+      'ripr first-pr --json > target/a.json > target/b.json',
+      'ripr first-pr --json > ',
+      'ripr first-pr --json < target/ripr/in.json',
+      "ripr first-pr --json > 'target/ripr/a\u2019b.json'"
+    ]) {
+      assert.ok(!accepts(command), command);
+    }
   });
 
   test('agent loop commands must equal the body the server renders from the payload (#4225)', () => {

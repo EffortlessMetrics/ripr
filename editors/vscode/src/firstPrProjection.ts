@@ -19,7 +19,8 @@ import {
   arrayLength,
   stringValues,
   rootMatchesWorkspace,
-  hasUnsafeShellMetacharacter
+  hasUnsafeShellMetacharacter,
+  redirectStaysInWorkspace
 } from './packetJson';
 
 const FIRST_PR_STATIC_EVIDENCE_BOUNDARY = 'static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.';
@@ -404,10 +405,11 @@ const FIRST_PR_PACKET_SELECTED_STATES = new Set([
   ...FIRST_PR_PACKET_NO_ACTION_STATES
 ]);
 
-export function firstPrCommandIsSafe(command: string): boolean {
+export function firstPrCommandIsSafe(command: string, redirectRoots: readonly string[]): boolean {
   const normalized = command.trim().replace(/\s+/g, ' ');
   return normalized !== ''
     && !hasUnsafeShellMetacharacter(normalized)
+    && redirectStaysInWorkspace(normalized, redirectRoots)
     && FIRST_PR_SAFE_COMMAND_PREFIXES.some((prefix) =>
       normalized === prefix || normalized.startsWith(`${prefix} `)
     );
@@ -461,7 +463,10 @@ export function validateFirstPrPacket(
   relativePath: string,
   markdownRelativePath: string,
   filePath: string,
-  markdownPath: string
+  markdownPath: string,
+  // The CLI anchors redirects at its cwd, read back from the OS, so the
+  // workspace root's realpath is accepted as well (#4265).
+  redirectRoots: readonly string[] = [workspaceRoot]
 ): RiprFirstPrPacketStatus {
   const base = {
     relativePath,
@@ -540,7 +545,7 @@ export function validateFirstPrPacket(
   }
   const commands = objectField(packet, 'commands');
   for (const command of stringValues(commands)) {
-    if (!firstPrCommandIsSafe(command)) {
+    if (!firstPrCommandIsSafe(command, redirectRoots)) {
       return {
         ...base,
         state: 'unsafeCommand',
@@ -555,7 +560,7 @@ export function validateFirstPrPacket(
     stringField(selected, 'next_command'),
     stringField(selected, 'regeneration_command')
   ].filter((value): value is string => value !== undefined);
-  if (selectedCommands.some((command) => !firstPrCommandIsSafe(command))) {
+  if (selectedCommands.some((command) => !firstPrCommandIsSafe(command, redirectRoots))) {
     return {
       ...base,
       state: 'unsafeCommand',
