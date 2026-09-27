@@ -370,7 +370,16 @@ fn context_from_artifact_is_byte_identical_to_fresh_context() -> Result<(), Stri
             crate::app::collect_context_with_config(input.clone(), SAMPLE_SELECTOR, 2, &config)?;
         let reused =
             collect_context_from_artifact(input, SAMPLE_SELECTOR, 2, &config, &path, None)?;
-        if fresh != reused {
+        // The explain command names its source (#3952), `--diff` fresh and
+        // `--from` reused, as `explain` does; everything else is identical.
+        let (fresh_packet, fresh_command) = split_explain_command(&fresh)?;
+        let (reused_packet, reused_command) = split_explain_command(&reused)?;
+        if !fresh_command.contains(" --diff ") || !reused_command.contains(" --from ") {
+            return Err(format!(
+                "explain commands must name their source: fresh `{fresh_command}`, reused `{reused_command}`"
+            ));
+        }
+        if fresh_packet != reused_packet {
             return Err(format!(
                 "reused context output differs from fresh output\nfresh:\n{fresh}\nreused:\n{reused}"
             ));
@@ -382,6 +391,17 @@ fn context_from_artifact_is_byte_identical_to_fresh_context() -> Result<(), Stri
     })();
     let _ = std::fs::remove_dir_all(&dir);
     result
+}
+
+fn split_explain_command(rendered: &str) -> Result<(serde_json::Value, String), String> {
+    let mut packet: serde_json::Value =
+        serde_json::from_str(rendered).map_err(|err| format!("parse context packet: {err}"))?;
+    let command = packet
+        .pointer_mut("/witness/explain_command")
+        .map(serde_json::Value::take)
+        .and_then(|command| command.as_str().map(str::to_string))
+        .ok_or("context packet must carry an explain command")?;
+    Ok((packet, command))
 }
 
 #[test]

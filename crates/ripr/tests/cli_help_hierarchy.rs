@@ -249,8 +249,8 @@ fn agent_repair_help_names_the_primary_transaction_and_its_limits() -> Result<()
 }
 
 /// `check --help` must teach the loader's real default-base resolution order
-/// (#3885), not the old `origin/main` shorthand; `diff --help` keeps stating
-/// its literal default because `diff` passes the base to git unchanged.
+/// (#3885), not the old `origin/main` shorthand. `diff` resolves an omitted
+/// base through the same authority (#3952), so its help states the same order.
 #[test]
 fn check_and_diff_help_state_the_real_base_default() -> Result<(), String> {
     let check = normalized(&rendered_help(&["check", "--help"])?);
@@ -270,8 +270,11 @@ fn check_and_diff_help_state_the_real_base_default() -> Result<(), String> {
     assert_contains(
         "diff help (`ripr diff --help`)",
         &diff,
-        "Defaults to origin/main, used exactly as given",
+        "the local origin/HEAD ref, then origin/main, origin/master, main, and master",
     )?;
+    if diff.contains("Defaults to origin/main") {
+        return Err("diff help still teaches the origin/main default".to_string());
+    }
     Ok(())
 }
 

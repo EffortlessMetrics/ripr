@@ -1072,11 +1072,11 @@ fn perl_next_command(
         // enabled through config, and check then runs the enabled set.
         // Name the additive edit, not a replacement list, so a user with
         // TypeScript/Python already enabled keeps them (#2105 review).
-        "add \"perl\" to [languages] enabled in ripr.toml, then: ripr check --base origin/main --head HEAD".to_string()
+        "add \"perl\" to [languages] enabled in ripr.toml, then: ripr check".to_string()
     } else if managed {
         // Managed mode configured but no compatible producer.
         format!(
-            "install a compatible Perl fact exporter (`{}`, not yet published) on PATH or set [perl].executable, and add \"perl\" to [languages] enabled in ripr.toml, then: ripr check --base origin/main --head HEAD",
+            "install a compatible Perl fact exporter (`{}`, not yet published) on PATH or set [perl].executable, and add \"perl\" to [languages] enabled in ripr.toml, then: ripr check",
             crate::domain::PERL_FACT_EXPORTER
         )
     } else {
@@ -1565,7 +1565,11 @@ mod tests {
         // The managed-present branch points at the config-driven route.
         let managed = perl_next_command(true, Some("perllsp"), Some("perllsp"));
         assert!(managed.contains("[languages]"));
-        assert!(managed.contains("ripr check --base origin/main --head HEAD"));
+        // #3886: a bare `ripr check` resolves the default branch; `check`
+        // has no `--head`, and `origin/main` need not exist.
+        assert!(managed.ends_with("then: ripr check"));
+        let unpublished = perl_next_command(true, Some("perllsp"), None);
+        assert!(unpublished.ends_with("then: ripr check"));
         // The packet-mode branch is unchanged.
         let packet = perl_next_command(true, None, None);
         assert!(packet.contains("--perl-facts"));

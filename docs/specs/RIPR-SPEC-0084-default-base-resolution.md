@@ -81,6 +81,13 @@ error is kept — it names the ref the user chose and is actionable. Silent
 substitution of an explicit ref would produce wrong findings without warning,
 which is worse than a clear error.
 
+The same resolution covers every command that diffs committed history
+(#3952): `ripr diff`, `ripr first-pr` and `ripr pr-evidence` resolve an
+omitted `--base` through `resolve_effective_base` rather than defaulting to
+`origin/main`. Where nothing resolves, `first-pr` and `pr-evidence` fail
+with the named message below and record no base; `first-pr` still writes its
+own recovery packet when the root is missing or is not a Git work tree.
+
 ### Default-base resolution order
 
 When base is `None`, the following candidates are tried in order. Each
@@ -106,7 +113,7 @@ returns a named, actionable `Err` rather than a raw git error or a silent
 empty result. The message is:
 
 ```
-could not resolve a default base (no origin/main, origin/master, or local main/master found). Pass `--base <ref>` to diff against a specific ref, or `--root . --mode fast` for a full-repo scan.
+could not resolve a default base (no origin/main, origin/master, or local main/master found). Pass `--base <ref>` to diff against a specific ref, or run `ripr check --root . --format repo-exposure-md` for a full-repo scan.
 ```
 
 This message explicitly says the analysis did not run (unlike "No probes
@@ -185,6 +192,8 @@ problem and the two remediation paths.
 - `crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_returns_named_error_when_nothing_resolves`
 - `crates/ripr/src/analysis/diff/load.rs::tests::explicit_base_is_used_as_is_without_resolution`
 - `crates/ripr/src/analysis/diff/load.rs::tests::load_diff_from_file_returns_content`
+- `crates/ripr/tests/cli_smoke.rs::history_commands_resolve_the_default_base_without_origin`
+- `crates/ripr/tests/cli_smoke.rs::history_commands_without_a_resolvable_default_base_fail_named`
 
 ## Implementation Mapping
 

@@ -177,7 +177,11 @@ analysis-relevant config), not to fingerprint the repository.
 (`select_finding`) and rendering (`render_finding_with_config`,
 `render_context_packet`) operate on the loaded findings exactly as on
 freshly computed ones, so a reused explanation is byte-identical to a
-recomputed one given the same render options. Render-time knobs
+recomputed one given the same render options. The one exception is
+navigation: the sibling commands `explain` prints and the context packet's
+`witness.explain_command` replay the source that produced the finding,
+`--diff`/`--base` on a fresh run and `--from <artifact>` on a reused one
+(#3952). Render-time knobs
 (`--max-related-tests`, severity display, output format) are not part of
 the identity and are honored fresh at render time — including
 `--max-related-tests` beyond the `check --json` render cap, because the

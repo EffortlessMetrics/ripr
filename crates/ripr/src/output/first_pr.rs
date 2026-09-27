@@ -109,15 +109,39 @@ pub(crate) fn first_pr(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    let options = parse_options(args)?;
+    let mut options = parse_options(args)?;
     print_side_effect_disclosure(&options);
 
     let repo = repo_root()?;
+    resolve_omitted_base(&repo, &mut options)?;
     if options.check {
         check_first_pr(&repo, &options)
     } else {
         write_first_pr(&repo, &options)
     }
+}
+
+/// Resolve an omitted `--base` through the diff loader's authority (#3952,
+/// RIPR-SPEC-0084) instead of assuming `origin/main`, which need not exist:
+/// in a repository without `origin` the packet used to record a base that
+/// was never analyzed.
+///
+/// Only a root that is a Git work tree is resolved. A missing root or a
+/// non-repository keeps the placeholder so the root and Git preflights still
+/// write their own recovery packets; those block before the base is used.
+/// When the root is a work tree and nothing resolves, the run fails with the
+/// loader's named error rather than recording a guessed base.
+fn resolve_omitted_base(repo: &Path, options: &mut FirstPrOptions) -> Result<(), String> {
+    if options.base_explicit {
+        return Ok(());
+    }
+    let root = resolve_path(repo, &options.root);
+    if !root.is_dir() || git_worktree_available_with_ceiling(&root, None) != Ok(true) {
+        return Ok(());
+    }
+    options.base = crate::analysis::resolve_effective_base(&root, None, None)
+        .map_err(|err| format!("first-pr: {err}"))?;
+    Ok(())
 }
 
 /// Print the side-effect and cost disclosure for the *resolved* invocation, so
@@ -2328,6 +2352,8 @@ mod tests {
         ])?;
         assert_eq!(parsed.root, "repo");
         assert_eq!(parsed.base, "origin/main");
+        assert!(parsed.base_explicit);
+        assert!(!FirstPrOptions::default().base_explicit);
         assert_eq!(parsed.head, "HEAD");
         assert_eq!(parsed.check_output.as_deref(), Some("check.json"));
         assert_eq!(parsed.gap_ledger, "gap.json");
@@ -3810,8 +3836,8 @@ mod tests {
         .map_err(|err| format!("parse pr-summary json: {err}"))?;
         assert!(summary_json["top_repair"].get("repair_command").is_none());
         assert_eq!(
-            summary_json["local_reproduction_commands"][0],
-            "ripr check --base origin/main"
+            summary_json["local_reproduction_commands"][0], "ripr check --base origin/main",
+            "pr-summary replays the base the start-here packet recorded"
         );
         Ok(())
     }

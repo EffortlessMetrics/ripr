@@ -29,6 +29,9 @@ const PR_DIFF: &str = "target/ripr/pr/pr.diff";
 struct PrEvidenceOptions {
     root: String,
     base: String,
+    /// `false` when `--base` was omitted: `base` then holds a placeholder
+    /// until [`run_pr_evidence`] resolves the repository's default branch.
+    base_explicit: bool,
     head: String,
     check: bool,
 }
@@ -38,6 +41,7 @@ impl Default for PrEvidenceOptions {
         Self {
             root: DEFAULT_ROOT.to_string(),
             base: DEFAULT_BASE.to_string(),
+            base_explicit: false,
             head: DEFAULT_HEAD.to_string(),
             check: false,
         }
@@ -58,8 +62,16 @@ pub(crate) fn run_pr_evidence(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
-    let options = parse_options(args)?;
+    let mut options = parse_options(args)?;
     let repo = repo_root()?;
+    if !options.base_explicit {
+        // #3952 / RIPR-SPEC-0084: resolve the repository's default branch
+        // through the diff loader's authority instead of assuming
+        // `origin/main`, which need not exist; nothing resolving is a named
+        // failure, never a guessed base recorded in the packet.
+        options.base = crate::analysis::resolve_effective_base(&repo, None, None)
+            .map_err(|err| format!("pr-evidence: {err}"))?;
+    }
     if options.check {
         check_pr_evidence(&repo, &options)
     } else {
@@ -79,6 +91,7 @@ fn parse_options(args: &[String]) -> Result<PrEvidenceOptions, String> {
             "--base" => {
                 i += 1;
                 options.base = non_empty_arg(args, i, "--base")?.to_string();
+                options.base_explicit = true;
             }
             "--head" => {
                 i += 1;
@@ -112,7 +125,8 @@ pub(crate) const PR_EVIDENCE_HELP: &str = "\
 usage: ripr pr-evidence [--base <rev>] [--head <rev>] [--root <path>] [--check]
 
 Options:
-  --base <rev>   PR base revision. Defaults to origin/main.
+  --base <rev>   PR base revision. When omitted, resolved like `ripr check`:
+                 origin/HEAD, then origin/main, origin/master, main, master.
   --head <rev>   PR head revision. Defaults to HEAD.
   --root <path>  Workspace root label. Defaults to current directory.
   --check        Verify the existing PR evidence packet is contract-valid.
@@ -1049,6 +1063,7 @@ mod tests {
         PrEvidenceOptions {
             root: ".".to_string(),
             base: "origin/main".to_string(),
+            base_explicit: true,
             head: "HEAD".to_string(),
             check: false,
         }
@@ -1140,6 +1155,7 @@ mod tests {
         let options = PrEvidenceOptions {
             root: ".".to_string(),
             base: "evidence-base".to_string(),
+            base_explicit: true,
             head: "HEAD".to_string(),
             check: false,
         };
@@ -1238,9 +1254,16 @@ mod tests {
 
     #[test]
     fn parse_defaults_and_check_mode() -> Result<(), String> {
-        assert_eq!(parse_options(&[])?, options());
+        assert_eq!(
+            parse_options(&[])?,
+            PrEvidenceOptions {
+                base_explicit: false,
+                ..options()
+            }
+        );
         let parsed = parse_options(&["--base".into(), "main".into(), "--check".into()])?;
         assert_eq!(parsed.base, "main");
+        assert!(parsed.base_explicit);
         assert!(parsed.check);
         Ok(())
     }

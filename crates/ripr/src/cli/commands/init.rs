@@ -216,7 +216,7 @@ fn apply_init_plan(plan: &[InitTarget]) -> Result<(), String> {
     if wrote_any {
         println!();
         println!(
-            "Next: run `ripr doctor` to verify your setup, then `ripr check --base origin/main` to analyze a diff."
+            "Next: run `ripr doctor` to verify your setup, then `ripr check` to analyze your branch against its default branch."
         );
     }
     Ok(())
@@ -1187,9 +1187,9 @@ jobs:
         if: always()
         continue-on-error: true
         # first-pr checks its base resolves and that the review cards were
-        # built for the same base. Without --base it assumes origin/main,
-        # so a repository whose PRs target another branch got a blocked
-        # start-here. A manual run has no PR base; use the default branch.
+        # built for the same base. Without --base it resolves the default
+        # branch, which is not the base of a PR into another branch, so
+        # pass the PR base. A manual run has no PR base; use the default branch.
         run: |
           mkdir -p target/ripr/reports
           ripr first-pr \

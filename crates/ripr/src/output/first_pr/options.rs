@@ -11,6 +11,9 @@ use super::{
 pub(super) struct FirstPrOptions {
     pub(super) root: String,
     pub(super) base: String,
+    /// `false` when `--base` was omitted: `base` then holds a placeholder
+    /// until the CLI entry resolves the repository's default branch.
+    pub(super) base_explicit: bool,
     pub(super) head: String,
     pub(super) check_output: Option<String>,
     pub(super) gap_ledger: String,
@@ -32,6 +35,7 @@ impl Default for FirstPrOptions {
         Self {
             root: DEFAULT_ROOT.to_string(),
             base: DEFAULT_BASE.to_string(),
+            base_explicit: false,
             head: DEFAULT_HEAD.to_string(),
             check_output: None,
             gap_ledger: DEFAULT_GAP_LEDGER.to_string(),
@@ -64,6 +68,7 @@ pub(super) fn parse_options(args: &[String]) -> Result<FirstPrOptions, String> {
             "--base" => {
                 i += 1;
                 options.base = non_empty_arg(args, i, "--base")?.to_string();
+                options.base_explicit = true;
             }
             "--head" => {
                 i += 1;
@@ -134,7 +139,9 @@ usage: ripr first-pr|start-here [--root <path>] [--base <rev>] [--head <rev>] [-
 
 Options:
   --root <path>              Workspace root. Defaults to .
-  --base <rev>               PR base revision. Defaults to origin/main.
+  --base <rev>               PR base revision. When omitted, resolved like
+                             `ripr check`: origin/HEAD, then origin/main,
+                             origin/master, main, and master.
   --head <rev>               PR head revision. Defaults to HEAD.
   --check-output <path>      Optional check JSON to consume instead of running analysis.
   --gap-ledger <path>        Gap-decision ledger JSON. Defaults to target/ripr/reports/gap-decision-ledger.json.

@@ -9845,7 +9845,8 @@ fn pilot_names_python_check_route_when_repo_has_no_rust_seams() -> Result<(), St
     assert!(
         route["guidance"].as_str().is_some_and(|text| {
             text.contains("does not render Python findings")
-                && text.contains("ripr check --base origin/main")
+                && text.contains("run 'ripr check' or")
+                && !text.contains("origin/main")
         }),
         "{route}"
     );
@@ -11286,14 +11287,40 @@ fn check_write_artifact_then_explain_and_context_reuse_preserves_detail_and_sour
             selector,
         ]);
         assert_success(&reused_context);
-        assert_eq!(
-            fresh_context.stdout, reused_context.stdout,
-            "context --from output must be byte-identical to the fresh run"
-        );
+        context_reuse_matches_fresh(&fresh_context.stdout, &reused_context.stdout)?;
         Ok(())
     })();
     ignore_remove_dir_all(&dir);
     result
+}
+
+/// RIPR-SPEC-0140: a `context --from` packet equals the fresh `--diff` packet
+/// except the witness's explain command, which names the source that
+/// produced it (#3952): `--diff` fresh, `--from` reused, as `explain` does.
+fn context_reuse_matches_fresh(fresh: &[u8], reused: &[u8]) -> Result<(), String> {
+    let parse = |bytes: &[u8], label: &str| -> Result<(serde_json::Value, String), String> {
+        let mut packet: serde_json::Value = serde_json::from_slice(bytes)
+            .map_err(|err| format!("parse {label} context packet: {err}"))?;
+        let command = packet
+            .pointer_mut("/witness/explain_command")
+            .map(serde_json::Value::take)
+            .and_then(|command| command.as_str().map(str::to_string))
+            .ok_or_else(|| format!("{label} context packet must carry an explain command"))?;
+        Ok((packet, command))
+    };
+    let (fresh_packet, fresh_command) = parse(fresh, "fresh")?;
+    let (reused_packet, reused_command) = parse(reused, "reused")?;
+    if !fresh_command.contains(" --diff ") || !reused_command.contains(" --from ") {
+        return Err(format!(
+            "explain commands must name their source: fresh `{fresh_command}`, reused `{reused_command}`"
+        ));
+    }
+    if fresh_packet != reused_packet {
+        return Err(format!(
+            "context --from packet must match the fresh run\nfresh: {fresh_packet}\nreused: {reused_packet}"
+        ));
+    }
+    Ok(())
 }
 
 /// Every identity mismatch class fails closed with a typed error naming the
@@ -11688,10 +11715,7 @@ fn context_from_consumes_artifact_written_with_no_unchanged_tests() -> Result<()
         selector,
     ]);
     assert_success(&reused);
-    assert_eq!(
-        fresh.stdout, reused.stdout,
-        "context --from --no-unchanged-tests must be byte-identical to the fresh run"
-    );
+    context_reuse_matches_fresh(&fresh.stdout, &reused.stdout)?;
 
     let without_flag = run_ripr(&[
         "context",
@@ -15715,4 +15739,147 @@ fn plus_unknown_arg_fails_clearly() {
         stderr.contains("unknown plus argument") || stderr.contains("--bogus"),
         "error must name the unknown arg:\n{stderr}"
     );
+}
+
+/// A repository with no `origin` remote whose default branch is `master`, on a
+/// `work` branch one commit ahead. `master` is deliberately not `main`, so a
+/// command that still assumes `origin/main` cannot pass by coincidence.
+fn no_origin_master_repo(label: &str, initial_branch: &str) -> Result<PathBuf, String> {
+    let root = unique_temp_workspace(label);
+    std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+    run_git(&root, &["init", "-b", initial_branch])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"no-origin-base\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| format!("write Cargo.toml: {err}"))?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over(amount: i32) -> bool {\n    amount >= 10\n}\n",
+    )
+    .map_err(|err| format!("write base lib.rs: {err}"))?;
+    run_git(&root, &["add", "."])?;
+    run_git(&root, &["commit", "-m", "base"])?;
+    run_git(&root, &["checkout", "-b", "work"])?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over(amount: i32) -> bool {\n    amount > 10\n}\n",
+    )
+    .map_err(|err| format!("write work lib.rs: {err}"))?;
+    run_git(&root, &["commit", "-am", "work"])?;
+    Ok(root)
+}
+
+fn json_string_at(path: &Path, pointer: &str) -> Result<serde_json::Value, String> {
+    let text =
+        std::fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))?;
+    Ok(value.pointer(pointer).cloned().unwrap_or_default())
+}
+
+/// #3952 / RIPR-SPEC-0084: `diff`, `first-pr` and `pr-evidence` resolve an
+/// omitted `--base` through the loader's authority, as `check` does. Before,
+/// each defaulted to `origin/main`: `diff` failed on git's ambiguous-argument
+/// error, `pr-evidence` refused the revision, and `first-pr` exited 0 with
+/// `origin/main` recorded in `start-here.json` for a repository that has no
+/// `origin`.
+#[test]
+fn history_commands_resolve_the_default_base_without_origin() -> Result<(), String> {
+    let root = no_origin_master_repo("no-origin-default-base", "master")?;
+    let root_str = root.to_string_lossy().into_owned();
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let mut failures = Vec::new();
+
+    let diff = run_command(bin, None, &["diff", "--root", &root_str, "--json"])
+        .map_err(|err| format!("spawn ripr diff: {err}"))?;
+    let diff_stdout = String::from_utf8_lossy(&diff.stdout);
+    let diff_base = serde_json::from_str::<serde_json::Value>(&diff_stdout)
+        .map(|value| value["base"].clone())
+        .ok();
+    if !diff.status.success() || diff_base != Some(serde_json::json!("master")) {
+        failures.push(format!(
+            "ripr diff must analyze master...HEAD; status {:?}, stdout:\n{diff_stdout}\nstderr:\n{}",
+            diff.status.code(),
+            String::from_utf8_lossy(&diff.stderr)
+        ));
+    }
+
+    // Run from the ripr checkout, which has its own `origin/main`, so a
+    // resolver that consulted the working directory instead of `--root`
+    // would record the wrong base.
+    let first_pr = run_command(bin, None, &["first-pr", "--root", &root_str])
+        .map_err(|err| format!("spawn ripr first-pr: {err}"))?;
+    match json_string_at(
+        &root.join("target/ripr/reports/start-here.json"),
+        "/inputs/base",
+    ) {
+        Ok(base) if base == "master" => {}
+        other => failures.push(format!(
+            "first-pr must record the resolved base `master`; got {other:?}, status {:?}, stderr:\n{}",
+            first_pr.status.code(),
+            String::from_utf8_lossy(&first_pr.stderr)
+        )),
+    }
+
+    let evidence = run_command(bin, Some(&root), &["pr-evidence"])
+        .map_err(|err| format!("spawn ripr pr-evidence: {err}"))?;
+    match json_string_at(&root.join("target/ripr/pr/repo-exposure.json"), "/base") {
+        Ok(base) if base == "master" && evidence.status.success() => {}
+        other => failures.push(format!(
+            "pr-evidence must record the resolved base `master`; got {other:?}, status {:?}, stderr:\n{}",
+            evidence.status.code(),
+            String::from_utf8_lossy(&evidence.stderr)
+        )),
+    }
+
+    ignore_remove_dir_all(&root);
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n\n"))
+    }
+}
+
+/// #3952 fail-closed half: when no default base resolves, `first-pr` and
+/// `pr-evidence` name the resolution failure and write no packet, rather
+/// than recording a base the run never analyzed.
+#[test]
+fn history_commands_without_a_resolvable_default_base_fail_named() -> Result<(), String> {
+    let root = no_origin_master_repo("no-origin-unresolvable-base", "trunk")?;
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let mut failures = Vec::new();
+    for (args, packet) in [
+        (
+            ["first-pr", "--root", "."].as_slice(),
+            "target/ripr/reports/start-here.json",
+        ),
+        (
+            ["pr-evidence"].as_slice(),
+            "target/ripr/pr/repo-exposure.json",
+        ),
+    ] {
+        let output = run_command(bin, Some(&root), args)
+            .map_err(|err| format!("spawn ripr {}: {err}", args[0]))?;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let packet_written = root.join(packet).exists();
+        if output.status.success()
+            || packet_written
+            || !stderr.contains("could not resolve a default base")
+        {
+            failures.push(format!(
+                "{} with no resolvable base must fail named and write nothing; status {:?}, packet written {packet_written}, stderr:\n{stderr}",
+                args[0],
+                output.status.code()
+            ));
+        }
+    }
+    ignore_remove_dir_all(&root);
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n\n"))
+    }
 }

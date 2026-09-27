@@ -141,7 +141,11 @@ pub fn load_worktree_diff_with_effective_base(
 /// ran is never allowed to assert a bad ref, and an unusable root keeps
 /// producing the `failed to run git diff: ...` text that the `context` and
 /// `explain` invalid-root contract pins.
-fn resolve_effective_base(
+///
+/// This is the one base authority for every command that diffs committed
+/// history (#3952, #3886): `check`, `diff`, `first-pr` and `pr-evidence` all
+/// resolve an omitted `--base` here instead of assuming `origin/main`.
+pub fn resolve_effective_base(
     root: &Path,
     base: Option<&str>,
     git_timeout: Option<Duration>,
@@ -191,7 +195,7 @@ fn not_a_work_tree(root: &Path, git_timeout: Option<Duration>) -> Option<String>
         return None;
     }
     Some(format!(
-        "`{}` is not inside a Git work tree (the analysis did not run). `ripr check` diffs \
+        "`{}` is not inside a Git work tree (the analysis did not run). ripr diffs \
          committed history, so run it from inside your repository, or pass `--root <path>` \
          pointing at one. For a repository-free scan of the current sources, use \
          `ripr check --root . --format repo-exposure-md`.",
@@ -240,8 +244,8 @@ fn resolve_default_base(root: &Path, git_timeout: Option<Duration>) -> Result<St
     // not run because there was no base to diff against.
     Err(
         "could not resolve a default base (no origin/main, origin/master, or local main/master \
-         found). Pass `--base <ref>` to diff against a specific ref, or \
-         `--root . --format repo-exposure-md` for a full-repo scan."
+         found). Pass `--base <ref>` to diff against a specific ref, or run \
+         `ripr check --root . --format repo-exposure-md` for a full-repo scan."
             .to_string(),
     )
 }

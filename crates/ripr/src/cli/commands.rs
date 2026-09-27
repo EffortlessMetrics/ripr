@@ -3258,7 +3258,9 @@ enum DiffReportFormat {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DiffOptions {
     root: PathBuf,
-    base: String,
+    /// `None` when `--base` was omitted; resolved by the loader's base
+    /// authority at run time, never defaulted to a literal branch here.
+    base: Option<String>,
     head: String,
     mode: Mode,
     format: DiffReportFormat,
@@ -3273,11 +3275,15 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
     }
     let options = parse_diff_options(args)?;
     let config = load_for_root(&options.root)?;
-    let diff_text = analysis::load_diff_range(&options.root, &options.base, &options.head)?;
+    // #3952 / RIPR-SPEC-0084: an omitted --base resolves the repository's
+    // default branch through the same authority as `ripr check`, and an
+    // explicit one is verified there, instead of assuming `origin/main`.
+    let base = analysis::resolve_effective_base(&options.root, options.base.as_deref(), None)?;
+    let diff_text = analysis::load_diff_range(&options.root, &base, &options.head)?;
     let changed_files = diff_changed_files_from_text(&diff_text);
     let diff_file = crate::app::temp_diff::write_temporary_diff_file(&diff_text)?;
 
-    let check_result = run_diff_check_from_file(&options, &config, &diff_file);
+    let check_result = run_diff_check_from_file(&options, &base, &config, &diff_file);
     let _ = std::fs::remove_file(&diff_file);
     // The temporary diff lives in a per-invocation private directory
     // (#2102); remove it too so runs do not accumulate empty dirs.
@@ -3288,10 +3294,10 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
 
     let report = output::diff_report::build_diff_report(
         &output,
-        &options.base,
+        &base,
         &options.head,
         changed_files,
-        diff_receipt_path(&options.base, &options.head),
+        diff_receipt_path(&base, &options.head),
     );
     match options.format {
         DiffReportFormat::Human => {
@@ -3307,7 +3313,7 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
 fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
     let mut options = DiffOptions {
         root: PathBuf::from("."),
-        base: "origin/main".to_string(),
+        base: None,
         head: "HEAD".to_string(),
         mode: Mode::Draft,
         format: DiffReportFormat::Human,
@@ -3324,7 +3330,7 @@ fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
             }
             "--base" => {
                 i += 1;
-                options.base = expect_value(args, i, "--base")?.to_string();
+                options.base = Some(expect_value(args, i, "--base")?.to_string());
             }
             "--head" => {
                 i += 1;
@@ -3349,7 +3355,11 @@ fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
         i += 1;
     }
 
-    if options.base.trim().is_empty() {
+    if options
+        .base
+        .as_deref()
+        .is_some_and(|base| base.trim().is_empty())
+    {
         return Err("diff --base requires a non-empty revision".to_string());
     }
     if options.head.trim().is_empty() {
@@ -3371,12 +3381,13 @@ fn parse_diff_format(value: &str) -> Result<DiffReportFormat, String> {
 
 fn run_diff_check_from_file(
     options: &DiffOptions,
+    base: &str,
     config: &RiprConfig,
     diff_file: &Path,
 ) -> Result<app::CheckOutput, String> {
     let mut input = CheckInput {
         root: options.root.clone(),
-        base: Some(options.base.clone()),
+        base: Some(base.to_string()),
         diff_file: Some(diff_file.to_path_buf()),
         mode: options.mode.clone(),
         format: OutputFormat::Json,

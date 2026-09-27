@@ -49,7 +49,7 @@ impl TsFullRepoGuidance {
 
     /// The human-readable repair route for this disclosure.
     pub(crate) const REPAIR_ROUTE: &'static str = "TypeScript is analyzed diff-first; run \
-         'ripr check --base origin/main' or '--diff <file>' to evaluate \
+         'ripr check' or '--diff <file>' to evaluate \
          changed TypeScript behavior. Full-repo TypeScript exposure is not \
          yet modeled (named limitation).";
 }
@@ -79,7 +79,7 @@ impl PythonRepoExposureGuidance {
     /// preview repo producer exists, but this seam inventory does not render
     /// its findings.
     pub(crate) const REPAIR_ROUTE: &'static str = "Python changed behavior is reviewed \
-         diff-first on this seam report; run 'ripr check --base origin/main' \
+         diff-first on this seam report; run 'ripr check' \
          or '--diff <file>' to evaluate it. This report counts Rust and Perl \
          seams only and does not render Python findings, so a zero-seam \
          result is not a clean Python result (named limitation).";
@@ -1250,7 +1250,7 @@ mod tests {
             "top_blocker null missing in:\n{json}"
         );
         assert!(
-            json.contains("ripr check --base origin/main"),
+            json.contains("run 'ripr check' or") && !json.contains("--base origin/main"),
             "repair_route missing in:\n{json}"
         );
         // run_status must still be complete (TS guidance does not change Rust scan status)
@@ -1503,7 +1503,7 @@ mod tests {
             "guidance category missing in:\n{md}"
         );
         assert!(
-            md.contains("ripr check --base origin/main"),
+            md.contains("run 'ripr check' or") && !md.contains("--base origin/main"),
             "repair route missing in:\n{md}"
         );
         assert!(
