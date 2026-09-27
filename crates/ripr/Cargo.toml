@@ -27,7 +27,8 @@ include = [
   "examples/*.rs",
   "README.md",
   "LICENSE-*",
-  "Cargo.toml"
+  "Cargo.toml",
+  "build.rs"
 ]
 
 [lib]

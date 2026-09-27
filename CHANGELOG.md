@@ -11,6 +11,15 @@ are scoped or reviewed.
 
 ### Added
 
+- `ripr --version` now names the commit the binary was built from, as
+  `ripr <version> (<commit>)`, with `-dirty` when the sources that build it differed
+  from that commit. Packaged crates (crates.io, `cargo install ripr`) read the
+  commit that `cargo package` recorded, so an installed candidate can be bound
+  to source without hashing it. `ripr doctor` reports the same identity with
+  the running executable and the first `ripr` on PATH, and warns, without
+  failing, when that PATH entry is a Cargo workspace build or a different
+  binary ([#4256](https://github.com/EffortlessMetrics/ripr-swarm/issues/4256)).
+
 - New repository-governed Rust test-harness registry
   (`[analysis.test_harnesses]` in `ripr.toml`): repositories can teach
   ripr, through exact registrations only, about bounded custom test

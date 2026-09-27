@@ -522,9 +522,11 @@ impl BinaryIdentity {
         if version.is_empty() {
             return Err(format!("`{binary} --version` produced no output"));
         }
+        // `ripr <version> (<commit>)`: the package version is the second
+        // token; the commit suffix is identity, not the judged version.
         let version_token = version
             .split_whitespace()
-            .last()
+            .nth(1)
             .unwrap_or(version.as_str())
             .to_string();
         let sha256 = sha256_file_or_blank(Path::new(binary));

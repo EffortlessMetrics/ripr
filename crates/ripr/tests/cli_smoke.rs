@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "../src/build_commit_record.rs"]
+mod build_commit_record;
 #[path = "common/mod.rs"]
 mod common;
 
@@ -892,9 +894,56 @@ fn fixture_repository_head_rejects_whitespace_padded_success_output() -> Result<
     Ok(())
 }
 
+/// The `ripr --version` line this build must produce, derived without
+/// `build.rs`'s output: the package version plus the commit, with `-dirty`
+/// when the inputs that decide the binary differ from it. A packaged crate
+/// (this file ships in it) takes the commit from `.cargo_vcs_info.json`; a
+/// checkout that tracks this crate takes it from Git; anything else has no
+/// commit, and the line is the bare version.
+fn expected_version_line() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    if let Ok(record) = std::fs::read_to_string(crate_dir.join(".cargo_vcs_info.json")) {
+        return match build_commit_record::parse_cargo_vcs_info(&record) {
+            Some((commit, true)) => format!("ripr {version} ({commit}-dirty)\n"),
+            Some((commit, false)) => format!("ripr {version} ({commit})\n"),
+            None => format!("ripr {version}\n"),
+        };
+    }
+    let git_stdout = |args: &[&str]| {
+        run_command("git", Some(crate_dir), args)
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+    };
+    if git_stdout(&["ls-files", "--error-unmatch", "--", "Cargo.toml"]).is_none() {
+        return format!("ripr {version}\n");
+    }
+    let Some(head) = git_stdout(&["rev-parse", "--verify", "HEAD"]) else {
+        return format!("ripr {version}\n");
+    };
+    let Some(status) = git_stdout(&[
+        "--no-optional-locks",
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+        "--",
+        "src",
+        "Cargo.toml",
+        "build.rs",
+        ":(top)Cargo.toml",
+        ":(top)Cargo.lock",
+        ":(top).cargo",
+    ]) else {
+        return format!("ripr {version}\n");
+    };
+    let suffix = if status.is_empty() { "" } else { "-dirty" };
+    format!("ripr {version} ({head}{suffix})\n")
+}
+
 #[test]
 fn version_is_exact_and_precedes_help_or_output_flags() {
-    let expected = format!("ripr {}\n", env!("CARGO_PKG_VERSION"));
+    let expected = expected_version_line();
     for args in [
         &["--version"][..],
         &["-V"][..],
@@ -950,7 +999,7 @@ fn isolated_installed_binary_version_contract_is_side_effect_free() -> Result<()
         let config_before = std::fs::read(&config_path)?;
         let before = snapshot_tree(&root)?;
         let artifact_path = root.join("target/ripr/reports/version.json");
-        let expected_version = format!("ripr {}\n", env!("CARGO_PKG_VERSION"));
+        let expected_version = expected_version_line();
         let expected_lsp_version = format!("ripr-lsp {}\n", env!("CARGO_PKG_VERSION"));
         let workspace_text = workspace_root().to_string_lossy().to_string();
         let cases = [
@@ -6897,6 +6946,92 @@ fn config_validate_rejects_missing_and_file_roots() -> Result<(), String> {
 
     ignore_remove_dir_all(&workspace);
     Ok(())
+}
+
+/// Run `binary doctor --json` on `root` with `path_dirs` ahead of the host
+/// PATH (which still supplies git), and parse the report.
+fn doctor_json_with_path_prefix(
+    binary: &Path,
+    root: &Path,
+    path_dirs: &[&Path],
+) -> Result<(bool, serde_json::Value), String> {
+    let host_path = std::env::var_os("PATH").unwrap_or_default();
+    let search_path = std::env::join_paths(
+        path_dirs
+            .iter()
+            .map(|dir| dir.to_path_buf())
+            .chain(std::env::split_paths(&host_path)),
+    )
+    .map_err(|error| format!("build PATH: {error}"))?;
+    let search_path = search_path.to_string_lossy().into_owned();
+    let root_arg = root.display().to_string();
+    let output = run_command_with_env(
+        &binary.to_string_lossy(),
+        root,
+        &["doctor", "--root", &root_arg, "--json"],
+        &[("PATH", &search_path)],
+    )
+    .map_err(|error| format!("run doctor: {error}"))?;
+    let report = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("doctor JSON did not parse: {error}"))?;
+    Ok((output.status.success(), report))
+}
+
+/// #3797 control 9: a Cargo build output directory first on PATH replaces the
+/// installed `ripr` for everything that runs `ripr`. Doctor must name it,
+/// stay quiet when the installed binary is first, and never change its
+/// pass/fail status over it.
+#[test]
+fn doctor_names_workspace_build_first_on_path() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let installed_dir = unique_temp_workspace("doctor-installed-bin");
+    let result = (|| -> Result<(), String> {
+        std::fs::create_dir_all(&installed_dir)
+            .map_err(|error| format!("create installed bin dir: {error}"))?;
+        let built = Path::new(env!("CARGO_BIN_EXE_ripr"));
+        let built_dir = built.parent().ok_or("built ripr has no parent")?;
+        let installed = installed_dir.join(built.file_name().ok_or("built ripr has no name")?);
+        std::fs::copy(built, &installed).map_err(|error| format!("install copy: {error}"))?;
+
+        let (installed_ok, report) =
+            doctor_json_with_path_prefix(&installed, &workspace, &[&installed_dir])?;
+        let binary = &report["binary"];
+        if binary["path_ripr_is_running_executable"] != true
+            || binary["path_ripr_is_cargo_build_output"] != false
+            || binary["executable_is_cargo_build_output"] != false
+            || binary["warnings"] != serde_json::json!([])
+        {
+            return Err(format!(
+                "installed ripr first on PATH must be quiet: {binary}"
+            ));
+        }
+        if binary["version"].as_str() != Some(expected_version_line().trim_end()) {
+            return Err(format!("doctor must report the --version line: {binary}"));
+        }
+
+        let (workspace_ok, report) =
+            doctor_json_with_path_prefix(&installed, &workspace, &[built_dir, &installed_dir])?;
+        let binary = &report["binary"];
+        let warnings = binary["warnings"].to_string();
+        if binary["path_ripr_is_cargo_build_output"] != true
+            || binary["path_ripr_is_running_executable"] != false
+            || !warnings.contains("Cargo build output")
+            || !warnings.contains("not the running binary")
+        {
+            return Err(format!(
+                "workspace build first on PATH was not named: {binary}"
+            ));
+        }
+        if workspace_ok != installed_ok {
+            return Err(format!(
+                "a workspace build on PATH is advisory and must not change doctor status: {report}"
+            ));
+        }
+        Ok(())
+    })();
+    ignore_remove_dir_all(&installed_dir);
+    ignore_remove_dir_all(&workspace);
+    result
 }
 
 #[test]

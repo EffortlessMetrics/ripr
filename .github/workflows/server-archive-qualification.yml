@@ -246,7 +246,7 @@ jobs:
           expected_binary_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "ripr") | .version')"
           test "${version}" = "${expected_binary_version}"
           test "$(head -n 1 extracted/README-server.txt)" = "ripr server ${version}"
-          test "$("extracted/${EXECUTABLE}" --version)" = "ripr ${expected_binary_version}"
+          test "$("extracted/${EXECUTABLE}" --version)" = "ripr ${expected_binary_version} ($(git rev-parse HEAD))"
 
       - name: Verify archive checksum and extraction
         if: runner.os == 'Windows'
@@ -273,7 +273,9 @@ jobs:
           if ($version -ne $expectedBinaryVersion) { throw "qualification version does not match package version" }
           if ((Get-Content extracted\README-server.txt -First 1) -ne "ripr server $version") { throw "archive label mismatch" }
           $versionOutput = & "extracted\$env:EXECUTABLE" --version
-          if ($LASTEXITCODE -ne 0 -or $versionOutput -ne "ripr $expectedBinaryVersion") { throw "archive binary version check failed" }
+          $versionExit = $LASTEXITCODE
+          $candidateHead = (& git rev-parse HEAD).Trim()
+          if ($versionExit -ne 0 -or $versionOutput -ne "ripr $expectedBinaryVersion ($candidateHead)") { throw "archive binary version check failed" }
 
       - name: Upload qualified server artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

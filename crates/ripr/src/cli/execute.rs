@@ -12,7 +12,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), CommandError> {
             Ok(())
         }
         CliCommand::Version => {
-            println!("ripr {}", env!("CARGO_PKG_VERSION"));
+            println!("{}", crate::build_identity::version_line());
             Ok(())
         }
         CliCommand::Init(args) => commands::init(&args).map_err(CommandError::from),

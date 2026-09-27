@@ -77,8 +77,18 @@ Linux-only receipt is not a cross-platform qualification: the release handoff
 must name the missing platform when the other hosted lane has not run.
 
 The installed binary's identity probe is intentionally narrower than every
-other CLI command: `ripr --version` and `ripr -V` must exit 0 and emit exactly
-`ripr <package version>` followed by one newline on stdout, with empty stderr.
+other CLI command: `ripr --version` and `ripr -V` must exit 0 and emit exactly one line,
+`ripr <package version> (<commit>)`, on stdout, with empty stderr. The commit is
+the full commit id the binary was built from, with `-dirty` appended when the
+crate sources (`src/`, `Cargo.toml`, `build.rs`) or the repository-root
+Cargo inputs (`Cargo.toml`, `Cargo.lock`, `.cargo/`) differed from it. A packaged
+crate (crates.io, `cargo install ripr`, an unpacked `.crate`) takes the commit
+from the `.cargo_vcs_info.json` that `cargo package` records; a build from a Git
+checkout takes it from that checkout. A build with neither prints the bare
+`ripr <package version>`, so a candidate with no commit is visibly
+unidentified rather than guessed. `ripr doctor` reports the same line together
+with the running executable and the first `ripr` on PATH, and warns when that
+PATH entry is Cargo build output (`target/<profile>/`) or a different binary.
 The top-level version flag takes precedence over leading help, JSON, and
 verbose-looking flags; it must not print help, parse repository configuration,
 analyze a workspace, or write artifacts. Command-local version contracts, such

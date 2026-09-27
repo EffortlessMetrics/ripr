@@ -83,7 +83,7 @@ and [`crates/ripr/src/app.rs`](../crates/ripr/src/app.rs).
 | Flag | Effect |
 | --- | --- |
 | `--help`, `-h` | Print top-level help. |
-| `--version`, `-V` | Print the `ripr` version. |
+| `--version`, `-V` | Print the `ripr` version and the commit it was built from. |
 
 ### `ripr init`
 

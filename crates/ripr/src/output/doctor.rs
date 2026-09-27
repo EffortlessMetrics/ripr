@@ -284,6 +284,10 @@ pub(crate) struct DoctorReport {
     /// the typed surface the generated CI consumes instead of parsing the
     /// human "Enabled languages:" line.
     pub(crate) languages: Vec<String>,
+    /// The running binary and the `ripr` on PATH (additive in schema `0.2`).
+    /// The command adapter fills it; core evaluation leaves it unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) binary: Option<super::doctor_binary::DoctorBinaryIdentity>,
 }
 
 impl DoctorReport {
@@ -299,6 +303,7 @@ impl DoctorReport {
             sections: Vec::new(),
             runtime_probes: Vec::new(),
             languages: Vec::new(),
+            binary: None,
         }
     }
 

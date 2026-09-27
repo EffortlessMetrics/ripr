@@ -55,6 +55,11 @@
 // deliberately carry the contract.
 mod analysis_outcome;
 mod atomic_file;
+// Commit record parser shared with build.rs; the crate only unit-tests it.
+#[cfg(test)]
+mod build_commit_record;
+// Build commit identity for `ripr --version` and `ripr doctor`.
+mod build_identity;
 // Staged RepairAttempt edit-cage contract. #3163 connects the repository
 // baseline/delta producer before any public receipt projection consumes it.
 #[cfg_attr(

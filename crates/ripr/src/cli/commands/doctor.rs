@@ -47,6 +47,9 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     let enabled_languages = enabled_languages(&core_evaluation.config);
     println!("ripr doctor");
     println!("- root: {}", root.display());
+    for line in output::doctor_binary::probe_binary_identity().human_lines() {
+        println!("{line}");
+    }
 
     ok &= report_doctor_core_check(core_report, "root_directory");
     ok &= report_doctor_core_check(core_report, "cargo_toml");
@@ -83,6 +86,7 @@ fn doctor_json(root: &Path) -> Result<(), String> {
     let evaluation =
         output::doctor::evaluate_doctor_core_with_config(root, &detect_languages(root));
     let mut report = evaluation.report;
+    report.binary = Some(output::doctor_binary::probe_binary_identity());
     let enabled_languages = enabled_languages(&evaluation.config);
     let _ =
         add_language_runtime_probes(root, &enabled_languages, &mut report, false, probe_runtime);

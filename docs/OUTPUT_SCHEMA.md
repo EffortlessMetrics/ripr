@@ -64,6 +64,18 @@ root, such as the `cargo_toml`, `tool_cargo`, and `tool_rustc` checks on a
 root where Rust is not in scope. A skipped check never fails the report, and
 its `evidence` states why it was skipped. See [Exit codes](EXIT_CODES.md).
 
+`ripr doctor --json` also carries an additive `binary` object (schema `0.2`)
+naming which `ripr` is running and which one PATH selects: `version` (the
+`ripr --version` line), `commit` (full id or `null`), `commit_dirty`,
+`executable` (or `null` when the platform does not report it),
+`executable_is_cargo_build_output`, `path_ripr` (first `ripr` on
+PATH, symlinks resolved, or `null`), `path_ripr_is_cargo_build_output`,
+`path_ripr_is_running_executable` (`null` when either side is unknown), and
+`warnings`. Cargo build output means a binary beside Cargo's `deps/` and
+`.fingerprint/` directories in a `target/<profile>/` directory. The warnings are
+advisory: they never change `status` or the exit code, because a workspace build
+on PATH is a legitimate development setup.
+
 ## JSON object key ordering
 
 JSON object key order is not part of the semantic contract for ordinary

@@ -7,6 +7,7 @@
 # must name the owner and reason instead of drifting into domain or analysis
 # logic unnoticed.
 
+crates/ripr/build.rs|Command::new|1|build/commit-identity|#4256: the build script reads the enclosing checkout's HEAD and crate-source status with `git` (only when the checkout tracks this manifest and cargo recorded no `.cargo_vcs_info.json`) so `ripr --version` names the build commit; build time only, no runtime spawn.
 crates/ripr/src/agent/artifact.rs|Command::new|1|repair-artifact-provenance|RIPR-SPEC-0134: artifact validation resolves the actual repository HEAD and tracked-worktree state through bounded git probes before accepting provenance-bound evidence; no arbitrary command execution.
 crates/ripr/src/agent/artifact.rs|use std::process::Command|1|repair-artifact-provenance|RIPR-SPEC-0134: artifact validation imports Command for the bounded git provenance probes described above.
 crates/ripr/src/agent/loop_commands.rs|Command::new|3|agent/advisory-commands|#2347: the bash argv encoder is proved by executing the encoded token in a real bash — a round-trip transcript over hostile values, a redirect-clobber guard, and a usability probe that rejects a WSL bash which cannot open host paths. Test module only; no production spawn.
