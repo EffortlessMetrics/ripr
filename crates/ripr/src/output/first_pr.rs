@@ -446,6 +446,25 @@ fn render_start_here_packet_with_selection(
         );
     }
 
+    let mut selected = selection.to_json();
+    // The repo-exposure report and gap ledger are both prerequisites for the
+    // first Rust start-here selection. Keep the primary recovery route, but
+    // disclose the second missing input now instead of making the operator
+    // discover it on the next invocation. Other artifact rows are optional
+    // until a particular selection needs them.
+    if selected["artifact"]["id"] == "repo_exposure"
+        && let Some(ledger) = artifacts
+            .iter()
+            .find(|artifact| artifact["id"] == "gap_ledger" && artifact["status"] == "missing")
+    {
+        selected["also_missing"] = json!([{
+            "id": "gap_ledger",
+            "label": "Gap decision ledger",
+            "path": options.gap_ledger,
+            "regeneration_command": ledger["regeneration_command"]
+        }]);
+    }
+
     let mut packet = json!({
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
@@ -454,7 +473,7 @@ fn render_start_here_packet_with_selection(
         "posture": "advisory",
         "root": options.root,
         "inputs": inputs,
-        "selected": selection.to_json(),
+        "selected": selected,
         "commands": selection.commands_json(root, options),
         "artifacts": artifacts,
         "authority": {
@@ -2685,6 +2704,26 @@ mod tests {
             "Missing artifact: Repo exposure report at `target/ripr/reports/repo-exposure.json`"
         ));
         assert!(summary.contains("Regeneration command: `ripr check --root . --mode instant"));
+        assert_eq!(packet["selected"]["also_missing"][0]["id"], "gap_ledger");
+        assert_eq!(
+            packet["selected"]["also_missing"][0]["path"],
+            DEFAULT_GAP_LEDGER
+        );
+        assert!(
+            packet["selected"]["also_missing"][0]["regeneration_command"]
+                .as_str()
+                .is_some_and(|command| command.contains("ripr reports gap-ledger"))
+        );
+        assert!(summary.contains(
+            "Also missing: Gap decision ledger at `target/ripr/reports/gap-decision-ledger.json`"
+        ));
+        assert!(summary.contains("Then run: `ripr reports gap-ledger"));
+        assert!(
+            summary.find("Regeneration command:") < summary.find("Also missing:"),
+            "repo exposure recovery must precede the dependent ledger: {summary}"
+        );
+        let markdown = render_start_here_markdown(&packet);
+        assert!(markdown.contains("- Also missing: Gap decision ledger"));
         check_first_pr(&repo, &options)?;
         cleanup(&repo)
     }
@@ -2976,6 +3015,7 @@ mod tests {
         assert_eq!(packet["selected"]["state"], "missing_artifact");
         assert_eq!(packet["selected"]["output_state"], "missing_artifacts");
         assert_eq!(packet["selected"]["artifact"]["id"], "gap_ledger");
+        assert!(packet["selected"].get("also_missing").is_none());
         assert!(
             packet["selected"]["regeneration_command"]
                 .as_str()

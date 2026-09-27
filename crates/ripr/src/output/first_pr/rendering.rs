@@ -137,6 +137,19 @@ pub(super) fn start_here_cli_summary(
                 out.push_str(&format!("Regeneration command: `{command}`\n"));
                 push_recovery_powershell_variant(&mut out, "Regeneration command", &command);
             }
+            if let Some(also_missing) = selected.get("also_missing").and_then(Value::as_array) {
+                for artifact in also_missing {
+                    let label = string_path(artifact, &["label"])
+                        .unwrap_or_else(|| "Required artifact".to_string());
+                    let path =
+                        string_path(artifact, &["path"]).unwrap_or_else(|| "unknown".to_string());
+                    out.push_str(&format!("Also missing: {label} at `{path}`\n"));
+                    if let Some(command) = string_path(artifact, &["regeneration_command"]) {
+                        out.push_str(&format!("Then run: `{command}`\n"));
+                        push_recovery_powershell_variant(&mut out, "Then run", &command);
+                    }
+                }
+            }
             out.push_str("Receipt path: `not_applicable`\n");
         }
         "empty_diff" | "no_action" => {
@@ -535,6 +548,20 @@ fn render_missing_artifact_markdown(selected: &Value, out: &mut String) {
     if let Some(command) = selected.get("regeneration_command").and_then(Value::as_str) {
         out.push_str(&format!("- Regeneration command: `{command}`\n"));
         push_recovery_powershell_variant(out, "- Regeneration command", command);
+    }
+    if let Some(also_missing) = selected.get("also_missing").and_then(Value::as_array) {
+        for artifact in also_missing {
+            let label = artifact
+                .get("label")
+                .and_then(Value::as_str)
+                .unwrap_or("required artifact");
+            let path = artifact.get("path").and_then(Value::as_str).unwrap_or("");
+            out.push_str(&format!("- Also missing: {label} at `{path}`\n"));
+            if let Some(command) = artifact.get("regeneration_command").and_then(Value::as_str) {
+                out.push_str(&format!("- Then run: `{command}`\n"));
+                push_recovery_powershell_variant(out, "- Then run", command);
+            }
+        }
     }
 }
 
