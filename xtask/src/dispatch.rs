@@ -56,6 +56,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckReleaseChallengeSelection => {
             super::rust_judged_panel::check_release_selection()
         }
+        XtaskCommand::CheckReleaseChallengeJudgments => {
+            super::rust_judged_panel::check_release_judgments()
+        }
         XtaskCommand::PythonJudgedPanel(args) => super::python_judged_panel::run(&args),
         XtaskCommand::CheckPythonJudgedPanel => super::check_python_judged_panel(),
         XtaskCommand::PythonRepairTrust(args) => super::reports::python_repair_trust(&args),

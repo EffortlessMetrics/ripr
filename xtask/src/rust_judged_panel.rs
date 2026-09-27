@@ -8,7 +8,10 @@ use serde::{Deserialize, Deserializer};
 
 mod host_run;
 mod packet;
+mod release_judgments;
 mod subject;
+
+pub(crate) use release_judgments::check_release_judgments;
 
 pub(crate) const MANIFEST_PATH: &str = "metrics/rust-judged-behavior-panel/manifest.json";
 const DIFF_ROOT: &str = "metrics/rust-judged-behavior-panel/diffs";

@@ -134,6 +134,38 @@ validates it and reports the acceptance floors without lowering them.
 - The same behavior under two ids fails; row slices of one capture may share an
   anchor only with different directions.
 
+## Release-challenge judgments
+
+`release-judgments.json` is the independent adjudication of every frozen row
+([#3806](https://github.com/EffortlessMetrics/ripr-swarm/issues/3806)).
+`cargo xtask check-release-challenge-judgments` (also run by precommit)
+validates it against the selection bytes it names.
+
+- `selection_sha256` binds the packet to the exact selection; a stale digest
+  rejects before any row is parsed or read.
+- Every selection row has exactly one judgment, and `expected_direction` is
+  copied, not re-decided. `terminal` is one of `confirmed_should_gap`,
+  `confirmed_should_stay_quiet`, `confirmed_should_limit`,
+  `inconclusive_missing_evidence`, `inconclusive_disagreement` or
+  `invalid_case_identity`; a confirmed terminal that differs from the expected
+  direction is a departure, not an error.
+- Limit rows, gap rows, departures and disputed rows need two independent
+  declared roles. A disagreement stays recorded; a confirmed terminal needs its
+  cited resolution, and a resolved disagreement cannot stay inconclusive.
+- Each review verdict (`discriminated`, `no_production_behavior`,
+  `weakly_discriminated`, `not_discriminated`, `limited`) supports one
+  direction. Reviews that support different directions, or not the confirmed
+  one, must carry a recorded disagreement.
+- `reference_outcome` labels compare with one named analyzer run, not the #1609
+  candidate. `false_actionable` and `false_exposed` are mutually exclusive,
+  `false_exposed` can be true only on a confirmed gap or limit row, and
+  `false_actionable` only on a confirmed quiet or limit row;
+  `under_credit` and `limitation_correct` are separate observations; `null`
+  means not established. Inconclusive rows carry no labels.
+- Judgments bind to the anchored behavior (file, line, expression). The
+  historical probe ids in the selection reasons are evidence of what was
+  selected, not identities the current analyzer reproduces.
+
 ## Item contract
 
 Each `items[]` row carries:
