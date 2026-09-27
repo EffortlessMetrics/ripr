@@ -88,21 +88,139 @@ fn run_command_with_env(
     spawn_command(program, Some(current_dir), args, env, None)
 }
 
+/// Retry only `ETXTBSY` (`ExecutableFileBusy`). Copying `ripr` and executing
+/// the copy can fail while another test still holds a writable descriptor
+/// from a `fork` that has not reached `exec` (#4296). Three attempts and a
+/// 25ms pause match the doctor shim probe. Any other error, and any process
+/// that actually started, is returned unchanged.
+fn output_retrying_text_file_busy<T>(
+    mut run: impl FnMut() -> Result<T, std::io::Error>,
+) -> Result<T, std::io::Error> {
+    let mut attempt = 0usize;
+    loop {
+        attempt += 1;
+        match run() {
+            Err(error) if retry_text_file_busy(error.kind(), attempt) => {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            other => return other,
+        }
+    }
+}
+
+fn retry_text_file_busy(kind: std::io::ErrorKind, attempt: usize) -> bool {
+    kind == std::io::ErrorKind::ExecutableFileBusy && attempt < 3
+}
+
+#[test]
+fn text_file_busy_retry_stops_at_three_and_ignores_other_errors() {
+    assert!(retry_text_file_busy(
+        std::io::ErrorKind::ExecutableFileBusy,
+        1
+    ));
+    assert!(retry_text_file_busy(
+        std::io::ErrorKind::ExecutableFileBusy,
+        2
+    ));
+    assert!(!retry_text_file_busy(
+        std::io::ErrorKind::ExecutableFileBusy,
+        3
+    ));
+    assert!(!retry_text_file_busy(std::io::ErrorKind::NotFound, 1));
+    assert!(!retry_text_file_busy(
+        std::io::ErrorKind::PermissionDenied,
+        1
+    ));
+    assert!(!retry_text_file_busy(std::io::ErrorKind::WouldBlock, 1));
+}
+
+/// The predicate test above cannot see the loop: a wrapper reduced to one
+/// `run()` call would still pass it. A scripted closure pins what the wrapper
+/// does with each result: how many times it runs, and what it returns.
+#[test]
+fn text_file_busy_wrapper_reruns_only_busy_and_returns_the_final_result() -> Result<(), String> {
+    use std::io::{Error, ErrorKind};
+    fn scripted(script: Vec<Result<u8, ErrorKind>>) -> (Result<u8, ErrorKind>, usize) {
+        let mut script = script.into_iter();
+        let mut calls = 0usize;
+        let result = output_retrying_text_file_busy(|| {
+            calls += 1;
+            match script.next() {
+                Some(Ok(value)) => Ok(value),
+                Some(Err(kind)) => Err(Error::from(kind)),
+                None => Err(Error::other("script exhausted")),
+            }
+        });
+        (result.map_err(|error| error.kind()), calls)
+    }
+    let busy = ErrorKind::ExecutableFileBusy;
+    // (name, scripted results, expected result, expected calls)
+    type Case = (
+        &'static str,
+        Vec<Result<u8, ErrorKind>>,
+        Result<u8, ErrorKind>,
+        usize,
+    );
+    let cases: [Case; 5] = [
+        ("started first time", vec![Ok(7)], Ok(7), 1),
+        (
+            "busy twice then started",
+            vec![Err(busy), Err(busy), Ok(9)],
+            Ok(9),
+            3,
+        ),
+        (
+            "busy on every attempt",
+            vec![Err(busy), Err(busy), Err(busy), Ok(1)],
+            Err(busy),
+            3,
+        ),
+        (
+            "other error is not retried",
+            vec![Err(ErrorKind::NotFound), Ok(1)],
+            Err(ErrorKind::NotFound),
+            1,
+        ),
+        (
+            "other error after busy is returned",
+            vec![Err(busy), Err(ErrorKind::PermissionDenied), Ok(1)],
+            Err(ErrorKind::PermissionDenied),
+            2,
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (name, script, expected, expected_calls) in cases {
+        let (result, calls) = scripted(script);
+        if result != expected || calls != expected_calls {
+            failures.push(format!(
+                "{name}: got {result:?} after {calls} calls, expected {expected:?} after {expected_calls}"
+            ));
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
+    }
+}
+
 fn run_isolated_binary(
     binary: &Path,
     current_dir: &Path,
     args: &[&str],
     coverage_profile: Option<&Path>,
 ) -> Result<Output, std::io::Error> {
-    let mut command = Command::new(binary);
-    command.current_dir(current_dir).env_clear();
-    if let Ok(path) = std::env::var("PATH") {
-        command.env("PATH", path);
-    }
-    if let Some(profile) = coverage_profile {
-        command.env("LLVM_PROFILE_FILE", profile);
-    }
-    command.args(args).output()
+    output_retrying_text_file_busy(|| {
+        let mut command = Command::new(binary);
+        command.current_dir(current_dir).env_clear();
+        if let Ok(path) = std::env::var("PATH") {
+            command.env("PATH", path);
+        }
+        if let Some(profile) = coverage_profile {
+            command.env("LLVM_PROFILE_FILE", profile);
+        }
+        command.args(args).output()
+    })
 }
 
 fn cleanup_temp_dir(path: Option<&Path>) -> Result<(), std::io::Error> {
@@ -6971,12 +7089,14 @@ fn doctor_json_with_path_prefix(
     .map_err(|error| format!("build PATH: {error}"))?;
     let search_path = search_path.to_string_lossy().into_owned();
     let root_arg = root.display().to_string();
-    let output = run_command_with_env(
-        &binary.to_string_lossy(),
-        root,
-        &["doctor", "--root", &root_arg, "--json"],
-        &[("PATH", &search_path)],
-    )
+    let output = output_retrying_text_file_busy(|| {
+        run_command_with_env(
+            &binary.to_string_lossy(),
+            root,
+            &["doctor", "--root", &root_arg, "--json"],
+            &[("PATH", &search_path)],
+        )
+    })
     .map_err(|error| format!("run doctor: {error}"))?;
     let report = serde_json::from_slice(&output.stdout)
         .map_err(|error| format!("doctor JSON did not parse: {error}"))?;
