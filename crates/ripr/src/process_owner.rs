@@ -461,15 +461,7 @@ mod tests {
         // Wait for the marker so the descendant demonstrably exists before
         // termination; a missing marker after a generous window is a setup
         // failure, not a containment success.
-        let mut marker = Err("marker not written".to_string());
-        for _ in 0..100 {
-            if let Ok(text) = std::fs::read_to_string(&marker_path) {
-                marker = text.trim().parse::<u32>().map_err(|err| err.to_string());
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        let descendant_pid = marker.map_err(|err| format!("descendant PID marker: {err}"))?;
+        let descendant_pid = wait_for_descendant_marker(&marker_path)?;
         let termination = owned.terminate_tree();
         let _ = std::fs::remove_file(&marker_path);
         termination?;
@@ -517,17 +509,27 @@ mod tests {
         Ok(())
     }
 
+    /// Poll until the marker holds a whole PID. `Set-Content` creates the
+    /// file before writing it, so an early read can see it empty or partial;
+    /// that is not yet a marker, and stopping on it failed the setup rather
+    /// than the containment under test. The window covers two cold
+    /// PowerShell starts on a loaded runner; the last observation is kept so
+    /// a setup failure still says what was seen.
     #[cfg(windows)]
     fn wait_for_descendant_marker(marker_path: &std::path::Path) -> Result<u32, String> {
-        let mut parsed = Err("marker not written".to_string());
-        for _ in 0..100 {
-            if let Ok(text) = std::fs::read_to_string(marker_path) {
-                parsed = text.trim().parse::<u32>().map_err(|err| err.to_string());
-                break;
+        let mut last = "marker not written".to_string();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while Instant::now() < deadline {
+            match std::fs::read_to_string(marker_path) {
+                Ok(text) => match text.trim().parse::<u32>() {
+                    Ok(pid) => return Ok(pid),
+                    Err(err) => last = format!("marker {:?} not a PID yet: {err}", text.trim()),
+                },
+                Err(err) => last = format!("marker not written: {err}"),
             }
             std::thread::sleep(Duration::from_millis(100));
         }
-        parsed.map_err(|err| format!("descendant PID marker: {err}"))
+        Err(format!("descendant PID marker after 30s: {last}"))
     }
 
     /// Spawn an owned primary that starts a long-lived descendant, records

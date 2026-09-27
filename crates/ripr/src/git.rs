@@ -882,9 +882,13 @@ mod tests {
                 "$p = Start-Process -FilePath powershell -ArgumentList @('-NoProfile','-Command','Start-Sleep -Seconds 60') -NoNewWindow -PassThru; Set-Content -LiteralPath '{marker_path_text}' -Value $p.Id; Wait-Process -Id $p.Id"
             ),
         ]);
+        // The deadline must outlast two cold PowerShell starts, or the kill
+        // lands before the descendant exists and the marker is never written
+        // (seen on a loaded runner at 5s, #3922). The descendant still sleeps
+        // 60s, so the timeout remains the discriminating input.
         let result = collect_output_with_deadline(
             command,
-            Some(Duration::from_secs(5)),
+            Some(Duration::from_secs(20)),
             "pipe-inheriting-descendant",
         );
         let err = match result {
@@ -896,7 +900,7 @@ mod tests {
         if !is_git_invocation_timeout(&err) {
             return Err(format!("expected the named timeout error, got: {err}"));
         }
-        if !err.contains("exceeded the 5000ms deadline") {
+        if !err.contains("exceeded the 20000ms deadline") {
             return Err(format!(
                 "timeout error should name the deadline, got: {err}"
             ));
@@ -932,7 +936,7 @@ mod tests {
         // proving that the inherited writer was terminated). No wall-clock
         // bound: drain time past the kill is capped by
         // POST_KILL_DRAIN_GRACE inside the drain path, and the
-        // "exceeded the 5000ms deadline" assert above pins the 5s
+        // "exceeded the 20000ms deadline" assert above pins the 20s
         // discriminating input. An elapsed assert would only add flake
         // surface under parallel load.
         Ok(())

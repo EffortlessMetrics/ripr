@@ -178,6 +178,8 @@ pub(crate) struct RunOutcome {
     pub(crate) passed: BTreeSet<String>,
     pub(crate) targets: Vec<String>,
     pub(crate) results: Vec<String>,
+    /// First explanatory line of each failed test's captured libtest block.
+    pub(crate) reasons: BTreeMap<String, String>,
 }
 
 impl RunOutcome {
@@ -189,6 +191,7 @@ impl RunOutcome {
             passed: BTreeSet::new(),
             targets: Vec::new(),
             results: Vec::new(),
+            reasons: BTreeMap::new(),
         }
     }
 
@@ -482,9 +485,27 @@ fn strip_ansi(line: &str) -> String {
 
 pub(crate) fn parse_log(text: &str) -> RunOutcome {
     let mut outcome = RunOutcome::missing(RunState::StatusMissing);
+    let mut block: Option<FailureBlock> = None;
     for raw_line in text.lines() {
         let line = strip_ansi(raw_line);
         let trimmed = line.trim();
+        if let Some(name) = failure_block_header(trimmed) {
+            close_failure_block(&mut outcome, block.take());
+            block = Some(FailureBlock::new(name));
+            continue;
+        }
+        // A block ends at the next libtest section or cargo target line, so an
+        // aborted harness cannot swallow the targets that follow it.
+        if trimmed == "failures:"
+            || trimmed.starts_with("test result:")
+            || running_target(trimmed).is_some()
+        {
+            close_failure_block(&mut outcome, block.take());
+        }
+        if let Some(open) = block.as_mut() {
+            open.push(trimmed);
+            continue;
+        }
         if let Some((name, failed)) = test_result_line(trimmed) {
             if failed {
                 outcome.failed.insert(name);
@@ -499,7 +520,89 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
             outcome.results.push(trimmed.to_string());
         }
     }
+    close_failure_block(&mut outcome, block.take());
     outcome
+}
+
+/// Longest failure reason carried into the verdict. The reason exists so a
+/// truncated job log still says *why* a test failed; a full panic payload
+/// (some tests print whole JSON documents) would bury the verdict instead.
+const MAX_REASON_CHARS: usize = 240;
+
+/// One libtest `---- name stdout ----` block from the `failures:` section.
+struct FailureBlock {
+    name: String,
+    error: Option<String>,
+    panic: Option<String>,
+    awaiting_panic_message: bool,
+    first_line: Option<String>,
+}
+
+impl FailureBlock {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            error: None,
+            panic: None,
+            awaiting_panic_message: false,
+            first_line: None,
+        }
+    }
+
+    /// Keep the most explanatory line: a returned `Error:` first, then a
+    /// panic location with its message, then whatever the test printed first.
+    fn push(&mut self, line: &str) {
+        if line.is_empty() {
+            return;
+        }
+        if self.awaiting_panic_message {
+            self.awaiting_panic_message = false;
+            if let Some(location) = self.panic.as_mut() {
+                location.push(' ');
+                location.push_str(line);
+            }
+            return;
+        }
+        if self.error.is_none() && line.starts_with("Error: ") {
+            self.error = Some(line.to_string());
+        } else if self.panic.is_none()
+            && let Some((_, location)) = line.split_once(" panicked at ")
+        {
+            self.panic = Some(format!("panicked at {location}"));
+            self.awaiting_panic_message = true;
+        } else if self.first_line.is_none() {
+            self.first_line = Some(line.to_string());
+        }
+    }
+
+    fn reason(self) -> Option<String> {
+        let reason = self.error.or(self.panic).or(self.first_line)?;
+        if reason.chars().count() <= MAX_REASON_CHARS {
+            return Some(reason);
+        }
+        let mut cut: String = reason.chars().take(MAX_REASON_CHARS).collect();
+        cut.push('…');
+        Some(cut)
+    }
+}
+
+/// `---- some::test stdout ----` -> the test name.
+fn failure_block_header(line: &str) -> Option<String> {
+    let name = line
+        .strip_prefix("---- ")?
+        .strip_suffix(" stdout ----")?
+        .trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+fn close_failure_block(outcome: &mut RunOutcome, block: Option<FailureBlock>) {
+    let Some(block) = block else {
+        return;
+    };
+    let name = block.name.clone();
+    if let Some(reason) = block.reason() {
+        outcome.reasons.entry(name).or_insert(reason);
+    }
 }
 
 fn observation_label(outcome: &RunOutcome, name: &str) -> &'static str {
@@ -549,6 +652,36 @@ fn running_target(line: &str) -> Option<String> {
     let (path, _binary) = rest.split_once(" (")?;
     let path = path.trim();
     (!path.is_empty()).then(|| path.replace('\\', "/"))
+}
+
+/// Why each reported test failed, per run, so the verdict stays readable
+/// when the job log is truncated or its artifacts are unreachable. A failed
+/// test with no captured block is said to have none, never left blank.
+fn render_failure_reasons(
+    out: &mut String,
+    first: &RunOutcome,
+    second: &RunOutcome,
+    verdicts: &BTreeMap<&'static str, Vec<String>>,
+) {
+    let reported: BTreeSet<&String> = verdicts.values().flatten().collect();
+    if reported.is_empty() {
+        return;
+    }
+    out.push_str("### Failure reasons\n\n");
+    for name in reported {
+        out.push_str(&format!("- `{name}`\n"));
+        for (label, outcome) in [("Run 1", first), ("Run 2", second)] {
+            if !outcome.failed.contains(name) {
+                continue;
+            }
+            let reason = outcome
+                .reasons
+                .get(name)
+                .map_or("no failure block captured", String::as_str);
+            out.push_str(&format!("  - {label}: {}\n", reason.replace('`', "'")));
+        }
+    }
+    out.push('\n');
 }
 
 fn render(first: &RunOutcome, second: &RunOutcome) -> String {
@@ -620,6 +753,8 @@ fn render(first: &RunOutcome, second: &RunOutcome) -> String {
         }
         out.push('\n');
     }
+
+    render_failure_reasons(&mut out, first, second, &verdicts);
 
     out.push_str("### Release-seam controls (#3922)\n\n");
     out.push_str("Native Windows proof for release seams. A failure here is advisory like any test; an unobserved control fails this lane.\n\n");
@@ -708,7 +843,123 @@ mod tests {
             passed: passed.iter().map(|name| (*name).to_string()).collect(),
             targets: vec!["src/lib.rs".to_string()],
             results: vec!["test result: FAILED. 1 passed; 1 failed".to_string()],
+            reasons: BTreeMap::new(),
         }
+    }
+
+    /// Real failure-section shapes from a Windows lane run: a returned
+    /// `Error:`, a panic with its message on the next line, and a block whose
+    /// only content is printed output.
+    const FAILURE_SECTION_LOG: &str = concat!(
+        "\u{1b}[1m\u{1b}[92m     Running\u{1b}[0m unittests src\\lib.rs (target\\debug\\deps\\ripr-1.exe)\n",
+        "test a::returns_error ... FAILED\n",
+        "test b::panics ... FAILED\n",
+        "test c::prints_only ... FAILED\n",
+        "test d::passes ... ok\n",
+        "\n",
+        "failures:\n",
+        "\n",
+        "---- a::returns_error stdout ----\n",
+        "some progress output\n",
+        "Error: \"descendant PID marker: marker not written\"\n",
+        "---- b::panics stdout ----\n",
+        "\n",
+        "thread 'b::panics' (5684) panicked at crates\\ripr\\src\\b.rs:263:5:\n",
+        "expected command to succeed\n",
+        "stdout:\n",
+        "{\n",
+        "---- c::prints_only stdout ----\n",
+        "only this line\n",
+        "\n",
+        "failures:\n",
+        "    a::returns_error\n",
+        "\n",
+        "test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s\n",
+    );
+
+    #[test]
+    fn failure_blocks_yield_the_most_explanatory_reason() {
+        let outcome = parse_log(FAILURE_SECTION_LOG);
+        assert_eq!(
+            outcome.reasons.get("a::returns_error").map(String::as_str),
+            Some("Error: \"descendant PID marker: marker not written\""),
+        );
+        assert_eq!(
+            outcome.reasons.get("b::panics").map(String::as_str),
+            Some("panicked at crates\\ripr\\src\\b.rs:263:5: expected command to succeed"),
+        );
+        assert_eq!(
+            outcome.reasons.get("c::prints_only").map(String::as_str),
+            Some("only this line"),
+        );
+        assert!(!outcome.reasons.contains_key("d::passes"));
+        assert_eq!(outcome.failed.len(), 3);
+        assert_eq!(outcome.results.len(), 1);
+    }
+
+    #[test]
+    fn an_unterminated_failure_block_does_not_swallow_later_targets() {
+        let log = concat!(
+            "     Running unittests src\\lib.rs (target\\debug\\deps\\ripr-1.exe)\n",
+            "test a::aborts ... FAILED\n",
+            "failures:\n",
+            "---- a::aborts stdout ----\n",
+            "Error: \"harness aborted\"\n",
+            "     Running tests\\later.rs (target\\debug\\deps\\later-2.exe)\n",
+            "test later::ok ... ok\n",
+            "test result: ok. 1 passed; 0 failed\n",
+        );
+        let outcome = parse_log(log);
+        assert_eq!(outcome.targets, vec!["src/lib.rs", "tests/later.rs"]);
+        assert!(outcome.passed.contains("later::ok"));
+        assert_eq!(
+            outcome.reasons.get("a::aborts").map(String::as_str),
+            Some("Error: \"harness aborted\""),
+        );
+    }
+
+    #[test]
+    fn a_long_reason_is_truncated_to_the_bound() {
+        let long = format!("Error: \"{}\"", "x".repeat(MAX_REASON_CHARS * 2));
+        let log = format!("test a::long ... FAILED\nfailures:\n---- a::long stdout ----\n{long}\n");
+        let reason = parse_log(&log)
+            .reasons
+            .remove("a::long")
+            .unwrap_or_default();
+        assert_eq!(reason.chars().count(), MAX_REASON_CHARS + 1);
+        assert!(reason.ends_with('…'), "{reason}");
+    }
+
+    #[test]
+    fn the_verdict_names_each_failure_reason_per_run() {
+        let mut first = outcome(
+            RunState::NonZeroWithObservedTestFailures,
+            &["seam::flaky", "seam::silent"],
+            &[],
+        );
+        first.reasons.insert(
+            "seam::flaky".to_string(),
+            "Error: \"marker `x` missing\"".to_string(),
+        );
+        let second = outcome(
+            RunState::NonZeroWithObservedTestFailures,
+            &["seam::silent"],
+            &["seam::flaky"],
+        );
+        let rendered = render(&first, &second);
+        assert!(rendered.contains("### Failure reasons"), "{rendered}");
+        assert!(
+            rendered.contains("- `seam::flaky`\n  - Run 1: Error: \"marker 'x' missing\"\n"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "- `seam::silent`\n  - Run 1: no failure block captured\n  - Run 2: no failure block captured\n"
+            ),
+            "{rendered}"
+        );
+        let clean = outcome(RunState::CompletedClean, &[], &["seam::flaky"]);
+        assert!(!render(&clean, &clean).contains("### Failure reasons"));
     }
 
     #[test]
@@ -1057,6 +1308,7 @@ mod tests {
                 passed: BTreeSet::new(),
                 targets: Vec::new(),
                 results: Vec::new(),
+                reasons: BTreeMap::new(),
             },
             &outcome,
         );
