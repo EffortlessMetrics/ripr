@@ -13121,6 +13121,15 @@ pub(crate) fn dogfood_first_pr_metrics(
     metrics
 }
 
+// The first-PR and editor-gap-cockpit families still compare committed
+// fixtures with committed declarations; no producer runs, so no renderer
+// change can fail them (#4267). Their receipts say so rather than reading as
+// producer evidence.
+const DECLARATION_ONLY_EVIDENCE_JSON: &str =
+    "    \"evidence_source\": \"committed_declarations\",\n    \"rendered_cases\": 0,\n";
+const FIRST_PR_EVIDENCE_SOURCE_LINE: &str = "- Evidence source: committed declarations only; no producer runs in this family (#4267). The in-process renderer is compared to these fixtures by the crate test `first_successful_pr_fixture_corpus_matches_expected_outputs`.\n";
+const EDITOR_GAP_EVIDENCE_SOURCE_LINE: &str = "- Evidence source: committed declarations only; no LSP or VS Code producer runs in this family, and no test produces these fixtures (#4267).\n";
+
 pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let runs = inputs.runs;
     let gate_runs = inputs.gate_runs;
@@ -13256,6 +13265,7 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
     body.push_str("## First Successful PR Receipts\n\n");
     body.push_str("These receipts validate checked `start-here.{json,md}` fixture outputs for the first successful PR path. They record that the first screen selects a repairable Rust gap or a clear no-action/blocked state while preserving advisory limits and gate-authority separation.\n\n");
     body.push_str("- Default CI blocking: no\n");
+    body.push_str(FIRST_PR_EVIDENCE_SOURCE_LINE);
     body.push_str(
         "- Receipt outputs: `fixtures/first_successful_pr/<case>/expected/start-here.{json,md}`\n\n",
     );
@@ -14047,6 +14057,7 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
     body.push_str("## Editor Gap Cockpit Receipts\n\n");
     body.push_str("These receipts validate checked `fixtures/editor_gap_cockpit` projections for the local repair cockpit. They verify actionable Rust repair routing, preview static-limit ordering, disabled-language no-diagnostic state, wrong-root and stale fail-closed behavior, and no-action refresh-only behavior without changing analyzer truth, source files, generated tests, provider calls, mutation execution, policy, gates, or PR comments.\n\n");
     body.push_str("- Default CI blocking: no\n");
+    body.push_str(EDITOR_GAP_EVIDENCE_SOURCE_LINE);
     body.push_str("- Editor behavior: saved-workspace and projection-only\n");
     body.push_str("- Receipt outputs: `fixtures/editor_gap_cockpit/<case>/expected/*`\n\n");
     body.push_str(
@@ -15456,6 +15467,7 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n    ]\n  },\n  \"first_successful_pr\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(DECLARATION_ONLY_EVIDENCE_JSON);
     body.push_str("    \"receipt_dir\": \"fixtures/first_successful_pr\",\n");
     body.push_str("    \"metrics\": {\n");
     body.push_str(&format!(
@@ -16379,6 +16391,7 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n    ]\n  },\n  \"editor_gap_cockpit\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(DECLARATION_ONLY_EVIDENCE_JSON);
     body.push_str("    \"editor_behavior\": \"saved-workspace projection-only\",\n");
     body.push_str("    \"receipt_dir\": \"fixtures/editor_gap_cockpit\",\n    \"cases\": [\n");
     for (index, run) in preview_projection_runs

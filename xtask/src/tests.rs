@@ -13604,6 +13604,23 @@ fn dogfood_reports_are_advisory() -> Result<(), String> {
     };
     let markdown = dogfood_report_markdown(&markdown_inputs);
     let json = dogfood_report_json(&json_inputs);
+    // Families that run no producer say so, so they cannot read as producer
+    // evidence (#4267).
+    let report: serde_json::Value =
+        serde_json::from_str(&json).map_err(|err| format!("dogfood JSON: {err}"))?;
+    for family in ["first_successful_pr", "editor_gap_cockpit"] {
+        assert_eq!(
+            report[family]["evidence_source"], "committed_declarations",
+            "{family}"
+        );
+        assert_eq!(report[family]["rendered_cases"], 0, "{family}");
+    }
+    assert_eq!(
+        markdown
+            .matches("- Evidence source: committed declarations only;")
+            .count(),
+        2
+    );
 
     assert!(markdown.contains("Mode: advisory"));
     assert!(markdown.contains("boundary_gap"));
