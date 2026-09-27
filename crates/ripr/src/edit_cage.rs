@@ -2055,6 +2055,20 @@ mod tests {
         Ok(())
     }
 
+    /// On Windows a baseline holds a no-write authority on every ignored path
+    /// it does not expect to change (see `unknown_ignored_write_guard`), so the
+    /// cage refuses the write itself rather than reporting it afterwards.
+    #[cfg(windows)]
+    fn assert_write_refused_by_cage(fixture: &GitFixture, relative: &str) -> Result<(), String> {
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+        match fs::write(fixture.root.join(relative), "rewritten") {
+            Err(err) if err.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => Ok(()),
+            other => Err(format!(
+                "{relative}: expected the baseline's write guard to refuse the write, got {other:?}"
+            )),
+        }
+    }
+
     #[test]
     fn declared_cargo_build_output_rewrite_is_not_an_attempt_edit() -> Result<(), String> {
         let fixture = git_fixture("build-output-rewrite")?;
@@ -2062,7 +2076,6 @@ mod tests {
         write_cargo_build_output(&fixture, "baseline build")?;
 
         let declared = capture_attempt_baseline(&fixture.root, &build_output_policy()?)?;
-        let undeclared = capture_attempt_baseline(&fixture.root, &policy()?)?;
         fs::write(fixture.root.join("tests/pricing.rs"), "fn repaired() {}\n")
             .map_err(|err| format!("write selected test: {err}"))?;
         write_cargo_build_output(&fixture, "rebuilt by cargo test")?;
@@ -2085,23 +2098,42 @@ mod tests {
             ]
         );
 
-        // Alternate proof: the same stimulus under a policy that declares no
-        // build output is caged, so the declaration is what admits it.
-        let caged = evaluate_repository_edit_cage(&undeclared)?;
-        assert_eq!(caged.status, EditCageVerdictStatus::Violated, "{caged:?}");
-        for relative in CARGO_BUILD_OUTPUT
-            .iter()
-            .copied()
-            .chain(["target/debug/deps/pricing-2"])
-        {
-            assert!(
-                caged.violations.iter().any(|violation| {
-                    violation.kind == EditCageViolationKind::OutsideAllowedSurface
-                        && violation.path == relative
-                }),
-                "undeclared build output {relative} must be a violation: {caged:?}"
-            );
+        // Alternate proof: the same rebuild under a policy that declares no
+        // build output is caged, so the declaration is what admits it. It is a
+        // separate attempt from the baseline build, because on Windows an
+        // undeclared baseline refuses the rebuild's writes while it is held.
+        drop(declared);
+        write_cargo_build_output(&fixture, "baseline build")?;
+        let undeclared = capture_attempt_baseline(&fixture.root, &policy()?)?;
+        #[cfg(windows)]
+        for relative in CARGO_BUILD_OUTPUT {
+            assert_write_refused_by_cage(&fixture, relative)?;
         }
+        #[cfg(not(windows))]
+        {
+            write_cargo_build_output(&fixture, "rebuilt by cargo test")?;
+            write_fixture_file(
+                &fixture,
+                "target/debug/deps/pricing-2",
+                "second test binary",
+            )?;
+            let caged = evaluate_repository_edit_cage(&undeclared)?;
+            assert_eq!(caged.status, EditCageVerdictStatus::Violated, "{caged:?}");
+            for relative in CARGO_BUILD_OUTPUT
+                .iter()
+                .copied()
+                .chain(["target/debug/deps/pricing-2"])
+            {
+                assert!(
+                    caged.violations.iter().any(|violation| {
+                        violation.kind == EditCageViolationKind::OutsideAllowedSurface
+                            && violation.path == relative
+                    }),
+                    "undeclared build output {relative} must be a violation: {caged:?}"
+                );
+            }
+        }
+        drop(undeclared);
         Ok(())
     }
 
@@ -2130,6 +2162,11 @@ mod tests {
         write_cargo_build_output(&fixture, "rebuilt by cargo test")?;
         write_fixture_file(&fixture, "notes.log", "ignored but not build output")?;
         write_fixture_file(&fixture, "target/notes.rs", "untracked, not ignored")?;
+        // A forbidden ignored file inside the declared subtree stays caged: on
+        // Windows the baseline refuses the write, elsewhere it is reported.
+        #[cfg(windows)]
+        assert_write_refused_by_cage(&fixture, "target/debug/forbidden/state")?;
+        #[cfg(not(windows))]
         write_fixture_file(&fixture, "target/debug/forbidden/state", "rewritten")?;
         fs::write(fixture.root.join("src/pricing.rs"), "pub fn changed() {}\n")
             .map_err(|err| format!("write tracked source: {err}"))?;
@@ -2140,17 +2177,14 @@ mod tests {
             EditCageVerdictStatus::Violated,
             "{verdict:?}"
         );
-        assert_eq!(
-            verdict.changed_paths,
-            vec![
-                "notes.log".to_string(),
-                "src/pricing.rs".to_string(),
-                "target/debug/forbidden/state".to_string(),
-                "target/notes.rs".to_string(),
-                "tests/pricing.rs".to_string(),
-            ]
-        );
-        for (kind, path) in [
+        let mut expected_changed = vec![
+            "notes.log",
+            "src/pricing.rs",
+            "target/debug/forbidden/state",
+            "target/notes.rs",
+            "tests/pricing.rs",
+        ];
+        let mut expected_violations = vec![
             (EditCageViolationKind::OutsideAllowedSurface, "notes.log"),
             (
                 EditCageViolationKind::OutsideAllowedSurface,
@@ -2161,7 +2195,13 @@ mod tests {
                 EditCageViolationKind::ForbiddenPath,
                 "target/debug/forbidden/state",
             ),
-        ] {
+        ];
+        if cfg!(windows) {
+            expected_changed.retain(|path| *path != "target/debug/forbidden/state");
+            expected_violations.retain(|(_, path)| *path != "target/debug/forbidden/state");
+        }
+        assert_eq!(verdict.changed_paths, expected_changed);
+        for (kind, path) in expected_violations {
             assert!(
                 verdict
                     .violations

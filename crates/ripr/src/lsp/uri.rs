@@ -351,8 +351,21 @@ pub(super) fn read_artifact_capped_with_limit(path: &Path, limit: u64) -> Capped
     CappedArtifactRead::Contents(contents)
 }
 
+/// Canonicalize the longest existing prefix; only a path with no existing
+/// ancestor at all stays lexical.
+///
+/// The tail walk stops at a `..` component, because `file_name` is `None`
+/// there. Retrying on the lexically collapsed path lets a missing-tail
+/// candidate such as `src/nested/../app.py` still canonicalize through its
+/// existing ancestors. Without the retry it fell straight to the lexical form,
+/// which never matches a canonical root on Windows (`\\?\` verbatim prefix)
+/// or under a symlinked ancestor, and which let `linked/missing/../x.rs`
+/// through a symlinked `linked` directory read as contained.
 fn canonical_or_normalized(path: &Path) -> PathBuf {
-    canonicalize_with_missing_tail(path).unwrap_or_else(|| normalize_path(path))
+    let normalized = normalize_path(path);
+    canonicalize_with_missing_tail(path)
+        .or_else(|| canonicalize_with_missing_tail(&normalized))
+        .unwrap_or(normalized)
 }
 
 fn canonicalize_with_missing_tail(path: &Path) -> Option<PathBuf> {
@@ -547,6 +560,82 @@ mod tests {
         assert!(!path_is_within_root(&root, Path::new("linked/missing.rs")));
         std::fs::remove_dir_all(&root).map_err(|err| err.to_string())?;
         std::fs::remove_dir_all(&outside).map_err(|err| err.to_string())?;
+        Ok(())
+    }
+
+    fn symlink_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+        #[cfg(unix)]
+        let result = std::os::unix::fs::symlink(target, link);
+        #[cfg(windows)]
+        let result = std::os::windows::fs::symlink_dir(target, link);
+        result
+    }
+
+    /// A missing-tail candidate with a `..` segment still canonicalizes through
+    /// its existing ancestors, so it matches a root reached through a symlink.
+    /// Before the retry it fell back to the uncanonicalized lexical form and was
+    /// dropped as outside the workspace; on Windows the same mismatch is the
+    /// `\\?\` verbatim prefix on every canonical root.
+    #[test]
+    fn missing_tail_with_parent_segment_matches_a_canonical_root() -> Result<(), String> {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let real = std::env::temp_dir().join(format!("ripr-uri-dotdot-real-{suffix}"));
+        let alias = std::env::temp_dir().join(format!("ripr-uri-dotdot-alias-{suffix}"));
+        std::fs::create_dir_all(&real).map_err(|err| err.to_string())?;
+        if let Err(err) = symlink_dir(&real, &alias) {
+            eprintln!("skipping symlinked-root containment test: {err}");
+            let _ = std::fs::remove_dir_all(&real);
+            return Ok(());
+        }
+
+        let dotted = alias.join("src").join("nested").join("..").join("app.py");
+        let within = path_is_within_root(&alias, &dotted);
+        let escaped = path_is_within_root(
+            &alias,
+            &alias.join("src").join("..").join("..").join("outside.py"),
+        );
+        let _ = std::fs::remove_file(&alias).or_else(|_| std::fs::remove_dir(&alias));
+        std::fs::remove_dir_all(&real).map_err(|err| err.to_string())?;
+        assert!(
+            within,
+            "src/nested/../app.py under a symlinked root was dropped"
+        );
+        assert!(
+            !escaped,
+            "a lexical escape above the root must stay outside"
+        );
+        Ok(())
+    }
+
+    /// The lexical fallback must not let `..` hide a symlinked ancestor:
+    /// `linked/missing/../x.rs` resolves through `linked`, which points outside.
+    #[test]
+    fn parent_segment_cannot_hide_a_symlink_escape() -> Result<(), String> {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("ripr-uri-dotdot-root-{suffix}"));
+        let outside = std::env::temp_dir().join(format!("ripr-uri-dotdot-outside-{suffix}"));
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        std::fs::create_dir_all(&outside).map_err(|err| err.to_string())?;
+        if let Err(err) = symlink_dir(&outside, &root.join("linked")) {
+            eprintln!("skipping symlink escape test: {err}");
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::remove_dir_all(&outside);
+            return Ok(());
+        }
+
+        let contained = path_is_within_root(&root, Path::new("linked/missing/../x.rs"));
+        std::fs::remove_dir_all(&root).map_err(|err| err.to_string())?;
+        std::fs::remove_dir_all(&outside).map_err(|err| err.to_string())?;
+        assert!(
+            !contained,
+            "linked/missing/../x.rs escapes through the symlink"
+        );
         Ok(())
     }
 

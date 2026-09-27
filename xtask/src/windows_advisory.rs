@@ -26,9 +26,92 @@
 //! IncompleteEvidence`]). A lane that reported success while its own evidence was
 //! absent would be the exact false-confidence condition it exists to prevent,
 //! and a `0` in a status file is not on its own evidence that anything ran.
+//!
+//! # Release-seam controls must be observed
+//!
+//! A handful of tests are the only native Windows proof for a release seam
+//! (#3922): Job Object process ownership, poisoned LSP initialize terminality,
+//! and the stat-only cache refusal. Their names are listed in
+//! [`RELEASE_SEAM_CONTROLS`] and every run reports each one's observation. A
+//! control that *fails* stays advisory like any other test. A control that is
+//! *absent* from a usable run is an evidence failure: the seam would otherwise
+//! read as covered by a green lane that never executed its only native proof.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+
+/// One named native-Windows control for a release seam (#3922).
+pub(crate) struct SeamControl {
+    /// The seam row this control proves.
+    pub(crate) seam: &'static str,
+    /// The issue that owns the seam's implementation.
+    pub(crate) issue: &'static str,
+    /// The test name exactly as libtest prints it.
+    pub(crate) test: &'static str,
+    /// Repository-relative source file that defines the test, so a rename is
+    /// caught by an ordinary (non-Windows) test run rather than only by the
+    /// Windows lane refusing its evidence.
+    pub(crate) source: &'static str,
+}
+
+/// Tests that are the native Windows proof for a release seam. Most are
+/// `#[cfg(windows)]` or `#[cfg(not(unix))]`, so no other lane executes them.
+pub(crate) const RELEASE_SEAM_CONTROLS: &[SeamControl] = &[
+    SeamControl {
+        seam: "process",
+        issue: "#3803",
+        test: "process_owner::tests::owner_drop_terminates_a_still_running_child",
+        source: "crates/ripr/src/process_owner.rs",
+    },
+    SeamControl {
+        seam: "process",
+        issue: "#3803",
+        test: "process_owner::tests::terminate_tree_kills_pipe_inheriting_descendants",
+        source: "crates/ripr/src/process_owner.rs",
+    },
+    SeamControl {
+        seam: "process",
+        issue: "#3803",
+        test: "process_owner::tests::terminate_tree_leaves_unrelated_processes_alive",
+        source: "crates/ripr/src/process_owner.rs",
+    },
+    SeamControl {
+        seam: "process",
+        issue: "#3803",
+        test: "process_owner::tests::owner_drop_kills_descendants_after_the_primary_exits",
+        source: "crates/ripr/src/process_owner.rs",
+    },
+    SeamControl {
+        seam: "process",
+        issue: "#3803",
+        test: "process_owner::tests::terminate_tree_after_primary_exit_kills_descendants",
+        source: "crates/ripr/src/process_owner.rs",
+    },
+    SeamControl {
+        seam: "process",
+        issue: "#3096",
+        test: "run::tests::capture_output_with_timeout_terminates_pipe_inheriting_descendants",
+        source: "xtask/src/run.rs",
+    },
+    SeamControl {
+        seam: "lsp",
+        issue: "#3802",
+        test: "lsp::tests::initialize_surfaces_poisoned_client_features_store_as_a_session_failure",
+        source: "crates/ripr/src/lsp/tests.rs",
+    },
+    SeamControl {
+        seam: "lsp",
+        issue: "#3802",
+        test: "lsp::tests::poisoned_initialize_failure_commit_survives_a_wedged_client_channel",
+        source: "crates/ripr/src/lsp/tests.rs",
+    },
+    SeamControl {
+        seam: "cache",
+        issue: "#3848",
+        test: "analysis::seam_cache::tests::corpus_fingerprint_is_none_without_a_content_change_witness",
+        source: "crates/ripr/src/analysis/seam_cache.rs",
+    },
+];
 
 /// What one run observed about one test.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -274,6 +357,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
             unusable.push(format!("{label} is {}", outcome.state.label()));
         }
     }
+    unusable.extend(unobserved_controls(&first, &second, RELEASE_SEAM_CONTROLS));
     if unusable.is_empty() {
         Ok(())
     } else {
@@ -282,6 +366,31 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
             unusable.join("; ")
         ))
     }
+}
+
+/// Every usable run must have observed every release-seam control, passing or
+/// failing. An unusable run is already refused on its own, so it is not
+/// reported a second time per control.
+fn unobserved_controls(
+    first: &RunOutcome,
+    second: &RunOutcome,
+    controls: &[SeamControl],
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    for (label, outcome) in [("run 1", first), ("run 2", second)] {
+        if !outcome.state.is_usable() {
+            continue;
+        }
+        for control in controls {
+            if outcome.observe(control.test) == TestObservation::NotObserved {
+                missing.push(format!(
+                    "{label} did not observe {} control `{}` ({}, defined in {})",
+                    control.seam, control.test, control.issue, control.source
+                ));
+            }
+        }
+    }
+    missing
 }
 
 fn load_run(log: &Path, status: &Path) -> RunOutcome {
@@ -393,6 +502,17 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
     outcome
 }
 
+fn observation_label(outcome: &RunOutcome, name: &str) -> &'static str {
+    if !outcome.state.is_usable() {
+        return "no_evidence";
+    }
+    match outcome.observe(name) {
+        TestObservation::Failed => "FAILED",
+        TestObservation::ObservedPass => "pass",
+        TestObservation::NotObserved => "not_observed",
+    }
+}
+
 /// `test some::path ... FAILED` / `... ok` -> (name, failed).
 ///
 /// Both outcomes are collected: knowing a test was observed *passing* is what
@@ -500,6 +620,21 @@ fn render(first: &RunOutcome, second: &RunOutcome) -> String {
         }
         out.push('\n');
     }
+
+    out.push_str("### Release-seam controls (#3922)\n\n");
+    out.push_str("Native Windows proof for release seams. A failure here is advisory like any test; an unobserved control fails this lane.\n\n");
+    out.push_str("| Seam | Issue | Control | Run 1 | Run 2 |\n|---|---|---|---|---|\n");
+    for control in RELEASE_SEAM_CONTROLS {
+        out.push_str(&format!(
+            "| {} | {} | `{}` | {} | {} |\n",
+            control.seam,
+            control.issue,
+            control.test,
+            observation_label(first, control.test),
+            observation_label(second, control.test)
+        ));
+    }
+    out.push('\n');
 
     out.push_str("### Targets reached\n\n");
     out.push_str("Recorded because a compile or harness failure can still stop a run before later targets. With `--no-fail-fast` an ordinary test failure no longer hides them.\n\n");
@@ -735,6 +870,114 @@ mod tests {
              a failure is swallowed; a continue-on-error would also swallow the \
              evidence refusal"
         );
+    }
+
+    fn control(test: &'static str) -> SeamControl {
+        SeamControl {
+            seam: "process",
+            issue: "#3803",
+            test,
+            source: "crates/ripr/src/process_owner.rs",
+        }
+    }
+
+    /// #3922: an absent release-seam control is an evidence failure in each
+    /// usable run, while a failing control stays advisory.
+    #[test]
+    fn an_unobserved_release_seam_control_is_an_evidence_failure() {
+        let controls = [control("seam::observed"), control("seam::absent")];
+        let first = outcome(
+            RunState::NonZeroWithObservedTestFailures,
+            &["seam::observed"],
+            &["seam::absent"],
+        );
+        let second = outcome(RunState::CompletedClean, &[], &["seam::observed"]);
+
+        let missing = unobserved_controls(&first, &second, &controls);
+        assert_eq!(
+            missing,
+            vec![
+                "run 2 did not observe process control `seam::absent` \
+                 (#3803, defined in crates/ripr/src/process_owner.rs)"
+                    .to_string()
+            ],
+            "a failed control is observed; only the run that never reported one is refused"
+        );
+
+        let both = outcome(
+            RunState::CompletedClean,
+            &[],
+            &["seam::observed", "seam::absent"],
+        );
+        assert!(unobserved_controls(&both, &both, &controls).is_empty());
+    }
+
+    /// An unusable run is refused once for itself, not again per control.
+    #[test]
+    fn an_unusable_run_is_not_double_reported_per_control() {
+        let controls = [control("seam::absent")];
+        let missing = RunOutcome::missing(RunState::LogMissing);
+        let clean = outcome(RunState::CompletedClean, &[], &["seam::absent"]);
+        assert!(unobserved_controls(&missing, &clean, &controls).is_empty());
+    }
+
+    #[test]
+    fn the_verdict_reports_each_release_seam_control_per_run() -> Result<(), String> {
+        let [first_control, second_control, ..] = RELEASE_SEAM_CONTROLS else {
+            return Err("the lane must watch at least two release-seam controls".to_string());
+        };
+        let first = outcome(
+            RunState::NonZeroWithObservedTestFailures,
+            &[first_control.test],
+            &[],
+        );
+        let second = outcome(RunState::CompletedClean, &[], &[first_control.test]);
+        let rendered = render(&first, &second);
+        assert!(
+            rendered.contains(&format!(
+                "| {} | {} | `{}` | FAILED | pass |",
+                first_control.seam, first_control.issue, first_control.test
+            )),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(&format!(
+                "`{}` | not_observed | not_observed |",
+                second_control.test
+            )),
+            "{rendered}"
+        );
+        let unusable = RunOutcome::missing(RunState::StatusMissing);
+        assert!(
+            render(&unusable, &second)
+                .contains(&format!("`{}` | no_evidence | pass |", first_control.test))
+        );
+        Ok(())
+    }
+
+    /// Every control names a test that exists where it says, so a rename breaks
+    /// here on any platform instead of only on the Windows lane.
+    #[test]
+    fn every_release_seam_control_names_a_defined_test() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut names = BTreeSet::new();
+        for control in RELEASE_SEAM_CONTROLS {
+            assert!(
+                names.insert(control.test),
+                "duplicate control {}",
+                control.test
+            );
+            let source = std::fs::read_to_string(root.join(control.source))
+                .map_err(|err| format!("read {}: {err}", control.source))?;
+            let leaf = control.test.rsplit("::").next().unwrap_or(control.test);
+            assert!(
+                source.contains(&format!("fn {leaf}(")),
+                "{} does not define `{leaf}` for control {}",
+                control.source,
+                control.test
+            );
+        }
+        Ok(())
     }
 
     #[test]

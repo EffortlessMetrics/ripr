@@ -84,7 +84,14 @@ fn write_with_sync(
                 error_path_policy.suffix(&tmp_path)
             )
         })?;
-        if let Ok(metadata) = std::fs::metadata(path) {
+        // Only an existing *file* has permissions to carry over. A directory
+        // at the destination makes the rename below fail with the finalize
+        // error; copying its attributes first would fail earlier on Windows,
+        // where they include FILE_ATTRIBUTE_DIRECTORY (os error 87), and
+        // misreport the cause as a permission problem.
+        if let Ok(metadata) = std::fs::metadata(path)
+            && metadata.is_file()
+        {
             file.set_permissions(metadata.permissions())
                 .map_err(|err| {
                     format!(

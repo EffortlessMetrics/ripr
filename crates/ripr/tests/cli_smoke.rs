@@ -422,6 +422,11 @@ fn init_producer_fixture_repo(root: &Path) -> Result<(), Box<dyn std::error::Err
         std::fs::copy(fixture_root.join(relative), root.join(relative))?;
     }
     run_git(root, &["init"])?;
+    // Keep checkouts byte-identical to what was committed. Windows Git
+    // defaults to autocrlf=true, so a `git checkout HEAD -- <file>` restore
+    // would rewrite LF bytes as CRLF and the edit cage (which digests raw
+    // bytes) would see the restored file as a new edit.
+    run_git(root, &["config", "core.autocrlf", "false"])?;
     run_git(
         root,
         &["add", "Cargo.toml", "src/lib.rs", "tests/pricing.rs"],
@@ -9738,7 +9743,10 @@ fn pilot_names_typescript_diff_first_route_when_repo_has_no_rust_seams() -> Resu
 
     assert_pilot_found_no_rust_seams(&summary, &exposure);
     let route = required_language_route(&summary, "typescript")?;
-    let command = format!("ripr check --root {}", root.display());
+    let command = format!(
+        "ripr check --root {}",
+        root.display().to_string().replace('\\', "/")
+    );
     assert_eq!(route["language_status"], "preview");
     assert_eq!(route["enabled"], false);
     assert_eq!(route["route"], "check_diff_first");
@@ -9823,7 +9831,10 @@ fn pilot_names_python_check_route_when_repo_has_no_rust_seams() -> Result<(), St
     // projection; the route adds where to rerun it.
     assert_eq!(summary["python_first_use"]["status"], "ready");
     let route = required_language_route(&summary, "python")?;
-    let command = format!("ripr check --root {}", root.display());
+    let command = format!(
+        "ripr check --root {}",
+        root.display().to_string().replace('\\', "/")
+    );
     assert_eq!(route["enabled"], true);
     assert_eq!(route["command"], serde_json::json!(command));
     assert_eq!(route["guidance_category"], "python_diff_first");

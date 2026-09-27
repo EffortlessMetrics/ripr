@@ -58,6 +58,12 @@ concurrency:
 # observed pass, not observed) and reports `masked_unknown` rather than guessing.
 # Failing twice is reported as `repeated_failure`, not "deterministic", since a
 # shared race can also reproduce twice.
+#
+# Release-seam controls (#3922): the summarizer lists the tests that are the
+# only native Windows proof for process ownership, LSP initialize terminality,
+# and the stat-only cache refusal, with each one's observation per run. A
+# failing control stays advisory; a control missing from a usable run fails
+# this lane, so a green run means every control was executed twice.
 
 jobs:
   windows-advisory:
@@ -146,23 +152,25 @@ jobs:
         run: |
           cargo xtask windows-advisory-summary --run1 target/windows-run1.log --run1-status target/windows-run1.status --run2 target/windows-run2.log --run2-status target/windows-run2.status | tee target/windows-verdict.md | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # A missing status file is `not_run`, never silence: a lane that drops a
+      # row it did not execute reads as if nothing was wrong. The rows are
+      # echoed to the job log as well: the step summary is not retrievable
+      # through the API, and the artifact needs a separate authenticated
+      # download.
       - name: Summarize feature-combination results
         shell: bash
         run: |
-          echo "" >> target/windows-verdict.md
-          echo "### Feature-combination tests (#2400)" >> target/windows-verdict.md
-          echo "" >> target/windows-verdict.md
+          printf '\n### Feature-combination tests (#2400)\n\n' >> target/windows-verdict.md
           for label in nofeatures-check nofeatures-test allfeatures-check; do
             status_file="target/${label}.status"
-            if [ -f "$status_file" ]; then
-              status=$(cat "$status_file")
-              if [ "$status" = "0" ]; then
-                echo "- $label: PASS" >> target/windows-verdict.md
-              else
-                echo "- $label: FAIL (exit $status)" >> target/windows-verdict.md
-              fi
+            if [ ! -f "$status_file" ]; then
+              echo "- $label: not_run (no status file)"
+            elif [ "$(cat "$status_file")" = "0" ]; then
+              echo "- $label: PASS"
+            else
+              echo "- $label: FAIL (exit $(cat "$status_file"))"
             fi
-          done
+          done | tee -a target/windows-verdict.md
           cat target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload advisory logs
