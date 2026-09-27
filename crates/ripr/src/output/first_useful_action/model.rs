@@ -110,6 +110,10 @@ pub(super) struct ActionCommands {
     pub(super) repair: Option<String>,
     pub(super) context_packet: Option<String>,
     pub(super) after_snapshot: Option<String>,
+    /// Writes `analysis-outcome.json` beside the persisted verify file, which
+    /// `agent receipt` needs for a complete, promotable receipt (#4304).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) analysis_outcome: Option<String>,
     pub(super) verify: Option<String>,
     pub(super) receipt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

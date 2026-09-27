@@ -2352,9 +2352,17 @@ fn first_action_cli_writes_actionable_report() -> Result<(), Box<dyn std::error:
         json_pointer_str(&report, "/selected/seam_id")?,
         "67fc764ba37d77bd"
     );
+    // #4304: verify persists to the file the receipt reads, anchored at the
+    // resolved --root (the workspace root here), and the analysis outcome the
+    // receipt needs lands beside it.
+    let prefix = format!("{}/", workspace_root().to_string_lossy().replace('\\', "/"));
     assert_eq!(
-        json_pointer_str(&report, "/commands/verify")?,
-        "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        json_pointer_str(&report, "/commands/verify")?.replace(&prefix, "<cwd>/"),
+        "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-verify.json"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/commands/analysis_outcome")?.replace(&prefix, "<cwd>/"),
+        "ripr check --root fixtures/boundary_gap/input --mode draft --format json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/analysis-outcome.json"
     );
     assert_eq!(
         json_pointer_str(&report, "/target/suggested_test_name")?,

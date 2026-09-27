@@ -3,6 +3,18 @@
 ## Pending
 
 Reason:
+#4304: the actionable first-action route now persists `agent verify` to the `--verify-json` path the receipt command reads and adds `commands.analysis_outcome`, which writes the `analysis-outcome.json` a complete receipt needs. The front panel carries the new command as `top_issue.analysis_outcome_command`.
+
+Command:
+`cargo xtask dogfood` produced outputs under `target/ripr/dogfood/{first-useful-action,pr-review-front-panel}/*`, with the renderer cwd projected to `<cwd>` and `generated_at` kept; then `cargo test -p ripr --lib -- first_useful_action pr_review_front_panel`
+
+Updated:
+- `expected/first-useful-action/actionable/first-useful-action.{json,md}`
+- `expected/pr-review-front-panel/{actionable,blocked}/pr-review-front-panel.{json,md}`
+
+## Pending
+
+Reason:
 #3906 (F60-14, F60-2(c)): gate-decision Markdown leads a carried repair start with the after-phase step and labels verify and receipt as the manual alternative that names its prerequisites; the front panel and first-useful-action manual labels name the same prerequisites. JSON is unchanged.
 
 Command:

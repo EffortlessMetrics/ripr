@@ -162,6 +162,10 @@ struct PanelTopIssue {
     #[serde(skip_serializing_if = "Option::is_none")]
     repair_command: Option<String>,
     verify_command: Option<String>,
+    /// Carried from first-action `commands.analysis_outcome` (#4304): it
+    /// writes the file the receipt reads beside the verify output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analysis_outcome_command: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     receipt_command: Option<String>,
     static_evidence_boundary: &'static str,
@@ -487,6 +491,11 @@ pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelR
         let (verify_label, receipt_label) = proof_path_labels(issue);
         if let Some(command) = &issue.repair_command {
             push_repair_start(&mut out, command);
+        }
+        if let Some(command) = &issue.analysis_outcome_command {
+            out.push_str(&format!(
+                "- Analysis outcome for the receipt: `{command}`\n"
+            ));
         }
         out.push_str(&format!(
             "- {verify_label}: {}\n",
@@ -1594,6 +1603,7 @@ fn top_issue_from_first_action(
         repair_command: repair_command.clone(),
         verify_command: string_path(action, &["commands", "verify"]),
         receipt_command: string_path(action, &["commands", "receipt"]),
+        analysis_outcome_command: string_path(action, &["commands", "analysis_outcome"]),
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         // Carried only: the repair start when first-action names one, else
         // its read-only context-packet command. Never a synthesized start.
@@ -1663,6 +1673,7 @@ fn top_issue_from_guidance(
             )
         }),
         receipt_command: None,
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         // Carried only: the card's repair start, else its read-only
         // inspection command. Never a start synthesized from the seam id.
@@ -1723,6 +1734,7 @@ fn top_issue_from_gate_decision(
         repair_command: repair_command.clone(),
         verify_command: None,
         receipt_command: None,
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: repair_command.or(inspection_command),
         receipt: PanelReceipt {
@@ -1765,6 +1777,7 @@ fn top_issue_from_baseline_delta(
         repair_command: None,
         verify_command: string_path(item, &["repair", "verify_command"]),
         receipt_command: string_path(item, &["repair", "receipt_command"]),
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: None,
         receipt: PanelReceipt {
@@ -1816,6 +1829,7 @@ fn top_issue_from_assistant_health(
         repair_command: None,
         verify_command: recommendation.and_then(|value| string_path(value, &["verify_command"])),
         receipt_command: receipt.and_then(|value| string_path(value, &["command"])),
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: handoff.and_then(|value| string_path(value, &["agent_command"])),
         receipt: PanelReceipt {
@@ -2020,6 +2034,7 @@ fn top_issue_from_python_no_action_ledger(
         repair_command: None,
         verify_command: None,
         receipt_command: None,
+        analysis_outcome_command: None,
         static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
         agent_command: None,
         receipt: PanelReceipt {

@@ -47,10 +47,111 @@ fn first_useful_action_matches_actionable_fixture() -> Result<(), String> {
         project_cwd_text(&render_first_useful_action_json(&report)?),
         read_file(&base.join("first-useful-action.json"))?.trim_end()
     );
+    // #4304: the Markdown now carries the anchored verify and analysis-outcome
+    // redirects, so it takes the same projection.
     assert_eq!(
-        render_first_useful_action_markdown(&report),
+        project_cwd_text(&render_first_useful_action_markdown(&report)),
         read_file(&base.join("first-useful-action.md"))?
     );
+    Ok(())
+}
+
+/// #4304: following the actionable report's commands literally must leave
+/// every file `agent receipt` reads on disk. The receipt reads its
+/// `--verify-json` path and the `analysis-outcome.json` beside it (the path
+/// comes from the receipt's own lookup), so the verify and analysis-outcome
+/// commands must redirect to exactly those files.
+#[test]
+fn first_useful_action_actionable_commands_write_every_file_the_receipt_reads() -> Result<(), String>
+{
+    let repo_root = repo_root()?;
+    let canonical = "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical";
+    let proof = repo_root.join(format!("{canonical}/test-oracle-assistant-proof.json"));
+    let pr_guidance = repo_root.join(format!("{canonical}/pr-guidance.json"));
+    let ledger = repo_root.join(format!("{canonical}/pr-evidence-ledger.json"));
+    let root = "fixtures/boundary_gap/input";
+    let report = build_first_useful_action_report(FirstUsefulActionInput {
+        root: root.to_string(),
+        generated_at: "2026-05-09T12:00:00Z".to_string(),
+        pr_guidance_path: Some(fixture_path(&repo_root, &pr_guidance)),
+        assistant_proof_path: Some(fixture_path(&repo_root, &proof)),
+        gap_ledger_path: None,
+        ledger_path: Some(fixture_path(&repo_root, &ledger)),
+        baseline_delta_path: None,
+        receipt_path: None,
+        gate_decision_path: None,
+        coverage_frontier_path: None,
+        editor_context_path: None,
+        pr_guidance_json: Some(Ok(read_file(&pr_guidance)?)),
+        assistant_proof_json: Some(Ok(read_file(&proof)?)),
+        gap_ledger_json: None,
+        ledger_json: Some(Ok(read_file(&ledger)?)),
+        baseline_delta_json: None,
+        receipt_json: None,
+        gate_decision_json: None,
+        coverage_frontier_json: None,
+        editor_context_json: None,
+    });
+    assert_eq!(report.status, "actionable");
+
+    let commands = &report.commands;
+    let receipt = commands
+        .receipt
+        .as_deref()
+        .ok_or("receipt command missing")?;
+    let verify_json = receipt
+        .split_whitespace()
+        .skip_while(|token| *token != "--verify-json")
+        .nth(1)
+        .ok_or("receipt command names no --verify-json")?;
+    let outcome_path =
+        crate::app::analysis_outcome_artifact::analysis_outcome_artifact_path_for_verify(
+            Path::new(verify_json),
+        )?;
+    let outcome_path = outcome_path.to_string_lossy().replace('\\', "/");
+
+    let redirect_target = |command: &str| {
+        command
+            .rsplit_once(" > ")
+            .map(|(_, target)| target.to_string())
+    };
+    let verify = commands.verify.as_deref().ok_or("verify command missing")?;
+    assert_eq!(
+        redirect_target(verify),
+        Some(crate::agent::loop_commands::anchored_redirect_target(
+            root,
+            verify_json
+        )),
+        "verify must write the file the receipt reads: {verify}"
+    );
+    let outcome = commands
+        .analysis_outcome
+        .as_deref()
+        .ok_or("analysis-outcome command missing")?;
+    assert_eq!(
+        redirect_target(outcome),
+        Some(crate::agent::loop_commands::anchored_redirect_target(
+            root,
+            &outcome_path
+        )),
+        "analysis outcome must land beside the verify file: {outcome}"
+    );
+
+    let verify_spec = commands
+        .command_specs
+        .as_ref()
+        .and_then(|specs| specs.verify.as_ref())
+        .ok_or("verify command spec missing")?;
+    assert_eq!(verify_spec.expected_writes, vec![verify_json.to_string()]);
+    assert_eq!(verify_spec.display, verify);
+
+    let markdown = render_first_useful_action_markdown(&report);
+    for command in [outcome, verify, receipt] {
+        assert!(
+            markdown.contains(&format!("`{command}`")),
+            "Markdown must list `{command}`"
+        );
+    }
     Ok(())
 }
 

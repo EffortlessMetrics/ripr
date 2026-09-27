@@ -12,6 +12,11 @@ struct ProofPathSections {
     receipt_heading: &'static str,
 }
 
+/// The step that writes `analysis-outcome.json` beside the verify file; the
+/// receipt is incomplete without it (#4304).
+const ANALYSIS_OUTCOME_HEADING: &str = "Analysis Outcome For The Receipt";
+const ANALYSIS_OUTCOME_LABEL: &str = "Analysis outcome for the receipt";
+
 fn proof_path_sections(report: &FirstUsefulActionReport) -> ProofPathSections {
     let repair_start = report.commands.repair.is_some();
     let (verify_heading, receipt_heading) = if repair_start {
@@ -77,6 +82,11 @@ pub(crate) fn render_first_useful_action_markdown(report: &FirstUsefulActionRepo
         out.push_str(&format!(
             "{REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n\n"
         ));
+    }
+
+    if let Some(outcome) = &report.commands.analysis_outcome {
+        out.push_str(&format!("## {ANALYSIS_OUTCOME_HEADING}\n\n"));
+        out.push_str(&format!("`{outcome}`\n\n"));
     }
 
     if let Some(verify) = &report.commands.verify {
@@ -188,6 +198,9 @@ fn render_one_screen_recommendation_markdown(report: &FirstUsefulActionReport, o
         out.push_str(&format!(
             "- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
         ));
+    }
+    if let Some(outcome) = &report.commands.analysis_outcome {
+        out.push_str(&format!("- {ANALYSIS_OUTCOME_LABEL}: `{outcome}`\n"));
     }
     out.push_str(&format!(
         "- {}: `{verify_command}`\n",

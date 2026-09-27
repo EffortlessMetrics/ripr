@@ -1582,11 +1582,20 @@ fn seam_commands(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> Acti
             "draft",
             loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
         )),
+        // #4304: every file the receipt reads is written by a command listed
+        // here. The verify output lands at the path `receipt --verify-json`
+        // names, and the analysis outcome lands beside it, where the receipt
+        // looks for it.
+        analysis_outcome: Some(loop_commands::check_analysis_outcome_command(
+            &input.root,
+            "draft",
+            loop_commands::WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+        )),
         verify: Some(loop_commands::agent_verify_command(
             &input.root,
             loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
             loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
-            None,
+            Some(loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
         )),
         receipt: Some(loop_commands::agent_receipt_command(
             &input.root,
@@ -1599,7 +1608,7 @@ fn seam_commands(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> Acti
                 &input.root,
                 loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
                 loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
-                None,
+                Some(loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
             )),
             receipt: Some(command_specs::agent_receipt_command_spec(
                 &input.root,

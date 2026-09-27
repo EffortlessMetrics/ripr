@@ -10795,7 +10795,8 @@ JSON shape:
   "commands": {
     "context_packet": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json",
     "after_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
-    "verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "analysis_outcome": "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json",
+    "verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
     "receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json"
   },
   "evidence": {
@@ -10844,6 +10845,13 @@ Field contract:
   name, and assertion shape when supplied by existing artifacts.
 - `commands.*` records copyable commands from existing command templates or
   supplied artifacts. Missing commands become `null` and warnings.
+- On the actionable and no-actionable-seam routes, `commands.verify` redirects
+  to the `--verify-json` path `commands.receipt` reads, and
+  `commands.analysis_outcome` writes `analysis-outcome.json` beside it, which a
+  complete receipt needs (#4304). Both redirect targets are anchored at
+  `--root`. `command_specs.verify.expected_writes` names the verify file.
+  Markdown lists the analysis-outcome command before verify, and the PR review
+  front panel carries it as `top_issue.analysis_outcome_command`.
 - `commands.repair` is present only when the first review card (inline
   comments, then summary-only) carries `llm_guidance.repair_command` and no
   assistant proof exists yet (#3906). The card names that command only past
@@ -11302,6 +11310,10 @@ Field contract:
   gate, baseline, and assistant-health inputs may normalize existing typed
   class/status fields, but must not infer the value from Markdown prose or code
   inspection.
+- `top_issue.analysis_outcome_command` is present only when a
+  `first_useful_action` input carries `commands.analysis_outcome` (#4304). It
+  writes the `analysis-outcome.json` that `top_issue.receipt_command` needs
+  for a complete receipt, and Markdown lists it before the verify command.
 - `top_issue.repair_command` is present only when an input carries the repair
   start (#3906): first-action `commands.repair`, a review card's
   `llm_guidance.repair_command`, or an acknowledged gate route's

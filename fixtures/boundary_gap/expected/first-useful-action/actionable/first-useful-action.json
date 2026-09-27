@@ -44,14 +44,15 @@
   "commands": {
     "context_packet": "ripr agent packet --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --json",
     "after_snapshot": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/after.repo-exposure.json",
-    "verify": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "analysis_outcome": "ripr check --root fixtures/boundary_gap/input --mode draft --format json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/analysis-outcome.json",
+    "verify": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-verify.json",
     "receipt": "ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
     "command_specs": {
       "verify": {
         "schema_version": "1",
         "command_id": "ripr:agent:verify",
         "role": "verify",
-        "execution_mode": "direct",
+        "execution_mode": "shell_required",
         "program": "ripr",
         "args": [
           "agent",
@@ -76,14 +77,16 @@
         "expected_exit_codes": [
           0
         ],
-        "expected_writes": [],
+        "expected_writes": [
+          "target/ripr/workflow/agent-verify.json"
+        ],
         "cost_class": "unknown",
         "platforms": [
           "linux",
           "macos",
           "windows"
         ],
-        "human_display": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+        "human_display": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-verify.json",
         "authority_boundary": "verification_route_only"
       },
       "receipt": {
