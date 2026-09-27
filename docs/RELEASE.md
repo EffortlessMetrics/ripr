@@ -348,6 +348,15 @@ git tag v0.8.0
 git push origin v0.8.0
 ```
 
+Pushing the tag publishes nothing by itself. The release workflows run only by
+`workflow_dispatch`, one channel at a time, in the order and with the receipts
+that [RELEASE_TRANSACTION.md](RELEASE_TRANSACTION.md) gives: create the GitHub
+Release, then dispatch `release-server-binaries.yml`, then
+`publish-extension.yml` on the tag (`--ref v0.8.0`) with exactly one of
+`publish_vs_marketplace=true` or `publish_open_vsx=true`; the workflow refuses
+zero or two channels. The extension workflow attaches its VSIX to the existing
+`v<version>` Release without creating or replacing it.
+
 Update docs or release notes if the install command or package metadata changed.
 
 ## Public-Surface Copy
@@ -381,7 +390,11 @@ existing GitHub Release rather than replacing it.
    correctly on the existing Release.
 3. After server assets are present and verified, rerun any downstream
    workflow that was gated on them, for example
-   `gh workflow run publish-extension.yml --repo EffortlessMetrics/ripr -f version=0.8.0`.
+   `gh workflow run publish-extension.yml --repo EffortlessMetrics/ripr --ref v0.8.0 -f version=0.8.0 -f publish_vs_marketplace=true -f publish_open_vsx=false`,
+   or the reverse pair for Open VSX. Exactly one channel must be `true`; the
+   workflow refuses zero or two. If the fix-forward repaired this workflow
+   itself, dispatch with `--ref main` instead: the VSIX still attaches to the
+   `v<version>` Release named by `version`, not to the execution ref.
 4. Do not retag and do not delete the GitHub Release. Leave the tag at
    the release-prep commit; the fix-forward commit is on `main` and any
    subsequent point release will include it.

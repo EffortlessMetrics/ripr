@@ -8,3 +8,6 @@ out/test/**
 out/**/*.map
 out/test/**
 out/src/test/**
+# Cargo output under the extension (for example a cwd-relative `cargo xtask`
+# target dir, ripr#1690) must never be packaged into the VSIX.
+target/**

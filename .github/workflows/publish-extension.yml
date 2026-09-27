@@ -9,20 +9,43 @@ on:
       publish_vs_marketplace:
         description: "Publish to VS Marketplace"
         required: false
-        default: "true"
+        default: "false"
       publish_open_vsx:
         description: "Publish to Open VSX"
         required: false
-        default: "true"
-  push:
-    tags:
-      - "v*"
+        default: "false"
+  # No tag trigger and no default-on marketplace: each channel is dispatched
+  # explicitly per docs/RELEASE_TRANSACTION.md (#1646 owns the full topology).
 
 permissions:
   contents: write
 
 jobs:
+  admit-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require exactly one marketplace channel and a release version
+        env:
+          PUBLISH_VS_MARKETPLACE: ${{ github.event.inputs.publish_vs_marketplace }}
+          PUBLISH_OPEN_VSX: ${{ github.event.inputs.publish_open_vsx }}
+          RAW_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          # Fail closed: one dispatch authorizes exactly one channel, so neither
+          # "no channel" (a Release write with no marketplace) nor "both" passes.
+          case "$PUBLISH_VS_MARKETPLACE/$PUBLISH_OPEN_VSX" in
+            true/false | false/true) ;;
+            *)
+              echo "::error::Set exactly one of publish_vs_marketplace or publish_open_vsx to true (got $PUBLISH_VS_MARKETPLACE/$PUBLISH_OPEN_VSX)"
+              exit 1
+              ;;
+          esac
+          if ! [[ "${RAW_VERSION#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::version must be a release version such as 0.11.0 (got $RAW_VERSION)"
+            exit 1
+          fi
+
   package:
+    needs: admit-dispatch
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,6 +80,7 @@ jobs:
           path: editors/vscode/dist/*.vsix
 
   server-assets-ready:
+    needs: admit-dispatch
     runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
@@ -79,7 +103,7 @@ jobs:
 
   publish-vs-marketplace:
     needs: [package, server-assets-ready]
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_vs_marketplace != 'false' }}
+    if: ${{ github.event.inputs.publish_vs_marketplace == 'true' }}
     runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
@@ -118,7 +142,7 @@ jobs:
 
   publish-open-vsx:
     needs: [package, server-assets-ready]
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_open_vsx != 'false' }}
+    if: ${{ github.event.inputs.publish_open_vsx == 'true' }}
     runs-on: ubuntu-latest
     env:
       RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
@@ -146,8 +170,9 @@ jobs:
           npx -y ovsx publish "dist/ripr-${version}.vsix" -p "$OVSX_PAT" --skip-duplicate
 
   attach-release-asset:
-    needs: package
-    if: ${{ github.ref_type == 'tag' }}
+    # The Release tag comes from the version input, not the execution ref, so a
+    # fix-forward dispatch from a branch still attaches to the original Release.
+    needs: [admit-dispatch, package]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -157,8 +182,23 @@ jobs:
 
       - name: Attach VSIX to GitHub Release
         run: |
-          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" --title "ripr ${{ github.ref_name }}"
-          gh release upload "${{ github.ref_name }}" dist/*.vsix --clobber
+          # The GitHub Release has exactly one creator (the release transaction).
+          # Attach to it only; never create it or replace an existing asset, so
+          # a second channel dispatch keeps the first attached VSIX.
+          set -euo pipefail
+          release_tag="v${RAW_VERSION#v}"
+          existing="$(gh release view "$release_tag" --json assets --jq '.assets[].name')"
+          for vsix in dist/*.vsix; do
+            name="$(basename "$vsix")"
+            if printf '%s\n' "$existing" | grep -Fxq "$name"; then
+              echo "$name is already attached to $release_tag; leaving it in place"
+            else
+              gh release upload "$release_tag" "$vsix"
+            fi
+          done
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # Through env, not template expansion, so the input is data; its
+          # format is checked in admit-dispatch.
+          RAW_VERSION: ${{ github.event.inputs.version }}
