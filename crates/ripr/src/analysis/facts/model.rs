@@ -330,8 +330,13 @@ pub struct ModuleDeclarationFact {
 }
 
 /// The `#[path]` target shape of one out-of-line module declaration (#3533).
+///
+/// Adjacently tagged: serde cannot serialize an internally tagged newtype
+/// variant holding a string, so `tag` alone made every file with a literal
+/// `#[path]` fail its file-fact cache store (#4171). Unit variants keep the
+/// `{"kind": ...}` shape they always had, so existing entries still decode.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", content = "path", rename_all = "snake_case")]
 pub enum ModulePathTarget {
     /// No `#[path]` attribute: default resolution relative to the declaring
     /// file's module directory (`<stem>/<name>.rs`, `<stem>/<name>/mod.rs`).
@@ -813,6 +818,31 @@ mod tests {
         assert!(index.files.is_empty());
         assert!(index.tests.is_empty());
         assert!(index.functions.is_empty());
+    }
+
+    #[test]
+    fn module_path_target_encodes_literal_and_decodes_pre_4171_unit_entries()
+    -> Result<(), serde_json::Error> {
+        let literal = ModulePathTarget::Literal("other.rs".to_string());
+        let encoded = serde_json::to_value(&literal)?;
+        assert_eq!(
+            encoded,
+            serde_json::json!({"kind": "literal", "path": "other.rs"})
+        );
+        assert_eq!(
+            serde_json::from_value::<ModulePathTarget>(encoded)?,
+            literal
+        );
+        // Cache entries written before #4171 hold only unit variants in the
+        // internally tagged shape; they must keep decoding.
+        for (legacy, expected) in [
+            (r#"{"kind":"default"}"#, ModulePathTarget::Default),
+            (r#"{"kind":"unknown"}"#, ModulePathTarget::Unknown),
+        ] {
+            assert_eq!(serde_json::from_str::<ModulePathTarget>(legacy)?, expected);
+            assert_eq!(serde_json::to_string(&expected)?, legacy);
+        }
+        Ok(())
     }
 
     #[test]

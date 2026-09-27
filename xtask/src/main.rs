@@ -10514,6 +10514,31 @@ struct RepoExposureLatencyRun {
     stdout_bytes: usize,
     stderr_bytes: usize,
     trace: Vec<RepoExposureLatencyTrace>,
+    file_fact_cache: Option<RepoExposureFileFactCache>,
+    file_fact_cache_limitation: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct RepoExposureFileFactCache {
+    schema_version: String,
+    hits: usize,
+    misses: usize,
+    invalidated: usize,
+    corrupt_ignored: usize,
+    stores: usize,
+    store_errors: usize,
+    store_failures: Vec<RepoExposureStoreFailure>,
+    store_failures_dropped: usize,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct RepoExposureStoreFailure {
+    /// `None` when the producer found no portable spelling for the file.
+    path: Option<String>,
+    stage: String,
+    error: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -10579,6 +10604,8 @@ where
             stdout_bytes: 0,
             stderr_bytes: 0,
             trace: Vec::new(),
+            file_fact_cache: None,
+            file_fact_cache_limitation: Some("format_skipped".to_string()),
         });
     }
 
@@ -10640,6 +10667,8 @@ fn repo_exposure_latency_run_from_output(
     } else {
         "fail"
     };
+    let (file_fact_cache, file_fact_cache_limitation) =
+        repo_exposure_file_fact_cache_from_stderr(&output.stderr);
     RepoExposureLatencyRun {
         format: format.to_string(),
         status: status.to_string(),
@@ -10648,7 +10677,53 @@ fn repo_exposure_latency_run_from_output(
         stdout_bytes: output.stdout.len(),
         stderr_bytes: output.stderr.len(),
         trace: repo_exposure_latency_trace(&output.stderr),
+        file_fact_cache,
+        file_fact_cache_limitation,
     }
+}
+
+fn repo_exposure_file_fact_cache_from_stderr(
+    stderr: &str,
+) -> (Option<RepoExposureFileFactCache>, Option<String>) {
+    const PREFIX: &str = "ripr_file_fact_cache_receipt ";
+    // Mirrors the producer's `MAX_STORE_FAILURE_ROWS` row cap.
+    const MAX_RETAINED_STORE_FAILURES: usize = 32;
+    let mut records = stderr.lines().filter_map(|line| line.strip_prefix(PREFIX));
+    let Some(record) = records.next() else {
+        return (None, Some("cache_phase_not_observed".to_string()));
+    };
+    if records.next().is_some() {
+        return (None, Some("duplicate_cache_receipt".to_string()));
+    }
+    let Ok(value) = serde_json::from_str::<RepoExposureFileFactCache>(record) else {
+        return (None, Some("malformed_cache_receipt".to_string()));
+    };
+    if value.schema_version != "0.1"
+        || value.store_failures.len() > MAX_RETAINED_STORE_FAILURES
+        || value
+            .store_failures
+            .len()
+            .checked_add(value.store_failures_dropped)
+            .is_none_or(|count| count != value.store_errors)
+        || (value.store_failures.len() < MAX_RETAINED_STORE_FAILURES
+            && value.store_failures_dropped > 0)
+        || value.store_failures.iter().any(|row| {
+            !matches!(row.stage.as_str(), "create_dir" | "encode" | "write")
+                || row.path.as_deref().is_some_and(|path| {
+                    path.is_empty()
+                        || path.starts_with('/')
+                        || path
+                            .split('/')
+                            .any(|part| part == "." || part == ".." || part.is_empty())
+                        || path.contains('\\')
+                        || path.contains(':')
+                        || path.chars().any(char::is_control)
+                })
+        })
+    {
+        return (None, Some("invalid_cache_receipt".to_string()));
+    }
+    (Some(value), None)
 }
 
 fn repo_exposure_latency_status(runs: &[RepoExposureLatencyRun]) -> String {
@@ -10693,7 +10768,7 @@ fn repo_exposure_latency_trace(stderr: &str) -> Vec<RepoExposureLatencyTrace> {
 fn repo_exposure_latency_json(report: &RepoExposureLatencyReport) -> String {
     let mut body = String::new();
     body.push_str("{\n");
-    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"schema_version\": \"0.2\",\n");
     body.push_str("  \"tool\": \"ripr\",\n");
     body.push_str("  \"report\": \"repo-exposure-latency\",\n");
     body.push_str(&format!(
@@ -10726,6 +10801,17 @@ fn repo_exposure_latency_json(report: &RepoExposureLatencyReport) -> String {
         }
         body.push_str(&format!("      \"stdout_bytes\": {},\n", run.stdout_bytes));
         body.push_str(&format!("      \"stderr_bytes\": {},\n", run.stderr_bytes));
+        body.push_str("      \"file_fact_cache\": ");
+        match &run.file_fact_cache {
+            Some(cache) => body.push_str(&serde_json::json!(cache).to_string()),
+            None => body.push_str("null"),
+        }
+        body.push_str(",\n      \"file_fact_cache_limitation\": ");
+        match &run.file_fact_cache_limitation {
+            Some(limitation) => body.push_str(&serde_json::json!(limitation).to_string()),
+            None => body.push_str("null"),
+        }
+        body.push_str(",\n");
         body.push_str("      \"trace\": [");
         for (trace_index, trace) in run.trace.iter().enumerate() {
             if trace_index > 0 {
@@ -10790,6 +10876,39 @@ fn repo_exposure_latency_markdown(report: &RepoExposureLatencyReport) -> String 
             body.push('\n');
         }
     }
+    body.push_str("\n## File Fact Cache\n\n");
+    for run in &report.runs {
+        body.push_str(&format!("### `{}`\n\n", run.format));
+        if let Some(cache) = &run.file_fact_cache {
+            body.push_str(&format!(
+                "Hits: {}; misses: {}; invalidated: {}; corrupt ignored: {}; stores: {}; store errors: {}; retained failures: {}; dropped failures: {}.\n\n",
+                cache.hits, cache.misses, cache.invalidated, cache.corrupt_ignored,
+                cache.stores, cache.store_errors, cache.store_failures.len(), cache.store_failures_dropped
+            ));
+            if !cache.store_failures.is_empty() {
+                body.push_str("| Path | Stage | Error |\n| --- | --- | --- |\n");
+                for row in &cache.store_failures {
+                    body.push_str(&format!(
+                        "| {} | {} | {} |\n",
+                        row.path.as_deref().map_or_else(
+                            || "_unrepresentable path_".to_string(),
+                            latency_markdown_cell
+                        ),
+                        row.stage,
+                        latency_markdown_cell(&row.error)
+                    ));
+                }
+                body.push('\n');
+            }
+        } else {
+            body.push_str(&format!(
+                "Unavailable: `{}`. No zero cache counts are inferred.\n\n",
+                run.file_fact_cache_limitation
+                    .as_deref()
+                    .unwrap_or("unknown")
+            ));
+        }
+    }
     body.push_str("\n## Next Step\n\n");
     body.push_str(
         "Use this report to identify whether the repo-exposure path is waiting on \
@@ -10797,6 +10916,23 @@ cache collection, cache load, cold compute, cache store, or rendering before \
 changing cache behavior.\n",
     );
     body
+}
+
+fn latency_markdown_cell(value: &str) -> String {
+    let mut escaped = String::new();
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '`' => escaped.push_str("&#96;"),
+            '\\' => escaped.push_str("&#92;"),
+            '|' => escaped.push_str("\\|"),
+            control if control.is_control() => escaped.push(' '),
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 /// Run the agent seam packet renderer and write

@@ -1403,8 +1403,12 @@ impl RepoExposureLatencySummary {
 
 fn repo_exposure_latency_report_summary(root: &Path) -> Option<RepoExposureLatencySummary> {
     let report = read_json(&resolve_path(root, DEFAULT_REPO_EXPOSURE_LATENCY_JSON)).ok()?;
-    if string_path(&report, &["schema_version"]).as_deref() != Some(SCHEMA_VERSION)
-        || string_path(&report, &["tool"]).as_deref() != Some("ripr")
+    // 0.2 (#3864) only added the file-fact cache receipt; the run status and
+    // trace fields read here are unchanged, so both versions stay usable.
+    if !matches!(
+        string_path(&report, &["schema_version"]).as_deref(),
+        Some("0.1" | "0.2")
+    ) || string_path(&report, &["tool"]).as_deref() != Some("ripr")
         || string_path(&report, &["report"]).as_deref() != Some("repo-exposure-latency")
     {
         return None;
@@ -2721,7 +2725,17 @@ mod tests {
 
     #[test]
     fn missing_repo_exposure_uses_existing_latency_report_before_rerun() -> Result<(), String> {
-        let repo = temp_repo("first-pr-existing-latency-timeout")?;
+        // 0.2 is what `repo-exposure-latency-report` writes since #3864.
+        for schema_version in ["0.1", "0.2"] {
+            existing_latency_timeout_report_is_used(schema_version)?;
+        }
+        Ok(())
+    }
+
+    fn existing_latency_timeout_report_is_used(schema_version: &str) -> Result<(), String> {
+        let repo = temp_repo(&format!(
+            "first-pr-existing-latency-timeout-{schema_version}"
+        ))?;
         fs::create_dir_all(repo.join("xtask/src"))
             .map_err(|err| format!("mkdir xtask src: {err}"))?;
         fs::write(
@@ -2732,7 +2746,7 @@ mod tests {
         write_json(
             &repo.join(DEFAULT_REPO_EXPOSURE_LATENCY_JSON),
             json!({
-                "schema_version": "0.1",
+                "schema_version": schema_version,
                 "tool": "ripr",
                 "report": "repo-exposure-latency",
                 "status": "warn",

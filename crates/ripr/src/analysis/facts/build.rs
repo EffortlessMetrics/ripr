@@ -693,6 +693,54 @@ pub fn check(x: i32) -> bool {
     }
 
     #[test]
+    fn literal_path_module_declarations_store_and_reload_from_file_fact_cache()
+    -> Result<(), Box<dyn Error>> {
+        // #4171: an internally tagged `ModulePathTarget::Literal(String)`
+        // failed to encode, so every file declaring `#[path = "..."] mod`
+        // missed the cache on every run and counted a store error.
+        let fixture = CacheInventoryFixture::new("cache_literal_path_module")?;
+        let files = [(
+            PathBuf::from("src/lib.rs"),
+            b"#[path = \"other.rs\"]\nmod inner;\npub fn value() -> i32 { 1 }\n".to_vec(),
+        )];
+        let build = || {
+            build_index_with_file_fact_cache(
+                &fixture.root,
+                &files,
+                &RaRustSyntaxAdapter,
+                &LexicalRustSyntaxAdapter,
+                &fixture.cache,
+                || fixture.cache.known_file_paths(),
+            )
+        };
+        let cold = build()?;
+        let declarations = cold
+            .index
+            .files
+            .values()
+            .flat_map(|facts| facts.module_declarations.iter())
+            .map(|declaration| declaration.path_target.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            declarations,
+            vec![super::super::ModulePathTarget::Literal(
+                "other.rs".to_string()
+            )],
+            "fixture must parse the literal #[path] declaration it exists to cache"
+        );
+        assert_eq!(cold.file_fact_cache.store_failures, Vec::new());
+        assert_eq!(cold.file_fact_cache.store_errors, 0);
+        assert_eq!(cold.file_fact_cache.stores, 1);
+
+        let warm = build()?;
+        assert_eq!(warm.file_fact_cache.hits, 1);
+        assert_eq!(warm.file_fact_cache.misses, 0);
+        assert_eq!(warm.file_fact_cache.corrupt_ignored, 0);
+        assert_eq!(warm.index.files, cold.index.files);
+        Ok(())
+    }
+
+    #[test]
     fn cache_inventory_takes_one_pre_store_snapshot_for_misses() -> Result<(), Box<dyn Error>> {
         let fixture = CacheInventoryFixture::new("cache_inventory_misses")?;
         let a = PathBuf::from("src/a.rs");

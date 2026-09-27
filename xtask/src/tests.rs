@@ -167,7 +167,8 @@ use super::{
     receipt_json, receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
     repo_badge_artifact_jobs, repo_badge_artifact_stdout_from_output,
     repo_badge_artifact_timeout_ms_from_env, repo_badge_artifacts_summary_markdown,
-    repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+    repo_exposure_file_fact_cache_from_stderr, repo_exposure_latency_json,
+    repo_exposure_latency_markdown, repo_exposure_latency_run,
     repo_exposure_latency_run_from_output, repo_exposure_latency_status,
     repo_exposure_latency_trace, repo_exposure_summary_report_timeout_ms_from_env, repo_root,
     repo_seam_inventory_command_args_for_root, report_index_lane1_overall_status,
@@ -46615,6 +46616,154 @@ fn repo_exposure_latency_trace_parses_phase_lines() -> Result<(), String> {
 }
 
 #[test]
+fn repo_exposure_latency_retains_bounded_cache_failures_and_missing_state() -> Result<(), String> {
+    let rows: Vec<_> = (0..32)
+        .map(|i| {
+            serde_json::json!({
+                "path": format!("src/file_{i}.rs"),
+                "stage": "write",
+                "error": "portable failure"
+            })
+        })
+        .collect();
+    let receipt = serde_json::json!({
+        "schema_version": "0.1", "hits": 2, "misses": 35,
+        "invalidated": 1, "corrupt_ignored": 0, "stores": 0,
+        "store_errors": 35, "store_failures": rows,
+        "store_failures_dropped": 3
+    });
+    let run = repo_exposure_latency_run_from_output(
+        "repo-exposure-json",
+        TimedOutput {
+            status: Some(success_exit_status()),
+            stdout: "{}".to_string(),
+            stderr: format!("ripr_file_fact_cache_receipt {receipt}\n"),
+            duration: Duration::from_millis(3),
+            timed_out: false,
+        },
+    );
+    let cache = run
+        .file_fact_cache
+        .as_ref()
+        .ok_or("missing cache receipt")?;
+    assert_eq!(cache.store_errors, 35);
+    assert_eq!(cache.store_failures.len(), 32);
+    assert_eq!(cache.store_failures_dropped, 3);
+    let report = RepoExposureLatencyReport {
+        status: "pass".to_string(),
+        timeout_ms: 10,
+        binary: "target/debug/ripr".to_string(),
+        runs: vec![run],
+    };
+    let json: Value = serde_json::from_str(&repo_exposure_latency_json(&report))
+        .map_err(|err| format!("invalid latency JSON: {err}"))?;
+    assert_eq!(
+        json["runs"][0]["file_fact_cache"]["store_failures"][0]["path"],
+        "src/file_0.rs"
+    );
+    assert_eq!(
+        json["runs"][0]["file_fact_cache"]["store_failures_dropped"],
+        3
+    );
+    let markdown = repo_exposure_latency_markdown(&report);
+    assert!(markdown.contains("| src/file_0.rs | write | portable failure |"));
+    assert!(markdown.contains("dropped failures: 3"));
+
+    let (cache, limitation) = repo_exposure_file_fact_cache_from_stderr("noise\n");
+    assert!(cache.is_none());
+    assert_eq!(limitation.as_deref(), Some("cache_phase_not_observed"));
+    let invalid = receipt
+        .to_string()
+        .replace("src/file_0.rs", "/outside/file_0.rs");
+    let (cache, limitation) = repo_exposure_file_fact_cache_from_stderr(&format!(
+        "ripr_file_fact_cache_receipt {invalid}"
+    ));
+    assert!(cache.is_none());
+    assert_eq!(limitation.as_deref(), Some("invalid_cache_receipt"));
+    let mut control_path = receipt.clone();
+    control_path["store_failures"][0]["path"] = Value::String("src/a\nheading.rs".to_string());
+    let (cache, limitation) = repo_exposure_file_fact_cache_from_stderr(&format!(
+        "ripr_file_fact_cache_receipt {control_path}"
+    ));
+    assert!(cache.is_none());
+    assert_eq!(limitation.as_deref(), Some("invalid_cache_receipt"));
+    let mut dotted_path = receipt.clone();
+    dotted_path["store_failures"][0]["path"] = Value::String("src/foo..rs".to_string());
+    let (cache, limitation) = repo_exposure_file_fact_cache_from_stderr(&format!(
+        "ripr_file_fact_cache_receipt {dotted_path}"
+    ));
+    assert!(cache.is_some());
+    assert!(limitation.is_none());
+    // A producer row with no portable spelling keeps its counters and says so.
+    let mut unrepresentable = receipt.clone();
+    unrepresentable["store_failures"][0]["path"] = Value::Null;
+    let (cache, limitation) = repo_exposure_file_fact_cache_from_stderr(&format!(
+        "ripr_file_fact_cache_receipt {unrepresentable}"
+    ));
+    assert!(limitation.is_none());
+    let unrepresentable_report = RepoExposureLatencyReport {
+        runs: vec![RepoExposureLatencyRun {
+            file_fact_cache: cache,
+            ..report.runs[0].clone()
+        }],
+        ..report.clone()
+    };
+    let json: Value = serde_json::from_str(&repo_exposure_latency_json(&unrepresentable_report))
+        .map_err(|err| format!("invalid latency JSON: {err}"))?;
+    assert_eq!(
+        json["runs"][0]["file_fact_cache"]["store_failures"][0]["path"],
+        Value::Null
+    );
+    assert!(
+        repo_exposure_latency_markdown(&unrepresentable_report)
+            .contains("| _unrepresentable path_ | write | portable failure |")
+    );
+    // `store_errors` is authoritative: retained rows plus the dropped count
+    // must account for every failure, and rows are dropped only past the cap.
+    let mut uncounted = receipt.clone();
+    uncounted["store_errors"] = Value::from(36);
+    let (cache, limitation) = repo_exposure_file_fact_cache_from_stderr(&format!(
+        "ripr_file_fact_cache_receipt {uncounted}"
+    ));
+    assert!(cache.is_none());
+    assert_eq!(limitation.as_deref(), Some("invalid_cache_receipt"));
+    let mut early_drop = receipt.clone();
+    early_drop["store_failures"] = serde_json::json!([]);
+    early_drop["store_errors"] = Value::from(3);
+    let (cache, limitation) = repo_exposure_file_fact_cache_from_stderr(&format!(
+        "ripr_file_fact_cache_receipt {early_drop}"
+    ));
+    assert!(cache.is_none());
+    assert_eq!(limitation.as_deref(), Some("invalid_cache_receipt"));
+    let (cache, limitation) =
+        repo_exposure_file_fact_cache_from_stderr("ripr_file_fact_cache_receipt {broken}\n");
+    assert!(cache.is_none());
+    assert_eq!(limitation.as_deref(), Some("malformed_cache_receipt"));
+    let timeout = repo_exposure_latency_run_from_output(
+        "repo-exposure-json",
+        TimedOutput {
+            status: None,
+            stdout: "partial".to_string(),
+            stderr: format!("ripr_file_fact_cache_receipt {receipt}\n"),
+            duration: Duration::from_millis(10),
+            timed_out: true,
+        },
+    );
+    assert_eq!(timeout.status, "timeout");
+    assert_eq!(
+        timeout
+            .file_fact_cache
+            .as_ref()
+            .map(|cache| cache.store_errors),
+        Some(35)
+    );
+    assert!(timeout.file_fact_cache_limitation.is_none());
+    let escaped = super::latency_markdown_cell("a`|<script>&\\\nline");
+    assert_eq!(escaped, "a&#96;\\|&lt;script&gt;&amp;&#92; line");
+    Ok(())
+}
+
+#[test]
 fn repo_exposure_latency_report_json_and_markdown_are_structured() -> Result<(), String> {
     let runs = vec![
         RepoExposureLatencyRun {
@@ -46636,6 +46785,8 @@ fn repo_exposure_latency_report_json_and_markdown_are_structured() -> Result<(),
                     duration_ms: 29_998,
                 },
             ],
+            file_fact_cache: None,
+            file_fact_cache_limitation: Some("cache_phase_not_observed".to_string()),
         },
         RepoExposureLatencyRun {
             format: "repo-exposure-md".to_string(),
@@ -46645,6 +46796,8 @@ fn repo_exposure_latency_report_json_and_markdown_are_structured() -> Result<(),
             stdout_bytes: 0,
             stderr_bytes: 0,
             trace: Vec::new(),
+            file_fact_cache: None,
+            file_fact_cache_limitation: Some("format_skipped".to_string()),
         },
     ];
     let report = RepoExposureLatencyReport {
@@ -46657,7 +46810,7 @@ fn repo_exposure_latency_report_json_and_markdown_are_structured() -> Result<(),
     let json = repo_exposure_latency_json(&report);
     let value: Value =
         serde_json::from_str(&json).map_err(|err| format!("latency JSON should parse: {err}"))?;
-    assert_eq!(value["schema_version"], "0.1");
+    assert_eq!(value["schema_version"], "0.2");
     assert_eq!(value["report"], "repo-exposure-latency");
     assert_eq!(value["status"], "warn");
     assert_eq!(value["runs"][0]["trace"][0]["phase"], "cache_load");
@@ -46703,6 +46856,8 @@ fn repo_exposure_latency_report_json_records_exit_codes() -> Result<(), String> 
             stdout_bytes: 4,
             stderr_bytes: 9,
             trace: Vec::new(),
+            file_fact_cache: None,
+            file_fact_cache_limitation: Some("cache_phase_not_observed".to_string()),
         }],
     };
 
@@ -46889,6 +47044,8 @@ fn latency_run_with_status(format: &str, status: &str) -> RepoExposureLatencyRun
         stdout_bytes: 0,
         stderr_bytes: 0,
         trace: Vec::new(),
+        file_fact_cache: None,
+        file_fact_cache_limitation: Some("cache_phase_not_observed".to_string()),
     }
 }
 

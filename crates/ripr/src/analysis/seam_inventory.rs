@@ -345,6 +345,59 @@ fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
     }
 }
 
+/// A bounded, typed diagnostic channel for the latency runner. The ordinary
+/// human phase label cannot represent failure identities or overflow.
+fn trace_file_fact_cache(stats: &FileFactCacheStats) {
+    if std::env::var_os(LATENCY_TRACE_ENV).is_none() {
+        return;
+    }
+    eprintln!(
+        "ripr_file_fact_cache_receipt {}",
+        file_fact_cache_receipt(stats)
+    );
+}
+
+fn file_fact_cache_receipt(stats: &FileFactCacheStats) -> serde_json::Value {
+    let rows: Vec<_> = stats
+        .store_failures
+        .iter()
+        .map(|failure| {
+            serde_json::json!({
+                "path": portable_store_failure_path(&failure.path),
+                "stage": failure.stage,
+                "error": failure.error,
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "schema_version": "0.1",
+        "hits": stats.hits,
+        "misses": stats.misses,
+        "invalidated": stats.invalidated_files.len(),
+        "corrupt_ignored": stats.corrupt_ignored,
+        "stores": stats.stores,
+        "store_errors": stats.store_errors,
+        "store_failures": rows,
+        "store_failures_dropped": stats.store_failures_dropped,
+    })
+}
+
+/// Join path components with `/`. Components come from the native parser, so
+/// a Windows `\\` separator splits while a literal `\\` in a Unix file name
+/// does not. A name that is not UTF-8 or that holds a `\\` has no portable
+/// spelling: it is `null` rather than a lossy rewrite that names another file.
+fn portable_store_failure_path(path: &Path) -> Option<String> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        let part = component.as_os_str().to_str()?;
+        if part.contains('\\') {
+            return None;
+        }
+        parts.push(part);
+    }
+    Some(parts.join("/"))
+}
+
 fn cache_store_status_label(reason: &str) -> String {
     let mut label = String::from("ignored_");
     for ch in reason.chars() {
@@ -664,6 +717,7 @@ fn inventory_classified_seams_from_state_with_config(
         &cached.file_fact_cache.status_label(),
         build_started.elapsed(),
     );
+    trace_file_fact_cache(&cached.file_fact_cache);
     let policy_started = Instant::now();
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
     let lexical_fallback_files = rust_index::lexical_fallback_files(&cached.index);
@@ -1786,6 +1840,57 @@ fn expected_sink_for(kind: SeamKind) -> ExpectedSink {
 mod tests {
     use super::*;
     use crate::analysis::facts::FunctionSourceRole;
+
+    #[test]
+    fn cache_receipt_retains_producer_order_and_portable_failure_rows() {
+        let mut stats = FileFactCacheStats::zero_work();
+        stats.record_store_failure(
+            PathBuf::from("src/foo..rs"),
+            super::super::seam_cache::FileFactStoreError {
+                stage: super::super::seam_cache::FileFactStoreStage::Write,
+                message: "portable failure".to_string(),
+            },
+        );
+        stats.record_store_failure(
+            PathBuf::from("src\\bar.rs"),
+            super::super::seam_cache::FileFactStoreError {
+                stage: super::super::seam_cache::FileFactStoreStage::Encode,
+                message: "second failure".to_string(),
+            },
+        );
+        let value = file_fact_cache_receipt(&stats);
+        assert_eq!(value["store_errors"], 2);
+        assert_eq!(value["store_failures"][0]["path"], "src/foo..rs");
+        assert_eq!(value["store_failures"][0]["stage"], "write");
+        // A backslash is a separator only on Windows; on Unix it is part of
+        // the file name, and rewriting it would name a different file.
+        let expected_bar = if cfg!(windows) {
+            serde_json::json!("src/bar.rs")
+        } else {
+            serde_json::Value::Null
+        };
+        assert_eq!(value["store_failures"][1]["path"], expected_bar);
+        assert_eq!(value["store_failures"][1]["stage"], "encode");
+        assert_eq!(value["store_failures_dropped"], 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cache_receipt_names_non_utf8_failure_paths_as_unrepresentable() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+        let mut stats = FileFactCacheStats::zero_work();
+        stats.record_store_failure(
+            Path::new("src").join(OsStr::from_bytes(b"bad\xff.rs")),
+            super::super::seam_cache::FileFactStoreError {
+                stage: super::super::seam_cache::FileFactStoreStage::Write,
+                message: "lossy failure".to_string(),
+            },
+        );
+        let value = file_fact_cache_receipt(&stats);
+        assert_eq!(value["store_errors"], 1);
+        assert_eq!(value["store_failures"][0]["path"], serde_json::Value::Null);
+    }
 
     #[test]
     fn only_custom_harness_targets_receive_file_wide_evidence_role() -> Result<(), String> {
