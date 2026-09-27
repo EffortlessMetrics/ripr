@@ -9692,6 +9692,7 @@ fn pilot_language_fixture_repo(
 /// they cannot do, while pilot, first-pr and status each pointed at another
 /// command. The safe next action must name why no route exists and the
 /// manual step that is left, with no route back into pilot.
+#[cfg(feature = "lang-python")]
 fn python_check_safe_action(
     label: &str,
     source_base: &str,
@@ -9736,6 +9737,7 @@ fn python_check_safe_action(
 }
 
 #[test]
+#[cfg(feature = "lang-python")]
 fn check_python_finding_without_repair_card_names_the_terminal_manual_step() -> Result<(), String> {
     let line = python_check_safe_action(
         "check-py-no-card",
@@ -9754,6 +9756,7 @@ fn check_python_finding_without_repair_card_names_the_terminal_manual_step() -> 
 // Discriminating control: a Python finding that DOES carry a repair card is
 // routed by that card, so it must not get the no-card terminal line.
 #[test]
+#[cfg(feature = "lang-python")]
 fn check_python_finding_with_repair_card_points_at_the_card() -> Result<(), String> {
     let line = python_check_safe_action(
         "check-py-card",

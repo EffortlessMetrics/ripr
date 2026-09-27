@@ -464,33 +464,23 @@ fn removal_experiment_subject_differs_from_worktree_substitution() -> Result<(),
     Ok(())
 }
 
-/// Temporary candidate state is cleaned: after a successful run the
-/// materialization root is removed (the guard drops with the temp tree).
-/// #3279 review B1 control: a tree WITHOUT a config configures itself
-/// with the pure default — toggling the worktree ripr.toml (including
-/// its enabled-languages list) must not change the subject output.
-#[test]
-#[serial]
-fn treeless_config_subject_ignores_worktree_language_toggle() -> Result<(), String> {
-    let root = unique_root("treeless");
+/// A two-commit repository that commits no ripr.toml, so a subject run
+/// configures itself with the pure default; returns the guard, base
+/// commit, and candidate commit.
+fn treeless_config_repo(name: &str) -> Result<(RepoGuard, String, String), String> {
+    let root = unique_root(name);
     std::fs::create_dir_all(root.join("src")).map_err(|e| e.to_string())?;
-    let _guard = RepoGuard(root.clone());
+    let guard = RepoGuard(root.clone());
     git(&root, &["init", "--initial-branch=main"])?;
     git(&root, &["config", "user.email", "r@e.invalid"])?;
     git(&root, &["config", "user.name", "ripr"])?;
     write(
         &root,
         "Cargo.toml",
-        "[package]
-name='falsifier'
-version='0.1.0'
-edition='2024'
-",
+        "[package]\nname='falsifier'\nversion='0.1.0'\nedition='2024'\n",
     )?;
     write(&root, "src/lib.rs", LIB_BASE)?;
     write(&root, "tests/it.rs", TEST_BODY)?;
-    // NOTE: no ripr.toml is committed — the tree configures itself with
-    // the pure default.
     git(&root, &["add", "."])?;
     git(&root, &["commit", "-qm", "base"])?;
     let base = git(&root, &["rev-parse", "HEAD"])?;
@@ -498,29 +488,67 @@ edition='2024'
     git(&root, &["add", "."])?;
     git(&root, &["commit", "-qm", "candidate"])?;
     let candidate = git(&root, &["rev-parse", "HEAD"])?;
+    Ok((guard, base, candidate))
+}
+
+/// #3279 review B1 control: a tree WITHOUT a config configures itself
+/// with the pure default — toggling the worktree ripr.toml (including
+/// its enabled-languages list) must not change the subject output.
+#[test]
+#[serial]
+fn treeless_config_subject_ignores_worktree_language_toggle() -> Result<(), String> {
+    let (guard, base, candidate) = treeless_config_repo("treeless")?;
+    let root = guard.0.clone();
 
     // Worktree config A (untracked — mutable state only).
-    write(
-        &root,
-        "ripr.toml",
-        "[languages]
-enabled = [\"rust\"]
-",
-    )?;
+    write(&root, "ripr.toml", "[languages]\nenabled = [\"rust\"]\n")?;
     let first = run_subject(&root, &base, &candidate)?;
     // Worktree config B: the ONLY change is the enabled-languages list.
     write(
         &root,
         "ripr.toml",
-        "[languages]
-enabled = [\"rust\", \"python\"]
-",
+        "[languages]\nenabled = [\"rust\", \"python\"]\n",
     )?;
     let second = run_subject(&root, &base, &candidate)?;
     assert_eq!(
         serde_json::to_string(&first).unwrap_or_default(),
         serde_json::to_string(&second).unwrap_or_default(),
         "toggling the worktree enabled-languages must not change a treeless-config subject run"
+    );
+    Ok(())
+}
+
+/// #4252: the worktree ripr.toml is not an input to a subject run, so no
+/// worktree file may decide one — neither a file that fails to parse nor
+/// an `[analysis] mode` the candidate tree does not set. Before the fix
+/// the CLI loaded and validated the worktree file ahead of binding the
+/// subject: the unparseable file aborted the run with exit 2 in every
+/// build, and the worktree `mode = "deep"` reached the subject's JSON.
+#[test]
+#[serial]
+fn subject_run_never_reads_the_worktree_config() -> Result<(), String> {
+    let (guard, base, candidate) = treeless_config_repo("worktree-config")?;
+    let root = guard.0.clone();
+
+    let without = run_subject(&root, &base, &candidate)?;
+    assert_eq!(
+        without.get("mode").and_then(Value::as_str),
+        Some("draft"),
+        "fixture must start from the pure-default draft mode: {without}"
+    );
+
+    write(&root, "ripr.toml", "this is not [valid toml\n")?;
+    let unparseable = run_subject(&root, &base, &candidate)?;
+    assert_eq!(
+        without, unparseable,
+        "an unparseable worktree ripr.toml must not change a subject run"
+    );
+
+    write(&root, "ripr.toml", "[analysis]\nmode = \"deep\"\n")?;
+    let deep = run_subject(&root, &base, &candidate)?;
+    assert_eq!(
+        without, deep,
+        "a worktree [analysis] mode must not reach a subject run"
     );
     Ok(())
 }
@@ -666,6 +694,8 @@ fn type_change_fails_closed_naming_the_entry() -> Result<(), String> {
     Ok(())
 }
 
+/// Temporary candidate state is cleaned: after a successful run the
+/// materialization root is removed (the guard drops with the temp tree).
 #[test]
 #[serial]
 fn temporary_candidate_state_is_cleaned() -> Result<(), String> {

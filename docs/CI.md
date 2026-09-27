@@ -498,6 +498,19 @@ release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
 cargo xtask release-readiness --version "$release_version"
 ```
 
+The legacy workflow's `Rust-only feature lane` job (#4252) runs the Rust-only
+feature set (#2400, #3128) on Linux:
+
+```bash
+cargo test -p ripr --locked --no-default-features --features lang-rust --no-fail-fast
+```
+
+It runs on every push to `main` or `master`, on manual dispatch, and on pull
+request `opened`, `synchronize`, and `reopened` events whose diff touches
+`crates/`, `fixtures/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, or
+`.cargo/`. Label events and other pull requests skip the compile. It is not
+a required check. The Windows advisory lane runs the same command on Windows.
+
 The CI workflow also has an explicit MSRV job that pins Rust `1.95.0` and runs:
 
 ```bash
@@ -508,8 +521,8 @@ The `release-proof` job pins the declared `1.95.0` toolchain; the MSRV job
 duplicates that baseline and runs only on manual dispatch or `full-ci` pull
 requests.
 
-The legacy workflow's `release-proof` and `msrv` jobs run on `ubuntu-latest`.
-They carry release-surface and baseline proof and must not
+The legacy workflow's `release-proof`, `rust-only-features`, and `msrv` jobs
+run on `ubuntu-latest`. They carry release-surface and baseline proof and must not
 depend on self-hosted runner capacity when preparing a source release. The
 routed Rust-small workflow remains the swarm development lane that selects
 self-hosted runners when available and falls back to hosted capacity.

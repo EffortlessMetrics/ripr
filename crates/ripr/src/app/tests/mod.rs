@@ -12,6 +12,8 @@ use std::path::PathBuf;
 mod badge_rendering;
 mod mode_and_selector;
 mod preview_analyzed_outcome;
+// Drives the Python adapter end to end through `check_workspace_with_config`.
+#[cfg(feature = "lang-python")]
 mod python_packet_eligibility;
 mod rendering_contracts;
 

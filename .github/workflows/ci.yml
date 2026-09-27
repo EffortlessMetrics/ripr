@@ -71,6 +71,39 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  rust-only-features:
+    # #4252: the Rust-only feature lane (#2400, #3128) otherwise runs only in
+    # the Windows advisory workflow, whose verdict hid this step's result
+    # until #4229. It runs before merge on PRs that change the Rust crate,
+    # fixtures, or Cargo manifests, and on every push to main; label events
+    # and docs-only PRs skip the compile, matching the routed lane's posture.
+    name: Rust-only feature lane
+    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect Rust surface change
+        id: surface
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=crates/; [ -z "$BASE_SHA" ] || changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || echo crates/)"
+          if grep -qE '^(crates/|fixtures/|Cargo\.(toml|lock)$|rust-toolchain|\.cargo/)' <<< "$changed"; then rust=true; else rust=false; fi
+          echo "rust=$rust" | tee -a "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@1.95.0
+        if: steps.surface.outputs.rust == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.surface.outputs.rust == 'true'
+        with:
+          shared-key: ripr-rust-only-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test --no-default-features --features lang-rust
+        if: steps.surface.outputs.rust == 'true'
+        run: cargo test -p ripr --locked --no-default-features --features lang-rust --no-fail-fast
+
   msrv:
     # Routed Rust already runs the declared 1.95.0 toolchain on every ordinary
     # PR and main push. Keep the duplicate named proof only for explicit full

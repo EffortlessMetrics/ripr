@@ -555,6 +555,17 @@ are scoped or reviewed.
   reads the test index
   ([#4261](https://github.com/EffortlessMetrics/ripr-swarm/issues/4261)).
 
+- `ripr check --candidate-tree` no longer reads the worktree `ripr.toml`. A
+  subject run configures itself from its candidate tree, but the CLI still
+  loaded the worktree file first, so an unparseable worktree file, or a
+  `languages.enabled` entry the binary lacks (for example `python` in a
+  Rust-only build), made the subject run exit 2, and a worktree
+  `[analysis] mode` reached a subject whose tree sets none. The Rust-only
+  feature set (`--no-default-features --features lang-rust`) now passes its
+  test suite, and CI runs it on Linux for pull requests that change the Rust
+  crate, fixtures or Cargo manifests, and on every push to `main`
+  ([#4252](https://github.com/EffortlessMetrics/ripr-swarm/issues/4252)).
+
 - An improved `agent receipt` (including the one `ripr agent repair --phase
   after` writes) no longer says "Keep the focused test": ripr never runs the
   project's tests, and a test that fails `cargo test` can still move static

@@ -2721,13 +2721,27 @@ mod tests {
         let rendered = render(&output);
 
         assert!(
-            rendered.contains(r#"enabled = ["rust", "python"]"#),
-            "expected python-specific copy-paste TOML block; got:\n{rendered}"
-        );
-        assert!(
             !rendered.contains(r#"enabled = ["rust", "typescript"]"#),
             "python advisory must not mention typescript; got:\n{rendered}"
         );
+        if cfg!(feature = "lang-python") {
+            assert!(
+                rendered.contains(r#"enabled = ["rust", "python"]"#),
+                "expected python-specific copy-paste TOML block; got:\n{rendered}"
+            );
+        } else {
+            // Adapter NOT compiled in: config load rejects `python`, so the
+            // note names the rebuild instead of a TOML edit (#4252).
+            assert!(
+                rendered.contains("The Python adapter is not compiled into this ripr binary")
+                    && rendered.contains("rebuild ripr with Cargo feature `lang-python`"),
+                "expected not-compiled Python disclosure; got:\n{rendered}"
+            );
+            assert!(
+                !rendered.contains(r#"enabled = ["rust", "python"]"#),
+                "must not advise a ripr.toml edit this binary rejects; got:\n{rendered}"
+            );
+        }
     }
 
     #[test]
@@ -3323,11 +3337,18 @@ mod tests {
 
         let rendered = render(&output);
 
+        // The not-enabled TypeScript note names the adapter either way; its
+        // wording depends on whether this binary can analyze TypeScript.
+        let not_enabled = if cfg!(feature = "lang-typescript") {
+            "Note: this diff contains 1 TypeScript file. The TypeScript adapter is preview"
+        } else {
+            "Note: this diff contains 1 TypeScript file. The TypeScript adapter is not compiled into this ripr binary"
+        };
         for expected in [
             "Note: 1 TypeScript file analyzed under preview support",
             "Note: 1 Python file analyzed under preview support",
             "Note: 2 JavaScript files analyzed under preview support",
-            "Note: this diff contains 1 TypeScript file. The TypeScript adapter is preview",
+            not_enabled,
         ] {
             assert!(
                 rendered.contains(expected),

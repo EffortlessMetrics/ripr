@@ -51,6 +51,9 @@ only distinct proof:
 - Perl feature-adapter check and focused Perl language-analysis tests;
 - package list, publish dry-run, and release-readiness proof on `main`,
   `release-check`, or `full-ci`;
+- the Rust-only feature lane (`--no-default-features --features lang-rust`)
+  on `main` pushes and on pull requests that change the Rust crate, fixtures,
+  or Cargo manifests;
 - the named duplicate MSRV proof on manual or `full-ci` runs;
 - VS Code compile, package, and real-server E2E proof on pushes, manual runs,
   and `full-ci` pull requests.

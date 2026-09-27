@@ -305,7 +305,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 .to_string(),
         );
     }
-    let config = load_for_root(&input.root)?;
+    // #4252: a bound subject configures itself from its candidate tree
+    // (#3279 R4 below), so the worktree ripr.toml is never read for it.
+    // Loading it here only to feed the argv gates let a worktree file the
+    // subject must ignore still decide the run: an unparseable file, or a
+    // `languages.enabled` entry this binary lacks (`python` in a Rust-only
+    // build), aborted it with exit 2, and a worktree `[analysis] mode`
+    // carried into a subject whose tree sets none. The gates below read
+    // only argv-derived state, so the pure default serves them.
+    let config = if candidate_tree.is_some() {
+        RiprConfig::default()
+    } else {
+        load_for_root(&input.root)?
+    };
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
     // #3278 review M1: repo-scope formats, repo exposure, and the gap

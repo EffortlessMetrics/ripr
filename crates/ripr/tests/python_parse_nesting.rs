@@ -1,5 +1,10 @@
 //! A discovered Python file past the nesting budget must not abort `ripr check`
 //! (#4109), even when that file is absent from the diff.
+//!
+//! Python-only: a build without `lang-python` refuses a Python project
+//! before any parse runs, so neither the nesting limit nor its absence is
+//! observable there (#4252).
+#![cfg(feature = "lang-python")]
 
 use std::fs;
 use std::path::{Path, PathBuf};
