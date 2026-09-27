@@ -3,6 +3,8 @@ import {
   ExtensionLifecycleCoordinator,
   LifecycleController,
   LifecycleWait,
+  RiprClientLifecycleTimeoutError,
+  waitForLifecyclePromise,
 } from '../../src/lifecycleCoordinator';
 
 interface Deferred {
@@ -37,6 +39,30 @@ function manualTimeoutWait(timeout: Deferred): LifecycleWait {
 }
 
 suite('Extension Lifecycle Coordinator', () => {
+  test('default lifecycle waiter rejects a real timeout with the typed timedOut error', async () => {
+    const never = new Promise<void>(() => undefined);
+    let caught: unknown;
+    try {
+      await waitForLifecyclePromise(never, 5, 'ripr server startup');
+    } catch (error) {
+      caught = error;
+    }
+
+    assert.ok(
+      caught instanceof RiprClientLifecycleTimeoutError,
+      'the shared default waiter must produce the typed timeout error'
+    );
+    assert.strictEqual((caught as { kind?: unknown }).kind, 'timedOut');
+    assert.match(
+      (caught as Error).message,
+      /^ripr server startup did not settle within 5ms; refusing an unsafe ripr lifecycle transition\.$/
+    );
+  });
+
+  test('default lifecycle waiter settles without a timeout when the operation completes', async () => {
+    await waitForLifecyclePromise(Promise.resolve(), 1_000, 'ripr server startup');
+  });
+
   test('restart waits for in-flight startup before stopping or creating a replacement', async () => {
     const coordinator = new ExtensionLifecycleCoordinator();
     const firstStart = deferred();
