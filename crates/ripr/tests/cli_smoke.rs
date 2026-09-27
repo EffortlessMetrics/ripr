@@ -3339,11 +3339,13 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
             "already_improved",
             "no_action",
         ),
+        // The portable-normalized receipt is not promotable, so the router
+        // fails closed before it can route `unchanged` movement.
         (
             "unchanged-after-attempt",
             "unchanged_after_attempt",
-            "unchanged_after_attempt",
-            "revise_focused_test",
+            "missing_required_artifact",
+            "generate_missing_artifact",
         ),
     ];
     assert_eq!(cases.len(), expected.len());
@@ -3617,7 +3619,11 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
             );
             assert_eq!(
                 json_pointer_str(&report, "/evidence/static_movement")?,
-                "unchanged"
+                "unknown"
+            );
+            assert_eq!(
+                json_pointer_str(&report, "/warnings/0")?,
+                "receipt movement `unchanged` is not promotable: receipt does not contain a complete analysis outcome"
             );
         }
         assert_eq!(

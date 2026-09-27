@@ -470,7 +470,7 @@
     },
     {
       "id": "unchanged_after_attempt",
-      "scenario": "unchanged movement after focused test",
+      "scenario": "unchanged movement after focused test, recorded in a portable-normalized receipt",
       "inputs": {
         "assistant_proof": {
           "state": "present",
@@ -487,37 +487,36 @@
         }
       },
       "expected": {
-        "status": "unchanged_after_attempt",
-        "action_kind": "revise_focused_test",
+        "status": "missing_required_artifact",
+        "action_kind": "generate_missing_artifact",
         "audience": "agent",
-        "top_seam_id": "67fc764ba37d77bd",
-        "title": "Revise the focused test for unchanged static movement",
+        "top_seam_id": null,
+        "title": "Generate assistant proof before routing",
         "why_first": [
-          "The supplied receipt records unchanged static movement after a focused-test attempt.",
-          "The next safe action is to revise the test rather than request a new unrelated seam."
+          "Required joined proof input is missing.",
+          "The report must not infer proof state from a raw artifact chain."
         ],
-        "target": {
-          "file": "tests/pricing.rs",
-          "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
-          "suggested_test_name": "discounted_total_boundary_discriminator"
-        },
+        "target": null,
         "commands": {
-          "context_packet": "required",
-          "after_snapshot": "required",
-          "verify": "required",
-          "receipt": "required"
+          "context_packet": null,
+          "after_snapshot": null,
+          "verify": null,
+          "receipt": null
         },
         "fallback": {
-          "kind": "unchanged_after_attempt",
-          "summary": "Revise the focused test using the missing discriminator before moving to another seam."
+          "kind": "missing_required_artifact",
+          "missing": "receipt verify/artifact evidence"
         },
+        "warnings": [
+          "receipt movement `unchanged` is not promotable: receipt does not contain a complete analysis outcome"
+        ],
         "limits": [
           "Static evidence only.",
-          "Does not edit source or generate tests.",
-          "Does not run mutation testing."
+          "Does not search hidden state.",
+          "Does not change CI blocking."
         ]
       },
-      "reason": "Unchanged movement should route back to the same bounded task instead of broadening the agent scope."
+      "reason": "A movement token is promotable only as a projection of a complete, identity-bound verify transaction. This receipt is portable-normalized (no complete analysis outcome), so first-action fails closed instead of routing `unchanged` movement to a revised test. The unchanged route itself needs a promotable receipt fixture."
     }
   ]
 }
