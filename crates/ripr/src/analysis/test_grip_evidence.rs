@@ -1251,14 +1251,10 @@ fn missing_discriminators_for(
                 return Vec::new();
             }
             // Without a value model we cannot prove the boundary value is
-            // tested. Surface a hypothesis if the predicate uses a
-            // strict-or-equal operator and at least one observed value is
-            // strictly above or below.
-            let expression = seam.expression();
-            if !boundary_predicate_uses_equal_op(expression) {
-                return Vec::new();
-            }
-            let boundary_token = boundary_rhs_token(expression);
+            // tested. Every comparison operator (strict or not) flips
+            // against its neighbour only at the equality boundary, so
+            // surface it unless an observed value names it (#4214).
+            let boundary_token = boundary_rhs_token(seam.expression());
             if boundary_token.is_empty() {
                 return Vec::new();
             }
@@ -1274,14 +1270,14 @@ fn missing_discriminators_for(
             // so we can only flag that the equality boundary is not
             // explicitly named in the observed value set.
             //
-            // Use exact equality rather than `contains` to avoid false
-            // matches like `boundary_token = "10"` matching observed
-            // value `"100"`. Observed values are literal scalars produced
-            // by `scalar_values`, so byte-for-byte equality is the right
-            // contract here.
+            // Use whole-value equality rather than `contains` to avoid
+            // false matches like `boundary_token = "10"` matching observed
+            // value `"100"`. Compare through `comparable_value` so digit
+            // separators do not matter (`1_000` names `1000`).
+            let boundary_value = comparable_value(&boundary_token);
             let equality_seen = observed
                 .iter()
-                .any(|v| v.value.as_str() == boundary_token.as_str());
+                .any(|v| comparable_value(&v.value) == boundary_value);
             if equality_seen {
                 Vec::new()
             } else {
@@ -1381,13 +1377,6 @@ fn test_passes_boundary_constant(
                     super::value_resolution::argument_names_constant(&argument, &constant.name)
                 })
     })
-}
-
-fn boundary_predicate_uses_equal_op(expression: &str) -> bool {
-    expression.contains(" >= ")
-        || expression.contains(" <= ")
-        || expression.contains(" == ")
-        || expression.contains(" != ")
 }
 
 /// Best-effort right-hand-side identifier for a boundary predicate.
