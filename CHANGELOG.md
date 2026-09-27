@@ -538,6 +538,14 @@ are scoped or reviewed.
 
 ### Fixed
 
+- A TypeScript change that only edits type syntax on a signature or
+  declaration line (a return type, a parameter or variable annotation, an
+  optional marker, a generic parameter list) no longer produces a `predicate`
+  probe. TypeScript erases those types, so there is no behavior for a test to
+  notice. A default-value, parameter, body, or export change on the same line
+  keeps its probe
+  ([#4282](https://github.com/EffortlessMetrics/ripr-swarm/issues/4282)).
+
 - The CLI smoke test that copies `ripr` and runs `doctor` retries only
   `ETXTBSY` (`ExecutableFileBusy`), up to three times. A parallel test can
   `fork` while that copy is still open for writing, and the copy cannot be

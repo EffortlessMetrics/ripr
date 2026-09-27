@@ -217,6 +217,18 @@ and erased at compile time. Declaration files still count as changed files.
 line, is still probed. An unrecognised line keeps the non-specific predicate
 fallback and is never classified `exposed`.
 
+A changed line whose in-place removed counterpart differs only in erased
+TypeScript type syntax also produces no probe (#4282). Both sides must parse
+as a single-line function, method, or variable declaration, and their runtime
+parts must match exactly: names, parameter patterns, default values, parameter
+properties, `async`/generator, export shape, and body or initializer text. A
+line with a decorator, a constructor line, and a method line in a file that
+uses decorators keep their probe: under `emitDecoratorMetadata` decorated
+parameter and return types are emitted as runtime metadata. Return types, parameter and variable annotations, optional
+markers, generic parameter lists, and `this` parameters are ignored. Type
+syntax inside an expression (`as`, `satisfies`, generic call arguments) and
+multi-line signature fragments are not compared and keep their probe.
+
 A changed predicate is `exposed` only when a strong, family-matching
 assertion's observed expression (`expect(<expr>)`) calls the owner at the
 changed boundary: an argument carries the literal operand (`total >= 50` needs

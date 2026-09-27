@@ -42,6 +42,9 @@ pub(crate) use oxc_span::{GetSpan, SourceType};
 pub(crate) use std::path::{Path, PathBuf};
 
 mod actionability;
+mod annotation_only;
+#[cfg(test)]
+mod annotation_only_tests;
 mod bounded_read;
 mod bun_bridge;
 mod classifier;
@@ -69,6 +72,7 @@ mod types;
 // submodule's `use super::*;` resolves, and so that `tests.rs` which
 // uses `use super::*;` can access all items.
 pub(crate) use actionability::*;
+pub(crate) use annotation_only::*;
 pub(crate) use bounded_read::*;
 pub(crate) use bun_bridge::*;
 pub(crate) use classifier::*;
@@ -326,6 +330,16 @@ impl LanguageAdapter for TypeScriptAdapter {
                 }
                 continue;
             }
+            // A decorator on the line above a method is invisible to the
+            // one-line annotation-only check, so any decorator in the file
+            // keeps method lines probed (#4282).
+            let file_has_decorators = source_by_normalized
+                .get(&normalized_path(&changed.path))
+                .is_none_or(|source| {
+                    source
+                        .lines()
+                        .any(|line| line.trim_start().starts_with('@'))
+                });
             // Ambient declarations are type-only; their lines are found from
             // the syntax tree, since `declare` is also a legal runtime
             // identifier and can start a line inside a template literal.
@@ -338,6 +352,25 @@ impl LanguageAdapter for TypeScriptAdapter {
                     || ambient
                         .iter()
                         .any(|(start, end)| (*start..=*end).contains(&added.line))
+                {
+                    continue;
+                }
+                // Annotation-only guard (#4282): TypeScript erases types, so a
+                // line whose in-place removed counterpart differs only in type
+                // syntax has no behavior for a test to discriminate. Pairing
+                // mirrors the Python adapter (same new-side position).
+                if changed
+                    .removed_lines
+                    .iter()
+                    .find(|removed| removed.new_side_line == added.line)
+                    .is_some_and(|removed| {
+                        is_annotation_only_signature_change(
+                            &changed.path,
+                            &removed.text,
+                            &added.text,
+                            file_has_decorators,
+                        )
+                    })
                 {
                     continue;
                 }
