@@ -27,7 +27,7 @@ pub(crate) fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
             return Vec::new();
         }
         let imports = extract_imports_from_statements(&ret.program.body);
-        let mocks = extract_mocks_from_statements(&ret.program.body);
+        let mocks = extract_mocks_from_statements(&ret.program.body, &imports);
         let mut tests = Vec::new();
         let mut scope = TestScope::default();
         collect_tests_from_statements(
@@ -60,84 +60,337 @@ pub(crate) fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
     tests
 }
 
-/// Walk a list of statements and collect every syntactic
-/// `vi.mock("path")` / `jest.mock("path")` (and the non-hoisted `doMock`
-/// variants) argument we see, at ANY statement depth the runners hoist
-/// through — including `describe(...)` callback bodies, where both Jest and
-/// Vitest legally allow `mock`/`doMock` calls. The list is deduplicated and
-/// used by the classifier to surface the `mocked_module` static-limit per
-/// RIPR-SPEC-0026.
+/// Walk a list of statements and collect every syntactic owner-module mock
+/// registration (`vi.mock("path")`, `jest.mock("path")`, the non-hoisted
+/// `doMock`, Jest's `unstable_mockModule`/`setMock`, and `mock.module` from
+/// `bun:test`/`node:test`) at ANY statement depth the runners hoist through —
+/// including `describe(...)` callback bodies, where both Jest and Vitest
+/// legally allow `mock`/`doMock` calls. The list is deduplicated and used by
+/// the classifier to surface the `mocked_module` static-limit per
+/// RIPR-SPEC-0026, and by the owner-module mock guard.
+///
+/// The runner object may be `vi`/`jest`, a renamed or namespace import of
+/// either from a test runner module, or a `const` alias or destructured
+/// method bound anywhere in the file (#4294). Aliases ignore lexical scope,
+/// which only errs toward recording a mock. Parentheses,
+/// type assertions, optional calls and `await` around the call are seen
+/// through. A specifier the adapter cannot read is recorded as
+/// [`UNRESOLVED_MOCK_SPECIFIER`] so the guard fails closed.
 ///
 /// This is purely syntactic — the adapter does not resolve the mocked
 /// module identifier through the project's import graph, so the limit
 /// surfaces exactly when the test file contains the mock call shape.
 pub(crate) fn extract_mocks_from_statements(
     statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+    imports: &[TypeScriptImport],
 ) -> Vec<String> {
+    let mut runner = MockRunner::from_imports(imports);
+    // A callback or hoisted function may use an alias declared after it
+    // (`beforeEach(() => m.mock(...)); const m = vi;`), so a first walk binds
+    // every alias in the file and the second collects with all of them.
+    collect_mock_paths(&mut runner, statements, &mut Vec::new());
     let mut out: Vec<String> = Vec::new();
-    collect_mock_paths(statements, &mut out);
+    collect_mock_paths(&mut runner, statements, &mut out);
     out
 }
 
+/// Recorded in place of a mock specifier that is not a string: a variable,
+/// a template with substitutions, a spread, or `import(expr)`. The mocked
+/// module is unknown, so the owner-module guard treats it as the owner's
+/// (#4294).
+pub(crate) const UNRESOLVED_MOCK_SPECIFIER: &str = "<unresolved mock specifier>";
+
+const RUNNER_OBJECTS: [&str; 2] = ["vi", "jest"];
+
+/// Runner-object methods that replace a module for the importing test.
+const RUNNER_MOCK_METHODS: [&str; 4] = ["mock", "doMock", "unstable_mockModule", "setMock"];
+
+/// Runner modules whose `mock` export registers a module mock through
+/// `mock.module(path, ...)`.
+const MOCK_MODULE_RUNNERS: [&str; 2] = ["bun:test", "node:test"];
+
+/// The names through which a test file reaches a runner's mock API.
+#[derive(Default)]
+struct MockRunner {
+    /// Identifiers bound to the runner object (`vi`, `jest`, aliases).
+    objects: Vec<String>,
+    /// Namespace imports of a runner module (`import * as vt from "vitest"`).
+    namespaces: Vec<String>,
+    /// Identifiers bound to a runner mock method (`const { mock } = vi`).
+    functions: Vec<String>,
+    /// Identifiers bound to a `mock` export with a `module` method.
+    module_mockers: Vec<String>,
+}
+
+impl MockRunner {
+    fn from_imports(imports: &[TypeScriptImport]) -> Self {
+        let mut runner = Self {
+            objects: RUNNER_OBJECTS.iter().map(ToString::to_string).collect(),
+            ..Self::default()
+        };
+        for import in imports {
+            let source = import.source.as_str();
+            if !TEST_RUNNER_MODULES.contains(&source) {
+                continue;
+            }
+            let imported = import.imported.as_deref();
+            if import.namespace {
+                runner.namespaces.push(import.local.clone());
+            } else if imported.is_some_and(|name| RUNNER_OBJECTS.contains(&name)) {
+                runner.objects.push(import.local.clone());
+            } else if imported == Some("mock") && MOCK_MODULE_RUNNERS.contains(&source) {
+                runner.module_mockers.push(import.local.clone());
+            }
+        }
+        runner
+    }
+
+    /// Record the names a declarator binds to the runner: `const m = vi`,
+    /// `const { mock: m } = vi`, `const { vi: v } = vt`.
+    fn bind(&mut self, declarator: &oxc_ast::ast::VariableDeclarator<'_>) {
+        let Some(init) = &declarator.init else {
+            return;
+        };
+        match &declarator.id {
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) if self.is_object(init) => {
+                self.objects.push(id.name.to_string());
+            }
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) if self.is_mock_method(init) => {
+                self.functions.push(id.name.to_string());
+            }
+            oxc_ast::ast::BindingPattern::BindingIdentifier(id) if self.is_module_mocker(init) => {
+                self.module_mockers.push(id.name.to_string());
+            }
+            oxc_ast::ast::BindingPattern::ObjectPattern(pattern) => {
+                let from_object = self.is_object(init);
+                let from_namespace = self.is_namespace(init);
+                for property in &pattern.properties {
+                    // `{ mock = fallback }` binds `mock` through a default.
+                    let value = match &property.value {
+                        oxc_ast::ast::BindingPattern::AssignmentPattern(assign) => &assign.left,
+                        value => value,
+                    };
+                    let (Some(key), oxc_ast::ast::BindingPattern::BindingIdentifier(local)) =
+                        (property.key.static_name(), value)
+                    else {
+                        continue;
+                    };
+                    let local = local.name.to_string();
+                    if from_object && RUNNER_MOCK_METHODS.contains(&key.as_ref()) {
+                        self.functions.push(local);
+                    } else if from_namespace && RUNNER_OBJECTS.contains(&key.as_ref()) {
+                        self.objects.push(local);
+                    } else if from_namespace && key == "mock" {
+                        self.module_mockers.push(local);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn is_namespace(&self, expression: &Expression<'_>) -> bool {
+        matches!(expression.get_inner_expression(), Expression::Identifier(ident)
+            if self.namespaces.iter().any(|name| name == ident.name.as_str()))
+    }
+
+    fn is_object(&self, expression: &Expression<'_>) -> bool {
+        let expression = expression.get_inner_expression();
+        if let Expression::Identifier(ident) = expression {
+            return self.objects.iter().any(|name| name == ident.name.as_str());
+        }
+        member_parts(expression).is_some_and(|(object, property)| {
+            RUNNER_OBJECTS.contains(&property) && self.is_namespace(object)
+        })
+    }
+
+    /// `true` for `vi.mock` (or another runner mock method) read as a value,
+    /// possibly through `.bind(...)`: `const doMock = vi.doMock`.
+    fn is_mock_method(&self, expression: &Expression<'_>) -> bool {
+        let expression = expression.get_inner_expression();
+        if let Expression::CallExpression(call) = expression
+            && let Some((bound, "bind")) = member_parts(call.callee.get_inner_expression())
+        {
+            return self.is_mock_method(bound);
+        }
+        member_parts(expression).is_some_and(|(object, property)| {
+            RUNNER_MOCK_METHODS.contains(&property) && self.is_object(object)
+        })
+    }
+
+    /// `true` for the `mock` export of `bun:test`/`node:test` (whose
+    /// `module` method registers a module mock), imported, aliased, or read
+    /// from a namespace import (`node.mock`).
+    fn is_module_mocker(&self, expression: &Expression<'_>) -> bool {
+        let expression = expression.get_inner_expression();
+        if let Expression::Identifier(ident) = expression {
+            return self
+                .module_mockers
+                .iter()
+                .any(|name| name == ident.name.as_str());
+        }
+        member_parts(expression)
+            .is_some_and(|(object, property)| property == "mock" && self.is_namespace(object))
+    }
+
+    /// `true` when calling `callee` registers a module mock.
+    fn is_mock_callee(&self, callee: &Expression<'_>) -> bool {
+        let mut callee = callee.get_inner_expression();
+        // `(0, vi.mock)(...)` calls the last operand.
+        while let Expression::SequenceExpression(sequence) = callee {
+            let Some(last) = sequence.expressions.last() else {
+                return false;
+            };
+            callee = last.get_inner_expression();
+        }
+        if let Expression::Identifier(ident) = callee {
+            return self
+                .functions
+                .iter()
+                .any(|name| name == ident.name.as_str());
+        }
+        self.is_mock_method(callee)
+            || member_parts(callee).is_some_and(|(object, property)| {
+                property == "module" && self.is_module_mocker(object)
+            })
+    }
+}
+
+/// The object and static property name of `a.b`, `a["b"]` or ``a[`b`]``.
+fn member_parts<'e, 'a>(expression: &'e Expression<'a>) -> Option<(&'e Expression<'a>, &'a str)> {
+    match expression {
+        Expression::StaticMemberExpression(member) => {
+            Some((&member.object, member.property.name.as_str()))
+        }
+        Expression::ComputedMemberExpression(member) => member
+            .static_property_name()
+            .map(|name| (&member.object, name.as_str())),
+        _ => None,
+    }
+}
+
 /// Recursively collect mock paths from statements. Statement containers
-/// (blocks, if/else, loops, try/catch, switch) and function-bodied call
-/// arguments (describe/it/beforeAll callbacks) are walked; everything else
-/// is ignored. Deduplication preserves first-seen order.
-fn collect_mock_paths(statements: &[Statement<'_>], out: &mut Vec<String>) {
+/// (blocks, if/else, loops, try/catch, switch, exports) and function bodies
+/// (declarations, callbacks, arrow initializers) are walked; everything else
+/// is ignored. Runner aliases are bound as their declarations are reached.
+/// Deduplication preserves first-seen order.
+fn collect_mock_paths(
+    runner: &mut MockRunner,
+    statements: &[Statement<'_>],
+    out: &mut Vec<String>,
+) {
     for stmt in statements {
         match stmt {
-            Statement::BlockStatement(block) => collect_mock_paths(&block.body, out),
+            Statement::BlockStatement(block) => collect_mock_paths(runner, &block.body, out),
             Statement::ExpressionStatement(expr_stmt) => {
-                collect_mock_path_from_expression(&expr_stmt.expression, out);
+                collect_mock_path_from_expression(runner, &expr_stmt.expression, out);
             }
             Statement::IfStatement(if_stmt) => {
-                collect_mock_paths(std::slice::from_ref(&if_stmt.consequent), out);
+                collect_mock_paths(runner, std::slice::from_ref(&if_stmt.consequent), out);
                 if let Some(alternate) = &if_stmt.alternate {
-                    collect_mock_paths(std::slice::from_ref(alternate), out);
+                    collect_mock_paths(runner, std::slice::from_ref(alternate), out);
                 }
             }
             Statement::DoWhileStatement(do_while) => {
-                collect_mock_paths(std::slice::from_ref(&do_while.body), out)
+                collect_mock_paths(runner, std::slice::from_ref(&do_while.body), out)
             }
             Statement::WhileStatement(while_stmt) => {
-                collect_mock_paths(std::slice::from_ref(&while_stmt.body), out)
+                collect_mock_paths(runner, std::slice::from_ref(&while_stmt.body), out)
             }
             Statement::ForStatement(for_stmt) => {
-                collect_mock_paths(std::slice::from_ref(&for_stmt.body), out)
+                collect_mock_paths(runner, std::slice::from_ref(&for_stmt.body), out)
             }
             Statement::ForInStatement(for_in) => {
-                collect_mock_paths(std::slice::from_ref(&for_in.body), out)
+                collect_mock_paths(runner, std::slice::from_ref(&for_in.body), out)
             }
             Statement::ForOfStatement(for_of) => {
-                collect_mock_paths(std::slice::from_ref(&for_of.body), out)
+                collect_mock_paths(runner, std::slice::from_ref(&for_of.body), out)
             }
             Statement::LabeledStatement(labeled) => {
-                collect_mock_paths(std::slice::from_ref(&labeled.body), out)
+                collect_mock_paths(runner, std::slice::from_ref(&labeled.body), out)
             }
             Statement::TryStatement(try_stmt) => {
-                collect_mock_paths(&try_stmt.block.body, out);
+                collect_mock_paths(runner, &try_stmt.block.body, out);
                 if let Some(handler) = &try_stmt.handler {
-                    collect_mock_paths(&handler.body.body, out);
+                    collect_mock_paths(runner, &handler.body.body, out);
                 }
                 if let Some(finalizer) = &try_stmt.finalizer {
-                    collect_mock_paths(&finalizer.body, out);
+                    collect_mock_paths(runner, &finalizer.body, out);
                 }
             }
             Statement::SwitchStatement(switch_stmt) => {
                 for case in &switch_stmt.cases {
-                    collect_mock_paths(&case.consequent, out);
+                    collect_mock_paths(runner, &case.consequent, out);
                 }
             }
             Statement::VariableDeclaration(decl) => {
-                for declarator in &decl.declarations {
-                    if let Some(init) = &declarator.init {
-                        collect_mock_path_from_expression(init, out);
-                    }
-                }
+                collect_mock_paths_from_variables(runner, decl, out)
             }
             Statement::FunctionDeclaration(func) => {
                 if let Some(body) = &func.body {
-                    collect_mock_paths(&body.statements, out);
+                    collect_mock_paths(runner, &body.statements, out);
+                }
+            }
+            Statement::ReturnStatement(ret) => {
+                if let Some(argument) = &ret.argument {
+                    collect_mock_path_from_expression(runner, argument, out);
+                }
+            }
+            Statement::ClassDeclaration(class) => collect_mock_paths_from_class(runner, class, out),
+            Statement::ExportDefaultDeclaration(export) => match &export.declaration {
+                oxc_ast::ast::ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
+                    if let Some(body) = &func.body {
+                        collect_mock_paths(runner, &body.statements, out);
+                    }
+                }
+                oxc_ast::ast::ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+                    collect_mock_paths_from_class(runner, class, out)
+                }
+                other => {
+                    if let Some(expression) = other.as_expression() {
+                        collect_mock_path_from_expression(runner, expression, out);
+                    }
+                }
+            },
+            Statement::ExportNamedDeclaration(export) => match &export.declaration {
+                Some(oxc_ast::ast::Declaration::VariableDeclaration(decl)) => {
+                    collect_mock_paths_from_variables(runner, decl, out)
+                }
+                Some(oxc_ast::ast::Declaration::FunctionDeclaration(func)) => {
+                    if let Some(body) = &func.body {
+                        collect_mock_paths(runner, &body.statements, out);
+                    }
+                }
+                Some(oxc_ast::ast::Declaration::ClassDeclaration(class)) => {
+                    collect_mock_paths_from_class(runner, class, out)
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+/// Class static blocks, property initializers and method bodies run test
+/// code too.
+fn collect_mock_paths_from_class(
+    runner: &mut MockRunner,
+    class: &oxc_ast::ast::Class<'_>,
+    out: &mut Vec<String>,
+) {
+    for element in &class.body.body {
+        match element {
+            oxc_ast::ast::ClassElement::StaticBlock(block) => {
+                collect_mock_paths(runner, &block.body, out)
+            }
+            oxc_ast::ast::ClassElement::MethodDefinition(method) => {
+                if let Some(body) = &method.value.body {
+                    collect_mock_paths(runner, &body.statements, out);
+                }
+            }
+            oxc_ast::ast::ClassElement::PropertyDefinition(property) => {
+                if let Some(value) = &property.value {
+                    collect_mock_path_from_expression(runner, value, out);
                 }
             }
             _ => {}
@@ -145,64 +398,162 @@ fn collect_mock_paths(statements: &[Statement<'_>], out: &mut Vec<String>) {
     }
 }
 
-/// Collect a mock path from an expression: a direct `vi.mock("path")` /
-/// `jest.doMock("path")` call, or a call whose function arguments are
-/// callbacks to recurse into (so a describe-scoped mock is found). A mock
-/// call chained after another call (`jest.mock("a").mock("b")`) is found by
-/// descending into a `StaticMemberExpression` callee's object, so chained
+fn collect_mock_paths_from_variables(
+    runner: &mut MockRunner,
+    decl: &oxc_ast::ast::VariableDeclaration<'_>,
+    out: &mut Vec<String>,
+) {
+    for declarator in &decl.declarations {
+        runner.bind(declarator);
+        if let Some(init) = &declarator.init {
+            collect_mock_path_from_expression(runner, init, out);
+        }
+    }
+}
+
+/// Collect a mock path from an expression: a direct mock call, possibly
+/// parenthesized, awaited, optional or in a sequence, or a call or function
+/// whose body may register one (so a describe-scoped or helper-built mock is
+/// found). A mock call chained after another call (`jest.mock("a").mock("b")`)
+/// is found by descending into a member callee's object, so chained
 /// registrations stay under the owner-module mock guard.
-fn collect_mock_path_from_expression(expression: &Expression<'_>, out: &mut Vec<String>) {
-    let Expression::CallExpression(call) = expression else {
-        return;
+fn collect_mock_path_from_expression(
+    runner: &mut MockRunner,
+    expression: &Expression<'_>,
+    out: &mut Vec<String>,
+) {
+    let call = match expression.get_inner_expression() {
+        Expression::CallExpression(call) => call,
+        Expression::ChainExpression(chain) => {
+            let oxc_ast::ast::ChainElement::CallExpression(call) = &chain.expression else {
+                return;
+            };
+            call
+        }
+        Expression::AwaitExpression(await_expr) => {
+            return collect_mock_path_from_expression(runner, &await_expr.argument, out);
+        }
+        Expression::SequenceExpression(sequence) => {
+            for item in &sequence.expressions {
+                collect_mock_path_from_expression(runner, item, out);
+            }
+            return;
+        }
+        Expression::ArrowFunctionExpression(arrow) => {
+            return collect_mock_paths(runner, &arrow.body.statements, out);
+        }
+        Expression::FunctionExpression(func) => {
+            if let Some(body) = &func.body {
+                collect_mock_paths(runner, &body.statements, out);
+            }
+            return;
+        }
+        Expression::UnaryExpression(unary) => {
+            return collect_mock_path_from_expression(runner, &unary.argument, out);
+        }
+        Expression::LogicalExpression(logical) => {
+            collect_mock_path_from_expression(runner, &logical.left, out);
+            return collect_mock_path_from_expression(runner, &logical.right, out);
+        }
+        Expression::ConditionalExpression(conditional) => {
+            collect_mock_path_from_expression(runner, &conditional.consequent, out);
+            return collect_mock_path_from_expression(runner, &conditional.alternate, out);
+        }
+        Expression::AssignmentExpression(assign) => {
+            // `m = vi` binds an alias like a declaration does.
+            if let oxc_ast::ast::AssignmentTarget::AssignmentTargetIdentifier(target) = &assign.left
+                && runner.is_object(&assign.right)
+            {
+                runner.objects.push(target.name.to_string());
+            }
+            return collect_mock_path_from_expression(runner, &assign.right, out);
+        }
+        Expression::ArrayExpression(array) => {
+            for element in &array.elements {
+                if let Some(element) = element.as_expression() {
+                    collect_mock_path_from_expression(runner, element, out);
+                }
+            }
+            return;
+        }
+        Expression::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let oxc_ast::ast::ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_mock_path_from_expression(runner, &property.value, out);
+                }
+            }
+            return;
+        }
+        _ => return,
     };
-    if let Some(path) = mock_path_from_call(call)
+    if let Some(path) = mock_path_from_call(runner, call)
         && !out.iter().any(|existing| existing == &path)
     {
         out.push(path);
     }
     if let Expression::StaticMemberExpression(member) = &call.callee {
-        collect_mock_path_from_expression(&member.object, out);
+        collect_mock_path_from_expression(runner, &member.object, out);
     }
+    // Callbacks, including ones wrapped in another call
+    // (`beforeEach(wrap(() => ...))`), may register a mock.
     for argument in &call.arguments {
-        match argument {
-            oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => {
-                collect_mock_paths(&arrow.body.statements, out);
-            }
-            oxc_ast::ast::Argument::FunctionExpression(func) => {
-                if let Some(body) = &func.body {
-                    collect_mock_paths(&body.statements, out);
-                }
-            }
-            _ => {}
+        if let Some(argument) = argument.as_expression() {
+            collect_mock_path_from_expression(runner, argument, out);
         }
     }
 }
 
-/// Extract the mocked module path from a `vi.mock("path")` /
-/// `jest.mock("path")` / `vi.doMock("path")` / `jest.doMock("path")` call.
-/// `doMock` is the non-hoisted variant both runners expose (it affects only
-/// modules loaded after the call); the adapter cannot prove the observed
-/// call reaches the real module, so the owner-module mock guard treats it
+/// Extract the mocked module path from a runner mock call (see
+/// [`extract_mocks_from_statements`] for the recognised callees). `doMock`
+/// is the non-hoisted variant both runners expose (it affects only modules
+/// loaded after the call); the adapter cannot prove the observed call
+/// reaches the real module, so the owner-module mock guard treats it
 /// exactly like `mock` (#4103 shape 2).
-fn mock_path_from_call(call: &oxc_ast::ast::CallExpression<'_>) -> Option<String> {
-    let Expression::StaticMemberExpression(member) = &call.callee else {
-        return None;
-    };
-    let Expression::Identifier(object_ident) = &member.object else {
-        return None;
-    };
-    let object_name = object_ident.name.as_str();
-    if object_name != "vi" && object_name != "jest" {
-        return None;
-    }
-    if !matches!(member.property.name.as_str(), "mock" | "doMock") {
+///
+/// The specifier may be a string, a substitution-free template, Vitest's
+/// typed `import("path")` form or Jest's `require.resolve("path")`, seen
+/// through parentheses and type assertions; anything else yields
+/// [`UNRESOLVED_MOCK_SPECIFIER`] (#4294).
+fn mock_path_from_call(
+    runner: &MockRunner,
+    call: &oxc_ast::ast::CallExpression<'_>,
+) -> Option<String> {
+    if !runner.is_mock_callee(&call.callee) {
         return None;
     }
-    let first_arg = call.arguments.first()?;
-    let oxc_ast::ast::Argument::StringLiteral(literal) = first_arg else {
-        return None;
-    };
-    Some(literal.value.to_string())
+    // A spread first argument (`vi.mock(...args)`) is as opaque as a variable.
+    let specifier = call
+        .arguments
+        .first()?
+        .as_expression()
+        .and_then(|argument| match argument.get_inner_expression() {
+            Expression::ImportExpression(import) => string_value(&import.source),
+            Expression::CallExpression(resolve)
+                if member_parts(&resolve.callee).is_some_and(|(object, property)| {
+                    property == "resolve"
+                        && matches!(object, Expression::Identifier(ident) if ident.name == "require")
+                }) =>
+            {
+                resolve
+                    .arguments
+                    .first()
+                    .and_then(oxc_ast::ast::Argument::as_expression)
+                    .and_then(string_value)
+            }
+            other => string_value(other),
+        });
+    Some(specifier.unwrap_or_else(|| UNRESOLVED_MOCK_SPECIFIER.to_string()))
+}
+
+/// The value of a string literal or a template without substitutions.
+fn string_value(expression: &Expression<'_>) -> Option<String> {
+    match expression.get_inner_expression() {
+        Expression::StringLiteral(literal) => Some(literal.value.to_string()),
+        Expression::TemplateLiteral(template) => {
+            template.single_quasi().map(|quasi| quasi.to_string())
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn collect_tests_from_statements(

@@ -802,6 +802,16 @@ pub(crate) struct TypeScriptStaticLimit {
     pub(crate) repair_route: String,
 }
 
+/// A mock path in backticks, or the unresolved marker in words: the marker
+/// is not a module path (#4294).
+fn display_mock_path(path: &str) -> String {
+    if path == UNRESOLVED_MOCK_SPECIFIER {
+        "an unresolved specifier".to_string()
+    } else {
+        format!("`{path}`")
+    }
+}
+
 pub(crate) fn static_limit_for_change(
     line_text: &str,
     owner: &TypeScriptOwner,
@@ -847,14 +857,14 @@ pub(crate) fn static_limit_for_change(
     if !mock_paths.is_empty() {
         let preview: String = mock_paths
             .iter()
-            .map(|path| format!("`{path}`"))
+            .map(|path| display_mock_path(path))
             .collect::<Vec<_>>()
             .join(", ");
         return Some(TypeScriptStaticLimit {
             kind: StaticLimitKind::MockedModule,
             evidence: mock_paths
                 .iter()
-                .map(|path| format!("static_limit mocked_module: `{path}`"))
+                .map(|path| format!("static_limit mocked_module: {}", display_mock_path(path)))
                 .collect(),
             missing: format!(
                 "Static limit `mocked_module`: related test file mocks {preview} via `vi.mock(...)` / `jest.mock(...)`. The TypeScript preview adapter does not resolve mocked module semantics, so the substitution under test is opaque to static evidence. Repair route: add mock-shape support or validate the real substitution under test before issuing a repair packet."

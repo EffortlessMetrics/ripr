@@ -802,10 +802,52 @@ fn test_mocks_owner_module(
     alias_map: Option<&TsAliasMap>,
     workspace_root: Option<&Path>,
 ) -> bool {
+    let owner_module = normalized_module_path(&owner.file);
+    // A mock of a directory (`../src/cart`) replaces its `index` module.
+    let owner_modules = [
+        Some(owner_module.as_str()),
+        owner_module.strip_suffix("/index"),
+    ];
     test.mocks_in_file.iter().any(|source| {
-        normalized_relative_import_module(&test.file, source, alias_map, workspace_root)
-            .is_some_and(|module| module == normalized_module_path(&owner.file))
+        source == UNRESOLVED_MOCK_SPECIFIER
+            || owner_modules.iter().flatten().any(|module| {
+                root_relative_mock_names_module(source, module)
+                    || normalized_relative_import_module(
+                        &test.file,
+                        source,
+                        alias_map,
+                        workspace_root,
+                    )
+                    .is_some_and(|mocked| mocked == *module)
+            })
     })
+}
+
+/// `true` when a root-relative mock specifier (`/src/cart`) may name
+/// `module`. The runner resolves it against its own root, which the adapter
+/// does not model, so any whole-segment suffix of the module path matches:
+/// an unknown root errs toward withholding the relation (#4294). A query
+/// (`?raw`), empty and `.` segments are dropped first, so `//src/./cart`
+/// reads as `src/cart`; a `..` segment makes the path unknowable and matches.
+fn root_relative_mock_names_module(source: &str, module: &str) -> bool {
+    let source = source.replace('\\', "/");
+    let Some(rooted) = source.strip_prefix('/') else {
+        return false;
+    };
+    let rooted = rooted.split(['?', '#']).next().unwrap_or_default();
+    let segments: Vec<&str> = rooted
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect();
+    if segments.contains(&"..") {
+        return true;
+    }
+    let rooted = strip_typescript_module_extension(&segments.join("/"));
+    !rooted.is_empty()
+        && (module == rooted
+            || module
+                .strip_suffix(rooted.as_str())
+                .is_some_and(|prefix| prefix.ends_with('/')))
 }
 
 /// Fabrication method shapes that replace a spy's observed value (#4103

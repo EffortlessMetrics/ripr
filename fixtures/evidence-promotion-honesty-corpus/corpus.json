@@ -1518,6 +1518,22 @@
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "weakly_exposed" }
       ]
+    },
+    {
+      "id": "ts_mock_forms_owner_module",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_mock_forms_owner_module",
+      "vector": "renamed_runner_typed_import_mock_treated_as_owner_module_mock",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_emit_limitation", "expected_limit_kind": "mocked_module" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
     }
   ]
 }

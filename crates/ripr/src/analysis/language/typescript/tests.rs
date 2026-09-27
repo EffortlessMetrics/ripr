@@ -14534,4 +14534,5 @@ fn undercredit_4103_owner_extraction_records_default_export_fact() {
     assert!(!plain[0].exported_as_default);
 }
 
+mod mock_form_tests;
 mod scope_receiver_tests;
