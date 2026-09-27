@@ -54,6 +54,26 @@ map is:
 | `ripr mcp` status tool and resource | `schema_version` | `ripr-mcp-workspace-status-v1` (see [MCP workspace status server](interop/mcp.md)) |
 | `ripr swarm queue --json` | `schema_version` | `0.2` |
 
+The published JSON Schemas have these current versions. Each row is checked
+against the schema's pinned `const` and every named producer source by
+`cargo xtask check-verification-contracts`. A schema can describe a reserved
+contract without claiming an installed producer; the verification audit
+records that distinction.
+
+| Published schema | Current version | Version owner and rationale |
+| --- | --- | --- |
+| `schemas/ripr/check.schema.json` | `0.2` | `crates/ripr/src/app.rs`; check envelope |
+| `schemas/ripr/gate-decision.schema.json` | `0.1` | `crates/ripr/src/output/gate.rs`; gate decision envelope |
+| `schemas/ripr/pr-evidence.schema.json` | `0.1` | `crates/ripr/src/app/pr_evidence.rs` (installed `ripr pr-evidence`) and `xtask/src/reports/pr_evidence.rs` (xtask compatibility); PR evidence envelope |
+| `schemas/ripr/repair-assurance.schema.json` | `1` | `crates/ripr/src/domain/verification_result.rs`; reserved assurance vocabulary and execution result |
+| `schemas/ripr/repair-attempt.schema.json` | `0.1` | `crates/ripr/src/app/repair_attempt.rs`; repair attempt manifest |
+| `schemas/ripr/review-comments.schema.json` | `0.1` | `crates/ripr/src/output/review_comments.rs`; review report envelope |
+| `schemas/ripr/ripr-agent-capability.schema.json` | `0.2` | `crates/ripr/src/lsp/agent_protocol.rs`; route readiness fields |
+| `schemas/ripr/ripr-agent-error.schema.json` | `0.2` | `crates/ripr/src/lsp/agent_protocol.rs`; route readiness fields |
+| `schemas/ripr/ripr-agent-request.schema.json` | `0.2` | `crates/ripr/src/lsp/agent_protocol.rs`; route readiness fields |
+| `schemas/ripr/ripr-agent-success.schema.json` | `0.2` | `crates/ripr/src/lsp/agent_protocol.rs`; route readiness fields |
+| `schemas/ripr/rust-repair-trust-corpus.schema.json` | `0.1` | `xtask/src/reports/rust_repair_trust.rs`; trust corpus input |
+
 Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
 
