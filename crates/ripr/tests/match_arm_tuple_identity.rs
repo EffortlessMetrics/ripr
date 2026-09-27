@@ -8,7 +8,7 @@ use ripr::{
     CheckInput, CheckOutput, ExposureClass, Mode, OutputFormat, ProbeFamily, check_workspace,
 };
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const CANDIDATE_SOURCE: &str = r#"pub fn relation(request_match: bool, task_match: bool) -> &'static str {
     match (request_match, task_match) {
@@ -58,12 +58,13 @@ struct TempRepo {
 
 impl TempRepo {
     fn create(test_source: &str) -> Result<Self, String> {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("clock before Unix epoch: {error}"))?
-            .as_nanos();
+        // A process-wide sequence, not the clock: parallel tests on Windows
+        // read the same `SystemTime`, share one root, and overwrite each
+        // other's fixture.
+        static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+        let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "ripr-match-arm-tuple-identity-{}-{stamp}",
+            "ripr-match-arm-tuple-identity-{}-{sequence}",
             std::process::id()
         ));
         std::fs::create_dir_all(root.join("src"))
@@ -219,6 +220,14 @@ fn sibling_tuple_input_cannot_certify_the_changed_arm() -> Result<(), String> {
                 oracle.contains("relation(false, true)") && oracle.contains("\"task_identity\"")
             })
     }));
+    Ok(())
+}
+
+#[test]
+fn concurrent_fixtures_get_distinct_roots() -> Result<(), String> {
+    let first = TempRepo::create(ALIGNED_TEST)?;
+    let second = TempRepo::create(SIBLING_TEST)?;
+    assert_ne!(first.root, second.root);
     Ok(())
 }
 

@@ -10,7 +10,7 @@ use ripr::{
     CheckInput, CheckOutput, ExposureClass, Mode, OutputFormat, ProbeFamily, check_workspace,
 };
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const ROOT_SOURCE: &str = r#"#[cfg(test)]
 mod outer {
@@ -56,12 +56,13 @@ struct TempRepo {
 
 impl TempRepo {
     fn create() -> Result<Self, String> {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("clock before Unix epoch: {error}"))?
-            .as_nanos();
+        // A process-wide sequence, not the clock: parallel tests on Windows
+        // read the same `SystemTime`, share one root, and overwrite each
+        // other's fixture.
+        static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+        let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "ripr-match-arm-same-file-namespace-{}-{stamp}",
+            "ripr-match-arm-same-file-namespace-{}-{sequence}",
             std::process::id()
         ));
         std::fs::create_dir_all(root.join("src/outer"))
