@@ -29,9 +29,33 @@ export function stringValues(value: Record<string, unknown> | undefined): string
 
 /**
  * Check if a command contains shell metacharacters that could inject.
+ *
+ * Refused anywhere: line breaks, NUL, `` ` ``, `;`, `&`, `|`, `\`, `"` and
+ * the typographic quotes PowerShell treats as quotes (U+2018..U+201F). The
+ * server's `shell_arg` emits none of them outside a single-quoted span, and
+ * with them gone a single-quoted span means the same thing in bash, zsh,
+ * fish and PowerShell: nothing inside it expands.
+ *
+ * Refused outside single-quoted spans: `$`, `(` and `)`, which open command
+ * and process substitution (`$(cmd)`, `<(cmd)`, `>(cmd)`; #4225). The server
+ * quotes all three, so a quoted gap id such as `'len(x)>0'` still passes.
+ * An unterminated span is refused.
  */
 export function hasUnsafeShellMetacharacter(command: string): boolean {
-  return /[\r\n\0`;&|\\]/.test(command);
+  if (/[\r\n\0`;&|\\"\u2018-\u201f]/.test(command)) {
+    return true;
+  }
+  const spans = command.split("'");
+  return spans.length % 2 === 0 || spans.some((span, index) => index % 2 === 0 && /[$()]/.test(span));
+}
+
+/**
+ * Quote one argument exactly as the server's `shell_arg`
+ * (`crates/ripr/src/agent/loop_commands.rs`): bare when every character is in
+ * `[A-Za-z0-9._/:-]`, otherwise single-quoted with `'` written as `'\''`.
+ */
+export function serverShellArg(value: string): string {
+  return /^[A-Za-z0-9._/:-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -42,7 +66,8 @@ export function hasUnsafeShellMetacharacter(command: string): boolean {
  * anchors the target at the resolved `--root` with forward slashes, so a
  * `--root .` command names `artifact` under the server's cwd. The legacy
  * relative form is still accepted. Any other root, file, `..` segment or
- * trailing token is rejected.
+ * trailing token is rejected. Callers check the text before the redirect
+ * with `hasUnsafeShellMetacharacter`; this function owns the tail.
  */
 export function redirectTargetMatches(
   tail: string,
@@ -51,7 +76,12 @@ export function redirectTargetMatches(
 ): boolean {
   const quoted = /^'([^']*)'$/.exec(tail);
   const target = quoted ? quoted[1] : /^[A-Za-z0-9._/:-]+$/.test(tail) ? tail : undefined;
-  if (target === undefined) {
+  // The quoted span may hold a workspace path's `&`, `;` or `$`: that text
+  // must equal a local root below, so the server cannot choose it (#4225).
+  // Line breaks, backslashes and typographic quotes are still refused, since
+  // they end or escape the span in some shell (fish reads `\'` inside single
+  // quotes as an escape; PowerShell closes a span on U+2018..U+201B).
+  if (target === undefined || /[\r\n\0\\\u2018-\u201f]/.test(target)) {
     return false;
   }
   if (target === artifact) {

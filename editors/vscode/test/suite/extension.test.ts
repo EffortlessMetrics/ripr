@@ -8,9 +8,10 @@ import {
   RiprAgentLoopCommandTarget,
   RiprWorkspaceRootState,
   readActionableGapQueueStatus,
-  readFirstPrPacketStatus
+  readFirstPrPacketStatus,
+  validatedAgentLoopCommand
 } from '../../src/client';
-import { redirectTargetMatches } from '../../src/packetJson';
+import { hasUnsafeShellMetacharacter, redirectTargetMatches, serverShellArg } from '../../src/packetJson';
 import { compatibleLspEvidence } from './testCompatibility';
 
 suite('Extension Smoke', () => {
@@ -3472,7 +3473,7 @@ suite('Extension Smoke', () => {
         ),
         agentLoopCommandTarget(
           'after_snapshot',
-          'ripr check --root . --base "origin/main with space" --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json',
+          "ripr check --root . --base 'origin/main with space' --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
           'target/ripr/pilot/after.repo-exposure.json',
           { base: 'origin/main with space', mode: 'ready' }
         ),
@@ -3595,6 +3596,68 @@ suite('Extension Smoke', () => {
     assert.ok(!redirectTargetMatches(`${slash(root)}/sub/../${artifact}`, artifact, [root]));
     assert.ok(!redirectTargetMatches(`${slash(root)}/${artifact} extra`, artifact, [root]));
     assert.ok(!redirectTargetMatches('target/ripr/agent/../agent/agent-packet.json', artifact, [root]));
+  });
+
+  test('agent loop commands must equal the body the server renders from the payload (#4225)', () => {
+    const seamId = '67fc764ba37d77bd';
+    const root = path.resolve('/work/R&D/$repo');
+    const anchored = (artifact: string) => serverShellArg(`${root.replace(/\\/g, '/')}/${artifact}`);
+    const accepts = (target: RiprAgentLoopCommandTarget) =>
+      validatedAgentLoopCommand(target, [root]) === target.command;
+    const packet = (body: string, redirect = anchored('target/ripr/agent/agent-packet.json')) =>
+      agentLoopCommandTarget('agent_packet', `${body} > ${redirect}`, 'target/ripr/agent/agent-packet.json', { seamId });
+    const snapshot = (commandBase: string, payloadBase: string | null): RiprAgentLoopCommandTarget => ({
+      ...agentLoopCommandTarget(
+        'after_snapshot',
+        `ripr check --root .${commandBase} --mode fast --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json`,
+        'target/ripr/pilot/after.repo-exposure.json',
+        { mode: 'fast' }
+      ),
+      base: payloadBase
+    });
+
+    // A workspace path the server single-quotes keeps its `&` and `$`.
+    assert.ok(accepts(packet(`ripr agent packet --root . --seam-id ${seamId} --json`)));
+    // Bases the server single-quotes, and no `--base` when the payload has none.
+    for (const base of ['HEAD~1', 'HEAD^', '@{u}', 'origin/main with space']) {
+      assert.ok(accepts(snapshot(` --base ${serverShellArg(base)}`, base)), base);
+    }
+    assert.ok(accepts(snapshot('', null)));
+
+    // Extra tokens before the redirect, including command substitution.
+    assert.ok(!accepts(packet(`ripr agent packet --root . --seam-id ${seamId} $(touch pwned) --json`)));
+    assert.ok(!accepts(packet(`ripr agent packet --root . --seam-id ${seamId} --json --extra`)));
+    assert.ok(!accepts(agentLoopCommandTarget(
+      'agent_verify',
+      'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json $(touch pwned) > target/ripr/agent/agent-verify.json',
+      'target/ripr/agent/agent-verify.json'
+    )));
+    assert.ok(!accepts(agentLoopCommandTarget('gap_verify', 'ripr agent verify --root . --json $(touch pwned)')));
+    assert.ok(!accepts(agentLoopCommandTarget('gap_verify', 'ripr agent verify --root . --json <(touch pwned)')));
+    // The double-quoted base the client used to expect, and a base the payload
+    // does not carry.
+    assert.ok(!accepts(snapshot(' --base "HEAD~1"', 'HEAD~1')));
+    assert.ok(!accepts(snapshot(' --base origin/main', null)));
+    assert.ok(!accepts(snapshot(' --base other', 'origin/main')));
+    // `'\\''` needs a backslash, which fish reads differently: still refused.
+    assert.ok(!accepts(snapshot(` --base ${serverShellArg("it's")}`, "it's")));
+    // The quoted redirect span may not carry a line break, a backslash, or a
+    // typographic quote that PowerShell reads as the end of the span.
+    for (const bad of ['\n', '\\', '\u2019']) {
+      assert.ok(!redirectTargetMatches(
+        `'/work/a${bad}b/target/ripr/agent/agent-packet.json'`,
+        'target/ripr/agent/agent-packet.json',
+        [`/work/a${bad}b`]
+      ), JSON.stringify(bad));
+    }
+    assert.ok(hasUnsafeShellMetacharacter('ripr check $(id)'));
+    assert.ok(hasUnsafeShellMetacharacter('ripr check >(id)'));
+    assert.ok(hasUnsafeShellMetacharacter('ripr check "$(id)"'));
+    assert.ok(hasUnsafeShellMetacharacter(`ripr check "it's $(id) it's"`));
+    assert.ok(hasUnsafeShellMetacharacter("ripr check 'unterminated $(id)"));
+    assert.ok(hasUnsafeShellMetacharacter("ripr check 'a\u2019 $(id) \u2019b'"));
+    // The server single-quotes a gap id built from an expression; it stays inert.
+    assert.ok(!hasUnsafeShellMetacharacter("ripr agent packet --gap-id 'gap:len(x)>0' --json > out.json"));
   });
 
   test('agent loop command handlers ignore malformed args without throwing', async () => {
@@ -4050,10 +4113,6 @@ interface ControllerTestOptions {
 }
 
 // Mirror of the server's `shell_arg` (crates/ripr/src/agent/loop_commands.rs).
-function serverShellArg(value: string): string {
-  return /^[A-Za-z0-9._/:-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
-}
-
 function agentLoopCommandTarget(
   label: string,
   command: string,
