@@ -35,6 +35,36 @@ export function hasUnsafeShellMetacharacter(command: string): boolean {
 }
 
 /**
+ * Whether the tail of a `> file` redirect writes exactly `artifact`.
+ *
+ * The server renders the tail with its `shell_arg` quoting: bare when every
+ * character is in `[A-Za-z0-9._/:-]`, otherwise single-quoted. Since #3938 it
+ * anchors the target at the resolved `--root` with forward slashes, so a
+ * `--root .` command names `artifact` under the server's cwd. The legacy
+ * relative form is still accepted. Any other root, file, `..` segment or
+ * trailing token is rejected.
+ */
+export function redirectTargetMatches(
+  tail: string,
+  artifact: string,
+  roots: readonly string[]
+): boolean {
+  const quoted = /^'([^']*)'$/.exec(tail);
+  const target = quoted ? quoted[1] : /^[A-Za-z0-9._/:-]+$/.test(tail) ? tail : undefined;
+  if (target === undefined) {
+    return false;
+  }
+  if (target === artifact) {
+    return true;
+  }
+  if (!path.isAbsolute(target) || target.split('/').includes('..')) {
+    return false;
+  }
+  const expected = normalizePath(target);
+  return roots.some((root) => normalizePath(path.join(root, artifact)) === expected);
+}
+
+/**
  * Normalize a path for cross-platform comparison.
  */
 export function normalizePath(value: string): string {

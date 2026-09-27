@@ -11,7 +11,7 @@ import {
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
 import { requestedServerVersion, resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
-import { setupFilePath, hasUnsafeShellMetacharacter, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
+import { setupFilePath, hasUnsafeShellMetacharacter, redirectTargetMatches, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
 import { riprDocumentSelectorsForWorkspace, extensionVersion, traceFromConfig, currentWorkspaceRootState, workspaceRootStateNoWorkspace, workspaceRootStateLabel, workspaceRootStateDetail, workspaceRootPickItems } from './workspaceHelpers';
 import type { WorkspaceRootPickItem } from './workspaceHelpers';
 import { statusText, statusSummary, statusBarColors, canProjectFirstUsefulAction } from './statusRender';
@@ -1084,7 +1084,7 @@ export class RiprClientController {
       return;
     }
 
-    const command = validatedAgentLoopCommand(target);
+    const command = validatedAgentLoopCommand(target, await agentLoopRedirectRoots(this.workspaceRoot));
     if (!command) {
       this.runtime.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
       return;
@@ -4228,6 +4228,10 @@ interface AgentLoopCommandContract {
   startsWith: string;
   includes: string[];
   requiresSeamId: boolean;
+  // The command ends in `> <targetArtifact>`. Since #3938 the server anchors
+  // that redirect at the resolved `--root`, so the tail is checked by
+  // `redirectTargetMatches` rather than as fixed text.
+  redirectsToTargetArtifact?: boolean;
 }
 
 const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
@@ -4244,26 +4248,30 @@ const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
   agent_packet: {
     targetArtifact: 'target/ripr/agent/agent-packet.json',
     startsWith: 'ripr agent packet --root . --seam-id ',
-    includes: [' --json > target/ripr/agent/agent-packet.json'],
-    requiresSeamId: true
+    includes: [' --json'],
+    requiresSeamId: true,
+    redirectsToTargetArtifact: true
   },
   agent_brief: {
     targetArtifact: 'target/ripr/agent/agent-brief.json',
     startsWith: 'ripr agent brief --root . --seam-id ',
-    includes: [' --json > target/ripr/agent/agent-brief.json'],
-    requiresSeamId: true
+    includes: [' --json'],
+    requiresSeamId: true,
+    redirectsToTargetArtifact: true
   },
   after_snapshot: {
     targetArtifact: 'target/ripr/pilot/after.repo-exposure.json',
     startsWith: 'ripr check --root .',
-    includes: [' --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json'],
-    requiresSeamId: false
+    includes: [' --format repo-exposure-json'],
+    requiresSeamId: false,
+    redirectsToTargetArtifact: true
   },
   agent_verify: {
     targetArtifact: 'target/ripr/agent/agent-verify.json',
     startsWith: 'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json',
-    includes: [' > target/ripr/agent/agent-verify.json'],
-    requiresSeamId: false
+    includes: [],
+    requiresSeamId: false,
+    redirectsToTargetArtifact: true
   },
   agent_receipt: {
     targetArtifact: 'target/ripr/agent/agent-receipt.json',
@@ -4283,7 +4291,10 @@ const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
   }
 };
 
-function validatedAgentLoopCommand(target?: RiprAgentLoopCommandTarget): string | undefined {
+function validatedAgentLoopCommand(
+  target: RiprAgentLoopCommandTarget | undefined,
+  redirectRoots: readonly string[]
+): string | undefined {
   if (!target) {
     return undefined;
   }
@@ -4318,7 +4329,26 @@ function validatedAgentLoopCommand(target?: RiprAgentLoopCommandTarget): string 
   if (!command.startsWith(contract.startsWith)) {
     return undefined;
   }
-  if (!contract.includes.every((expected) => command.includes(expected))) {
+  let body = command;
+  if (contract.redirectsToTargetArtifact && contract.targetArtifact !== undefined) {
+    const redirectAt = command.lastIndexOf(' > ');
+    if (
+      redirectAt < 0 ||
+      !redirectTargetMatches(
+        command.slice(redirectAt + ' > '.length),
+        contract.targetArtifact,
+        redirectRoots
+      )
+    ) {
+      return undefined;
+    }
+    body = command.slice(0, redirectAt);
+    // One redirect only: an earlier `>` would truncate some other file.
+    if (body.includes('>')) {
+      return undefined;
+    }
+  }
+  if (!contract.includes.every((expected) => body.includes(expected))) {
     return undefined;
   }
   if (label === 'after_snapshot' && !afterSnapshotModeMatches(target.mode, command)) {
@@ -4332,6 +4362,22 @@ function validatedAgentLoopCommand(target?: RiprAgentLoopCommandTarget): string 
     return undefined;
   }
   return command;
+}
+
+/**
+ * Roots the server may have anchored a `--root .` redirect at: its cwd, which
+ * is the session workspace root. The server reads that cwd back from the OS,
+ * which resolves symlinks, so the real path is accepted too.
+ */
+async function agentLoopRedirectRoots(workspaceRoot: string | undefined): Promise<string[]> {
+  if (!workspaceRoot) {
+    return [];
+  }
+  try {
+    return [workspaceRoot, await fs.realpath(workspaceRoot)];
+  } catch {
+    return [workspaceRoot];
+  }
 }
 
 function afterSnapshotModeMatches(mode: unknown, command: string): boolean {
