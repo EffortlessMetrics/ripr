@@ -406,12 +406,42 @@ the authority for the sequence below. This section records how to work
 within them.
 
 The source repository can carry product work of its own between syncs. For
-0.11.0, about fourteen product fixes landed directly on `ripr` after the
-previous join (for example ripr#1741, ripr#1747 and ripr#1751). Swarm did not
-have them, so the joins conflict where both lines fixed the same code
-differently. The join has to keep the accepted behavior from both parents. It
-must not take either side wholesale. Source-only fixes return to swarm
-through `K`.
+0.11.0, about forty product and tooling commits landed directly on `ripr`
+after the previous join at `45b56c0`, with no swarm counterpart: for example
+ripr#1747 sink-level identity, ripr#1751, the ripr#1722–#1726 Rust boundary
+fixes, ripr#1741 receipt binding, the ripr#1717/#1718 editor digest binding
+and the ripr#1605–#1615 source-promotion controller. The joins conflict where
+both lines fixed the same code differently. The join has to keep the accepted
+behavior from both parents. It must not take either side wholesale.
+Source-only fixes return to swarm through `K`.
+
+A trial on 2026-09-27 (swarm 287 commits and source 90 commits past the pin)
+gave 53 conflicting paths in two groups:
+
+- about 30 mechanical paths: fixture goldens, `CHANGELOG.md`, `Cargo.lock`,
+  policy lists and docs. These resolve by union or regeneration;
+- about 20 semantic paths where both sides changed the same logic, such as
+  `analysis/classify/activation.rs`, `reveal.rs`, the TypeScript adapter,
+  `seam_cache.rs`, `cli/commands.rs` and `xtask/src/main.rs`.
+
+For 0.11.0, J lands on Monday 2026-09-28, before `v0.11.0-rc.1`, and in any
+case before 2026-10-01: source's `deny.toml` `unic-*` suppressions expire that
+day and fail its required dependency check. Swarm already carries the
+extension (#3890), which reaches source only through J.
+
+A release can take several syncs: J before the RC, then J2, J3, … for blocker
+fixes that land on swarm after it, with one sync landing before the stable
+tag. Each later sync carries only what landed on swarm since the previous one,
+uses the same guarded constructor, and replays the per-path resolutions
+recorded in the previous J PR instead of deciding them again.
+
+**Publication workflows.** Swarm #4219 makes a `v*` tag push publish nothing
+and moves each marketplace to its own dispatch. Once it is on swarm `main`,
+take the swarm side of `publish-extension.yml` in the join, and drop the
+`push` tag trigger from source's `release-server-binaries.yml`; swarm's copy
+is dispatch-only. Do not re-apply #4218's VSIX inventory gate or
+#4219's `.vscodeignore` rule in the resolution: both are swarm commits and
+arrive through J.
 
 **Size the conflicts before P0.** Build a disposable trial join of the current
 source and swarm heads in a separate worktree. Never push it, and never reuse
