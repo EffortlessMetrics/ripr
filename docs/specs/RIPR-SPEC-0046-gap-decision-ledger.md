@@ -238,6 +238,13 @@ Gate decisions remain separate artifacts. The ledger may identify gate
 candidates, but the generated summary, PR comment, LSP diagnostic, badge, and
 packet index do not become pass/fail authority.
 
+`not_policy_targeted` is not a configured-off fact. It also describes
+no-action records such as an already-observed gap. The gate reads a ledger
+record as suppressed only from `policy_state = "suppressed"` or a suppressed
+safe gate predicate; any other record that is not gate-candidate eligible is
+`not_applicable` with a reason naming the ledger state, and its
+`evidence.configured_off` is `false`.
+
 ### Badge Targets
 
 Public badges are repo-scoped trust markers, not PR-local evidence.

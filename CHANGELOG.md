@@ -538,6 +538,15 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr gate evaluate --gap-ledger` no longer reports an already-observed
+  (closed) gap under "Suppressed" as configured-hidden. The ledger's
+  `not_policy_targeted` state also covers no-action records, so the gate now
+  reads suppression only from an explicit suppressed state or predicate. Such a
+  record is `not_applicable` with the reason "already observed; no action
+  required", and `evidence.configured_off` is `false`. The gate stays
+  non-blocking and the status is unchanged
+  ([#3903](https://github.com/EffortlessMetrics/ripr-swarm/issues/3903)).
+
 - A TypeScript change that only edits type syntax on a signature or
   declaration line (a return type, a parameter or variable annotation, an
   optional marker, a generic parameter list) no longer produces a `predicate`

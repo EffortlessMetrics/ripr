@@ -1176,6 +1176,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/src/output/gate.rs::tests::gate_visible_only_records_pr_guidance_without_blocking",
   "crates/ripr/src/output/gate/tests.rs::gate_static_limitation_reason_outranks_pr_wide_nearby_test_flag",
+  "crates/ripr/src/output/gate/tests.rs::gate_closed_gap_is_not_misreported_as_configured_off",
   "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_blocks_policy_candidate_without_label",
   "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_keeps_waived_candidate_visible",
   "crates/ripr/src/output/gate.rs::tests::gate_calibrated_mode_requires_explicit_baseline",
@@ -3636,6 +3637,7 @@ name = "Gap decision ledger"
 spec = "docs/specs/RIPR-SPEC-0046-gap-decision-ledger.md"
 tests = [
   "xtask/src/main.rs::tests::gap_decision_ledger_corpus_is_valid",
+  "crates/ripr/src/output/gate/tests.rs::gate_closed_gap_is_not_misreported_as_configured_off",
   "xtask/src/main.rs::tests::gap_decision_ledger_reports_contract_drift",
   "xtask/src/main.rs::tests::gap_decision_ledger_gate_candidate_requires_safe_predicate",
   "xtask/src/main.rs::tests::gap_decision_ledger_missing_output_contract_requires_output_route",

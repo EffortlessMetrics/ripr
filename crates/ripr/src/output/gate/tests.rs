@@ -1465,6 +1465,101 @@ fn gate_acknowledgeable_blocks_complete_gap_ledger_route_with_typed_seam_identit
     Ok(())
 }
 
+#[test]
+fn gate_closed_gap_is_not_misreported_as_configured_off() -> Result<(), String> {
+    let dir = temp_dir("gate-closed-gap")?;
+    let mut ledger: Value = serde_json::from_str(GAP_LEDGER_BLOCKING_JSON)
+        .map_err(|err| format!("parse gap ledger fixture: {err}"))?;
+    let record = &mut ledger["gap_records"][0];
+    record["kind"] = Value::from("NoActionAlreadyObserved");
+    record["gap_state"] = Value::from("already_observed");
+    record["policy_state"] = Value::from("not_policy_targeted");
+    record["repairability"] = Value::from("no_action");
+    record["projection_eligibility"]["gate_candidate"]["eligible"] = Value::Bool(false);
+    record["projection_eligibility"]["gate_candidate"]["reason"] = Value::from("already_observed");
+    record["safe_gate_predicate"]["policy_target_enabled"] = Value::Bool(false);
+    let gap_ledger = write_temp_json(&dir, "gap-ledger.json", &ledger.to_string())?;
+    let input = GateEvaluateInput {
+        root: dir.clone(),
+        repo_exposure: None,
+        pr_guidance: None,
+        gap_ledger: Some(
+            gap_ledger
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        ),
+        sarif_policy: None,
+        labels_json: None,
+        labels: Vec::new(),
+        agent_verify: None,
+        agent_receipt: None,
+        recommendation_calibration: None,
+        mutation_calibration: None,
+        baseline: None,
+        mode: GateMode::Acknowledgeable,
+        acknowledgement_labels: Vec::new(),
+        exception_policy: None,
+    };
+
+    let report = build_gate_decision_report(&input)?;
+    assert!(
+        report.config_errors.is_empty(),
+        "{:?}",
+        report.config_errors
+    );
+    assert_eq!(report.status, "pass");
+    assert_eq!(report.summary.not_applicable, 1);
+    assert_eq!(report.summary.suppressed, 0);
+    let rendered = render_gate_decision_json(&report)?;
+    let value: Value =
+        serde_json::from_str(&rendered).map_err(|err| format!("parse gate decision: {err}"))?;
+    let decision = &value["decisions"][0];
+    assert_eq!(decision["decision"], "not_applicable");
+    assert_eq!(decision["evidence"]["configured_off"], false);
+    assert_eq!(decision["evidence"]["suppressed"], false);
+    assert!(
+        decision["gate_reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("already observed; no action required"))
+    );
+    let markdown = render_gate_decision_markdown(&report);
+    assert!(
+        markdown.contains("already observed; no action required"),
+        "{markdown}"
+    );
+
+    // Fail closed: dropping the inferred configured-off flag must not let a
+    // non-targeted record block even when its projection claims eligibility.
+    // The shared safe-gate predicate still requires a `new`/`blocked` policy.
+    ledger["gap_records"][0]["projection_eligibility"]["gate_candidate"]["eligible"] =
+        Value::Bool(true);
+    ledger["gap_records"][0]["safe_gate_predicate"]["policy_target_enabled"] = Value::Bool(true);
+    fs::write(&gap_ledger, ledger.to_string()).map_err(|err| err.to_string())?;
+    let claimed = build_gate_decision_report(&input)?;
+    assert_eq!(claimed.status, "pass");
+    assert_eq!(claimed.summary.not_applicable, 1);
+    assert_eq!(claimed.decisions[0].decision, "not_applicable");
+    assert!(
+        claimed.decisions[0]
+            .gate_reason
+            .contains("already observed; no action required"),
+        "claimed eligibility must still name the closed gap: {}",
+        claimed.decisions[0].gate_reason
+    );
+
+    // An explicit suppression still has its own gate decision and evidence.
+    ledger["gap_records"][0]["policy_state"] = Value::from("suppressed");
+    fs::write(&gap_ledger, ledger.to_string()).map_err(|err| err.to_string())?;
+    let suppressed = build_gate_decision_report(&input)?;
+    assert_eq!(suppressed.summary.suppressed, 1);
+    assert_eq!(suppressed.decisions[0].decision, "suppressed");
+    assert!(suppressed.decisions[0].evidence.suppressed);
+    assert!(!suppressed.decisions[0].evidence.configured_off);
+    ignore_remove_dir_all(dir);
+    Ok(())
+}
+
 /// Root-honoring control: the gate resolves the producer-owned canonical
 /// delta against the explicit root, never the process working directory. A
 /// root-planted complete delta attributing the ledger gap to a causal class
