@@ -496,7 +496,10 @@ fn same_current_file(
     let Ok(owner_path) = authority.root.join(owner_file).canonicalize() else {
         return false;
     };
-    let Ok(probe_path) = authority.root.join(probe_file).canonicalize() else {
+    // Probe locations are `--root` as given joined with the changed path, so
+    // they resolve from the working directory. Joining them onto the
+    // canonical authority root again only works for an absolute or `.` root.
+    let Ok(probe_path) = probe_file.canonicalize() else {
         return false;
     };
     owner_path == probe_path

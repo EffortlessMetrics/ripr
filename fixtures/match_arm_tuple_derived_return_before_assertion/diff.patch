@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -24,7 +24,7 @@ pub fn terminalize_proof<'a>(
+             let task_identity_matches = receipt.id == task_id;
+             let relation = match (request_identity_matches, task_identity_matches) {
+                 (true, true) => "request_and_task_identity",
+-                (true, false) => "request_identity_v1",
++                (true, false) => "request_identity_v2",
+                 (false, true) => "task_identity",
+                 (false, false) => return None,
+             };

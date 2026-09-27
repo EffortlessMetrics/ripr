@@ -197,6 +197,17 @@ pub(super) fn top_level_projection_observes(
         return None;
     }
     let statements = body.statements().collect::<Vec<_>>();
+    // Only the containing test's direct return statements bound this scan.
+    // A return inside an uninvoked closure or local function does not end it.
+    // Keep the full binding/owner scans below: this boundary must not relax
+    // their existing conservative shadowing and uniqueness checks.
+    let observation_end = statements
+        .iter()
+        .position(|statement| {
+            matches!(statement, ast::Stmt::ExprStmt(statement)
+                if matches!(statement.expr(), Some(ast::Expr::ReturnExpr(_))))
+        })
+        .unwrap_or(statements.len());
     let mut result_binding = None;
     let mut fed_identity = None;
     for (position, statement) in statements.iter().enumerate() {
@@ -226,6 +237,9 @@ pub(super) fn top_level_projection_observes(
         fed_identity = Some(fed_receipt_identity(&call, &statements, position)?);
     }
     let (result_binding, owner_position) = result_binding?;
+    if owner_position >= observation_end {
+        return Some(false);
+    }
     let fed_identity = fed_identity?;
     // Equal spelling is not binding identity. Reject shadowing, including
     // destructuring and nested patterns, rather than borrowing their assertions.
@@ -246,7 +260,11 @@ pub(super) fn top_level_projection_observes(
     let mut length_observed = false;
     let mut result_observed = false;
     let mut identity_observed = false;
-    for statement in statements.into_iter().skip(owner_position + 1) {
+    for statement in statements
+        .into_iter()
+        .take(observation_end)
+        .skip(owner_position + 1)
+    {
         let ast::Stmt::ExprStmt(statement) = statement else {
             continue;
         };
@@ -657,3 +675,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "derived_admission/return_boundary_tests.rs"]
+mod return_boundary_tests;

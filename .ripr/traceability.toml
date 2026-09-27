@@ -6069,15 +6069,25 @@ spec = "docs/specs/RIPR-SPEC-0093-match-arm-blind-reach-downgrade.md"
 tests = [
   "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_probe_without_token_match_downgrades_discriminate_to_weak",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_probe_with_token_match_keeps_discriminate_yes",
-  "crates/ripr/src/analysis/classify/reveal.rs::tests::non_match_arm_probe_family_match_only_keeps_discriminate_yes"
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::non_match_arm_probe_family_match_only_keeps_discriminate_yes",
+  "crates/ripr/src/analysis/classifier/evidence/tuple_match/derived_admission/return_boundary_tests.rs::projection_return_boundary_requires_every_observation_before_return",
+  "crates/ripr/src/analysis/classifier/evidence/tuple_match/derived_admission/return_boundary_tests.rs::projection_return_boundary_does_not_search_nested_scopes_or_text",
+  "crates/ripr/src/analysis/classifier/evidence/tuple_match/derived_admission/return_boundary_tests.rs::projection_return_boundary_preserves_whole_body_owner_uniqueness",
+  "crates/ripr/tests/match_arm_tuple_derived_local.rs::projection_return_boundary_unreachable_assertions_cannot_certify_the_arm",
+  "crates/ripr/tests/match_arm_tuple_derived_local.rs::projection_return_boundary_after_complete_observation_preserves_exposure",
+  "crates/ripr/tests/match_arm_tuple_derived_local.rs::relative_prefixed_root_keeps_the_derived_arm_admission",
+  "crates/ripr/tests/match_arm_tuple_derived_local.rs::relative_prefixed_root_keeps_the_return_boundary"
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",
   "fixtures/match_arm_blind",
-  "fixtures/match_arm_observer"
+  "fixtures/match_arm_observer",
+  "fixtures/match_arm_tuple_derived_return_before_assertion"
 ]
 code = [
-  "crates/ripr/src/analysis/classify/reveal.rs"
+  "crates/ripr/src/analysis/classify/reveal.rs",
+  "crates/ripr/src/analysis/classifier/evidence/tuple_match/derived_admission.rs",
+  "crates/ripr/src/analysis/classifier/evidence/tuple_match_derived.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0093-match-arm-blind-reach-downgrade.md",

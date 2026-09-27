@@ -218,7 +218,11 @@ fn uninvoked_projection_assertions_are_not_observation() {
 "#;
 
 struct TempRepo {
+    /// Owned temporary directory; removed on drop.
     root: PathBuf,
+    /// Analyzed workspace: `root` itself, or one level below it for
+    /// relative-root witnesses (see `create_nested`).
+    workspace: PathBuf,
 }
 
 impl TempRepo {
@@ -230,6 +234,24 @@ impl TempRepo {
         Self::create_with_stamp(source, test_source, stamp)
     }
 
+    /// Place the workspace one directory below the temporary root. The
+    /// temporary root and the test process's current directory sit at the same
+    /// depth below the checkout, so a relative spelling of the root itself
+    /// would resolve identically from either base and could not tell a
+    /// cwd-relative probe path from a root-relative one.
+    fn create_nested(source: &str, test_source: &str) -> Result<Self, String> {
+        let mut repo = Self::create(source, test_source)?;
+        let workspace = repo.root.join("nested");
+        std::fs::create_dir(&workspace)
+            .map_err(|error| format!("create nested workspace failed: {error}"))?;
+        for entry in ["Cargo.toml", "src", "tests", "diff.patch"] {
+            std::fs::rename(repo.root.join(entry), workspace.join(entry))
+                .map_err(|error| format!("move {entry} into nested workspace failed: {error}"))?;
+        }
+        repo.workspace = workspace;
+        Ok(repo)
+    }
+
     fn create_with_stamp(source: &str, test_source: &str, stamp: u128) -> Result<Self, String> {
         let repo = loop {
             // Clock resolution is not a uniqueness guarantee between test threads.
@@ -239,7 +261,12 @@ impl TempRepo {
                 std::process::id()
             ));
             match std::fs::create_dir(&root) {
-                Ok(()) => break Self { root },
+                Ok(()) => {
+                    break Self {
+                        workspace: root.clone(),
+                        root,
+                    };
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(error) => return Err(format!("create fixture root failed: {error}")),
             }
@@ -264,10 +291,28 @@ impl TempRepo {
     }
 
     fn check(&self) -> Result<CheckOutput, String> {
+        self.check_at(self.workspace.clone())
+    }
+
+    /// Check through a relative root with a directory prefix, which is how the
+    /// fixture runner and `ripr check --root sub/dir` spell it. Probe
+    /// locations then carry that prefix, unlike an absolute or `.` root.
+    fn check_relative(&self) -> Result<CheckOutput, String> {
+        let root = relative_from_current_dir(&self.workspace)?;
+        if root.components().count() < 2 {
+            return Err(format!(
+                "relative root {} must carry a directory prefix",
+                root.display()
+            ));
+        }
+        self.check_at(root)
+    }
+
+    fn check_at(&self, root: PathBuf) -> Result<CheckOutput, String> {
         check_workspace(CheckInput {
-            root: self.root.clone(),
+            root,
             base: None,
-            diff_file: Some(self.root.join("diff.patch")),
+            diff_file: Some(self.workspace.join("diff.patch")),
             mode: Mode::Ready,
             format: OutputFormat::Json,
             include_unchanged_tests: true,
@@ -280,6 +325,40 @@ impl Drop for TempRepo {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.root);
     }
+}
+
+fn relative_from_current_dir(target: &std::path::Path) -> Result<PathBuf, String> {
+    use std::path::Component;
+    let current = std::env::current_dir()
+        .map_err(|error| format!("current directory unavailable: {error}"))?;
+    let current = current.components().collect::<Vec<_>>();
+    let target_components = target.components().collect::<Vec<_>>();
+    let shared = current
+        .iter()
+        .zip(&target_components)
+        .take_while(|(left, right)| left == right)
+        .count();
+    if shared == 0
+        || current[..shared]
+            .iter()
+            .all(|component| matches!(component, Component::Prefix(_)))
+    {
+        return Err(format!(
+            "{} shares no root with the current directory",
+            target.display()
+        ));
+    }
+    let mut relative = PathBuf::new();
+    for _ in shared..current.len() {
+        relative.push("..");
+    }
+    for component in &target_components[shared..] {
+        relative.push(component.as_os_str());
+    }
+    if relative.is_absolute() || relative.as_os_str().is_empty() {
+        return Err(format!("no relative spelling for {}", target.display()));
+    }
+    Ok(relative)
 }
 
 fn normalized(text: &str) -> String {
@@ -678,5 +757,73 @@ fn fixture_paths_remain_inside_the_ephemeral_root() -> Result<(), String> {
             ));
         }
     }
+    Ok(())
+}
+
+#[test]
+fn projection_return_boundary_unreachable_assertions_cannot_certify_the_arm() -> Result<(), String>
+{
+    for assertion in [
+        "    assert_eq!(terminal.len(), 1);",
+        "    assert_eq!(terminal[0].0.id, \"receipt-1\");",
+        "    assert_eq!(terminal[0].1, \"request_identity_v2\");",
+    ] {
+        assert_eq!(REQUEST_ONLY_TEST.matches(assertion).count(), 1);
+        let test_source =
+            REQUEST_ONLY_TEST.replace(assertion, &format!("    return;\n{assertion}"));
+        let repo = TempRepo::create(CANDIDATE_SOURCE, &test_source)?;
+        let output = repo.check()?;
+        let finding = changed_request_only_arm(&output)?;
+        assert_unverified(finding, assertion);
+    }
+    Ok(())
+}
+
+#[test]
+fn projection_return_boundary_after_complete_observation_preserves_exposure() -> Result<(), String>
+{
+    let assertion = "    assert_eq!(terminal[0].1, \"request_identity_v2\");";
+    assert_eq!(REQUEST_ONLY_TEST.matches(assertion).count(), 1);
+    let test_source = REQUEST_ONLY_TEST.replace(assertion, &format!("{assertion}\n    return;"));
+    let repo = TempRepo::create(CANDIDATE_SOURCE, &test_source)?;
+    let output = repo.check()?;
+    let finding = changed_request_only_arm(&output)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "all required projection assertions precede the return: {:#?}",
+        finding.ripr
+    );
+    Ok(())
+}
+
+#[test]
+fn relative_prefixed_root_keeps_the_derived_arm_admission() -> Result<(), String> {
+    let repo = TempRepo::create_nested(CANDIDATE_SOURCE, REQUEST_ONLY_TEST)?;
+    let output = repo.check_relative()?;
+    let finding = changed_request_only_arm(&output)?;
+    assert!(
+        finding.probe.location.file.is_relative(),
+        "probe location must carry the relative root spelling: {:?}",
+        finding.probe.location.file
+    );
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a relative --root with a directory prefix must admit the same arm as an absolute root: {:#?}",
+        finding.ripr
+    );
+    Ok(())
+}
+
+#[test]
+fn relative_prefixed_root_keeps_the_return_boundary() -> Result<(), String> {
+    let assertion = "    assert_eq!(terminal[0].1, \"request_identity_v2\");";
+    assert_eq!(REQUEST_ONLY_TEST.matches(assertion).count(), 1);
+    let test_source = REQUEST_ONLY_TEST.replace(assertion, &format!("    return;\n{assertion}"));
+    let repo = TempRepo::create_nested(CANDIDATE_SOURCE, &test_source)?;
+    let output = repo.check_relative()?;
+    let finding = changed_request_only_arm(&output)?;
+    assert_unverified(finding, "relative root, return before relation assertion");
     Ok(())
 }

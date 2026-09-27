@@ -463,6 +463,24 @@
       ]
     },
     {
+      "id": "rust_tuple_derived_return_before_assertion_no_promotion",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/match_arm_tuple_derived_return_before_assertion",
+      "vector": "relation_assertion_after_direct_return_does_not_certify_derived_tuple_arm",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_verify_command" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_finding_count", "count": 2 },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "rust_strong_error_oracle_control",
       "language": "rust",
       "tier": "pure",
