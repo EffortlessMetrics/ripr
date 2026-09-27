@@ -161,13 +161,15 @@ fn observed_discriminator_values(
     index: &crate::analysis::rust_index::RustIndex,
     workspace_complete: bool,
 ) -> Vec<ValueFact> {
-    let Some((left, right)) = comparison_operands(&probe.expression) else {
-        return Vec::new();
-    };
     let Some(owner) = owner_fn else {
         return Vec::new();
     };
     let parameters = function_parameters(owner);
+    let Some((left, right)) =
+        oriented_comparison_operands(owner, &parameters, &probe.expression, probe.location.line)
+    else {
+        return Vec::new();
+    };
     let call_values = call_values_for_owner(owner, &parameters, related_tests, helper_chain);
     let left_parameter = boundary_operand_parameter(owner, &parameters, &left);
     let right_parameter = boundary_operand_parameter(owner, &parameters, &right);
@@ -472,6 +474,79 @@ struct ExactOperand {
     provenance: String,
 }
 
+/// What the owner says about a boundary operand that may be a local
+/// binding (#4228).
+pub(in crate::analysis) enum LocalBoundary {
+    /// No `let` in the owner declares the operand.
+    NotLocal,
+    /// A live local whose initializer needs no test input
+    /// (`let limit = 100;`), folded by the same binding relation and
+    /// bounded evaluator `check` uses per row.
+    Exact(String),
+    /// A local whose value depends on test inputs or that the evaluator
+    /// cannot fold. No input-free value exists to match a test against.
+    Unresolved,
+}
+
+pub(in crate::analysis) fn local_boundary(
+    owner: &FunctionSummary,
+    operand: &str,
+    predicate_line: usize,
+) -> LocalBoundary {
+    if let Some(initializer) = live_local_initializer(owner, operand, predicate_line)
+        && let super::value_transfer::EvalOutcome::Exact { value, .. } =
+            super::value_transfer::evaluate_initializer(
+                &initializer,
+                &super::value_transfer::ExactInputs::new(),
+            )
+    {
+        return LocalBoundary::Exact(value.render());
+    }
+    if owner_declares_local(owner, operand, predicate_line) {
+        LocalBoundary::Unresolved
+    } else {
+        LocalBoundary::NotLocal
+    }
+}
+
+/// Whether the owner's body declares `operand` with `let` (or `let mut`)
+/// on or before the predicate line. A declaration after the predicate
+/// cannot be the compared binding (a same-named constant still is), so it
+/// does not count. Comments and strings are masked first; an operand that
+/// is not an identifier (a literal such as `100`) returns early.
+fn owner_declares_local(owner: &FunctionSummary, operand: &str, predicate_line: usize) -> bool {
+    let is_identifier = operand
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && operand
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+    if !is_identifier {
+        return false;
+    }
+    let masked = crate::analysis::language::mask_rust_comments_and_strings(&owner.body);
+    masked
+        .lines()
+        .enumerate()
+        .take_while(|(offset, _)| owner.start_line + offset <= predicate_line)
+        .flat_map(|(_, line)| line.split([';', '{', '}']))
+        .any(|statement| {
+            let statement = statement.trim();
+            let Some(rest) = statement.strip_prefix("let ") else {
+                return false;
+            };
+            let rest = rest.trim_start();
+            let rest = rest.strip_prefix("mut ").map_or(rest, str::trim_start);
+            rest.strip_prefix(operand).is_some_and(|after| {
+                !after
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            })
+        })
+}
+
 /// The initializer of a local binding whose live span (per the #3294
 /// binding relation) covers the predicate line: the predicate must be
 /// one of the binding's direct uses, so the initializer provably feeds
@@ -585,9 +660,10 @@ fn missing_boundary_discriminator(
     index: &crate::analysis::rust_index::RustIndex,
     workspace_complete: bool,
 ) -> Option<MissingDiscriminatorFact> {
-    let (left, right) = comparison_operands(&probe.expression)?;
     let owner = owner_fn?;
     let parameters = function_parameters(owner);
+    let (left, right) =
+        oriented_comparison_operands(owner, &parameters, &probe.expression, probe.location.line)?;
     let call_values = call_values_for_owner(owner, &parameters, related_tests, helper_chain);
     if call_values.is_empty() {
         return None;
@@ -688,6 +764,20 @@ fn missing_boundary_discriminator(
             .is_empty()
         });
     if equality_observed || constant_named {
+        return None;
+    }
+    // A local boundary that no row evaluates (a single-line `let`, or an
+    // initializer the bounded evaluator cannot fold) has no value a test
+    // can match, so naming it would ask for a repair ripr can never
+    // confirm (#4228). The grip path routes the same local to its
+    // unresolved-operand limitation.
+    if right_parameter.is_none()
+        && exact_rows.iter().all(|(_, rights)| rights.is_empty())
+        && matches!(
+            local_boundary(owner, &right, probe.location.line),
+            LocalBoundary::Unresolved
+        )
+    {
         return None;
     }
     // A constant ripr cannot pin to one declaration in the owner's file
@@ -1157,6 +1247,32 @@ fn comparison_operands(expression: &str) -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// The comparison operands with the owner-bound side first. A reversed
+/// predicate (`100 < amount`) compares the parameter on the right, but
+/// every boundary resolver reads the left operand as the tested input and
+/// the right one as the boundary, so the operands swap when only the right
+/// side binds to a parameter or a local (#4228). Equality is symmetric,
+/// so the swap changes which side is looked up, not what is compared.
+fn oriented_comparison_operands(
+    owner: &FunctionSummary,
+    parameters: &[String],
+    expression: &str,
+    predicate_line: usize,
+) -> Option<(String, String)> {
+    let (left, right) = comparison_operands(expression)?;
+    let owner_bound = |operand: &str| {
+        boundary_operand_parameter(owner, parameters, operand).is_some()
+            || live_local_initializer(owner, operand, predicate_line).is_some()
+            // Any declared local keeps the left side, as before #4228:
+            // the swap exists for literals, not to reinterpret locals.
+            || owner_declares_local(owner, operand, usize::MAX)
+    };
+    if !owner_bound(&left) && owner_bound(&right) {
+        return Some((right, left));
+    }
+    Some((left, right))
 }
 
 fn clean_operand(operand: &str) -> String {
@@ -2403,6 +2519,147 @@ assert_eq!(input.amount, 100);"#
                 .any(|fact| fact.value == "AuthError::RevokedToken")
         );
         assert!(!facts.iter().any(|fact| fact.value == "AuthError::Ignored"));
+    }
+
+    // #4228: a reversed literal (`100 < amount`) and a local boundary
+    // (`let limit = 100;`) close at the boundary input and stay open one
+    // step off it; a local no row can evaluate names no repair at all.
+    #[test]
+    fn reversed_and_local_boundaries_close_only_at_the_boundary_value() {
+        enum Expect {
+            Closed,
+            Missing(&'static str),
+            NoRepair,
+        }
+        let cases = [
+            (
+                "    100 < amount",
+                "100 < amount",
+                2,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    100 < amount",
+                "100 < amount",
+                2,
+                "score(101);",
+                Expect::Missing("amount == 100"),
+            ),
+            (
+                "    100 <= amount",
+                "100 <= amount",
+                2,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    100 <= amount",
+                "100 <= amount",
+                2,
+                "score(99);",
+                Expect::Missing("amount == 100"),
+            ),
+            (
+                "    -100 < amount",
+                "-100 < amount",
+                2,
+                "score(-100);",
+                Expect::Closed,
+            ),
+            (
+                "    -100 < amount",
+                "-100 < amount",
+                2,
+                "score(-99);",
+                Expect::Missing("amount == -100"),
+            ),
+            (
+                "    let limit = 100;\n    amount > limit",
+                "amount > limit",
+                3,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    let limit = 100;\n    amount > limit",
+                "amount > limit",
+                3,
+                "score(101);",
+                Expect::Missing("amount == limit"),
+            ),
+            (
+                "    let limit = 100;\n    amount >= limit",
+                "amount >= limit",
+                3,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    let limit = 100;\n    limit < amount",
+                "limit < amount",
+                3,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    let limit = 100;\n    limit < amount",
+                "limit < amount",
+                3,
+                "score(101);",
+                Expect::Missing("limit == amount"),
+            ),
+            // The evaluator cannot fold these initializers, so a test at
+            // 100 could never close them: no repair is named.
+            (
+                "    let limit = 100; amount > limit",
+                "amount > limit",
+                2,
+                "score(100);",
+                Expect::NoRepair,
+            ),
+            (
+                "    let limit = amount / 2 + 50;\n    amount > limit",
+                "amount > limit",
+                3,
+                "score(100);",
+                Expect::NoRepair,
+            ),
+        ];
+        for (body, predicate, line, call, expect) in cases {
+            let owner = function(&format!("pub fn score(amount: i32) -> bool {{\n{body}\n}}"));
+            let test = test_with_call("score_boundary", call);
+            let mut probe = probe(ProbeFamily::Predicate, predicate);
+            probe.location = SourceLocation::new("src/lib.rs", line, 5);
+            let activation = activation_evidence(
+                &probe,
+                Some(&owner),
+                &[&test],
+                &[],
+                None,
+                &crate::analysis::rust_index::RustIndex::default(),
+                false,
+            );
+            let missing: Vec<&str> = activation
+                .missing_discriminators
+                .iter()
+                .map(|fact| fact.value.as_str())
+                .collect();
+            match expect {
+                Expect::Closed => assert!(
+                    has_observed_boundary_equality(&activation) && missing.is_empty(),
+                    "`{predicate}` with {call} must close; missing {missing:?}"
+                ),
+                Expect::Missing(value) => assert!(
+                    !has_observed_boundary_equality(&activation) && missing == [value],
+                    "`{predicate}` with {call} must name {value}; missing {missing:?}"
+                ),
+                Expect::NoRepair => assert!(
+                    !has_observed_boundary_equality(&activation) && missing.is_empty(),
+                    "`{predicate}` ({body}) with {call} must not credit or name a repair; missing {missing:?}"
+                ),
+            }
+        }
     }
 
     #[test]
