@@ -669,8 +669,13 @@ The coverage workflow currently runs:
 
 ```bash
 cargo llvm-cov clean --workspace
+cargo build -p ripr
 cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 ```
+
+The plain `cargo build -p ripr` comes first because tests that spawn the
+binary resolve a pre-built `target/debug/ripr` and never start a nested build,
+while `cargo llvm-cov` builds into its own target directory.
 
 It uploads `lcov.info` as the `rust-lcov` GitHub Actions artifact and uploads
 the same file to Codecov with the `rust` flag and `rust-workspace` upload name.

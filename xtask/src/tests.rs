@@ -46064,6 +46064,177 @@ fn lane1_audit_sample_json() -> &'static str {
         }"#
 }
 
+fn write_packaging_test_vsix(
+    path: &std::path::Path,
+    members: &[(&str, &str)],
+) -> Result<(), String> {
+    let file = fs::File::create(path)
+        .map_err(|err| format!("failed to create {}: {err}", path.display()))?;
+    let mut writer = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default();
+    for (name, body) in members {
+        writer
+            .start_file(*name, options)
+            .map_err(|err| format!("failed to stage {name}: {err}"))?;
+        std::io::Write::write_all(&mut writer, body.as_bytes())
+            .map_err(|err| format!("failed to write {name}: {err}"))?;
+    }
+    writer
+        .finish()
+        .map_err(|err| format!("failed to seal {}: {err}", path.display()))?;
+    Ok(())
+}
+
+fn vsix_entry(name: &str, size: u64) -> super::VsixEntry {
+    super::VsixEntry {
+        name: name.to_string(),
+        size,
+        compressed_size: size / 4,
+    }
+}
+
+#[test]
+fn vsix_inventory_rejects_workspace_build_output_sentinel() -> Result<(), String> {
+    with_temp_cwd("vsix-inventory-sentinel", |root| {
+        let approved = [
+            ("[Content_Types].xml", "<Types/>"),
+            ("extension.vsixmanifest", "<PackageManifest/>"),
+            ("extension/package.json", "{}"),
+            ("extension/distribution.json", "{\"schema\":2}"),
+            ("extension/out/src/client.js", "exports.x = 1;"),
+            // A dependency's own `target/` directory is not workspace output.
+            (
+                "extension/node_modules/dep/target/index.js",
+                "module.exports = 1;",
+            ),
+        ];
+        let clean = root.join("clean.vsix");
+        write_packaging_test_vsix(&clean, &approved)?;
+        let entries = super::read_vsix_inventory(&clean)?;
+        assert_eq!(entries.len(), approved.len());
+        super::check_vsix_inventory(
+            &entries,
+            super::VSIX_MAX_ENTRIES,
+            super::VSIX_MAX_UNCOMPRESSED_BYTES,
+        )?;
+        // The production path `vscode-package` runs after `vsce package`.
+        let summary = super::verify_packaged_vsix_inventory(&clean)?;
+        assert!(
+            summary.starts_with(&format!("VSIX inventory: {} entries, ", approved.len())),
+            "{summary}"
+        );
+
+        let sentinel = "extension/target/debug/ripr-1775-sentinel.bin";
+        let mut polluted_members = approved.to_vec();
+        polluted_members.push((sentinel, "cargo build output"));
+        let polluted = root.join("polluted.vsix");
+        write_packaging_test_vsix(&polluted, &polluted_members)?;
+        let entries = super::read_vsix_inventory(&polluted)?;
+        let Err(error) = super::check_vsix_inventory(
+            &entries,
+            super::VSIX_MAX_ENTRIES,
+            super::VSIX_MAX_UNCOMPRESSED_BYTES,
+        ) else {
+            return Err("a packaged editors/vscode/target sentinel must be rejected".to_string());
+        };
+        assert!(error.contains(sentinel), "{error}");
+        assert!(error.contains("1 workspace build-output"), "{error}");
+        let Err(error) = super::verify_packaged_vsix_inventory(&polluted) else {
+            return Err("vscode-package must reject the polluted VSIX".to_string());
+        };
+        assert!(error.contains("packaged VSIX"), "{error}");
+        assert!(error.contains(sentinel), "{error}");
+        Ok(())
+    })
+}
+
+#[test]
+fn vsix_inventory_rejects_cargo_artifacts_outside_target() -> Result<(), String> {
+    for name in [
+        "extension/out/libripr-0123.rlib",
+        "extension/out/libripr-0123.rmeta",
+        "extension/build/.fingerprint/ripr-0123/lib-ripr",
+        "extension/build/incremental/ripr-0123/s-abc/query-cache.bin",
+    ] {
+        let entries = vec![
+            vsix_entry("extension/package.json", 2),
+            vsix_entry(name, 10),
+        ];
+        let Err(error) = super::check_vsix_inventory(&entries, 10, 1_000) else {
+            return Err(format!("{name} must be rejected as build output"));
+        };
+        assert!(error.contains(name), "{error}");
+    }
+    Ok(())
+}
+
+#[test]
+fn vsix_inventory_fails_closed_on_missing_or_non_zip_package() -> Result<(), String> {
+    with_temp_cwd("vsix-inventory-unreadable", |root| {
+        // A package step that produced no archive must fail, not pass an empty inventory.
+        let missing = root.join("missing.vsix");
+        let Err(error) = super::read_vsix_inventory(&missing) else {
+            return Err("a missing VSIX must not yield an inventory".to_string());
+        };
+        assert!(error.contains("is missing"), "{error}");
+
+        let not_zip = root.join("not-zip.vsix");
+        fs::write(&not_zip, "not a zip archive")
+            .map_err(|err| format!("failed to write {}: {err}", not_zip.display()))?;
+        let Err(error) = super::read_vsix_inventory(&not_zip) else {
+            return Err("a non-zip VSIX must not yield an inventory".to_string());
+        };
+        assert!(error.contains("is not a zip"), "{error}");
+
+        // An intact central directory over a corrupt member header must fail
+        // at the member read, not produce a partial inventory.
+        let corrupt = root.join("corrupt-member.vsix");
+        write_packaging_test_vsix(&corrupt, &[("extension/package.json", "{}")])?;
+        let mut bytes = fs::read(&corrupt)
+            .map_err(|err| format!("failed to read {}: {err}", corrupt.display()))?;
+        assert_eq!(bytes.get(..4), Some(&b"PK\x03\x04"[..]));
+        bytes[..2].copy_from_slice(b"XX");
+        fs::write(&corrupt, &bytes)
+            .map_err(|err| format!("failed to write {}: {err}", corrupt.display()))?;
+        let Err(error) = super::read_vsix_inventory(&corrupt) else {
+            return Err("a corrupt VSIX member must not yield an inventory".to_string());
+        };
+        assert!(error.contains("member 0"), "{error}");
+        Ok(())
+    })
+}
+
+#[test]
+fn vsix_inventory_bounds_entry_count_and_unpacked_size() -> Result<(), String> {
+    let three = vec![
+        vsix_entry("extension/package.json", 10),
+        vsix_entry("extension/out/a.js", 10),
+        vsix_entry("extension/out/b.js", 10),
+    ];
+    super::check_vsix_inventory(&three, 3, 30)?;
+    let Err(count) = super::check_vsix_inventory(&three, 2, 30) else {
+        return Err("an entry count above the bound must be rejected".to_string());
+    };
+    assert!(
+        count.contains("3 entries, above the 2-entry bound"),
+        "{count}"
+    );
+    let Err(size) = super::check_vsix_inventory(&three, 3, 29) else {
+        return Err("an unpacked size above the bound must be rejected".to_string());
+    };
+    assert!(size.contains("30 bytes, above the 29-byte bound"), "{size}");
+    // The production bounds sit between the observed 0.11 package (about 410
+    // entries, 3 MiB) and the #1775 defect (2,805 entries, about 2.3 GB).
+    const { assert!(super::VSIX_MAX_ENTRIES > 410 && super::VSIX_MAX_ENTRIES < 2_805) };
+    const {
+        assert!(
+            super::VSIX_MAX_UNCOMPRESSED_BYTES > 3 * 1024 * 1024
+                && super::VSIX_MAX_UNCOMPRESSED_BYTES < 2_300 * 1024 * 1024
+        )
+    };
+    Ok(())
+}
+
 #[test]
 fn vscode_package_version_reads_extension_manifest() -> Result<(), String> {
     with_temp_cwd("vscode-package-version", |root| {
