@@ -229,9 +229,9 @@ const CONTRACTS: &[VerificationContract] = &[
         ],
     },
     // The `--gap-ledger` route writes the same review-comments artifact but
-    // renders an `inputs.gap_ledger` disclosure and gap-variant `suppressed[]`
-    // items (`gap_id`, nullable `file`/`line`) that the diff-scoped fixture
-    // above never carries; the generation-time `--check` in
+    // renders an `inputs.gap_ledger` disclosure, eligible gap-record cards,
+    // and gap-variant `suppressed[]` items (`gap_id`, nullable `file`/`line`)
+    // that the diff-scoped fixture above never carries; the generation-time `--check` in
     // `xtask/src/reports/review_comments.rs` shells `ripr review-comments`
     // without `--gap-ledger`, so nothing consumed this shape before this row
     // while the closed published schema rejected it.
@@ -241,7 +241,13 @@ const CONTRACTS: &[VerificationContract] = &[
         fixture_path: "tests/fixtures/verification/ripr/review-comments.gap-ledger.valid.json",
         subject: ContractSubject::Document,
         doc_path: "docs/OUTPUT_SCHEMA.md",
-        doc_markers: &["inputs", "gap_ledger"],
+        doc_markers: &[
+            "inputs",
+            "gap_ledger",
+            "gap_record_anchor",
+            "comments[].gap_id",
+            "gap_repair_card",
+        ],
     },
     VerificationContract {
         schema_path: "schemas/ripr/gate-decision.schema.json",
@@ -1633,6 +1639,124 @@ mod tests {
         );
 
         assert!(violations.is_empty(), "{violations:#?}");
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_gap_ledger_card_has_its_own_schema_branch() -> Result<(), String> {
+        let root = repo_root()?;
+        let schema = read_json(root.join("schemas/ripr/review-comments.schema.json"))?;
+        // The fixture carries an eligible card shaped by
+        // output::review_comments::gap_record_recommendation_json, as well as
+        // suppressed records whose anchor can be absent.
+        let packet = read_json(
+            root.join("tests/fixtures/verification/ripr/review-comments.gap-ledger.valid.json"),
+        )?;
+        let check = |value: &Value| {
+            let mut violations = Vec::new();
+            validate_value_against_schema(
+                value,
+                &schema,
+                &schema,
+                "gap-ledger review comments".to_string(),
+                &mut violations,
+            );
+            violations
+        };
+        assert_eq!(packet["summary"]["comments"], 1);
+        assert!(check(&packet).is_empty(), "{:#?}", check(&packet));
+
+        let mut missing_identity = packet.clone();
+        missing_identity["comments"][0]
+            .as_object_mut()
+            .ok_or("missing fixture comment")?
+            .remove("gap_id");
+        assert!(!check(&missing_identity).is_empty());
+
+        // The eligible card exists to carry the repair card; a gap-ledger
+        // card without one is not a valid review recommendation.
+        let mut missing_repair_card = packet.clone();
+        missing_repair_card["comments"][0]
+            .as_object_mut()
+            .ok_or("missing fixture comment")?
+            .remove("repair_card");
+        assert!(!check(&missing_repair_card).is_empty());
+
+        // Key presence alone is not a repair card: `null`, an empty object,
+        // and a card without verification commands carry no repair guidance.
+        for (label, card) in [
+            ("null", Value::Null),
+            ("empty object", serde_json::json!({})),
+        ] {
+            let mut hollow = packet.clone();
+            hollow["comments"][0]["repair_card"] = card;
+            assert!(!check(&hollow).is_empty(), "{label} repair_card accepted");
+        }
+        let mut no_commands = packet.clone();
+        no_commands["comments"][0]["repair_card"]["verification_commands"] = serde_json::json!([]);
+        assert!(!check(&no_commands).is_empty());
+
+        // An eligible GapRecord needs no related test or target file.
+        // gap_record_comment_json then projects null test-navigation fields,
+        // which the gap-ledger card must admit.
+        let mut no_related_test = packet.clone();
+        {
+            let suggested = &mut no_related_test["comments"][0]["suggested_test"];
+            suggested["recommended_name"] = Value::Null;
+            suggested["near_test"] = Value::Null;
+            suggested["related_test"] = Value::Null;
+        }
+        no_related_test["comments"][0]["repair_card"]["repair_route"]
+            .as_object_mut()
+            .ok_or("missing fixture repair route")?
+            .remove("related_test");
+        assert!(
+            check(&no_related_test).is_empty(),
+            "{:#?}",
+            check(&no_related_test)
+        );
+        let mut no_test_location = no_related_test.clone();
+        no_test_location["comments"][0]["suggested_test"]["recommended_file"] = Value::Null;
+        no_test_location["comments"][0]["repair_card"]["repair_route"]
+            .as_object_mut()
+            .ok_or("missing fixture repair route")?
+            .remove("target_file");
+        assert!(
+            check(&no_test_location).is_empty(),
+            "{:#?}",
+            check(&no_test_location)
+        );
+
+        let mut wrong_placement = packet.clone();
+        wrong_placement["comments"][0]["placement"]["mode"] =
+            Value::String("exact_seam_line".to_string());
+        assert!(!check(&wrong_placement).is_empty());
+
+        let mut default_packet =
+            read_json(root.join("tests/fixtures/verification/ripr/review-comments.valid.json"))?;
+        assert!(
+            !default_packet["comments"]
+                .as_array()
+                .ok_or("missing default comments")?
+                .is_empty()
+        );
+        assert!(
+            check(&default_packet).is_empty(),
+            "{:#?}",
+            check(&default_packet)
+        );
+        // Working-set cards keep their string test-navigation contract.
+        for field in ["recommended_file", "recommended_name"] {
+            let mut null_navigation = default_packet.clone();
+            null_navigation["comments"][0]["suggested_test"][field] = Value::Null;
+            assert!(
+                !check(&null_navigation).is_empty(),
+                "working-set null {field} accepted"
+            );
+        }
+        default_packet["comments"][0]["placement"]["mode"] =
+            Value::String("gap_record_anchor".to_string());
+        assert!(!check(&default_packet).is_empty());
         Ok(())
     }
 

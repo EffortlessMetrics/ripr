@@ -28,7 +28,7 @@
     "total_rust_files": null,
     "total_production_files": null,
     "production_files_considered": 1,
-    "classified_seams_considered": 2,
+    "classified_seams_considered": 3,
     "downstream_consumable": true,
     "limitation": "review_comments_gap_ledger_artifact_scope_only",
     "repair_route": "reports/gap-decision-ledger"
@@ -38,12 +38,89 @@
     "max_summary_items": 10
   },
   "summary": {
-    "comments": 0,
+    "comments": 1,
     "summary_only": 0,
     "suppressed": 2,
     "unchanged_tests": true
   },
-  "comments": [],
+  "comments": [
+    {
+      "id": "ripr-review-gap:pr:pricing:threshold-boundary",
+      "source": "gap_decision_ledger",
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "gap_kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "seam_id": "seam:pricing:threshold-boundary",
+      "dedupe_key": "gap:rust:pricing:discount:threshold-boundary",
+      "source_location": {
+        "status": "resolved",
+        "file": "src/pricing.rs",
+        "line": 42,
+        "span": null,
+        "limitation": null,
+        "repair_route": null
+      },
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 42,
+        "side": "RIGHT",
+        "mode": "gap_record_anchor"
+      },
+      "kind": "MissingBoundaryAssertion",
+      "grip_class": "predicate_boundary",
+      "severity": "warning",
+      "reason": "Changed behavior `amount == discount_threshold` has a repairable MissingBoundaryAssertion gap.",
+      "missing_discriminator": "amount == discount_threshold",
+      "suggested_test": {
+        "intent": "Add a boundary assertion.",
+        "candidate_values": [],
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+        "assertion_kind": "AddBoundaryAssertion",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "tests/pricing.rs::discount_above_threshold",
+        "near_test": "tests/pricing.rs::discount_above_threshold",
+        "related_test": {
+          "name": "tests/pricing.rs::discount_above_threshold",
+          "file": "tests/pricing.rs",
+          "line": null
+        }
+      },
+      "repair_card": {
+        "gap_kind": "MissingBoundaryAssertion",
+        "changed_behavior": "amount == discount_threshold",
+        "why_this_matters": "Changed behavior `amount == discount_threshold` has a repairable MissingBoundaryAssertion gap.",
+        "repair": "assert_eq!(discount(100, 100), 90)",
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "related_test": "tests/pricing.rs::discount_above_threshold",
+          "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+          "changed_behavior": "amount == discount_threshold"
+        },
+        "evidence_ids": [
+          "evidence:pricing-threshold-reached",
+          "evidence:related-test-no-boundary-assertion"
+        ],
+        "verification_commands": [
+          "cargo xtask fixtures boundary_gap",
+          "cargo xtask goldens check"
+        ],
+        "verify_command": "cargo xtask fixtures boundary_gap",
+        "source_artifact": "target/ripr/reports/gap-decision-ledger.json",
+        "authority_boundary": "gate_decision_artifact_only"
+      },
+      "llm_guidance": {
+        "prompt": "assert_eq!(discount(100, 100), 90) Do not change production behavior unless the existing tests prove it is necessary. Verify with `cargo xtask fixtures boundary_gap`.",
+        "command": "ripr first-action --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json",
+        "verify_command": "cargo xtask fixtures boundary_gap"
+      }
+    }
+  ],
   "summary_only": [],
   "suppressed": [
     {

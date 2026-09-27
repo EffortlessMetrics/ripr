@@ -829,8 +829,6 @@
         "kind",
         "grip_class",
         "severity",
-        "owner",
-        "seam",
         "source_location",
         "reason",
         "suggested_test",
@@ -838,6 +836,13 @@
       ],
       "properties": {
         "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "const": "gap_decision_ledger"
+        },
+        "gap_id": {
           "type": "string",
           "minLength": 1
         },
@@ -946,6 +951,119 @@
             "unknown"
           ]
         }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["source"],
+            "properties": { "source": { "const": "gap_decision_ledger" } }
+          },
+          "then": {
+            "required": ["gap_id", "repair_card"],
+            "properties": {
+              "placement": {
+                "properties": { "mode": { "const": "gap_record_anchor" } }
+              },
+              "repair_card": {
+                "$ref": "#/$defs/gap_repair_card"
+              }
+            }
+          },
+          "else": {
+            "required": ["owner", "seam"],
+            "properties": {
+              "suggested_test": {
+                "properties": {
+                  "recommended_file": { "type": "string" },
+                  "recommended_name": { "type": "string" }
+                }
+              },
+              "placement": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "exact_seam_line",
+                      "owner_function_changed_line",
+                      "same_file_changed_line"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gap_repair_card": {
+      "description": "GapRecord-backed repair card carried by every `source: gap_decision_ledger` comment. Produced by output::review_comments::gap_record_comment_json.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "gap_kind",
+        "changed_behavior",
+        "why_this_matters",
+        "repair",
+        "repair_route",
+        "evidence_ids",
+        "verification_commands",
+        "verify_command",
+        "source_artifact",
+        "authority_boundary"
+      ],
+      "properties": {
+        "gap_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changed_behavior": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "why_this_matters": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repair": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repair_route": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["route_kind"],
+          "properties": {
+            "route_kind": {
+              "type": "string"
+            }
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verification_commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "verify_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority_boundary": {
+          "type": "string"
+        }
       }
     },
     "seam": {
@@ -998,7 +1116,8 @@
           "enum": [
             "exact_seam_line",
             "owner_function_changed_line",
-            "same_file_changed_line"
+            "same_file_changed_line",
+            "gap_record_anchor"
           ]
         }
       }
@@ -1219,10 +1338,18 @@
           ]
         },
         "recommended_file": {
-          "type": "string"
+          "description": "Working-set cards always carry a string (`not_applicable` for non-actionable cards). Gap-ledger cards carry null when the supplied repair route names neither a target file nor a related test.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "recommended_name": {
-          "type": "string"
+          "description": "Working-set cards always carry a string. Gap-ledger cards carry null when the supplied repair route names no related test.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "near_test": {
           "type": [

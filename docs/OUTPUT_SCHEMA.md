@@ -7259,7 +7259,7 @@ JSON shape:
     "limitation": "review_comments_gap_ledger_artifact_scope_only",
     "repair_route": "reports/gap-decision-ledger"
   },
-  "limits": {
+  "rendering_limits": {
     "max_inline_comments": 3,
     "max_summary_items": 10
   },
@@ -7272,6 +7272,8 @@ JSON shape:
   "comments": [
     {
       "id": "ripr-review-67fc764ba37d77bd",
+      "source": "gap_decision_ledger",
+      "gap_id": "gap:pr:pricing:threshold-boundary",
       "seam_id": "67fc764ba37d77bd",
       "canonical_gap_id": "gap:67fc764ba37d77bd",
       "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
@@ -7279,7 +7281,7 @@ JSON shape:
         "path": "src/pricing.rs",
         "line": 88,
         "side": "RIGHT",
-        "mode": "exact_seam_line"
+        "mode": "gap_record_anchor"
       },
       "kind": "predicate_boundary",
       "grip_class": "weakly_gripped",
@@ -7320,6 +7322,11 @@ JSON shape:
         "changed_behavior": "amount == discount_threshold",
         "why_this_matters": "Changed behavior `amount == discount_threshold` has a repairable MissingBoundaryAssertion gap.",
         "repair": "Assert the returned discount behavior directly.",
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "changed_behavior": "amount == discount_threshold"
+        },
         "evidence_ids": ["evidence:pricing-threshold-reached"],
         "verification_commands": ["cargo xtask fixtures boundary_gap"],
         "verify_command": "cargo xtask fixtures boundary_gap",
@@ -7372,7 +7379,12 @@ Field contract:
   items eligible for check annotations or inline review comments.
 - `comments[].id` - stable report-local ID derived from the seam when possible.
 - `comments[].seam_id` - static seam identifier from the existing exposure or
-  agent packet evidence.
+  agent packet evidence. On `--gap-ledger`, the producer-owned seam ID is
+  required for a comment to be eligible.
+- `comments[].source` / `comments[].gap_id` - on `--gap-ledger`, the source is
+  `gap_decision_ledger` and the gap ID identifies the supplied record. These
+  cards do not invent the working-set `owner` or `seam` objects. The published
+  schema validates this distinct card shape.
 - `comments[].canonical_gap_id` - required, nullable stable behavioral-gap
   identity. Working-set cards project it from the canonical analysis domain;
   gap-ledger cards preserve `GapRecord.canonical_gap_id`. The renderer never
@@ -7385,8 +7397,9 @@ Field contract:
   `"owner_function_changed_line"`, or `"same_file_changed_line"`. The last
   names a changed line inside the seam owner's span that owner attribution
   bound to a nested function; a changed line elsewhere in the same file is
-  not a placement. The renderer must prefer summary-only guidance over
-  misleading line placement.
+  not a placement. Gap-ledger cards use `gap_record_anchor` for their
+  producer-owned stable anchor. The renderer must prefer summary-only guidance
+  over misleading line placement.
 - `comments[].kind` - seam kind from the existing static evidence.
 - `comments[].grip_class` - seam grip class from the existing static evidence.
 - `comments[].severity` - configured report severity for the recommendation.
@@ -7413,6 +7426,12 @@ Field contract:
   object adds a directly navigable `file:line` when the related-test location
   is resolved. On the gap-ledger card path `file` and `line` may be `null`
   when the supplied repair route names only the related test.
+- `comments[].suggested_test.recommended_file` /
+  `comments[].suggested_test.recommended_name` - strings on working-set cards
+  (`not_applicable` on non-actionable cards). On `--gap-ledger` cards they are
+  `null` when the supplied repair route names no related test
+  (`recommended_name`) or neither a target file nor a related test
+  (`recommended_file`); eligibility does not require either.
 - `comments[].llm_guidance` - bounded handoff command and prompt for one
   focused test. It is not a request for free-form diff review.
 - `comments[].llm_guidance.repair_command` - present only on an actionable
@@ -7423,11 +7442,16 @@ Field contract:
   ineligible, and gap-ledger cards; consumers must not derive it from
   `seam_id`. Inline publish planning closes the comment body with it in place
   of the bare `ripr agent verify` line.
-- `comments[].repair_card` - optional GapRecord-backed repair card. When
+- `comments[].repair_card` - GapRecord-backed repair card. Absent on
+  working-set cards; required on every `--gap-ledger` card
+  (`source: "gap_decision_ledger"`), where the published schema validates the
+  `gap_repair_card` shape: a non-empty `gap_kind`, nullable `changed_behavior`,
+  non-empty `why_this_matters` and `repair`, a `repair_route` object carrying
+  `route_kind`, `evidence_ids`, at least one non-empty `verification_commands`
+  entry, a non-empty `verify_command` and `source_artifact`, and
+  `authority_boundary`. A `null` or empty-object card is invalid. When
   present, inline publish planning should use this field for the human/LLM
-  comment body instead of raw static classes. It carries gap kind, changed
-  behavior when available, why the gap matters, the bounded repair route,
-  evidence IDs, verification commands, source artifact, and authority boundary.
+  comment body instead of raw static classes.
 - `comments[].oracle_kind` / `comments[].oracle_strength` - card-level oracle
   facts (RIPR-SPEC-0068) projecting the representative related test's oracle
   (the nearest strong related test, else the top-ranked related test). When no
