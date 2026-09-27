@@ -485,8 +485,13 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
                 out.push_str(&format!("\n{prerequisite}.\n"));
             }
         } else if let Some(run) = advisory.non_success_run(&output.language_runs) {
+            let verb = if advisory.file_count == 1 {
+                "was"
+            } else {
+                "were"
+            };
             out.push_str(&format!(
-                "\nNote: the {language} preview adapter did not complete successfully ({}), so {} {} were not analyzed — this is NOT a clean Rust-grade result.\n",
+                "\nNote: the {language} preview adapter did not complete successfully ({}), so {} {} {verb} not analyzed — this is NOT a clean Rust-grade result.\n",
                 run.status.as_str(), advisory.file_count, file_label,
             ));
         } else {

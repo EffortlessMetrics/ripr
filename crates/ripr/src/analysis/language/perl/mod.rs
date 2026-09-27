@@ -34,6 +34,14 @@ const PERL_LSP_FACT_EXPORTER: &str = "perl-lsp";
 const PERL_LSP_FACT_EXPORT_SUBCOMMAND: &str = "ripr-facts";
 const UNRESOLVED_RELATION_CHANGE_ID: &str = "change:unresolved";
 
+/// Why a Perl run without a fact packet is `unavailable`, in user terms.
+fn missing_fact_packet_reason() -> String {
+    format!(
+        "language `perl` requires a fact packet: {}",
+        crate::domain::perl_fact_packet_guidance()
+    )
+}
+
 fn is_supported_perl_fact_exporter(name: &str) -> bool {
     matches!(
         name,
@@ -179,10 +187,7 @@ impl LanguageAdapter for PerlAdapter {
         // Read the packet from the configured path. When absent, return empty
         // (the pipeline's non-abort contract records this as `unavailable`).
         let Some(ref facts_path) = options.perl_facts_path else {
-            return Err(
-                "language `perl` requires a fact packet; pass --perl-facts <path> (see Campaign 31 #1429)"
-                    .to_string(),
-            );
+            return Err(missing_fact_packet_reason());
         };
 
         let packet_text = std::fs::read_to_string(facts_path).map_err(|err| {
@@ -239,10 +244,7 @@ impl LanguageAdapter for PerlAdapter {
         _oracle_policy: &OraclePolicy,
     ) -> Result<LanguageRepoResult, String> {
         let Some(ref facts_path) = options.perl_facts_path else {
-            return Err(
-                "language `perl` requires a fact packet; pass --perl-facts <path> (see Campaign 31 #1429)"
-                    .to_string(),
-            );
+            return Err(missing_fact_packet_reason());
         };
 
         let packet_text = std::fs::read_to_string(facts_path).map_err(|err| {

@@ -49,6 +49,8 @@ pub use git_candidate::{
     GitHashFormat, GitObjectId, GitTreeish,
 };
 pub(crate) use language::PERL_FACT_EXPORTER;
+#[cfg(feature = "lang-perl")]
+pub(crate) use language::perl_fact_packet_guidance;
 pub use language::{LanguageId, LanguageStatus, OwnerKind, StaticLimitKind};
 pub use probe::{
     ActivationEvidence, DeltaKind, Finding, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,

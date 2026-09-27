@@ -611,6 +611,11 @@ are scoped or reviewed.
   JavaScript identifier, or at the start of a template-literal line, is still
   probed.
 
+- Perl preview: with Perl enabled but no fact packet, the reason now says
+  to pass `--perl-facts <packet.json>` or configure `[perl].producer` instead
+  of citing an internal campaign issue, and the note reads "1 Perl file was
+  not analyzed".
+
 - `cargo xtask vscode-package` now reads the built VSIX and fails if it
   carries workspace build output (anything under `extension/target/`, Cargo
   `.fingerprint` or `incremental` state, `.rlib` or `.rmeta`) or exceeds 1,500

@@ -148,7 +148,8 @@ impl LanguageId {
     pub(crate) fn enable_prerequisite(self) -> Option<String> {
         match self {
             LanguageId::Perl => Some(format!(
-                "Perl also needs a fact packet: pass --perl-facts <packet.json>, or configure [perl].producer with a compatible Perl fact exporter (`{PERL_FACT_EXPORTER}`, not yet published)"
+                "Perl also needs a fact packet: {}",
+                perl_fact_packet_guidance()
             )),
             _ => None,
         }
@@ -159,6 +160,14 @@ impl LanguageId {
 /// mode invokes (`<exporter> ripr-facts --schema ...`). It is not yet
 /// published, so no surface may present Perl analysis as installable.
 pub(crate) const PERL_FACT_EXPORTER: &str = "perl-ripr-facts";
+
+/// How to supply a Perl fact packet, shared by the enable prerequisite and
+/// the adapter's `unavailable` reason so the two cannot diverge.
+pub(crate) fn perl_fact_packet_guidance() -> String {
+    format!(
+        "pass --perl-facts <packet.json>, or configure [perl].producer with a compatible Perl fact exporter (`{PERL_FACT_EXPORTER}`, not yet published)"
+    )
+}
 
 /// Whether an adapter is the reference (`Stable`) implementation for a
 /// language or a `Preview` adapter.

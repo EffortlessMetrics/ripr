@@ -155,6 +155,61 @@ fn malformed_perl_adapter_run_is_enabled_but_not_analyzed_in_every_renderer() ->
     cleanup
 }
 
+/// Perl enabled with no fact packet: the run is `unavailable`, the note agrees
+/// with one file ("1 Perl file was"), and the reason names what to pass in
+/// user terms rather than an internal campaign reference (2026-09-27 re-walk).
+#[cfg(feature = "lang-perl")]
+#[test]
+fn missing_perl_fact_packet_reason_is_user_facing() -> Result<(), String> {
+    let root = temp_root("preview-perl-missing-packet")?;
+    let proof = (|| -> Result<(), String> {
+        let diff = root.join("perl.diff");
+        write(
+            &diff,
+            "diff --git a/lib/App.pm b/lib/App.pm\n--- /dev/null\n+++ b/lib/App.pm\n@@ -0,0 +1 @@\n+sub discount { return 0 }\n",
+        )?;
+        let config =
+            crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"perl\"]\n")?;
+        let output = crate::app::check_workspace_with_config(
+            crate::CheckInput {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff),
+                mode: crate::Mode::Draft,
+                format: crate::OutputFormat::Json,
+                include_unchanged_tests: false,
+                perl_facts_path: None,
+                suppression_policy: None,
+                git_timeout: None,
+                git_candidate: None,
+            },
+            &config,
+        )?;
+        let perl_run = output
+            .language_runs
+            .iter()
+            .find(|run| run.language == "perl")
+            .ok_or_else(|| "missing Perl language_run".to_string())?;
+        if perl_run.status != crate::analysis::LanguageRunStatus::Unavailable {
+            return Err(format!("expected unavailable Perl run, got {perl_run:?}"));
+        }
+        let human = crate::render_check(&output, &crate::OutputFormat::Human)?;
+        if !human.contains("so 1 Perl file was not analyzed") {
+            return Err(format!("expected singular verb for one file: {human}"));
+        }
+        if !human.contains("--perl-facts <packet.json>") || human.contains("Campaign") {
+            return Err(format!(
+                "reason must name the flag, not a campaign: {human}"
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup =
+        fs::remove_dir_all(&root).map_err(|error| format!("remove {}: {error}", root.display()));
+    proof?;
+    cleanup
+}
+
 #[cfg(feature = "lang-typescript")]
 fn typescript_output(enabled: bool) -> Result<(std::path::PathBuf, crate::CheckOutput), String> {
     let root = temp_root(if enabled {
