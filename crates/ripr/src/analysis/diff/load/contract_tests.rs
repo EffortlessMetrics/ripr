@@ -1,6 +1,6 @@
 //! Regression controls for the Git source-patch contract (#3850).
 
-use super::{load_diff, load_diff_range, load_worktree_diff};
+use super::{load_diff, load_diff_range, load_worktree_diff, run_git_diff_bytes};
 use crate::analysis::diff::parse_unified_diff;
 use std::fs;
 use std::io;
@@ -144,6 +144,41 @@ fn source(changed: bool) -> String {
             format!("pub const VALUE_{line}: u32 = {value};\n")
         })
         .collect()
+}
+
+/// Commit two repository paths that only canonical side prefixes keep
+/// distinct: `b/identity.rs` is literally the token the parser strips from a
+/// `+++` marker, so a diff that drops or re-letters the side prefix collapses
+/// that real `b/` directory component onto the sibling `identity.rs` (#4086).
+fn commit_colliding_identity_paths(repo: &Repo) -> io::Result<()> {
+    fs::create_dir_all(repo.root.join("b"))?;
+    fs::write(
+        repo.root.join("identity.rs"),
+        "pub fn outer() -> u32 { 1 }\n",
+    )?;
+    fs::write(
+        repo.root.join("b").join("identity.rs"),
+        "pub fn nested() -> u32 { 2 }\n",
+    )?;
+    git(&repo.root, &["add", "."])?;
+    git(
+        &repo.root,
+        &["commit", "--quiet", "-m", "colliding identity paths"],
+    )?;
+    fs::write(
+        repo.root.join("identity.rs"),
+        "pub fn outer() -> u32 { 10 }\n",
+    )?;
+    fs::write(
+        repo.root.join("b").join("identity.rs"),
+        "pub fn nested() -> u32 { 20 }\n",
+    )?;
+    git(&repo.root, &["add", "."])?;
+    git(
+        &repo.root,
+        &["commit", "--quiet", "-m", "edit colliding identity paths"],
+    )?;
+    Ok(())
 }
 
 fn assert_source_patch(patch: &str) {
@@ -308,6 +343,134 @@ fn worktree_loader_keeps_staged_and_unstaged_source_edits() -> io::Result<()> {
             vec![100, 500, 1_500, 1_900]
         );
     }
+    Ok(())
+}
+
+#[test]
+fn loaders_pin_canonical_side_prefixes_against_ambient_diff_config() -> io::Result<()> {
+    // #4086 acceptance: `diff.mnemonicPrefix` (and its `diff.noprefix`
+    // sibling) must not change parsed file identity. The parser strips a
+    // fixed `a/`/`b/` side prefix, so either setting rewrites identity:
+    // `diff.noprefix` drops the prefixes, after which the parser's `b/` strip
+    // eats a real `b/` directory component and `b/identity.rs` collapses onto
+    // `identity.rs`; `diff.mnemonicPrefix` re-labels the sides `c/`/`w/`,
+    // which that strip does not recognise, so the side prefix leaks into the
+    // parsed path. Both are demonstrated on every loader.
+    //
+    // `diff.mnemonicPrefix` only rewrites the base-tree-to-worktree
+    // comparison that `load_worktree_diff` issues. It does not touch the
+    // `<base>...HEAD` range form the other two loaders use, so the worktree
+    // leg is the only one it can discriminate.
+    let repo = Repo::new("side-prefix")?;
+    commit_colliding_identity_paths(&repo)?;
+    let canonical_paths = vec![
+        PathBuf::from("b/identity.rs"),
+        PathBuf::from("identity.rs"),
+        PathBuf::from("src/lib.rs"),
+    ];
+
+    for (setting, value, mutated_boundary) in [
+        (
+            "diff.noprefix",
+            "true",
+            "diff --git identity.rs identity.rs",
+        ),
+        (
+            "diff.mnemonicPrefix",
+            "true",
+            "diff --git c/identity.rs w/identity.rs",
+        ),
+    ] {
+        repo.config(setting, value)?;
+
+        // The unpinned control is the exact argv shape the worktree loader
+        // issues. Assert the divergence directly, by parsing the control with
+        // the same production parser and requiring it to lose identity: a
+        // control that merely mentions both paths, or that survives intact,
+        // would leave every assertion below vacuous.
+        let raw = git(&repo.root, &["diff", &repo.base])?;
+        assert!(
+            raw.contains(mutated_boundary),
+            "{setting} raw control did not present its mutated boundary {mutated_boundary:?}, so the fixture does not discriminate:\n{raw}"
+        );
+        assert!(
+            !raw.contains("diff --git a/identity.rs b/identity.rs"),
+            "{setting} raw control kept canonical prefixes, so the fixture does not discriminate:\n{raw}"
+        );
+        let mut raw_paths: Vec<PathBuf> = parse_unified_diff(&raw)
+            .iter()
+            .map(|file| file.path.clone())
+            .collect();
+        raw_paths.sort();
+        assert_ne!(
+            raw_paths, canonical_paths,
+            "{setting} raw control kept parsed identity, so the fixture does not discriminate: {raw_paths:?}"
+        );
+
+        let [committed, range, worktree] = repo.patches()?;
+        for (loader, patch) in [
+            ("load_diff", committed),
+            ("load_diff_range", range),
+            ("load_worktree_diff", worktree),
+        ] {
+            assert!(
+                patch.contains("diff --git a/identity.rs b/identity.rs"),
+                "{loader} let {setting} change the canonical outer-file boundary:\n{patch}"
+            );
+            assert!(
+                patch.contains("diff --git a/b/identity.rs b/b/identity.rs"),
+                "{loader} let {setting} change the canonical nested-file boundary:\n{patch}"
+            );
+            let mut paths: Vec<PathBuf> = parse_unified_diff(&patch)
+                .iter()
+                .map(|file| file.path.clone())
+                .collect();
+            paths.sort();
+            assert_eq!(
+                paths, canonical_paths,
+                "{loader} let {setting} change parsed identity"
+            );
+        }
+
+        // Each leg owns the hostile config for its own assertions only. The
+        // pins already defeat any ambient prefix setting — git's
+        // `--default-prefix` documents that it "overrides configuration
+        // variables such as `diff.noprefix`, `diff.srcPrefix`, `diff.dstPrefix`,
+        // and `diff.mnemonicPrefix`", and the production pins set that same
+        // `options->prefix` — so a leak could not make a loader assertion pass
+        // quietly. The unset is here so each leg measures its own setting
+        // rather than whatever the previous leg happened to leave behind.
+        git(&repo.root, &["config", "--unset", setting])?;
+    }
+
+    Ok(())
+}
+
+#[test]
+fn shared_diff_authority_overrides_conflicting_prefix_extras() -> io::Result<()> {
+    // The shared authority appends its identity pins after caller extras, so a
+    // future caller adding its own presentation flags cannot move the parser
+    // onto a different side-prefix dialect.
+    let repo = Repo::new("side-prefix-extra-precedence")?;
+    let bytes = run_git_diff_bytes(
+        &repo.root,
+        &format!("{}...HEAD", repo.base),
+        &["--src-prefix=old/", "--dst-prefix=new/"],
+        "0",
+        Some(GIT_TIMEOUT),
+    )
+    .map_err(io::Error::other)?;
+    let diff = String::from_utf8(bytes).map_err(io::Error::other)?;
+
+    assert!(
+        diff.contains("diff --git a/src/lib.rs b/src/lib.rs"),
+        "{diff}"
+    );
+    assert!(diff.contains("--- a/src/lib.rs"), "{diff}");
+    assert!(diff.contains("+++ b/src/lib.rs"), "{diff}");
+    assert!(!diff.contains("old/src/lib.rs"), "{diff}");
+    assert!(!diff.contains("new/src/lib.rs"), "{diff}");
+
     Ok(())
 }
 
