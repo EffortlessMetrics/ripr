@@ -58,15 +58,19 @@
     "receipt_state": "receipt_movement_improved",
     "next_action": {
       "kind": "improved",
-      "recommended_action": "Keep the focused test and include this receipt in review.",
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
       "summary": "Static grip improved."
     },
-    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON.",
+    "next_recommendation": "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON.",
     "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail."
   },
   "test_changed": null,
   "tool": "ripr",
   "verification": {
-    "commands_run": []
+    "commands_run": [],
+    "non_claims": [
+      "static_only_assurance"
+    ],
+    "status": "verification_not_run"
   }
 }

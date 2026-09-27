@@ -4482,8 +4482,7 @@ fn rerun_repair_receipt(root: &Path, out: bool) -> Result<Output, std::io::Error
     run_command(env!("CARGO_BIN_EXE_ripr"), Some(root), &args)
 }
 
-const INCLUDE_RECEIPT_LINE: &str =
-    "ripr: next: Keep the focused test and include this receipt in review.";
+const INCLUDE_RECEIPT_LINE: &str = "ripr: next: Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.";
 
 /// F15-1/F15-3: the printed loop on a library crate that does not commit
 /// `Cargo.lock`. The first `cargo test` between the phases creates the
@@ -4525,6 +4524,11 @@ fn agent_repair_admits_a_cargo_lock_first_generated_between_the_phases()
     assert_eq!(receipt["analysis_outcome_status"], "complete", "{receipt}");
     assert_eq!(receipt["analysis_outcome_error"], serde_json::Value::Null);
     assert_eq!(receipt["provenance"]["movement"], "improved");
+    // #4234: the loop never runs the focused test, and the receipt says so.
+    assert_eq!(
+        receipt["verification"]["status"], "verification_not_run",
+        "{receipt}"
+    );
     let verdict = &receipt["repair_attempt"]["edit_cage_verdict"];
     assert_eq!(verdict["status"], "compliant", "{verdict}");
     assert!(

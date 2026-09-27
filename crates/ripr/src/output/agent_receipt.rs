@@ -17,6 +17,10 @@ use super::receipt_lifecycle::{
 };
 
 pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.5";
+/// RIPR-SPEC-0135 verification-axis state for a receipt that ran no command.
+const VERIFICATION_NOT_RUN: &str = "verification_not_run";
+/// RIPR-SPEC-0135 non-claim every static-only receipt carries.
+const STATIC_ONLY_ASSURANCE: &str = "static_only_assurance";
 
 /// Receipt `status` for a receipt issued over a complete, valid producer
 /// analysis outcome. `incomplete` and `invalid` receipts carry static movement
@@ -226,8 +230,13 @@ pub(crate) fn render_agent_receipt_value_json(
             "evidence_delta": seam.evidence_delta
         },
         "test_changed": test_changed,
+        // The receipt never executes a command: `commands_run` is what the
+        // caller reports, so the verification axis stays `not_run` (SPEC-0135)
+        // whatever that list holds.
         "verification": {
-            "commands_run": commands_run
+            "status": VERIFICATION_NOT_RUN,
+            "commands_run": commands_run,
+            "non_claims": [STATIC_ONLY_ASSURANCE]
         },
         "summary": {
             "receipt_state": receipt_state,
@@ -406,10 +415,10 @@ fn receipt_guidance(change: &str) -> AgentReceiptGuidance {
     match change {
         "improved" => AgentReceiptGuidance {
             remaining_gap: "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
-            next_recommendation: "Keep the focused test and attach this receipt with the agent verify JSON.",
+            next_recommendation: "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON.",
             kind: "improved",
             summary: "Static grip improved.",
-            recommended_action: "Keep the focused test and include this receipt in review.",
+            recommended_action: "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
         },
         "changed" => AgentReceiptGuidance {
             remaining_gap: "Static evidence changed without a higher grip class; inspect the evidence delta and current seam packet.",
@@ -728,6 +737,45 @@ mod tests {
         Ok(())
     }
 
+    /// #3797 control 6: a focused test that fails `cargo test` still moves
+    /// static grip, and the receipt cannot tell it from a passing one. So the
+    /// improved guidance must never tell the agent to keep a test ripr did not
+    /// run, and the verification axis stays `verification_not_run` even when
+    /// the caller reports commands it ran.
+    #[test]
+    fn improved_receipt_does_not_keep_a_test_ripr_did_not_run() -> Result<(), String> {
+        for commands_run in [Vec::new(), vec!["cargo test pricing_boundary".to_string()]] {
+            let rendered = render_agent_receipt_json(
+                agent_verify_json(),
+                "target/ripr/workflow/agent-verify.json".to_string(),
+                "seam-a",
+                Some("tests::pricing_boundary"),
+                &commands_run,
+                fixed_provenance(),
+            )?;
+            let value: Value = serde_json::from_str(&rendered)
+                .map_err(|err| format!("receipt JSON should parse: {err}"))?;
+
+            assert_eq!(value["status"], "advisory");
+            assert_eq!(value["seam"]["change"], "improved");
+            assert_eq!(value["verification"]["status"], "verification_not_run");
+            assert_eq!(
+                value["verification"]["non_claims"],
+                serde_json::json!(["static_only_assurance"])
+            );
+            for field in [
+                &value["summary"]["next_recommendation"],
+                &value["summary"]["next_action"]["recommended_action"],
+            ] {
+                let text = field.as_str().unwrap_or_default();
+                assert!(!text.starts_with("Keep"), "{text}");
+                assert!(text.contains("keep it only if it passes"), "{text}");
+                assert!(text.contains("did not run it"), "{text}");
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn agent_receipt_json_selects_new_gap() -> Result<(), String> {
         let rendered = render_agent_receipt_json(
@@ -757,7 +805,7 @@ mod tests {
             "seam-a",
             "improved",
             "Static grip improved.",
-            "Keep the focused test and include this receipt in review.",
+            "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
         )
     }
 
@@ -1036,11 +1084,11 @@ mod tests {
         assert_eq!(advisory["status"], "advisory");
         assert_eq!(
             advisory["summary"]["next_action"]["recommended_action"],
-            "Keep the focused test and include this receipt in review."
+            "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
         );
         assert_eq!(
             advisory["summary"]["next_recommendation"],
-            "Keep the focused test and attach this receipt with the agent verify JSON."
+            "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON."
         );
 
         let invalid = render(AgentReceiptAnalysisOutcome::Unavailable {

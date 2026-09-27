@@ -6940,16 +6940,18 @@ JSON shape:
   },
   "test_changed": "discounted_total_boundary_discriminator",
   "verification": {
-    "commands_run": ["cargo test discounted_total_boundary_discriminator"]
+    "status": "verification_not_run",
+    "commands_run": ["cargo test discounted_total_boundary_discriminator"],
+    "non_claims": ["static_only_assurance"]
   },
   "summary": {
     "receipt_state": "receipt_movement_improved",
     "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
-    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON.",
+    "next_recommendation": "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON.",
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review.",
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
       "safe_to_merge": false
     }
   }
@@ -7024,8 +7026,16 @@ Field contract:
   takes it from `--test-changed`. The after phase of `ripr agent repair` sets it
   to the attempt's selected test file when the edit cage is compliant and
   recorded that file changing, and leaves it null otherwise.
+- `verification.status` - always `verification_not_run` (RIPR-SPEC-0135): no
+  receipt path, including the after phase of `ripr agent repair`, executes the
+  project's tests. A focused test that fails `cargo test` can still move static
+  grip, so the `improved` guidance tells the agent to run the test and keep it
+  only if it passes.
 - `verification.commands_run` - optional commands supplied by the caller. The
-  receipt records them; it does not run them.
+  receipt records them; it does not run them, and they do not change
+  `verification.status`.
+- `verification.non_claims` - `["static_only_assurance"]`: the receipt makes no
+  claim that any test passed.
 - `summary.remaining_gap` / `summary.next_recommendation` - static advisory
   guidance derived from the verify bucket. It does not claim runtime
   confirmation. When `status` is not `advisory`, `next_recommendation` instead
@@ -12246,7 +12256,7 @@ The JSON schema is version `0.1`:
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review."
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
     }
   },
   "analysis_outcome": {
@@ -12298,7 +12308,7 @@ The JSON schema is version `0.1`:
     "headline": "Review packet is ready for seam 67fc764ba37d77bd.",
     "what_changed": "Static movement is improved (weakly_gripped -> strongly_gripped).",
     "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
-    "remaining": "Keep the focused test and include this receipt in review.",
+    "remaining": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
     "reviewer_should_inspect": [
       "target/ripr/reports/agent-receipt.json",
       "target/ripr/workflow/agent-verify.json"

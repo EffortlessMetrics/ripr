@@ -1285,7 +1285,7 @@ mod tests {
                 },
                 "summary": {
                     "remaining_gap": "No remaining static gap is named by this receipt.",
-                    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON."
+                    "next_recommendation": "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON."
                 }
             }),
         )?;

@@ -137,7 +137,7 @@ mod tests {
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review."
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
     }
   }
 }"#,
@@ -280,7 +280,7 @@ mod tests {
         assert_eq!(value["static_movement"]["state"], "improved");
         assert_eq!(
             value["static_movement"]["next_action"]["recommended_action"],
-            "Keep the focused test and include this receipt in review."
+            "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
         );
         assert!(
             value["surfaces"]
@@ -436,7 +436,7 @@ mod tests {
                 grip_class: "strongly_gripped",
                 action_kind: "improved",
                 action_summary: "Static grip improved.",
-                action_recommendation: "Keep the focused test and include this receipt in review.",
+                action_recommendation: "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
             },
             ReviewFixtureCase {
                 name: "unchanged",

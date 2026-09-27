@@ -2009,13 +2009,13 @@ mod repair_summary_tests {
             "status": "advisory",
             "seam": {"seam_id": "67fc764ba37d77bd"},
             "provenance": {"before_class": "weakly_gripped", "after_class": "strongly_gripped", "movement": "improved"},
-            "summary": {"next_action": {"summary": "Static grip improved.", "recommended_action": "Keep the focused test and include this receipt in review."}}
+            "summary": {"next_action": {"summary": "Static grip improved.", "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."}}
         }"#;
         assert_eq!(
             repair_receipt_summary_lines(receipt),
             vec![
                 "result for seam `67fc764ba37d77bd`: weakly_gripped -> strongly_gripped (improved). Static grip improved.".to_string(),
-                "next: Keep the focused test and include this receipt in review.".to_string(),
+                "next: Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.".to_string(),
             ]
         );
     }
@@ -2050,7 +2050,7 @@ mod repair_summary_tests {
         // Without a status nothing vouches for the receipt, so its
         // recommendation is not forwarded.
         let unstated = format!(
-            r#"{{{movement}, "summary": {{"next_action": {{"summary": "Static grip improved.", "recommended_action": "Keep the focused test and include this receipt in review."}}}}}}"#
+            r#"{{{movement}, "summary": {{"next_action": {{"summary": "Static grip improved.", "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."}}}}}}"#
         );
         assert_eq!(repair_receipt_summary_lines(&unstated), vec![result]);
     }

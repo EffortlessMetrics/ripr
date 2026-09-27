@@ -247,11 +247,11 @@ next-action guidance are present:
   },
   "summary": {
     "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
-    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON.",
+    "next_recommendation": "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON.",
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review.",
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
       "safe_to_merge": false
     }
   }
@@ -263,7 +263,7 @@ selected seam movement in the saved `agent verify` JSON:
 
 | Movement | `next_action.kind` | Guidance |
 | --- | --- | --- |
-| `improved` | `improved` | Keep the focused test and include the receipt in review. |
+| `improved` | `improved` | Run the focused test and keep it only if it passes; ripr did not run it. Then include the receipt in review. |
 | `changed` | `changed` | Inspect the evidence delta and strengthen the discriminator named by the packet. |
 | `regressed` | `regressed` | Revisit the test or code change before merge. |
 | `unchanged` | `unchanged` | Add the missing discriminator or stronger assertion named by the packet. |
@@ -299,7 +299,7 @@ The agent review summary uses schema version `0.1`:
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review."
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
     }
   },
   "next_command": null,
@@ -309,7 +309,7 @@ The agent review summary uses schema version `0.1`:
     "headline": "Review packet is ready for seam 67fc764ba37d77bd.",
     "what_changed": "Static movement is improved (weakly_gripped -> strongly_gripped).",
     "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
-    "remaining": "Keep the focused test and include this receipt in review.",
+    "remaining": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
     "reviewer_should_inspect": [
       "target/ripr/reports/agent-receipt.json",
       "target/ripr/workflow/agent-verify.json"
