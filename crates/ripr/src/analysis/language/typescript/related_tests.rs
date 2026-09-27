@@ -1841,14 +1841,26 @@ fn expect_actual_slices(body_text: &str) -> Vec<&str> {
 }
 
 /// A local declaration of the shadow-checked identifier found by the lexical
-/// scope walk in `local_identifier_declared_in_test_body`.
-struct BodyDeclaration {
+/// scope walk in `scan_body_lexical_facts`.
+pub(crate) struct BodyDeclaration {
     /// Byte offset of the declared name token, so the walk does not count the
     /// declaration's own binding as a use of the identifier.
-    name_start: usize,
+    pub(crate) name_start: usize,
     /// Enclosing block scope (index into the walk's scope table); `None` is
     /// the test body's top level, which shadows every use in the body.
-    scope: Option<usize>,
+    pub(crate) scope: Option<usize>,
+}
+
+/// Scope intervals and identifier declarations/uses collected by one lexical
+/// walk over a test body (`scan_body_lexical_facts`). Extracted from the
+/// #4117 shadow walk so other resolvers reuse the SAME scope table instead
+/// of re-deriving brace scoping.
+pub(crate) struct BodyLexicalScan {
+    /// `(open-brace offset, close-brace offset)` per `{`-scope; `usize::MAX`
+    /// while a scope is still open. Entries are kept after closing.
+    pub(crate) scopes: Vec<(usize, usize)>,
+    pub(crate) declarations: Vec<BodyDeclaration>,
+    pub(crate) uses: Vec<usize>,
 }
 
 /// Lexical states for the shadow-check walk.
@@ -1867,8 +1879,8 @@ enum BodyScanState {
 /// declaration at the body's top level shadows every use (call or bare
 /// identifier reference), while a declaration inside a nested block shadows
 /// only the uses inside that same block — a `const owner` buried in a helper
-/// branch must not reject an imported-owner call made outside it. The walk is
-/// a conservative lexer that skips comments and string/template contents
+/// branch must not reject an imported-owner call made outside it. The scan
+/// is a conservative lexer that skips comments and string/template contents
 /// (template interpolations resume code tracking, and a multi-line comment
 /// counts as a statement break for the line-start check); regex literals are
 /// not modeled. Uses reuse the module's reference predicates: no member
@@ -1882,6 +1894,58 @@ enum BodyScanState {
 /// a same-function use outside that block stays unshadowed (over-credit
 /// direction, retained under the cross-block interval rules).
 pub(crate) fn local_identifier_declared_in_test_body(body_text: &str, identifier: &str) -> bool {
+    let scan = scan_body_lexical_facts(body_text, identifier);
+    scan.uses.iter().any(|use_offset| {
+        scan.declarations.iter().any(|declaration| {
+            declaration_scope_binds(
+                declaration
+                    .scope
+                    .and_then(|frame| scan.scopes.get(frame).copied()),
+                *use_offset,
+            )
+        })
+    })
+}
+
+/// The visibility decision for one declaration's scope against one use
+/// offset, per the #4117 walk semantics: a top-level declaration (`None`)
+/// binds every use in the body; a declaration inside a nested block binds a
+/// use exactly when the use is lexically inside the declaration's own scope
+/// interval — same-block position is irrelevant (`function` hoists; `var`
+/// hoists to the enclosing function; `const`/`let` bind block-wide, so a
+/// pre-declaration same-block use sits in the temporal dead zone and can
+/// never reach an outer binding), while a use outside the recorded block
+/// still reaches the outer binding. Shared by the shadow walk and the
+/// observed-local resolver so the scope rules cannot drift between them
+/// (#4213 review thread PRRT_kwDOSiSx0c6mUkkO).
+pub(crate) fn declaration_scope_binds(
+    declaration_scope: Option<(usize, usize)>,
+    use_offset: usize,
+) -> bool {
+    match declaration_scope {
+        None => true,
+        Some((start, end)) => start <= use_offset && use_offset < end,
+    }
+}
+
+/// The innermost brace scope recorded by the lexical walk that contains
+/// `offset`, if any. Scopes are properly nested or disjoint, so the
+/// innermost enclosing scope is the one with the greatest start.
+pub(crate) fn innermost_scope_containing(
+    scopes: &[(usize, usize)],
+    offset: usize,
+) -> Option<(usize, usize)> {
+    scopes
+        .iter()
+        .copied()
+        .filter(|(start, end)| *start <= offset && offset < *end)
+        .max_by_key(|(start, _)| *start)
+}
+
+/// One conservative-lexer walk over a test body collecting the scope table,
+/// every local declaration of `identifier`, and every use of it. See
+/// `local_identifier_declared_in_test_body` for the full lexical contract.
+pub(crate) fn scan_body_lexical_facts(body_text: &str, identifier: &str) -> BodyLexicalScan {
     // Scope table: (open-brace offset, close-brace offset; `usize::MAX` while
     // the scope is still open). Entries are kept after closing so a nested
     // declaration can be tested for enclosing a specific use.
@@ -2033,24 +2097,11 @@ pub(crate) fn local_identifier_declared_in_test_body(body_text: &str, identifier
             }
         }
     }
-    uses.iter().any(|use_offset| {
-        declarations
-            .iter()
-            .any(|declaration| match declaration.scope {
-                // Top-level declarations shadow every use in the body.
-                None => true,
-                // Otherwise the declaration shadows a use exactly when the use is
-                // lexically inside the declaration's own scope: same-block
-                // position is irrelevant (`function` hoists; `var` hoists to the
-                // enclosing function; `const`/`let` bind block-wide, so a
-                // pre-declaration same-block use sits in the temporal dead zone
-                // and can never reach an outer binding), while a use outside the
-                // recorded block still reaches the owner.
-                Some(frame) => scopes
-                    .get(frame)
-                    .is_some_and(|(start, end)| *start <= *use_offset && *use_offset < *end),
-            })
-    })
+    BodyLexicalScan {
+        scopes,
+        declarations,
+        uses,
+    }
 }
 
 fn declaration_line_declares_identifier(line: &str, identifier: &str) -> bool {

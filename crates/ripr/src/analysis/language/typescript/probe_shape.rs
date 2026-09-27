@@ -76,6 +76,7 @@ pub(crate) fn classify_probe_shape_detail(line_text: &str) -> TypeScriptProbeSha
         || leading.starts_with("switch(")
         || leading.starts_with("case ")
         || leading.starts_with("default:")
+        || is_yield_comparison_predicate(leading)
     {
         return TypeScriptProbeShape::new(ProbeFamily::Predicate, DeltaKind::Control);
     }
@@ -287,8 +288,25 @@ pub(crate) fn typescript_missing_discriminator_value(
 }
 
 pub(crate) fn typescript_boundary_discriminator(line_text: &str) -> Option<String> {
+    typescript_boundary_discriminator_with_shape(line_text).map(|(boundary, _)| boundary)
+}
+
+/// Like [`typescript_boundary_discriminator`], and reports whether the
+/// boundary came from a nullish-coalescing expression (`a ?? b`). A nullish
+/// boundary is the literal operand that changes the outcome when the left
+/// side is nullish (#4104-E2), so the caller may additionally accept the
+/// nullish boundary input at the left operand's read position.
+pub(crate) fn typescript_boundary_discriminator_with_shape(
+    line_text: &str,
+) -> Option<(String, bool)> {
     let expression = strip_typescript_control_prefix(line_text);
-    for operator in ["===", "!==", ">=", "<=", "==", "!=", ">", "<"] {
+    // The nullish flag comes from the quote-aware normalization, not a raw
+    // `contains("??")`: a `??` inside a string literal (`total >= 100 &&
+    // "??"`) is not a nullish coalesce, and arming the nullish-input witness
+    // path for it would credit a `null` argument through a boundary that
+    // never reads a nullish side (#4213 thread PRRT_kwDOSiSx0c6mUnSc).
+    let (expression, nullish) = normalize_ts_comparison_operands(&expression);
+    for operator in COMPARISON_OPERATORS {
         if let Some(idx) = expression.find(operator) {
             let left_raw = expression.get(..idx)?.trim();
             let right_raw = expression.get(idx + operator.len()..)?.trim();
@@ -300,7 +318,7 @@ pub(crate) fn typescript_boundary_discriminator(line_text: &str) -> Option<Strin
             if is_simple_typescript_discriminator_operand(&left)
                 && is_simple_typescript_discriminator_operand(&right)
             {
-                return Some(format!("{left} == {right}"));
+                return Some((format!("{left} == {right}"), nullish));
             }
         }
     }
@@ -482,7 +500,7 @@ pub(crate) fn strip_typescript_control_prefix(line_text: &str) -> String {
         .trim_end_matches('{')
         .trim()
         .to_string();
-    for prefix in ["if", "else if", "while", "for", "case"] {
+    for prefix in ["if", "else if", "while", "for", "case", "yield"] {
         if let Some(stripped) = text.strip_prefix(prefix) {
             text = stripped.trim().to_string();
             break;
@@ -491,7 +509,80 @@ pub(crate) fn strip_typescript_control_prefix(line_text: &str) -> String {
     text.trim_start_matches('(')
         .trim_end_matches(')')
         .trim()
+        .trim_end_matches(';')
+        .trim()
         .to_string()
+}
+
+/// The comparison operators the boundary discriminator probes, in probe
+/// order. Shared by the discriminator, the changed-operator lookup, and the
+/// `yield`-tail predicate shape so the operator sets cannot drift.
+pub(crate) const COMPARISON_OPERATORS: [&str; 8] = ["===", "!==", ">=", "<=", "==", "!=", ">", "<"];
+
+/// #4104-E2: a changed `yield <comparison>` tail in a generator owner is a
+/// predicate boundary. Only a comparison tail classifies — a plain
+/// `yield <value>` keeps the ambiguous fallback (`yield*` delegation never
+/// matches, and any call shape stays fail-closed).
+fn is_yield_comparison_predicate(leading: &str) -> bool {
+    let Some(tail) = leading.strip_prefix("yield ") else {
+        return false;
+    };
+    let tail = tail.trim_end_matches(';').trim();
+    !tail.is_empty()
+        && !tail.contains('(')
+        && COMPARISON_OPERATORS.iter().any(|op| tail.contains(op))
+}
+
+/// Quote-aware operand normalization (#4104-E2): `?.` reads as plain member
+/// access and `??` reads as the nullish-coalescing boundary comparison, but
+/// only in code spans — the contents of string / template literals are left
+/// untouched so a quoted `"a ?? b"` can never become a witnessable operand.
+/// Returns the normalized expression and whether a `??` was seen OUTSIDE
+/// quotes: only a code-span coalesce is a nullish boundary, so a quoted
+/// occurrence (`"??"`) never arms the nullish-input witness path.
+fn normalize_ts_comparison_operands(expression: &str) -> (String, bool) {
+    let mut out = String::with_capacity(expression.len());
+    let mut saw_nullish = false;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let chars: Vec<char> = expression.chars().collect();
+    let mut idx = 0;
+    while idx < chars.len() {
+        let ch = chars[idx];
+        if let Some(open) = quote {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == open {
+                quote = None;
+            }
+            idx += 1;
+            continue;
+        }
+        match ch {
+            '"' | '\'' | '`' => {
+                quote = Some(ch);
+                out.push(ch);
+                idx += 1;
+            }
+            '?' if chars.get(idx + 1) == Some(&'.') => {
+                out.push('.');
+                idx += 2;
+            }
+            '?' if chars.get(idx + 1) == Some(&'?') => {
+                out.push_str("==");
+                saw_nullish = true;
+                idx += 2;
+            }
+            _ => {
+                out.push(ch);
+                idx += 1;
+            }
+        }
+    }
+    (out, saw_nullish)
 }
 
 fn comparison_operand_before(expression: &str, operator_start: usize) -> Option<String> {

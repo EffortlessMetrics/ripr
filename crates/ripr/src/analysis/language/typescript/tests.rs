@@ -11437,6 +11437,803 @@ fn spec_0027_object_pin_at_read_position_stays_exposed() -> Result<(), String> {
     Ok(())
 }
 
+// ── #4104 E: conservative under-credit improvements ──────────────────────────
+
+/// #4104-E1 red: the canonical idiom `const result = applyDiscount(100);
+/// expect(result).toBe(90)` observes the owner call through a one-hop local
+/// binding. The bare-local `observed_expression` carries no owner reference,
+/// but the initializer IS the owner call at the boundary input, so the
+/// predicate boundary must be witnessed exactly as for the direct call.
+#[test]
+fn e4104_const_result_local_binding_witnesses_predicate_boundary() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    let mut test = exact_value_test("applyDiscount", "result", "90");
+    test.body_text = "const result = applyDiscount(100);\n  expect(result).toBe(90);".to_string();
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[test])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a one-hop const binding of the owner call at the boundary input witnesses the changed predicate"
+    );
+    // The same idiom through an unreassigned `let` witnesses too: the single
+    // initializer is still the owner call, and no mutation follows it.
+    let mut let_test = exact_value_test("applyDiscount", "result", "90");
+    let_test.body_text = "let result = applyDiscount(100);\n  expect(result).toBe(90);".to_string();
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[let_test])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "an unreassigned `let` binding of the owner call witnesses exactly like the const idiom"
+    );
+    Ok(())
+}
+
+/// #4104-E2 red: a changed predicate containing `?.` must boundary-witness
+/// after operand normalization (`order?.role` → `order.role`); today the
+/// comparison parser rejects `?` so the witness can never fire.
+#[test]
+fn e4104_optional_chaining_predicate_witnesses_boundary() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "userIsAdmin".to_string();
+    owner.params = vec!["order".to_string()];
+    owner.arity = Some(1);
+    owner.source_text = Some(
+        concat!(
+            "export function userIsAdmin(order: Order): boolean {\n",
+            "    if (order?.role === \"admin\") {\n",
+            "        return true;\n",
+            "    }\n",
+            "    return false;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let tests = [exact_value_test(
+        "userIsAdmin",
+        "userIsAdmin({ role: \"admin\" })",
+        "true",
+    )];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (order?.role === \"admin\") {", &tests)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "an optional-chaining predicate normalizes to a comparable boundary and witnesses via the object pin"
+    );
+    Ok(())
+}
+
+/// #4104-E2 red: a nullish-coalescing predicate (`if (name ?? "temp") {`)
+/// must boundary-witness. The nullish input (`pickLabel(null)`) is the
+/// boundary input that flips the changed fallback, so it witnesses at the
+/// left operand's read position.
+#[test]
+fn e4104_nullish_coalescing_predicate_witnesses_boundary() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "pickLabel".to_string();
+    owner.params = vec!["name".to_string()];
+    owner.arity = Some(1);
+    owner.source_text = Some(
+        concat!(
+            "export function pickLabel(name: string | null): string {\n",
+            "    if (name ?? \"temp\") {\n",
+            "        return \"named\";\n",
+            "    }\n",
+            "    return \"anonymous\";\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let tests = [exact_value_test(
+        "pickLabel",
+        "pickLabel(null)",
+        "\"named\"",
+    )];
+    let finding = classify_boundary_line_for_owner(&owner, "    if (name ?? \"temp\") {", &tests)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a nullish boundary witnesses from the nullish input at the read position"
+    );
+    Ok(())
+}
+
+/// #4104-E2 red: a changed `yield <comparison>` tail in a generator owner is
+/// a predicate whose boundary must be witnessable; today the line falls to
+/// the ambiguous fallback probe and can never be witnessed.
+#[test]
+fn e4104_yield_predicate_witnesses_boundary() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "thresholdsAbove".to_string();
+    owner.params = vec!["total".to_string()];
+    owner.arity = Some(1);
+    owner.source_text = Some(
+        concat!(
+            "export function* thresholdsAbove(total: number): Generator<number> {\n",
+            "    yield total >= 100;\n",
+            "    yield total;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let tests = [exact_value_test(
+        "thresholdsAbove",
+        "thresholdsAbove(100)",
+        "true",
+    )];
+    let finding = classify_boundary_line_for_owner(&owner, "    yield total >= 100;", &tests)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a yield-tail predicate witnesses through the stripped keyword"
+    );
+    Ok(())
+}
+
+/// #4104-E3 red: `applyDiscount(DISCOUNT_THRESHOLD)` with a single immutable
+/// `const DISCOUNT_THRESHOLD = 100` in the test body must boundary-witness
+/// like the Rust `named_constant` path does: the argument resolves to `100`,
+/// which stands alone at the read position of `total >= 100`.
+#[test]
+fn e4104_named_constant_test_body_declaration_witnesses_boundary() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    let mut test = exact_value_test("applyDiscount", "applyDiscount(DISCOUNT_THRESHOLD)", "90");
+    test.body_text =
+        "const DISCOUNT_THRESHOLD = 100;\n  expect(applyDiscount(DISCOUNT_THRESHOLD)).toBe(90);"
+            .to_string();
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[test])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a single immutable integer const in the test body resolves the argument to the boundary value"
+    );
+    Ok(())
+}
+
+/// #4104-E3 red: the same resolution when the constant is imported from the
+/// owner's own module (entity identity through the import record and the
+/// owner's single module-level `export const` declaration).
+#[test]
+fn e4104_named_constant_owner_module_argument_witnesses_boundary() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.source_text = Some(
+        concat!(
+            "export const DISCOUNT_THRESHOLD = 100;\n",
+            "\n",
+            "export function applyDiscount(total: number): number {\n",
+            "    if (total >= DISCOUNT_THRESHOLD) {\n",
+            "        return total * 0.9;\n",
+            "    }\n",
+            "    return total;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let mut test = exact_value_test("applyDiscount", "applyDiscount(DISCOUNT_THRESHOLD)", "90");
+    test.imports_in_file.push(TypeScriptImport {
+        source: "../src/lib".to_string(),
+        imported: Some("DISCOUNT_THRESHOLD".to_string()),
+        local: "DISCOUNT_THRESHOLD".to_string(),
+        namespace: false,
+    });
+    let finding = classify_boundary_line_for_owner(
+        &owner,
+        "    if (total >= DISCOUNT_THRESHOLD) {",
+        &[test],
+    )?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "an imported constant from the owner's own module resolves through the import record"
+    );
+    Ok(())
+}
+
+/// #4104-E1 negative: the one-hop credit requires the initializer to BE the
+/// owner call. A wrapper around the owner call leaves the observed value
+/// unknown, and an off-boundary input stays on the weak path.
+#[test]
+fn e4104_const_result_wrapper_and_off_boundary_stay_weak() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    let cases = [
+        // The local binds a wrapper call that CONTAINS the owner call: the
+        // observed value is the wrapper's, not the owner's.
+        "const result = withTax(applyDiscount(100));\n  expect(result).toBe(90);",
+        // The local binds a derived value: the owner result no longer stands
+        // alone behind the binding.
+        "const result = applyDiscount(100) * 2;\n  expect(result).toBe(180);",
+        // The owner call is off the changed boundary.
+        "const result = applyDiscount(150);\n  expect(result).toBe(90);",
+        // The local is reassigned after the owner call.
+        "let result = applyDiscount(100);\n  result = other();\n  expect(result).toBe(90);",
+        // The local is compound-reassigned after the owner call: the observed
+        // value is derived, so the initializer's arguments cannot witness.
+        "let result = applyDiscount(100);\n  result += 1;\n  expect(result).toBe(90);",
+        // The name is declared twice: the observed binding is ambiguous.
+        "const result = applyDiscount(100);\n  const result = applyDiscount(150);\n  expect(result).toBe(90);",
+    ];
+    for body in cases {
+        let mut test = exact_value_test("applyDiscount", "result", "90");
+        test.body_text = body.to_string();
+        let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[test])?;
+        assert_eq!(
+            finding.class,
+            ExposureClass::WeaklyExposed,
+            "the one-hop const-result credit must stay fail-closed for `{body}`"
+        );
+    }
+    Ok(())
+}
+
+/// #4104-E1 controls: a dead-position literal behind the local binding and a
+/// shadowed owner name stay closed; the direct-call boundary assertion keeps
+/// working unchanged.
+#[test]
+fn e4104_const_result_dead_position_and_shadow_stay_closed() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    let mut dead = exact_value_test("applyDiscount", "result", "90");
+    dead.body_text =
+        "const result = applyDiscount(150, 100);\n  expect(result).toBe(90);".to_string();
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[dead])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a boundary literal in an unread argument position must not witness through the local binding"
+    );
+    Ok(())
+}
+
+/// #4104-E2 negatives: normalization must not open the over-credit doors —
+/// an off-boundary input, a shadowed candidate, and a dead expected side stay
+/// closed under the normalized operands, and the parenthesized compound
+/// nullish form keeps failing closed.
+#[test]
+fn e4104_optional_chaining_negatives_stay_closed() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "userIsAdmin".to_string();
+    owner.params = vec!["order".to_string()];
+    owner.arity = Some(1);
+    owner.source_text = Some(
+        concat!(
+            "export function userIsAdmin(order: Order): boolean {\n",
+            "    if (order?.role === \"admin\") {\n",
+            "        return true;\n",
+            "    }\n",
+            "    return false;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    // Off-boundary input: the wrong string literal does not witness.
+    let off = [exact_value_test(
+        "userIsAdmin",
+        "userIsAdmin({ role: \"viewer\" })",
+        "true",
+    )];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (order?.role === \"admin\") {", &off)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "an off-boundary literal must not witness the normalized optional-chaining boundary"
+    );
+    // `?.` inside a string literal must not corrupt the operand: the quoted
+    // text keeps its `?`, which stays unparseable (fail closed, unchanged).
+    let quoted = [exact_value_test(
+        "userIsAdmin",
+        "userIsAdmin(\"a?.b\")",
+        "true",
+    )];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (mode === \"a?.b\") {", &quoted)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a `?.` inside a string literal must not normalize into an operand"
+    );
+    Ok(())
+}
+
+/// #4104-E2 negative: the nullish-argument rule honors position liveness —
+/// a null in an argument the owner never reads cannot witness, and an
+/// ambiguous-fallback line still never witnesses.
+#[test]
+fn e4104_nullish_dead_position_and_ambiguous_stay_closed() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "pickLabel".to_string();
+    owner.params = vec!["name".to_string()];
+    owner.arity = Some(1);
+    owner.source_text = Some(
+        concat!(
+            "export function pickLabel(name: string | null): string {\n",
+            "    if (name ?? \"temp\") {\n",
+            "        return \"named\";\n",
+            "    }\n",
+            "    return \"anonymous\";\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let dead = [exact_value_test(
+        "pickLabel",
+        "pickLabel(5, null)",
+        "\"named\"",
+    )];
+    let finding = classify_boundary_line_for_owner(&owner, "    if (name ?? \"temp\") {", &dead)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a nullish literal parked only in an unread argument position must not witness"
+    );
+    let no_null = [exact_value_test("pickLabel", "pickLabel(5)", "\"named\"")];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (name ?? \"temp\") {", &no_null)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "without a nullish boundary input the nullish boundary stays unwitnessed"
+    );
+    Ok(())
+}
+
+/// #4104-E2 negative: a `??` inside a string literal is not a nullish
+/// coalesce. The quoted operand stays a string boundary literal, and the
+/// nullish-input path must stay armed only for a real nullish boundary, so a
+/// `null` argument at the read position cannot witness it.
+#[test]
+fn e4104_quoted_nullish_operand_stays_closed() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "tagMatches".to_string();
+    owner.params = vec!["mode".to_string()];
+    owner.arity = Some(1);
+    owner.source_text = Some(
+        concat!(
+            "export function tagMatches(mode: string): boolean {\n",
+            "    if (mode === \"a ?? b\") {\n",
+            "        return true;\n",
+            "    }\n",
+            "    return false;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let tests = [exact_value_test("tagMatches", "tagMatches(null)", "true")];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (mode === \"a ?? b\") {", &tests)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a quoted `??` is not a nullish boundary: the null argument must not witness"
+    );
+    Ok(())
+}
+
+/// Verified control (#4104 E): an async `await expect(owner(...)).resolves`
+/// assertion witnesses the changed predicate boundary exactly like the sync
+/// direct call — the observed owner call survives the `.resolves` chain and
+/// its input stands alone at the read position.
+#[test]
+fn e4104_async_resolves_direct_call_stays_exposed() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "loadTier".to_string();
+    owner.params = vec!["tier".to_string()];
+    owner.source_text = Some(
+        concat!(
+            "export async function loadTier(tier: number): Promise<number> {\n",
+            "    if (tier >= 100) {\n",
+            "        return 90;\n",
+            "    }\n",
+            "    return tier;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let tests = extract_tests(
+        Path::new("tests/lib.test.ts"),
+        r#"import { loadTier } from '../src/lib';
+
+test("async boundary", async () => {
+    await expect(loadTier(100)).resolves.toBe(90);
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1, "the async `.resolves` test must parse");
+    let finding = classify_boundary_line_for_owner(&owner, "    if (tier >= 100) {", &tests)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "an async `.resolves` boundary assertion stays exposed through the unwrapped owner call"
+    );
+    Ok(())
+}
+
+/// #4104-E3 negatives: the named-constant resolution follows the Rust
+/// `named_constant` strictness — `let`, computed initializers, ambiguous
+/// declarations, and off-value constants all fail closed to the weak path.
+#[test]
+fn e4104_named_constant_fail_closed_shapes() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    let cases = [
+        // `let` is not an immutable declaration.
+        (
+            "let DISCOUNT_THRESHOLD = 100;\n  expect(applyDiscount(DISCOUNT_THRESHOLD)).toBe(90);",
+            "a `let` binding must not resolve",
+        ),
+        // Computed initializer: the value is not a plain integer literal.
+        (
+            "const DISCOUNT_THRESHOLD = 50 * 2;\n  expect(applyDiscount(DISCOUNT_THRESHOLD)).toBe(90);",
+            "a computed initializer must not resolve",
+        ),
+        // Ambiguous: declared twice in the test body.
+        (
+            "const DISCOUNT_THRESHOLD = 100;\n  const DISCOUNT_THRESHOLD = 150;\n  expect(applyDiscount(DISCOUNT_THRESHOLD)).toBe(90);",
+            "a repeated declaration must not resolve",
+        ),
+        // Off-value: the constant resolves, but not to the boundary value.
+        (
+            "const DISCOUNT_THRESHOLD = 150;\n  expect(applyDiscount(DISCOUNT_THRESHOLD)).toBe(90);",
+            "an off-value constant must not witness",
+        ),
+    ];
+    for (body, reason) in cases {
+        let mut test = exact_value_test("applyDiscount", "applyDiscount(DISCOUNT_THRESHOLD)", "90");
+        test.body_text = body.to_string();
+        let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[test])?;
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed, "{reason}");
+    }
+    Ok(())
+}
+
+/// #4104-E3 negative: a constant imported from a module that is NOT the
+/// owner's own module must not resolve — the declaring module is unknown to
+/// the adapter, so the argument keeps its name and fails the literal path.
+#[test]
+fn e4104_named_constant_non_owner_import_stays_closed() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    let mut test = exact_value_test("applyDiscount", "applyDiscount(DISCOUNT_THRESHOLD)", "90");
+    test.imports_in_file.push(TypeScriptImport {
+        source: "../src/config".to_string(),
+        imported: Some("DISCOUNT_THRESHOLD".to_string()),
+        local: "DISCOUNT_THRESHOLD".to_string(),
+        namespace: false,
+    });
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[test])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a constant from an unresolvable non-owner module must not witness"
+    );
+    Ok(())
+}
+
+/// #4104-E3 control: when the owner module declares the boundary constant,
+/// the boundary literal input (`applyDiscount(100)`) also witnesses through
+/// the substituted operand — the input equals the owner's own constant.
+#[test]
+fn e4104_named_constant_value_input_witnesses() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.source_text = Some(
+        concat!(
+            "export const DISCOUNT_THRESHOLD = 100;\n",
+            "\n",
+            "export function applyDiscount(total: number): number {\n",
+            "    if (total >= DISCOUNT_THRESHOLD) {\n",
+            "        return total * 0.9;\n",
+            "    }\n",
+            "    return total;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let tests = [exact_value_test(
+        "applyDiscount",
+        "applyDiscount(100)",
+        "90",
+    )];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (total >= DISCOUNT_THRESHOLD) {", &tests)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "the literal input equal to the owner module's constant witnesses the constant boundary"
+    );
+    Ok(())
+}
+
+// #4213 review repairs (threads PRRT_kwDOSiSx0c6mUkkI / UkkL / UkkO / UnSc):
+// the red/green pairs below pin each repair to its discriminating shape.
+// For every case the PRE-repair code classified the negative shape
+// `exposed` (or armed the wrong witness path) and the positive control
+// `exposed`; the repairs must keep the controls exposed while the
+// over-credit shapes stay on the weak path.
+// ── #4213 review repair 1 (thread PRRT_kwDOSiSx0c6mUkkI) ────────────────────
+
+/// The nullish fallback literal is never a creditable boundary input: for
+/// `name ?? ""` → `name ?? "temp"`, a non-nullish call `pickLabel("temp")`
+/// never evaluates the fallback and behaves identically before and after, so
+/// only the nullish input at the left operand's read position may witness.
+#[test]
+fn e4104_nullish_right_fallback_literal_is_never_creditable() -> Result<(), String> {
+    let mut owner = boundary_witness_owner();
+    owner.name = "pickLabel".to_string();
+    owner.params = vec!["name".to_string()];
+    owner.arity = Some(1);
+    owner.source_text = Some(
+        concat!(
+            "export function pickLabel(name: string | null): string {\n",
+            "    if (name ?? \"temp\") {\n",
+            "        return \"named\";\n",
+            "    }\n",
+            "    return \"anonymous\";\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let fallback_call = [exact_value_test(
+        "pickLabel",
+        "pickLabel(\"temp\")",
+        "\"named\"",
+    )];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (name ?? \"temp\") {", &fallback_call)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "the right fallback literal is not a boundary input: a non-nullish call never evaluates it"
+    );
+    // Control: the nullish input at the left operand's read position still
+    // witnesses — that is the only creditable boundary input.
+    let nullish_call = [exact_value_test(
+        "pickLabel",
+        "pickLabel(null)",
+        "\"named\"",
+    )];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "    if (name ?? \"temp\") {", &nullish_call)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "the nullish input at the left read position still witnesses the nullish boundary"
+    );
+    Ok(())
+}
+
+// ── #4213 review repair 2 (threads PRRT_kwDOSiSx0c6mUkkL / VW3) ─────────────
+
+/// A same-name declaration inside the owner's own span at any non-top-level
+/// scope is a shadow: the changed predicate may lexically read the local
+/// binding instead of the module constant, and the line-based scan cannot
+/// prove otherwise, so resolution FAILS CLOSED — the operand keeps its name,
+/// no file-level fallback runs, and a boundary call carrying the top-level
+/// value cannot witness. The shadow-free control still witnesses.
+#[test]
+fn e4104_nested_owner_module_constant_stays_fail_closed() -> Result<(), String> {
+    // A helper-local `const` alone is not the module constant: the operand
+    // stays unresolved and the boundary call cannot witness.
+    let mut owner = boundary_witness_owner();
+    owner.source_text = Some(
+        concat!(
+            "export function helper() {\n",
+            "    const DISCOUNT_THRESHOLD = 100;\n",
+            "}\n",
+            "\n",
+            "export function applyDiscount(total: number): number {\n",
+            "    if (total >= DISCOUNT_THRESHOLD) {\n",
+            "        return total * 0.9;\n",
+            "    }\n",
+            "    return total;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let boundary_100 = [exact_value_test(
+        "applyDiscount",
+        "applyDiscount(100)",
+        "90",
+    )];
+    let finding = classify_boundary_line_for_owner(
+        &owner,
+        "    if (total >= DISCOUNT_THRESHOLD) {",
+        &boundary_100,
+    )?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a nested helper declaration is not the module-level constant"
+    );
+
+    // The shadow over-credit shape (thread PRRT_kwDOSiSx0c6mVW3_): a
+    // top-level `export const` beside a block-local `const` of the same
+    // name that the changed predicate actually reads. The boundary input
+    // 100 equals the top-level value, but the changed read observes the
+    // local 50, so the boundary call must NOT witness.
+    let mut shadowed = boundary_witness_owner();
+    shadowed.source_text = Some(
+        concat!(
+            "export const DISCOUNT_THRESHOLD = 100;\n",
+            "\n",
+            "export function applyDiscount(total: number): number {\n",
+            "    if (total > 0) {\n",
+            "        const DISCOUNT_THRESHOLD = 50;\n",
+            "        if (total >= DISCOUNT_THRESHOLD) {\n",
+            "            return total * 0.9;\n",
+            "        }\n",
+            "    }\n",
+            "    return total;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let finding = classify_boundary_line_for_owner(
+        &shadowed,
+        "        if (total >= DISCOUNT_THRESHOLD) {",
+        &boundary_100,
+    )?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a block-local shadow of the module constant must block the top-level value's witness"
+    );
+
+    // Control: the same owner WITHOUT the local shadow — the module-level
+    // declaration resolves and the boundary input 100 witnesses.
+    let mut control = boundary_witness_owner();
+    control.source_text = Some(
+        concat!(
+            "export const DISCOUNT_THRESHOLD = 100;\n",
+            "\n",
+            "export function applyDiscount(total: number): number {\n",
+            "    if (total >= DISCOUNT_THRESHOLD) {\n",
+            "        return total * 0.9;\n",
+            "    }\n",
+            "    return total;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let finding = classify_boundary_line_for_owner(
+        &control,
+        "    if (total >= DISCOUNT_THRESHOLD) {",
+        &boundary_100,
+    )?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "without the shadow, the module constant resolves and the boundary input witnesses"
+    );
+
+    // Conservative blanket: even a same-name local in a SIBLING function the
+    // changed predicate cannot read keeps the whole resolution closed — the
+    // scan cannot place the shadow, so it never substitutes the top-level
+    // value (fail closed over wrong credit).
+    let mut sibling = boundary_witness_owner();
+    sibling.source_text = Some(
+        concat!(
+            "export const DISCOUNT_THRESHOLD = 150;\n",
+            "\n",
+            "export function helper() {\n",
+            "    const DISCOUNT_THRESHOLD = 100;\n",
+            "}\n",
+            "\n",
+            "export function applyDiscount(total: number): number {\n",
+            "    if (total >= DISCOUNT_THRESHOLD) {\n",
+            "        return total * 0.9;\n",
+            "    }\n",
+            "    return total;\n",
+            "}",
+        )
+        .to_string(),
+    );
+    let boundary_150 = [exact_value_test(
+        "applyDiscount",
+        "applyDiscount(150)",
+        "135",
+    )];
+    let finding = classify_boundary_line_for_owner(
+        &sibling,
+        "    if (total >= DISCOUNT_THRESHOLD) {",
+        &boundary_150,
+    )?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a sibling-function same-name declaration fails the whole resolution closed"
+    );
+    Ok(())
+}
+
+// ── #4213 review repair 3 (thread PRRT_kwDOSiSx0c6mUkkO) ────────────────────
+
+/// The observed-local resolver binds the assertion's read, not the sole
+/// same-named declaration anywhere in the body: an outer assertion on an
+/// imported `result` is never attributed to a nested helper's
+/// `const result = applyDiscount(100)`, while an assertion inside that same
+/// scope still witnesses through it.
+#[test]
+fn e4104_nested_local_declaration_does_not_bind_outer_assertion() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    // The assertion sits OUTSIDE the helper block, so the helper's nested
+    // `const result` does not bind the observed read — fail closed.
+    let mut outer = exact_value_test("applyDiscount", "result", "90");
+    outer.body_text = concat!(
+        "expect(result).toBe(90);\n",
+        "function helper() {\n",
+        "    const result = applyDiscount(100);\n",
+        "    return result;\n",
+        "}\n",
+        "helper();",
+    )
+    .to_string();
+    outer.assertions[0].line = 1;
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[outer])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "an assertion outside a nested declaration's scope is not attributed to it"
+    );
+    // Control: the assertion INSIDE the helper block observes the helper's
+    // own binding, so the one-hop credit applies unchanged.
+    let mut inner = exact_value_test("applyDiscount", "result", "90");
+    inner.body_text = concat!(
+        "function helper() {\n",
+        "    const result = applyDiscount(100);\n",
+        "    expect(result).toBe(90);\n",
+        "}\n",
+        "helper();",
+    )
+    .to_string();
+    inner.assertions[0].line = 3;
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[inner])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "an assertion inside the declaration's own scope still witnesses through the local"
+    );
+    // Uniqueness control (the finding's import + nested shape): a top-level
+    // declaration alongside the nested one stays ambiguous — fail closed.
+    let mut ambiguous = exact_value_test("applyDiscount", "result", "90");
+    ambiguous.body_text = concat!(
+        "const result = otherImport();\n",
+        "function helper() {\n",
+        "    const result = applyDiscount(100);\n",
+        "}\n",
+        "expect(result).toBe(90);",
+    )
+    .to_string();
+    ambiguous.assertions[0].line = 5;
+    let finding = classify_boundary_line_for_owner(&owner, "  if (total >= 100) {", &[ambiguous])?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a repeated declaration across scopes keeps the one-hop credit closed"
+    );
+    Ok(())
+}
+
+// ── #4213 review repair 4 (thread PRRT_kwDOSiSx0c6mUnSc) ────────────────────
+
+/// `nullish` must come from the quote-aware normalization, not a raw
+/// `contains("??")`: in `total >= 100 && "??"` the only coalesce-looking
+/// text is inside a string literal, so the nullish-input witness path stays
+/// disarmed and a `null` argument cannot credit the comparison boundary.
+#[test]
+fn e4104_quoted_nullish_flag_does_not_arm_nullish_witness() -> Result<(), String> {
+    let owner = boundary_witness_owner();
+    let tests = [exact_value_test(
+        "applyDiscount",
+        "applyDiscount(null)",
+        "90",
+    )];
+    let finding =
+        classify_boundary_line_for_owner(&owner, "  if (total >= 100 && \"??\") {", &tests)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a `??` inside a string literal is not a nullish boundary: the null argument must not witness"
+    );
+    Ok(())
+}
+
 /// #4117 review of guard 5b (fail-closed branch scan): a parameter
 /// reassignment before the branch `return` invalidates the folded branch
 /// value, so `branch_return_expressions` must give up (`None`) instead of

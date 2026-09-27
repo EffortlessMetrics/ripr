@@ -491,16 +491,16 @@ pub(crate) fn ts_predicate_boundary_is_witnessed(
     if probe_shape.family != ProbeFamily::Predicate {
         return true;
     }
-    let Some(boundary) = typescript_boundary_discriminator(line_text) else {
+    let Some((boundary, nullish_boundary)) =
+        typescript_boundary_discriminator_with_shape(line_text)
+    else {
         return false;
     };
     let Some((left, right)) = boundary.split_once(" == ") else {
         return false;
     };
-    let literals: Vec<&str> = [left, right]
-        .into_iter()
-        .filter(|operand| is_boundary_literal(operand))
-        .collect();
+    let left = left.to_string();
+    let right = right.to_string();
 
     for candidate in candidates {
         if !candidate.relation.uses_oracle() {
@@ -515,6 +515,18 @@ pub(crate) fn ts_predicate_boundary_is_witnessed(
         }
         let owner_receivers =
             owner_namespace_receivers(candidate.test, owner, alias_map, workspace_root);
+        // #4104-E3: a constant-shaped boundary operand reads its value from
+        // the owner's own module declaration. Resolution is per candidate so
+        // the test's scope never substitutes a value the owner cannot see;
+        // an unresolved or ambiguous constant keeps the operand text, which
+        // simply leaves the no-literal path below in charge.
+        let (effective_left, effective_right) =
+            resolve_owner_module_boundary_constants(&left, &right, owner, workspace_root);
+        let literals: Vec<&str> = [effective_left.as_str(), effective_right.as_str()]
+            .into_iter()
+            .filter(|operand| is_boundary_literal(operand))
+            .collect();
+
         for assertion in &candidate.test.assertions {
             if assertion.oracle_strength.rank() < OracleStrength::Strong.rank()
                 || !ts_oracle_kind_matches_seam(&assertion.oracle_kind, &ProbeFamily::Predicate)
@@ -535,19 +547,67 @@ pub(crate) fn ts_predicate_boundary_is_witnessed(
             if assertion_is_self_comparing(assertion, observed) {
                 continue;
             }
-            for arguments in owner_call_arguments(observed, &owner.name, &owner_receivers) {
-                let witnessed = if literals.is_empty() {
+            let mut argument_lists = owner_call_arguments(observed, &owner.name, &owner_receivers);
+            // #4104-E1: the canonical `const result = owner(...);
+            // expect(result).toBe(...)` idiom observes the owner call through
+            // a one-hop local binding. When the bare local carries no owner
+            // reference, its single immutable initializer IS the observed
+            // call, and its arguments flow through the same witness path.
+            if argument_lists.is_empty()
+                && let Some(initializer_arguments) = ts_observed_local_owner_call_arguments(
+                    candidate.test,
+                    assertion,
+                    &owner.name,
+                    &owner_receivers,
+                )
+            {
+                argument_lists.push(initializer_arguments);
+            }
+            for arguments in argument_lists {
+                // #4104-E3: an argument that names a boundary constant in the
+                // test's own scope is the resolved constant value by entity
+                // identity; everything downstream (position, arity,
+                // standalone-literal, object pin) reads the substitution.
+                let arguments = substitute_constant_arguments(
+                    arguments,
+                    candidate.test,
+                    owner,
+                    alias_map,
+                    workspace_root,
+                );
+                let witnessed = if nullish_boundary {
+                    // #4104-E2 repair (review thread PRRT_kwDOSiSx0c6mUkkI):
+                    // for a nullish-coalescing boundary only the NULLISH
+                    // input — `null` / `undefined` at the LEFT operand's read
+                    // position — can flip the changed fallback. A non-nullish
+                    // call (`pickLabel("temp")`) never evaluates the right
+                    // fallback, so the fallback literal is never creditable
+                    // through the comparison-literal path, and the
+                    // identical-arguments coincidence cannot evaluate it
+                    // either. A literal left operand makes the coalesce
+                    // constant: no runtime input is ever nullish there.
+                    !is_boundary_literal(&effective_left)
+                        && nullish_argument_reaches_read_argument(
+                            &arguments,
+                            &effective_left,
+                            owner,
+                        )
+                } else if literals.is_empty() {
                     call_has_identical_arguments(&arguments, &owner.params)
                         || object_argument_pins_operands_equal(
                             &arguments,
-                            left,
-                            right,
+                            &effective_left,
+                            &effective_right,
                             &owner.params,
                         )
                 } else {
                     literals.iter().any(|literal| {
                         boundary_literal_reaches_read_argument(
-                            &arguments, literal, left, right, owner,
+                            &arguments,
+                            literal,
+                            &effective_left,
+                            &effective_right,
+                            owner,
                         )
                     })
                 };
@@ -563,13 +623,692 @@ pub(crate) fn ts_predicate_boundary_is_witnessed(
                     continue;
                 }
                 if let Some(expected) = assertion.expected_value_or_variant.as_deref()
-                    && expected_side_is_live(owner, line_text, left, right, &arguments, expected)
-                        == Some(false)
+                    && expected_side_is_live(
+                        owner,
+                        line_text,
+                        &effective_left,
+                        &effective_right,
+                        &arguments,
+                        expected,
+                    ) == Some(false)
                 {
                     continue;
                 }
                 return true;
             }
+        }
+    }
+    false
+}
+
+/// #4104-E2: the nullish boundary input (`null` / `undefined`) at the left
+/// operand's readable position witnesses a nullish-coalescing boundary —
+/// the nullish side is the only input that flips the changed fallback, so
+/// for a nullish boundary this is the sole witnessing path (#4104-E2 review
+/// repair): the right fallback literal is never creditable, because a
+/// non-nullish call never evaluates it and behaves identically before and
+/// after the change. Position and arity guards are the comparison
+/// read-position rules, unchanged.
+fn nullish_argument_reaches_read_argument(
+    arguments: &[String],
+    left: &str,
+    owner: &TypeScriptOwner,
+) -> bool {
+    let position = comparison_read_position(left, owner);
+    let readable = |idx: usize| match position {
+        ReadPosition::Index(read) => idx == read,
+        ReadPosition::Bounded(arity) => idx < arity,
+        ReadPosition::Any => true,
+    };
+    arguments
+        .iter()
+        .enumerate()
+        .any(|(idx, argument)| readable(idx) && matches!(argument.trim(), "null" | "undefined"))
+}
+
+/// The operand text a changed comparison reads, with constant-shaped operands
+/// replaced by their value when the OWNER's own module declares the name
+/// exactly once as an immutable integer `const` (#4104-E3). This mirrors the
+/// Rust `value_resolution::named_constant` strictness: `let`/`var`, computed
+/// initializers, non-integer literals, and repeated declarations all keep the
+/// operand unresolved (fail closed). Constant-named ARGUMENTS resolve through
+/// the test's own scope in [`substitute_constant_arguments`].
+fn resolve_owner_module_boundary_constants(
+    left: &str,
+    right: &str,
+    owner: &TypeScriptOwner,
+    workspace_root: Option<&Path>,
+) -> (String, String) {
+    let resolve = |operand: &str| -> String {
+        if is_boundary_literal(operand) || !is_constant_shaped_operand(operand) {
+            return operand.to_string();
+        }
+        ts_owner_module_constant_value(operand, owner, workspace_root)
+            .unwrap_or_else(|| operand.to_string())
+    };
+    (resolve(left), resolve(right))
+}
+
+/// #4104-E3: replace a bare constant-shaped owner-call argument with the
+/// constant's value when the test's own scope binds that name to a single
+/// immutable integer declaration — a `const` in the test body, or a named
+/// import resolved through the import record to a single immutable integer
+/// `const` in the owner's own module. Unresolved names pass through
+/// unchanged and fail the standalone-literal path exactly as before.
+fn substitute_constant_arguments(
+    arguments: Vec<String>,
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> Vec<String> {
+    arguments
+        .into_iter()
+        .map(|argument| {
+            let trimmed = argument.trim();
+            if is_constant_shaped_operand(trimmed)
+                && let Some(value) =
+                    ts_test_scope_constant_value(trimmed, test, owner, alias_map, workspace_root)
+            {
+                return value;
+            }
+            argument
+        })
+        .collect()
+}
+
+/// A constant-shaped operand: an UPPER_CASE identifier, optionally
+/// `$`-prefixed segments excluded — mirrors the Rust
+/// `value_resolution::constant_operand_name` shape (leading uppercase, then
+/// uppercase / digit / underscore only, no dots, no calls).
+fn is_constant_shaped_operand(operand: &str) -> bool {
+    let operand = operand.trim();
+    operand.starts_with(|ch: char| ch.is_ascii_uppercase())
+        && operand
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+}
+
+/// What the OWNER's own module says about the constant `name`: its canonical
+/// integer value when the module declares the name exactly once as an
+/// immutable `const` with a plain integer initializer (`[export ]const NAME
+/// [= :Type] = <int>;`). `let`/`var` declarations of the same name, computed
+/// initializers, and repeated declarations all fail closed to `None`.
+///
+/// The recorded owner source covers only the owner's own span, so a
+/// module-level `const` above it is not in it: when the recorded text has no
+/// declaration of the name at all, the owner's file is read once through the
+/// workspace root (fail-closed on any read error, and only ever for a
+/// constant-shaped operand of a changed boundary).
+fn ts_owner_module_constant_value(
+    name: &str,
+    owner: &TypeScriptOwner,
+    workspace_root: Option<&Path>,
+) -> Option<String> {
+    if !is_constant_shaped_operand(name) {
+        return None;
+    }
+    if let Some(source) = owner.source_text.as_deref() {
+        match scan_owner_module_constant(source, name) {
+            OwnerModuleConstant::Resolved(value) => return Some(value),
+            // A conflicting or opaque declaration inside the owner's own span
+            // is definitive — including a nested same-name shadow, which must
+            // not be rescued by the file-level fallback below (#4213 review
+            // thread PRRT_kwDOSiSx0c6mVW3_).
+            OwnerModuleConstant::Unresolvable => return None,
+            OwnerModuleConstant::Undeclared => {}
+        }
+    }
+    let root = workspace_root?;
+    let source = std::fs::read_to_string(root.join(&owner.file)).ok()?;
+    match scan_owner_module_constant(&source, name) {
+        OwnerModuleConstant::Resolved(value) => Some(value),
+        _ => None,
+    }
+}
+
+/// The outcome of scanning an owner module's text for one constant name.
+enum OwnerModuleConstant {
+    /// Declared exactly once as an immutable integer `const`.
+    Resolved(String),
+    /// Declared more than once, shadowed by a `let`/`var`, declared once
+    /// with a non-integer initializer, or matched by a same-name declaration
+    /// at any non-top-level scope — a shadow the changed read may actually
+    /// observe instead of the top-level value (#4213 review thread
+    /// PRRT_kwDOSiSx0c6mVW3_).
+    Unresolvable,
+    /// Not declared in the scanned text at all.
+    Undeclared,
+}
+
+/// Single-pass declaration scan over one module's text. Only MODULE-LEVEL
+/// (top-level) declarations can resolve the name: the scan tracks quote- and
+/// comment-aware brace depth, and a same-name declaration whose first code
+/// sits at any non-top-level scope is a shadow that FAILS THE SCAN CLOSED
+/// (#4213 review threads PRRT_kwDOSiSx0c6mUkkL, PRRT_kwDOSiSx0c6mVW3_). The
+/// changed predicate may lexically observe that local binding instead of the
+/// top-level one and the line-based scan cannot prove otherwise, so a
+/// top-level value is never substituted behind a shadow — no file-level
+/// fallback, no witness credit. A top-level `let`/`var` rebind is equally
+/// ambiguous.
+fn scan_owner_module_constant(source: &str, name: &str) -> OwnerModuleConstant {
+    let mut declarations = 0usize;
+    let mut value: Option<String> = None;
+    let mut unresolvable = false;
+    let mut depth: i64 = 0;
+    let mut quote: Option<char> = None;
+    let mut in_block_comment = false;
+    for line in source.lines() {
+        // Advance the lexical state across the line; `None` means the line
+        // never reaches code (a string/template or comment continuation).
+        let Some(item_depth) =
+            line_first_code_depth(line, &mut depth, &mut quote, &mut in_block_comment)
+        else {
+            continue;
+        };
+        let item = line.trim();
+        let item = item.strip_prefix("export ").unwrap_or(item);
+        // A nested line is not the module item; but a same-name declaration
+        // there is a shadow of the module constant, so the scan fails closed
+        // rather than credit a top-level value the changed read may not
+        // observe (#4213 review thread PRRT_kwDOSiSx0c6mVW3_).
+        if item_depth != 0 {
+            if line_declares_binding(item, name, &["const ", "let ", "var "]) {
+                return OwnerModuleConstant::Unresolvable;
+            }
+            continue;
+        }
+        if let Some(rest) = item.strip_prefix("const ") {
+            let rest = rest.trim_start();
+            let after_name = match rest.strip_prefix(name) {
+                Some(after) if !identifier_continues(after) => after.trim_start(),
+                _ => continue,
+            };
+            let Some((annotation, initializer)) = after_name.split_once('=') else {
+                continue;
+            };
+            let annotation = annotation.trim();
+            if !(annotation.is_empty() || annotation.starts_with(':')) {
+                continue;
+            }
+            let initializer = initializer.trim().trim_end_matches(';').trim();
+            declarations += 1;
+            match numeric_literal_value(initializer) {
+                Some(literal) => value = Some(literal),
+                // A computed or non-integer initializer cannot resolve.
+                None => unresolvable = true,
+            }
+            continue;
+        }
+        // A `let`/`var` binding of the name at the module's top level makes
+        // the module-level binding ambiguous — fail closed.
+        if line_declares_binding(item, name, &["let ", "var "]) {
+            return OwnerModuleConstant::Unresolvable;
+        }
+    }
+    match (declarations, unresolvable) {
+        (1, false) => value.map_or(
+            OwnerModuleConstant::Unresolvable,
+            OwnerModuleConstant::Resolved,
+        ),
+        (0, _) => OwnerModuleConstant::Undeclared,
+        _ => OwnerModuleConstant::Unresolvable,
+    }
+}
+
+/// Advance the module scan's quote / comment / brace state across `line` and
+/// return the brace depth at the line's FIRST code character — the depth that
+/// decides whether a leading `const`/`let`/`var` item is module-level.
+/// `None` when the line holds no code at all. String, template, and comment
+/// spans never move the depth or yield a first-code depth, and a line
+/// comment ends the scan; an unbalanced closer clamps at the module's top
+/// level so malformed input degrades toward the pre-existing line semantics
+/// rather than inventing nesting.
+fn line_first_code_depth(
+    line: &str,
+    depth: &mut i64,
+    quote: &mut Option<char>,
+    in_block_comment: &mut bool,
+) -> Option<i64> {
+    let mut escaped = false;
+    let mut first_code_depth: Option<i64> = None;
+    let mut chars = line.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if *in_block_comment {
+            if ch == '*' && chars.peek() == Some(&'/') {
+                chars.next();
+                *in_block_comment = false;
+            }
+            continue;
+        }
+        if let Some(open) = *quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == open {
+                *quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '/' if chars.peek() == Some(&'/') => return first_code_depth,
+            '/' if chars.peek() == Some(&'*') => {
+                chars.next();
+                *in_block_comment = true;
+            }
+            '"' | '\'' | '`' => *quote = Some(ch),
+            '{' => {
+                first_code_depth.get_or_insert(*depth);
+                *depth += 1;
+            }
+            '}' => {
+                first_code_depth.get_or_insert(*depth);
+                *depth = (*depth - 1).max(0);
+            }
+            ch if !ch.is_whitespace() => {
+                first_code_depth.get_or_insert(*depth);
+            }
+            _ => {}
+        }
+    }
+    first_code_depth
+}
+
+/// `true` when the module item line declares `name` through one of
+/// `keywords`, with whole-identifier identity (`LIMIT_X` never matches
+/// `LIMIT`). At brace depth 0 this decides `let`/`var` rebinds of the module
+/// constant; at nested depths it decides same-name shadows, which disqualify
+/// resolution entirely (#4213 review thread PRRT_kwDOSiSx0c6mVW3_).
+fn line_declares_binding(item: &str, name: &str, keywords: &[&str]) -> bool {
+    keywords.iter().any(|keyword| {
+        item.strip_prefix(keyword).is_some_and(|rest| {
+            rest.trim_start()
+                .strip_prefix(name)
+                .is_some_and(|after| !identifier_continues(after))
+        })
+    })
+}
+
+/// `true` when the text right after a matched name continues the identifier
+/// (alphanumeric, `_`, or `$`), i.e. the match was a longer identifier.
+fn identifier_continues(after: &str) -> bool {
+    after
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '$')
+}
+
+/// The value the TEST's scope binds `name` to, for constant-named owner-call
+/// arguments (#4104-E3): a single immutable `const NAME = <int>;` in the test
+/// body, or — when the body does not declare the name at all — a single named
+/// import whose module resolves to the owner's own file and whose declaration
+/// there is a single immutable integer `const`. Any `let`/`var`, a repeated
+/// declaration, or a non-integer initializer fails closed.
+fn ts_test_scope_constant_value(
+    name: &str,
+    test: &TypeScriptTest,
+    owner: &TypeScriptOwner,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> Option<String> {
+    if !is_constant_shaped_operand(name) {
+        return None;
+    }
+    let (const_value, shadowed) = scan_test_body_constant_declarations(&test.body_text, name);
+    if const_value.is_some() || shadowed {
+        return const_value;
+    }
+    // No test-body declaration: resolve through the import record to the
+    // owner's own module. Ambiguous or unrelated imports fail closed.
+    let imports: Vec<&TypeScriptImport> = test
+        .imports_in_file
+        .iter()
+        .filter(|import| !import.namespace && import.local == name)
+        .collect();
+    if imports.len() != 1 {
+        return None;
+    }
+    let import = imports[0];
+    if !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root) {
+        return None;
+    }
+    let imported_name = import.imported.as_deref().unwrap_or(&import.local);
+    ts_owner_module_constant_value(imported_name, owner, workspace_root)
+}
+
+/// Scan the test body for declarations of `name`. Returns the single
+/// immutable `const` initializer's canonical value (when exactly one `const`
+/// declaration exists and no `let`/`var` shadows it) and whether any
+/// disqualifying shadow exists. Mirrors the #4095 one-hop conservatism:
+/// whole-word identity, a single `=`, and an initializer read only up to the
+/// next `;` or newline.
+fn scan_test_body_constant_declarations(body: &str, name: &str) -> (Option<String>, bool) {
+    let mut const_value: Option<String> = None;
+    let mut const_count = 0usize;
+    let mut shadowed = false;
+    for keyword in ["const", "let", "var"] {
+        let needle = format!("{keyword} ");
+        let mut search_from = 0;
+        while let Some(pos) = body[search_from..].find(&needle) {
+            let abs = search_from + pos + needle.len();
+            let rest = &body[abs..];
+            if let Some(after_name) = rest.strip_prefix(name)
+                && !identifier_continues(after_name)
+                && !match_is_inside_comment(body, abs)
+            {
+                let after_name = after_name.trim_start();
+                if keyword != "const" {
+                    // Any `let`/`var` binding of the name disqualifies
+                    // resolution (mutable or shadowing scope).
+                    shadowed = true;
+                } else if let Some(after_eq) = after_name.strip_prefix('=')
+                    && after_eq.strip_prefix('=').is_none()
+                    && !after_name.starts_with('>')
+                {
+                    let initializer = after_eq
+                        .split([';', '\n'])
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .trim_end_matches(';')
+                        .trim();
+                    const_count += 1;
+                    const_value = numeric_literal_value(initializer);
+                }
+            }
+            search_from = abs.max(search_from + 1);
+        }
+    }
+    if const_count != 1 || shadowed {
+        return (None, shadowed || const_count > 1);
+    }
+    (const_value, false)
+}
+
+/// #4104-E1: the argument lists of the owner call that a bare-local observed
+/// expression aliases through its single initializer — `const result =
+/// applyDiscount(100); expect(result).toBe(90)`. One hop only, and the
+/// initializer must BE the owner call: `await` is stripped, a receiver-
+/// qualified call must resolve through `owner_receivers`, the call must start
+/// at the initializer and span it whole (a wrapper around the owner call, or
+/// a derivation like `applyDiscount(50) * 2`, fails closed), and exactly one
+/// declaration of the local may exist — a `let` that is later reassigned also
+/// fails closed. All owner-identity rules (shadow guard, receiver resolution)
+/// run inside the reused [`owner_call_arguments`].
+///
+/// Lexical visibility (#4213 review thread PRRT_kwDOSiSx0c6mUkkO): the sole
+/// declaration binds the assertion's read only when the read sits inside the
+/// declaration's own scope, with the SAME scope semantics as the landed
+/// #4117 shadow walk — a top-level declaration binds the whole body, a
+/// declaration inside a nested block binds only that block's interval. An
+/// outer assertion on an imported `result` is therefore never attributed to
+/// a nested helper's same-named `const result = applyDiscount(100)`.
+fn ts_observed_local_owner_call_arguments(
+    test: &TypeScriptTest,
+    assertion: &TypeScriptAssertion,
+    owner_name: &str,
+    owner_receivers: &[String],
+) -> Option<Vec<String>> {
+    let observed = assertion.observed_expression.as_deref()?;
+    let ident = observed.trim();
+    let ident_bytes = ident.as_bytes();
+    let ident_is_bare = !ident_bytes.is_empty()
+        && (ident_bytes[0].is_ascii_alphabetic()
+            || ident_bytes[0] == b'_'
+            || ident_bytes[0] == b'$')
+        && ident_bytes.iter().all(|&b| is_ident_byte(b));
+    if !ident_is_bare {
+        return None;
+    }
+    let body_text = test.body_text.as_str();
+    // Scope table and declaration offsets come from the landed #4117 lexical
+    // walk, so the resolver reuses its scope intervals instead of
+    // re-deriving brace scoping.
+    let scan = scan_body_lexical_facts(body_text, ident);
+    let init = single_local_initializer(body_text, ident)?;
+    if init.is_mutable && later_reassigns_ident(body_text, ident, init.value_start) {
+        return None;
+    }
+    let assertion_uses = assertion_observed_use_offsets(test, assertion, ident, &scan)?;
+    let declaration_scope = innermost_scope_containing(&scan.scopes, init.name_start);
+    if !assertion_uses
+        .iter()
+        .all(|use_offset| declaration_scope_binds(declaration_scope, *use_offset))
+    {
+        return None;
+    }
+    let initializer = init.initializer;
+    let stripped = initializer
+        .trim()
+        .strip_prefix("await ")
+        .map(str::trim)
+        .unwrap_or(initializer.trim());
+    // The initializer must be one owner call spanning the whole text.
+    let argument_lists = owner_call_arguments(stripped, owner_name, owner_receivers);
+    if argument_lists.len() != 1 {
+        return None;
+    }
+    let after_name = if let Some(rest) = stripped.strip_prefix(owner_name) {
+        rest
+    } else {
+        let mut found: Option<&str> = None;
+        for receiver in owner_receivers {
+            if let Some(rest) = stripped.strip_prefix(&format!("{receiver}.{owner_name}")) {
+                found = Some(rest);
+                break;
+            }
+        }
+        found?
+    };
+    let after_open = after_name.trim_start().strip_prefix('(')?;
+    let close = balanced_close_offset(after_open)?;
+    if !after_open[close + 1..].trim().is_empty() {
+        return None;
+    }
+    argument_lists.into_iter().next()
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+}
+
+/// The test-body byte offsets where the assertion's observed expression
+/// reads the bare identifier: the whole-word occurrences on the assertion's
+/// own line (`assertion.line` is the 1-based file line recorded at the
+/// assertion call site; `test.line` is the 1-based file line where
+/// `body_text` begins). Comment / string occurrences, member accesses
+/// (`result.value`), and the declarations' own name tokens never count as
+/// reads. `None` when the line cannot be placed in the body or the observed
+/// name does not occur on it (for example a matcher argument wrapped onto a
+/// following line) — the one-hop credit then stays unavailable, which is the
+/// fail-closed direction.
+fn assertion_observed_use_offsets(
+    test: &TypeScriptTest,
+    assertion: &TypeScriptAssertion,
+    ident: &str,
+    scan: &BodyLexicalScan,
+) -> Option<Vec<usize>> {
+    let line_index = assertion.line.checked_sub(test.line)?;
+    let body = test.body_text.as_str();
+    let mut line_start = 0usize;
+    let mut line_text: Option<&str> = None;
+    for (idx, line) in body.split('\n').enumerate() {
+        if idx == line_index {
+            line_text = Some(line);
+            break;
+        }
+        line_start += line.len() + 1;
+    }
+    let line_text = line_text?;
+    let mut uses = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(pos) = line_text[search_from..].find(ident) {
+        let abs = line_start + search_from + pos;
+        search_from += pos + ident.len();
+        let after = abs + ident.len();
+        let followed_by_identifier = body
+            .get(after..)
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(is_javascript_identifier_char);
+        if followed_by_identifier
+            || !has_member_call_boundary(body, abs)
+            || line_prefix_looks_like_comment_or_string(body, abs)
+            || inside_block_comment(body, abs)
+            || scan
+                .declarations
+                .iter()
+                .any(|declaration| declaration.name_start == abs)
+        {
+            continue;
+        }
+        uses.push(abs);
+    }
+    (!uses.is_empty()).then_some(uses)
+}
+
+/// The single `const`/`let` initializer of `ident` in the body, or `None`
+/// when the name is not declared exactly once through a single `=`.
+struct SingleLocalInitializer {
+    initializer: String,
+    is_mutable: bool,
+    /// Byte offset where the initializer's value begins, so a reassignment
+    /// scan can start after the declaration's own `=`.
+    value_start: usize,
+    /// Byte offset of the declared name token — the position whose enclosing
+    /// brace scope decides lexical visibility (#4213 thread
+    /// PRRT_kwDOSiSx0c6mUkkO).
+    name_start: usize,
+}
+
+fn single_local_initializer(body: &str, ident: &str) -> Option<SingleLocalInitializer> {
+    let body_bytes = body.as_bytes();
+    let mut declarations: Vec<SingleLocalInitializer> = Vec::new();
+    let mut search_from = 0;
+    while let Some(pos) = body[search_from..].find(ident) {
+        let abs = search_from + pos;
+        let before_ok = abs == 0 || !is_ident_byte(body_bytes[abs - 1]);
+        let after = abs + ident.len();
+        let after_ok = after >= body.len() || !is_ident_byte(body_bytes[after]);
+        search_from = after.max(abs + 1);
+        if !(before_ok && after_ok) {
+            continue;
+        }
+        if match_is_inside_comment(body, abs) {
+            continue;
+        }
+        // Declaration keyword context: the trimmed text before the identifier
+        // must END with the keyword, itself not part of a longer identifier
+        // (`outlet result` never matches `let`).
+        let prefix = body[..abs].trim_end();
+        let keyword_starts = |tail: &str| -> bool {
+            let start = match prefix.len().checked_sub(tail.len()) {
+                Some(start) => start,
+                None => return false,
+            };
+            (start == 0 || !is_ident_byte(prefix.as_bytes()[start - 1])) && prefix.ends_with(tail)
+        };
+        let is_const_decl = keyword_starts("const");
+        let is_mutable_decl = keyword_starts("let") || keyword_starts("var");
+        if !is_const_decl && !is_mutable_decl {
+            continue;
+        }
+        let mutable = is_mutable_decl;
+        let mut cursor = after;
+        while cursor < body.len() && body_bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        // A single `=`: reject `==` / `=>` and compound assignments.
+        if cursor >= body.len()
+            || body_bytes[cursor] != b'='
+            || body_bytes.get(cursor + 1) == Some(&b'=')
+            || body_bytes.get(cursor + 1) == Some(&b'>')
+        {
+            continue;
+        }
+        let rhs_start = cursor + 1;
+        let rhs_end = body[rhs_start..]
+            .find([';', '\n'])
+            .map(|p| rhs_start + p)
+            .unwrap_or(body.len());
+        declarations.push(SingleLocalInitializer {
+            initializer: body[rhs_start..rhs_end].to_string(),
+            is_mutable: mutable,
+            value_start: rhs_start,
+            name_start: abs,
+        });
+    }
+    if declarations.len() != 1 {
+        return None;
+    }
+    declarations.into_iter().next()
+}
+
+/// Crude comment guard for declaration scans: `true` when the byte offset's
+/// line is preceded on the same line by a `//` marker, or the line continues
+/// a block comment (`* ...`), so commented-out declarations never resolve.
+/// Fail-closed direction: a skipped real declaration only withholds credit.
+fn match_is_inside_comment(body: &str, abs: usize) -> bool {
+    let line_start = body[..abs].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
+    let prefix = &body[line_start..abs];
+    prefix.contains("//") || prefix.trim_start().starts_with('*')
+}
+
+/// `true` when the body mutates `ident` at or after byte offset `from` — a
+/// plain reassignment (`<ident> = ...`, single `=`), a compound assignment
+/// (`<ident> += ...`, `||=`, `**=`, ... — the same family the Rust
+/// `value_resolution::is_assignment_operator` guard rejects), or an
+/// increment/decrement touching the binding (`result++`, `--result`). A
+/// `let` initializer's value may no longer be the owner call by the time it
+/// is observed.
+fn later_reassigns_ident(body: &str, ident: &str, from: usize) -> bool {
+    fn is_ident_byte(b: u8) -> bool {
+        b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+    }
+    const COMPOUND_ASSIGNMENTS: [&str; 15] = [
+        "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**=", "<<=", ">>=", ">>>=", "||=", "&&=",
+        "??=",
+    ];
+    let body_bytes = body.as_bytes();
+    let mut search_from = from;
+    while let Some(pos) = body[search_from..].find(ident) {
+        let abs = search_from + pos;
+        let before_ok = abs == 0 || !is_ident_byte(body_bytes[abs - 1]);
+        let after = abs + ident.len();
+        let after_ok = after >= body.len() || !is_ident_byte(body_bytes[after]);
+        search_from = after.max(abs + 1);
+        if !(before_ok && after_ok) {
+            continue;
+        }
+        // Prefix increment/decrement writes the binding (`--result`).
+        if body[..abs].trim_end().ends_with("++") || body[..abs].trim_end().ends_with("--") {
+            return true;
+        }
+        let mut cursor = after;
+        while cursor < body.len() && body_bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        let rest = &body[cursor.min(body.len())..];
+        let next = body_bytes.get(cursor + 1).copied();
+        let prev = if cursor > 0 {
+            Some(body_bytes[cursor - 1])
+        } else {
+            None
+        };
+        // Plain `<ident> = ...`: a single `=`, not `==`, `=>`, or the tail of
+        // `!=` / `<=` / `>=`.
+        let plain_assign = rest.starts_with('=')
+            && next != Some(b'=')
+            && next != Some(b'>')
+            && !matches!(prev, Some(b'!') | Some(b'<') | Some(b'>'));
+        // Postfix increment/decrement or a compound assignment also mutates
+        // the binding, so the initializer's value is no longer what the
+        // assertion observes.
+        let mutating_assign = COMPOUND_ASSIGNMENTS.iter().any(|op| rest.starts_with(op))
+            || rest.starts_with("++")
+            || rest.starts_with("--");
+        if plain_assign || mutating_assign {
+            return true;
         }
     }
     false
@@ -1136,7 +1875,7 @@ pub(crate) fn expected_side_is_live(
 /// `typescript_boundary_discriminator` uses so the operands align.
 fn changed_comparison_operator(line_text: &str) -> Option<String> {
     let expression = strip_typescript_control_prefix(line_text);
-    ["===", "!==", ">=", "<=", "==", "!=", ">", "<"]
+    COMPARISON_OPERATORS
         .into_iter()
         .find(|operator| expression.contains(operator))
         .map(str::to_string)

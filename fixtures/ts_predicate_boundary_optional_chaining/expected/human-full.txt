@@ -1,0 +1,205 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/ts_predicate_boundary_optional_chaining/input
+
+Summary: 3 probe(s), 3 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+WARNING src/guards.ts:2
+
+Changed
+  after:      if (order?.role === "admin") {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/guards.ts::userIsAdmin
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: already_observed
+  category: strong_oracle_observed
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+  raw evidence: src/guards.ts:2 (typescript_preview_probe) source=probe:src_guards.ts:typescript_preview:7098c2ff owner=userIsAdmin
+
+Static exposure
+  exposed (warning, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `userIsAdmin`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/guards.test.ts:3 admin role behind optional chaining uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `userIsAdmin` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: userIsAdmin
+  owner kind: function
+  changed behavior: predicate changed at src/guards.ts:2: `if (order?.role === "admin") {`
+  related test: tests/guards.test.ts:3 admin role behind optional chaining
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  next capability needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+
+Next step
+  TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+
+WARNING src/guards.ts:9
+
+Changed
+  after:      if (name ?? "temp") {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/guards.ts::pickLabel
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: already_observed
+  category: strong_oracle_observed
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+  raw evidence: src/guards.ts:9 (typescript_preview_probe) source=probe:src_guards.ts:typescript_preview:0d3ee5b2 owner=pickLabel
+
+Static exposure
+  exposed (warning, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `pickLabel`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/guards.test.ts:7 nullish fallback boundary input uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `pickLabel` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: pickLabel
+  owner kind: function
+  changed behavior: predicate changed at src/guards.ts:9: `if (name ?? "temp") {`
+  related test: tests/guards.test.ts:7 nullish fallback boundary input
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  next capability needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+
+Next step
+  TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+
+WARNING src/guards.ts:15
+
+Changed
+  after:      yield total >= 50;
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  typescript:src/guards.ts::thresholdsAbove
+
+Language
+  language: typescript
+  status: preview
+  owner kind: function
+
+Preview actionability
+  authority: preview_advisory_only
+  gap state: already_observed
+  category: strong_oracle_observed
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  evidence needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+  raw evidence: src/guards.ts:15 (typescript_preview_probe) source=probe:src_guards.ts:typescript_preview:31d04e16 owner=thresholdsAbove
+
+Static exposure
+  exposed (warning, confidence 0.60)
+
+Evidence
+  - reach yes: 1 related test(s) found for owner `thresholdsAbove`
+  - infection unknown: TypeScript preview adapter does not yet model infection.
+  - propagation unknown: TypeScript preview adapter does not yet model propagation.
+  - observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)
+  - discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.
+  - related test tests/guards.test.ts:11 yield tail at the boundary uses strong exact value oracle: expect(...).toBe(...)
+
+Weakness
+  - Related test reaches `thresholdsAbove` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+
+TypeScript preview card (advisory)
+  card version: typescript_preview_card.v1
+  authority: preview_advisory_only (typescript/preview)
+  owner: thresholdsAbove
+  owner kind: function
+  changed behavior: predicate changed at src/guards.ts:15: `yield total >= 50;`
+  related test: tests/guards.test.ts:11 yield tail at the boundary
+  oracle: exact_value (strong)
+  suggested assertion shape: Exact-value evidence is present; verify it targets the changed discriminator.
+  repair packet ready: false
+  why not actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior
+  limits:
+    - Syntax-first TypeScript/JavaScript preview evidence only.
+    - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
+    - This card is advisory and is not a repair packet.
+
+TypeScript repair packet (advisory)
+  status: not actionable
+  limitation: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted
+  next capability needed: none for a repair packet; retain strong related-test evidence as non-actionable context
+
+Next step
+  TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+
+
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
