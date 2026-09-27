@@ -31,7 +31,7 @@ The TypeScript preview adapter:
 - Classifies the finding as `WeaklyExposed` (oracle strength is Weak, not Strong)
 - Sets `actionability_category: incomplete_repair_packet` (G-A passes)
 - Projects a `GapRecord` whose `assertion_shape` is the boundary placeholder
-  `login(/* boundary input for user.length == 3 */).toBe(expected)` — it must NOT
+  `expect(login(/* boundary input for user.length == 3 */)).toBe(expected)` — it must NOT
   reuse the observed input `login('alice')`, which statically cannot reach the
   named boundary (G-G, #4105)
 - Adds a stop condition forbidding reuse of the observed call input
@@ -43,7 +43,7 @@ The TypeScript preview adapter:
 - Omits `typescript_repair_packet` from the check JSON (never emit a partial
   or implied packet)
 - Shows the human limitation section with
-  `target shape (not delegatable): login(/* boundary input for user.length == 3 */).toBe(expected)`
+  `target shape (not delegatable): expect(login(/* boundary input for user.length == 3 */)).toBe(expected)`
 
 ## Must Not
 

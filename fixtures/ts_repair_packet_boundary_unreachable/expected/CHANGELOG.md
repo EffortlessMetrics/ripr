@@ -25,3 +25,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — ts_repair_packet_boundary_unreachable (3)
+
+Reason:
+RIPR-SPEC-0087/#4215: the boundary placeholder shape is now a complete assertion, expect(login(/* boundary input ... */)).toBe(expected); previously it dropped the expect( wrapper. repair_packet_ready:false unchanged
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_unreachable --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

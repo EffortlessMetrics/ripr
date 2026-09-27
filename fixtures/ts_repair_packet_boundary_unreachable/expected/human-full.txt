@@ -72,7 +72,7 @@ TypeScript preview card (advisory)
 TypeScript repair packet (advisory)
   status: not actionable
   limitation: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract
-  target shape (not delegatable): login(/* boundary input for user.length == 3 */).toBe(expected)
+  target shape (not delegatable): expect(login(/* boundary input for user.length == 3 */)).toBe(expected)
   next capability needed: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints
 
 Next step
