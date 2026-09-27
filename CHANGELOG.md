@@ -550,6 +550,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `cargo xtask actionable-gap-outcomes` no longer reports an agent receipt's
+  `verification.status: "verification_not_run"` as the attempt's verify
+  result. It counts as a missing verify result
+  ([#4234](https://github.com/EffortlessMetrics/ripr-swarm/issues/4234)).
+
 - `ripr gate evaluate --gap-ledger` no longer reports an already-observed
   (closed) gap under "Suppressed" as configured-hidden. The ledger's
   `not_policy_targeted` state also covers no-action records, so the gate now

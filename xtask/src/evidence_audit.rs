@@ -4552,7 +4552,12 @@ fn actionable_gap_receipt_timestamp(receipt: &Value) -> Option<String> {
 fn actionable_gap_receipt_verify_result(receipt: &Value) -> Option<String> {
     audit_non_empty_string(receipt, &["verify_result"])
         .or_else(|| audit_non_empty_string(receipt, &["verification", "result"]))
-        .or_else(|| audit_non_empty_string(receipt, &["verification", "status"]))
+        // An agent receipt reports `verification_not_run` (#4234): no command
+        // ran, so it is a missing verify result, not one.
+        .or_else(|| {
+            audit_non_empty_string(receipt, &["verification", "status"])
+                .filter(|status| status != "verification_not_run")
+        })
         .or_else(|| audit_non_empty_string(receipt, &["summary", "verify_result"]))
         .or_else(|| audit_non_empty_string(receipt, &["summary", "verification_result"]))
         .or_else(|| audit_non_empty_string(receipt, &["provenance", "verify_result"]))

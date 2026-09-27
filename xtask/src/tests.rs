@@ -40209,6 +40209,74 @@ fn lane1_actionable_gap_packets_require_canonical_assertion_for_public_projectio
     Ok(())
 }
 
+/// #4234: an agent receipt's `verification.status: "verification_not_run"`
+/// says no command ran. The audit must count that as a missing verify result
+/// and fall back to the targeted-test outcome, not report "verification_not_run"
+/// as the attempt's verify result.
+#[test]
+fn actionable_gap_outcomes_treat_receipt_verification_not_run_as_missing() -> Result<(), String> {
+    let packets = serde_json::json!({
+        "packets": [{
+            "canonical_gap_id": "gap:seam-a",
+            "evidence_class": "predicate_boundary",
+            "repair_kind": "add_boundary_assertion",
+            "source_file": "src/pricing.rs",
+            "verify_command": "ripr agent verify --root . --json"
+        }]
+    });
+    let receipt = serde_json::json!({
+        "schema_version": "0.5",
+        "seam": {"seam_id": "seam-a", "file": "src/pricing.rs", "line": 42,
+                 "before": "weakly_gripped", "after": "strongly_gripped", "change": "improved"},
+        "provenance": {"seam_id": "seam-a", "movement": "improved", "generated_at": "unix_ms:2"},
+        "verification": {"status": "verification_not_run", "commands_run": [],
+                         "non_claims": ["static_only_assurance"]}
+    });
+    let report = actionable_gap_outcomes_report_from_values(
+        &packets,
+        Some(&receipt),
+        None,
+        "target/ripr/reports/actionable-gaps.json".to_string(),
+        Some("target/ripr/reports/agent-receipt.json".to_string()),
+        None,
+    )?;
+    let json = actionable_gap_outcomes_json(&report)?;
+    let value: serde_json::Value = serde_json::from_str(&json).map_err(|err| err.to_string())?;
+    assert_eq!(
+        value["outcomes"][0]["receipt_state"],
+        RECEIPT_MOVEMENT_IMPROVED
+    );
+    assert_eq!(
+        value["outcomes"][0]["verify_result"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        crate::actionable_gap_outcomes_missing_verify_result_count(&value),
+        1
+    );
+
+    // Alternate control: a real status is still the verify result, so the
+    // filter drops only the not-run sentinel.
+    let mut ran = receipt.clone();
+    ran["verification"]["status"] = serde_json::json!("passed");
+    let report = actionable_gap_outcomes_report_from_values(
+        &packets,
+        Some(&ran),
+        None,
+        "target/ripr/reports/actionable-gaps.json".to_string(),
+        Some("target/ripr/reports/agent-receipt.json".to_string()),
+        None,
+    )?;
+    let value: serde_json::Value = serde_json::from_str(&actionable_gap_outcomes_json(&report)?)
+        .map_err(|err| err.to_string())?;
+    assert_eq!(value["outcomes"][0]["verify_result"], "passed");
+    assert_eq!(
+        crate::actionable_gap_outcomes_missing_verify_result_count(&value),
+        0
+    );
+    Ok(())
+}
+
 #[test]
 fn actionable_gap_outcomes_join_receipts_and_targeted_movement() -> Result<(), String> {
     let packets = serde_json::json!({
