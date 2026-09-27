@@ -524,15 +524,76 @@ pub(crate) fn named_limitations_for_spy_fabrication(
 /// Check whether an import source (relative path) resolves to the same module
 /// path as the owner file, given the test file's location.
 ///
-/// Unlike `import_source_matches_owner` in `related_tests.rs`, this helper is
-/// a pure string computation — it does not need to be in the same module.
+/// Use the related-test module identity authority even for this advisory
+/// cross-package reference gate; two independent suffix lists could silently
+/// disagree on whether the test names this owner.
 fn import_source_matches_owner_text(
     import: &TypeScriptImport,
     test_file: &Path,
     owner: &TypeScriptOwner,
 ) -> bool {
-    normalized_relative_import_module_standalone(test_file, &import.source)
-        .is_some_and(|module| module == normalized_module_path_standalone(&owner.file))
+    let owner_module = super::related_tests::normalized_module_path(&owner.file);
+    super::related_tests::normalized_relative_import_module(test_file, &import.source, None, None)
+        .is_some_and(|module| module == owner_module)
+}
+
+#[cfg(test)]
+mod module_identity_tests {
+    use super::*;
+
+    fn owner(file: &str) -> TypeScriptOwner {
+        TypeScriptOwner {
+            name: "cart".into(),
+            file: file.into(),
+            start_line: 1,
+            end_line: 2,
+            owner_kind: OwnerKind::Function,
+            class_name: None,
+            decorated: false,
+            exported_as_default: false,
+            imports: Vec::new(),
+            method_kind: TypeScriptMethodKind::Ordinary,
+            class_default_export: false,
+            arity: None,
+            params: Vec::new(),
+            source_text: None,
+        }
+    }
+
+    /// The static-limit cross-package reference gate must use the same
+    /// module identity as related-test credit. A literal expected owner path
+    /// and a different-module negative catch both under- and over-credit.
+    #[test]
+    fn unresolved_ownership_reference_matches_routed_module_identity() {
+        for (source, owner_file, expected) in [
+            ("../src/cart.mjs", "src/cart.mts", true),
+            ("../src/cart.cjs", "src/cart.cts", true),
+            ("../src/cart.jsx", "src/cart.tsx", true),
+            ("../src/cart.js", "src/cart.ts", true),
+            ("../src/cart.v2", "src/cart.v2.ts", true),
+            ("../src/./cart.mjs", "src/cart.mts", true),
+            ("../src\\cart.cjs", "src/cart.cts", true),
+            ("../src/basket.mjs", "src/cart.mts", false),
+            ("../src/cart.mtsx", "src/cart.mts", false),
+            ("@app/cart", "src/cart.ts", false),
+        ] {
+            let import = TypeScriptImport {
+                source: source.into(),
+                imported: Some("cart".into()),
+                local: "cart".into(),
+                namespace: false,
+            };
+            assert_eq!(
+                import_source_matches_owner_text(
+                    &import,
+                    Path::new("tests/cart.test.ts"),
+                    &owner(owner_file),
+                ),
+                expected,
+                "{source} must have the expected relationship to {owner_file}"
+            );
+        }
+    }
 }
 
 fn import_references_owner_by_name(
@@ -546,41 +607,6 @@ fn import_references_owner_by_name(
         import.imported.as_deref() == Some(owner.name.as_str())
             && contains_call_name(body_text, &import.local)
     }
-}
-
-fn normalized_relative_import_module_standalone(test_file: &Path, source: &str) -> Option<String> {
-    if !source.starts_with("./") && !source.starts_with("../") {
-        return None;
-    }
-    let mut parts = normalized_path(test_file.parent().unwrap_or_else(|| Path::new("")))
-        .split('/')
-        .filter(|part| !part.is_empty() && *part != ".")
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    let normalized_source = source.replace('\\', "/");
-    for part in normalized_source.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
-            }
-            _ => parts.push(part.to_string()),
-        }
-    }
-    Some(strip_ts_extension(&parts.join("/")))
-}
-
-fn normalized_module_path_standalone(path: &Path) -> String {
-    strip_ts_extension(&normalized_path(path))
-}
-
-fn strip_ts_extension(path: &str) -> String {
-    for suffix in [".tsx", ".mts", ".cts", ".ts", ".jsx", ".mjs", ".cjs", ".js"] {
-        if let Some(stripped) = path.strip_suffix(suffix) {
-            return stripped.to_string();
-        }
-    }
-    path.to_string()
 }
 
 fn contains_member_call_name(body_text: &str, object_name: &str, method_name: &str) -> bool {
