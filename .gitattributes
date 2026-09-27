@@ -18,3 +18,7 @@
 # A unified diff encodes an empty context line as one space.
 # That byte is patch syntax, not source trailing whitespace.
 fixtures/*/diff.patch whitespace=-blank-at-eol
+
+# Judged-panel diffs are byte-exact frozen captures bound by recorded digests.
+# Trailing whitespace in them is source content and must not be rewritten.
+metrics/rust-judged-behavior-panel/diffs/*.diff -whitespace

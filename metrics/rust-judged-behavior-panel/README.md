@@ -105,6 +105,35 @@ content-addressed generation, then advances `portable/current.json` last under
 an exclusive writer lock. A partial or concurrent attempt is non-authoritative.
 Judgment remains explicitly null and runtime calibration remains `not_run`.
 
+## Release-challenge selection
+
+`release-selection.json` is the frozen 0.11 release challenge
+([#3804](https://github.com/EffortlessMetrics/ripr-swarm/issues/3804)). It
+carries the source-side freeze (EffortlessMetrics/ripr#1675) plus the three
+real `should_limit` rows added under
+[#3805](https://github.com/EffortlessMetrics/ripr-swarm/issues/3805), with the
+committed diff captures under `diffs/release_*.diff`.
+`cargo xtask check-release-challenge-selection` (also run by precommit)
+validates it and reports the acceptance floors without lowering them.
+
+- Every selected repository has one `repository_scopes` record naming the exact
+  commit subjects, allowed read-only operations, network and retention policy,
+  bounds, actor, and expiry. `proposed_unauthorized` is the state until the
+  owner grants the scope; `authorized` requires an https link to that grant. Rows in an
+  unauthorized repository stay selected but are not runnable.
+- A `should_limit` row names a registered product `StaticLimitKind`, expects a
+  conservative class, routes no repair, credits no aligned observer, and states
+  the missing edge. Other directions carry no limit kind.
+- New rows are `selected_unjudged`: labels null and no judgment provenance.
+  Adjudication belongs to
+  [#3806](https://github.com/EffortlessMetrics/ripr-swarm/issues/3806).
+- `production_like_targets` names files the replay must opt in through
+  `[analysis] production_like_targets` because the default source-role policy
+  skips them (the `xtask/` cases). Each entry must be a file the frozen diff
+  changes.
+- The same behavior under two ids fails; row slices of one capture may share an
+  anchor only with different directions.
+
 ## Item contract
 
 Each `items[]` row carries:

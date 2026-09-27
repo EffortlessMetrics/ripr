@@ -1,0 +1,464 @@
+diff --git a/crates/ripr/src/analysis/probes/classify.rs b/crates/ripr/src/analysis/probes/classify.rs
+index 79c09853a..3d6e931db 100644
+--- a/crates/ripr/src/analysis/probes/classify.rs
++++ b/crates/ripr/src/analysis/probes/classify.rs
+@@ -6,6 +6,8 @@ use ra_ap_syntax::{AstNode, Edition, SourceFile, ast};
+ use std::ops::Range;
+ use std::path::Path;
+ 
++mod parameters;
++
+ #[derive(Clone, Debug, Eq, PartialEq)]
+ pub(crate) struct ParserProbeShape<'a> {
+     pub(crate) family: ProbeFamily,
+@@ -78,6 +80,14 @@ pub(crate) fn parser_probe_shapes_for_changed_line<'a>(
+             selected.push(candidate);
+         }
+     }
++    if selected.iter().all(|shape| shape.unsafe_boundary)
++        && let Some(declaration) =
++            parameters::parameter_declaration_shape(facts, line, changed_text)
++    {
++        // Keep the enclosing unsafe obligation as well as the exact declaration.
++        // They share a family, but their source identities are not interchangeable.
++        selected.push(declaration);
++    }
+     selected.sort_by(|left, right| {
+         left.family
+             .as_str()
+diff --git a/crates/ripr/src/analysis/probes/classify/parameters.rs b/crates/ripr/src/analysis/probes/classify/parameters.rs
+new file mode 100644
+index 000000000..39380b8f5
+--- /dev/null
++++ b/crates/ripr/src/analysis/probes/classify/parameters.rs
+@@ -0,0 +1,211 @@
++//! Parser-confirmed parameter declarations stay unknown, not executable fields.
++
++use super::super::lexical::classify_changed_line;
++use super::{ParserProbeShape, source_line_byte_range};
++use crate::analysis::rust_index::FileFacts;
++use crate::domain::ProbeFamily;
++use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxNode, ast};
++use std::ops::Range;
++
++/// This fallback is used only after ordinary parser-owned expressions have
++/// been considered. It never promotes exposure or drops the changed source.
++/// Exact current-line equality prevents borrowing new-side context for a
++/// different removed/stale line. Shared signature/body lines are not eligible.
++pub(super) fn parameter_declaration_shape<'a>(
++    facts: &'a FileFacts,
++    line: usize,
++    changed_text: &str,
++) -> Option<ParserProbeShape<'a>> {
++    if facts.used_lexical_fallback
++        || !classify_changed_line(changed_text).contains(&ProbeFamily::FieldConstruction)
++    {
++        return None;
++    }
++    let line_range = source_line_byte_range(&facts.source, line)?;
++    let source_line = facts.source.get(line_range.clone())?;
++    let text = source_line.trim();
++    if text.is_empty() || text != changed_text.trim() {
++        return None;
++    }
++
++    // Reuse the existing parser, not a colon or comment-delimiter heuristic.
++    // Real expression shapes take precedence and do not enter this fallback.
++    let parse = SourceFile::parse(&facts.source, Edition::CURRENT);
++    if !parse.errors().is_empty() {
++        return None;
++    }
++    let root = parse.tree();
++    let declaration = parameter_line_span(root.syntax(), line_range)?;
++    for parameter in root
++        .syntax()
++        .descendants()
++        .filter(|node| ast::Param::can_cast(node.kind()) || ast::SelfParam::can_cast(node.kind()))
++    {
++        let Some(list) = parameter.parent().and_then(ast::ParamList::cast) else {
++            continue;
++        };
++        if list.syntax().parent().and_then(ast::Fn::cast).is_none() {
++            continue;
++        }
++        let range = parameter.text_range();
++        let parameter_start = u32::from(range.start()) as usize;
++        let parameter_end = u32::from(range.end()) as usize;
++        if parameter_start <= declaration.start && declaration.end <= parameter_end {
++            return Some(ParserProbeShape {
++                family: ProbeFamily::StaticUnknown,
++                start_line: line,
++                start_byte: declaration.start,
++                text,
++                standalone_call: false,
++                unsafe_boundary: false,
++            });
++        }
++    }
++    None
++}
++
++/// Bound the line by parser-owned nontrivia tokens, excluding its trailing
++/// parameter separator. Comment text is preserved in the shape, but cannot
++/// extend its containment range. Real code after a comment remains in range.
++fn parameter_line_span(root: &SyntaxNode, line: Range<usize>) -> Option<Range<usize>> {
++    let mut start = None;
++    let mut end = None;
++    for token in root
++        .descendants_with_tokens()
++        .filter_map(|element| element.into_token())
++    {
++        let range = token.text_range();
++        let token_start = u32::from(range.start()) as usize;
++        let token_end = u32::from(range.end()) as usize;
++        if token_start >= line.end {
++            break;
++        }
++        if token_end <= line.start
++            || matches!(token.kind(), SyntaxKind::WHITESPACE | SyntaxKind::COMMENT)
++        {
++            continue;
++        }
++        // A multiline nontrivia token cannot be a complete parameter-only line.
++        if token_start < line.start || token_end > line.end {
++            return None;
++        }
++        if start.is_none() {
++            start = Some(token_start);
++        }
++        if token.kind() != SyntaxKind::COMMA {
++            end = Some(token_end);
++        }
++    }
++    let start = start?;
++    let end = end?;
++    Some(start..end)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
++    use std::path::Path;
++
++    const SOURCE: &str = "struct Path;\nfn project(\n    out: &Path,\n) {}\n";
++
++    #[test]
++    fn parameter_shape_preserves_exact_coordinates_and_unknown_family() -> Result<(), String> {
++        for source in [SOURCE.to_string(), SOURCE.replace('\n', "\r\n")] {
++            let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), &source)?;
++            let shape = parameter_declaration_shape(&facts, 3, "    out: &Path,")
++                .ok_or_else(|| "missing parser-confirmed parameter".to_string())?;
++            assert_eq!(shape.family, ProbeFamily::StaticUnknown);
++            assert_eq!(shape.start_line, 3);
++            assert_eq!(Some(shape.start_byte), source.find("out: &Path,"));
++            assert_eq!(shape.text, "out: &Path,");
++            assert!(!shape.standalone_call);
++            assert!(!shape.unsafe_boundary);
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn parameter_shape_requires_current_parser_owned_source() -> Result<(), String> {
++        let mut facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), SOURCE)?;
++        assert!(parameter_declaration_shape(&facts, 3, "out: &Other,").is_none());
++        assert!(parameter_declaration_shape(&facts, 0, "out: &Path,").is_none());
++        assert!(parameter_declaration_shape(&facts, 30, "out: &Path,").is_none());
++        facts.used_lexical_fallback = true;
++        assert!(parameter_declaration_shape(&facts, 3, "out: &Path,").is_none());
++        facts.used_lexical_fallback = false;
++        facts.source = "struct Path;\nfn project(\n    out: &Path,\n".to_string();
++        assert!(parameter_declaration_shape(&facts, 3, "out: &Path,").is_none());
++        facts.source.clear();
++        assert!(parameter_declaration_shape(&facts, 3, "out: &Path,").is_none());
++        Ok(())
++    }
++
++    #[test]
++    fn parameter_shape_rejects_non_fn_context_and_shared_body() -> Result<(), String> {
++        for (source, line, text) in [
++            (
++                "struct Path;\nstruct Wrap<'a> { out: &'a Path }\nfn p() -> Wrap<'static> {\n    Wrap {\n        out: &Path,\n    }\n}\n",
++                5,
++                "out: &Path,",
++            ),
++            (
++                "struct Path;\ntype Handler = fn(\n    out: &Path,\n);\n",
++                3,
++                "out: &Path,",
++            ),
++            (
++                "struct Path;\nfn project(\n    out: &Path,) -> i32 { 7 }\n",
++                3,
++                "out: &Path,) -> i32 { 7 }",
++            ),
++            (
++                "struct Path;\nfn project() { let callback = |\n    out: &Path,\n| 7; }\n",
++                3,
++                "out: &Path,",
++            ),
++            (
++                "struct Path;\nfn project(\n    out: &Path, /* note */) -> i32 { 7 }\n",
++                3,
++                "out: &Path, /* note */) -> i32 { 7 }",
++            ),
++            (
++                "struct Path;\nfn project(\n    out: &Path, /* note */ other: &Path,\n) {}\n",
++                3,
++                "out: &Path, /* note */ other: &Path,",
++            ),
++        ] {
++            let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), source)?;
++            assert!(
++                parameter_declaration_shape(&facts, line, text).is_none(),
++                "non-parameter or shared line was reclassified: {source}"
++            );
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn parameter_comment_trivia_preserves_text_and_byte_coordinates() -> Result<(), String> {
++        for suffix in [
++            ", // output: never executable",
++            ", /* output */",
++            ", /* outer /* nested */ note */ // tail",
++            " /* no comma on last parameter */",
++        ] {
++            for newline in ["\n", "\r\n"] {
++                let text = format!("out: &Path{suffix}");
++                let source = format!("// λ\nstruct Path;\nfn project(\n    {text}\n) {{}}\n")
++                    .replace('\n', newline);
++                let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), &source)?;
++                let shape = parameter_declaration_shape(&facts, 4, &text)
++                    .ok_or_else(|| format!("commented parameter was lost: {text}"))?;
++                assert_eq!(shape.family, ProbeFamily::StaticUnknown);
++                assert_eq!(shape.start_line, 4);
++                assert_eq!(Some(shape.start_byte), source.find("out: &Path"));
++                assert_eq!(shape.text, text);
++                assert!(!shape.unsafe_boundary);
++            }
++        }
++        Ok(())
++    }
++}
+diff --git a/crates/ripr/src/analysis/probes/mod.rs b/crates/ripr/src/analysis/probes/mod.rs
+index 7732a75b2..4be0274bf 100644
+--- a/crates/ripr/src/analysis/probes/mod.rs
++++ b/crates/ripr/src/analysis/probes/mod.rs
+@@ -17,3 +17,6 @@ pub(crate) use diff::resolve_probe_source_currentness;
+ pub(crate) use expectations::{expected_sinks, required_oracles};
+ pub(crate) use ids::{fingerprint_probe_id, normalize_expression};
+ pub use repo::probes_for_repo_file;
++
++#[cfg(test)]
++mod parameter_boundary_tests;
+diff --git a/crates/ripr/src/analysis/probes/parameter_boundary_tests.rs b/crates/ripr/src/analysis/probes/parameter_boundary_tests.rs
+new file mode 100644
+index 000000000..e380f22f4
+--- /dev/null
++++ b/crates/ripr/src/analysis/probes/parameter_boundary_tests.rs
+@@ -0,0 +1,202 @@
++//! #1453: identical text is a parameter declaration or a field initializer
++//! depending on parser-owned context. Do not erase the parameter change or
++//! credit it as exposed; retain an explicit unknown rather than a false field.
++
++use super::classify::parser_probe_shapes_for_changed_line;
++use super::diff::probes_for_file;
++use crate::analysis::diff::{ChangedFile, ChangedLine};
++use crate::analysis::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
++use crate::analysis::rust_index::RustIndex;
++use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
++use crate::domain::{Probe, ProbeFamily};
++use std::collections::BTreeMap;
++use std::path::{Path, PathBuf};
++
++const SOURCE: &str = "struct Path;\nstruct Envelope<'a> { out: &'a Path }\nfn project(\n    out: &Path,\n) -> Envelope<'_> {\n    Envelope {\n        out: &Path,\n    }\n}\n";
++
++/// Exercise the production RA adapter and added-side diff producer at one line.
++fn probes_at(source: &str, line: usize) -> Result<Vec<Probe>, String> {
++    let path = PathBuf::from("src/lib.rs");
++    let text = source
++        .lines()
++        .nth(line.saturating_sub(1))
++        .ok_or_else(|| format!("fixture has no line {line}"))?
++        .to_string();
++    let facts = RaRustSyntaxAdapter.summarize_file(&path, source)?;
++    let index = RustIndex {
++        files: BTreeMap::from([(path.clone(), facts)]),
++        ..RustIndex::default()
++    };
++    let changed = ChangedFile {
++        path,
++        added_lines: vec![ChangedLine {
++            line,
++            new_side_line: line,
++            text,
++        }],
++        removed_lines: Vec::new(),
++    };
++    Ok(probes_for_file(Path::new("."), &changed, &index))
++}
++
++#[test]
++fn parameter_declaration_retains_unknown_instead_of_field_construction() -> Result<(), String> {
++    let probes = probes_at(SOURCE, 4)?;
++    assert!(
++        !probes.is_empty(),
++        "a changed parameter must not disappear from analysis"
++    );
++    assert!(
++        probes
++            .iter()
++            .all(|probe| probe.family == ProbeFamily::StaticUnknown),
++        "parameter syntax is not executable field construction: {probes:?}"
++    );
++    assert!(
++        probes
++            .iter()
++            .any(|probe| probe.expression.contains("out: &Path"))
++    );
++    Ok(())
++}
++
++#[test]
++fn identical_text_in_record_expression_keeps_field_construction() -> Result<(), String> {
++    let probes = probes_at(SOURCE, 7)?;
++    assert!(
++        probes.iter().any(|probe| {
++            probe.family == ProbeFamily::FieldConstruction
++                && probe.expression.contains("out: &Path")
++        }),
++        "a real field initializer must not be hidden by parameter filtering: {probes:?}"
++    );
++    Ok(())
++}
++
++#[test]
++fn shared_signature_line_keeps_real_body_probe() -> Result<(), String> {
++    let source = "struct Path;\nstruct Envelope<'a> { out: &'a Path }\nfn project(out: &Path) -> Envelope<'_> { Envelope { out: &Path } }\n";
++    let probes = probes_at(source, 3)?;
++    assert!(
++        probes.iter().any(|probe| {
++            probe.family == ProbeFamily::FieldConstruction
++                && probe.expression.contains("out: &Path")
++        }),
++        "a parameter sharing the line must not erase the real body field: {probes:?}"
++    );
++    Ok(())
++}
++
++#[test]
++fn commented_parameter_and_identical_record_text_keep_distinct_families() -> Result<(), String> {
++    for suffix in [" // output", " /* output */"] {
++        let source = SOURCE.replace("out: &Path,", &format!("out: &Path,{suffix}"));
++        let parameters = probes_at(&source, 4)?;
++        assert!(!parameters.is_empty());
++        assert!(
++            parameters
++                .iter()
++                .all(|probe| probe.family == ProbeFamily::StaticUnknown),
++            "comment trivia restored false executable field probes: {parameters:?}"
++        );
++        assert!(
++            parameters
++                .iter()
++                .any(|probe| probe.expression == format!("out: &Path,{suffix}"))
++        );
++        let fields = probes_at(&source, 7)?;
++        assert!(
++            fields
++                .iter()
++                .any(|probe| probe.family == ProbeFamily::FieldConstruction),
++            "the comment fix hid a genuine field: {fields:?}"
++        );
++    }
++    Ok(())
++}
++
++#[test]
++fn typed_receiver_parameters_remain_explicit_unknowns() -> Result<(), String> {
++    for receiver in [
++        "self: Box<Self>,",
++        "self: &Self, // receiver",
++        "self: &mut Self,",
++    ] {
++        let source = format!(
++            "struct Envelope;\nimpl Envelope {{\n    fn project(\n        {receiver}\n    ) {{}}\n}}\n"
++        );
++        let probes = probes_at(&source, 4)?;
++        assert!(!probes.is_empty());
++        assert!(
++            probes
++                .iter()
++                .all(|probe| probe.family == ProbeFamily::StaticUnknown),
++            "typed receiver was classified as executable: {probes:?}"
++        );
++        assert!(probes.iter().any(|probe| probe.expression == receiver));
++    }
++    Ok(())
++}
++
++#[test]
++fn unsafe_parameter_retains_both_declaration_and_boundary_identity() -> Result<(), String> {
++    let source =
++        "struct Path;\nunsafe fn project(\n    out: &Path, // preserve both subjects\n) {}\n";
++    let path = PathBuf::from("src/lib.rs");
++    let facts = RaRustSyntaxAdapter.summarize_file(&path, source)?;
++    let boundary = facts
++        .probe_shapes
++        .iter()
++        .find(|shape| shape.kind == PROBE_SHAPE_UNSAFE_BOUNDARY)
++        .cloned()
++        .ok_or_else(|| "fixture has no unsafe boundary".to_string())?;
++    let index = RustIndex {
++        files: BTreeMap::from([(path.clone(), facts)]),
++        ..RustIndex::default()
++    };
++    let text = "out: &Path, // preserve both subjects";
++    let shapes = parser_probe_shapes_for_changed_line(&index, &path, 3, text);
++    assert_eq!(
++        shapes.len(),
++        2,
++        "both independent identities must survive: {shapes:?}"
++    );
++    let declaration = shapes
++        .iter()
++        .find(|shape| !shape.unsafe_boundary)
++        .ok_or_else(|| "unsafe boundary hid the exact declaration".to_string())?;
++    assert_eq!(declaration.family, ProbeFamily::StaticUnknown);
++    assert_eq!(declaration.start_line, 3);
++    assert_eq!(Some(declaration.start_byte), source.find("out: &Path"));
++    assert_eq!(declaration.text, text);
++    let retained = shapes
++        .iter()
++        .find(|shape| shape.unsafe_boundary)
++        .ok_or_else(|| "declaration fix erased the unsafe obligation".to_string())?;
++    assert_eq!(retained.family, ProbeFamily::StaticUnknown);
++    assert_eq!(retained.start_byte, boundary.start_byte);
++    assert_eq!(retained.text, boundary.text);
++    assert_eq!(retained.start_line, 3);
++    let probes = probes_at(source, 3)?;
++    assert!(probes.iter().any(|probe| probe.expression == text));
++    assert!(probes.iter().any(|probe| probe.expression == boundary.text));
++    Ok(())
++}
++
++#[test]
++fn unsafe_body_without_parameter_keeps_its_existing_obligation() -> Result<(), String> {
++    let source = "unsafe fn project() {\n    let value = 7;\n}\n";
++    let path = PathBuf::from("src/lib.rs");
++    let facts = RaRustSyntaxAdapter.summarize_file(&path, source)?;
++    let index = RustIndex {
++        files: BTreeMap::from([(path.clone(), facts)]),
++        ..RustIndex::default()
++    };
++    let shapes = parser_probe_shapes_for_changed_line(&index, &path, 2, "let value = 7;");
++    assert_eq!(shapes.len(), 1);
++    assert!(shapes[0].unsafe_boundary);
++    assert_eq!(shapes[0].family, ProbeFamily::StaticUnknown);
++    assert_eq!(shapes[0].start_line, 2);
++    assert_eq!(Some(shapes[0].start_byte), source.find("unsafe fn"));
++    Ok(())
++}

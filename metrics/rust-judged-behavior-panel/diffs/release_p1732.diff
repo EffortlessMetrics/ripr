@@ -1,0 +1,73 @@
+diff --git a/.github/workflows/windows-advisory.yml b/.github/workflows/windows-advisory.yml
+index 36ee1c40f..d899bd089 100644
+--- a/.github/workflows/windows-advisory.yml
++++ b/.github/workflows/windows-advisory.yml
+@@ -30,17 +30,17 @@ concurrency:
+ # disproved by being broken:
+ #
+ #   - **Test outcomes are advisory.** A failing test does not fail this job and
+-#     does not gate merges. Known failures (#2419, #2430) will show up as
++#     does not gate merges. Known failures (#1729) will show up as
+ #     verdicts in the summary while the job stays green.
+ #   - **Evidence generation is not advisory.** A missing log, a missing captured
+ #     exit status, a summarizer crash, or a broken workflow fails the job. A lane
+ #     that reports success while proving nothing is the false-confidence
+ #     condition it exists to prevent.
+ #
+-# It is not a required check, and must not be promoted to required until #2419
+-# and #2430 are resolved and the lane shows stability across repeated runs on
++# It is not a required check, and must not be promoted to required until #1729
++# is resolved and the lane shows stability across repeated runs on
+ # hardware that can actually reproduce them — the hosted runner does not
+-# reproduce the #2419 flakes at all, so green runs there prove nothing about
++# reproduce the #1729 flakes at all, so green runs there prove nothing about
+ # them.
+ #
+ # Triggers:
+@@ -137,12 +137,18 @@ jobs:
+       # a missing exit status, or a summarizer crash fails this step and therefore
+       # the job — otherwise the lane could report success while proving nothing,
+       # which is the false-confidence condition it exists to prevent.
++      # if: always() so a wedged or terminated test step still yields whatever
++      # verdict the partial logs support (or a loud summarizer failure naming
++      # the missing evidence) instead of a silent job-timeout cancellation
++      # with no verdict at all (#1729).
+       - name: Summarize verdicts and repeated-run stability
++        if: always()
+         shell: bash
+         run: |
+           cargo xtask windows-advisory-summary --run1 target/windows-run1.log --run1-status target/windows-run1.status --run2 target/windows-run2.log --run2-status target/windows-run2.status | tee target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
+ 
+       - name: Summarize feature-combination results
++        if: always()
+         shell: bash
+         run: |
+           echo "" >> target/windows-verdict.md
+diff --git a/xtask/src/reports/eval_sweep_refresh.rs b/xtask/src/reports/eval_sweep_refresh.rs
+index 33aed497d..1fe24ad1b 100644
+--- a/xtask/src/reports/eval_sweep_refresh.rs
++++ b/xtask/src/reports/eval_sweep_refresh.rs
+@@ -3880,6 +3880,23 @@ mod python_eval_sweep_refresh {
+         }
+         let manifest_path = write_manifest_and_diffs(&root, &pins)?;
+         let binary = built_ripr_binary()?;
++        // #1712: execute an invocation-owned copy of the analyzer. Under full
++        // nextest load a sibling test can rebuild target/debug/ripr mid-run,
++        // drifting the content identity the route re-verifies after every
++        // subject and downgrading rows to tempfail. The copy is immutable for
++        // the life of this invocation, so a concurrent rebuild cannot move
++        // the executed bytes underneath it.
++        let owned_bin_dir = root.join("bin");
++        std::fs::create_dir_all(&owned_bin_dir)
++            .map_err(|error| format!("create owned bin dir: {error}"))?;
++        let binary_path = PathBuf::from(&binary);
++        let binary_name = binary_path
++            .file_name()
++            .ok_or_else(|| "built ripr binary has no file name".to_string())?;
++        let owned_binary = owned_bin_dir.join(binary_name);
++        std::fs::copy(&binary_path, &owned_binary)
++            .map_err(|error| format!("stage owned analyzer copy: {error}"))?;
++        let binary = owned_binary.to_string_lossy().to_string();
+         let out = root.join("out");
+ 
+         let args = vec![
