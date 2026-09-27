@@ -12169,10 +12169,11 @@ Field contract:
   `ripr pilot --root <root>` (`select_seam`) and a missing workflow directory
   routes to a new repair attempt. It is `null` when nothing is missing, and
   also when status cannot choose honestly: an unreadable attempt manifest,
-  several current awaiting attempts, several open seams, or an unreadable
-  `HEAD`. A warning (`repair_attempt_unreadable`, `ambiguous_repair_attempts`,
-  `multiple_open_repair_seams`, `repair_attempt_head_unknown`) then names the
-  choices.
+  several current awaiting attempts, several open seams, an unreadable
+  `HEAD`, or a complete pilot summary whose top seam recorded no repair start.
+  A warning (`repair_attempt_unreadable`, `ambiguous_repair_attempts`,
+  `multiple_open_repair_seams`, `repair_attempt_head_unknown`,
+  `pilot_found_no_repair_target`) then names the choices.
 - `warnings[]` - stale-looking or unreadable-artifact hints. Timestamp warnings
   are emitted when `agent verify` is older than a before/after snapshot or
   `agent receipt` is older than `agent verify`. For a seam with no attempt

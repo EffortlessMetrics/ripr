@@ -619,6 +619,15 @@ pub(crate) fn load_edit_cage_policy(
     root: &Path,
     attempt_id: &RepairAttemptId,
 ) -> Result<crate::edit_cage::EditCagePolicy, String> {
+    Ok(load_edit_cage_baseline(root, attempt_id)?.policy().clone())
+}
+
+/// Loads the retained edit-cage baseline of a durable attempt from its staged
+/// artifact, re-verifying the artifact digest first.
+pub(crate) fn load_edit_cage_baseline(
+    root: &Path,
+    attempt_id: &RepairAttemptId,
+) -> Result<crate::edit_cage::AttemptBaseline, String> {
     let root = root
         .canonicalize()
         .map_err(|error| format!("canonicalize repair attempt root failed: {error}"))?;
@@ -632,9 +641,8 @@ pub(crate) fn load_edit_cage_policy(
     {
         return Err("repair attempt edit-cage baseline binding failed".to_string());
     }
-    let baseline: crate::edit_cage::AttemptBaseline = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("decode edit-cage baseline failed: {error}"))?;
-    Ok(baseline.policy().clone())
+    serde_json::from_slice(&bytes)
+        .map_err(|error| format!("decode edit-cage baseline failed: {error}"))
 }
 
 /// Reserve the attempt transaction exclusively. Creating the directory with

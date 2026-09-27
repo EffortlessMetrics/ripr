@@ -35,17 +35,21 @@ fn run_command(
     current_dir: Option<&Path>,
     args: &[&str],
 ) -> Result<Output, std::io::Error> {
-    spawn_command(program, current_dir, args, &[])
+    spawn_command(program, current_dir, args, &[], None)
 }
 
 /// The single process spawn point for this harness. Both `run_command` and
 /// `run_command_with_env` route through here so the suite keeps one tracked
-/// spawn site rather than one per calling convention.
+/// spawn site rather than one per calling convention. With `redirect`, the
+/// child's stdout and stderr go to those files the way a shell `> out 2> err`
+/// sends them (each file is created before the child starts), and the
+/// returned `Output` carries empty captured streams.
 fn spawn_command(
     program: &str,
     current_dir: Option<&Path>,
     args: &[&str],
     env: &[(&str, &str)],
+    redirect: Option<(&Path, &Path)>,
 ) -> Result<Output, std::io::Error> {
     let mut command = Command::new(program);
     if let Some(current_dir) = current_dir {
@@ -54,7 +58,20 @@ fn spawn_command(
     for (name, value) in env {
         command.env(name, value);
     }
-    command.args(args).output()
+    command.args(args);
+    match redirect {
+        None => command.output(),
+        Some((stdout, stderr)) => {
+            command
+                .stdout(std::fs::File::create(stdout)?)
+                .stderr(std::fs::File::create(stderr)?);
+            Ok(Output {
+                status: command.status()?,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+        }
+    }
 }
 
 /// Run a command with extra environment variables set, so tests can plant an
@@ -66,7 +83,7 @@ fn run_command_with_env(
     args: &[&str],
     env: &[(&str, &str)],
 ) -> Result<Output, std::io::Error> {
-    spawn_command(program, Some(current_dir), args, env)
+    spawn_command(program, Some(current_dir), args, env, None)
 }
 
 fn run_isolated_binary(
@@ -4254,6 +4271,130 @@ fn agent_repair_still_refuses_writes_outside_build_output_and_test_surface()
             )),
             "the failure must name the recovery route:\n{stderr}"
         );
+        std::fs::remove_dir_all(root)?;
+    }
+    Ok(())
+}
+
+/// Runs one repair phase as a shell `ripr agent repair ... > stdout 2> stderr`
+/// does: both files are created (empty) before ripr starts.
+fn run_repair_phase_redirected(
+    root: &Path,
+    selector: &[&str],
+    phase: &str,
+    stdout: &Path,
+    stderr: &Path,
+) -> Result<Output, std::io::Error> {
+    let root_arg = root.display().to_string();
+    let mut args = vec!["agent", "repair", "--root", root_arg.as_str()];
+    args.extend_from_slice(selector);
+    args.extend(["--phase", phase]);
+    spawn_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        None,
+        &args,
+        &[],
+        Some((stdout, stderr)),
+    )
+}
+
+/// #4216 row 4: the natural `--phase before > packet.json 2> before.err`
+/// shape inside the checkout. The shell creates both files before ripr
+/// starts, and ripr keeps writing stderr after the baseline is captured, so
+/// the cage cannot tell that file from an authored edit and the attempt stays
+/// `Violated`. The before phase must say so up front, and the refusal must
+/// name the redirect file with how to avoid it. Redirecting under
+/// target/ripr/, as the guidance says, keeps the attempt compliant, and a
+/// real out-of-surface source edit made alongside that redirect is still
+/// refused without the redirect hint.
+#[test]
+fn agent_repair_names_output_redirected_into_the_checkout() -> Result<(), Box<dyn std::error::Error>>
+{
+    const GUIDANCE: &str = "keep this command's output out of the checkout";
+    const HINT: &str = "not tracked by Git when the before phase ran. If it is a file you redirected ripr output into";
+
+    // Natural shape: redirect files in the repository root.
+    let root = built_repair_fixture("agent-repair-redirect-in-repo")?;
+    let packet = root.join("packet.json");
+    let before_err = root.join("before.err");
+    let before = run_repair_phase_redirected(
+        &root,
+        &["--seam-id", BOUNDARY_GAP_SEAM_ID],
+        "before",
+        &packet,
+        &before_err,
+    )?;
+    assert!(before.status.success(), "before phase failed: {before:?}");
+    let before_stderr = std::fs::read_to_string(&before_err)?;
+    assert!(
+        before_stderr.contains(GUIDANCE),
+        "the before phase must warn against redirecting into the checkout:\n{before_stderr}"
+    );
+    assert!(
+        std::fs::read_to_string(&packet)?.contains(BOUNDARY_GAP_SEAM_ID),
+        "precondition: the packet was redirected into the checkout"
+    );
+    let (attempt_id, _) = sole_repair_attempt(&root)?;
+    add_boundary_test(&root)?;
+    let after = run_repair_phase(&root, &["--attempt", &attempt_id], "after")?;
+    assert_failure(&after);
+    let (_, manifest) = sole_repair_attempt(&root)?;
+    assert_eq!(
+        manifest["after"]["verdict"]["status"], "violated",
+        "{manifest}"
+    );
+    let stderr = String::from_utf8_lossy(&after.stderr);
+    assert!(stderr.contains("ripr:   before.err ("), "{stderr}");
+    assert!(
+        stderr.contains(&format!("`before.err` was {HINT}")),
+        "the refusal must name the redirect file and how to avoid it:\n{stderr}"
+    );
+    std::fs::remove_dir_all(root)?;
+
+    // The guided shape, alone and with a real production edit alongside.
+    for edit_source in [false, true] {
+        let root = built_repair_fixture("agent-repair-redirect-guided")?;
+        std::fs::create_dir_all(root.join("target/ripr"))?;
+        let before = run_repair_phase_redirected(
+            &root,
+            &["--seam-id", BOUNDARY_GAP_SEAM_ID],
+            "before",
+            &root.join("target/ripr/packet.json"),
+            &root.join("target/ripr/before.err"),
+        )?;
+        assert!(before.status.success(), "before phase failed: {before:?}");
+        let (attempt_id, _) = sole_repair_attempt(&root)?;
+        add_boundary_test(&root)?;
+        if edit_source {
+            let path = root.join("src/lib.rs");
+            let mut text = std::fs::read_to_string(&path)?;
+            text.push_str("// out-of-cage edit\n");
+            std::fs::write(path, text)?;
+        }
+        let after = run_repair_phase(&root, &["--attempt", &attempt_id], "after")?;
+        let (_, manifest) = sole_repair_attempt(&root)?;
+        let stderr = String::from_utf8_lossy(&after.stderr);
+        if edit_source {
+            assert_failure(&after);
+            assert_eq!(
+                manifest["after"]["verdict"]["status"], "violated",
+                "{manifest}"
+            );
+            assert!(
+                stderr.contains("ripr:   src/lib.rs (OutsideAllowedSurface)"),
+                "{stderr}"
+            );
+            assert!(
+                !stderr.contains(HINT),
+                "a tracked source edit is not a redirect file:\n{stderr}"
+            );
+        } else {
+            assert_success(&after);
+            assert_eq!(
+                manifest["after"]["verdict"]["status"], "compliant",
+                "{manifest}"
+            );
+        }
         std::fs::remove_dir_all(root)?;
     }
     Ok(())
@@ -9392,6 +9533,90 @@ fn pilot_language_fixture_repo(
     run_git(&root, &["add", "."])?;
     run_git(&root, &["commit", "-m", "change"])?;
     Ok(root)
+}
+
+/// #4216 row 1: the onboarding re-walk's `pyapp` shape. A named module
+/// constant threshold leaves the boundary operand unresolved, so the Python
+/// preview finding is weakly exposed with no repair card. `check` used to
+/// tell the operator to "complete the missing repair-packet fields", which
+/// they cannot do, while pilot, first-pr and status each pointed at another
+/// command. The safe next action must name why no route exists and the
+/// manual step that is left, with no route back into pilot.
+fn python_check_safe_action(
+    label: &str,
+    source_base: &str,
+    change_from: &str,
+    change_to: &str,
+    test_source: &str,
+) -> Result<String, String> {
+    let root = pilot_language_fixture_repo(
+        label,
+        &[
+            (
+                "pyproject.toml",
+                "[project]\nname = \"py-safe-action\"\nversion = \"0.0.0\"\n",
+            ),
+            ("pricing/__init__.py", source_base),
+            ("tests/test_pricing.py", test_source),
+        ],
+        (
+            "pricing/__init__.py",
+            &source_base.replace(change_from, change_to),
+        ),
+    )?;
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root.display().to_string(),
+        "--base",
+        "origin/main",
+    ]);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let line = stdout
+        .lines()
+        .find(|line| line.starts_with("  Safe next action:"))
+        .ok_or_else(|| format!("check printed no safe next action:\n{stdout}"))?;
+    assert!(
+        stdout.contains("State: preview_limited"),
+        "expected preview_limited triage:\n{stdout}"
+    );
+    Ok(line.to_string())
+}
+
+#[test]
+fn check_python_finding_without_repair_card_names_the_terminal_manual_step() -> Result<(), String> {
+    let line = python_check_safe_action(
+        "check-py-no-card",
+        "DISCOUNT_THRESHOLD = 10_000\n\n\ndef discounted_total(amount: int) -> int:\n    if amount > DISCOUNT_THRESHOLD:\n        return amount - amount // 10\n    return amount\n",
+        "amount > DISCOUNT_THRESHOLD",
+        "amount >= DISCOUNT_THRESHOLD",
+        "from pricing import discounted_total\n\n\ndef test_no_discount_below_threshold():\n    assert discounted_total(5_000) == 5_000\n\n\ndef test_discount_far_above_threshold():\n    assert discounted_total(20_000) == 18_000\n",
+    )?;
+    assert_eq!(
+        line,
+        "  Safe next action: this Python preview finding has no repair card (static evidence names no concrete missing discriminator), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`."
+    );
+    Ok(())
+}
+
+// Discriminating control: a Python finding that DOES carry a repair card is
+// routed by that card, so it must not get the no-card terminal line.
+#[test]
+fn check_python_finding_with_repair_card_points_at_the_card() -> Result<(), String> {
+    let line = python_check_safe_action(
+        "check-py-card",
+        "def calculate_discount(amount, threshold):\n    if amount > threshold:\n        return amount - 10\n    return amount\n",
+        "amount > threshold",
+        "amount >= threshold",
+        "from pricing import calculate_discount\n\n\ndef test_calculate_discount_smoke():\n    result = calculate_discount(125, 100)\n    assert result\n",
+    )?;
+    assert_eq!(
+        line,
+        "  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it."
+    );
+    Ok(())
 }
 
 /// Run `ripr pilot` and return (stdout, pilot-summary.md, pilot-summary.json,

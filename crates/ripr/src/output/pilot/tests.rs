@@ -341,14 +341,23 @@ fn pilot_summary_md_spells_out_first_screen_recommendation() {
         "## Top Recommendation",
         "- Inspected seam:",
         "- Why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
-        "- Focused test: not applicable (route limited: producer-owned route readiness is not eligible for a repair target)",
+        "- Focused test: none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here",
         "Target seam:",
         "Target placement blocked:",
+        "## Ranked Seams\n\nNone of these seams can start a repair attempt (`ripr agent repair`); they are ranked for inspection by hand.",
         "## Next Commands",
+        "No repair attempt is available for the top seam. Next, add a test for `pricing::discounted_total` in the crate that owns src/pricing.rs, then rerun repo exposure and compare the snapshots:",
         "ripr outcome --before target/ripr/pilot/repo-exposure.json",
     ] {
         assert!(md.contains(needle), "missing markdown needle: {needle}");
     }
+    // #4216 row 3: a list with no repair start is not headed "actionable",
+    // and the producer's route-readiness jargon stays in the JSON packets.
+    assert!(!md.contains("## Ranked Actionable Seams"), "{md}");
+    assert!(
+        !md.contains("- Focused test: not applicable (route limited"),
+        "{md}"
+    );
 }
 
 /// The bash fence content is pinned byte-for-byte: adding the PowerShell
@@ -436,13 +445,13 @@ fn pilot_terminal_prints_top_test_and_follow_up_commands() {
         "Top recommendation:",
         "inspected seam:",
         "why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
-        "focused test: not applicable (route limited: producer-owned route readiness is not eligible for a repair target)",
+        "focused test: none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here",
         "assertion: not_applicable",
         "Detailed brief:",
         "target/ripr/pilot/pilot-summary.md",
         "Structured packet:",
         "target/ripr/pilot/agent-seam-packets.json",
-        "Run after producer evidence makes a repair route actionable:",
+        "Next, by hand: add a test for `pricing::discounted_total` in the crate that owns src/pricing.rs, then compare against this run:",
         "ripr outcome --before target/ripr/pilot/repo-exposure.json",
     ] {
         assert!(
@@ -460,6 +469,11 @@ fn pilot_terminal_prints_top_test_and_follow_up_commands() {
     // A route-limited seam keeps the snapshot comparison: the repair
     // transaction has no target here (#3906).
     assert!(!terminal.contains("Next, in order:"), "{terminal}");
+    // #4216 row 3: no producer jargon and no wait on "producer evidence" the
+    // user cannot supply; the next step is a test the user writes.
+    assert!(!terminal.contains("route limited"), "{terminal}");
+    assert!(!terminal.contains("producer"), "{terminal}");
+    assert!(!terminal.contains("ripr pilot"), "{terminal}");
 
     // The id leads the line, so the next documented step
     // (`ripr agent repair --seam-id <id>`) is reachable from the screen alone.

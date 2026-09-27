@@ -163,9 +163,19 @@ completeness, with the shared repair-packet validator as the only authority:
   must resolve the limitation and rerun preview evidence before acting.
   Without a structured static-limit kind the line stays generic rather than
   inventing a limitation the analysis did not name.
-- Otherwise — missing packet fields, or a preview language without a
-  structured repair-packet projection — the action directs the operator to
-  complete the missing repair-packet fields before acting.
+- Otherwise, for a preview language with a structured repair-packet
+  projection, the action directs the operator to complete the missing
+  repair-packet fields before acting.
+- Python has no structured repair-packet projection; the Python repair card
+  (`output/python_repair_card.rs`) is the authority on whether a Python
+  finding carries a repair route (#4216). An `exposed` finding says there is
+  no repair to make. A finding with a card points at its suggested test and
+  verify command. A finding without a card is terminal: the action names why
+  no card exists (a named static limitation, no Python test reaching the
+  code, or no concrete missing discriminator), states that `ripr pilot`,
+  `ripr agent repair` and `ripr first-pr` will not route it, and names the
+  manual step before rerunning `ripr check`. It never asks the operator to
+  complete fields they cannot supply.
 
 ### Exhaustive human output
 
@@ -243,6 +253,9 @@ inputs where present.
 - `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_names_complete_but_advisory_packet`
 - `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_names_limitation_block_when_no_fields_missing`
 - `crates/ripr/src/output/human.rs::tests::preview_limited_safe_action_keeps_missing_fields_line_without_static_limit_kind`
+- `crates/ripr/src/output/human.rs::tests::preview_limited_python_no_static_path_names_untested_code`
+- `crates/ripr/tests/cli_smoke.rs::check_python_finding_without_repair_card_names_the_terminal_manual_step`
+- `crates/ripr/tests/cli_smoke.rs::check_python_finding_with_repair_card_points_at_the_card`
 - `crates/ripr/src/output/human.rs::tests::human_full_preserves_legacy_all_findings_output`
 - `crates/ripr/src/output/format.rs::tests::parses_human_full_aliases`
 - `crates/ripr/src/output/format.rs::tests::human_full_is_not_repo_scope`

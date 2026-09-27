@@ -3,6 +3,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command, display_path,
 };
+use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::canonical_gap_identity;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::Mode;
@@ -16,9 +17,9 @@ use crate::output::agent_seam_packets;
 use crate::output::agent_seam_packets::missing_discriminator_records_for as missing_records_for;
 use crate::output::evidence_record::{
     CROSS_LANGUAGE_TARGET_UNRESOLVED_CATEGORY, CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE,
-    EvidenceRecordStaticLimitation, actionability_for, canonical_receipt_command_for,
-    canonical_repair_command_for, cross_language_test_target_unresolved, gap_state_for,
-    static_limitations_for,
+    EvidenceRecordStaticLimitation, NO_TEST_REACHES_OWNER_CATEGORY, actionability_for,
+    canonical_receipt_command_for, canonical_repair_command_for,
+    cross_language_test_target_unresolved, gap_state_for, static_limitations_for,
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
 #[cfg(test)]
@@ -870,7 +871,12 @@ fn review_recommendation_json(
         })
     } else if gap_state == "static_limitation" {
         json!({
-            "prompt": limitation_prompt_for(static_limitations.first()),
+            "prompt": match static_limitations.first() {
+                Some(limitation) if limitation.category == NO_TEST_REACHES_OWNER_CATEGORY => {
+                    no_test_reaches_owner_prompt(root, entry)
+                }
+                limitation => limitation_prompt_for(limitation),
+            },
             "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
         })
     } else {
@@ -1247,6 +1253,53 @@ fn limitation_prompt_for(limitation: Option<&EvidenceRecordStaticLimitation>) ->
         ),
         None => "Do not write a repair test or infer an edit surface from this finding. The producer-owned repair route is incomplete; inspect the evidence before taking action.".to_string(),
     }
+}
+
+/// Plain wording for a changed owner no existing test reaches (#4216 row 2):
+/// a test gap in the change, not an analyzer limitation. It names no repair
+/// target; the producer-owned route stays incomplete and fail-closed.
+fn no_test_reaches_owner_prompt(root: &Path, entry: &ClassifiedSeam) -> String {
+    let seam = &entry.seam;
+    let placement = match integration_test_files_for(root, seam.file()).as_slice() {
+        [only] => format!(
+            " A new test for it would usually go in `{only}`, the crate's integration test file."
+        ),
+        [] => String::new(),
+        _ => " A new test for it would usually go in one of the crate's integration test files under `tests/`.".to_string(),
+    };
+    format!(
+        "No existing test reaches `{owner}`: static evidence finds no test path to this changed owner (`no_static_path`), so static evidence shows no current test checking the changed behavior `{expression}`. This is a test gap in the change, not a RIPR analysis limitation. RIPR does not propose a target for a first test, so no repair route, verify command, or receipt is offered.{placement}",
+        owner = seam.owner(),
+        expression = seam.expression(),
+    )
+}
+
+/// Top-level `tests/*.rs` files of the Cargo package owning `source_file`
+/// (workspace-relative, sorted). Navigation text only, never a repair target.
+fn integration_test_files_for(root: &Path, source_file: &Path) -> Vec<String> {
+    let mut package_dir = source_file.parent();
+    while let Some(dir) = package_dir {
+        if root.join(dir).join("Cargo.toml").is_file() {
+            break;
+        }
+        package_dir = dir.parent();
+    }
+    let Some(package_dir) = package_dir else {
+        return Vec::new();
+    };
+    let tests_dir = package_dir.join("tests");
+    let Ok(read_dir) = std::fs::read_dir(root.join(&tests_dir)) else {
+        return Vec::new();
+    };
+    let mut files = read_dir
+        .filter_map(Result::ok)
+        .filter(|item| item.file_type().is_ok_and(|kind| kind.is_file()))
+        .map(|item| item.file_name().to_string_lossy().to_string())
+        .filter(|name| name.ends_with(".rs"))
+        .map(|name| display_path(&tests_dir.join(name)))
+        .collect::<Vec<_>>();
+    files.sort();
+    files
 }
 
 fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Value>) {
@@ -1660,6 +1713,113 @@ mod tests {
             &selection(seams),
         )?;
         serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    /// A new public owner that no existing test reaches, as in a PR that adds
+    /// a `pub fn` that no test calls, next to a crate integration test file.
+    fn unreached_new_owner_classified() -> ClassifiedSeam {
+        let mut entry = classified_in_owner(29, "src/lib.rs::loyalty_price");
+        let seam = RepoSeam::new(
+            "src/lib.rs",
+            "src/lib.rs::loyalty_price",
+            SeamKind::PredicateBoundary,
+            290,
+            29,
+            "member_years >= 5",
+            RequiredDiscriminator::BoundaryValue {
+                description: "5".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        entry.evidence.seam_id = seam.id().clone();
+        entry.seam = seam;
+        entry.class = SeamGripClass::Ungripped;
+        entry.evidence.related_tests.clear();
+        entry.evidence.reach = stage(StageState::No);
+        entry.evidence.activate = stage(StageState::No);
+        entry.evidence.propagate = stage(StageState::Yes);
+        entry.evidence.observe = stage(StageState::No);
+        entry.evidence.discriminate = stage(StageState::No);
+        entry.evidence.missing_discriminators.clear();
+        entry
+    }
+
+    fn render_unreached_owner_card(with_integration_test: bool) -> Result<Value, String> {
+        let root = std::env::temp_dir().join(format!(
+            "ripr-review-unreached-owner-{with_integration_test}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| format!("clock: {err}"))?
+                .as_nanos()
+        ));
+        let write = |relative: &str, text: &str| -> Result<(), String> {
+            let path = root.join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {}: {err}", parent.display()))?;
+            }
+            fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+        };
+        write("Cargo.toml", "[package]\nname = \"pricing\"\n")?;
+        write("src/lib.rs", "pub fn loyalty_price() {}\n")?;
+        if with_integration_test {
+            write("tests/pricing.rs", "use pricing::*;\n")?;
+        }
+        let seams = [unreached_new_owner_classified()];
+        let working_set =
+            AgentBriefResolvedWorkingSet::base("main", vec![AgentBriefLine::new("src/lib.rs", 29)]);
+        let rendered = render_review_comments_json(
+            &root,
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &RiprConfig::default(),
+            &working_set,
+            &selection(&seams),
+        );
+        let _ = fs::remove_dir_all(&root);
+        serde_json::from_str(&rendered?).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    #[test]
+    fn unreached_new_owner_is_a_test_gap_not_a_ripr_limitation() -> Result<(), String> {
+        let value = render_unreached_owner_card(true)?;
+        let card = &value["comments"][0];
+        assert_eq!(card["owner"], "src/lib.rs::loyalty_price");
+        // Actionability does not flip: no producer-owned target exists.
+        assert_eq!(card["gap_state"], "static_limitation");
+        assert_eq!(card["suggested_test"]["recommended_file"], "not_applicable");
+        assert_eq!(card["receipt_command"], Value::Null);
+        let prompt = card["llm_guidance"]["prompt"]
+            .as_str()
+            .ok_or("missing prompt")?;
+        assert!(
+            prompt.starts_with("No existing test reaches `src/lib.rs::loyalty_price`"),
+            "{prompt}"
+        );
+        assert!(
+            prompt.contains("not a RIPR analysis limitation"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("no repair route"), "{prompt}");
+        assert!(
+            prompt.contains("would usually go in `tests/pricing.rs`"),
+            "{prompt}"
+        );
+        assert!(!prompt.contains("Do not write a repair test"), "{prompt}");
+        assert!(
+            !prompt.contains("test_target_provenance_unresolved"),
+            "{prompt}"
+        );
+
+        let without_tests = render_unreached_owner_card(false)?;
+        let prompt = without_tests["comments"][0]["llm_guidance"]["prompt"]
+            .as_str()
+            .ok_or("missing prompt")?;
+        assert!(prompt.starts_with("No existing test reaches"), "{prompt}");
+        assert!(!prompt.contains("tests/"), "{prompt}");
+        Ok(())
     }
 
     fn render_value_with_selection(

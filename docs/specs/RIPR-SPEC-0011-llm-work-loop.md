@@ -363,10 +363,15 @@ after phase applies) and selects `next_command` in this order:
    nothing and warn `multiple_open_repair_seams`, listing each start command.
 6. **Legacy loop.** Otherwise the first missing artifact's command, with two
    refusals. With no known seam the next command is `ripr pilot --root
-   <root>` (step `select_seam`), never a `<seam-id>` placeholder. When the
-   first missing artifact's directory does not exist and the seam is known,
-   the next command starts a repair attempt, which writes the workflow
-   artifacts itself, instead of redirecting into the missing directory.
+   <root>` (step `select_seam`), never a `<seam-id>` placeholder, except
+   that a complete pilot summary whose top seam recorded no repair start
+   (`next.repair_command: null`) selects nothing and warns
+   `pilot_found_no_repair_target`: rerunning pilot would rank the same seam
+   again, so the warning names the hand step (a test in the seam's own
+   crate) instead. When the first missing artifact's directory does not
+   exist and the seam is known, the next command starts a repair attempt,
+   which writes the workflow artifacts itself, instead of redirecting into
+   the missing directory.
 
 `status` is `incomplete` whenever a next command is selected. The JSON report
 adds `repair_attempts` (`attempt_id`, `seam_id`, `state`, `head_current`,

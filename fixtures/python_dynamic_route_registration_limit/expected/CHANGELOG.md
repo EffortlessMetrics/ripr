@@ -360,3 +360,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_dynamic_route_registration_limit (5)
+
+Reason:
+RIPR-SPEC-0122: #4216 row 1, the Python preview_limited safe next action names why no ripr command routes the finding instead of asking for repair-packet fields the operator cannot complete
+
+Command:
+`cargo xtask goldens bless python_dynamic_route_registration_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

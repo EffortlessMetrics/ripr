@@ -768,6 +768,7 @@ fn gap_records_from_check_output_json(contents: &str) -> Result<Vec<GapRecord>, 
             }
             let Some(mut record) = gap_record_from_python_repair_finding(finding, index)
                 .or_else(|| gap_record_from_typescript_repair_finding(finding, index))
+                .or_else(|| gap_record_from_typescript_not_delegatable_finding(finding, index))
                 .or_else(|| gap_record_from_python_static_limit_finding(finding, index))
                 .or_else(|| gap_record_from_python_no_action_finding(finding, index))
                 .or_else(|| gap_record_from_perl_preview_finding(finding, index))
@@ -1358,6 +1359,149 @@ fn gap_record_from_typescript_repair_finding(finding: &Value, index: usize) -> O
         authority_boundary: string_at(packet, &["authority_boundary"])
             .unwrap_or("preview_advisory_only")
             .to_string(),
+    })
+}
+
+/// A TypeScript preview finding whose repair packet the shared validator kept
+/// closed (#4224). `check` emits `typescript_repair_packet` only for a ready
+/// packet, so without this record the ledger stayed empty, reported
+/// `blocked`, and first-pr looped on "refresh the evidence".
+///
+/// Readiness and the reason are read from `preview_actionability`, which is
+/// the JSON projection of `preview_actionability_for` (the only flip
+/// authority). This path never promotes: it requires
+/// `repair_packet_ready == false`, emits no repair route, verify command or
+/// receipt, and is shaped like the Python static-limit record so every
+/// authority projection (agent packet, PR comment, gate, badge) stays off.
+fn gap_record_from_typescript_not_delegatable_finding(
+    finding: &Value,
+    index: usize,
+) -> Option<GapRecord> {
+    if string_at(finding, &["language"]) != Some("typescript")
+        || finding.get("typescript_repair_packet").is_some()
+    {
+        return None;
+    }
+    let actionability = finding.get("preview_actionability")?;
+    if actionability
+        .get("repair_packet_ready")
+        .and_then(Value::as_bool)
+        != Some(false)
+    {
+        return None;
+    }
+    // Only a weakly exposed finding is a gap whose repair packet failed
+    // closed. An exposed finding has nothing to repair, and a no-path finding
+    // is a test gap rather than an analyzer limitation; neither may be framed
+    // as a not-delegatable static limitation (#4226 review).
+    if string_at(finding, &["classification"]) != Some("weakly_exposed")
+        || string_at(actionability, &["gap_state"]) == Some("already_observed")
+    {
+        return None;
+    }
+    let reason = string_at(actionability, &["why_not_actionable"]).and_then(non_empty)?;
+    let category =
+        string_at(actionability, &["actionability_category"]).unwrap_or("incomplete_repair_packet");
+    let behavior_kind = string_at(finding, &["typescript_preview_card", "probe_family"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .unwrap_or("typescript_preview");
+    let source_file = string_at(finding, &["probe", "file"]).map(ToString::to_string);
+    let source_line = u64_at(finding, &["probe", "line"]);
+    let changed_owner = string_at(finding, &["typescript_preview_card", "owner"])
+        .or_else(|| string_at(finding, &["probe", "owner"]))
+        .map(ToString::to_string);
+    let static_limit_kind = "typescript_repair_packet_not_delegatable";
+    let canonical_gap_id = string_at(finding, &["canonical_gap_id"])
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            let file = source_file
+                .as_deref()
+                .map(|file| file.replace('\\', "/"))
+                .filter(|file| !file.trim().is_empty())
+                .unwrap_or_else(|| format!("check-output-item-{index}"));
+            let owner = changed_owner
+                .as_deref()
+                .and_then(non_empty)
+                .map(python_static_limit_gap_component)
+                .unwrap_or_else(|| "module".to_string());
+            format!(
+                "gap:typescript:{file}:{owner}:not_delegatable:{}",
+                python_static_limit_gap_component(behavior_kind)
+            )
+        });
+    let mut static_limits = vec![serde_json::json!({
+        "kind": category,
+        "detail": reason,
+    })];
+    let discriminator = string_at(
+        finding,
+        &["typescript_preview_card", "missing_discriminator"],
+    )
+    .or_else(|| first_missing_discriminator_value(finding))
+    .and_then(non_empty);
+    let shape = string_at(
+        finding,
+        &["typescript_preview_card", "suggested_assertion_shape"],
+    )
+    .and_then(non_empty)
+    .map(ToString::to_string)
+    .or_else(|| discriminator.map(|d| format!("an exact assertion for `{d}`")));
+    if let Some(shape) = shape {
+        static_limits.push(serde_json::json!({
+            "kind": "not_delegatable_target_shape",
+            "detail": shape,
+        }));
+    }
+    let has_local_anchor = source_file.is_some() && source_line.is_some();
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    Some(GapRecord {
+        source_currentness: None,
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        seam_id: None,
+        kind: "StaticLimitation".to_string(),
+        language: "typescript".to_string(),
+        language_status: string_at(finding, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: category.to_string(),
+        gap_state: "static_limitation".to_string(),
+        policy_state: "not_policy_targeted".to_string(),
+        repairability: "analyzer_limitation".to_string(),
+        repair_route: None,
+        static_limit_kind: Some(static_limit_kind.to_string()),
+        static_limit_detail: Some(reason.to_string()),
+        static_limits,
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility: projection_eligibility_from_pr_evidence(
+            "analyzer_limitation",
+            false,
+            false,
+            has_local_anchor,
+            "static_limitation",
+        ),
+        verification_commands: Vec::new(),
+        command_specs: None,
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "preview_advisory_only".to_string(),
     })
 }
 
@@ -4215,6 +4359,157 @@ mod tests {
         assert!(record.receipt_command.is_none());
         assert!(!projection_eligible(record, "agent_packet"));
         assert_eq!(report.summary.projection_agent_packet_eligible, 0);
+        Ok(())
+    }
+
+    /// Real `check --json` output for a TypeScript finding whose repair packet
+    /// the shared validator failed closed (#4105 unreachable boundary input).
+    fn typescript_fail_closed_packet_check_output() -> String {
+        include_str!(
+            "../../../../fixtures/ts_repair_packet_boundary_unreachable/expected/check.json"
+        )
+        .to_string()
+    }
+
+    fn check_output_ledger(records_json: String) -> GapDecisionLedgerReport {
+        build_gap_decision_ledger_report(GapDecisionLedgerInput {
+            root: ".".to_string(),
+            generated_at: "test".to_string(),
+            source_kind: GapDecisionLedgerSourceKind::CheckOutput,
+            records_path: "check.json".to_string(),
+            records_json: Ok(records_json),
+        })
+    }
+
+    #[test]
+    fn check_output_typescript_fail_closed_packet_becomes_non_delegatable_static_limit()
+    -> Result<(), String> {
+        let payload = typescript_fail_closed_packet_check_output();
+        // Fixture premise: the validator kept the packet closed and check
+        // emitted no packet.
+        let value: Value = serde_json::from_str(&payload)
+            .map_err(|error| format!("parse fixture check output: {error}"))?;
+        let finding = &value["findings"][0];
+        assert_eq!(finding["language"], "typescript");
+        assert!(finding.get("typescript_repair_packet").is_none());
+        assert_eq!(
+            finding["preview_actionability"]["repair_packet_ready"],
+            false
+        );
+
+        let report = check_output_ledger(payload);
+        assert_eq!(report.status, "advisory", "{:?}", report.warnings);
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        assert_eq!(report.records.len(), 1);
+        let record = &report.records[0];
+        assert_eq!(record.kind, "StaticLimitation");
+        assert_eq!(record.language, "typescript");
+        assert_eq!(record.scope, "pr_local");
+        assert_eq!(record.gap_state, "static_limitation");
+        assert_eq!(record.repairability, "analyzer_limitation");
+        assert_eq!(
+            record.static_limit_kind.as_deref(),
+            Some("typescript_repair_packet_not_delegatable")
+        );
+        // The reason is the shared validator's projection, carried verbatim.
+        assert_eq!(
+            record.static_limit_detail.as_deref(),
+            finding["preview_actionability"]["why_not_actionable"].as_str()
+        );
+        assert!(record.static_limit_detail.as_deref().is_some_and(|detail| detail
+            .contains("validator: is not agent-packet eligible: observed call input `login('alice')` does not reach the missing discriminator `user.length == 3`")));
+        assert!(record.static_limits.iter().any(|limit| {
+            limit["kind"] == "not_delegatable_target_shape"
+                && limit["detail"] == "Add an exact boundary assertion for `user.length == 3`."
+        }));
+        assert_eq!(
+            record
+                .anchor
+                .as_ref()
+                .and_then(|anchor| anchor.file.as_deref()),
+            Some("src/auth.ts")
+        );
+        assert_eq!(report.summary.static_limitation_total, 1);
+        Ok(())
+    }
+
+    // #4226 review: an exposed TypeScript finding also carries
+    // `repair_packet_ready: false`, but it has nothing to repair; it must not
+    // become a not-delegatable static limitation.
+    #[test]
+    fn check_output_typescript_exposed_finding_is_not_a_static_limitation() {
+        let check = include_str!(
+            "../../../../fixtures/ts_predicate_boundary_optional_chaining/expected/check.json"
+        );
+        assert!(check.contains("\"already_observed\""));
+        let report = check_output_ledger(check.to_string());
+        assert!(
+            report
+                .records
+                .iter()
+                .all(|record| record.static_limit_kind.as_deref()
+                    != Some("typescript_repair_packet_not_delegatable")),
+            "{:?}",
+            report.records
+        );
+    }
+
+    #[test]
+    fn check_output_typescript_fail_closed_packet_is_never_delegatable() -> Result<(), String> {
+        let report = check_output_ledger(typescript_fail_closed_packet_check_output());
+        let record = report
+            .records
+            .first()
+            .ok_or_else(|| "fail-closed TypeScript finding produced no record".to_string())?;
+        assert!(record.repair_route.is_none());
+        assert!(record.verification_commands.is_empty());
+        assert!(record.receipt_command.is_none());
+        assert!(record.safe_gate_predicate.is_none());
+        for projection in [
+            "agent_packet",
+            "pr_comment",
+            "gate_candidate",
+            "lsp_diagnostic",
+            "ripr_zero_count",
+            "ripr_plus_count",
+        ] {
+            assert!(
+                !projection_eligible(record, projection),
+                "{projection} must stay ineligible"
+            );
+        }
+        assert!(
+            crate::output::agent_seam_packets::validate_agent_gap_record_packet(record).is_err(),
+            "the shared validator must reject the non-delegatable record"
+        );
+        assert_eq!(report.summary.projection_agent_packet_eligible, 0);
+        assert_eq!(report.summary.projection_gate_candidate, 0);
+
+        // This path reads readiness only from the validator's projection: a
+        // finding that claims readiness without a packet, or carries no
+        // readiness at all, gets no record here (and so no promotion).
+        for ready in [Some(Value::Bool(true)), None] {
+            let mut payload: Value =
+                serde_json::from_str(&typescript_fail_closed_packet_check_output())
+                    .map_err(|error| format!("parse fixture check output: {error}"))?;
+            let actionability = payload["findings"][0]["preview_actionability"]
+                .as_object_mut()
+                .ok_or_else(|| "preview_actionability missing".to_string())?;
+            match ready {
+                Some(value) => {
+                    actionability.insert("repair_packet_ready".to_string(), value);
+                }
+                None => {
+                    actionability.remove("repair_packet_ready");
+                }
+            }
+            let report = check_output_ledger(payload.to_string());
+            assert!(
+                report.records.is_empty(),
+                "no packet and repair_packet_ready != false must not form a record: {:?}",
+                report.records
+            );
+        }
         Ok(())
     }
 

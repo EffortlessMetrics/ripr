@@ -1241,6 +1241,9 @@ fn repair_after_cage_recovery_lines(
                 violations.len() - CAGE_RECOVERY_MAX_VIOLATIONS
             ));
         }
+        if let Some(line) = redirected_output_hint(root, after) {
+            lines.push(line);
+        }
     }
     let root_arg = shell_arg(&display_path(root));
     let seam_arg = shell_arg(seam_id);
@@ -1258,6 +1261,45 @@ fn repair_after_cage_recovery_lines(
         "to recover: {uncommit}undo the refused changes, set your test edit aside (for example `git stash`), run `ripr agent repair --root {root_arg} --seam-id {seam_arg} --phase before` while the gap still exists, restore the test edit (`git stash pop`), then run the new --attempt command it prints."
     ));
     lines
+}
+
+/// Names the refused out-of-surface paths that Git did not track when the
+/// before phase captured its baseline, the shape a shell redirect of ripr's
+/// own output into the checkout (`> packet.json`, `2> before.err`) leaves.
+/// The cage cannot tell such a file from an authored one: the shell creates
+/// it before ripr starts and ripr keeps writing it after the baseline, so it
+/// stays refused. This is narration only; the verdict is unchanged, and a
+/// baseline that cannot be read yields no hint.
+fn redirected_output_hint(
+    root: &Path,
+    after: &crate::app::repair_attempt::RepairAttemptAfter,
+) -> Option<String> {
+    use crate::edit_cage::EditCageViolationKind;
+
+    let baseline =
+        crate::app::repair_attempt::load_edit_cage_baseline(root, &after.attempt_id).ok()?;
+    let untracked = after
+        .verdict
+        .violations
+        .iter()
+        .filter(|violation| violation.kind == EditCageViolationKind::OutsideAllowedSurface)
+        .filter(|violation| baseline.index_entry(&violation.path).is_none())
+        .take(CAGE_RECOVERY_MAX_VIOLATIONS)
+        .map(|violation| format!("`{}`", violation.path))
+        .collect::<Vec<_>>();
+    if untracked.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{} {} not tracked by Git when the before phase ran. If {} a file you redirected ripr output into (for example `> packet.json` or `2> before.err`), the edit cage counts it as an edit: delete it, and redirect `agent repair` output outside the checkout or under target/ripr/ (the before phase already writes the packet to target/ripr/workflow/agent-packet.json).",
+        untracked.join(", "),
+        if untracked.len() == 1 { "was" } else { "were" },
+        if untracked.len() == 1 {
+            "it is"
+        } else {
+            "one is"
+        }
+    ))
 }
 
 /// Recovery narration for an after phase refused because the analysis input

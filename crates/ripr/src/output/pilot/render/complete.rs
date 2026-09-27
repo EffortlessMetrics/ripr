@@ -1,5 +1,6 @@
 use super::render_helpers::{
-    push_markdown_recommendation, push_path_field, push_top_seam_json, yes_no,
+    NO_REPAIR_TARGET_FOCUSED_TEST, no_repair_target_hand_step, push_markdown_recommendation,
+    push_path_field, push_top_seam_json, yes_no,
 };
 use super::why_line;
 use crate::analysis::ClassifiedSeam;
@@ -197,7 +198,20 @@ pub(crate) fn render_pilot_summary_md(
         push_markdown_recommendation(&mut out, top[0]);
         out.push('\n');
 
-        out.push_str("## Ranked Actionable Seams\n\n");
+        // A ranked seam is a gap worth reading, not a repair offer. When none
+        // of them can start `ripr agent repair`, the heading must not call
+        // them actionable (#4216 row 3).
+        if top
+            .iter()
+            .any(|entry| repair_start_command(context.root, entry).is_some())
+        {
+            out.push_str("## Ranked Actionable Seams\n\n");
+        } else {
+            out.push_str("## Ranked Seams\n\n");
+            out.push_str(
+                "None of these seams can start a repair attempt (`ripr agent repair`); they are ranked for inspection by hand.\n\n",
+            );
+        }
         for (idx, entry) in top.iter().enumerate() {
             out.push_str(&format!(
                 "{}. `{}` `{}` {}:{} `{}`\n",
@@ -277,9 +291,20 @@ pub(crate) fn render_pilot_summary_md(
             commands
         }
         (None, None) => {
-            out.push_str(
-                "After adding one focused test, rerun repo exposure and compare the snapshots:\n\n",
-            );
+            match top.first() {
+                Some(entry)
+                    if targeted_test_brief_outline_for_classified_seam(entry)
+                        .is_not_applicable() =>
+                {
+                    out.push_str(&format!(
+                        "No repair attempt is available for the top seam. Next, {}, then rerun repo exposure and compare the snapshots:\n\n",
+                        no_repair_target_hand_step(entry)
+                    ));
+                }
+                _ => out.push_str(
+                    "After adding one focused test, rerun repo exposure and compare the snapshots:\n\n",
+                ),
+            }
             vec![&commands.after_snapshot, &commands.outcome]
         }
     };
@@ -343,7 +368,7 @@ pub(crate) fn render_pilot_terminal(
     out.push_str(&format!("  timeout: {} ms\n", context.timeout_ms));
     out.push('\n');
 
-    let route_not_applicable = if let Some(entry) = top.first() {
+    let no_repair_target = if let Some(entry) = top.first() {
         let outline = targeted_test_brief_outline_for_classified_seam(entry);
         out.push_str("Top recommendation:\n");
         // The id leads the line, as it does in the Markdown sibling
@@ -364,8 +389,7 @@ pub(crate) fn render_pilot_terminal(
         out.push_str(&format!("  why it matters: {}\n", why_line(entry)));
         if outline.is_not_applicable() {
             out.push_str(&format!(
-                "  focused test: not applicable (route limited: {})\n",
-                outline.suggested_reason
+                "  focused test: {NO_REPAIR_TARGET_FOCUSED_TEST}\n"
             ));
         } else {
             out.push_str(&format!(
@@ -431,6 +455,9 @@ pub(crate) fn render_pilot_terminal(
         out.push_str(&format!("  1. {command}\n"));
         out.push_str("  2. add the focused test named above (test files only)\n");
         out.push_str("  3. run the `--attempt ... --phase after` command that step 1 prints\n");
+        out.push_str(
+            "  (do not redirect these commands' output into the checkout, for example `> packet.json`: the edit cage counts that file as an edit; use target/ripr/ or a directory outside the repository)\n",
+        );
         return out;
     }
     if let Some(routes) = routes {
@@ -446,8 +473,11 @@ pub(crate) fn render_pilot_terminal(
         }
         return out;
     }
-    if route_not_applicable {
-        out.push_str("Run after producer evidence makes a repair route actionable:\n");
+    if let Some(entry) = top.first().filter(|_| no_repair_target) {
+        out.push_str(&format!(
+            "Next, by hand: {}, then compare against this run:\n",
+            no_repair_target_hand_step(entry)
+        ));
     } else {
         out.push_str("Run after adding the focused test:\n");
     }

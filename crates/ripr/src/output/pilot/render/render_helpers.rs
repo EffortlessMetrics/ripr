@@ -7,6 +7,24 @@ use crate::output::json::escape as json_escape;
 use crate::output::path::{display_path, display_path_text};
 use std::path::Path;
 
+/// Human text for a top seam with no repair target. The typed producer reason
+/// (`recommended_test.reason`) stays in the JSON packets; people reading the
+/// terminal or the brief get what it means for them instead (#4216 row 3).
+/// `ripr agent repair` needs a test in the seam's own package, so a test that
+/// reaches the seam from another crate is not a target.
+pub(super) const NO_REPAIR_TARGET_FOCUSED_TEST: &str = "none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here";
+
+/// The hand step that replaces a repair start when the top seam has no
+/// repair target: a test in the seam's own crate. Never a pilot rerun, which
+/// would only rank the same seam again.
+pub(super) fn no_repair_target_hand_step(entry: &ClassifiedSeam) -> String {
+    format!(
+        "add a test for `{}` in the crate that owns {}",
+        entry.seam.owner(),
+        display_path(entry.seam.file())
+    )
+}
+
 pub(super) fn push_top_seam_json(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str("    {\n");
     out.push_str(&format!(
@@ -74,8 +92,7 @@ pub(super) fn push_markdown_recommendation(out: &mut String, entry: &ClassifiedS
     out.push_str(&format!("- Why it matters: {}\n", why_line(entry)));
     if outline.is_not_applicable() {
         out.push_str(&format!(
-            "- Focused test: not applicable (route limited: {})\n",
-            outline.suggested_reason
+            "- Focused test: {NO_REPAIR_TARGET_FOCUSED_TEST}\n"
         ));
     } else {
         out.push_str(&format!(

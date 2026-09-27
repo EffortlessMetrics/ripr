@@ -240,6 +240,9 @@ fn persist_before_repair_attempt(options: &agent::AgentRepairOptions) -> Result<
         "ripr: before phase complete. Next: add or strengthen one focused test (leave production code unchanged), then run the --attempt command printed below."
     );
     eprintln!(
+        "ripr: keep this command's output out of the checkout: the edit cage counts a file you redirect it into (for example `> packet.json` or `2> before.err`) as an edit outside the test surface. The packet is already at target/ripr/workflow/agent-packet.json; to keep a copy, redirect under target/ripr/ or outside the repository. The same applies to the after phase."
+    );
+    eprintln!(
         "ripr: repair attempt {} is awaiting the focused test edit",
         result.manifest.repair_attempt_id.as_str()
     );

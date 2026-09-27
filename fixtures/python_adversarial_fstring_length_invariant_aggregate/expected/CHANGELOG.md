@@ -216,3 +216,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — python_adversarial_fstring_length_invariant_aggregate (5)
+
+Reason:
+RIPR-SPEC-0122: #4216 row 1, the Python preview_limited safe next action names why no ripr command routes the finding instead of asking for repair-packet fields the operator cannot complete
+
+Command:
+`cargo xtask goldens bless python_adversarial_fstring_length_invariant_aggregate --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

@@ -409,6 +409,16 @@ Preview-language evidence:
   advisory record with preview labels.
 - It is not eligible for `ripr 0`, `ripr+`, or default gate authority.
 - Generated CI and editor surfaces preserve preview/advisory labels.
+- Given a TypeScript preview finding whose repair packet the shared validator
+  kept closed (`preview_actionability.repair_packet_ready = false`, no
+  `typescript_repair_packet`), the ledger emits a `StaticLimitation` record
+  with `static_limit_kind = "typescript_repair_packet_not_delegatable"`, the
+  validator's `why_not_actionable` text as its detail, and the card's
+  suggested assertion as a `not_delegatable_target_shape` static limit. It
+  has no repair route, verify command, or receipt, and no agent-packet,
+  PR-comment, LSP, gate, or badge eligibility. `ripr first-pr` names that
+  limitation as advisory no-action instead of reporting the ledger as
+  blocked (#4224).
 
 RIPR Zero target:
 

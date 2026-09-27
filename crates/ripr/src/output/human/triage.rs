@@ -1,7 +1,8 @@
 use crate::app::{CheckOutput, FindingNavigation};
 use crate::config::RiprConfig;
-use crate::domain::{ExposureClass, Finding};
+use crate::domain::{ExposureClass, Finding, LanguageId};
 use crate::output::preview_actionability::preview_actionability_for;
+use crate::output::python_repair_card::python_repair_card;
 use std::collections::BTreeSet;
 
 use super::sections::render_finding_digest_with_config;
@@ -146,9 +147,12 @@ pub(crate) fn render_human_triage(
                         "  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.\n",
                     );
                 }
-                _ => out.push_str(
-                    "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n",
-                ),
+                _ => match triage.selected.filter(|finding| finding.language == Some(LanguageId::Python)) {
+                    Some(finding) => out.push_str(&python_preview_safe_action(finding)),
+                    None => out.push_str(
+                        "  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.\n",
+                    ),
+                },
             }
         }
         // #4012: on an established-but-empty range the scope was provided
@@ -191,6 +195,48 @@ pub(crate) fn render_human_triage(
     }
     out.push_str("  Full evidence: rerun with --format human-full\n");
     out.push_str("  Machine data: rerun with --format json\n\n");
+}
+
+/// #4216 row 1: Python has no structured preview packet, so the generic
+/// "complete the missing repair-packet fields" line told the operator to do
+/// something they cannot, and pilot, first-pr and status each routed back to
+/// another command. The Python repair card (`python_repair_card`) is the one
+/// authority on whether a Python finding carries a repair route: with a card,
+/// its suggested test and verify command are the route; without one, no ripr
+/// command will route the finding, so the line says why and names the only
+/// step left, a manual test or check. An exposed finding has nothing to repair.
+fn python_preview_safe_action(finding: &Finding) -> String {
+    if finding.class == ExposureClass::Exposed {
+        return "  Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.\n".to_string();
+    }
+    if python_repair_card(finding).is_some() {
+        return "  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.\n".to_string();
+    }
+    if let Some(kind) = finding.static_limit_kind.as_ref() {
+        return format!(
+            "  Safe next action: static limitation `{}` keeps this Python preview finding from a repair card, so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; check by hand whether a test observes this change, then rerun `ripr check`.\n",
+            kind.as_str()
+        );
+    }
+    let (reason, manual_step) = if finding.class == ExposureClass::NoStaticPath {
+        (
+            "no Python test reaches this code",
+            "add a test that calls it by hand",
+        )
+    } else if finding.activation.missing_discriminators.is_empty() {
+        (
+            "static evidence names no concrete missing discriminator",
+            "add or strengthen a test by hand",
+        )
+    } else {
+        (
+            "its test placement or related-test evidence is incomplete",
+            "add or strengthen a test by hand",
+        )
+    };
+    format!(
+        "  Safe next action: this Python preview finding has no repair card ({reason}), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; {manual_step}, then rerun `ripr check`.\n"
+    )
 }
 
 fn triage_rank(finding: &Finding) -> (u8, u8, u8, u8, u8, i32, &std::path::Path, usize) {

@@ -359,3 +359,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_pytest_oracle_shapes (4)
+
+Reason:
+RIPR-SPEC-0122: #4216 row 1, the Python preview_limited safe next action names why no ripr command routes the finding instead of asking for repair-packet fields the operator cannot complete
+
+Command:
+`cargo xtask goldens bless python_pytest_oracle_shapes --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

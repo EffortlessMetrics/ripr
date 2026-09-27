@@ -797,7 +797,7 @@ fn select_next_command(
         (None, _) => {}
     }
 
-    legacy_next_command(root, root_display, seam, missing_commands)
+    legacy_next_command(root, root_display, seam, missing_commands, warnings)
 }
 
 /// Where `ripr pilot` writes its summary by default, relative to the root.
@@ -817,14 +817,37 @@ fn pilot_repair_command(root: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Whether a complete `ripr pilot` run ranked a top seam and recorded no
+/// repair start for it (`next.repair_command` is an explicit `null`). Sending the
+/// user back to pilot then only ranks the same seam again (#4216 row 3).
+/// A missing, unreadable, timed-out, or non-null summary is not this fact.
+fn pilot_found_no_repair_target(root: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(root.join(PILOT_SUMMARY_ARTIFACT)) else {
+        return false;
+    };
+    let Ok(summary) = serde_json::from_str::<Value>(&text) else {
+        return false;
+    };
+    summary.pointer("/status").and_then(Value::as_str) == Some("complete")
+        && summary
+            .pointer("/top_actionable_seams")
+            .and_then(Value::as_array)
+            .is_some_and(|seams| !seams.is_empty())
+        && summary
+            .pointer("/next/repair_command")
+            .is_some_and(Value::is_null)
+}
+
 /// The legacy seven-artifact loop, kept for `agent start` and manual users,
-/// with two refusals: it never recommends a command that needs a seam status
-/// does not know, and never a redirect into a directory that does not exist.
+/// with three refusals: it never recommends a command that needs a seam status
+/// does not know, never a redirect into a directory that does not exist, and
+/// never `ripr pilot` again after a complete pilot run found no repair start.
 fn legacy_next_command(
     root: &Path,
     root_display: &str,
     seam: Option<&AgentStatusSeam>,
     missing_commands: &[AgentStatusCommand],
+    warnings: &mut Vec<AgentStatusWarning>,
 ) -> Option<AgentStatusCommand> {
     let first = missing_commands.first()?;
     let Some(seam) = seam else {
@@ -835,6 +858,14 @@ fn legacy_next_command(
                 reason: "`ripr pilot` selected a seam the repair transaction can target; start its repair attempt".to_string(),
                 command,
             });
+        }
+        if pilot_found_no_repair_target(root) {
+            warnings.push(AgentStatusWarning {
+                kind: "pilot_found_no_repair_target".to_string(),
+                artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
+                message: "the last complete `ripr pilot` run offered no repair attempt: its top seam is not eligible for `ripr agent repair`, and running pilot again unchanged ranks the same seams. Read `target/ripr/pilot/pilot-summary.md` for that seam, add a test for it by hand in the crate that owns it, then rerun `ripr pilot` to rank the seams against that test".to_string(),
+            });
+            return None;
         }
         return Some(AgentStatusCommand {
             step: "select_seam".to_string(),
@@ -2191,6 +2222,44 @@ mod tests {
             .ok_or_else(|| "expected a next command".to_string())?;
         assert_eq!(next.step, "select_seam");
         assert_eq!(next.command, "ripr pilot --root .");
+
+        // #4216 row 3: a complete pilot run that ranked a top seam and
+        // recorded no repair start is terminal for status. Sending the user
+        // back to `ripr pilot` would only rank the same seam again.
+        write_file(
+            &root.join(PILOT_SUMMARY_ARTIFACT),
+            r#"{"status": "complete", "top_actionable_seams": [{"seam_id": "601d0f60f676a636"}], "next": {"repair_command": null}}"#,
+        )?;
+        let report = build_agent_status_report(&root, Path::new("."));
+        assert_eq!(report.next_command, None, "{:?}", report.next_command);
+        let warning = report
+            .warnings
+            .iter()
+            .find(|warning| warning.kind == "pilot_found_no_repair_target")
+            .ok_or_else(|| format!("expected a no-repair-target warning: {:?}", report.warnings))?;
+        assert_eq!(warning.artifact, PILOT_SUMMARY_ARTIFACT);
+        assert!(
+            warning
+                .message
+                .contains("add a test for it by hand in the crate that owns it"),
+            "{}",
+            warning.message
+        );
+        let rendered = render_agent_status_markdown(&report);
+        assert!(!rendered.contains("ripr pilot --root"), "{rendered}");
+
+        // A pilot run that timed out is not that fact: rerunning pilot is
+        // still the way forward.
+        write_file(
+            &root.join(PILOT_SUMMARY_ARTIFACT),
+            r#"{"status": "timed_out", "top_actionable_seams": [{"seam_id": "601d0f60f676a636"}], "next": {"repair_command": null}}"#,
+        )?;
+        let report = build_agent_status_report(&root, Path::new("."));
+        let next = report
+            .next_command
+            .as_ref()
+            .ok_or_else(|| "expected a next command".to_string())?;
+        assert_eq!(next.step, "select_seam");
 
         // Status repeats the pilot value as its next command, so only a repair
         // start may pass. Any other string, even another ripr command, leaves
