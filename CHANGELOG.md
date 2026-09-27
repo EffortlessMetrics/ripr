@@ -616,6 +616,13 @@ are scoped or reviewed.
   of citing an internal campaign issue, and the note reads "1 Perl file was
   not analyzed".
 
+- `ripr doctor` now lists Perl under "Detected languages" whenever its Perl
+  section appears: any `.pm`, `.pl` or `.t` file at any depth, such as a
+  CPAN module under `lib/Name/`, or a `Makefile.PL`, `Build.PL` or `cpanfile`.
+  It no longer prints "none detected" beside a Perl section that counts the
+  same files. Files under `target/`, `node_modules/`, `blib/` or hidden
+  directories detect nothing, as they already counted nothing.
+
 - `cargo xtask vscode-package` now reads the built VSIX and fails if it
   carries workspace build output (anything under `extension/target/`, Cargo
   `.fingerprint` or `incremental` state, `.rlib` or `.rmeta`) or exceeds 1,500
