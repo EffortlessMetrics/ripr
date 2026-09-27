@@ -47,6 +47,15 @@ jobs:
       - name: Publish dry-run (release surface)
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: cargo publish -p ripr --dry-run
+      # `cargo install ripr` without `--locked` ignores Cargo.lock and resolves
+      # fresh, so a lock-only pin never reaches it (#3787). Build the packaged
+      # crate the way that command does: drop its lockfile and re-resolve.
+      - name: Unlocked install resolution (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: |
+          cargo package -p ripr --no-verify && tar xzf "target/package/ripr-$(cargo pkgid -p ripr | sed 's/.*#//').crate" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/ripr-$(cargo pkgid -p ripr | sed 's/.*#//')" && rm Cargo.lock && cargo generate-lockfile
+          cargo check --target-dir "$RUNNER_TEMP/unlocked-target"
       - name: Release readiness (release surface)
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: |

@@ -556,6 +556,12 @@ are scoped or reviewed.
   repo-exposure-json`, and says that preview-language findings without an id
   have no comparable receipt
   ([#3797](https://github.com/EffortlessMetrics/ripr-swarm/issues/3797)).
+- `cargo install ripr` without `--locked` compiles. It had resolved
+  `unicode-ident` 1.0.26, which fails a compile-time Unicode-version assert in
+  `ra-ap-rustc_lexer`; the 1.0.24 pin moved from `Cargo.lock` into the
+  `lang-rust` feature's manifest, and release CI now builds the packaged crate
+  from a fresh resolution
+  ([#3787](https://github.com/EffortlessMetrics/ripr-swarm/issues/3787)).
 - `cargo xtask actionable-gap-outcomes` no longer reports an agent receipt's
   `verification.status: "verification_not_run"` as the attempt's verify
   result. It counts as a missing verify result

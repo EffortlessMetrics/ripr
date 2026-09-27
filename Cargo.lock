@@ -1379,6 +1379,7 @@ dependencies = [
  "toml",
  "tower",
  "tower-lsp-server",
+ "unicode-ident",
  "winsafe",
 ]
 

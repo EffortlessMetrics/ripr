@@ -267,7 +267,7 @@ implement and validate the lane-selection logic.
 | Label | Effect |
 | --- | --- |
 | `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
-| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
+| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, unlocked install resolution, and release-readiness. |
 | `vscode` | Run editor extension lanes even when no editor path changed. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
@@ -279,8 +279,8 @@ New labels that affect CI must update this table, the PR template, and the
 budget/risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. Today, `release-check` and
-`full-ci` activate the Rust workflow's package list, publish dry-run, and
-release-readiness steps on pull requests. Other label effects remain target vocabulary until a later PR
+`full-ci` activate the Rust workflow's package list, publish dry-run, unlocked
+install resolution, and release-readiness steps on pull requests. Other label effects remain target vocabulary until a later PR
 wires them into a PR plan or workflow condition. The GitHub Settings App
 contract in `.github/settings.yml` codifies these label names, descriptions,
 and colors so the reviewable vocabulary does not drift in the GitHub UI.
@@ -498,6 +498,18 @@ release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
 cargo xtask release-readiness --version "$release_version"
 ```
 
+The unlocked install resolution step builds the packaged crate the way
+`cargo install ripr` without `--locked` does: it unpacks the `.crate`, deletes
+its `Cargo.lock`, re-resolves, and checks. It catches a dependency that only
+compiles under the committed lock (#3787):
+
+```bash
+cargo package -p ripr --no-verify
+tar xzf "target/package/ripr-$release_version.crate" -C "$RUNNER_TEMP"
+cd "$RUNNER_TEMP/ripr-$release_version" && rm Cargo.lock && cargo generate-lockfile
+cargo check --target-dir "$RUNNER_TEMP/unlocked-target"
+```
+
 The legacy workflow's `Rust-only feature lane` job (#4252) runs the Rust-only
 feature set (#2400, #3128) on Linux:
 
@@ -510,7 +522,6 @@ request `opened`, `synchronize`, and `reopened` events whose diff touches
 `crates/`, `fixtures/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, or
 `.cargo/`. Label events and other pull requests skip the compile. It is not
 a required check. The Windows advisory lane runs the same command on Windows.
-
 The CI workflow also has an explicit MSRV job that pins Rust `1.95.0` and runs:
 
 ```bash

@@ -58,6 +58,14 @@ sha2 = "0.10"
 toml = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "io-std", "io-util", "time", "macros"] }
 tower-lsp-server = "0.23.0"
+# Not used directly. ra-ap-rustc_lexer (via ra_ap_syntax) const-asserts that
+# unicode-ident and unicode-properties 0.1.4 share one Unicode version;
+# unicode-ident 1.0.25+ moved ahead and fails that assert at compile time.
+# A lockfile pin alone does not reach `cargo install ripr` without
+# `--locked`, which resolves fresh, so the pin lives in the manifest (#3787).
+# Remove when a unicode-properties release matches unicode-ident's Unicode
+# version, or when the selected ra_ap_syntax drops the assert.
+unicode-ident = { version = "=1.0.24", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 winsafe = { version = "0.0.29", default-features = false, features = ["kernel"] }
@@ -74,7 +82,7 @@ process-wrap = { version = "10.0.1", default-features = false, features = [
 
 [features]
 default = ["lang-rust", "lang-typescript", "lang-python"]
-lang-rust = ["dep:ra_ap_syntax"]
+lang-rust = ["dep:ra_ap_syntax", "dep:unicode-ident"]
 lang-typescript = ["dep:oxc_allocator", "dep:oxc_ast", "dep:oxc_parser", "dep:oxc_span"]
 lang-python = ["dep:rustpython-parser"]
 lang-perl = []
