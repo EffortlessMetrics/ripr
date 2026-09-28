@@ -18,7 +18,8 @@ pub fn render(output: &CheckOutput) -> String {
 }
 
 pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
-    let mut out = String::new();
+    let mut annotations = String::new();
+    let mut per_level = std::collections::BTreeMap::<&'static str, usize>::new();
     // Findings suppressed by an explicit `--suppression-policy` (#1441) are
     // not annotated: filtering PR-annotation noise on accepted surfaces is
     // the purpose of the policy. The JSON surface keeps them visible.
@@ -156,7 +157,8 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str(&card.verify_command);
             message.push_str("` (preview advisory; no repair packet).");
         }
-        out.push_str(&format!(
+        *per_level.entry(annotation_level).or_default() += 1;
+        annotations.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
             // `file` arrives via `repository_display_path` (stable text, `%`
             // pre-encoded); `title` is raw text.
@@ -169,6 +171,10 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             escape_data(&message)
         ));
     }
+    // Disclosures lead the stream: GitHub keeps only the first
+    // `GITHUB_ANNOTATIONS_PER_LEVEL` annotations of each level per step, so
+    // a trailing notice is the first line dropped on a busy run.
+    let mut out = String::new();
     if output.findings.is_empty() {
         out.push_str("::notice title=ripr::No static exposure findings found\n");
     } else if suppressed > 0 || not_current > 0 {
@@ -178,7 +184,37 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             not_current,
         ));
     }
+    if let Some(notice) = display_limit_notice(&per_level) {
+        out.push_str(&notice);
+    }
+    out.push_str(&annotations);
     out
+}
+
+/// GitHub Actions displays at most this many annotations of each level
+/// (error, warning, notice) per step and drops the rest without a trace.
+/// See actions/toolkit docs/problem-matchers.md "Limitations".
+const GITHUB_ANNOTATIONS_PER_LEVEL: usize = 10;
+
+/// Name the annotations GitHub will not display, so a truncated run does
+/// not read as a complete one. Counted against the display budget itself,
+/// the limit applies to this notice too, which is why it is emitted first.
+fn display_limit_notice(
+    per_level: &std::collections::BTreeMap<&'static str, usize>,
+) -> Option<String> {
+    let over = per_level
+        .iter()
+        .filter(|(_, count)| **count > GITHUB_ANNOTATIONS_PER_LEVEL)
+        .map(|(level, count)| format!("{count} {level}"))
+        .collect::<Vec<_>>();
+    if over.is_empty() {
+        return None;
+    }
+    let message = format!(
+        "Emitted {} annotations; GitHub displays at most {GITHUB_ANNOTATIONS_PER_LEVEL} per level in one step, so some are not shown. Run `ripr check --format json` to list every finding.",
+        over.join(" and ")
+    );
+    Some(format!("::notice title=ripr::{}\n", escape_data(&message)))
 }
 
 /// Denominator for findings the annotation stream deliberately omits (#4393).
@@ -790,6 +826,91 @@ mod tests {
             "::notice title=ripr::Annotated 0 of 1 static exposure finding(s); 1 suppressed by policy policy/ripr-suppressions.toml. Run `ripr check --format json` to list every finding.\n",
         );
         assert!(!rendered.contains("file=src/lib.rs"));
+    }
+
+    #[test]
+    fn render_discloses_annotations_past_github_display_limit_first() {
+        let mut output = output_with_unknown_finding();
+        let template = output.findings[0].clone();
+        output.findings = (0..12)
+            .map(|index| {
+                let mut finding = template.clone();
+                finding.probe.location.line = 100 + index;
+                finding
+            })
+            .collect();
+
+        let rendered = render(&output);
+        let lines = rendered.lines().collect::<Vec<_>>();
+
+        // The disclosure must precede the per-finding notices: GitHub keeps
+        // the first ten notices of a step, so a trailing one is never shown.
+        assert_eq!(
+            lines.first().copied(),
+            Some(
+                "::notice title=ripr::Emitted 12 notice annotations; GitHub displays at most 10 per level in one step, so some are not shown. Run `ripr check --format json` to list every finding."
+            ),
+            "{rendered}"
+        );
+        assert_eq!(lines.len(), 13, "{rendered}");
+    }
+
+    #[test]
+    fn render_limit_notice_fires_at_eleven_and_follows_the_denominator() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let mut output = output_with_unknown_finding();
+        let template = output.findings[0].clone();
+        // Twelve findings, one suppressed: eleven notices remain, one past
+        // the display limit, and the denominator notice is also due.
+        output.findings = (0..12)
+            .map(|index| {
+                let mut finding = template.clone();
+                finding.id = format!("finding-{index}");
+                finding.probe.location.line = 100 + index;
+                finding
+            })
+            .collect();
+        output.suppression = Some(CheckSuppressionOutcome {
+            policy_path: "policy/ripr-suppressions.toml".to_string(),
+            suppressed: vec![SuppressedCheckFinding {
+                finding_id: "finding-0".to_string(),
+                selector: "src/**".to_string(),
+            }],
+            warnings: Vec::new(),
+        });
+
+        let rendered = render(&output);
+        let lines = rendered.lines().collect::<Vec<_>>();
+
+        assert_eq!(
+            lines.get(..2),
+            Some(
+                &[
+                    "::notice title=ripr::Annotated 11 of 12 static exposure finding(s); 1 suppressed by policy policy/ripr-suppressions.toml. Run `ripr check --format json` to list every finding.",
+                    "::notice title=ripr::Emitted 11 notice annotations; GitHub displays at most 10 per level in one step, so some are not shown. Run `ripr check --format json` to list every finding.",
+                ][..]
+            ),
+            "{rendered}"
+        );
+        assert_eq!(lines.len(), 13, "{rendered}");
+    }
+
+    #[test]
+    fn render_within_github_display_limit_emits_no_limit_notice() {
+        let mut output = output_with_unknown_finding();
+        let template = output.findings[0].clone();
+        output.findings = (0..10)
+            .map(|index| {
+                let mut finding = template.clone();
+                finding.probe.location.line = 100 + index;
+                finding
+            })
+            .collect();
+
+        let rendered = render(&output);
+
+        assert!(!rendered.contains("GitHub displays at most"), "{rendered}");
+        assert_eq!(rendered.lines().count(), 10, "{rendered}");
     }
 
     #[test]

@@ -153,6 +153,12 @@ not expose receipt commands, edit-boundary authority, or agent packets, and
 remains advisory review context rather than verify, receipt, gate, badge, or
 RIPR Zero authority.
 
+GitHub Actions displays at most 10 annotations of each level (error, warning,
+notice) per step and drops the rest silently. Disclosure notices therefore lead
+the stream: the unannotated-denominator notice (suppressed or not-current
+findings) and, when any level exceeds 10, a notice naming how many annotations
+of that level were emitted. Per-finding annotations follow.
+
 `ripr check --format human` is the bounded default terminal surface. It prints
 header and summary counts, then one `Start here:` triage block with a closed
 state (`top_gap`, `no_actionable_gap`, `preview_limited`, `static_limited`, or
