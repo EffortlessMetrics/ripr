@@ -258,16 +258,9 @@ pub(super) fn cache(args: &[String]) -> Result<(), String> {
 pub(super) use config_command::config;
 
 fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-    }
-    std::fs::write(path, rendered).map_err(|err| {
+    output::file_write::write(path, rendered.as_bytes()).map_err(|err| {
         format!(
-            "write {} failed: {err}",
+            "write output {} failed: {err}",
             output::outcome::display_path(path)
         )
     })
@@ -340,21 +333,7 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
     };
 
     match options.out {
-        Some(path) => {
-            if let Some(parent) = path
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-            {
-                std::fs::create_dir_all(parent)
-                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-            }
-            std::fs::write(&path, rendered).map_err(|err| {
-                format!(
-                    "write {} failed: {err}",
-                    output::outcome::display_path(&path)
-                )
-            })
-        }
+        Some(path) => write_text_file(&path, &rendered),
         None => {
             print!("{rendered}");
             Ok(())
@@ -1627,21 +1606,7 @@ pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
     };
 
     match options.out {
-        Some(path) => {
-            if let Some(parent) = path
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-            {
-                std::fs::create_dir_all(parent)
-                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-            }
-            std::fs::write(&path, rendered).map_err(|err| {
-                format!(
-                    "write {} failed: {err}",
-                    output::outcome::display_path(&path)
-                )
-            })
-        }
+        Some(path) => write_text_file(&path, &rendered),
         None => {
             print!("{rendered}");
             Ok(())

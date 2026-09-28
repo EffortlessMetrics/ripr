@@ -1953,6 +1953,14 @@ id = "RIPR-SPEC-0024"
 name = "report packet index"
 spec = "docs/specs/RIPR-SPEC-0024-report-packet-index.md"
 tests = [
+  "crates/ripr/tests/common/advisory_write_safety.rs::advisory_write_fresh_and_regular_overwrite",
+  "crates/ripr/tests/common/advisory_write_safety.rs::advisory_write_refuses_directory_outputs",
+  "crates/ripr/tests/common/advisory_write_safety.rs::reports_index_rejects_planted_output_symlink",
+  "crates/ripr/tests/common/advisory_write_safety.rs::outcome_rejects_planted_output_symlink",
+  "crates/ripr/tests/common/advisory_write_safety.rs::agent_receipt_rejects_planted_output_symlink",
+  "crates/ripr/tests/common/advisory_write_safety.rs::calibrate_rejects_planted_output_symlink",
+  "crates/ripr/tests/common/advisory_write_safety.rs::reports_index_refuses_fifo_without_waiting_for_reader",
+  "crates/ripr/src/output/review_comments_receipt.rs::tests::receipt_temp_refuses_planted_symlink_without_clobbering_target",
   "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_accepts_complete_contract",
   "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_reports_contract_drift",
   "xtask/src/main.rs::dogfood_report_packet_index_scenarios_have_checked_receipts",
@@ -1992,6 +2000,9 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/output/report_packet_index.rs",
+  "crates/ripr/src/output/file_write.rs",
+  "crates/ripr/src/output/review_comments_receipt.rs",
+  "crates/ripr/src/cli/commands/agent.rs",
   "crates/ripr/src/output/mod.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/commands.rs",

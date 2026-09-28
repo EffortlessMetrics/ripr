@@ -556,6 +556,14 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Advisory report outputs refuse planted destination links and nonregular files
+  before truncation while preserving fresh writes and regular-file updates.
+  The shared index, outcome, calibration, and agent-receipt write path uses
+  no-follow acquisition; supported Unix FIFO outputs do not wait for a reader.
+  Review-comments receipts exclusively create staging files, refusing planted
+  temp paths without clobbering their targets (#4360). This is leaf acquisition
+  hardening, not ancestor-directory or hard-link confinement.
+
 - `ripr explain` and `ripr context` now reject an explicit `--base` combined
   with `--diff` at parse time, in either flag order and before any pipeline
   run, instead of silently analyzing the `--diff` input while appearing to
@@ -569,6 +577,7 @@ are scoped or reviewed.
   CLI adapter and piped, redirected, or captured stdin — including library
   calls into the analysis API — stay silent and byte-identical
   ([#4319](https://github.com/EffortlessMetrics/ripr-swarm/issues/4319)).
+
 - Every flag `ripr` parses is now documented on a surface a reader scans,
   and mistyped flags can be suggested from anywhere the command's help
   documents them. An audit against the parsers found parsed-but-undocumented

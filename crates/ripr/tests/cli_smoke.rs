@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[path = "common/advisory_write_safety.rs"]
+mod advisory_write_safety;
 #[path = "../src/build_commit_record.rs"]
 mod build_commit_record;
 #[path = "common/mod.rs"]

@@ -139,6 +139,25 @@ run those expensive reports itself or promote badge/gate authority.
 
 ## Required Evidence
 
+### Advisory output acquisition
+
+The report index and advisory producers sharing its file-write authority,
+including `outcome`, `calibrate cargo-mutants`, and `agent receipt`, may create
+new outputs and update existing regular files. They must not follow a planted
+destination symlink or truncate an object before the opened handle is validated
+as a regular file. Supported Linux and macOS targets must refuse FIFO outputs
+without waiting for a reader; Windows acquisition opens the reparse point rather
+than following it. Unsupported targets return an explicit output error.
+
+The review-comments run receipt stages through exclusive temporary-file
+creation. A planted staging leaf is refused without writing its target,
+removing that unowned leaf, or publishing a receipt. Existing nonregular final
+receipt destinations are refused. These acquisition rules do not change report
+schemas, advisory status, or regular-file overwrite behavior. They do not claim
+ancestor-directory confinement, hard-link isolation, multi-file transactions,
+or stronger durability/atomic replacement guarantees than the existing receipt
+publication path.
+
 The index can only summarize evidence already present in supplied directories
 and known explicit artifact paths. A useful index should provide:
 
@@ -464,6 +483,12 @@ pass/fail authority.
 ## Test Mapping
 
 Follow-up tests and fixtures should cover:
+
+- actual shipped commands creating fresh reports and updating regular files;
+- planted output links for the index, outcome, calibration, and agent receipt;
+- bounded actual-command refusal of a FIFO without a reader on supported Unix;
+- production receipt staging refusing a planted temporary link while preserving
+  its outside sentinel and leaving `atomic_write_status = "not_written"`.
 
 - complete packet;
 - sparse advisory packet;

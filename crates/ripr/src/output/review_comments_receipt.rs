@@ -8,6 +8,7 @@ use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 pub(crate) const REVIEW_COMMENTS_RECEIPT_SCHEMA_VERSION: &str = "0.1";
@@ -123,23 +124,40 @@ impl ReviewCommentsRunReceipt {
             .unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent)
             .map_err(|err| format!("create receipt parent {} failed: {err}", parent.display()))?;
+        super::file_write::validate_destination(path)
+            .map_err(|err| format!("review-comments receipt output refused: {err}"))?;
 
         let temp_path = atomic_temp_path(path);
         let mut committed = self.clone();
         committed.atomic_write_status = "committed";
         let json = serde_json::to_vec_pretty(&committed)
             .map_err(|err| format!("serialize review-comments receipt failed: {err}"))?;
-        fs::write(&temp_path, json)
-            .map_err(|err| format!("write review-comments receipt temp failed: {err}"))?;
+        // Acquisition failure never removes a path we did not create.
+        let mut temp = super::file_write::create_exclusive(&temp_path)
+            .map_err(|err| format!("create review-comments receipt output temp failed: {err}"))?;
+        if let Err(err) = temp.write_all(&json) {
+            drop(temp);
+            let _ = fs::remove_file(&temp_path);
+            return Err(format!(
+                "write review-comments receipt output temp failed: {err}"
+            ));
+        }
+        drop(temp);
         if let Err(err) = fs::rename(&temp_path, path) {
             if err.kind() != std::io::ErrorKind::AlreadyExists {
                 let _ = fs::remove_file(&temp_path);
                 return Err(format!("publish review-comments receipt failed: {err}"));
             }
+            super::file_write::validate_destination(path).map_err(|error| {
+                let _ = fs::remove_file(&temp_path);
+                format!("review-comments receipt output refused: {error}")
+            })?;
             fs::remove_file(path).map_err(|remove_err| {
+                let _ = fs::remove_file(&temp_path);
                 format!("replace review-comments receipt failed: {remove_err}")
             })?;
             fs::rename(&temp_path, path).map_err(|rename_err| {
+                let _ = fs::remove_file(&temp_path);
                 format!("publish review-comments receipt failed: {rename_err}")
             })?;
         }
@@ -352,6 +370,8 @@ mod tests {
         let mut receipt = sample_receipt();
 
         receipt.write_atomic(&path)?;
+        // Exclusive staging must still support replacing an existing regular receipt.
+        receipt.write_atomic(&path)?;
 
         // File exists and is valid JSON
         let content =
@@ -371,6 +391,83 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn receipt_temp_refuses_planted_symlink_without_clobbering_target() -> Result<(), String> {
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-symlink-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|time| time.as_nanos())
+                .unwrap_or(0),
+        ));
+        let _cleanup = Cleanup(dir.clone());
+        fs::create_dir_all(&dir).map_err(|err| format!("setup directory: {err}"))?;
+        let path = dir.join("receipt.json");
+        let mut receipt = sample_receipt();
+        // Positive control reaches the production authority before the probe.
+        receipt.write_atomic(&path)?;
+        fs::remove_file(&path).map_err(|err| format!("remove control receipt: {err}"))?;
+        let sentinel = dir.join("outside.txt");
+        fs::write(&sentinel, b"protected receipt sentinel")
+            .map_err(|err| format!("setup sentinel: {err}"))?;
+        let temp = atomic_temp_path(&path);
+        std::os::unix::fs::symlink(&sentinel, &temp)
+            .map_err(|err| format!("setup planted temp: {err}"))?;
+        let mut refused = sample_receipt();
+        let result = refused.write_atomic(&path);
+        let observed = fs::read(&sentinel).map_err(|err| format!("read sentinel: {err}"))?;
+        let untouched = observed == b"protected receipt sentinel";
+        let link_preserved = fs::symlink_metadata(&temp)
+            .map(|metadata| metadata.file_type().is_symlink())
+            .unwrap_or(false);
+        let published = path.exists();
+        assert!(
+            untouched,
+            "production receipt temp write followed planted link; outside sentinel changed to {} bytes; result={result:?}",
+            observed.len()
+        );
+        assert!(
+            result.is_err(),
+            "exclusive temp acquisition must refuse planted path"
+        );
+        assert!(
+            link_preserved,
+            "refusal must not remove an attacker-owned temp path"
+        );
+        assert!(!published, "refused receipt must not publish an artifact");
+        assert_eq!(refused.atomic_write_status, "not_written");
+        // Final publication also refuses a planted destination leaf.
+        fs::remove_file(&temp).map_err(|err| format!("remove planted fixture temp: {err}"))?;
+        std::os::unix::fs::symlink(&sentinel, &path)
+            .map_err(|err| format!("setup planted destination: {err}"))?;
+        let result = refused.write_atomic(&path);
+        assert!(result.is_err(), "receipt destination link must be refused");
+        assert_eq!(
+            fs::read(&sentinel).map_err(|err| err.to_string())?,
+            observed
+        );
+        assert!(
+            fs::symlink_metadata(&path)
+                .map_err(|err| err.to_string())?
+                .file_type()
+                .is_symlink()
+        );
+        assert!(
+            !temp.exists(),
+            "destination refusal must not acquire a temp"
+        );
+        assert_eq!(refused.atomic_write_status, "not_written");
         Ok(())
     }
 
