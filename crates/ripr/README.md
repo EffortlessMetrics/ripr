@@ -34,6 +34,12 @@ Cargo installation requires Rust 1.95 or newer. Git is required for the diff
 workflow. The package installs the `ripr` binary; you do not need a checkout of
 ripr to analyze your own repository.
 
+If Cargo refuses because ripr requires rustc 1.95, run `rustup update stable`.
+Inside a repository whose `rust-toolchain.toml` pins an older Rust, Cargo uses
+that pin; install from another directory or with `cargo +stable install ripr`.
+The installed binary still analyzes the pinned repository. Cargo may name an
+older ripr that supports your compiler; that release predates this guide.
+
 This source package is **0.11.0 development, pending publication**. The latest
 GitHub release is [0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0).
 `cargo install ripr` installs the published package, not this checkout.

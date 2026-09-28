@@ -9566,6 +9566,9 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
                 "the exact five-target matrix inventory is missing or duplicated".to_owned(),
             );
         }
+        if candidate.contains("continue-on-error") {
+            return Err("qualification steps must not continue on error".to_owned());
+        }
         if candidate
             .matches("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
             .count()
@@ -9618,6 +9621,16 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
             "ruleset_id",
             "--arg repository \"${REPOSITORY}\"",
             "release_assets_created: false",
+            "cargo build --locked -p ripr --release",
+            "os: ubuntu-22.04\n",
+            "os: ubuntu-22.04-arm\n",
+            "GLIBC_FLOOR: \"2.35\"",
+            "sed -n '/^Version needs section/,/^Version .* section/p'",
+            "if [ \"${highest}\" != \"${GLIBC_FLOOR}\" ]; then",
+            "requires glibc ${required}, above the ${GLIBC_FLOOR} floor\"\n            exit 1\n          fi",
+            "needs a non-numeric glibc version that the ${GLIBC_FLOOR} floor cannot bound\"\n            exit 1\n          fi",
+            "if grep -v -x -E '[0-9][0-9.]*' glibc-need-names.txt; then",
+            "      - name: Verify Linux glibc floor\n        if: runner.os == 'Linux'\n",
         ] {
             if !candidate.contains(marker) {
                 return Err(format!(
@@ -9697,6 +9710,70 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
         (
             "authenticated API",
             workflow.replacen("curl --silent --show-error", "gh api", 1),
+        ),
+        (
+            "unlocked server build",
+            workflow.replacen("cargo build --locked -p ripr", "cargo build -p ripr", 1),
+        ),
+        (
+            "newer glibc runner",
+            workflow.replacen("os: ubuntu-22.04\n", "os: ubuntu-latest\n", 1),
+        ),
+        (
+            "newer arm glibc runner",
+            workflow.replacen("os: ubuntu-22.04-arm\n", "os: ubuntu-24.04-arm\n", 1),
+        ),
+        (
+            "glibc floor that cannot fail",
+            workflow.replacen(
+                "requires glibc ${required}, above the ${GLIBC_FLOOR} floor\"\n            exit 1",
+                "requires glibc ${required}, above the ${GLIBC_FLOOR} floor\"\n            true",
+                1,
+            ),
+        ),
+        (
+            "glibc floor skipped on Linux",
+            workflow.replacen(
+                "      - name: Verify Linux glibc floor\n        if: runner.os == 'Linux'\n",
+                "      - name: Verify Linux glibc floor\n        if: runner.os == 'Solaris'\n",
+                1,
+            ),
+        ),
+        (
+            "named glibc need that cannot fail",
+            workflow.replacen(
+                "needs a non-numeric glibc version that the ${GLIBC_FLOOR} floor cannot bound\"\n            exit 1",
+                "needs a non-numeric glibc version that the ${GLIBC_FLOOR} floor cannot bound\"\n            true",
+                1,
+            ),
+        ),
+        (
+            "named glibc needs ignored",
+            workflow.replacen(
+                "if grep -v -x -E '[0-9][0-9.]*' glibc-need-names.txt; then",
+                "if false; then",
+                1,
+            ),
+        ),
+        (
+            "private glibc need allowed",
+            workflow.replacen(
+                "if grep -v -x -E '[0-9][0-9.]*' glibc-need-names.txt; then",
+                "if grep -v -x -E '[0-9][0-9.]*|PRIVATE' glibc-need-names.txt; then",
+                1,
+            ),
+        ),
+        (
+            "glibc floor continues on error",
+            workflow.replacen(
+                "      - name: Verify Linux glibc floor\n",
+                "      - name: Verify Linux glibc floor\n        continue-on-error: true\n",
+                1,
+            ),
+        ),
+        (
+            "raised glibc floor",
+            workflow.replacen("GLIBC_FLOOR: \"2.35\"", "GLIBC_FLOOR: \"2.39\"", 1),
         ),
         (
             "token credential",

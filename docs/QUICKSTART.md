@@ -19,6 +19,12 @@ cargo install ripr
 This requires Rust 1.95 or newer. Git must be available for the diff workflow.
 The editor installation below normally does not require Cargo.
 
+If Cargo refuses because ripr requires rustc 1.95, run `rustup update stable`.
+Inside a repository whose `rust-toolchain.toml` pins an older Rust, Cargo uses
+that pin; install from another directory or with `cargo +stable install ripr`.
+Cargo may name an older ripr that supports your compiler; that release predates
+this guide.
+
 Rust 1.95 is needed to build ripr, not by the repository you analyze: ripr's
 static analysis does not run your compiler, so a repository pinned to an older
 toolchain can still be analyzed. Your own tests still run with that repository's toolchain.
