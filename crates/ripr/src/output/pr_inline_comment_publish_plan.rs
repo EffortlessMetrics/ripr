@@ -3,6 +3,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::markdown::{code_span, code_span_content};
 use super::review_comments::SUMMARY_REASON_INLINE_CAP_REACHED;
 
 const SCHEMA_VERSION: &str = "0.1";
@@ -407,24 +408,24 @@ pub(crate) fn render_comment_publish_plan_markdown(report: &CommentPublishPlanRe
         for operation in &report.operations {
             if operation.operation == "delete" {
                 out.push_str(&format!(
-                    "- delete stale existing RIPR comment `{}`\n",
-                    operation.dedupe_key
+                    "- delete stale existing RIPR comment {}\n",
+                    code_span(&operation.dedupe_key)
                 ));
                 continue;
             }
             out.push_str(&format!(
-                "- {} {}:{} `{}`\n",
+                "- {} {}:{} {}\n",
                 operation.operation,
                 operation.placement.path,
                 operation.placement.line,
-                operation.dedupe_key
+                code_span(&operation.dedupe_key)
             ));
             if let Some(body) = operation.body.as_deref() {
                 if let Some(gap) = gap_title_from_comment_body(body) {
                     out.push_str(&format!("  - gap: {gap}\n"));
                 }
                 if let Some(changed) = changed_behavior_from_body(Some(body)) {
-                    out.push_str(&format!("  - changed behavior: `{changed}`\n"));
+                    out.push_str(&format!("  - changed behavior: {}\n", code_span(&changed)));
                 }
                 if let Some(route) = repair_route_from_body(Some(body)) {
                     out.push_str(&format!("  - repair route: {route}\n"));
@@ -433,10 +434,10 @@ pub(crate) fn render_comment_publish_plan_markdown(report: &CommentPublishPlanRe
                     out.push_str(&format!("  - repair: {repair}\n"));
                 }
                 if let Some(start) = start_repair_from_body(Some(body)) {
-                    out.push_str(&format!("  - start the repair: `{start}`\n"));
+                    out.push_str(&format!("  - start the repair: {}\n", code_span(&start)));
                 }
                 if let Some(verify) = verify_from_body(Some(body)) {
-                    out.push_str(&format!("  - verify: `{verify}`\n"));
+                    out.push_str(&format!("  - verify: {}\n", code_span(&verify)));
                 }
             }
         }
@@ -821,7 +822,10 @@ fn comment_body(item: &Value) -> String {
     if let Some(missing) = string_field(item, "missing_discriminator") {
         let changed = normalize_missing_discriminator(&missing);
         let why = "A related test reaches this code, but no equality-boundary assertion was found.";
-        let repair = format!("Add one focused boundary assertion for `{changed}`.");
+        let repair = format!(
+            "Add one focused boundary assertion for {}.",
+            code_span(&changed)
+        );
         // A seam that passed the repair-packet flip carries the transaction's
         // start (#3906). It replaces the bare verify line: the before phase
         // prints the after-phase command that verifies the new test.
@@ -872,7 +876,8 @@ fn repair_card_body(
     let mut body = format!("### ripr gap: {gap_title}\n\n");
     if let Some(changed) = changed_behavior {
         body.push_str("Changed behavior:\n");
-        body.push_str(&format!("`{changed}`\n\n"));
+        body.push_str(&code_span(changed));
+        body.push_str("\n\n");
     }
     body.push_str("Why this matters:\n");
     body.push_str(why.trim());
@@ -885,11 +890,11 @@ fn repair_card_body(
     match next {
         NextStep::Verify(verify) => {
             body.push_str("\n\nVerify:\n");
-            body.push_str(&format!("`{}`", verify.trim()));
+            body.push_str(&code_span(verify.trim()));
         }
         NextStep::StartRepair(command) => {
             body.push_str("\n\nStart the repair:\n");
-            body.push_str(&format!("`{}`", command.trim()));
+            body.push_str(&code_span(command.trim()));
             body.push_str(
                 "\n\nIt prints the `--attempt ... --phase after` command that verifies the new test.",
             );
@@ -958,7 +963,11 @@ fn section_from_comment_body(body: &str, heading: &str) -> Option<String> {
     let start = body.find(&marker)? + marker.len();
     let rest = &body[start..];
     let end = rest.find("\n\n").unwrap_or(rest.len());
-    Some(rest[..end].trim().trim_matches('`').to_string())
+    let section = rest[..end].trim();
+    // A section that is one whole code span (changed behavior, start, verify)
+    // reads back to its exact content, backticks included; prose sections keep
+    // the earlier edge-backtick trim.
+    Some(code_span_content(section).unwrap_or_else(|| section.trim_matches('`').to_string()))
 }
 
 fn gap_title_from_comment_body(body: &str) -> Option<String> {
@@ -1086,6 +1095,91 @@ mod tests {
         assert!(body.contains("Verify:\n`cargo xtask fixtures boundary_gap`"));
         assert!(!body.contains("Confidence"));
         assert!(!body.contains("MissingBoundaryAssertion"));
+    }
+
+    /// A backtick in the changed expression must not close the code span:
+    /// the posted body keeps `@octocat` and `<img ...>` inside one span, and
+    /// the plan Markdown (copied into the step summary) reads it back intact.
+    #[test]
+    fn inline_comment_body_keeps_backtick_text_inside_one_code_span() {
+        let changed = "\"x` @octocat <img src=x onerror=alert(1)> | y\" (equality boundary)";
+        let body = comment_body(&serde_json::json!({
+            "repair_card": {
+                "gap_kind": "MissingBoundaryAssertion",
+                "changed_behavior": changed,
+                "why_this_matters": "A related test reaches this path.",
+                "repair": "Add an exact assertion.",
+                "verify_command": "ripr agent verify `x`"
+            }
+        }));
+        assert!(
+            body.contains(
+                "Changed behavior:\n``\"x` @octocat <img src=x onerror=alert(1)> | y\" (equality boundary)``\n\n"
+            ),
+            "{body}"
+        );
+        assert!(
+            body.contains("Verify:\n`` ripr agent verify `x` ``"),
+            "{body}"
+        );
+        assert_eq!(
+            changed_behavior_from_body(Some(&body)).as_deref(),
+            Some(changed)
+        );
+        assert_eq!(
+            verify_from_body(Some(&body)).as_deref(),
+            Some("ripr agent verify `x`")
+        );
+
+        let fallback = comment_body(&serde_json::json!({
+            "missing_discriminator": "input that hits the boundary: a` @octocat\nb"
+        }));
+        assert!(
+            fallback.contains("Changed behavior:\n``a` @octocat b``\n\n"),
+            "{fallback}"
+        );
+        assert!(
+            fallback.contains("Repair:\nAdd one focused boundary assertion for ``a` @octocat b``."),
+            "{fallback}"
+        );
+
+        let guidance = serde_json::json!({
+            "comments": [{
+                "id": "c",
+                "dedupe_key": "ripr:c",
+                "placement": {"path": "src/lib.rs", "line": 1, "side": "RIGHT", "mode": "exact_seam_line"},
+                "reason": "safe",
+                "repair_card": {
+                    "gap_kind": "MissingBoundaryAssertion",
+                    "changed_behavior": changed,
+                    "verify_command": "ripr agent verify `x`"
+                }
+            }],
+            "summary_only": [],
+            "suppressed": []
+        });
+        let report = build_comment_publish_plan_report(CommentPublishPlanInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-10T12:00:00Z".to_string(),
+            mode: CommentMode::Plan,
+            max_inline_comments: 3,
+            pr_guidance_path: Some("comments.json".to_string()),
+            pr_guidance_json: Some(Ok(guidance.to_string())),
+            existing_comments_path: None,
+            existing_comments_json: None,
+            permission: CommentPermissionContext::default(),
+        });
+        let rendered = render_comment_publish_plan_markdown(&report);
+        assert!(
+            rendered.contains(
+                "  - changed behavior: ``\"x` @octocat <img src=x onerror=alert(1)> | y\" (equality boundary)``\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("  - verify: `` ripr agent verify `x` ``\n"),
+            "{rendered}"
+        );
     }
 
     #[test]

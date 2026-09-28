@@ -6,6 +6,7 @@ use super::model::{
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
 use crate::app::causal_projection::insert_canonical_delta_fields;
 use crate::output::first_pr::{ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
+use crate::output::markdown::code_span;
 use crate::output::review_comments::LLM_PROMPT_VERIFY_SENTENCE;
 use serde_json::{Value, json};
 use std::fmt::Write as _;
@@ -528,17 +529,17 @@ fn push_repair_route(out: &mut String, route: &GateRepairRoute, changed_line_anc
     push_optional_code(out, labels.receipt, route.receipt_command.as_deref());
     push_optional_code(out, "Inspect", route.inspection_command.as_deref());
     out.push_str(&format!(
-        "  - Boundary: `{}`\n",
-        md_inline_code(&route.authority_boundary)
+        "  - Boundary: {}\n",
+        code_span(&route.authority_boundary)
     ));
     if let Some(limitation) = &route.limitation {
         out.push_str(&format!(
-            "  - Repair route limitation: `{}`\n",
-            md_inline_code(limitation.kind)
+            "  - Repair route limitation: {}\n",
+            code_span(limitation.kind)
         ));
         out.push_str(&format!(
-            "  - Missing route fields: `{}`\n",
-            md_inline_code(&limitation.missing_fields.join(", "))
+            "  - Missing route fields: {}\n",
+            code_span(&limitation.missing_fields.join(", "))
         ));
         out.push_str(&format!(
             "  - Limitation detail: {}\n",
@@ -551,22 +552,19 @@ fn push_repair_target(out: &mut String, target: Option<&GateRepairTarget>) {
     match target {
         Some(GateRepairTarget::RelatedTest { name, file, line }) => {
             out.push_str(&format!(
-                "  - Near test: `{}` at `{}:{line}`\n",
-                md_inline_code(name),
-                md_inline_code(file)
+                "  - Near test: {} at {}\n",
+                code_span(name),
+                code_span(&format!("{file}:{line}"))
             ));
         }
         Some(GateRepairTarget::ProductionCaller { owner, file, line }) => {
-            out.push_str(&format!(
-                "  - Production caller: `{}`",
-                md_inline_code(owner)
-            ));
+            out.push_str(&format!("  - Production caller: {}", code_span(owner)));
             match (file.as_deref(), line) {
                 (Some(file), Some(line)) => {
-                    out.push_str(&format!(" at `{}:{line}`", md_inline_code(file)));
+                    out.push_str(&format!(" at {}", code_span(&format!("{file}:{line}"))));
                 }
                 (Some(file), None) => {
-                    out.push_str(&format!(" at `{}`", md_inline_code(file)));
+                    out.push_str(&format!(" at {}", code_span(file)));
                 }
                 (None, Some(line)) => out.push_str(&format!(" at line `{line}`")),
                 (None, None) => {}
@@ -593,7 +591,7 @@ fn route_test_intent(route: &GateRepairRoute) -> Option<String> {
 
 fn push_optional_code(out: &mut String, label: &str, value: Option<&str>) {
     if let Some(value) = value {
-        out.push_str(&format!("  - {label}: `{}`\n", md_inline_code(value)));
+        out.push_str(&format!("  - {label}: {}\n", code_span(value)));
     }
 }
 
@@ -601,10 +599,6 @@ fn push_optional_text(out: &mut String, label: &str, value: Option<&str>) {
     if let Some(value) = value {
         out.push_str(&format!("  - {label}: {}\n", md_escape(value)));
     }
-}
-
-fn md_inline_code(value: &str) -> String {
-    md_escape(value).replace('`', "\\`")
 }
 
 /// Render the decision's source location for the Markdown report.
@@ -639,6 +633,26 @@ mod tests {
         MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL,
         VERIFY_AFTER_EDIT_LABEL,
     };
+
+    /// gate-decision.md: a backslash does not escape a backtick inside a
+    /// code span, so the span delimiter must outgrow the text's backticks,
+    /// and `|` stays literal outside a table cell.
+    #[test]
+    fn repair_target_code_spans_contain_backtick_text() {
+        let mut out = String::new();
+        push_repair_target(
+            &mut out,
+            Some(&GateRepairTarget::RelatedTest {
+                name: "t` @octocat <img src=x onerror=alert(1)>".to_string(),
+                file: "tests/a|b.rs".to_string(),
+                line: 7,
+            }),
+        );
+        assert_eq!(
+            out,
+            "  - Near test: ``t` @octocat <img src=x onerror=alert(1)>`` at `tests/a|b.rs:7`\n"
+        );
+    }
 
     fn route_with_repair(repair_command: Option<&str>) -> GateRepairRoute {
         GateRepairRoute {

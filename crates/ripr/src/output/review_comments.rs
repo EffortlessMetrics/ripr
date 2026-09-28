@@ -24,6 +24,7 @@ use crate::output::evidence_record::{
     cross_language_test_target_unresolved, gap_state_for, static_limitations_for,
 };
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
+use crate::output::markdown::code_span;
 #[cfg(test)]
 use crate::testing::cwd_placeholder::project_cwd_text;
 use serde_json::{Value, json};
@@ -747,7 +748,8 @@ fn repair_text(route: &GapRepairRoute) -> String {
 fn repair_why(record: &GapRecord, route: &GapRepairRoute) -> String {
     if let Some(changed) = route.changed_behavior.as_deref() {
         return format!(
-            "Changed behavior `{changed}` has a repairable {} gap.",
+            "Changed behavior {} has a repairable {} gap.",
+            code_span(changed),
             record.kind
         );
     }
@@ -777,7 +779,8 @@ fn repair_intent(route_kind: &str) -> &'static str {
 fn repair_prompt(route: &GapRepairRoute, verify_command: &str) -> String {
     let repair = repair_text(route);
     format!(
-        "{repair} Do not change production behavior unless the existing tests prove it is necessary. Verify with `{verify_command}`."
+        "{repair} Do not change production behavior unless the existing tests prove it is necessary. Verify with {}.",
+        code_span(verify_command)
     )
 }
 
@@ -1189,7 +1192,10 @@ fn nearest_line_ordering(left: usize, right: usize, target: usize) -> Ordering {
 
 fn reason_for(selected: &AgentBriefSelectedSeam<'_>, missing: Option<&str>) -> String {
     if let Some(missing) = missing {
-        return format!("Static evidence names missing discriminator `{missing}` for this seam.");
+        return format!(
+            "Static evidence names missing discriminator {} for this seam.",
+            code_span(missing)
+        );
     }
     format!(
         "Static evidence class is {}; a focused test can strengthen the named seam.",
@@ -1276,15 +1282,16 @@ fn no_test_reaches_owner_prompt(root: &Path, entry: &ClassifiedSeam) -> String {
     let seam = &entry.seam;
     let placement = match integration_test_files_for(root, seam.file()).as_slice() {
         [only] => format!(
-            " A new test for it would usually go in `{only}`, the crate's integration test file."
+            " A new test for it would usually go in {}, the crate's integration test file.",
+            code_span(only)
         ),
         [] => String::new(),
         _ => " A new test for it would usually go in one of the crate's integration test files under `tests/`.".to_string(),
     };
     format!(
-        "No existing test reaches `{owner}`: static evidence finds no test path to this changed owner (`no_static_path`), so static evidence shows no current test checking the changed behavior `{expression}`. This is a test gap in the change, not a RIPR analysis limitation. RIPR does not propose a target for a first test, so no repair route, verify command, or receipt is offered.{placement}",
-        owner = seam.owner(),
-        expression = seam.expression(),
+        "No existing test reaches {owner}: static evidence finds no test path to this changed owner (`no_static_path`), so static evidence shows no current test checking the changed behavior {expression}. This is a test gap in the change, not a RIPR analysis limitation. RIPR does not propose a target for a first test, so no repair route, verify command, or receipt is offered.{placement}",
+        owner = code_span(seam.owner()),
+        expression = code_span(seam.expression()),
     )
 }
 
@@ -1337,20 +1344,27 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
             .get("llm_guidance")
             .and_then(|guidance| string_field(guidance, "command"))
             .unwrap_or("ripr agent brief --root . --seam-id <id> --json");
-        lines.push(format!("- `{seam_id}` @ `{source_location}`: {reason}"));
+        lines.push(format!(
+            "- {} @ {}: {reason}",
+            code_span(seam_id),
+            code_span(&source_location)
+        ));
         let canonical_gap_id = string_field(item, "canonical_gap_id")
             .filter(|value| !value.trim().is_empty())
             .unwrap_or("null");
-        lines.push(format!("  - canonical_gap_id: `{canonical_gap_id}`"));
+        lines.push(format!(
+            "  - canonical_gap_id: {}",
+            code_span(canonical_gap_id)
+        ));
         if let Some(attribution) = string_field(item, "delta_attribution") {
-            lines.push(format!("  - delta_attribution: `{attribution}`"));
+            lines.push(format!("  - delta_attribution: {}", code_span(attribution)));
         }
-        lines.push(format!("  - state: `{state}`"));
+        lines.push(format!("  - state: {}", code_span(state)));
         if let Some(route) = repair_route_kind(item) {
-            lines.push(format!("  - repair_route: `{route}`"));
+            lines.push(format!("  - repair_route: {}", code_span(route)));
         }
         if let Some(route) = string_field(item, "limitation_route") {
-            lines.push(format!("  - limitation_route: `{route}`"));
+            lines.push(format!("  - limitation_route: {}", code_span(route)));
         }
         if let Some(target) = item.get("navigation_only_target") {
             push_navigation_only_target_markdown(lines, target);
@@ -1361,16 +1375,19 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
                     .to_string(),
             );
         }
-        lines.push(format!("  - command: `{command}`"));
+        lines.push(format!("  - command: {}", code_span(command)));
         if let Some(guidance) = item.get("llm_guidance")
             && let Some(outcome) = string_field(guidance, "analysis_outcome_command")
         {
-            lines.push(format!("  - analysis_outcome_command: `{outcome}`"));
+            lines.push(format!(
+                "  - analysis_outcome_command: {}",
+                code_span(outcome)
+            ));
             if let Some(verify) = string_field(guidance, "verify_command") {
-                lines.push(format!("  - verify_command: `{verify}`"));
+                lines.push(format!("  - verify_command: {}", code_span(verify)));
             }
             if let Some(receipt) = string_field(item, "receipt_command") {
-                lines.push(format!("  - receipt_command: `{receipt}`"));
+                lines.push(format!("  - receipt_command: {}", code_span(receipt)));
             }
         }
     }
@@ -1388,10 +1405,11 @@ fn push_navigation_only_target_markdown(lines: &mut Vec<String>, target: &Value)
         .and_then(Value::as_bool)
         .unwrap_or(false);
     lines.push(format!(
-        "  - navigation_only_target: `{location}` ({language}; repair_packet_ready={ready})"
+        "  - navigation_only_target: {} ({language}; repair_packet_ready={ready})",
+        code_span(&location)
     ));
     if let Some(test_name) = string_field(target, "test_name") {
-        lines.push(format!("  - external_observer: `{test_name}`"));
+        lines.push(format!("  - external_observer: {}", code_span(test_name)));
     }
 }
 
@@ -1486,7 +1504,7 @@ fn push_suppressed_items(lines: &mut Vec<String>, value: Option<&Value>) {
     for item in items {
         let seam_id = string_field(item, "seam_id").unwrap_or("unknown");
         let reason = string_field(item, "reason").unwrap_or("unknown");
-        lines.push(format!("- `{seam_id}`: {reason}"));
+        lines.push(format!("- {}: {reason}", code_span(seam_id)));
     }
 }
 
@@ -1497,6 +1515,38 @@ fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// comments.md: a backtick in a seam id, path, or test name must not
+    /// close the code span and let `@mention` or HTML after it render live.
+    #[test]
+    fn comments_markdown_keeps_backtick_text_inside_code_spans() {
+        let items = json!([{
+            "seam_id": "s` @octocat",
+            "reason": "reason",
+            "source_location": {"file": "src/`x <img src=x onerror=alert(1)>.rs", "line": 3},
+            "gap_state": "open",
+            "navigation_only_target": {
+                "file": "a.ts",
+                "line": 1,
+                "language": "typescript",
+                "test_name": "t` @octocat"
+            }
+        }]);
+        let mut lines = Vec::new();
+        push_markdown_items(&mut lines, "Inline", Some(&items));
+        let rendered = lines.join("\n");
+        assert!(
+            rendered.contains(
+                "- ``s` @octocat`` @ ``src/`x <img src=x onerror=alert(1)>.rs:3``: reason"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("  - external_observer: ``t` @octocat``"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("  - state: `open`"), "{rendered}");
+    }
     use crate::analysis::ClassifiedSeam;
     use crate::analysis::canonical_gap::canonical_gap_identity;
     use crate::analysis::seams::{
