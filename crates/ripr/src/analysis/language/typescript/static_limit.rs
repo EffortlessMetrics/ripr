@@ -532,9 +532,7 @@ fn import_source_matches_owner_text(
     test_file: &Path,
     owner: &TypeScriptOwner,
 ) -> bool {
-    let owner_module = super::related_tests::normalized_module_path(&owner.file);
-    super::related_tests::normalized_relative_import_module(test_file, &import.source, None, None)
-        .is_some_and(|module| module == owner_module)
+    super::related_tests::import_source_matches_owner(import, test_file, owner, None, None)
 }
 
 #[cfg(test)]
@@ -561,8 +559,10 @@ mod module_identity_tests {
     }
 
     /// The static-limit cross-package reference gate must use the same
-    /// module identity as related-test credit. A literal expected owner path
-    /// and a different-module negative catch both under- and over-credit.
+    /// module identity as related-test credit. Before delegation, this gate
+    /// compared normalized_relative_import_module with normalized_module_path;
+    /// that was equivalent to the shared owner with both optional authorities
+    /// absent. These positive and negative rows retain its observable behavior.
     #[test]
     fn unresolved_ownership_reference_matches_routed_module_identity() {
         for (source, owner_file, expected) in [

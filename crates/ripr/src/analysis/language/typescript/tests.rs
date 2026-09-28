@@ -7475,6 +7475,58 @@ fn named_limitation_target_unresolved_emitted_for_cross_package_reference() -> R
     Ok(())
 }
 
+/// Exercise the import branch after the package filter with the production
+/// workspace-relative file spelling and an absolute workspace root.
+#[test]
+fn unresolved_ownership_import_branch_with_relative_paths() -> Result<(), String> {
+    let root = ts_unique_tempdir("cross-package-import-identity")?;
+    ts_write_file(&root.join("packages/a/package.json"), "{}")?;
+    ts_write_file(&root.join("packages/b/package.json"), "{}")?;
+
+    let owner = test_owner("cart", "packages/a/src/cart.ts");
+    let import = TypeScriptImport {
+        source: "../../a/src/cart.js".into(),
+        imported: Some("cart".into()),
+        local: "renamed".into(),
+        namespace: false,
+    };
+    let test = TypeScriptTest {
+        name: "cart through alias".into(),
+        local_name: "cart through alias".into(),
+        describe_names: Vec::new(),
+        file: "packages/b/tests/cart.test.ts".into(),
+        line: 3,
+        body_text: "renamed();".into(),
+        assertions: Vec::new(),
+        mocks_in_file: Vec::new(),
+        scope_bindings: Vec::new(),
+        imports_in_file: vec![import],
+    };
+
+    // The owner name is absent from the body: only the import identity and
+    // alias call can satisfy the reference branch after the package filter.
+    let limitations =
+        named_limitations_for_unresolved_ownership(&owner, std::slice::from_ref(&test), &root);
+    assert_eq!(limitations.len(), 1);
+    assert_eq!(limitations[0].name, "typescript_target_unresolved");
+    assert_eq!(
+        limitations[0].sample_source,
+        "packages/b/tests/cart.test.ts:3"
+    );
+
+    let mut wrong_import = test.clone();
+    wrong_import.imports_in_file[0].source = "../../a/src/other.js".into();
+    assert!(named_limitations_for_unresolved_ownership(&owner, &[wrong_import], &root).is_empty());
+    let mut no_call = test.clone();
+    no_call.body_text = "const value = 1;".into();
+    assert!(named_limitations_for_unresolved_ownership(&owner, &[no_call], &root).is_empty());
+    let mut same_package = test;
+    same_package.file = "packages/a/tests/cart.test.ts".into();
+    same_package.imports_in_file[0].source = "../src/cart.js".into();
+    assert!(named_limitations_for_unresolved_ownership(&owner, &[same_package], &root).is_empty());
+    Ok(())
+}
+
 /// `typescript_target_unresolved` must NOT be emitted when all tests are in
 /// the same package (single-package workspace without a package.json hierarchy
 /// does not trigger cross-package detection).

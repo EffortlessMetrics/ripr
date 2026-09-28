@@ -1769,7 +1769,7 @@ pub(crate) fn normalized_relative_import_module(
     Some(strip_typescript_module_extension(&normalized))
 }
 
-pub(super) fn normalized_module_path(path: &Path) -> String {
+fn normalized_module_path(path: &Path) -> String {
     strip_typescript_module_extension(&normalized_path(path))
 }
 
