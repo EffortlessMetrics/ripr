@@ -40,7 +40,12 @@ tests = [
   "crates/ripr/src/analysis/probes/diff.rs::tests::probes_for_file_skips_brace_and_else_lines_of_new_function",
   "crates/ripr/src/analysis/probes/diff.rs::tests::probes_for_file_keeps_lone_structural_line_hunks",
   "crates/ripr/src/analysis/probes/diff.rs::tests::probes_for_file_keeps_structural_line_closing_outside_block_in_mixed_run",
-  "crates/ripr/src/analysis/pipeline.rs::tests::lone_else_split_hunk_is_not_no_behavioral_candidates"
+  "crates/ripr/src/analysis/pipeline.rs::tests::lone_else_split_hunk_is_not_no_behavioral_candidates",
+  "crates/ripr/src/output/observed_values.rs::tests::under_the_cap_every_value_is_kept_in_order",
+  "crates/ripr/src/output/observed_values.rs::tests::over_the_cap_input_values_outrank_assertion_arguments_and_keep_order",
+  "crates/ripr/src/output/json/mod.rs::tests::json_caps_observed_values_on_distinct_lines_and_discloses_the_total",
+  "crates/ripr/src/output/json/mod.rs::tests::json_omits_observed_values_total_when_nothing_is_dropped",
+  "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_reports_no_value_delta_across_a_capped_value_list"
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",
@@ -647,6 +652,8 @@ tests = [
   "crates/ripr/src/output/sarif.rs::tests::sarif_uses_configured_seam_severity",
   "crates/ripr/src/output/sarif.rs::tests::sarif_omits_off_seam_class",
   "crates/ripr/src/output/sarif.rs::tests::sarif_attaches_suppression_metadata",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_caps_observed_values_and_discloses_the_total",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_omits_observed_values_total_under_the_cap",
   "xtask/src/main.rs::tests::sarif_policy_passes_when_no_new_results",
   "xtask/src/main.rs::tests::sarif_policy_flags_new_warning_result",
   "xtask/src/main.rs::tests::sarif_policy_ignores_note_when_threshold_warning",

@@ -5,6 +5,9 @@ use crate::analysis::classify::{
     reveal_evidence_with_expression,
 };
 use crate::domain::*;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 mod tuple_match;
 
@@ -55,6 +58,14 @@ impl ClassifiedProbeEvidence {
         let owner_package = context
             .owner_fn
             .and_then(|owner| package_prefix(&owner.file));
+        // Both defeats below depend only on the test's file (and the probe's
+        // constant owner callee), never on the individual test, so they are
+        // memoized per file. A high-traffic owner relates to thousands of
+        // tests spread over a few files; without the memo every test re-masked
+        // and re-scanned its whole file source (profiled: ~80% of a 60 s
+        // `ripr check` on a 505-line diff of this repository).
+        let import_defeats_by_file = FileDefeatMemo::default();
+        let package_defeats_by_file = FileDefeatMemo::default();
         let (observe, discriminate, related_tests) = reveal_evidence_with_expression(
             context.probe,
             reveal_expression,
@@ -63,12 +74,14 @@ impl ClassifiedProbeEvidence {
             // reachable here, so the caller computes the same-name-import
             // defeat per test instead of restructuring the reveal inputs.
             &|test, callee| {
-                context.index.files.get(&test.file).is_some_and(|facts| {
-                    file_imports_foreign_callee_name(
-                        &facts.source,
-                        callee,
-                        &context.index.package_names,
-                    )
+                memoized_file_defeat(&import_defeats_by_file, &test.file, callee, || {
+                    context.index.files.get(&test.file).is_some_and(|facts| {
+                        file_imports_foreign_callee_name(
+                            &facts.source,
+                            callee,
+                            &context.index.package_names,
+                        )
+                    })
                 })
             },
             // #3731 review (G1): the test's OWN package defining a
@@ -82,18 +95,21 @@ impl ClassifiedProbeEvidence {
             // unscopable side (single-crate relative paths, absolute
             // paths) keeps today's behavior.
             &|test, callee| {
-                let Some(test_package) = package_prefix(&test.file) else {
-                    return false;
-                };
-                let Some(owner_package) = owner_package.as_deref() else {
-                    return false;
-                };
-                if test_package == owner_package {
-                    return false;
-                }
-                context.index.functions.iter().any(|function| {
-                    function.name == callee
-                        && package_prefix(&function.file).as_deref() == Some(test_package.as_str())
+                memoized_file_defeat(&package_defeats_by_file, &test.file, callee, || {
+                    let Some(test_package) = package_prefix(&test.file) else {
+                        return false;
+                    };
+                    let Some(owner_package) = owner_package.as_deref() else {
+                        return false;
+                    };
+                    if test_package == owner_package {
+                        return false;
+                    }
+                    context.index.functions.iter().any(|function| {
+                        function.name == callee
+                            && package_prefix(&function.file).as_deref()
+                                == Some(test_package.as_str())
+                    })
                 })
             },
         );
@@ -187,6 +203,31 @@ fn evidence_summaries<'e>(stages: impl IntoIterator<Item = &'e StageEvidence>) -
     summaries.sort();
     summaries.dedup();
     summaries
+}
+
+/// Per-file defeat results for one probe, keyed by test file then callee.
+type FileDefeatMemo = RefCell<BTreeMap<PathBuf, BTreeMap<String, bool>>>;
+
+/// Returns the cached defeat for `(file, callee)`, computing it once.
+fn memoized_file_defeat(
+    memo: &FileDefeatMemo,
+    file: &Path,
+    callee: &str,
+    compute: impl FnOnce() -> bool,
+) -> bool {
+    if let Some(cached) = memo
+        .borrow()
+        .get(file)
+        .and_then(|by_callee| by_callee.get(callee))
+    {
+        return *cached;
+    }
+    let defeats = compute();
+    memo.borrow_mut()
+        .entry(file.to_path_buf())
+        .or_default()
+        .insert(callee.to_string(), defeats);
+    defeats
 }
 
 #[cfg(test)]
@@ -303,6 +344,31 @@ mod tests {
             &context,
             "if trimmed != Some(expected_id.trim()).as_str() {",
         )
+    }
+
+    /// The memo computes a defeat once per (file, callee) and keeps
+    /// different files and callees apart, so a cached answer never leaks
+    /// from one test file to another.
+    #[test]
+    fn file_defeat_memo_computes_once_per_file_and_callee() {
+        use std::cell::Cell;
+        use std::path::Path;
+
+        let memo = super::FileDefeatMemo::default();
+        let calls = Cell::new(0);
+        let lookup = |file: &str, callee: &str, answer: bool| {
+            super::memoized_file_defeat(&memo, Path::new(file), callee, || {
+                calls.set(calls.get() + 1);
+                answer
+            })
+        };
+
+        assert!(lookup("tests/a.rs", "score", true));
+        // Cached: the second compute would answer false but never runs.
+        assert!(lookup("tests/a.rs", "score", false));
+        assert!(!lookup("tests/b.rs", "score", false));
+        assert!(!lookup("tests/a.rs", "total", false));
+        assert_eq!(calls.get(), 3);
     }
 
     /// G1 falsifier: two packages each define `expect_response`; the test

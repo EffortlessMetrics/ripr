@@ -30,6 +30,7 @@ pub(crate) mod limited_check;
 pub(crate) mod markdown;
 pub(crate) mod mutation_calibration;
 pub(crate) mod next_step;
+pub(crate) mod observed_values;
 pub(crate) mod outcome;
 pub(crate) mod path;
 pub(crate) mod perl_gap_record_projection;

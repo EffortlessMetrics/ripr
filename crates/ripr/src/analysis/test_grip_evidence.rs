@@ -2381,25 +2381,12 @@ fn test_target_evidence(
     relation: RelationReason,
 ) -> Option<TestTargetEvidence> {
     let index = context.index;
-    let file = index.files.get(&test.file)?;
-    let matches: Vec<&FunctionSummary> = file
-        .functions
-        .iter()
-        .filter(|function| {
-            function.source_role.is_evidence_role()
-                && function.name == test.name
-                && function.start_line == test.start_line
-        })
-        .collect();
-    if matches.len() != 1 {
-        return None;
-    }
+    let function = context.unique_evidence_function(&test.file, &test.name, test.start_line)?;
     let authority = index.workspace_authority.as_ref()?;
     let test_source_digest = context.indexed_source_digest(&test.file)?;
     if !authority.validates_target_digest(&test.file, seam.file(), &test_source_digest) {
         return None;
     }
-    let function = matches[0];
     Some(TestTargetEvidence::from_index(
         function.id.clone(),
         function.file.clone(),

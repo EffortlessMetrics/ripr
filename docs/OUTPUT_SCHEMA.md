@@ -724,6 +724,17 @@ The evidence-first fields are additive in schema `0.2`:
 - `flow_sinks`, `observed_values`, and `missing_discriminators` promote the
   nested activation evidence for consumers that want direct finding-level
   access.
+- `observed_values_total` — (optional, additive, no `schema_version` bump)
+  present only when the finding carries more observed values than
+  `MAX_OBSERVED_VALUES_PER_FINDING` (currently 32), and then set to the pre-cap
+  count. Both `observed_values` arrays and `assertion_texts` render the same
+  bounded projection: values from call arguments, table rows, builder calls,
+  enum variants and returns are kept ahead of bare assertion arguments, in
+  their original order. Absent means every value is rendered. The cap exists
+  because one finding can relate to thousands of tests; uncapped, a 505-line
+  diff on this repository produced a 187 MB report. It never affects
+  classification or missing discriminators, which use the full vector. SARIF
+  result and seam properties follow the same rule.
 - `related_tests_total` — number of related tests the analyzer matched for
   this finding (pre-cap, always the true count). The `related_tests` array is
   **capped** at `MAX_RELATED_TESTS_PER_FINDING_JSON` (currently 8) to bound

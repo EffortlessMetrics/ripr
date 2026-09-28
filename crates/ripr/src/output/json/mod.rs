@@ -1551,6 +1551,93 @@ mod tests {
         );
     }
 
+    /// A finding that relates to thousands of tests carries one observed value
+    /// per assertion argument on a distinct line. The report must render a
+    /// bounded projection in both arrays and `assertion_texts`, disclose the
+    /// pre-cap count, and leave the finding's full vector untouched.
+    #[test]
+    fn json_caps_observed_values_on_distinct_lines_and_discloses_the_total() -> Result<(), String> {
+        use crate::output::observed_values::MAX_OBSERVED_VALUES_PER_FINDING;
+
+        let mut finding = unknown_finding();
+        finding.activation.observed_values = (1..=5_000)
+            .map(|line| ValueFact {
+                line,
+                text: format!("assert!(rendered.contains(\"field_{line}\"));"),
+                value: format!("\"field_{line}\""),
+                context: ValueContext::AssertionArgument,
+            })
+            .collect();
+        let output = single_finding_output(finding.clone());
+
+        let rendered = render(&output);
+        let json: serde_json::Value =
+            serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+        let rendered_finding = &json["findings"][0];
+
+        let array_len = |value: &serde_json::Value| value.as_array().map(Vec::len);
+        assert_eq!(
+            array_len(&rendered_finding["observed_values"]),
+            Some(MAX_OBSERVED_VALUES_PER_FINDING)
+        );
+        assert_eq!(
+            array_len(&rendered_finding["activation"]["observed_values"]),
+            Some(MAX_OBSERVED_VALUES_PER_FINDING)
+        );
+        assert_eq!(
+            rendered_finding["assertion_texts"]
+                .as_object()
+                .map(|map| map.len()),
+            Some(MAX_OBSERVED_VALUES_PER_FINDING)
+        );
+        assert_eq!(rendered_finding["observed_values_total"], 5_000);
+        // A dropped value's assertion text must not leak through the map.
+        assert!(!rendered.contains("field_5000"));
+        assert!(
+            rendered.len() < 100_000,
+            "capped finding should stay small; got {} bytes",
+            rendered.len()
+        );
+        assert_eq!(finding.activation.observed_values.len(), 5_000);
+        Ok(())
+    }
+
+    #[test]
+    fn json_omits_observed_values_total_when_nothing_is_dropped() {
+        let mut finding = unknown_finding();
+        finding.activation.observed_values = vec![ValueFact {
+            line: 12,
+            text: "assert_eq!(discounted_total(50, 100), 50);".to_string(),
+            value: "amount = 50".to_string(),
+            context: ValueContext::FunctionArgument,
+        }];
+
+        let rendered = render(&single_finding_output(finding));
+
+        assert!(rendered.contains("\"amount = 50\""));
+        assert!(!rendered.contains("observed_values_total"));
+    }
+
+    fn single_finding_output(finding: Finding) -> CheckOutput {
+        CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: std::path::PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        }
+    }
+
     // RIPR-SPEC-0083 tests: no-scope JSON disclosure
 
     #[test]

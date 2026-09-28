@@ -582,19 +582,27 @@ fn finding_json_with_config_and_counts(
     array_field(out, indent + 1, "evidence", &evidence, true);
     let missing = projected_preview_actionability_missing(finding);
     array_field(out, indent + 1, "missing", &missing, true);
-    assertion_texts_json(out, &finding.activation.observed_values, indent + 1);
+    // One bounded projection feeds `assertion_texts` and both observed-value
+    // arrays, so the map never names a line the arrays dropped.
+    let rendered_values = rendered_observed_values(finding);
+    assertion_texts_json(out, &rendered_values, indent + 1);
     out.push_str(",\n");
-    activation_json(out, finding, indent + 1);
+    activation_json(out, finding, &rendered_values, indent + 1);
     out.push_str(",\n");
-    let shared_text = shared_assertion_text_map(&finding.activation.observed_values);
+    let shared_text = shared_assertion_text_map(&rendered_values);
     value_facts_array_json(
         out,
         "observed_values",
-        &finding.activation.observed_values,
+        &rendered_values,
         indent + 1,
         &shared_text,
     );
     out.push_str(",\n");
+    if let Some(total) = crate::output::observed_values::elided_observed_values_total(
+        &finding.activation.observed_values,
+    ) {
+        number_field(out, indent + 1, "observed_values_total", total, true);
+    }
     missing_discriminators_array_json(
         out,
         "missing_discriminators",
@@ -882,19 +890,20 @@ fn evidence_path_values(finding: &Finding) -> Vec<String> {
         value
     }));
 
+    // Name only values the capped `observed_values` array also carries.
     values.extend(
-        finding
-            .activation
-            .observed_values
-            .iter()
-            .take(8)
-            .map(|fact| {
-                let context = display_label(fact.context.as_str());
-                format!(
-                    "observed {} value {} at line {}",
-                    context, fact.value, fact.line
-                )
-            }),
+        crate::output::observed_values::bounded_observed_values(
+            &finding.activation.observed_values,
+        )
+        .into_iter()
+        .take(8)
+        .map(|fact| {
+            let context = display_label(fact.context.as_str());
+            format!(
+                "observed {} value {} at line {}",
+                context, fact.value, fact.line
+            )
+        }),
     );
 
     values.extend(
@@ -919,14 +928,28 @@ fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
         .max_by_key(|test| test.oracle_strength.rank())
 }
 
-fn activation_json(out: &mut String, finding: &Finding, indent: usize) {
+/// The observed values the check JSON renders for a finding: every value up
+/// to `MAX_OBSERVED_VALUES_PER_FINDING`, otherwise the bounded projection.
+fn rendered_observed_values(finding: &Finding) -> Vec<ValueFact> {
+    crate::output::observed_values::bounded_observed_values(&finding.activation.observed_values)
+        .into_iter()
+        .cloned()
+        .collect()
+}
+
+fn activation_json(
+    out: &mut String,
+    finding: &Finding,
+    rendered_values: &[ValueFact],
+    indent: usize,
+) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}\"activation\": {{\n"));
-    let shared_text = shared_assertion_text_map(&finding.activation.observed_values);
+    let shared_text = shared_assertion_text_map(rendered_values);
     value_facts_array_json(
         out,
         "observed_values",
-        &finding.activation.observed_values,
+        rendered_values,
         indent + 1,
         &shared_text,
     );

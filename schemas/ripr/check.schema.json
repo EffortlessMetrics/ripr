@@ -260,6 +260,7 @@
         "assertion_texts": { "type": "object" },
         "activation": { "$ref": "#/$defs/activation" },
         "observed_values": { "type": "array", "items": { "$ref": "#/$defs/value_fact" } },
+        "observed_values_total": { "type": "integer", "minimum": 0 },
         "missing_discriminators": { "type": "array", "items": { "$ref": "#/$defs/missing_discriminator" } },
         "related_tests_total": { "type": "integer", "minimum": 0 },
         "related_tests": { "type": "array", "items": { "type": "object" } },

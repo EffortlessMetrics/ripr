@@ -23,6 +23,9 @@ pub(crate) struct CompactGripContext<'a> {
     same_module_cache: RefCell<BTreeMap<String, Vec<usize>>>,
     pub(in crate::analysis::test_grip_evidence) source_digest_cache:
         RefCell<BTreeMap<&'a Path, String>>,
+    /// Per test file: evidence-role function indices grouped by start line,
+    /// built on first use. See [`Self::unique_evidence_function`].
+    evidence_functions_by_line_cache: RefCell<BTreeMap<&'a Path, BTreeMap<usize, Vec<usize>>>>,
 }
 
 /// Candidate generation only: the existing `contains` and `same_module`
@@ -321,7 +324,46 @@ impl<'a> CompactGripContext<'a> {
             owner_named_cache: RefCell::new(BTreeMap::new()),
             same_module_cache: RefCell::new(BTreeMap::new()),
             source_digest_cache: RefCell::new(BTreeMap::new()),
+            evidence_functions_by_line_cache: RefCell::new(BTreeMap::new()),
         }
+    }
+
+    /// The single evidence-role function in `path` named `name` that starts
+    /// at `start_line`, or `None` when there is none or more than one.
+    ///
+    /// The answer depends only on the test, never on the seam, but every
+    /// seam x related-test pair used to scan the whole file's function list.
+    /// On a file with thousands of inline tests that made `review-comments`
+    /// run for 19 minutes on a 505-line diff of this repository. The file's
+    /// functions are grouped by start line once, then each lookup reads one
+    /// short bucket.
+    pub(in crate::analysis::test_grip_evidence) fn unique_evidence_function(
+        &self,
+        path: &Path,
+        name: &str,
+        start_line: usize,
+    ) -> Option<&'a FunctionSummary> {
+        let (path, facts) = self.index.files.get_key_value(path)?;
+        let mut cache = self.evidence_functions_by_line_cache.borrow_mut();
+        let by_line = cache.entry(path.as_path()).or_insert_with(|| {
+            let mut by_line: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+            for (position, function) in facts.functions.iter().enumerate() {
+                if function.source_role.is_evidence_role() {
+                    by_line
+                        .entry(function.start_line)
+                        .or_default()
+                        .push(position);
+                }
+            }
+            by_line
+        });
+        let mut matches = by_line
+            .get(&start_line)?
+            .iter()
+            .filter_map(|position| facts.functions.get(*position))
+            .filter(|function| function.name == name);
+        let function = matches.next()?;
+        matches.next().is_none().then_some(function)
     }
 
     /// SHA-256 of an indexed file's source, computed once per context.
