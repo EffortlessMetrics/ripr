@@ -2953,6 +2953,37 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn winsafe_authority_denies_rename_until_guard_drops_in_unicode_root() -> Result<(), String> {
+        let fixture = git_fixture("winsafe authority café")?;
+        let source = fixture.root.join("tests/pricing.rs");
+        let destination = fixture.root.join("tests/renamed.rs");
+        let guard = writable_regular_file_authority(&source)?
+            .ok_or_else(|| "existing writable file had no winsafe authority".to_string())?;
+        if fs::rename(&source, &destination).is_ok() {
+            return Err("winsafe authority allowed pathname replacement".to_string());
+        }
+        drop(guard);
+        fs::rename(&source, &destination)
+            .map_err(|err| format!("rename after winsafe guard drop: {err}"))?;
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn winsafe_authority_refuses_hard_link() -> Result<(), String> {
+        let fixture = git_fixture("winsafe-hardlink")?;
+        let source = fixture.root.join("tests/pricing.rs");
+        let link = fixture.root.join("tests/pricing-link.rs");
+        fs::hard_link(&source, &link).map_err(|err| format!("create writable hard link: {err}"))?;
+        match writable_regular_file_authority(&source) {
+            Err(error) if error.contains("has 2 hard links") => Ok(()),
+            Err(error) => Err(format!("unexpected winsafe authority error: {error}")),
+            Ok(_) => Err("winsafe authority accepted a multiply linked file".to_string()),
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn capture_handle_denies_windows_rename_until_closed() -> Result<(), String> {
         let fixture = git_fixture("deny-replacement-share")?;
         let source = fixture.root.join("tests/pricing.rs");
