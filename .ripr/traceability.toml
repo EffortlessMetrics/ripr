@@ -5643,7 +5643,9 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::explain_keeps_base_and_diff_as_from_artifact_assertions",
   "crates/ripr/src/cli/commands/context.rs::tests::context_rejects_base_and_diff_together_at_parse_time",
   "crates/ripr/src/cli/commands/context.rs::tests::context_keeps_base_and_diff_as_from_artifact_assertions",
-  "crates/ripr/tests/cli_smoke.rs::check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure"
+  "crates/ripr/tests/cli_smoke.rs::check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure",
+  "crates/ripr/tests/cli_smoke.rs::stdin_probe_stalled_child_returns_bounded_timeout",
+  "crates/ripr/tests/cli_smoke.rs::stdin_probe_early_exit_returns_write_error"
 ]
 fixtures = []
 code = [

@@ -32,7 +32,7 @@
 //! passthrough whose termination kills and reaps the direct child, with the
 //! Unix process-group authority unchanged in its callers.
 
-use std::process::{ChildStderr, ChildStdout, Command, ExitStatus};
+use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
 #[cfg(windows)]
@@ -98,6 +98,18 @@ impl OwnedProcess {
     /// The child's process id.
     pub fn id(&self) -> u32 {
         self.child.id()
+    }
+
+    /// Take the piped stdin declared on the command before spawning.
+    pub fn stdin_pipe(&mut self) -> &mut Option<ChildStdin> {
+        #[cfg(windows)]
+        {
+            self.child.stdin()
+        }
+        #[cfg(not(windows))]
+        {
+            &mut self.child.stdin
+        }
     }
 
     /// Take the piped stdout declared on the command before spawning.

@@ -65,7 +65,7 @@ fn spawn_command(
     redirect: Option<(&Path, &Path)>,
     stdin: Option<&[u8]>,
 ) -> Result<Output, std::io::Error> {
-    let mut command = Command::new(program);
+    let mut command = probe_command(program);
     if let Some(current_dir) = current_dir {
         command.current_dir(current_dir);
     }
@@ -98,17 +98,133 @@ fn spawn_command(
                         .stderr(std::fs::File::create(stderr)?);
                 }
             }
-            let mut child = command.spawn()?;
-            let mut pipe = child
-                .stdin
-                .take()
-                .ok_or_else(|| std::io::Error::other("child stdin was not captured"))?;
-            pipe.write_all(input)?;
-            // Close our write end so the child sees EOF instead of blocking.
-            drop(pipe);
-            child.wait_with_output()
+            run_owned_stdin_probe(command, input, std::time::Duration::from_secs(30))
         }
     }
+}
+
+fn probe_command(program: &str) -> Command {
+    Command::new(program)
+}
+
+#[test]
+fn stdin_probe_fixture_entry() {
+    if std::env::var("RIPR_STDIN_PROBE_CHILD").as_deref() == Ok("hang") {
+        std::thread::sleep(std::time::Duration::from_mins(1));
+    }
+}
+
+fn stdin_probe_fixture(mode: &str) -> Result<Command, std::io::Error> {
+    let executable = std::env::current_exe()?;
+    let executable = executable
+        .to_str()
+        .ok_or_else(|| std::io::Error::other("test executable path is not UTF-8"))?;
+    let mut command = probe_command(executable);
+    command
+        .args(["--exact", "stdin_probe_fixture_entry"])
+        .env("RIPR_STDIN_PROBE_CHILD", mode)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    Ok(command)
+}
+
+#[test]
+fn stdin_probe_stalled_child_returns_bounded_timeout() -> Result<(), std::io::Error> {
+    let started = std::time::Instant::now();
+    let result = run_owned_stdin_probe(
+        stdin_probe_fixture("hang")?,
+        b"small fixture",
+        std::time::Duration::from_millis(100),
+    );
+    assert_eq!(
+        result.err().map(|err| err.kind()),
+        Some(std::io::ErrorKind::TimedOut)
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    Ok(())
+}
+
+#[test]
+fn stdin_probe_early_exit_returns_write_error() -> Result<(), std::io::Error> {
+    let result = run_owned_stdin_probe(
+        stdin_probe_fixture("exit")?,
+        &vec![b'x'; 2 * 1024 * 1024],
+        std::time::Duration::from_secs(5),
+    );
+    assert_eq!(
+        result.err().map(|err| err.kind()),
+        Some(std::io::ErrorKind::BrokenPipe)
+    );
+    Ok(())
+}
+
+/// Bound writing, process completion and capture to one deadline. The owner
+/// terminates/reaps on every returned error; no writer/drain join can stall
+/// the harness beyond that deadline.
+fn run_owned_stdin_probe(
+    command: Command,
+    input: &[u8],
+    budget: std::time::Duration,
+) -> Result<Output, std::io::Error> {
+    let deadline = std::time::Instant::now() + budget;
+    let mut child = ripr::process_owner::OwnedProcess::spawn(command)?;
+    let mut pipe = child
+        .stdin_pipe()
+        .take()
+        .ok_or_else(|| std::io::Error::other("child stdin was not captured"))?;
+    let input = input.to_vec();
+    let (write_tx, write_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = pipe.write_all(&input);
+        drop(pipe); // EOF even on a failed write.
+        let _ = write_tx.send(result);
+    });
+    fn drain<R: std::io::Read + Send + 'static>(
+        pipe: Option<R>,
+    ) -> std::sync::mpsc::Receiver<Result<Vec<u8>, std::io::Error>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let result = match pipe {
+                Some(mut pipe) => pipe.read_to_end(&mut bytes).map(|_| bytes),
+                None => Ok(bytes),
+            };
+            let _ = tx.send(result);
+        });
+        rx
+    }
+    fn receive<T>(
+        rx: &std::sync::mpsc::Receiver<Result<T, std::io::Error>>,
+        deadline: std::time::Instant,
+    ) -> Result<T, std::io::Error> {
+        rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::TimedOut, err))?
+    }
+    let stdout = drain(child.stdout_pipe().take());
+    let stderr = drain(child.stderr_pipe().take());
+    let result = (|| {
+        receive(&write_rx, deadline)?;
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "stdin probe exceeded its deadline",
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        Ok(Output {
+            status,
+            stdout: receive(&stdout, deadline)?,
+            stderr: receive(&stderr, deadline)?,
+        })
+    })();
+    child.terminate_tree().map_err(std::io::Error::other)?;
+    result
 }
 
 /// Run a command with extra environment variables set, so tests can plant an
