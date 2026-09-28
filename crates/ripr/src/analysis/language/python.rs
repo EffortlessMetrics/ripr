@@ -23,6 +23,7 @@ use super::super::{
     AnalysisOptions, diff::ChangedFile, fingerprint_probe_id, normalize_expression,
 };
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
+mod bounded_read;
 use crate::analysis_outcome::{
     AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
     AnalysisStage,
@@ -38,6 +39,10 @@ use crate::domain::{
 use crate::domain::{
     ExposureClass, Finding, MissingDiscriminatorFact, OracleKind, OracleStrength, OwnerKind,
     ProbeFamily, StaticLimitKind, StopReason, SymbolId,
+};
+use bounded_read::{
+    PYTHON_MAX_WORKSPACE_FILES_ENV, PythonDiffWalkLimits, read_workspace_sources_capped,
+    truncate_workspace_files,
 };
 use rustpython_parser::ast::Expr;
 use std::{
@@ -433,18 +438,61 @@ impl LanguageAdapter for PythonAdapter {
         _oracle_policy: &OraclePolicy,
         changed_files: &[ChangedFile],
     ) -> Result<LanguageDiffResult, String> {
-        let workspace_files = collect_workspace_python_files(&options.root);
+        PythonAdapter::analyze_diff_with_limits(
+            options,
+            changed_files,
+            PythonDiffWalkLimits::from_env(),
+        )
+    }
+
+    fn analyze_repo(
+        &self,
+        options: &AnalysisOptions,
+        _oracle_policy: &OraclePolicy,
+    ) -> Result<LanguageRepoResult, String> {
+        // #2109: the shared repo working-set override bounds the run before
+        // any read; an invalid override fails closed as a named error.
+        let working_set_limit = repo::repo_working_set_limit()?;
+        PythonAdapter::analyze_repo_with_limit(&options.root, working_set_limit)
+    }
+}
+
+impl PythonAdapter {
+    /// The deterministic diff-mode core of [`LanguageAdapter::analyze_diff`]
+    /// with the workspace-walk bounds injected (mirrors
+    /// [`PythonAdapter::analyze_repo_with_limit`]: `analyze_diff` resolves
+    /// the environment, this entry point carries the bounds, so tests can
+    /// inject tiny caps without `set_var`, which edition 2024 forbids).
+    ///
+    /// The bounded walk (`bounded_read.rs`, mirroring the TypeScript
+    /// adapter's bounded pattern) caps the discovered-file count, then reads
+    /// every retained source ONCE under a per-file cap and an aggregate
+    /// byte budget. Files refused by any bound, and unreadable files the
+    /// diff touches, become named typed limitations — never silent skips.
+    pub(in crate::analysis::language::python) fn analyze_diff_with_limits(
+        options: &AnalysisOptions,
+        changed_files: &[ChangedFile],
+        walk_limits: PythonDiffWalkLimits,
+    ) -> Result<LanguageDiffResult, String> {
+        let discovered = collect_workspace_python_files(&options.root);
+        let (workspace_files, refused_files) =
+            truncate_workspace_files(discovered, walk_limits.max_workspace_files);
+        let workspace_read = read_workspace_sources_capped(
+            &options.root,
+            &workspace_files,
+            walk_limits.max_file_read_bytes,
+            walk_limits.max_workspace_read_bytes,
+        );
         let mut all_owners: Vec<PythonOwner> = Vec::new();
         let mut all_tests: Vec<PythonTest> = Vec::new();
         let mut docstring_ranges_by_file: BTreeMap<PathBuf, Vec<RangeInclusive<usize>>> =
             BTreeMap::new();
         let mut limitations = Vec::new();
         for relative in &workspace_files {
-            let absolute = options.root.join(relative);
-            let Ok(source) = std::fs::read_to_string(&absolute) else {
+            let Some(source) = workspace_read.sources.get(relative) else {
                 continue;
             };
-            let facts = extract_source_facts(relative, &source);
+            let facts = extract_source_facts(relative, source);
             debug_assert!(source_fact_snapshot_observation(&facts) > 0);
             if let Some(limitation) = parse_budget_limitation(relative, &facts)? {
                 limitations.push(limitation);
@@ -457,6 +505,82 @@ impl LanguageAdapter for PythonAdapter {
             }
         }
 
+        // Walk-count cap disclosure: one named limitation carrying the
+        // refused count, mirroring the TypeScript adapter's
+        // `DiffScopeOversized` truncated-scan disclosure.
+        if refused_files > 0 {
+            limitations.push(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::DiffScopeOversized,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::IncreaseConfiguredLimit,
+                        "Raise RIPR_PYTHON_MAX_WORKSPACE_FILES, then re-run the analysis.",
+                    )?,
+                )
+                .with_affected_items(
+                    u64::try_from(refused_files)
+                        .map_err(|err| format!("refused file count overflows u64: {err}"))?,
+                )?
+                .with_detail(format!(
+                    "python workspace walk stopped at the {}-file cap ({PYTHON_MAX_WORKSPACE_FILES_ENV}); {refused_files} discovered .py file(s) were not analyzed.",
+                    walk_limits.max_workspace_files,
+                ))?,
+            );
+        }
+
+        // Read-bound disclosures: one named limitation per file refused by a
+        // size bound. The recovery names the env knobs so operators can raise
+        // the bounds; the detail carries the distinguishable reason.
+        for (file, err) in &workspace_read.limits {
+            limitations.push(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::IncreaseConfiguredLimit,
+                        "Raise RIPR_PYTHON_MAX_FILE_READ_BYTES and/or RIPR_PYTHON_MAX_WORKSPACE_READ_BYTES, then re-run the analysis.",
+                    )?,
+                )
+                .with_path(normalized_path(file))?
+                .with_affected_items(1)?
+                .with_detail(err.reason())?,
+            );
+        }
+
+        // Read-failure disclosure (the TypeScript adapter's #4099 model):
+        // an unreadable CHANGED file is never classified and its tests
+        // vanish from the index, so the diff-scoped result names the path
+        // and the concrete read failure. Unreadable unchanged files are
+        // counted in `skipped_files` below but stay out of the diff-scoped
+        // limitation set.
+        let changed_paths: Vec<String> = changed_files
+            .iter()
+            .map(|changed| normalized_path(&changed.path))
+            .collect();
+        for (file, error) in &workspace_read.io_failures {
+            if !changed_paths
+                .iter()
+                .any(|changed| changed == &normalized_path(file))
+            {
+                continue;
+            }
+            limitations.push(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::Retry,
+                        "Restore read access to the file (check permissions and UTF-8 encoding), then re-run the analysis.",
+                    )?,
+                )
+                .with_path(normalized_path(file))?
+                .with_affected_items(1)?
+                .with_detail(format!("read failed: {error}"))?,
+            );
+        }
+        let skipped_files = workspace_read.io_failures.len();
+
         let mut findings: Vec<Finding> = Vec::new();
         let mut changed_count: usize = 0;
         for changed in changed_files {
@@ -465,7 +589,7 @@ impl LanguageAdapter for PythonAdapter {
             // prunes them, so no workspace facts can back a changed file
             // under one and no findings can ever be emitted for it. Counting
             // it would put an uninspected file in the report denominator.
-            if !self.accepts_path(&changed.path)
+            if !matches!(route(&changed.path), Some(LanguageId::Python))
                 || is_detectable_generated_python_path(&changed.path)
                 || is_detectable_excluded_python_path(&changed.path)
             {
@@ -479,9 +603,15 @@ impl LanguageAdapter for PythonAdapter {
                 .get(&changed.path)
                 .map(Vec::as_slice)
                 .unwrap_or_default();
-            let old_docstring_ranges = std::fs::read_to_string(options.root.join(&changed.path))
-                .ok()
-                .and_then(|source| reconstruct_old_source(&source, changed))
+            // The old-source reconstruction reuses the once-read capped
+            // workspace source. A fresh read here would defeat the walk
+            // bounds above; a capped-out file degrades to empty ranges,
+            // exactly the pre-existing unreadable-file path, and the file
+            // itself is already named in the limitation set.
+            let old_docstring_ranges = workspace_read
+                .sources
+                .get(&changed.path)
+                .and_then(|source| reconstruct_old_source(source, changed))
                 .map(|source| extract_source_facts(&changed.path, &source).docstring_line_ranges)
                 .unwrap_or_default();
             for added in &changed.added_lines {
@@ -518,24 +648,11 @@ impl LanguageAdapter for PythonAdapter {
             candidate_line_count: 0,
             changed_files_by_language: Vec::new(),
             partial_scope: None,
-            skipped_files: 0,
+            skipped_files,
             limitations,
         })
     }
 
-    fn analyze_repo(
-        &self,
-        options: &AnalysisOptions,
-        _oracle_policy: &OraclePolicy,
-    ) -> Result<LanguageRepoResult, String> {
-        // #2109: the shared repo working-set override bounds the run before
-        // any read; an invalid override fails closed as a named error.
-        let working_set_limit = repo::repo_working_set_limit()?;
-        PythonAdapter::analyze_repo_with_limit(&options.root, working_set_limit)
-    }
-}
-
-impl PythonAdapter {
     /// The deterministic repo-mode core of
     /// [`LanguageAdapter::analyze_repo`] with the working-set limit
     /// injected (#2109, #3554 PR C).

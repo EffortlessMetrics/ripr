@@ -127,6 +127,11 @@ fn detect_python_test_framework_is_fail_closed_for_empty_root() -> Result<(), St
     std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
     Ok(())
 }
+use super::super::super::diff::ChangedLine;
+use super::bounded_read::{
+    DEFAULT_PYTHON_MAX_FILE_READ_BYTES, DEFAULT_PYTHON_MAX_WORKSPACE_FILES,
+    DEFAULT_PYTHON_MAX_WORKSPACE_READ_BYTES,
+};
 use super::owners_tests::{extract_owners, extract_tests};
 use super::*;
 use std::path::{Path, PathBuf};
@@ -4269,6 +4274,181 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
     let result = adapter.analyze_diff(&options, &policy, &changed_files)?;
     assert!(result.findings.is_empty());
     assert_eq!(result.changed_files, 2);
+    Ok(())
+}
+
+/// Generous injected bounds: every ordinary fixture workspace fits without
+/// tripping a cap, so these tests exercise disclosure only when a bound is
+/// deliberately tightened.
+fn generous_walk_limits() -> PythonDiffWalkLimits {
+    PythonDiffWalkLimits {
+        max_workspace_files: DEFAULT_PYTHON_MAX_WORKSPACE_FILES,
+        max_file_read_bytes: DEFAULT_PYTHON_MAX_FILE_READ_BYTES,
+        max_workspace_read_bytes: DEFAULT_PYTHON_MAX_WORKSPACE_READ_BYTES,
+    }
+}
+
+#[test]
+fn analyze_diff_discloses_workspace_file_count_cap() -> Result<(), String> {
+    let root = unique_test_root("diff-walk-count-cap");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("a.py"), "def a():\n    return 1\n")?;
+    write_repo_file(&root.join("b.py"), "def b():\n    return 2\n")?;
+    let options = repo_options(&root);
+    let limits = PythonDiffWalkLimits {
+        max_workspace_files: 1,
+        ..generous_walk_limits()
+    };
+    let result = PythonAdapter::analyze_diff_with_limits(&options, &[], limits)?;
+    assert_eq!(
+        result.limitations.len(),
+        1,
+        "exactly the count-cap disclosure is expected, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    let limitation = &result.limitations[0];
+    assert_eq!(limitation.kind, AnalysisLimitationKind::DiffScopeOversized);
+    assert_eq!(limitation.affected_items, Some(1));
+    let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("1 discovered .py file(s) were not analyzed"),
+        "refused count missing from detail: {detail}"
+    );
+    assert!(
+        detail.contains("RIPR_PYTHON_MAX_WORKSPACE_FILES"),
+        "control knob missing from detail: {detail}"
+    );
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_discloses_per_file_read_cap() -> Result<(), String> {
+    let root = unique_test_root("diff-file-read-cap");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("small.py"), "def small():\n    return 1\n")?;
+    write_repo_file(&root.join("big.py"), &format!("X = {}\n", "1".repeat(200)))?;
+    let options = repo_options(&root);
+    let limits = PythonDiffWalkLimits {
+        max_file_read_bytes: 100,
+        ..generous_walk_limits()
+    };
+    let result = PythonAdapter::analyze_diff_with_limits(&options, &[], limits)?;
+    assert_eq!(
+        result.limitations.len(),
+        1,
+        "exactly the per-file cap disclosure is expected, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    let limitation = &result.limitations[0];
+    assert_eq!(
+        limitation.kind,
+        AnalysisLimitationKind::LanguageScopeUnsupported
+    );
+    assert_eq!(limitation.path.as_deref(), Some("big.py"));
+    let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("file_read_capped"),
+        "distinguishable reason missing from detail: {detail}"
+    );
+    assert!(
+        detail.contains("RIPR_PYTHON_MAX_FILE_READ_BYTES"),
+        "control knob missing from detail: {detail}"
+    );
+    // The under-limit file is analyzed normally: no skipped files.
+    assert_eq!(result.skipped_files, 0);
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_discloses_unreadable_changed_file() -> Result<(), String> {
+    let root = unique_test_root("diff-unreadable-changed");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("good.py"), "def good():\n    return 1\n")?;
+    std::fs::write(root.join("bad.py"), [0xff, 0xfe, 0xfd, 0xfc])
+        .map_err(|err| format!("write invalid UTF-8 file: {err}"))?;
+    let options = repo_options(&root);
+    let changed_files = vec![changed("bad.py")];
+    let result =
+        PythonAdapter::analyze_diff_with_limits(&options, &changed_files, generous_walk_limits())?;
+    assert_eq!(
+        result.limitations.len(),
+        1,
+        "exactly the read-failure disclosure is expected, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    let limitation = &result.limitations[0];
+    assert_eq!(
+        limitation.kind,
+        AnalysisLimitationKind::LanguageScopeUnsupported
+    );
+    assert_eq!(limitation.path.as_deref(), Some("bad.py"));
+    let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("read failed:"),
+        "read-failure reason missing from detail: {detail}"
+    );
+    // The unreadable file also counts as a skipped file (the #4099 model).
+    assert_eq!(result.skipped_files, 1);
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_small_workspace_is_unaffected_by_default_bounds() -> Result<(), String> {
+    let root = unique_test_root("diff-small-workspace");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("app.py"), "def run():\n    return 1\n")?;
+    write_repo_file(
+        &root.join("test_app.py"),
+        "from app import run\n\n\ndef test_run():\n    assert run() == 1\n",
+    )?;
+    let options = repo_options(&root);
+    let changed_files = vec![ChangedFile {
+        path: PathBuf::from("app.py"),
+        added_lines: vec![ChangedLine {
+            line: 2,
+            text: "    return 2".to_string(),
+            new_side_line: 2,
+        }],
+        removed_lines: vec![ChangedLine {
+            line: 2,
+            text: "    return 1".to_string(),
+            new_side_line: 2,
+        }],
+    }];
+    let result =
+        PythonAdapter::analyze_diff_with_limits(&options, &changed_files, generous_walk_limits())?;
+    assert!(
+        result.limitations.is_empty(),
+        "small workspace must produce no walk limitations: {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(result.skipped_files, 0);
+    assert_eq!(result.changed_files, 1);
+    assert_eq!(
+        result.findings.len(),
+        1,
+        "the changed return line must still classify against the bounded walk"
+    );
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
     Ok(())
 }
 
