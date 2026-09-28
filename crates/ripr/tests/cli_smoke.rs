@@ -9027,7 +9027,13 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workspace.join("ripr.toml").exists());
     assert!(workflow.contains("pull_request:"));
     assert!(workflow.contains("workflow_dispatch:"));
-    assert!(workflow.contains("cargo install ripr --locked"));
+    // The steps use the generating version's CLI, so the install is pinned
+    // to it rather than taking the newest crates.io release.
+    assert!(workflow.contains(&format!(
+        "run: cargo install ripr --version {} --locked\n",
+        env!("CARGO_PKG_VERSION")
+    )));
+    assert!(!workflow.contains("cargo install ripr --locked"));
     assert!(workflow.contains("ripr pilot"));
     assert!(workflow.contains("--format sarif"));
     assert!(workflow.contains("--format repo-sarif"));

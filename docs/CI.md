@@ -869,6 +869,14 @@ SARIF upload documentation uses `github/codeql-action/upload-sarif@v4`; keep
 the RIPR job, artifact upload, and optional SARIF steps advisory until the
 repository has chosen a baseline policy.
 
+The generated workflow installs the exact `ripr` version that generated it,
+because its steps use that version's commands and flags. To upgrade, install
+the newer `ripr` and compare its `ripr init --ci github --force --dry-run`
+output with the committed file (`--force` lets the dry run plan over the
+existing file; nothing is written). On pull requests the workflow checks out the PR head
+commit, not GitHub's `refs/pull/N/merge` commit, so annotation and review
+comment lines match the lines in the PR diff after the base branch moves.
+
 For a CI-first user, the useful output is the artifact packet:
 
 - `target/ripr/pilot/` - first-screen pilot summary, repo exposure snapshot,
@@ -932,8 +940,9 @@ The generated workflow runs the pure renderer on pull requests:
 ```bash
 ripr review-comments \
   --root . \
-  --base "$GITHUB_BASE_SHA" \
-  --head "$GITHUB_SHA" \
+  --base "origin/$GITHUB_BASE_REF" \
+  --head HEAD \
+  --check-output target/ripr/pr/check.json \
   --out target/ripr/review/comments.json
 ```
 

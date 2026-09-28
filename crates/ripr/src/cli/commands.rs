@@ -7957,8 +7957,8 @@ language = "rust"
         let fixture = generated_workflow_smoke_fixture();
 
         assert!(workflow.contains("RIPR_UPLOAD_SARIF: \"true\""));
-        // Install caching (#2008): the registry/git/dependency caches are
-        // warm, and the install still runs fresh (no stale-binary risk).
+        // Install caching (#2008): the install names an exact version, so a
+        // cached binary is reused only when it is that version.
         // Pinned to a SHA, not the mutable v2 tag (#2190 review).
         assert!(workflow.contains("Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32"));
         assert!(!workflow.contains("Swatinem/rust-cache@v2"));
@@ -8362,7 +8362,7 @@ language = "rust"
         assert!(policy_history.contains("continue-on-error: true"));
         assert!(policy_history.contains("policy history"));
         assert!(policy_history.contains("--current target/ripr/reports/policy-operations.json"));
-        assert!(policy_history.contains("--commit \"$GITHUB_SHA\""));
+        assert!(policy_history.contains("--commit \"$(git rev-parse HEAD)\""));
         assert!(policy_history.contains("--history .ripr/policy-history.jsonl"));
         assert!(policy_history.contains("--pr-number \"${{ github.event.number }}\""));
         assert!(policy_history.contains("--out target/ripr/reports/policy-history.json"));
