@@ -109,6 +109,12 @@ are scoped or reviewed.
   assertion's token match to promote a finding to `exposed`; equally strong
   confirmed assertions retain their classification regardless of order
   ([#4404](https://github.com/EffortlessMetrics/ripr-swarm/issues/4404)).
+- Diff-scoped SARIF (`ripr check --format sarif`) now renders the same
+  `artifactLocation.uri`, `fingerprints` and `partialFingerprints` whether
+  `--root` is `.`, `./` or the checkout's absolute path. An absolute root used
+  to leak the checkout path into the uri and change every fingerprint between
+  a local and a CI run. SARIF shares the path owner GitHub annotations already
+  used.
 
 ### Added
 

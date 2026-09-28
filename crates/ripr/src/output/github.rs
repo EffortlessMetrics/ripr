@@ -2,13 +2,12 @@ use crate::app::CheckOutput;
 use crate::config::RiprConfig;
 use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
 use crate::output::next_step::reconcile_next_step;
-use crate::output::path::display_path;
+use crate::output::path::repository_display_path;
 use crate::output::perl_preview_card::perl_preview_card;
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
 use crate::output::typescript_preview_card::typescript_preview_card;
 use crate::output::workflow_escape::{escape_data, escape_property, escape_property_pre_encoded};
-use std::path::Path;
 
 /// Render findings as GitHub Actions workflow command annotations.
 ///
@@ -159,9 +158,9 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         }
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
-            // `file` arrives via `annotation_path` (stable text, `%`
+            // `file` arrives via `repository_display_path` (stable text, `%`
             // pre-encoded); `title` is raw text.
-            escape_property_pre_encoded(&annotation_path(
+            escape_property_pre_encoded(&repository_display_path(
                 &output.root,
                 &finding.probe.location.file
             )),
@@ -213,19 +212,6 @@ fn unannotated_denominator_notice(
         parts.join("; ")
     );
     format!("::notice title=ripr::{}\n", escape_data(&message))
-}
-
-fn annotation_path(root: &Path, file: &Path) -> String {
-    let relative = if root.is_absolute() {
-        file.strip_prefix(root).unwrap_or(file)
-    } else {
-        file
-    };
-    let mut displayed = display_path(relative);
-    while let Some(stripped) = displayed.strip_prefix("./") {
-        displayed = stripped.to_string();
-    }
-    displayed
 }
 
 fn python_no_action_annotation(finding: &Finding) -> Option<String> {

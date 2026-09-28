@@ -119,6 +119,12 @@ Seam fingerprints should prefer:
 rule_id | seam_id | normalized_file | line
 ```
 
+`normalized_file` and the physical location `uri` do not depend on how
+`--root` is spelled: `.`, `./` and the checkout's absolute path render the
+same text, because an absolute root prefix is removed before rendering. A
+relative root keeps its spelling, since it already names a path under the
+invoking directory.
+
 Fallback fingerprints may use `rule_id | normalized_file | line | message`,
 but only when the stable finding or seam identifier is unavailable.
 
