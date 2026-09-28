@@ -6827,6 +6827,29 @@ Field contract:
   parseable document. A consumer dispatching on `schema_version` therefore
   sees `0.1` only for the two-child envelope and `0.3` only for the pure
   verify document, whichever path produced it.
+- Typed refusals before the verify render (a diverged HEAD, drifted analysis
+  inputs, a no-movement verify refusal; exit code `3`) print the
+  `repair_after_refusal` document (`schema_version` `0.2`) instead, so every
+  exit-`3` path of the phase carries one parseable document and each
+  after-phase shape keeps its own `schema_version` (`0.1` envelope, `0.2`
+  refusal, `0.3` bare verify):
+
+  ```json
+  {
+    "schema_version": "0.2",
+    "kind": "repair_after_refusal",
+    "attempt_id": "<repair-attempt-id>",
+    "error": "repair attempt `<id>` cannot finish: HEAD <sha> does not descend from its before-phase head <sha>",
+    "narration": ["<named cause>", "<recovery>"]
+  }
+  ```
+
+  `error` is the terse final error; `narration` is the ordered cause and
+  recovery lines stderr carries (without the `ripr: ` prefix), the same lines
+  the attempt joins into `last_after_refusal.reason`. Operational failures after
+  attempt selection exit `2`; stdout is empty when the failure precedes the
+  verify render, and is the bare verify 0.3 document when it follows it (for
+  example a failed receipt publication).
 
 ## Agent Verify Execute
 

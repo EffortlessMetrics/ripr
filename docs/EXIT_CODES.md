@@ -27,7 +27,9 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
 - `0`: the command completed (for `verify-execute`, the verification ran;
   read the disposition in the stdout JSON).
 - `3`: the command completed by reaching a blocking decision or typed
-  refusal; read the report or the stdout JSON document for the answer.
+  refusal; read the report or the stdout JSON document for the answer
+  (standalone `ripr agent verify` is the exception: its refusal is named on
+  stderr and stdout stays empty; see below).
 - `2`: the invocation or operation failed; retrying differently is
   appropriate.
 
@@ -55,10 +57,21 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
   rendered the typed refusal JSON on stdout; `ripr agent repair --phase
   after` refused with a named cause after selecting its attempt — a diverged
   HEAD, drifted analysis inputs, a no-movement verify refusal, or a replaced
-  trust-binding manifest — with the recovery narrated and the refusal
-  recorded on the attempt. Operational errors after attempt selection (an
-  unreadable retained packet or manifest, a failed artifact write) still
-  exit `2`.
+  trust-binding manifest — with the recovery narrated on stderr, the refusal
+  recorded on the attempt, and one JSON document on stdout (the
+  `repair_after_refusal` document naming the cause and recovery when the
+  refusal came before the verify render, otherwise the bare agent verify
+  document). Operational errors after attempt selection (an unreadable
+  retained packet or manifest, a failed artifact write) still exit `2`.
+- **Typed verify refusal**: standalone `ripr agent verify` refused the pair
+  for drifted analysis inputs (`analysis input identities differ`) or no
+  repository movement between the artifacts — the same named refusals the
+  repair after phase maps to `3`. This is the one exit-`3` path whose stdout
+  stays empty: `agent verify`'s stdout is the verify artifact (the packet's
+  `next` loop redirects it into `agent-verify.json`), and a rejected verify
+  renders nothing to it (RIPR-SPEC-0134). The named cause is on stderr.
+  Other verify rejections (unreadable or invalid artifacts, lineage or
+  metadata mismatches) exit `2`.
 
 These are findings- and policy-driven exits, not operational failures; a
 monitoring system should page on `2`, not on `3`.
