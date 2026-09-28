@@ -836,6 +836,97 @@ class CheckoutTests(unittest.TestCase):
 }
 
 #[test]
+fn verify_command_quotes_shell_metacharacters_and_leaves_plain_paths_raw() -> Result<(), String> {
+    let pytest_source = "def test_ok():\n    assert True\n";
+    let unittest_source = "import unittest\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        self.assertTrue(True)\n";
+    let hostile = extract_tests(Path::new("tests/foo$(id).py"), pytest_source);
+    let hostile_test = hostile
+        .iter()
+        .find(|test| test.name == "test_ok")
+        .ok_or_else(|| "missing hostile pytest".to_string())?;
+    assert_eq!(
+        verify_command_for_test(hostile_test).as_deref(),
+        Some("pytest 'tests/foo$(id).py'::test_ok")
+    );
+    let placement = python_repair_placement(
+        &ExposureClass::WeaklyExposed,
+        &[PythonRelatedCandidate {
+            test: hostile_test,
+            relation: PythonRelationKind::SyntacticCall,
+        }],
+    )
+    .ok_or_else(|| "weak pytest relation should still place a repair".to_string())?;
+    assert_eq!(
+        placement.suggested_test_file, "tests/foo$(id).py",
+        "the stored test path stays the raw spelling"
+    );
+    assert_eq!(
+        placement.suggested_test_node_id.as_deref(),
+        Some("tests/foo$(id).py::test_ok"),
+        "the stored node id is not a shell token"
+    );
+    assert_eq!(
+        placement.verify_command,
+        "pytest 'tests/foo$(id).py'::test_ok"
+    );
+
+    let spaced = extract_tests(Path::new("tests/my file.py"), pytest_source);
+    let spaced_test = spaced
+        .iter()
+        .find(|test| test.name == "test_ok")
+        .ok_or_else(|| "missing spaced pytest".to_string())?;
+    assert_eq!(
+        verify_command_for_test(spaced_test).as_deref(),
+        Some("pytest 'tests/my file.py'::test_ok")
+    );
+
+    let quoted = extract_tests(Path::new("tests/o'brien.py"), pytest_source);
+    let quoted_test = quoted
+        .iter()
+        .find(|test| test.name == "test_ok")
+        .ok_or_else(|| "missing quoted pytest".to_string())?;
+    assert_eq!(
+        verify_command_for_test(quoted_test).as_deref(),
+        Some("pytest 'tests/o'\\''brien.py'::test_ok")
+    );
+
+    let plain = extract_tests(Path::new("tests/test_checkout.py"), pytest_source);
+    let plain_test = plain
+        .iter()
+        .find(|test| test.name == "test_ok")
+        .ok_or_else(|| "missing plain pytest".to_string())?;
+    assert_eq!(
+        verify_command_for_test(plain_test).as_deref(),
+        Some("pytest tests/test_checkout.py::test_ok"),
+        "a plain relative path must stay unquoted"
+    );
+
+    let hostile_unit = extract_tests(Path::new("tests/foo$(id).py"), unittest_source);
+    let hostile_unit_test = hostile_unit
+        .iter()
+        .find(|test| test.name == "test_ok")
+        .ok_or_else(|| "missing hostile unittest".to_string())?;
+    assert_eq!(
+        verify_command_for_test(hostile_unit_test).as_deref(),
+        Some("python -m unittest 'tests.foo$(id)'.T.test_ok")
+    );
+    let unit_placement = python_repair_placement(
+        &ExposureClass::WeaklyExposed,
+        &[PythonRelatedCandidate {
+            test: hostile_unit_test,
+            relation: PythonRelationKind::SyntacticCall,
+        }],
+    )
+    .ok_or_else(|| "weak unittest relation should still place a repair".to_string())?;
+    assert_eq!(unit_placement.suggested_test_node_id, None);
+    assert_eq!(
+        unit_placement.verify_command,
+        "python -m unittest 'tests.foo$(id)'.T.test_ok"
+    );
+    Ok(())
+}
+
+#[test]
 fn unittest_oracle_shapes_use_assertion_arguments() -> Result<(), String> {
     let source = r#"
 import unittest

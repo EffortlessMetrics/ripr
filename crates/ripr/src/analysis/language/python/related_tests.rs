@@ -154,10 +154,10 @@ pub(super) fn verify_command_for_test(test: &PythonTest) -> Option<String> {
     match test.framework {
         "pytest" => {
             let node = test.qualified_name.replace('.', "::");
-            Some(format!("pytest {path}::{node}"))
+            Some(format!("pytest {}::{node}", shell_quote_file_arg(&path)))
         }
         "unittest" => {
-            let module = unittest_module_for_path(&path);
+            let module = shell_quote_file_arg(&unittest_module_for_path(&path));
             Some(format!(
                 "python -m unittest {module}.{}",
                 test.qualified_name
@@ -173,6 +173,25 @@ fn unittest_module_for_path(path: &str) -> String {
         .replace(['/', '\\'], ".")
 }
 
+/// Quote one path or module token for a POSIX shell.
+///
+/// Suggested verify commands are text an agent may paste into a shell. The
+/// TypeScript command uses the same character class: a relative path made of
+/// ASCII letters, digits, `.`, `_`, `/`, and `-` stays readable, and any other
+/// byte is single-quoted so `$()`, backticks, spaces, and quotes are not
+/// expanded. Stored node ids and test-file paths stay the raw spelling; only
+/// the command text is quoted. This does not run the command.
+fn shell_quote_file_arg(file_str: &str) -> String {
+    if !file_str.is_empty()
+        && file_str
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
+    {
+        return file_str.to_string();
+    }
+    format!("'{}'", file_str.replace('\'', "'\\''"))
+}
+
 pub(super) fn python_repair_placement(
     class: &ExposureClass,
     related_candidates: &[PythonRelatedCandidate<'_>],
@@ -186,36 +205,27 @@ pub(super) fn python_repair_placement(
     let path = normalized_path(&candidate.test.file);
     match candidate.test.framework {
         "pytest" => {
-            let node_id = format!(
-                "{path}::{}",
-                candidate.test.qualified_name.replace('.', "::")
-            );
+            let node = candidate.test.qualified_name.replace('.', "::");
+            let node_id = format!("{path}::{node}");
             Some(PythonRepairPlacement {
                 repair_action: "strengthen_existing_test",
                 suggested_test_file: path,
                 suggested_test_name: candidate.test.name.clone(),
-                suggested_test_node_id: Some(node_id.clone()),
-                verify_command: format!("pytest {node_id}"),
+                suggested_test_node_id: Some(node_id),
+                verify_command: verify_command_for_test(candidate.test)?,
                 verify_command_confidence: "high",
                 location_reason: "strengthen existing weak pytest relation",
             })
         }
-        "unittest" => {
-            let selector = format!(
-                "{}.{}",
-                unittest_module_for_path(&path),
-                candidate.test.qualified_name
-            );
-            Some(PythonRepairPlacement {
-                repair_action: "strengthen_existing_test",
-                suggested_test_file: path,
-                suggested_test_name: candidate.test.name.clone(),
-                suggested_test_node_id: None,
-                verify_command: format!("python -m unittest {selector}"),
-                verify_command_confidence: "high",
-                location_reason: "strengthen existing weak unittest relation",
-            })
-        }
+        "unittest" => Some(PythonRepairPlacement {
+            repair_action: "strengthen_existing_test",
+            suggested_test_file: path,
+            suggested_test_name: candidate.test.name.clone(),
+            suggested_test_node_id: None,
+            verify_command: verify_command_for_test(candidate.test)?,
+            verify_command_confidence: "high",
+            location_reason: "strengthen existing weak unittest relation",
+        }),
         _ => None,
     }
 }
