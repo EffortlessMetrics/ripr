@@ -2168,6 +2168,7 @@ tests = [
   "crates/ripr/src/output/first_pr.rs::tests::is_typescript_source_file_recognizes_modern_ts_extensions",
   "crates/ripr/src/lsp/actions.rs::tests::path_matches_diagnostic_language_covers_modern_ts_js_extensions",
   "crates/ripr/src/cli/commands/doctor.rs::tests::detect_languages_treats_modern_ts_js_extensions_as_language_markers",
+  "crates/ripr/src/cli/commands/doctor.rs::tests::perl_walks_do_not_follow_directory_symlink_loops",
   "crates/ripr/src/output/json/mod.rs",
 ]
 fixtures = [
