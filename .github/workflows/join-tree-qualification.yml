@@ -24,12 +24,12 @@ concurrency:
 env:
   SOURCE_PARENT: "6989700f64936a6b9829e5ed06c731f0e1bed0e1"
   SWARM_PARENT: "112a834e4397784d4bbb1feeffbea55e00dda427"
-  REVIEWED_TREE: "e9c1d0b8cdd514131a4c6143e862b87905b5acfc"
-  REVIEWED_TREE_REF: "refs/heads/control/tree-e9c1d0b8"
+  REVIEWED_TREE: "0be794e57ec8e1a222a2f21a41ced70f7be530e9"
+  REVIEWED_TREE_REF: "refs/heads/control/tree-0be794e5"
   CHECKER_REF: "refs/heads/control/checker-0f118b24"
   CHECKER_SHA256: "0f118b24e3f5d67fd6a2396bc680cffbbc8f7d48ec317281cc839e36ee78c238"
-  PREFLIGHT_SHA256: "8b55a5a882513aa3ee9f7cf9a007f2a2e59c855381621fbe89a890c30d57db64"
-  RESOLUTION_MANIFEST_SHA256: "9809c9213b096094737dfd42e55bdfc0086448cf41bb217a7348343c1d7753c6"
+  PREFLIGHT_SHA256: "81a7d0579768559c918a845b6b4528ecefccc99930569541b7b32bdbbc4bccf5"
+  RESOLUTION_MANIFEST_SHA256: "d2649976f391fad739d66a68de9769acf0c1590992aa536915917ad6482468d1"
   CONTROL_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   CARGO_TERM_COLOR: never
 
@@ -222,7 +222,7 @@ jobs:
 
       - name: Rust tests
         working-directory: tree
-        run: cargo test --workspace --all-targets --locked 2>&1 | tee ../evidence/cargo-test.log
+        run: cargo test --workspace --all-targets --locked --no-fail-fast 2>&1 | tee ../evidence/cargo-test.log
 
       - name: Rust docs
         working-directory: tree
