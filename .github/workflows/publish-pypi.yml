@@ -1,0 +1,47 @@
+name: PyPI publisher contract
+
+# Trusted-publisher identity registered for the future PyPI distribution:
+#
+#   project:     ripr-rs
+#   owner:       EffortlessMetrics
+#   repository:  ripr
+#   workflow:    publish-pypi.yml
+#   environment: pypi
+#
+# This bootstrap workflow intentionally cannot publish. It has no OIDC
+# permission and no upload step. Complete #1781, qualify the exact wheel set,
+# and obtain explicit release authorization before enabling publication.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publisher-contract:
+    name: Validate ripr-rs publisher tuple (no publish)
+    if: ${{ github.repository == 'EffortlessMetrics/ripr' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ripr-rs/
+    steps:
+      - name: Record trusted-publisher contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## PyPI trusted-publisher contract"
+            echo
+            echo "- Distribution: \`ripr-rs\`"
+            echo "- GitHub owner: \`EffortlessMetrics\`"
+            echo "- Repository: \`ripr\`"
+            echo "- Workflow: \`publish-pypi.yml\`"
+            echo "- Environment: \`pypi\`"
+            echo "- Publication enabled: **no**"
+            echo
+            echo "This workflow deliberately has no \`id-token: write\` permission"
+            echo "and no package-upload step. Complete #1781 and obtain explicit"
+            echo "release authorization before enabling publication."
+          } >> "$GITHUB_STEP_SUMMARY"
