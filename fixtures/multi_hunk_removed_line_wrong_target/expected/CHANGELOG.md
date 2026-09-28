@@ -243,6 +243,7 @@ Updated:
 ## Pending — multi_hunk_removed_line_wrong_target (4)
 
 Reason:
+RIPR-SPEC-0001: a changed line inside a function no test reaches is no_static_path whatever its probe shape; static_unknown escalate-to-mutation advice no longer stands in for a missing test
 RIPR-SPEC-0122: human-full carries per-finding drill-in commands (#4379); digest why-line names the incomplete stage; unreached static_unknown asks for a test first
 
 Command:
@@ -268,6 +269,18 @@ Updated:
 
 Reason:
 RIPR-SPEC-0122: unreached static_unknown next step hedges macro and integration reach
+
+Command:
+`cargo xtask goldens bless multi_hunk_removed_line_wrong_target --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — multi_hunk_removed_line_wrong_target (7)
+
+Reason:
+RIPR-SPEC-0094: re-bless after merging main (#4425 observed-value caps); unreached-owner findings read no_static_path and new-function signature lines are not probed (#4428)
 
 Command:
 `cargo xtask goldens bless multi_hunk_removed_line_wrong_target --reason "..."`

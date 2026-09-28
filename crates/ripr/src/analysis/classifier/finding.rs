@@ -410,6 +410,7 @@ mod tests {
             propagate: StageEvidence::new(StageState::Weak, Confidence::Low, "propagation weak"),
             observe: yes.clone(),
             discriminate: yes,
+            reach_ruled_out: true,
         }
     }
 

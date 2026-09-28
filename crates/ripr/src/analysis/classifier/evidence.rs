@@ -1,7 +1,7 @@
 use crate::analysis::classify::{
     ProbeContext, PropagationWitnessV1, activation_evidence, classify, confidence_score,
     current_path_witness, file_imports_foreign_callee_name, infection_evidence, local_flow_sinks,
-    package_prefix, propagation_evidence_with_witness, reach_evidence,
+    owner_may_be_reached_unseen, package_prefix, propagation_evidence_with_witness, reach_evidence,
     reveal_evidence_with_expression,
 };
 use crate::domain::*;
@@ -25,12 +25,21 @@ pub(in crate::analysis) struct ClassifiedProbeEvidence {
     pub(in crate::analysis) propagate: StageEvidence,
     pub(in crate::analysis) observe: StageEvidence,
     pub(in crate::analysis) discriminate: StageEvidence,
+    /// Reach is `No` for a resolved owner that nothing in the workspace
+    /// names (see `owner_may_be_reached_unseen`), so no test can run the
+    /// change. An owner with an unresolved caller chain keeps its
+    /// shape-based class even when no related test was found.
+    pub(in crate::analysis) reach_ruled_out: bool,
 }
 
 impl ClassifiedProbeEvidence {
     pub(in crate::analysis) fn gather(context: &ProbeContext<'_>, reveal_expression: &str) -> Self {
         let test_summaries = context.related_test_summaries();
-        let reach = reach_evidence(&context.related_tests, context.owner_fn);
+        let reach = reach_evidence(&context.related_tests, context.owner_fn, || {
+            context
+                .owner_fn
+                .is_some_and(|owner| owner_may_be_reached_unseen(owner, context.index))
+        });
         let flow_sinks = local_flow_sinks(context.probe, context.owner_fn);
         let propagation_witness = current_path_witness(context.probe, &flow_sinks)
             .map(PropagationWitnessDiagnostic::from_witness);
@@ -116,6 +125,41 @@ impl ClassifiedProbeEvidence {
 
         let discriminate =
             tuple_match::discrimination(context, &observe, &discriminate).unwrap_or(discriminate);
+        // The missing-field fact is the authority on whether an assertion
+        // observes the constructed field. A token that merely coincides with
+        // the field value (`Box` in `downcast_ref::<Box<dyn E>>()`) must not
+        // make the finding `exposed` while that fact says nothing observes it.
+        let discriminate = if matches!(context.probe.family, ProbeFamily::FieldConstruction)
+            && discriminate.state == StageState::Yes
+            && activation.missing_discriminators.iter().any(|fact| {
+                fact.flow_sink
+                    .as_ref()
+                    .is_some_and(|sink| sink.kind == FlowSinkKind::StructField)
+            }) {
+            StageEvidence::new(
+                StageState::Weak,
+                Confidence::Medium,
+                "Discriminator unconfirmed: no field-value assertion observes the constructed field",
+            )
+        } else {
+            discriminate
+        };
+        // Tests kept only as suggested locations never run the owner, so
+        // they neither activate the change nor observe it.
+        let reach_ruled_out = reach.state == StageState::No
+            && context
+                .owner_fn
+                .is_some_and(|owner| !owner_may_be_reached_unseen(owner, context.index));
+        let unreached = |stage: StageEvidence, verb: &str| {
+            if reach_ruled_out && stage.state == StageState::Yes {
+                unreached_stage(verb)
+            } else {
+                stage
+            }
+        };
+        let infect = unreached(infect, "activate");
+        let observe = unreached(observe, "observe");
+        let discriminate = unreached(discriminate, "discriminate");
 
         let ripr = RiprEvidence {
             reach: reach.clone(),
@@ -140,10 +184,17 @@ impl ClassifiedProbeEvidence {
             propagate,
             observe,
             discriminate,
+            reach_ruled_out,
         }
     }
 
     pub(in crate::analysis) fn classify(&self, probe: &Probe) -> ExposureClass {
+        // A changed line inside a function no test reaches has no static path
+        // whatever its shape: "cannot classify, escalate" would send the
+        // reader after mutation testing when the plain gap is a missing test.
+        if self.reach_ruled_out {
+            return ExposureClass::NoStaticPath;
+        }
         classify(
             &self.reach,
             &self.infect,
@@ -193,6 +244,14 @@ impl PropagationWitnessDiagnostic {
     pub(in crate::analysis) fn is_invalid(&self) -> bool {
         matches!(self, Self::InvalidDigest(_))
     }
+}
+
+fn unreached_stage(stage: &str) -> StageEvidence {
+    StageEvidence::new(
+        StageState::No,
+        Confidence::Medium,
+        format!("No test reaches the changed owner, so no test can {stage} this change"),
+    )
 }
 
 fn evidence_summaries<'e>(stages: impl IntoIterator<Item = &'e StageEvidence>) -> Vec<String> {

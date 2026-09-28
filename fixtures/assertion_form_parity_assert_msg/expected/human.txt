@@ -2,10 +2,10 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/assertion_form_parity_assert_msg/input
 
-Summary: 4 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 3 unknown
+Summary: 3 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 2 unknown
 
 Analysis outcome: complete_with_findings (analysis complete).
-  Counts: 2 changed file(s), 15 changed line(s), 4 candidate line(s), 4 probe(s), 4 finding(s).
+  Counts: 2 changed file(s), 15 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
 
 Start here:
   State: top_gap
@@ -27,6 +27,6 @@ Next: drill into the top finding:
   ripr context --root fixtures/assertion_form_parity_assert_msg/input --diff fixtures/assertion_form_parity_assert_msg/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
 
 Hidden:
-  3 lower-priority finding(s) omitted from default human output.
+  2 lower-priority finding(s) omitted from default human output.
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

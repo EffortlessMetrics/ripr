@@ -236,6 +236,13 @@ markers, generic parameter lists, and `this` parameters are ignored. Type
 syntax inside an expression (`as`, `satisfies`, generic call arguments) and
 multi-line signature fragments are not compared and keep their probe.
 
+The opening line of a new function, method, or arrow owner (an added line with
+no removed counterpart, starting an owner whose span holds another added,
+probe-eligible line) produces no probe: its behavior is carried by the body
+lines. A default value, destructuring default, parameter property, computed
+key, decorator, constructor, one-line body, or changed signature keeps its
+probe.
+
 A changed predicate is `exposed` only when a strong, family-matching
 assertion's observed expression (`expect(<expr>)`) calls the owner at the
 changed boundary: an argument carries the literal operand (`total >= 50` needs

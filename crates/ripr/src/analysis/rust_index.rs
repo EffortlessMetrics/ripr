@@ -170,7 +170,7 @@ fn apply_oracle_policy_to_assertions(assertions: &mut [OracleFact], policy: &Ora
 }
 
 #[cfg(test)]
-fn summarize_file(path: PathBuf, text: String) -> FileFacts {
+pub(in crate::analysis) fn summarize_file(path: PathBuf, text: String) -> FileFacts {
     match RaRustSyntaxAdapter.summarize_file(&path, &text) {
         Ok(facts) => facts,
         Err(_) => {

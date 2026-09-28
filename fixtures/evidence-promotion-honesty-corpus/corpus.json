@@ -438,6 +438,19 @@
       ]
     },
     {
+      "id": "rust_field_construction_token_coincidence",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_field_construction_token_coincidence",
+      "vector": "constructed_field_token_read_on_unrelated_value",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "expected_finding_count", "count": 2 },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "rust_match_arm_shared_result_oracle",
       "language": "rust",
       "tier": "pure",

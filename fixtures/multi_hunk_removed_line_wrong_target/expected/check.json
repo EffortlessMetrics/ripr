@@ -3,7 +3,7 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/multi_hunk_removed_line_wrong_target/input",
-  "summary": {"changed_rust_files":1,"probes":6,"findings":6,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":3,"infection_unknown":0,"propagation_unknown":0,"static_unknown":3,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "summary": {"changed_rust_files":1,"probes":6,"findings":6,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":6,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
     "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:4a6f97903829fbe4b17872b1862c41c90755c9eea6b9877970a643d5a74c0244","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":6,"candidate_line_count":4,"probe_count":6,"finding_count":6},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
@@ -11,9 +11,9 @@
   "findings": [
     {
       "id": "probe:src_lib.rs:static_unknown:17e03c34",
-      "classification": "static_unknown",
-      "severity": "note",
-      "confidence": 0.20,
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.35,
       "probe": {
         "id": "probe:src_lib.rs:static_unknown:17e03c34",
         "family": "static_unknown",
@@ -34,7 +34,7 @@
         {"kind":"unknown","text":"unknown sink","line":2}
       ],
       "evidence": ["Changed syntax is not mapped to a high-confidence probe family", "No assertion can discriminate the changed behavior without a reachable test", "No propagation model is available for this changed syntax", "No reachable test oracle found", "No static test path found for the changed owner"],
-      "missing": ["No relevant oracle was detected", "No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
       "assertion_texts": {
       },
       "activation": {
@@ -50,19 +50,19 @@
       "related_tests_total": 0,
       "related_tests": [
       ],
-      "stop_reasons": ["static_probe_unknown"],
+      "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
-      "suggested_next_action": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust",
       "source_currentness": "candidate_current"
     },
     {
       "id": "probe:src_lib.rs:static_unknown:8e9320f2",
-      "classification": "static_unknown",
-      "severity": "note",
-      "confidence": 0.20,
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.35,
       "probe": {
         "id": "probe:src_lib.rs:static_unknown:8e9320f2",
         "family": "static_unknown",
@@ -83,7 +83,7 @@
         {"kind":"unknown","text":"unknown sink","line":2}
       ],
       "evidence": ["Changed syntax is not mapped to a high-confidence probe family", "No assertion can discriminate the changed behavior without a reachable test", "No propagation model is available for this changed syntax", "No reachable test oracle found", "No static test path found for the changed owner"],
-      "missing": ["No relevant oracle was detected", "No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
       "assertion_texts": {
       },
       "activation": {
@@ -99,19 +99,19 @@
       "related_tests_total": 0,
       "related_tests": [
       ],
-      "stop_reasons": ["static_probe_unknown"],
+      "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
-      "suggested_next_action": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust",
       "source_currentness": "base_deleted"
     },
     {
       "id": "probe:src_lib.rs:static_unknown:20c6f50e",
-      "classification": "static_unknown",
-      "severity": "note",
-      "confidence": 0.20,
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.35,
       "probe": {
         "id": "probe:src_lib.rs:static_unknown:20c6f50e",
         "family": "static_unknown",
@@ -132,7 +132,7 @@
         {"kind":"unknown","text":"unknown sink","line":3}
       ],
       "evidence": ["Changed syntax is not mapped to a high-confidence probe family", "No assertion can discriminate the changed behavior without a reachable test", "No propagation model is available for this changed syntax", "No reachable test oracle found", "No static test path found for the changed owner"],
-      "missing": ["No relevant oracle was detected", "No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
       "assertion_texts": {
       },
       "activation": {
@@ -148,11 +148,11 @@
       "related_tests_total": 0,
       "related_tests": [
       ],
-      "stop_reasons": ["static_probe_unknown"],
+      "stop_reasons": [],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
-      "suggested_next_action": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
       "language": "rust",
       "source_currentness": "candidate_current"
     },

@@ -1,0 +1,13 @@
+# Golden Output Changes
+
+## Pending — rust_field_construction_token_coincidence (1)
+
+Reason:
+RIPR-SPEC-0094: initial golden; a same-named field on an unrelated value does not observe the constructed field (#4428)
+
+Command:
+`cargo xtask goldens bless rust_field_construction_token_coincidence --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -295,3 +295,103 @@ fn text(src: &str, span: oxc_span::Span) -> String {
         .unwrap_or_default()
         .to_string()
 }
+
+/// Whether `line` only OPENS a function, method, or arrow declaration: it
+/// parses as a signature whose body is an empty block once the synthetic
+/// closing brace is supplied, and it carries no runtime-significant signature
+/// text (no default value, no destructuring default, no parameter property,
+/// no computed key, no decorator). Such a line has no behavior of its own;
+/// the behavior lives on the body lines. Fails closed on every other shape,
+/// including a one-line arrow or function with an inline body.
+pub(crate) fn is_signature_opening_line(file: &Path, line: &str) -> bool {
+    if line.contains('@') {
+        return false;
+    }
+    match runtime_skeleton(file, line) {
+        Some(RuntimeSkeleton::Function { function, .. }) => function_only_opens(&function),
+        Some(RuntimeSkeleton::Method {
+            computed, function, ..
+        }) => !computed && function_only_opens(&function),
+        Some(RuntimeSkeleton::Variables { declarators, .. }) => match declarators.as_slice() {
+            [(_, Some(InitSkeleton::Function(function)))] => function_only_opens(function),
+            [
+                (
+                    _,
+                    Some(InitSkeleton::Arrow {
+                        params, rest, body, ..
+                    }),
+                ),
+            ] => rest_is_plain(rest.as_deref()) && params_are_plain(params) && is_empty_block(body),
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+fn function_only_opens(function: &FunctionSkeleton) -> bool {
+    rest_is_plain(function.rest.as_deref())
+        && params_are_plain(&function.params)
+        && function.body.as_deref().is_some_and(is_empty_block)
+}
+
+fn params_are_plain(params: &[ParamSkeleton]) -> bool {
+    params.iter().all(|param| {
+        param.initializer.is_none()
+            && param.accessibility.is_none()
+            && !param.readonly
+            && !param.is_override
+            && !param.pattern.contains('=')
+    })
+}
+
+fn rest_is_plain(rest: Option<&str>) -> bool {
+    rest.is_none_or(|rest| !rest.contains('='))
+}
+
+fn is_empty_block(body: &str) -> bool {
+    let compact: String = body.chars().filter(|ch| !ch.is_whitespace()).collect();
+    compact == "{}"
+}
+
+/// Whether an unpaired added `line` opens a NEW function, method, or arrow
+/// owner whose own span carries at least one other probe-candidate added line
+/// (`has_added_probe_line`). Owner kinds without a callable body (module
+/// initializers) and constructors (parameter properties and decorator
+/// metadata) fail closed, as does any line [`is_signature_opening_line`]
+/// rejects.
+/// Whether `text` holds `name` as a whole JS identifier.
+fn mentions_identifier(text: &str, name: &str) -> bool {
+    let is_ident = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$';
+    !name.is_empty()
+        && text.match_indices(name).any(|(start, _)| {
+            let end = start + name.len();
+            (start == 0 || !is_ident(text.as_bytes()[start - 1]))
+                && !text.as_bytes().get(end).is_some_and(|byte| is_ident(*byte))
+        })
+}
+
+pub(crate) fn is_new_owner_opening_line(
+    file: &Path,
+    line: usize,
+    line_text: &str,
+    owners: &[TypeScriptOwner],
+    removed_texts: &[&str],
+    has_added_probe_line: impl Fn(usize) -> bool,
+) -> bool {
+    let changed_file = normalized_path(file);
+    let opens_owner_with_added_body = owners.iter().any(|owner| {
+        owner.start_line == line
+            && owner.end_line > line
+            && normalized_path(&owner.file) == changed_file
+            && !matches!(owner.owner_kind, OwnerKind::ModuleFunction)
+            && owner.method_kind != TypeScriptMethodKind::Constructor
+            && (line + 1..=owner.end_line).any(&has_added_probe_line)
+            // Git can pair a changed signature's removed line with an
+            // unrelated inserted line; an old line naming the owner means it
+            // existed before, so its signature change keeps its probe.
+            && !removed_texts
+                .iter()
+                .any(|removed| mentions_identifier(removed, &owner.name))
+    });
+    opens_owner_with_added_body && is_signature_opening_line(file, line_text)
+}

@@ -11,12 +11,28 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Rust: a changed function that no test calls now reads `no_static_path`.
+  Before, a same-file test of a sibling function made it `weakly_exposed`
+  with "strong oracle found", and its unknown-shape lines said "escalate to
+  real mutation testing". This applies only when nothing in the workspace
+  names the function outside its own `fn` line: a caller, function pointer,
+  `use` alias, doctest or macro block that names it, a crate that includes a
+  README as docs, a trait-impl method, or a nearby test that invokes a
+  non-assertion macro keeps reach undecided.
+- Rust: a struct-field initializer is no longer `exposed` when no assertion
+  reads that field. On anyhow, a `Box` token in an unrelated downcast
+  assertion credited `ptr: NonNull::from(Box::leak(ptr))` with confidence 1.00
+  while its own evidence said nothing observes the field. An assertion that
+  reads the field on the function's result (`cfg.retries` after
+  `let cfg = default_config()`) still counts; the same field name on another
+  value does not.
+- Rust: the one-line signature of a new function whose body is added too is no
+  longer probed; it only repeated the body's findings.
 - `review-comments` observes its cooperative analysis budget during canonical
   inventory and rejects cancelled evidence before classification. Git diff
   discovery consumes the remaining budget; deadline cancellation records a
   typed timeout while ordinary source failures retain their failure status.
   Individual operations can still overrun a checkpoint interval (#1778).
-
 - Cold LLM-agent walks of 0.11 no longer dead-end on four routes. Passing a
   `ripr check` finding ID (`probe:...`) to `ripr agent repair --seam-id` now
   says it is not a seam ID and names `ripr pilot --root .`. The
@@ -103,7 +119,12 @@ are scoped or reviewed.
 - LSP fallback diagnostics explain their static classification and point to
   hover evidence without promising an unavailable clipboard action or repair
   route. Missing-path guidance remains explicitly static (#4328).
-
+- TypeScript/JavaScript and Python preview adapters no longer probe the
+  declaration line of a new function whose body adds its own lines. The line
+  had no behavior of its own, so it either stayed `weakly_exposed` after a
+  correct test was added or, in Python, claimed unearned `exposed` credit
+  beside a weakly exposed body predicate. Changed signatures, default values,
+  and one-line bodies keep their probe.
 - Static discrimination keeps oracle strength and confirmation on the same
   assertion. An unrelated exact assertion can no longer borrow a weaker
   assertion's token match to promote a finding to `exposed`; equally strong

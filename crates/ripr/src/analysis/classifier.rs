@@ -370,8 +370,38 @@ mod tests {
             expected_sinks: vec![],
             required_oracles: vec![],
         };
+        // Nothing in the workspace names `score`: no test can run the
+        // change, so the finding is a plain missing test (#4428).
+        let uncalled = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            ..RustIndex::default()
+        };
+        let finding = classify_probe(&probe, &uncalled, true, None);
+        assert_eq!(finding.class, ExposureClass::NoStaticPath);
+        assert!(
+            !finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.contains("Escalate to real mutation testing")),
+            "an uncalled owner must not send the reader to mutation testing: {:?}",
+            finding.recommended_next_step
+        );
+
+        // A production caller names `score`, so a test may reach it through a
+        // chain static evidence does not follow: the shape stays unknown and
+        // the next step asks for a reaching test first.
         let unreached = RustIndex {
             functions: vec![function("src/lib.rs", "score")],
+            files: BTreeMap::from([(
+                PathBuf::from("src/lib.rs"),
+                FileFacts {
+                    path: PathBuf::from("src/lib.rs"),
+                    source:
+                        "pub fn score(x: i32) -> i32 { x }\npub fn total() -> i32 { score(1) }\n"
+                            .to_string(),
+                    ..FileFacts::default()
+                },
+            )]),
             ..RustIndex::default()
         };
         let finding = classify_probe(&probe, &unreached, true, None);
@@ -841,6 +871,50 @@ mod tests {
         assert_eq!(finding.flow_sinks.len(), 1);
         assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
         assert_eq!(finding.flow_sinks[0].text, "total: computed_total");
+    }
+
+    // anyhow `Own::new`: a token that merely coincides with the field value
+    // (`Box` in a downcast type) made the finding `exposed` while the
+    // missing-field fact said no assertion observes the constructed field.
+    #[test]
+    fn given_field_construction_observed_only_by_token_coincidence_when_classified_then_not_exposed()
+     {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_boxed",
+                "score(1)",
+                "assert_eq!(score(1).downcast_ref::<Box<dyn E>>().is_some(), true);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:field_construction".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::FieldConstruction,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("ptr: NonNull::from(Box::leak(ptr))".to_string()),
+            expression: "ptr: NonNull::from(Box::leak(ptr))".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index, true, None);
+
+        assert!(
+            finding
+                .activation
+                .missing_discriminators
+                .iter()
+                .any(|fact| fact.reason.starts_with("No field-value assertion observes")),
+            "premise: the missing-field fact is present: {:?}",
+            finding.activation.missing_discriminators
+        );
+        assert_ne!(finding.class, ExposureClass::Exposed);
+        assert_ne!(finding.ripr.reveal.discriminate.state, StageState::Yes);
     }
 
     #[test]
@@ -1842,6 +1916,198 @@ mod tests {
             ));
         }
         Ok(())
+    }
+
+    /// `fragile_fee` has no caller; `eu_tax` tests its same-file sibling
+    /// `tax_bps`. `extra_source` is appended to `src/lib.rs` so a case can
+    /// add something that names the owner without an indexed call.
+    fn uncalled_owner_index(extra_source: &str) -> RustIndex {
+        let mut eu_tax = test(
+            "src/lib.rs",
+            "eu_tax",
+            "tax_bps(1)",
+            "assert_eq!(tax_bps(1), 2000);",
+        );
+        eu_tax.calls[0].name = "tax_bps".to_string();
+        let source = format!(
+            "pub fn fragile_fee(weight_grams: u32) -> u32 {{\n    if weight_grams > 2_000 {{ 1 }} else {{ 0 }}\n}}\npub fn tax_bps(region: u32) -> u32 {{ 2000 }}\n{extra_source}"
+        );
+        RustIndex {
+            functions: vec![
+                function("src/lib.rs", "fragile_fee"),
+                function("src/lib.rs", "tax_bps"),
+            ],
+            tests: vec![eu_tax],
+            files: BTreeMap::from([(
+                PathBuf::from("src/lib.rs"),
+                FileFacts {
+                    path: PathBuf::from("src/lib.rs"),
+                    source,
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        }
+    }
+
+    fn fragile_fee_probe(family: ProbeFamily, owner: &str) -> Probe {
+        Probe {
+            id: ProbeId("probe:src_lib_rs:2:fragile_fee".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId(format!("src/lib.rs::{owner}"))),
+            family,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("weight_grams > 2_000".to_string()),
+            expression: "weight_grams > 2_000".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        }
+    }
+
+    // RC walk RS-1: a new function no test calls read `weakly_exposed`, with
+    // "strong oracle found", through a same-file test of a sibling function.
+    #[test]
+    fn given_uncalled_owner_with_same_file_sibling_test_when_classified_then_no_static_path() {
+        let index = uncalled_owner_index("");
+        let probe = fragile_fee_probe(ProbeFamily::Predicate, "fragile_fee");
+
+        let finding = classify_probe(&probe, &index, true, None);
+
+        assert!(
+            finding
+                .related_tests
+                .iter()
+                .any(|test| test.name == "eu_tax"),
+            "premise: the sibling test stays listed as a suggested location: {:?}",
+            finding.related_tests
+        );
+        assert_eq!(finding.class, ExposureClass::NoStaticPath);
+        assert_eq!(finding.ripr.reach.state, StageState::No);
+        assert_ne!(finding.ripr.infect.state, StageState::Yes);
+        assert_eq!(finding.ripr.reveal.observe.state, StageState::No);
+        assert_eq!(finding.ripr.reveal.discriminate.state, StageState::No);
+    }
+
+    // A production caller may carry a test's reach through a chain the
+    // relation stage did not resolve, so proximity stays weak reach there.
+    // Review of #4428: tests reach a function through callers, function
+    // pointers, aliases, doctests and macro blocks without any indexed test
+    // body calling it. Anything that names the owner keeps reach undecided.
+    #[test]
+    fn given_proximity_only_owner_named_elsewhere_when_classified_then_not_no_static_path() {
+        for (shape, extra_source) in [
+            (
+                "production caller",
+                "pub fn quote(w: u32) -> u32 { fragile_fee(w) }\n",
+            ),
+            (
+                "test helper",
+                "#[cfg(test)]\nfn run_case(w: u32) -> u32 { fragile_fee(w) }\n",
+            ),
+            (
+                "function pointer",
+                "pub fn all(v: &[u32]) -> Vec<u32> { v.iter().copied().map(fragile_fee).collect() }\n",
+            ),
+            ("use alias", "pub use crate::fragile_fee as fee;\n"),
+            (
+                "doctest",
+                "/// assert_eq!(demo::fragile_fee(1), 0);\npub struct Demo;\n",
+            ),
+            (
+                "proptest block",
+                "proptest! {\n    fn p(w in 0u32..) { prop_assert!(fragile_fee(w) < 2); }\n}\n",
+            ),
+        ] {
+            let index = uncalled_owner_index(extra_source);
+            let probe = fragile_fee_probe(ProbeFamily::Predicate, "fragile_fee");
+
+            let finding = classify_probe(&probe, &index, true, None);
+
+            assert!(
+                finding
+                    .related_tests
+                    .iter()
+                    .any(|test| test.name == "eu_tax"),
+                "{shape}: premise: the sibling test is listed: {:?}",
+                finding.related_tests
+            );
+            assert_eq!(finding.ripr.reach.state, StageState::Weak, "{shape}");
+            assert_ne!(finding.class, ExposureClass::NoStaticPath, "{shape}");
+        }
+    }
+
+    // Review of #4428: `format!`, operators and `Deref` run trait-impl
+    // methods without spelling their names.
+    #[test]
+    fn given_proximity_only_trait_impl_owner_when_classified_then_not_no_static_path() {
+        let mut index = uncalled_owner_index("");
+        let mut owner = function("src/lib.rs", "fmt");
+        owner.id = SymbolId("src/lib.rs::impl Display for Money::fmt".to_string());
+        // Replace `fragile_fee`: nothing in the source names `fmt`.
+        index.functions[0] = owner;
+        let mut probe = fragile_fee_probe(ProbeFamily::Predicate, "fmt");
+        probe.owner = Some(SymbolId(
+            "src/lib.rs::impl Display for Money::fmt".to_string(),
+        ));
+
+        let finding = classify_probe(&probe, &index, true, None);
+
+        assert_eq!(finding.ripr.reach.state, StageState::Weak);
+        assert_ne!(finding.class, ExposureClass::NoStaticPath);
+    }
+
+    // RC walk LLM-2: unknown-shape lines inside a function no test calls read
+    // "cannot classify; escalate to real mutation testing".
+    #[test]
+    fn given_static_unknown_probe_in_unreached_owner_when_classified_then_no_static_path() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "fragile_fee")],
+            ..RustIndex::default()
+        };
+        let probe = fragile_fee_probe(ProbeFamily::StaticUnknown, "fragile_fee");
+
+        let finding = classify_probe(&probe, &index, true, None);
+
+        assert_eq!(finding.class, ExposureClass::NoStaticPath);
+    }
+
+    // #4428 review (devin): with no related test at all, an owner that a
+    // production function names may still be reached through a caller chain
+    // the resolver cannot follow, so its unknown shape stays unknown.
+    #[test]
+    fn given_static_unknown_probe_with_named_caller_and_no_related_test_then_static_unknown() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "fragile_fee")],
+            files: BTreeMap::from([(
+                PathBuf::from("src/lib.rs"),
+                FileFacts {
+                    path: PathBuf::from("src/lib.rs"),
+                    source: "pub fn fragile_fee(w: u32) -> u32 { w }\npub fn calculate() -> u32 { fragile_fee(1) }\n".to_string(),
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+        let probe = fragile_fee_probe(ProbeFamily::StaticUnknown, "fragile_fee");
+
+        let finding = classify_probe(&probe, &index, true, None);
+
+        assert!(finding.related_tests.is_empty(), "premise: no related test");
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
+    }
+
+    #[test]
+    fn given_static_unknown_probe_without_resolved_owner_when_classified_then_static_unknown() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "fragile_fee")],
+            ..RustIndex::default()
+        };
+        let probe = fragile_fee_probe(ProbeFamily::StaticUnknown, "not_indexed");
+
+        let finding = classify_probe(&probe, &index, true, None);
+
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
     }
 
     fn function(file: &str, name: &str) -> FunctionSummary {

@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/multi_hunk_removed_line_wrong_target/input
 
-Summary: 6 probe(s), 0 exposed, 0 weak, 0 unrevealed, 3 no path, 3 unknown
+Summary: 6 probe(s), 0 exposed, 0 weak, 0 unrevealed, 6 no path, 0 unknown
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 6 changed line(s), 4 candidate line(s), 6 probe(s), 6 finding(s).
@@ -10,20 +10,20 @@ Analysis outcome: complete_with_findings (analysis complete).
 Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
-  File: fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:4
+  File: fixtures/multi_hunk_removed_line_wrong_target/input/src/lib.rs:2
   Static exposure: no_static_path (warning, confidence 0.35)
   Why no_static_path: no related test was found that reaches this change
-  Changed behavior: z
+  Changed behavior: let y = x + 1;
   Missing discriminator: No relevant oracle was detected
   Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that…
   Evidence:
     - reach no: No static test path found for the changed owner
-    - infection unknown: No reachable tests were found, so infection cannot be established
+    - infection unknown: Changed syntax is not mapped to a high-confidence probe family
     - 4 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast probe:src_lib.rs:return_value:93054610
-  ripr context --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast --at probe:src_lib.rs:return_value:93054610
+  ripr explain --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast probe:src_lib.rs:static_unknown:17e03c34
+  ripr context --root fixtures/multi_hunk_removed_line_wrong_target/input --diff fixtures/multi_hunk_removed_line_wrong_target/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:17e03c34
 
 Hidden:
   5 lower-priority finding(s) omitted from default human output.

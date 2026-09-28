@@ -1,0 +1,8 @@
+[package]
+name = "rust_field_construction_token_coincidence_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "rust_field_construction_token_coincidence_fixture"
+path = "src/lib.rs"

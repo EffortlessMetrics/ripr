@@ -28,7 +28,7 @@ pub(in crate::analysis) use helper_transfer::resolve_chain;
 pub(in crate::analysis) use infection::infection_evidence;
 pub(in crate::analysis) use owner_shape::is_assertion_shaped_owner;
 pub(in crate::analysis) use propagation_witness::{PropagationWitnessV1, current_path_witness};
-pub(in crate::analysis) use reach::reach_evidence;
+pub(in crate::analysis) use reach::{owner_may_be_reached_unseen, reach_evidence};
 pub(in crate::analysis) use related_tests::{
     DependencyEdgeContext, RelatedTestCandidateIndex, body_contains_owner_call,
     find_related_tests_with_candidate_index, package_prefix,

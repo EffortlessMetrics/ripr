@@ -77,6 +77,9 @@ pub(crate) fn probes_for_file_with_relations(
         ) {
             continue;
         }
+        if opens_new_function_with_added_body(index, changed, added.new_side_line, text) {
+            continue;
+        }
         let parser_shapes =
             parser_probe_shapes_for_changed_line(index, &changed.path, added.new_side_line, text);
         let parser_shapes = parser_shapes
@@ -337,6 +340,58 @@ fn dedup_probe_ids(probes: &mut [ProbeWithRelation]) {
             probe.id.0 = format!("{}.{}", probe.id.0, count);
         }
     }
+}
+
+/// Whether an added `text` line is only the one-line signature of a NEW
+/// function whose body lines are added too: the owner starts on this line, no
+/// line of its span was removed and no removed line declared a function of the
+/// same name (so the signature did not change, even when git pairs the old
+/// signature with an unrelated inserted line), and another added line in the
+/// span carries the behavior. A signature has no runtime behavior of its own
+/// (Rust has no default arguments), so probing it only repeats the body
+/// findings. Multi-line signatures and one-line bodies keep their probes.
+fn opens_new_function_with_added_body(
+    index: &RustIndex,
+    changed: &ChangedFile,
+    line: usize,
+    text: &str,
+) -> bool {
+    if !text.contains("fn ") || !text.ends_with('{') || text.matches('{').count() != 1 {
+        return false;
+    }
+    let Some(function) = find_owner_function(index, &changed.path, line) else {
+        return false;
+    };
+    function.start_line == line
+        && function.end_line > line
+        && !changed.removed_lines.iter().any(|removed| {
+            (function.start_line..=function.end_line).contains(&removed.new_side_line)
+                || declares_fn_named(&removed.text, &function.name)
+        })
+        && changed.added_lines.iter().any(|other| {
+            other.new_side_line > line
+                && other.new_side_line <= function.end_line
+                && !should_ignore_changed_line(other.text.trim())
+        })
+}
+
+/// Whether `text` holds `fn <name>` (raw `r#` spelling included).
+fn declares_fn_named(text: &str, name: &str) -> bool {
+    text.match_indices("fn").any(|(start, _)| {
+        let keyword_starts = start == 0
+            || !text.as_bytes()[start - 1].is_ascii_alphanumeric()
+                && text.as_bytes()[start - 1] != b'_';
+        let rest = &text[start + 2..];
+        let declared = rest.trim_start();
+        let declared = declared.strip_prefix("r#").unwrap_or(declared);
+        keyword_starts
+            && rest.len() != declared.len()
+            && declared.starts_with(name)
+            && !declared[name.len()..]
+                .bytes()
+                .next()
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    })
 }
 
 /// Tests are the instrument, not the surface under test: a probe on a line
@@ -1212,6 +1267,103 @@ mod tests {
         probe_lines.dedup();
 
         assert_eq!(probe_lines, vec![28, 29, 30, 32], "probes: {probes:?}");
+    }
+
+    fn loyalty_index_and_change(removed_signature: bool) -> (RustIndex, ChangedFile) {
+        let source = "pub fn loyalty_price(amount: u64, member_years: u32) -> u64 {\n    if member_years >= 5 {\n        amount - amount * 5 / 100\n    } else {\n        amount\n    }\n}\n";
+        let path = PathBuf::from("src/lib.rs");
+        let mut index = RustIndex::default();
+        index.files.insert(
+            path.clone(),
+            crate::analysis::rust_index::summarize_file(path.clone(), source.to_string()),
+        );
+        let added_lines = source
+            .lines()
+            .enumerate()
+            .filter(|(offset, _)| !removed_signature || *offset == 0)
+            .map(|(offset, text)| ChangedLine {
+                line: offset + 1,
+                new_side_line: offset + 1,
+                text: text.to_string(),
+            })
+            .collect();
+        let removed_lines = if removed_signature {
+            vec![ChangedLine {
+                line: 1,
+                new_side_line: 1,
+                text: "pub fn loyalty_price(amount: u64, member_years: u8) -> u64 {".to_string(),
+            }]
+        } else {
+            Vec::new()
+        };
+        (
+            index,
+            ChangedFile {
+                path,
+                added_lines,
+                removed_lines,
+            },
+        )
+    }
+
+    /// RC walk: the signature of a new function repeated its body findings as
+    /// a `static_unknown` (later `no_static_path`) probe of its own; TS and
+    /// Python skip the same line.
+    #[test]
+    fn probes_for_file_skips_signature_line_of_new_function_with_added_body() {
+        let (index, changed) = loyalty_index_and_change(false);
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+
+        assert!(
+            probes.iter().any(|probe| probe.location.line == 2),
+            "premise: the body predicate is probed: {probes:?}"
+        );
+        assert!(
+            probes.iter().all(|probe| probe.location.line != 1),
+            "{probes:?}"
+        );
+    }
+
+    #[test]
+    fn probes_for_file_keeps_changed_signature_line() {
+        let (index, changed) = loyalty_index_and_change(true);
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+
+        assert!(
+            probes.iter().any(|probe| probe.location.line == 1),
+            "{probes:?}"
+        );
+    }
+
+    /// Review of #4428: git can pair the old signature with an unrelated
+    /// inserted line, so a changed signature whose body also changed would
+    /// read as a new function. A removed `fn` of the same name keeps it.
+    #[test]
+    fn probes_for_file_keeps_changed_signature_when_git_pairs_it_elsewhere() {
+        let (index, mut changed) = loyalty_index_and_change(false);
+        changed.removed_lines.push(ChangedLine {
+            line: 1,
+            new_side_line: 40,
+            text: "pub fn loyalty_price(amount: u64) -> u64 {".to_string(),
+        });
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+
+        assert!(
+            probes.iter().any(|probe| probe.location.line == 1),
+            "{probes:?}"
+        );
+    }
+
+    #[test]
+    fn declares_fn_named_matches_only_the_declared_name() {
+        assert!(declares_fn_named("pub async fn price(a: u8) {", "price"));
+        assert!(declares_fn_named("fn r#price() {", "price"));
+        assert!(!declares_fn_named("pub fn prices(a: u8) {", "price"));
+        assert!(!declares_fn_named("let fnprice = price(1);", "price"));
+        assert!(!declares_fn_named("price(1)", "price"));
     }
 
     /// F1 (#4216 row 5 review): a lone `} else {` on either side is the

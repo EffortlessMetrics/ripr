@@ -80,10 +80,11 @@ use discriminators::{
     python_return_dict_field_discriminator, python_string_literal_value, split_python_assignment,
     top_level_python_segments,
 };
+use no_behavior::is_python_no_behavior_line;
 #[cfg(test)]
 use no_behavior::{
     analyze_call_args, changed_default_value_params, free_function_call_arglists,
-    is_annotation_only_def_change, is_annotation_only_var_change, is_python_no_behavior_line,
+    is_annotation_only_def_change, is_annotation_only_var_change,
 };
 use oracles::collect_assertions_from_statements;
 #[cfg(test)]
@@ -146,6 +147,17 @@ use workspace::{
 /// Stateless: routing, parsing, and per-file extraction only.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PythonAdapter;
+
+/// Whether `text` holds `name` as a whole Python identifier.
+fn mentions_python_name(text: &str, name: &str) -> bool {
+    let is_ident = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_';
+    !name.is_empty()
+        && text.match_indices(name).any(|(start, _)| {
+            let end = start + name.len();
+            (start == 0 || !is_ident(text.as_bytes()[start - 1]))
+                && !text.as_bytes().get(end).is_some_and(|byte| is_ident(*byte))
+        })
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PythonOwner {
@@ -627,6 +639,27 @@ impl PythonAdapter {
                     old_line_in_docstring: old_line.is_some_and(|removed| {
                         line_is_in_ranges(removed.line, &old_docstring_ranges)
                     }),
+                    opens_owner_with_added_body: owner_for_changed_line(
+                        &changed.path,
+                        added.line,
+                        &all_owners,
+                    )
+                    .is_some_and(|owner| {
+                        owner.start_line == added.line
+                            // An old line naming the owner means its `def`
+                            // existed before, even when git pairs the old
+                            // header with an unrelated inserted line.
+                            && !changed
+                                .removed_lines
+                                .iter()
+                                .any(|removed| mentions_python_name(&removed.text, &owner.name))
+                            && changed.added_lines.iter().any(|other| {
+                                other.line > owner.start_line
+                                    && other.line <= owner.end_line
+                                    && !line_is_in_ranges(other.line, new_docstring_ranges)
+                                    && !is_python_no_behavior_line(&other.text)
+                            })
+                    }),
                 };
                 if let Some(finding) = classify_change_with_context(
                     &changed.path,
@@ -685,6 +718,9 @@ impl PythonAdapter {
         })
     }
 }
+
+#[cfg(test)]
+mod new_declaration_tests;
 
 #[cfg(test)]
 mod python_tests;

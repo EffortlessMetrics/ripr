@@ -2,7 +2,7 @@ use super::boundary::{BoundaryActivation, python_boundary_evidence};
 use super::discriminators::python_missing_discriminators;
 use super::no_behavior::{
     changed_default_overridden_params, format_param_name_list, is_annotation_only_def_change,
-    is_annotation_only_var_change, is_python_no_behavior_line,
+    is_annotation_only_var_change, is_new_def_header_without_defaults, is_python_no_behavior_line,
 };
 use super::probe_shape::{
     canonical_python_gap_for, classify_probe_shape, python_flow_sink_for,
@@ -64,6 +64,9 @@ pub(super) fn classify_change_with_old(
 pub(super) struct PythonNoBehaviorContext {
     pub(super) new_line_in_docstring: bool,
     pub(super) old_line_in_docstring: bool,
+    /// The changed line is the first line of its enclosing owner, and that
+    /// owner's span carries at least one other added behavior line.
+    pub(super) opens_owner_with_added_body: bool,
 }
 
 /// Classify a change from producer-owned owner, relation, and oracle facts.
@@ -98,6 +101,18 @@ pub(super) fn classify_change_with_context(
     // beyond an annotation differs (e.g. a default-value change, which IS behavioral).
     if let Some(old) = old_line_text
         && is_annotation_only_def_change(old, line_text)
+    {
+        return None;
+    }
+    // New-declaration guard: an unpaired `def` header that opens a NEW owner
+    // whose body carries its own added lines has no behavior of its own — the
+    // body lines are the probes. Crediting `exposed` here would claim a
+    // discriminator for a line with nothing to discriminate. Fails closed on a
+    // changed header (paired old line), a default value (runtime behavior), a
+    // one-line `def f(x): return x`, and a multi-line header.
+    if old_line_text.is_none()
+        && no_behavior.opens_owner_with_added_body
+        && is_new_def_header_without_defaults(line_text)
     {
         return None;
     }

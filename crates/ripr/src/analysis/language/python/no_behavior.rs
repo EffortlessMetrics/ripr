@@ -163,6 +163,74 @@ pub(super) fn is_annotation_only_def_change(old_line: &str, new_line: &str) -> b
     }
 }
 
+/// Whether `line` is a complete one-line `def` header with no default values:
+/// a header alone, carrying no behavior of its own. Fails closed on a one-line
+/// `def f(x): return x` (the synthesized body does not parse), a multi-line
+/// header, and any parameter default (a default value is runtime behavior).
+pub(super) fn is_new_def_header_without_defaults(line: &str) -> bool {
+    def_signature_skeleton(line).is_some_and(|(_, _, _, _, params, _, _)| {
+        params.iter().all(|(_, default)| default.is_none())
+    }) && def_annotations_are_inert(line)
+}
+
+/// Whether every parameter and return annotation on a `def` header is a plain
+/// type expression (names, attributes, subscripts, literals, tuples/lists and
+/// `|` unions of those). Without postponed evaluation, Python evaluates
+/// annotations when it defines the function, so `def f(x: record_event()):`
+/// runs `record_event()` at definition time; such a header keeps its probe.
+/// Fails closed on anything unparseable.
+fn def_annotations_are_inert(line: &str) -> bool {
+    let snippet = format!("{}\n    pass\n", line.trim_start());
+    let Ok(Mod::Module(module)) =
+        parse_module_result(Path::new("annotation_only_probe.py"), &snippet)
+    else {
+        return false;
+    };
+    let Some((args, returns)) = module.body.iter().find_map(|stmt| match stmt {
+        Stmt::FunctionDef(f) => Some((&f.args, &f.returns)),
+        Stmt::AsyncFunctionDef(f) => Some((&f.args, &f.returns)),
+        _ => None,
+    }) else {
+        return false;
+    };
+    let annotations = args
+        .posonlyargs
+        .iter()
+        .chain(args.args.iter())
+        .chain(args.kwonlyargs.iter())
+        .filter_map(|arg| arg.def.annotation.as_deref())
+        .chain(
+            args.vararg
+                .iter()
+                .filter_map(|arg| arg.annotation.as_deref()),
+        )
+        .chain(
+            args.kwarg
+                .iter()
+                .filter_map(|arg| arg.annotation.as_deref()),
+        )
+        .chain(returns.as_deref());
+    annotations.into_iter().all(is_inert_type_expression)
+}
+
+fn is_inert_type_expression(expr: &Expr) -> bool {
+    match expr {
+        Expr::Name(_) | Expr::Constant(_) => true,
+        Expr::Attribute(attribute) => is_inert_type_expression(&attribute.value),
+        Expr::Subscript(subscript) => {
+            is_inert_type_expression(&subscript.value) && is_inert_type_expression(&subscript.slice)
+        }
+        Expr::Tuple(tuple) => tuple.elts.iter().all(is_inert_type_expression),
+        Expr::List(list) => list.elts.iter().all(is_inert_type_expression),
+        Expr::BinOp(binop) => {
+            matches!(binop.op, rustpython_parser::ast::Operator::BitOr)
+                && is_inert_type_expression(&binop.left)
+                && is_inert_type_expression(&binop.right)
+        }
+        _ => false,
+    }
+}
+
 /// The runtime-significant skeleton of a bare variable annotation line
 /// (`x: int = 5` or `x: int`), used to decide whether a change touches ONLY the
 /// annotation (#1289). Includes the target name and the optional value source

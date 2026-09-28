@@ -637,7 +637,12 @@ fn missing_discriminator_facts(
         missing.push(fact);
     }
     if matches!(probe.family, ProbeFamily::FieldConstruction)
-        && let Some(fact) = missing_field_value_discriminator(probe, related_tests, flow_sinks)
+        && let Some(fact) = missing_field_value_discriminator(
+            probe,
+            owner_fn.map(|owner| owner.name.as_str()),
+            related_tests,
+            flow_sinks,
+        )
     {
         missing.push(fact);
     }
@@ -889,6 +894,7 @@ fn missing_error_variant_discriminator(
 /// oracle, the discriminator is NOT missing and this returns `None`.
 fn missing_field_value_discriminator(
     probe: &Probe,
+    owner_name: Option<&str>,
     related_tests: &[&TestSummary],
     flow_sinks: &[FlowSinkFact],
 ) -> Option<MissingDiscriminatorFact> {
@@ -907,6 +913,12 @@ fn missing_field_value_discriminator(
     // The match uses word-boundary semantics via `contains_as_whole_word` to
     // avoid token coincidence (e.g. `id` matching inside `provider`), the
     // recurring false-observation family. See reveal.rs:413 for the same guard.
+    // A read of the field by name observes it as well as the whole
+    // initializer text does, but only on the owner's result (`cfg.retries`
+    // after `let cfg = default_config()`, or `default_config().retries`):
+    // `fallback.retries` on an unrelated value would clear the fact and let
+    // the shared field token promote the initializer (#4428 review).
+    let field_read = constructed_field_name(&probe.expression).map(|name| format!(".{name}"));
     let field_already_observed = related_tests.iter().any(|test| {
         test.assertions.iter().any(|assertion| {
             matches!(
@@ -915,7 +927,13 @@ fn missing_field_value_discriminator(
                     | OracleKind::WholeObjectEquality
                     | OracleKind::RelationalCheck
                     | OracleKind::Snapshot
-            ) && super::reveal::contains_as_whole_word(&assertion.text, &probe.expression)
+            ) && (super::reveal::contains_as_whole_word(&assertion.text, &probe.expression)
+                || field_read
+                    .as_deref()
+                    .zip(owner_name)
+                    .is_some_and(|(read, owner)| {
+                        reads_owner_result_field(&test.body, &assertion.text, read, owner)
+                    }))
         })
     });
     if field_already_observed {
@@ -932,6 +950,103 @@ fn missing_field_value_discriminator(
             .iter()
             .find(|sink| sink.kind == FlowSinkKind::StructField)
             .cloned(),
+    })
+}
+
+/// The field a struct-literal initializer line constructs: `retries: 1,` and
+/// the shorthand `retries,` both name `retries`. `None` for anything that is
+/// not a plain `ident: value` or `ident` initializer.
+fn constructed_field_name(expression: &str) -> Option<&str> {
+    let trimmed = expression.trim().trim_end_matches(',').trim();
+    let name = match trimmed.find(':') {
+        Some(colon) if trimmed[colon..].starts_with("::") => return None,
+        Some(colon) => trimmed[..colon].trim(),
+        None => trimmed,
+    };
+    let mut chars = name.chars();
+    let starts_ident = chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_');
+    (starts_ident && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')).then_some(name)
+}
+
+/// Whether `assertion` reads `read` (`.field`) on a value the test got from
+/// calling `owner`: a direct `owner(..).field` chain, or a receiver the test
+/// body binds with `let [mut] recv = ..owner(..)..;`.
+fn reads_owner_result_field(body: &str, assertion: &str, read: &str, owner: &str) -> bool {
+    let is_ident = |ch: char| ch.is_ascii_alphanumeric() || ch == '_';
+    let owner_call = format!("{owner}(");
+    assertion.match_indices(read).any(|(start, matched)| {
+        if assertion[start + matched.len()..]
+            .chars()
+            .next()
+            .is_some_and(is_ident)
+        {
+            return false;
+        }
+        let before = &assertion[..start];
+        if before.ends_with(')') {
+            return call_before_is_owner(before, owner);
+        }
+        let receiver_start = before
+            .rfind(|ch: char| !is_ident(ch))
+            .map_or(0, |index| index + 1);
+        let receiver = &before[receiver_start..];
+        !receiver.is_empty() && binds_from_owner_call(body, receiver, &owner_call)
+    })
+}
+
+/// Whether the call whose `)` ends `before` is a call of `owner`: the
+/// matching `(` is preceded by `owner` as a whole identifier
+/// (`default_config()`, `Config::default_config(..)`), not merely an owner
+/// call somewhere else in the assertion (`other().retries` beside
+/// `default_config()`).
+fn call_before_is_owner(before: &str, owner: &str) -> bool {
+    let mut depth = 0usize;
+    let mut open = None;
+    for (index, ch) in before.char_indices().rev() {
+        match ch {
+            ')' => depth += 1,
+            '(' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    open = Some(index);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(callee) = open.map(|index| &before[..index]) else {
+        return false;
+    };
+    callee.strip_suffix(owner).is_some_and(|prefix| {
+        !prefix
+            .chars()
+            .next_back()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    })
+}
+
+/// Whether `body` has `let [mut] receiver = ...;` whose initializer calls
+/// the owner.
+fn binds_from_owner_call(body: &str, receiver: &str, owner_call: &str) -> bool {
+    body.match_indices("let ").any(|(start, _)| {
+        if body[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            return false;
+        }
+        let statement = body[start + 4..].split(';').next().unwrap_or_default();
+        let rest = statement.trim_start();
+        let rest = rest.strip_prefix("mut ").unwrap_or(rest).trim_start();
+        let Some(rest) = rest.strip_prefix(receiver) else {
+            return false;
+        };
+        let rest = rest.trim_start();
+        (rest.starts_with('=') || rest.starts_with(':')) && rest.contains(owner_call)
     })
 }
 
@@ -1692,6 +1807,56 @@ fn looks_like_builder_method(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn constructed_field_name_reads_plain_and_shorthand_initializers() {
+        assert_eq!(constructed_field_name("retries: 1,"), Some("retries"));
+        assert_eq!(constructed_field_name("retries,"), Some("retries"));
+        assert_eq!(
+            constructed_field_name("ptr: NonNull::from(Box::leak(ptr))"),
+            Some("ptr")
+        );
+        assert_eq!(constructed_field_name("Self::default()"), None);
+        assert_eq!(constructed_field_name("a + b"), None);
+    }
+
+    #[test]
+    fn field_reads_count_only_on_the_owner_result() {
+        let body =
+            "fn t() {\n    let cfg = default_config();\n    let fallback = Config::fallback();\n";
+        let reads = |assertion: &str| {
+            reads_owner_result_field(body, assertion, ".retries", "default_config")
+        };
+        assert!(reads("assert_eq!(cfg.retries, 3);"));
+        assert!(reads("assert_eq!(default_config().retries, 3);"));
+        // #4428 review: an unrelated value's same-named field is not the
+        // constructed field.
+        assert!(!reads("assert_eq!(fallback.retries, 3);"));
+        assert!(!reads("assert_eq!(cfg.retries_left, 3);"));
+        assert!(!reads("assert_eq!(Config::fallback().retries, 3);"));
+        // #4428 review: the read must sit on the owner call itself, not on
+        // another call in the same assertion.
+        assert!(!reads(
+            "assert_eq!(other().retries, default_config().timeout_secs);"
+        ));
+        assert!(!reads("assert_eq!(my_default_config().retries, 3);"));
+        assert!(reads(
+            "assert_eq!(Config::default_config(\"x\").retries, 3);"
+        ));
+        assert!(reads("assert_eq!(default_config(load(1)).retries, 3);"));
+        assert!(!reads_owner_result_field(
+            "let e = make();",
+            "assert!(e.downcast_ref::<Box<dyn E>>().is_some());",
+            ".ptr",
+            "make"
+        ));
+        assert!(reads_owner_result_field(
+            "let mut cfg: Config = default_config();",
+            "assert_eq!(cfg.retries, 3);",
+            ".retries",
+            "default_config"
+        ));
+    }
+
     use super::*;
     use crate::analysis::facts::FunctionSourceRole;
     use crate::analysis::rust_index::{CallFact, OracleFact};

@@ -196,6 +196,12 @@ It must derive this from AST string-expression spans in both source versions,
 not from triple-quote text alone. Assigned strings, f-strings, and a behavioral
 line replaced by a newly introduced docstring remain analyzable.
 
+The adapter must not emit a probe for the one-line `def` header of a new
+function (no removed counterpart) whose body holds another added behavior
+line: the body lines carry its behavior. A header with a default value, a
+changed header, a one-line `def f(x): return x`, and a multi-line header keep
+their probe.
+
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:
 

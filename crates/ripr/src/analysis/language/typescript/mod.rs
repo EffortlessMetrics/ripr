@@ -49,6 +49,8 @@ mod bounded_read;
 mod bun_bridge;
 mod classifier;
 mod discovery;
+#[cfg(test)]
+mod new_declaration_tests;
 mod oracle;
 mod owners;
 mod package;
@@ -347,11 +349,44 @@ impl LanguageAdapter for TypeScriptAdapter {
                 .get(&normalized_path(&changed.path))
                 .map(|source| ambient_declaration_lines(&changed.path, source))
                 .unwrap_or_default();
-            for added in &changed.added_lines {
-                if should_ignore_typescript_changed_line(&added.text)
-                    || ambient
+            let is_probe_candidate = |line: usize, text: &str| {
+                !should_ignore_typescript_changed_line(text)
+                    && !ambient
                         .iter()
-                        .any(|(start, end)| (*start..=*end).contains(&added.line))
+                        .any(|(start, end)| (*start..=*end).contains(&line))
+            };
+            let removed_texts: Vec<&str> = changed
+                .removed_lines
+                .iter()
+                .map(|removed| removed.text.as_str())
+                .collect();
+            for added in &changed.added_lines {
+                if !is_probe_candidate(added.line, &added.text) {
+                    continue;
+                }
+                // New-declaration guard: the opening line of a NEW function,
+                // method, or arrow owner (no paired removed line) whose body
+                // carries its own added lines has no behavior of its own —
+                // the body lines are the probes. Probing it would ask for a
+                // discriminator no test can supply. A changed signature
+                // (paired removed line), a default value, or a one-line
+                // body keeps its probe.
+                if !changed
+                    .removed_lines
+                    .iter()
+                    .any(|removed| removed.new_side_line == added.line)
+                    && is_new_owner_opening_line(
+                        &changed.path,
+                        added.line,
+                        &added.text,
+                        &all_owners,
+                        &removed_texts,
+                        |line| {
+                            changed.added_lines.iter().any(|other| {
+                                other.line == line && is_probe_candidate(other.line, &other.text)
+                            })
+                        },
+                    )
                 {
                     continue;
                 }

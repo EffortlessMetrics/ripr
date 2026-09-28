@@ -227,3 +227,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — observation_verified_field_construction (20)
+
+Reason:
+RIPR-SPEC-0094: an assertion that reads the constructed field by name (cfg.retries) satisfies the missing-field fact, so this exposed finding no longer also lists the field as a missing discriminator
+
+Command:
+`cargo xtask goldens bless observation_verified_field_construction --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
