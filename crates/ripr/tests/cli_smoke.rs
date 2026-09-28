@@ -8943,10 +8943,19 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     // previously showed the bare file name while the workflow header showed a
     // full path.
     assert!(stdout.contains("ripr init plan (dry run — nothing was written)"));
-    assert!(stdout.contains(&format!("# {}", workspace.join("ripr.toml").display())));
+    // #4378: on Windows the headers use one separator (forward slashes).
+    let shown = |path: PathBuf| {
+        let text = path.display().to_string();
+        if cfg!(windows) {
+            text.replace('\\', "/")
+        } else {
+            text
+        }
+    };
+    assert!(stdout.contains(&format!("# {}", shown(workspace.join("ripr.toml")))));
     assert!(stdout.contains(&format!(
         "# {}",
-        workspace.join(".github/workflows/ripr.yml").display()
+        shown(workspace.join(".github/workflows/ripr.yml"))
     )));
     assert!(stdout.contains("Rerun without --dry-run to apply."));
     assert!(stdout.contains(".github"));
