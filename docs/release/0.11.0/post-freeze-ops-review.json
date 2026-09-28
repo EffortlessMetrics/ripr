@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_category_review",
+  "category": "ops",
+  "status": "accepted",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2353",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "input_fragments": [
+    "post-freeze-ops-fragment.json",
+    "post-freeze-ops-fragment-2.json",
+    "post-freeze-ops-fragment-3.json",
+    "post-freeze-ops-fragment-4.json",
+    "post-freeze-ops-fragment-5.json",
+    "post-freeze-ops-fragment-6.json",
+    "post-freeze-ops-fragment-7.json",
+    "post-freeze-ops-fragment-8.json",
+    "post-freeze-ops-fragment-9.json",
+    "post-freeze-ops-fragment-10.json"
+  ],
+  "record_count": 56,
+  "accepted_dispositions": {
+    "must_include_0_11": 18,
+    "release_infrastructure_only": 10,
+    "safe_defer_post_0_11": 8,
+    "source_only_followup": 1,
+    "structural_no_semantic_delta": 19
+  },
+  "amendments": [
+    {
+      "commit_sha": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+      "from": "needs_operator_decision",
+      "to": "must_include_0_11",
+      "decision": "Include the complete mixed commit. The receipt-help correction is required by the selected HEAD-binding path; the static-language literal cleanup remains explicitly maintenance-only and adds no product claim."
+    }
+  ],
+  "source_only_followup": {
+    "commit_sha": "f5a87a2a09e7634c8e6febdd0cee8c6022762820",
+    "decision": "Do not copy the swarm 0.10.0 wording into source. Resolve public version and release-state copy through the source 0.10.1-to-0.11.0 metadata train."
+  },
+  "accepted_release_infrastructure": [
+    "deterministic parallel xtask tests and CWD restoration",
+    "faster exact-worktree fixture and dogfood execution",
+    "routed-rust deadlines and full shared precommit gate composition",
+    "live VS Code multi-root test execution",
+    "package-content and source-promotion evidence"
+  ],
+  "accepted_structural_rule": "Nineteen module relocations are accepted only as zero-semantic-delta moves with their stated test/output/golden parity. They create no release headline or support claim.",
+  "accepted_claims": [
+    "generated blocking CI does not swallow load-bearing failures",
+    "generated language grouping consumes typed doctor output",
+    "security dependency updates are included in Cargo/npm lockfiles",
+    "source and swarm release authorities remain distinct",
+    "current docs and capability projections name commands and contracts that exist",
+    "required schemas, fixtures, traceability, and support non-claims travel with included semantics"
+  ],
+  "nonclaims": [
+    "no publication authorization",
+    "no support-tier promotion",
+    "no repository-local live scheduler",
+    "no product-semantic claim from module line-count reduction",
+    "no claim that historical LEARNINGS entries are release requirements"
+  ],
+  "decision": "accept_for_replacement_candidate_and_source_preflight"
+}

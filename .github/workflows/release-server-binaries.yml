@@ -1,0 +1,94 @@
+name: Release ripr Server Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example 0.2.0 or v0.2.0"
+        required: true
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            executable: ripr.exe
+            archive: zip
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            executable: ripr
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+            executable: ripr
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+            executable: ripr
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-15
+            executable: ripr
+            archive: tar.gz
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+          targets: ${{ matrix.target }}
+
+      - name: Build ripr
+        run: cargo build -p ripr --release --locked --target ${{ matrix.target }}
+
+      - name: Package server archive
+        shell: bash
+        env:
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: cargo run --locked -p xtask -- release-server-archive --version "$RIPR_RELEASE_VERSION" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-server-${{ matrix.target }}
+          path: dist/*
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: ripr-server-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate manifest and checksums
+        shell: bash
+        env:
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: cargo run --locked -p xtask -- release-server-manifest --version "$RIPR_RELEASE_VERSION" --repository "${{ github.repository }}"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        shell: bash
+        run: cargo run --locked -p xtask -- release-upload-assets --version "$RIPR_RELEASE_VERSION"

@@ -1,0 +1,87 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_unsupported_syntax_limit/input",
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:37cff58994f2ff5348891151411342b66dc8fd7ee347eb863a80e157b2a55cd6","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_mapper.py:python_preview:ebfdf92c",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.20,
+      "probe": {
+        "id": "probe:src_mapper.py:python_preview:ebfdf92c",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/mapper.py",
+        "line": 2,
+        "expression": "    return lambda value: value + 2",
+        "owner": "python:src/mapper.py::make_mapper"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `make_mapper`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Static limit `unsupported_syntax` prevents a safe Python infection claim."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Static limit `unsupported_syntax` prevents a safe Python propagation claim."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Static limit `unsupported_syntax` prevents a safe Python discriminator claim."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `make_mapper`", "infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.", "propagation unknown: Static limit `unsupported_syntax` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `unsupported_syntax` prevents a safe Python discriminator claim.", "related test tests/test_mapper.py:4 test_make_mapper_adds_two uses strong exact value oracle: assert make_mapper()(1) == 3"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: make_mapper", "owner_kind: function", "static_limit unsupported_syntax: changed line uses lambda syntax", "test_framework: pytest (test_make_mapper_adds_two)", "test_verify_command: pytest tests/test_mapper.py::test_make_mapper_adds_two (test_make_mapper_adds_two)", "related_test_relation: syntactic_call (test_make_mapper_adds_two)", "test_oracle: exact_value strong (test_make_mapper_adds_two)"],
+      "missing": ["Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_make_mapper_adds_two",
+          "file": "tests/test_mapper.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert make_mapper()(1) == 3"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "static_limit_kind": "unsupported_syntax",
+      "changed_sink": "value",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/mapper.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

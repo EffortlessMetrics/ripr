@@ -1,0 +1,44 @@
+schema_version = "2.0"
+id = "ripr.slice.corpus-duplicate-key-guard.v1"
+generation = 1
+
+source_issue = "issue:2277"
+design_reference = "RIPR-SPEC-0108#the-gate-check-evidence-promotion-honesty"
+change_class = "behavior_change"
+
+claim_boundary = """
+Makes the evidence-promotion honesty corpus load fail closed on duplicate
+JSON object keys so a spliced case object can no longer silently drop a pin
+while the file still parses. Claims nothing about other JSON corpora or
+report artifacts loaded elsewhere in xtask.
+"""
+
+non_goals = [
+  "duplicate-key enforcement for other corpus.json files outside the evidence-promotion honesty loader",
+  "JSON Schema validation of the corpus",
+  "changes to the honesty assertion vocabulary or tier contract",
+]
+
+return_conditions = [
+  "Return to root if another loader of the same corpus bypasses the shared parse helper.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:evidence-promotion-honesty-corpus-parse",
+]
+
+shared_seams = []
+forbidden_seams = []
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0108#the-gate-check-evidence-promotion-honesty"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

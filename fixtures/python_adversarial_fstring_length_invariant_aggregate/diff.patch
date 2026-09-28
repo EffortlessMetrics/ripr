@@ -1,0 +1,8 @@
+diff --git a/src/status.py b/src/status.py
+index 0000000..1111111 100644
+--- a/src/status.py
++++ b/src/status.py
+@@ -1,2 +1,2 @@
+ def status_label(code):
+-    return f"OK:{code}"
++    return f"NO:{code}"

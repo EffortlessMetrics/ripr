@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_panel_portable_packet",
+  "case_id": "rust-boundary-missing-equality-should-gap",
+  "semantic": {
+    "manifest_sha256": "sha256:e6d2a31d0ef736e0ad6472aa8cf9066281d7066eea42afd5e6f17411f6ce17fb",
+    "subjects_sha256": "sha256:aaa5cba9532e2aa2a8f134d71f2160e9b868606a3c248a6e0c310ed3628d78b8",
+    "subject_id": "boundary-missing-equality",
+    "repository": "synthetic-rust-pricing",
+    "expected_direction": "should_gap",
+    "repository_base": "f556fbbc4e8f0d9f5e1ea09106b975402eb7d328",
+    "repository_head": "6008b297c3ce8f9599e2cf8a8a86f2a385841790",
+    "repository_tree": "eab361a3e2c4c21156622ccdb9a76a733858cf3c",
+    "producer_source_head": "d7c85c9d603098e4101b806b335ed1f78d30caa7",
+    "producer_source_tree": "39e09500a9bf2ae7c73964b42c69e67fe2a003a6",
+    "producer_cargo_toml_sha256": "sha256:fe9bb75b2914a444bc36199708d4fd97b7c1533227bf1c85c6f91b9b477a6c75",
+    "producer_cargo_lock_sha256": "sha256:3c4fa636c9147a4ab44e90c1dca2872612a27ffd44ce63c777972096b77da95d",
+    "producer_version": "ripr 0.10.0",
+    "profile": "dev",
+    "features": [
+      "default"
+    ],
+    "argv": [
+      "check",
+      "--root",
+      "<materialized-subject>",
+      "--base",
+      "f556fbbc4e8f0d9f5e1ea09106b975402eb7d328",
+      "--mode",
+      "draft",
+      "--json"
+    ],
+    "mode": "draft",
+    "format": "json",
+    "config_path": "ripr.toml",
+    "config_sha256": "sha256:c4811fb83c906f4806b6a02f92a04d7cfdf74e1b3edec3be0bd715189d54e8b1",
+    "diff_path": "metrics/rust-judged-behavior-panel/diffs/boundary_missing_equality.diff",
+    "diff_sha256": "sha256:5e3adb233a1898c5be1cdea617c0ae6901b7113cb4edce6a022517bb6ae004ae",
+    "executed_diff_identity": "sha256:1fcdf4306f56a9e53ed53ea22994e4a6ff8532d0a06cba6fd2bf913cb0a45063",
+    "subject_inputs": [
+      {
+        "role": "cargo_toml",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/boundary-missing-equality/Cargo.toml",
+        "repository_path": "Cargo.toml",
+        "sha256": "sha256:83e4f524e9dd85f8ae788d39fbce4af226513fa6342049203f2ac0bba25b94ce"
+      },
+      {
+        "role": "cargo_lock",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/boundary-missing-equality/Cargo.lock",
+        "repository_path": "Cargo.lock",
+        "sha256": "sha256:553a828c659b04628e03c8f14dc20a7471237f7dd6d1ae7e555bf758fedc7603"
+      },
+      {
+        "role": "config",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/boundary-missing-equality/ripr.toml",
+        "repository_path": "ripr.toml",
+        "sha256": "sha256:c4811fb83c906f4806b6a02f92a04d7cfdf74e1b3edec3be0bd715189d54e8b1"
+      },
+      {
+        "role": "source_before",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/boundary-missing-equality/source.before.rs",
+        "repository_path": "src/lib.rs",
+        "sha256": "sha256:5ed57aee45f5354a9bb1fcb170aa2f2856b187b8b8e5378e3764f7a5d6a23589"
+      },
+      {
+        "role": "source_after",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/boundary-missing-equality/source.after.rs",
+        "repository_path": "src/lib.rs",
+        "sha256": "sha256:858593f0ceccb8663eff702f2aba4cfe384a6692e7f4befc072a4fd301ba4c15"
+      },
+      {
+        "role": "diff",
+        "source_path": "metrics/rust-judged-behavior-panel/diffs/boundary_missing_equality.diff",
+        "repository_path": "selected.diff",
+        "sha256": "sha256:5e3adb233a1898c5be1cdea617c0ae6901b7113cb4edce6a022517bb6ae004ae"
+      },
+      {
+        "role": "test",
+        "source_path": "metrics/rust-judged-behavior-panel/subjects/boundary-missing-equality/tests/pricing.rs",
+        "repository_path": "tests/pricing.rs",
+        "sha256": "sha256:d86bc8e817f1042477d6e9b2d7d635faa14334de4248ade9c189eb49877b234d"
+      }
+    ],
+    "anchor": {
+      "file": "src/lib.rs",
+      "line": 2,
+      "owner": "discounted_total",
+      "behavior_family": "predicate_boundary",
+      "expression": "amount >= threshold"
+    },
+    "observed": {
+      "finding_id": "probe:src_lib.rs:predicate:00a5a375",
+      "analysis_complete": true,
+      "outcome_kind": "complete_with_findings",
+      "classification": "weakly_exposed",
+      "probe_family": "predicate",
+      "probe_file": "src/lib.rs",
+      "probe_line": 2,
+      "probe_expression": "amount >= threshold",
+      "expected_actionability": "repair_candidate",
+      "actionability_source": "governed_manifest_subject_contract",
+      "missing": [
+        "Missing discriminator value: amount == threshold"
+      ],
+      "recommendation": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "static_limit_kind": null
+    }
+  },
+  "semantic_sha256": "sha256:7b849cc986a9f2d86c98c6486d9ae1f65664954effe3af35b8fa9a8a17c73d0b",
+  "host_evidence": {
+    "availability": "host_bound_not_committed",
+    "host_target": "x86_64-pc-windows-msvc",
+    "binary_sha256": "sha256:33aa0d453546c277393e7c9537c4751160491596a4823f5f3032b95e93a65f48",
+    "run_id": "d7c85c9d6030-1012196-0",
+    "current_ref": "target/ripr/rust-judged-panel/current.json",
+    "current_sha256": "sha256:a1757f43307e2265b3d6379255cea90ba8dc591aa007ffab8c79a0ff303f8038",
+    "index_ref": "target/ripr/rust-judged-panel/runs/d7c85c9d6030-1012196-0/run-index.json",
+    "index_sha256": "sha256:96a2db9115af4bb479d864fd5dc72e97172e3f4c8e9bb3acfc8251da08254df4",
+    "receipt_ref": "target/ripr/rust-judged-panel/runs/d7c85c9d6030-1012196-0/cases/rust-boundary-missing-equality-should-gap/receipt.json",
+    "receipt_sha256": "sha256:bcc2fdecf0aa81f9f217aa7a1c7dab855beac8b032bac02077f93c26f4064027",
+    "stdout_ref": "target/ripr/rust-judged-panel/runs/d7c85c9d6030-1012196-0/cases/rust-boundary-missing-equality-should-gap/stdout.bin",
+    "stdout_sha256": "sha256:54a8584de14659c250f6e0b6d270f6a694e749ee8d8be474b220e40505924033",
+    "stderr_ref": "target/ripr/rust-judged-panel/runs/d7c85c9d6030-1012196-0/cases/rust-boundary-missing-equality-should-gap/stderr.bin",
+    "stderr_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "analyzer_input_identity": "sha256:1fcdf4306f56a9e53ed53ea22994e4a6ff8532d0a06cba6fd2bf913cb0a45063"
+  },
+  "judgment": {
+    "disposition": "unjudged",
+    "structural_judgment": null,
+    "false_actionable": null,
+    "false_exposed": null,
+    "static_under_credit": null,
+    "wrong_target": null,
+    "limitation_correct": null,
+    "source": null,
+    "judged_at": null,
+    "judged_by": []
+  },
+  "runtime_calibration": {
+    "status": "not_run",
+    "outcome": null,
+    "evidence_ref": null
+  },
+  "non_claims": [
+    "bounded static projection only; no independent semantic judgment",
+    "no runtime mutation calibration, accuracy rate, badge, gate, or support claim"
+  ]
+}

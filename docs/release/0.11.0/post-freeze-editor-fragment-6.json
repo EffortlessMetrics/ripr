@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "editor",
+  "sequence": 6,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2351",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {"must_include_0_11": 1},
+  "records": [
+    {
+      "commit_sha": "25e82a0d4980a20a0b6d91c9cc35129b262b63b4",
+      "pr": "EffortlessMetrics/ripr-swarm#2235",
+      "title": "refactor(lsp): route repair-packet decisions through the producer authority",
+      "primary_category": "editor",
+      "change_class": "production_authority_refactor",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "LSP repair actions, command-time rendering, and packet fields consume the same producer-owned eligibility decision",
+      "reason": "Without this bridge the editor can re-grow manual readiness/actionability conjunctions that disagree with the central authority. The architecture guard closes the duplicate-authority seam.",
+      "non_claim": "This does not alter gate predicates, execute commands, or promote preview evidence; the only behavior delta is fail-closed withholding where cross-language oracle visibility is unresolved.",
+      "secondary_impacts": ["repair_packet_authority", "lsp_actions", "gap_artifacts", "architecture_gate"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

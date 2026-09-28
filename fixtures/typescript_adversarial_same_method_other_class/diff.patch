@@ -1,0 +1,12 @@
+diff --git a/src/auth.ts b/src/auth.ts
+index 0000000..1111111 100644
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -5,7 +5,7 @@ export class TokenValidator {
+     this.valid = new Set(valid);
+   }
+   validate(token: string): boolean {
+-    return this.valid.has(token);
++    return this.valid.has(token.trim());
+   }
+ }

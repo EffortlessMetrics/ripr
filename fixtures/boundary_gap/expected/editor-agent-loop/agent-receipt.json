@@ -1,0 +1,76 @@
+{
+  "inputs": {
+    "after": "target/ripr/test-agent-verify/after.repo-exposure.json",
+    "agent_verify_json": "target/ripr/test-agent-verify/agent-verify.json",
+    "before": "target/ripr/test-agent-verify/before.repo-exposure.json"
+  },
+  "provenance": {
+    "after_artifact": {
+      "path": "target/ripr/test-agent-verify/after.repo-exposure.json",
+      "sha256": "<sha256>"
+    },
+    "after_class": "strongly_gripped",
+    "before_artifact": {
+      "path": "target/ripr/test-agent-verify/before.repo-exposure.json",
+      "sha256": "<sha256>"
+    },
+    "before_class": "weakly_gripped",
+    "command_template_version": "0.1",
+    "config_fingerprint": null,
+    "generated_at": "<generated_at>",
+    "limits": {
+      "runtime_adequacy_claim": false,
+      "runtime_mutation_execution": false,
+      "static_artifact_relationship": true
+    },
+    "movement": "improved",
+    "repo_root": ".",
+    "ripr_version": "<ripr_version>",
+    "seam_id": "67fc764ba37d77bd",
+    "verify_artifact": {
+      "path": "target/ripr/test-agent-verify/agent-verify.json",
+      "sha256": "<sha256>"
+    },
+    "workflow_artifact": null
+  },
+  "schema_version": "0.5",
+  "seam": {
+    "after": "strongly_gripped",
+    "before": "weakly_gripped",
+    "change": "improved",
+    "evidence_delta": [
+      "grip class moved from weakly_gripped to strongly_gripped",
+      "missing discriminator no longer reported: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)",
+      "new observed value: 100",
+      "related test count increased by 1"
+    ],
+    "file": "src/lib.rs",
+    "grip_class": null,
+    "line": 2,
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary"
+  },
+  "status": "advisory",
+  "analysis_outcome_status": "complete",
+  "analysis_outcome_error": "<analysis_outcome_error>",
+  "analysis_outcome": null,
+  "summary": {
+    "receipt_state": "receipt_movement_improved",
+    "next_action": {
+      "kind": "improved",
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
+      "summary": "Static grip improved."
+    },
+    "next_recommendation": "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON.",
+    "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail."
+  },
+  "test_changed": null,
+  "tool": "ripr",
+  "verification": {
+    "commands_run": [],
+    "non_claims": [
+      "static_only_assurance"
+    ],
+    "status": "verification_not_run"
+  }
+}

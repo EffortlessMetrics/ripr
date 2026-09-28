@@ -1,0 +1,11 @@
+[package]
+name = "corpus-test-target"
+version = "0.1.0"
+
+[lib]
+name = "corpus_test_target"
+path = "src/lib.rs"
+
+[[test]]
+name = "smoke"
+path = "tests/custom/smoke_case.rs"

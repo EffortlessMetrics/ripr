@@ -1,0 +1,124 @@
+{
+  "schema_version": "0.1",
+  "kind": "python_judged_pr_panel_manifest",
+  "spec": "RIPR-SPEC-0092",
+  "tier": "B",
+  "description": "First POPULATED Tier B judged-diff panel: the three real Tier A starter-sweep diffs (click/six/tenacity), judged by manual review against ground truth (inspected each repo's tests). Records the actual ripr verdict alongside the expected, so each item's labels are a real judgment, not a null seed. Manual judgment of a 3-item starter set — directional, not a statistically robust rate.",
+  "measurement_summary": {
+    "items_judged": 3,
+    "false_exposed_count": 0,
+    "false_actionable_count": 1,
+    "note": "0 false_exposed (no dangerous over-credit on real external code); 1 false_actionable (tenacity) — a conservative over-suggestion mapping to the documented __call__-via-local-instance limitation (#1172). ripr errs conservative, the safe direction. Small sample; expand before claiming a rate."
+  },
+  "limits": [
+    "manual judgment of a 3-item starter set; not a statistically robust rate",
+    "judged against the analyzer at main as of 2026-06-13",
+    "no automated judging engine; manual_review only",
+    "advisory only; never a default gate, badge, or RIPR Zero input",
+    "no support-tier claim"
+  ],
+  "items": [
+    {
+      "id": "tenacity-stop-after-attempt-boundary",
+      "repo": "tenacity",
+      "base": "a49e9d6dd4e4611238dc277263d1975e1cada21e",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/tenacity.diff",
+      "shape": ["pytest_library"],
+      "expected_direction": "should_stay_quiet",
+      "anchor": {
+        "file": "tenacity/stop.py",
+        "line": 91,
+        "owner": "stop_after_attempt.__call__",
+        "boundary": "attempt_number >= max_attempt_number"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "actual_classification": "weakly_exposed",
+      "actual_oracle_alignment": "orthogonal",
+      "labels": {
+        "top_card_useful": false,
+        "false_actionable": true,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": false,
+        "packet_boundaries_safe": true,
+        "limitation_quality": null
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "test_tenacity.py::TestStopConditions.test_stop_after_attempt asserts `self.assertTrue(r.stop(make_retry_state(3, 6546)))`, where r.stop IS the stop_after_attempt(3) instance (Retrying.__init__ sets self.stop=stop) and make_retry_state(3, ...) sets attempt_number=3 — an exact assertion at the changed boundary that the >=->> flip breaks (3 >= 3 is True; 3 > 3 is False). The change IS discriminated, so ripr should have read exposed and stayed quiet. Instead it read weakly_exposed/orthogonal and routed a repair card: a FALSE_ACTIONABLE. Root cause: syntactic sink-alignment cannot trace the local binding r.stop -> stop_after_attempt.__call__ nor the factory make_retry_state(3, ...) -> attempt_number; the oracle text contains no owner or changed-sink token. This is the documented __call__-via-local-instance limitation (#1172). Conservative direction: over-suggest, never over-credit."
+    },
+    {
+      "id": "click-compat-stream-attr-predicate",
+      "repo": "click",
+      "base": "8a1b1a33d739be05b7e91251e3c0dde77c5e152f",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/click.diff",
+      "shape": ["click_typer"],
+      "expected_direction": "should_gap",
+      "anchor": {
+        "file": "src/click/_compat.py",
+        "line": 224,
+        "owner": "_is_compat_stream_attr",
+        "boundary": "stream_value == value predicate"
+      },
+      "expected_classification": "no_static_path",
+      "expected_static_limit_kind": null,
+      "actual_classification": "no_static_path",
+      "actual_oracle_alignment": "unknown",
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": false,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": true,
+        "limitation_quality": null
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "No click test references the internal helper _is_compat_stream_attr (it is called only by _is_jupyter_kernel_output); no discriminating oracle reaches the changed predicate. ripr's no_static_path is honest — a true gap, neither over-credited (false_exposed=false) nor over-suggested (false_actionable=false; no_static_path routes an add-a-test gap, appropriate when no test exists). Correct conservative judgment."
+    },
+    {
+      "id": "six-moveditems-version-conditional",
+      "repo": "six",
+      "base": "c8e394065cd541a16c040515dc0afb85cf22a7c3",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/six.diff",
+      "shape": ["unittest_library"],
+      "expected_direction": "should_limit",
+      "anchor": {
+        "file": "six.py",
+        "line": 666,
+        "owner": "_MovedItems",
+        "boundary": "sys.version_info[1] <= 1 class-body conditional"
+      },
+      "expected_classification": "static_unknown",
+      "expected_static_limit_kind": null,
+      "actual_classification": "static_unknown",
+      "actual_oracle_alignment": "unknown",
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": false,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": true,
+        "limitation_quality": "imprecise"
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "The change sits in a module-init class-body version conditional (sys.version_info[1] <= 1) inside _MovedItems — legacy Python 3.0/3.1 gating that is effectively dead and untestable on modern Python. ripr fails closed to static_unknown, which is honest (no over-credit past the limit: false_exposed=false; no card: false_actionable=false). limitation_quality=imprecise: no_static_path would arguably describe it more precisely than a static-analysis limit, but failing closed is the safe call."
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+# Golden Output Changes
+
+## Pending
+
+Reason:
+RIPR-SPEC-0094: CallDeletion probe with result_key token_match does NOT emit observation_unverified; initial golden for the anti-over-correction proof fixture
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+Re-author with strong whole-object/exact-value persisted-effect observer so the verified-effect control genuinely demonstrates exposed; pairs with reveal.rs effect_observer_confirms fix (#1216)
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+changed call heads use one canonical parser expression while verified observation remains exposed
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+#2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+Issue #2598: default human output now exposes bounded explain and context follow-up commands for the selected finding.
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+Issue #2659: finding navigation commands now preserve the analyzed root, diff or artifact scope and shell-safe identity.
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0076: raise exposed default severity from info to warning so the strongest finding class is not quieter than weaker classes
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: publish typed analysis outcome in human and JSON output.
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: align fixture outputs with the typed incomplete-outcome and unquoted human outcome contract.
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0151: rebless check JSON for the additive source_currentness field; classifications, stages, confidence, counts, and recorded coordinates remain unchanged.
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0160: the additive git_candidate_subject identity field (null for ordinary runs) in the check JSON identity block
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — observation_verified_call_deletion (2)
+
+Reason:
+RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
+
+Command:
+`cargo xtask goldens bless observation_verified_call_deletion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

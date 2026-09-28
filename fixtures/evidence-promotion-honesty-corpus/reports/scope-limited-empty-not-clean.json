@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": ".",
+  "base": "HEAD",
+  "analysis_scope": {
+    "completeness": "limited"
+  },
+  "summary": {
+    "findings": 0
+  },
+  "findings": [],
+  "limitations": [
+    {
+      "category": "diff_scope_oversized",
+      "why": "analysis stopped before a complete result was available"
+    }
+  ]
+}

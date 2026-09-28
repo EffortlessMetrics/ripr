@@ -1,0 +1,81 @@
+diff --git a/crates/ripr/src/cli/commands/doctor.rs b/crates/ripr/src/cli/commands/doctor.rs
+index f03dcccec..0547dda25 100644
+--- a/crates/ripr/src/cli/commands/doctor.rs
++++ b/crates/ripr/src/cli/commands/doctor.rs
+@@ -111,7 +111,18 @@ fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -
+ }
+ 
+ fn print_doctor_start_here_guidance(root: &Path) {
+-    println!("- Start-here packet: target/ripr/reports/start-here.md");
++    // First-run honesty: name the packet only as present when it exists.
++    // An unconditional path reads as an existing artifact on a fresh
++    // workspace where `ripr first-pr` has never run (RIPR-SPEC-0051 names
++    // the path, not its existence). `is_file` (not `exists`) so a directory
++    // squatting the packet path cannot read as openable evidence.
++    if root.join("target/ripr/reports/start-here.md").is_file() {
++        println!("- Start-here packet: target/ripr/reports/start-here.md (present; open it first)");
++    } else {
++        println!(
++            "- Start-here packet: target/ripr/reports/start-here.md (not yet generated; run the safe next action below)"
++        );
++    }
+     println!(
+         "- Safe next action: run `ripr first-pr --root {} --base origin/main --head HEAD` after setup passes",
+         root.display()
+diff --git a/crates/ripr/tests/cli_smoke.rs b/crates/ripr/tests/cli_smoke.rs
+index 9e637d752..465443200 100644
+--- a/crates/ripr/tests/cli_smoke.rs
++++ b/crates/ripr/tests/cli_smoke.rs
+@@ -5631,6 +5631,8 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
+     assert!(stdout.contains("LSP seam diagnostics default: true"));
+     assert!(stdout.contains("Suppressions path: .ripr/suppressions.toml"));
+     assert!(stdout.contains("Start-here packet: target/ripr/reports/start-here.md"));
++    assert!(stdout.contains("(not yet generated; run the safe next action below)"));
++    assert!(!stdout.contains("(present; open it first)"));
+     assert!(stdout.contains("Safe next action: run `ripr first-pr --root"));
+     assert!(stdout.contains("Recovery states: missing artifact, stale evidence, wrong root"));
+     assert!(stdout.contains("Proof rail: verify command, receipt command, and receipt path"));
+@@ -5639,6 +5641,43 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
+     Ok(())
+ }
+ 
++#[test]
++fn doctor_reports_present_start_here_packet() -> Result<(), String> {
++    let workspace = make_temp_workspace(None)?;
++    let reports = workspace.join("target/ripr/reports");
++    std::fs::create_dir_all(&reports).map_err(|e| format!("create reports dir: {e}"))?;
++    std::fs::write(reports.join("start-here.md"), "# start here\n")
++        .map_err(|e| format!("write start-here.md: {e}"))?;
++    let root = workspace.display().to_string();
++    let output = run_ripr(&["doctor", "--root", &root]);
++    assert_success(&output);
++
++    let stdout = String::from_utf8_lossy(&output.stdout);
++    assert!(stdout.contains("Start-here packet: target/ripr/reports/start-here.md"));
++    assert!(stdout.contains("(present; open it first)"));
++    assert!(!stdout.contains("not yet generated"));
++
++    let _ = std::fs::remove_dir_all(&workspace);
++    Ok(())
++}
++
++#[test]
++fn doctor_reports_directory_squatting_packet_path_as_not_generated() -> Result<(), String> {
++    let workspace = make_temp_workspace(None)?;
++    let squat = workspace.join("target/ripr/reports/start-here.md");
++    std::fs::create_dir_all(&squat).map_err(|e| format!("create squat dir: {e}"))?;
++    let root = workspace.display().to_string();
++    let output = run_ripr(&["doctor", "--root", &root]);
++    assert_success(&output);
++
++    let stdout = String::from_utf8_lossy(&output.stdout);
++    assert!(stdout.contains("(not yet generated; run the safe next action below)"));
++    assert!(!stdout.contains("(present; open it first)"));
++
++    let _ = std::fs::remove_dir_all(&workspace);
++    Ok(())
++}
++
+ #[test]
+ fn config_validate_rejects_missing_and_file_roots() -> Result<(), String> {
+     let workspace = make_temp_workspace(None)?;

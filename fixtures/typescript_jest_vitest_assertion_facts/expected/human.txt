@@ -1,0 +1,39 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_jest_vitest_assertion_facts/input
+
+Summary: 6 probe(s), 2 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 13 changed line(s), 6 candidate line(s), 6 probe(s), 6 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: this TypeScript preview finding's repair packet is not ready (TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.
+  File: src/signals.ts:9
+  Language: typescript
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: return `summary:${status.trim()}`;
+  Missing discriminator: Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before…
+  Related test: tests/signals.test.ts:25 renders summary snapshot
+  Next step: TypeScript preview advisory: add an exact-value assertion alongside the snapshot for missing discriminator `return value == `summary:${status.trim()}``; no actionable repair…
+  Evidence:
+    - reach yes: 1 related test(s) found for owner `renderSummary`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 5 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/typescript_jest_vitest_assertion_facts/input --diff fixtures/typescript_jest_vitest_assertion_facts/diff.patch --mode fast probe:src_signals.ts:typescript_preview:8ca5702a
+  ripr context --root fixtures/typescript_jest_vitest_assertion_facts/input --diff fixtures/typescript_jest_vitest_assertion_facts/diff.patch --mode fast --at probe:src_signals.ts:typescript_preview:8ca5702a
+
+Hidden:
+  5 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

@@ -1,0 +1,4 @@
+[package]
+name = "plain_diff_multifile_boundary"
+version = "0.1.0"
+edition = "2021"

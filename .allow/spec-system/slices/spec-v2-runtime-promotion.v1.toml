@@ -1,0 +1,55 @@
+schema_version = "2.0"
+id = "ripr.slice.spec-v2-runtime-promotion.v1"
+generation = 1
+
+source_issue = "issue:1676"
+design_reference = "RIPR-SPEC-0132#spec-only-runtime-promotion"
+change_class = "spec_or_policy_change"
+
+claim_boundary = """
+Defines the first RIPR-SPEC v2 runtime-promotion requirement without claiming
+runtime implementation, current runtime proof, support promotion, or legacy
+spec migration.
+"""
+
+non_goals = [
+  "runtime implementation",
+  "runtime proof execution",
+  "support-tier promotion",
+  "complete requirement lifecycle",
+  "legacy spec migration",
+]
+
+return_conditions = [
+  "Return to root if the cargo-allow RIPR-SPEC v2 dialect cannot validate this slice.",
+  "Return to root if a later behavior slice needs an incompatible requirement generation.",
+]
+
+owned_seams = [
+  "seam:ripr:docs:spec-v2-runtime-promotion-requirement",
+  "seam:ripr:policy:spec-v2-runtime-promotion-slice",
+]
+
+shared_seams = [
+  "seam:ripr:docs:spec-index",
+  "seam:ripr:policy:document-artifact-ledgers",
+]
+
+forbidden_seams = [
+  "seam:ripr:docs:support-tiers",
+  "seam:ripr:repo:legacy-goal-manifests",
+  "seam:ripr:repo:workflows",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0132#spec-only-runtime-promotion"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

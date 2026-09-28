@@ -1,0 +1,147 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_broad_boolean_assertion/input",
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:e94d48249c189d80ea3ee9feb100d4b16d76929c3605573a3f0fbf7af268c3a5","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_priority.py:python_preview:5c6fb782",
+      "canonical_gap_id": "gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100",
+        "language": "python",
+        "file": "src/priority.py",
+        "owner": "is_priority",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount>=100"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_priority.py:python_preview:5c6fb782",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/priority.py",
+        "line": 2,
+        "expression": "    return amount >= 100",
+        "owner": "python:src/priority.py::is_priority"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `is_priority`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount >= 100`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `return value == <expected value>`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `is_priority`", "infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `smoke_only` (rank 2)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `return value == <expected value>`.", "local flow reaches returned value: return amount >= 100 (line 2)", "related test tests/test_priority.py:4 test_priority_amount uses smoke smoke only oracle: assert is_priority(100)", "missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return amount >= 100","line":2}
+      ],
+      "evidence": ["owner: is_priority", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_priority.py", "suggested_test_name: test_priority_amount", "suggested_test_node_id: tests/test_priority.py::test_priority_amount", "suggested_verify_command: pytest tests/test_priority.py::test_priority_amount", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_priority_amount)", "test_verify_command: pytest tests/test_priority.py::test_priority_amount (test_priority_amount)", "related_test_relation: syntactic_call (test_priority_amount)", "test_oracle: smoke_only smoke (test_priority_amount)", "test_oracle_shape: broad_smoke_assertion (test_priority_amount)"],
+      "missing": ["Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "return value == <expected value>",
+            "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "return value == <expected value>",
+          "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"return_value","text":"return amount >= 100","line":2}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_priority_amount",
+          "file": "tests/test_priority.py",
+          "line": 4,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "assert is_priority(100)"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_priority.py",
+        "suggested_test_name": "test_priority_amount",
+        "suggested_test_node_id": "tests/test_priority.py::test_priority_amount",
+        "verify_command": "pytest tests/test_priority.py::test_priority_amount",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "is_priority",
+        "changed_behavior": "return_value changed at src/priority.py:2: `return amount >= 100`",
+        "current_test_evidence": "tests/test_priority.py:4 test_priority_amount currently has oracle_strength=smoke, oracle_kind=smoke_only: assert is_priority(100)",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
+        "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
+        "suggested_location": {
+          "test_file": "tests/test_priority.py",
+          "test_name": "test_priority_amount",
+          "pytest_node_id": "tests/test_priority.py::test_priority_amount"
+         },
+        "verify": {
+          "command": "pytest tests/test_priority.py::test_priority_amount",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/priority.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/receipt_unchanged",
+  "receipt_state": "receipt_movement_unchanged",
+  "gap_identity": "gap:rust:pricing",
+  "movement": "unchanged",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Revise the focused test for the same gap before requesting another seam."
+}

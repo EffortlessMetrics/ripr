@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_found_repairable",
+  "status": "top_repairable_gap_available",
+  "projection": "active",
+  "first_pr_packet": {
+    "state": "top_repairable_gap",
+    "path": "target/ripr/first-pr/start-here.json",
+    "markdown": "target/ripr/first-pr/start-here.md",
+    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary"
+  },
+  "next_safe_action": "Inspect the diagnostic, copy the first-pr repair packet, verify, emit a receipt, then refresh."
+}

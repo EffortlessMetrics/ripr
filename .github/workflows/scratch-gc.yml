@@ -1,0 +1,84 @@
+name: Scratch GC
+
+# Scheduled reclamation of self-hosted CI scratch disk so recovery does not
+# depend on PR traffic (#1028). Mirrors the existing inline "Prepare scratch" step
+# in routed-rust.yml, but on a timer: idle build runners (exactly the ones that
+# would otherwise never get a PR-triggered cleanup) get swept regularly.
+#
+# Covers all three routed-rust runner pools (cx43, cpx42, cx53) — each runs the
+# same routed lanes with the same /mnt/ci-scratch layout and the same disk guard,
+# so each accumulates the same orphaned scratch dirs when a run is cancelled
+# before its cleanup step (the 2026-06-06 outage failure mode). One matrix job
+# per pool sweeps a runner in that pool; fail-fast is off AND the concurrency
+# group is keyed per pool, so an offline pool suppresses neither the other pools'
+# jobs nor their later scheduled fires. fail-fast alone did not achieve that:
+# with a workflow-level group the pools shared one queue slot (#3274). This is a
+# GitHub-Actions-level sweep (one runner per pool per fire), not a per-host
+# daemon — see #1058 for host-level disk guards.
+#
+# Scratch trees are reclaimed by ownership and liveness, not age (#3841): the
+# shared .github/actions/ci-scratch-lease authority deletes a per-run tree only
+# while holding the flock lease of a terminal job this repository owns.
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scratch-gc:
+    name: Reclaim CI scratch disk (${{ matrix.pool }})
+    if: github.repository == 'EffortlessMetrics/ripr-swarm'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pool: cx43
+            labels: [self-hosted, linux, x64, em-ci, cx43, rust-medium, trusted-pr]
+          - pool: cpx42
+            labels: [self-hosted, linux, x64, em-ci, cpx42, rust-medium, rust-16gb, trusted-pr]
+          - pool: cx53
+            labels: [self-hosted, linux, x64, em-ci, cx53, rust-large, trusted-pr]
+    runs-on:
+      group: em-ci-small
+      labels: ${{ matrix.labels }}
+    # Per-pool, not per-repository (#3274). A workflow-level group couples all
+    # three matrix pools into one queue slot: the run is not complete until
+    # every pool's job is, so a pool with no available runner holds the slot,
+    # every later scheduled fire queues behind it, and each fire is cancelled
+    # by the next one. That starved the lane for 22 consecutive runs with a
+    # `cancelled` conclusion, which never trips a required check or a
+    # notification. `fail-fast: false` decouples pool *failure*; it does not
+    # decouple queue occupancy. Keying the group on the pool restores that.
+    concurrency:
+      group: scratch-gc-${{ github.repository }}-${{ matrix.pool }}
+      cancel-in-progress: false
+    timeout-minutes: 15
+    steps:
+      # A dedicated path keeps this sparse checkout out of the build
+      # workspace: checkout implies `--filter=blob:none` for sparse checkouts
+      # and leaves the promisor config behind, which would turn the
+      # `fetch-depth: 0` rust-gates checkout on the same runner into a blobless
+      # partial clone. rust-gates' own checkout cleans this directory away.
+      - uses: actions/checkout@v6
+        with:
+          path: .ci-scratch-gc
+          sparse-checkout: .github/actions/ci-scratch-lease
+          persist-credentials: false
+
+      # #3841: reclaim only terminal trees this repository owns, through the
+      # same flock lease authority as the inline rust-gates.yml reclaim. A live
+      # lease, or any unknown/foreign entry, is skipped regardless of age.
+      - name: Reclaim terminal scratch
+        uses: ./.ci-scratch-gc/.github/actions/ci-scratch-lease
+        with:
+          mode: reclaim
+
+      - name: Trim sccache and report disk
+        run: |
+          find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
+          { echo '```'; echo "pool: ${{ matrix.pool }}"; du -sh /mnt/ci-scratch/* /mnt/ci-cache/* 2>/dev/null | sort -rh | head -20 || true; df -h / /mnt/ci-scratch 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          command -v ci-disk-guard >/dev/null 2>&1 && ci-disk-guard /mnt/ci-scratch 35 || { echo "::error::ci-disk-guard missing or /mnt/ci-scratch below 35G free on ${{ matrix.pool }}"; exit 1; }

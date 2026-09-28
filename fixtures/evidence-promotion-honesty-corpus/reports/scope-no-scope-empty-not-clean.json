@@ -1,0 +1,17 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": ".",
+  "summary": {
+    "findings": 0
+  },
+  "findings": [],
+  "scope_disclosures": [
+    {
+      "scope_status": "no_scope_provided",
+      "category": "no_scope_disclosure",
+      "why": "no analysis scope provided; empty result does not mean changed behavior is covered"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+schema_version = "2.0"
+id = "ripr.slice.gate-command-boundary.v1"
+generation = 1
+
+source_issue = "issue:1963"
+design_reference = "RIPR-SPEC-0067#inputs-and-outputs"
+change_class = "behavior_change"
+
+claim_boundary = """
+Pins the external ripr gate evaluate command boundary for a complete
+producer-owned gap-ledger route: an explicitly configured blocking mode writes
+the decision report and returns nonzero, while visible-only writes the same
+route as advisory and returns zero. The proof checks typed seam identity,
+inspection routing, and the static advisory authority boundary. It does not
+change default generated-CI posture, execute verification commands, issue
+receipts, or promote support tiers.
+"""
+
+non_goals = [
+  "gate mode or default generated-CI policy changes",
+  "verification command execution",
+  "receipt issuance or provenance binding",
+  "baseline and acknowledgement redesign",
+  "preview-language authority promotion",
+  "runtime mutation confirmation",
+]
+
+return_conditions = [
+  "Return to root if the CLI reconstructs seam identity or inspection commands from presentation fields.",
+  "Return to root if visible-only can return a blocking exit or an explicit blocking mode can return zero for a complete route.",
+  "Return to root if generated CI changes its default advisory posture in this slice.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:gate-command-boundary",
+  "seam:ripr:docs:pr-gate-use-case-status",
+]
+
+shared_seams = [
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:output:gap-ledger-route",
+  "seam:ripr:contract:gate-repair-route-eligibility",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+  "seam:ripr:release:promotion",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0067#inputs-and-outputs"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

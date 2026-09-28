@@ -1,0 +1,43 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_mock_interaction_shape/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
+  File: src/callbacks.py:4
+  Language: python
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
+  Changed behavior: callback = MagicMock(name="receipt.sent")
+  Missing discriminator: Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call…
+  Related test: tests/test_callbacks.py:4 test_recording_callback_starts_idle
+  Suggested test file: tests/test_callbacks.py
+  Suggested test: test_recording_callback_starts_idle
+  Test node: tests/test_callbacks.py::test_recording_callback_starts_idle
+  Verify command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
+  Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `recording_callback`
+    - infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name="receipt.sent")`
+    - 5 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_mock_interaction_shape/input --diff fixtures/python_mock_interaction_shape/diff.patch --mode fast probe:src_callbacks.py:python_preview:d5d2a2c6
+  ripr context --root fixtures/python_mock_interaction_shape/input --diff fixtures/python_mock_interaction_shape/diff.patch --mode fast --at probe:src_callbacks.py:python_preview:d5d2a2c6
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

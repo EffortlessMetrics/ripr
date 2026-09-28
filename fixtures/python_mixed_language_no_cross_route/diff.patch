@@ -1,0 +1,8 @@
+diff --git a/src/pricing.py b/src/pricing.py
+index 0000000..1111111 100644
+--- a/src/pricing.py
++++ b/src/pricing.py
+@@ -1,2 +1,2 @@
+ def calculate_total(amount):
+-    return amount + 5
++    return amount + 7

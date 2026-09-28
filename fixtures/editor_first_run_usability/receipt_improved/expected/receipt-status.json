@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/receipt_improved",
+  "receipt_state": "receipt_movement_improved",
+  "gap_identity": "gap:rust:pricing",
+  "movement": "improved",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Attach the receipt with the verify artifact; do not treat it as runtime adequacy."
+}

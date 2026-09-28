@@ -1,0 +1,8 @@
+diff --git a/src/models.py b/src/models.py
+index 0000000..1111111 100644
+--- a/src/models.py
++++ b/src/models.py
+@@ -1,2 +1,2 @@
+ def build_model(name):
+-    return type(name, (), {})
++    return type(name, (), {"kind": "preview"})

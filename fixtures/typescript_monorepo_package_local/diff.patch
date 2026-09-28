@@ -1,0 +1,10 @@
+diff --git a/packages/pkg-a/src/discount.ts b/packages/pkg-a/src/discount.ts
+index 0000000..1111111 100644
+--- a/packages/pkg-a/src/discount.ts
++++ b/packages/pkg-a/src/discount.ts
+@@ -1,5 +1,5 @@
+ export function applyDiscount(price: number, discountPct: number): number {
+-    if (discountPct > 100) {
++    if (discountPct >= 100) {
+         return 0;
+     }

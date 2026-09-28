@@ -1,0 +1,60 @@
+schema_version = "2.0"
+id = "ripr.slice.cold-target-affinity-index.v1"
+generation = 1
+
+source_issue = "issue:3838"
+design_reference = "RIPR-SPEC-0005"
+change_class = "refactor"
+
+claim_boundary = """
+Replaces the per-seam whole-test scan in repo test-grip target-affinity
+matching with a deterministic reverse index built once in CompactGripContext.
+The index maps each precomputed target-affinity owner-call name to the same test
+indexes the old loop would discover, then the matcher applies the unchanged
+target-token predicate, package-prefix filter, relation priority, deduplication,
+ranking, and evidence construction. Test enumeration order and BTreeSet owner
+names keep candidate vectors deterministic. No relation meaning, grip class,
+canonical identity, output contract, cache identity, cancellation behavior, or
+support claim changes.
+"""
+
+non_goals = [
+  "parallelizing evidence construction",
+  "changing RefCell or OnceCell memoization",
+  "semantic-unit caching or exact-base-proof routing",
+  "changing relation confidence, ranking, activation, oracle, or output semantics",
+  "changing public schemas, goldens, fixtures, or support tiers",
+]
+
+return_conditions = [
+  "Return to root if any target-affinity evidence, classification, golden, or fixture changes.",
+  "Return to root if candidate order differs from the previous full-scan order.",
+  "Return to root if the matcher still scans every CompactGripContext test for each seam.",
+]
+
+owned_seams = [
+  "seam:ripr:analysis:evidence",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:seam-cache",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:analysis:classification-decision",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0005"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,8 @@
+--- a/pricing.py
++++ b/pricing.py
+@@ -1,4 +1,4 @@
+ def apply_discount(amount, threshold):
+     if amount >= threshold:
+-        return amount * 0.9
++        return amount * 0.85
+     return amount

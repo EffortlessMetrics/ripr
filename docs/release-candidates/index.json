@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_release_candidate_authority_registry",
+  "control_issue": 3842,
+  "non_claim": "This registry classifies retained release-candidate artifacts by raw-byte digest and lifecycle state. It does not select, construct, qualify, sync, tag, sign, or publish any candidate, and it does not rewrite historical receipt bytes.",
+  "artifacts": [
+    {
+      "release": "0.11.0",
+      "path": "docs/release-candidates/0.11.0-hard-cut.json",
+      "sha256": "a706647fe1642f211c33f16bd849487524ad621eea38b5cacb3159afeb40fdc7",
+      "schema_generation": "ripr_swarm_0_11_hard_cut_receipt/1.0",
+      "authority_issue": 2893,
+      "state": "historical_evidence_only",
+      "projection_of": null,
+      "supersedes": [],
+      "superseded_by": "docs/release-candidates/0.11.0-live-head-selection.json",
+      "reason": "The August 2026 development hard cut C (b8b1c9ec78b013dfac6dcf929447839132835971) and its candidate-only C-to-T path were superseded by the #2379 live-head authority reset; the receipt is retained as audit evidence and satisfies no current release prerequisite.",
+      "successor_route": null,
+      "candidate": null,
+      "packets": null,
+      "selection_template_sha256": null
+    },
+    {
+      "release": "0.11.0",
+      "path": "docs/release-candidates/0.11.0-hard-cut.md",
+      "sha256": "6f09c026e1e649958eff244349e4b12e624baae803dcbbc4e58518ac3b904ae5",
+      "schema_generation": "markdown_projection",
+      "authority_issue": 2893,
+      "state": "historical_evidence_only",
+      "projection_of": "docs/release-candidates/0.11.0-hard-cut.json"
+    },
+    {
+      "release": "0.11.0",
+      "path": "docs/release-candidates/0.11.0-live-head-selection.json",
+      "sha256": "dcdc8a100dd825be5b76e7c5485c476db617116d1c2e3036322afec486577868",
+      "schema_generation": "ripr_swarm_live_head_release_authority/1.0",
+      "authority_issue": 2379,
+      "state": "active_selection_template",
+      "projection_of": null,
+      "supersedes": [
+        "docs/release-candidates/0.11.0-hard-cut.json",
+        "docs/release-candidates/0.11.0-replacement-freeze.json"
+      ],
+      "superseded_by": null,
+      "reason": null,
+      "successor_route": "#1609 registers one exact immutable candidate as pinned_exact_candidate; this row then retires to historical_evidence_only with superseded_by naming that candidate, and no historical row is rewritten.",
+      "candidate": null,
+      "packets": null,
+      "selection_template_sha256": null
+    },
+    {
+      "release": "0.11.0",
+      "path": "docs/release-candidates/0.11.0-live-head-selection.md",
+      "sha256": "de987ff5ee054b59df9fa3bfc4545d708a6e9227e01e6283053368a4ed4de028",
+      "schema_generation": "markdown_projection",
+      "authority_issue": 2379,
+      "state": "active_selection_template",
+      "projection_of": "docs/release-candidates/0.11.0-live-head-selection.json"
+    },
+    {
+      "release": "0.11.0",
+      "path": "docs/release-candidates/0.11.0-replacement-freeze.json",
+      "sha256": "f5b59af6cb8a7062c77744102eab185e6f0c14174708510af60c0861f35b88b0",
+      "schema_generation": "ripr_swarm_release_candidate_freeze/1.0",
+      "authority_issue": 2354,
+      "state": "historical_evidence_only",
+      "projection_of": null,
+      "supersedes": [],
+      "superseded_by": "docs/release-candidates/0.11.0-live-head-selection.json",
+      "reason": "The July 23 replacement-freeze candidate c86807ecdbf359594ef88c0ff38b10b446139dca (freeze/source-sync-2026-07-23) was demoted to a historical reviewed baseline after qualification exposed supplemental defects (#2354); live selection moved to #2379.",
+      "successor_route": null,
+      "candidate": null,
+      "packets": null,
+      "selection_template_sha256": null
+    }
+  ]
+}

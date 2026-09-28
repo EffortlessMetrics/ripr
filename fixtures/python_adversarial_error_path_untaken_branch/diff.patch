@@ -1,0 +1,10 @@
+diff --git a/src/parseint.py b/src/parseint.py
+index 0000000..1111111 100644
+--- a/src/parseint.py
++++ b/src/parseint.py
+@@ -1,4 +1,4 @@
+ def parse(text):
+     if not text:
+-        raise ValueError("empty")
++        raise KeyError("empty")
+     return int(text)

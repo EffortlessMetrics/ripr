@@ -1,0 +1,12 @@
+diff --git a/src/jinja2/filters.py b/src/jinja2/filters.py
+--- a/src/jinja2/filters.py
++++ b/src/jinja2/filters.py
+@@ -1171,7 +1171,7 @@
+         {{ 42.55|round|int }}
+             -> 43
+     """
+-    if method not in {"common", "ceil", "floor"}:
++    if method in {"common", "ceil", "floor"}:
+         raise FilterArgumentError("method must be common, ceil or floor")
+ 
+     if method == "common":

@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/receipt_found",
+  "status": "receipt_found",
+  "projection": "active",
+  "workspace_root": "fixtures/editor_first_run_usability/receipt_found/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "artifacts": {
+    "first_useful_action": "found",
+    "gap_decision_ledger": "found",
+    "agent_receipt": "found"
+  },
+  "next_safe_action": "Use the matching receipt as static proof, then refresh editor evidence."
+}

@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/ts_heuristic_relation/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: this TypeScript preview finding's repair packet is not ready (related-test link is heuristic-only and cannot safely borrow extracted assertions as proof); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.
+  File: src/formatter.ts:2
+  Language: typescript
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: if (amount <= 0) {
+  Missing discriminator: Only heuristic TypeScript test links were found for `formatCurrency`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Related test: tests/formatter.test.ts:7 formatCurrency behavior formats positive amounts
+  Next step: TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
+  Evidence:
+    - reach weak: 1 related test(s) found for owner `formatCurrency`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/ts_heuristic_relation/input --diff fixtures/ts_heuristic_relation/diff.patch --mode fast probe:src_formatter.ts:typescript_preview:bf26bc95
+  ripr context --root fixtures/ts_heuristic_relation/input --diff fixtures/ts_heuristic_relation/diff.patch --mode fast --at probe:src_formatter.ts:typescript_preview:bf26bc95
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

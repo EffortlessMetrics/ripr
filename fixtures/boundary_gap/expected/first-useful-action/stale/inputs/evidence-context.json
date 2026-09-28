@@ -1,0 +1,10 @@
+{
+  "freshness": "stale",
+  "stale_reason": "diagnostic generation is older than the latest saved workspace refresh",
+  "seam_id": "67fc764ba37d77bd",
+  "seam_kind": "predicate_boundary",
+  "path": "src/lib.rs",
+  "line": 2,
+  "classification": "weakly_exposed",
+  "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
+}

@@ -1,0 +1,24 @@
+diff --git a/src/owners.ts b/src/owners.ts
+index 0000000..1111111 100644
+--- a/src/owners.ts
++++ b/src/owners.ts
+@@ -1,15 +1,15 @@
+ export const formatPrice = (amount: number) => {
+-  return `$${amount.toFixed(2)}`;
++  return `$${amount.toFixed(3)}`;
+ };
+ 
+ export class Cart {
+   total() {
+-    return this.items.length;
++    return this.items.length + 1;
+   }
+ 
+   static build() {
+-    return new Cart();
++    return new Cart({ tracked: true });
+   }
+ }
+ 
+-export const DEFAULT_RATE = 0.08;
++export const DEFAULT_RATE = 0.09;

@@ -1,0 +1,31 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/oracle_confirmation_mixed/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/oracle_confirmation_mixed/input/src/lib.rs:2
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: record_effect(rows)
+  Missing discriminator: No strong discriminator was detected
+  Related test: src/lib.rs:12 calls_owner_without_observing_effect
+  Next step: Strengthen the related assertion so it discriminates the changed behavior.
+  Evidence:
+    - reach yes: Related tests appear to reach analyze_diff: calls_owner_without_observing_effect, unrelated_exact_oracle
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 8 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/oracle_confirmation_mixed/input --diff fixtures/oracle_confirmation_mixed/diff.patch --mode fast probe:src_lib.rs:call_deletion:ed1574df
+  ripr context --root fixtures/oracle_confirmation_mixed/input --diff fixtures/oracle_confirmation_mixed/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:ed1574df
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
