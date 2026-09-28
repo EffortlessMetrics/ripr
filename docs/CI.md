@@ -1168,6 +1168,23 @@ See [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) for how
 maintainers and coding agents read completeness, missing inputs, unchanged
 movement, repair queue entries, and advisory limits.
 
+For the artifact composition commands `ripr pr-summary`, `ripr first-action`,
+`ripr pr-review front-panel`, and `ripr reports index`, `--root <path>` names
+the selected repository; its default is the current working directory.
+`pr-summary` reads its fixed artifact locations and a relative `--baseline`
+under that root, and writes its three summary outputs there. The other three
+commands retain their explicit artifact and output path conventions: relative
+paths resolve from the process working directory. From a foreign directory,
+pass absolute artifact/output paths to those commands alongside `--root`.
+These commands compose existing artifacts rather than establishing new
+analysis or release qualification.
+
+On Windows, `pr-summary` accepts ordinary relative paths and fully qualified
+absolute paths for `--root` and `--baseline`, including UNC and verbatim paths.
+It rejects partially qualified paths such as `C:repo` or `\repo`, whose Windows
+join semantics can replace the selected root. This restriction applies only
+on Windows; colon-containing relative filenames remain valid on other systems.
+
 Generated CI also projects the first useful action when at least one explicit
 input artifact is already present. It runs `ripr first-action --root .` with
 existing PR guidance, assistant proof, PR evidence ledger, baseline delta,

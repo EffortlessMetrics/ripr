@@ -12,6 +12,7 @@ mod parse;
 mod rerun;
 mod suggest;
 
+pub(crate) use parse::expect_value;
 pub(crate) use suggest::unknown_argument;
 
 /// Top-level error of command dispatch, carrying the process exit-code
