@@ -1493,6 +1493,196 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('typed succeeded status discloses limited run statuses instead of completed', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      const emitSucceededWithRunStatus = (runStatus: string) => {
+        context.client.emitNotification('ripr/analysisStatus', {
+          schema_version: '0.1',
+          tool: 'ripr',
+          kind: 'analysis_status',
+          state: 'succeeded',
+          run_status: runStatus,
+          attempt_id: 'run-1',
+          snapshot_id: 'snapshot:run-1'
+        });
+      };
+      const assertDegraded = (expectedLines: string[]) => {
+        // Degraded presentations use the dedicated analysisLimited status
+        // kind: warning icon and text, never the healthy
+        // `$(check) ripr: diagnostics` presentation.
+        assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+        assert.ok(!context.status.text.includes('ripr: diagnostics'), context.status.text);
+        const tooltip = String(context.status.tooltip);
+        for (const expected of expectedLines) {
+          assert.ok(tooltip.includes(expected), tooltip);
+        }
+      };
+
+      // Git-timeout shape: a limited snapshot may carry zero findings, so the
+      // summary must not read as a healthy completion.
+      emitSucceededWithRunStatus('limited');
+      assertDegraded([
+        'ripr analysis completed with limited evidence.',
+        'for example a git invocation timeout',
+        'findings may be missing',
+        'Next safe action: Run ripr: Refresh Diagnostics'
+      ]);
+
+      emitSucceededWithRunStatus('cache_limited');
+      assertDegraded([
+        'ripr analysis completed with a limited evidence cache.',
+        'Gap-artifact cache entries were rejected this refresh',
+        'Next safe action: Rerun ripr check to regenerate the rejected gap-artifact reports'
+      ]);
+
+      emitSucceededWithRunStatus('limited_partial_scope');
+      assertDegraded([
+        'ripr analysis completed on a bounded partition of the diff.',
+        'the remainder was not evaluated',
+        'Next safe action: Raise RIPR_PARTIAL_DIFF_FILE_BUDGET or narrow the diff'
+      ]);
+
+      emitSucceededWithRunStatus('limited_incomplete_input');
+      assertDegraded([
+        'ripr analysis completed with incomplete input.',
+        'The run input was incomplete',
+        'Next safe action: Run ripr: Refresh Diagnostics'
+      ]);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed succeeded status discloses deferred seam evidence instead of completed', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'seams_deferred',
+        attempt_id: 'save-1',
+        snapshot_id: 'snapshot:save-1'
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      assert.ok(!context.status.text.includes('ripr: diagnostics'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      assert.ok(tooltip.includes('ripr analysis completed; seam and gap evidence is deferred.'), tooltip);
+      assert.ok(tooltip.includes('Interactive saves defer the seam inventory'), tooltip);
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics to compute the full seam inventory.'),
+        tooltip
+      );
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited run statuses do not gate repair packet copies as stale', async () => {
+    const context = createControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
+      }
+    });
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'seams_deferred',
+        attempt_id: 'save-1',
+        snapshot_id: 'snapshot:save-1'
+      });
+
+      // The degraded disclosure must not reuse the stale kind's action gates:
+      // the published snapshot is not stale, only seam evidence is deferred.
+      await context.controller.copyCurrentRepairPacket();
+      const copied = context.clipboardWrites.at(-1) ?? '';
+      assert.ok(copied.includes('RIPR current repair packet'), copied);
+      assert.ok(copied.includes('gap:rust:pricing:discount:threshold-boundary'), copied);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed succeeded status keeps healthy presentation for full and unknown run statuses', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      const emitSucceededWithRunStatus = (runStatus: string | undefined) => {
+        context.client.emitNotification('ripr/analysisStatus', {
+          schema_version: '0.1',
+          tool: 'ripr',
+          kind: 'analysis_status',
+          state: 'succeeded',
+          run_status: runStatus,
+          attempt_id: 'run-1',
+          snapshot_id: 'snapshot:run-1'
+        });
+      };
+
+      emitSucceededWithRunStatus('full');
+      assert.ok(context.status.text.includes('$(check) ripr: diagnostics'), context.status.text);
+      assert.ok(String(context.status.tooltip).includes('ripr saved-workspace analysis completed.'));
+
+      // Unknown run_status values keep today's healthy presentation.
+      emitSucceededWithRunStatus('not_yet_a_server_status');
+      assert.ok(context.status.text.includes('$(check) ripr: diagnostics'), context.status.text);
+
+      emitSucceededWithRunStatus(undefined);
+      assert.ok(context.status.text.includes('$(check) ripr: diagnostics'), context.status.text);
+
+      // 'stale' keeps today's degraded presentation and retry wording.
+      emitSucceededWithRunStatus('stale');
+      assert.ok(context.status.text.includes('$(warning) ripr: stale'), context.status.text);
+      const staleTooltip = String(context.status.tooltip);
+      assert.ok(staleTooltip.includes('ripr analysis completed with stale or limited evidence.'), staleTooltip);
+      assert.ok(
+        staleTooltip.includes('Next safe action: Run ripr: Restart Server after resolving the reported limitation.'),
+        staleTooltip
+      );
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('dirty routed files compose ahead of the deferred seam disclosure', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      context.controller.markWorkspaceStale(document);
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'seams_deferred',
+        attempt_id: 'dirty-deferred',
+        snapshot_id: 'snapshot:dirty-deferred'
+      });
+
+      assert.ok(context.status.text.includes('ripr: stale'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      assert.ok(tooltip.includes('unsaved routed-file changes remain'), tooltip);
+      assert.ok(tooltip.includes('Current diagnostics describe the last saved workspace state.'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar projects existing first useful action report', async () => {
     const context = createControllerTestContext({
       firstActionJson: JSON.stringify({

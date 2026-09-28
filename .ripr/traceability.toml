@@ -425,7 +425,12 @@ tests = [
   "editors/vscode/test/suite/extension.test.ts::status bar reports disabled configuration without starting server",
   "editors/vscode/test/suite/extension.test.ts::status bar reports missing workspace without starting server",
   "editors/vscode/test/suite/extension.test.ts::status bar reports unavailable server without hanging on modal UI",
-  "editors/vscode/test/suite/extension.test.ts::status bar reports stale saved-workspace analysis after Rust edits"
+  "editors/vscode/test/suite/extension.test.ts::status bar reports stale saved-workspace analysis after Rust edits",
+  "editors/vscode/test/suite/extension.test.ts::typed succeeded status discloses limited run statuses instead of completed",
+  "editors/vscode/test/suite/extension.test.ts::typed succeeded status discloses deferred seam evidence instead of completed",
+  "editors/vscode/test/suite/extension.test.ts::limited run statuses do not gate repair packet copies as stale",
+  "editors/vscode/test/suite/extension.test.ts::typed succeeded status keeps healthy presentation for full and unknown run statuses",
+  "editors/vscode/test/suite/extension.test.ts::dirty routed files compose ahead of the deferred seam disclosure"
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",

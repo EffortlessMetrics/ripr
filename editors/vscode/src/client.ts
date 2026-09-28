@@ -1555,32 +1555,11 @@ export class RiprClientController {
         });
         return;
       case 'succeeded':
-        if (status.run_status === 'stale' || this.dirtyRiprDocuments.size > 0) {
-          const dirtyDetail = this.dirtyRiprDocuments.size > 0
-            ? [
-              analysisStatusDetail(status),
-              'Current diagnostics describe the last saved workspace state.',
-              `Unsaved routed files: ${Array.from(this.dirtyRiprDocuments).join(', ')}`
-            ].join('\n')
-            : analysisStatusDetail(status);
-          this.updateStatus({
-            kind: 'stale',
-            summary: this.dirtyRiprDocuments.size > 0
-              ? 'ripr analysis completed, but unsaved routed-file changes remain.'
-              : 'ripr analysis completed with stale or limited evidence.',
-            detail: dirtyDetail,
-            nextStep: this.dirtyRiprDocuments.size > 0
-              ? 'Save the file, then wait for ripr to refresh saved-workspace diagnostics.'
-              : `Run ${retry} after resolving the reported limitation.`
-          });
-        } else {
-          this.updateStatus({
-            kind: 'analysisReady',
-            summary: 'ripr saved-workspace analysis completed.',
-            detail: analysisStatusDetail(status),
-            nextStep: 'Inspect diagnostics, then use bounded ripr hover and code actions for one focused test.'
-          });
-        }
+        this.updateStatus(statusForRunStatus(status.run_status, {
+          detail: analysisStatusDetail(status),
+          retryCommand: typeof status.retry_command === 'string' ? status.retry_command : undefined,
+          dirtyRoutedDocuments: Array.from(this.dirtyRiprDocuments)
+        }));
         void this.refreshFirstUsefulActionStatus();
         return;
       default:
@@ -2536,6 +2515,7 @@ function serverStartedSummary(kind: RiprStatusKind): string {
     case 'analysisQueued':
     case 'analysisRunning':
     case 'analysisReady':
+    case 'analysisLimited':
     case 'gapActionable':
     case 'gapNoAction':
     case 'gapArtifactWarning':
@@ -2567,6 +2547,8 @@ function evidenceFreshnessSummary(kind: RiprStatusKind): string {
   switch (kind) {
     case 'stale':
       return 'stale; save or refresh before acting';
+    case 'analysisLimited':
+      return 'limited; run ripr: Refresh Diagnostics for full evidence';
     case 'analysisQueued':
     case 'analysisRunning':
     case 'starting':
@@ -3312,6 +3294,121 @@ function analysisStatusDetail(status: RiprAnalysisStatusPayload): string {
     status.pending ? 'pending=latest' : undefined
   ].filter((field): field is string => Boolean(field));
   return `ripr typed analysis status: ${fields.join(', ')}`;
+}
+
+/** Palette title of the registered `ripr.refreshDiagnostics` command. */
+const REFRESH_DIAGNOSTICS_COMMAND_TITLE = 'ripr: Refresh Diagnostics';
+
+/**
+ * Per-status disclosure for the limited run-status family (#4326). The server
+ * derives these statuses in `crates/ripr/src/lsp/diagnostics.rs`
+ * (`derive_run_status_with_outcome`); each one means the refresh completed but
+ * withheld part of the evidence — for example a git invocation over
+ * `ripr.gitTimeoutMs` commits a `limited` snapshot with empty batches — so the
+ * client must never present them as a healthy completed analysis. Keys are the
+ * exact server run_status strings.
+ */
+const LIMITED_RUN_STATUS_PRESENTATIONS: Record<string, { summary: string; detail: string; nextStep: string }> = {
+  cache_limited: {
+    summary: 'ripr analysis completed with a limited evidence cache.',
+    detail: 'Gap-artifact cache entries were rejected this refresh, so cache-derived evidence is missing.',
+    nextStep: 'Rerun ripr check to regenerate the rejected gap-artifact reports, then run ripr: Refresh Diagnostics.'
+  },
+  limited: {
+    summary: 'ripr analysis completed with limited evidence.',
+    detail: 'The run hit a static limit or a degraded component (for example a git invocation timeout), so findings may be missing; see ripr: Show Output for the named outcome.',
+    nextStep: `Run ${REFRESH_DIAGNOSTICS_COMMAND_TITLE} to retry the analysis and restore the missing evidence.`
+  },
+  limited_partial_scope: {
+    summary: 'ripr analysis completed on a bounded partition of the diff.',
+    detail: 'The diff exceeded the analysis scope budget, so this run covered only part of it and the remainder was not evaluated.',
+    nextStep: `Raise RIPR_PARTIAL_DIFF_FILE_BUDGET or narrow the diff, then run ${REFRESH_DIAGNOSTICS_COMMAND_TITLE}.`
+  },
+  limited_incomplete_input: {
+    summary: 'ripr analysis completed with incomplete input.',
+    detail: 'The run input was incomplete, so derived evidence is missing.',
+    nextStep: `Run ${REFRESH_DIAGNOSTICS_COMMAND_TITLE} to retry the analysis and restore the missing evidence.`
+  }
+};
+
+/**
+ * One mapping from a server run_status to the client status presentation for a
+ * succeeded saved-workspace analysis (#4326). The server vocabulary is
+ * `'full' | 'stale' | 'cache_limited' | 'limited' | 'limited_partial_scope' |
+ * 'limited_incomplete_input' | 'seams_deferred'`
+ * (`crates/ripr/src/lsp/diagnostics.rs`). Behavior:
+ *
+ * - unsaved routed documents keep today's dirty-file stale presentation and
+ *   compose ahead of any run_status;
+ * - `'stale'` keeps today's degraded presentation;
+ * - the limited family (`cache_limited`, `limited`, `limited_partial_scope`,
+ *   `limited_incomplete_input`) and `'seams_deferred'` map to the dedicated
+ *   degraded `analysisLimited` status kind — warning colors and a `$(warning)`
+ *   icon, never the healthy `$(check)`, but without the `stale` kind's
+ *   action-gating coupling, since the published snapshot itself is not stale;
+ *   each summary names the limitation and the refresh recovery step;
+ * - `'seams_deferred'` additionally gets its own disclosure: interactive saves
+ *   defer the seam inventory, so the summary says seam/gap evidence is deferred
+ *   and the recovery is the full refresh;
+ * - `'full'`, a missing run_status, and any unknown value keep today's healthy
+ *   `analysisReady` presentation.
+ */
+export function statusForRunStatus(
+  runStatus: string | undefined,
+  input: {
+    detail?: string;
+    retryCommand?: string;
+    dirtyRoutedDocuments?: readonly string[];
+  } = {}
+): RiprStatusState {
+  const dirty = input.dirtyRoutedDocuments ?? [];
+  if (dirty.length > 0) {
+    return {
+      kind: 'stale',
+      summary: 'ripr analysis completed, but unsaved routed-file changes remain.',
+      detail: [
+        input.detail,
+        'Current diagnostics describe the last saved workspace state.',
+        `Unsaved routed files: ${dirty.join(', ')}`
+      ].filter((line): line is string => Boolean(line)).join('\n'),
+      nextStep: 'Save the file, then wait for ripr to refresh saved-workspace diagnostics.'
+    };
+  }
+  if (runStatus === 'stale') {
+    return {
+      kind: 'stale',
+      summary: 'ripr analysis completed with stale or limited evidence.',
+      detail: input.detail,
+      nextStep: `Run ${input.retryCommand ?? 'ripr: Restart Server'} after resolving the reported limitation.`
+    };
+  }
+  if (runStatus === 'seams_deferred') {
+    return {
+      kind: 'analysisLimited',
+      summary: 'ripr analysis completed; seam and gap evidence is deferred.',
+      detail: [
+        input.detail,
+        'Interactive saves defer the seam inventory to keep saves fast, so seam and gap evidence is absent until a full refresh.'
+      ].filter((line): line is string => Boolean(line)).join('\n'),
+      nextStep: `Run ${REFRESH_DIAGNOSTICS_COMMAND_TITLE} to compute the full seam inventory.`
+    };
+  }
+  const limited = LIMITED_RUN_STATUS_PRESENTATIONS[runStatus ?? ''];
+  if (limited) {
+    return {
+      kind: 'analysisLimited',
+      summary: limited.summary,
+      detail: [input.detail, limited.detail]
+        .filter((line): line is string => Boolean(line)).join('\n'),
+      nextStep: limited.nextStep
+    };
+  }
+  return {
+    kind: 'analysisReady',
+    summary: 'ripr saved-workspace analysis completed.',
+    detail: input.detail,
+    nextStep: 'Inspect diagnostics, then use bounded ripr hover and code actions for one focused test.'
+  };
 }
 
 function analysisRootStatusDetail(status: RiprAnalysisStatusPayload): string {
