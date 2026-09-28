@@ -285,18 +285,60 @@ pub(super) fn match_assertion_target_affinity(
     prefix: Option<&str>,
     target_tokens: &BTreeSet<String>,
 ) {
+    let limit = crowded_relation_limit(context.tests.len());
+    let mut matched_tokens: BTreeMap<usize, usize> = BTreeMap::new();
     for token in target_tokens {
         if let Some(indices) = context.tests_by_assertion_token.get(token) {
-            for test_index in indices {
-                insert_related_candidate(
-                    candidates,
-                    context,
-                    prefix,
-                    *test_index,
-                    RelationReason::AssertionTargetAffinity,
-                );
+            // A token asserted across much of the suite (`status`, `path`)
+            // says nothing about which tests read this seam (#4434). Only
+            // tests in the seam's package count, so another crate's common
+            // token cannot silence the local tests that assert it.
+            if indices.len() > limit
+                && indices
+                    .iter()
+                    .filter(|&&test_index| {
+                        context.tests.get(test_index).is_some_and(|indexed| {
+                            prefix.is_none_or(|prefix| indexed.path_normalized.starts_with(prefix))
+                        })
+                    })
+                    .nth(limit)
+                    .is_some()
+            {
+                continue;
+            }
+            for &test_index in indices {
+                // Rank only tests this reason could still admit, so an
+                // out-of-package or already-related test takes no slot.
+                let admissible = !candidates.contains_key(&test_index)
+                    && context.tests.get(test_index).is_some_and(|indexed| {
+                        prefix.is_none_or(|prefix| indexed.path_normalized.starts_with(prefix))
+                    });
+                if admissible {
+                    *matched_tokens.entry(test_index).or_default() += 1;
+                }
             }
         }
+    }
+    // Several mid-frequency tokens from one long discriminator can still
+    // name thousands of tests together. Past the limit, keep the tests that
+    // assert the most target tokens, earliest index first on ties. The tie
+    // order only keeps output deterministic; index position carries no
+    // relevance.
+    let mut ranked = matched_tokens.into_iter().collect::<Vec<_>>();
+    if ranked.len() > limit {
+        ranked.sort_by(|(left_index, left), (right_index, right)| {
+            right.cmp(left).then(left_index.cmp(right_index))
+        });
+        ranked.truncate(limit);
+    }
+    for (test_index, _) in ranked {
+        insert_related_candidate(
+            candidates,
+            context,
+            prefix,
+            test_index,
+            RelationReason::AssertionTargetAffinity,
+        );
     }
 }
 
@@ -621,6 +663,45 @@ pub(super) fn module_path_for(file: &Path) -> Option<String> {
 
 pub(super) fn module_path_for_index(index: &RustIndex, file: &Path) -> Option<String> {
     module_path_for(&rust_index::compilation_unit_path(index, file))
+}
+
+/// Above this many tests, one relation key (an assertion token, a parent
+/// module) covers much of the suite rather than the changed code. The floor
+/// keeps small workspaces on the plain rules.
+pub(super) fn crowded_relation_limit(test_count: usize) -> usize {
+    (test_count / 100).max(64)
+}
+
+/// In a crowded parent module, keep only the tests that sit close to the
+/// owner: the parent itself, the owner's own module and its children, and a
+/// test-named sibling (`tests`, `*_tests`, `test_*`). Distant siblings such as
+/// `analysis/classify` for an `analysis/cancellation` owner stay unrelated.
+pub(super) fn close_module(owner_module: &str, test_module: &str) -> bool {
+    let Some((parent, leaf)) = owner_module.rsplit_once('/') else {
+        return false;
+    };
+    if test_module == parent {
+        return true;
+    }
+    let flattened = parent.replace('/', "_");
+    let Some(rest) = test_module
+        .strip_prefix(parent)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .or_else(|| {
+            test_module
+                .strip_prefix(flattened.as_str())
+                .and_then(|rest| rest.strip_prefix('/'))
+        })
+    else {
+        return false;
+    };
+    let segment = rest.split('/').next().unwrap_or(rest);
+    segment == leaf
+        || segment == "test"
+        || segment == "tests"
+        || segment.ends_with("_test")
+        || segment.ends_with("_tests")
+        || segment.starts_with("test_")
 }
 
 /// Two files share a module if any non-leaf segment of the owner's

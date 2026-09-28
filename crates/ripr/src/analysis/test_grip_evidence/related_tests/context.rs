@@ -454,6 +454,19 @@ impl<'a> CompactGripContext<'a> {
                     .is_some_and(|test_module| same_module(owner_module, test_module))
             })
             .collect::<Vec<_>>();
+        let indices = if indices.len() > crowded_relation_limit(self.tests.len()) {
+            indices
+                .into_iter()
+                .filter(|&index| {
+                    self.tests[index]
+                        .module_path
+                        .as_deref()
+                        .is_some_and(|test_module| close_module(owner_module, test_module))
+                })
+                .collect()
+        } else {
+            indices
+        };
         self.same_module_cache
             .borrow_mut()
             .insert(owner_module.to_string(), indices.clone());

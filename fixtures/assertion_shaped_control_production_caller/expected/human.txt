@@ -11,14 +11,14 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/assertion_shaped_control_production_caller/input/src/lib.rs:8
-  Static exposure: propagation_unknown (note, confidence 0.63)
+  Static exposure: propagation_unknown (note, confidence 0.66)
   Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: let clamped = if value >= 0 { value } else { 0 };
   Missing discriminator: let clamped = if value == 0
   Related test: tests/scores.rs:4 validate_score_accepts_in_range_values
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence:
-    - reach weak: No test is seen calling check_score_invariants; tests share only its file or a name token: validate_score_accepts_in_range_values
+    - reach yes: Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
     - 5 more evidence line(s) hidden
 
@@ -29,10 +29,3 @@ Next: drill into the top finding:
 More:
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
-
-
-Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope
-  analyzed: 1 changed Rust file(s), 1 changed expression(s), and 1 statically linked related
-  test(s). This is not a coverage assessment. A test may already exercise these changes through
-  macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if
-  none does, add co-located tests that observe the changed behavior.

@@ -13,7 +13,7 @@
       "id": "probe:src_lib.rs:predicate:a39d316d",
       "classification": "propagation_unknown",
       "severity": "note",
-      "confidence": 0.63,
+      "confidence": 0.66,
       "probe": {
         "id": "probe:src_lib.rs:predicate:a39d316d",
         "family": "predicate",
@@ -23,16 +23,16 @@
         "expression": "let clamped = if value >= 0 { value } else { 0 };"
        },
       "ripr": {
-        "reach": {"state":"weak","confidence":"low","summary":"No test is seen calling check_score_invariants; tests share only its file or a name token: validate_score_accepts_in_range_values"},
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values"},
         "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
         "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"high","summary":"Only relational oracle found; it may not discriminate the changed value exactly"}
        },
-      "evidence_path": ["reach weak: No test is seen calling check_score_invariants; tests share only its file or a name token: validate_score_accepts_in_range_values", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "related test tests/scores.rs:4 validate_score_accepts_in_range_values uses weak relational check oracle: assert!(validate_score(50));", "observed assertion argument value 50 at line 5", "missing discriminator let clamped = if value == 0: No related test call uses let clamped = if value equal to 0; observed let clamped = if value values: unknown; target 0 value: 0"],
+      "evidence_path": ["reach yes: Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "related test tests/scores.rs:4 validate_score_accepts_in_range_values uses weak relational check oracle: assert!(validate_score(50));", "observed assertion argument value 50 at line 5", "missing discriminator let clamped = if value == 0: No related test call uses let clamped = if value equal to 0; observed let clamped = if value values: unknown; target 0 value: 0"],
       "flow_sinks": [
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "No test is seen calling check_score_invariants; tests share only its file or a name token: validate_score_accepts_in_range_values", "Only relational oracle found; it may not discriminate the changed value exactly", "Propagation is not statically obvious from syntax-first analysis", "Related tests contain input values, but the equality-boundary discriminator is missing"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Only relational oracle found; it may not discriminate the changed value exactly", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach check_score_invariants: validate_score_accepts_in_range_values", "Related tests contain input values, but the equality-boundary discriminator is missing"],
       "missing": ["Missing discriminator value: let clamped = if value == 0", "No clear propagation path from changed behavior to an observable sink", "No strong discriminator was detected"],
       "assertion_texts": {
         "5": "assert!(validate_score(50));"
@@ -76,8 +76,8 @@
           "oracle_strength": "weak",
           "oracle_kind": "relational_check",
           "oracle": "assert!(validate_score(50));",
-          "relation_reason": "weak_token_substring",
-          "relation_confidence": "low"
+          "relation_reason": "helper_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "stop_reasons": ["propagation_evidence_unknown"],

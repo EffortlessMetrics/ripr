@@ -11243,6 +11243,229 @@ fn same_module_matches_parent_prefix_and_underscore_form() {
 }
 
 #[test]
+fn close_module_keeps_owner_children_parent_and_test_named_siblings() {
+    for (test_module, close) in [
+        ("analysis", true),
+        ("analysis/cancellation", true),
+        ("analysis/cancellation/tests", true),
+        ("analysis/tests", true),
+        ("analysis/pipeline_tests/cases", true),
+        ("analysis/test_support", true),
+        ("analysis_cancellation", false),
+        ("analysis/classify", false),
+        ("analysis/classify/tests", false),
+        ("output/tests", false),
+    ] {
+        assert_eq!(
+            close_module("analysis/cancellation", test_module),
+            close,
+            "{test_module}"
+        );
+    }
+    assert!(close_module("a/b/c", "a_b/tests"));
+    assert!(!close_module("a/b/c", "a_b/d"));
+    assert!(!close_module("flat", "flat"));
+    assert_eq!(crowded_relation_limit(10), 64);
+    assert_eq!(crowded_relation_limit(20_000), 200);
+}
+
+/// #4434: in a workspace whose parent module and asserted field names cover
+/// most of the suite, `review-comments` related every seam to thousands of
+/// tests. Past the crowded limit a distant sibling module and a suite-wide
+/// assertion token relate nothing; below it both rules still relate.
+#[test]
+fn given_assertion_token_common_only_in_another_crate_then_local_test_still_relates()
+-> Result<(), String> {
+    let owner = PathBuf::from("crates/a/src/cancellation.rs");
+    let owner_src =
+        "pub fn cancel_after(elapsed: i32, deadline: i32) -> bool { elapsed >= deadline }\n";
+    let local_src = "#[test] fn local_deadline() { let deadline = 1; assert_eq!(deadline, 1); }\n";
+    let foreign_src =
+        "#[test] fn foreign_deadline() { let deadline = 2; assert_eq!(deadline, 2); }\n";
+    let mut files: Vec<(PathBuf, &str)> = vec![
+        (owner.clone(), owner_src),
+        (PathBuf::from("crates/a/tests/timing.rs"), local_src),
+    ];
+    for k in 0..70 {
+        files.push((
+            PathBuf::from(format!("crates/b/tests/foreign_{k}.rs")),
+            foreign_src,
+        ));
+    }
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(std::slice::from_ref(&owner), &index);
+    let predicate = seams
+        .iter()
+        .find(|s| s.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "predicate seam present".to_string())?;
+    let related = evidence_for_seam(predicate, &index).related_tests;
+    assert!(
+        related.iter().any(|g| {
+            g.file.to_string_lossy().replace('\\', "/") == "crates/a/tests/timing.rs"
+                && g.relation_reason == RelationReason::AssertionTargetAffinity
+        }),
+        "{related:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn given_crowded_parent_module_and_common_assertion_token_then_distant_tests_do_not_relate()
+-> Result<(), String> {
+    let owner = PathBuf::from("src/analysis/cancellation.rs");
+    let owner_src =
+        "pub fn cancel_after(elapsed: i32, deadline: i32) -> bool { elapsed >= deadline }\n";
+    let sibling_src = "#[test] fn sibling_smoke() { let v = 1; assert_eq!(v, 1); }\n";
+    let affinity_src =
+        "#[test] fn deadline_smoke() { let deadline = 1; assert_eq!(deadline, 1); }\n";
+    let near_src = "#[test] fn near_smoke() { let v = 2; assert_eq!(v, 2); }\n";
+    let reasons = |crowd: usize| -> Result<Vec<(String, RelationReason)>, String> {
+        let mut files: Vec<(PathBuf, &str)> = vec![
+            (owner.clone(), owner_src),
+            (PathBuf::from("src/analysis/tests.rs"), near_src),
+            (
+                PathBuf::from("src/analysis/cancellation/tests.rs"),
+                near_src,
+            ),
+        ];
+        for k in 0..crowd {
+            files.push((
+                PathBuf::from(format!("src/analysis/sibling_{k}.rs")),
+                sibling_src,
+            ));
+            files.push((
+                PathBuf::from(format!("src/elsewhere/affinity_{k}.rs")),
+                affinity_src,
+            ));
+        }
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(std::slice::from_ref(&owner), &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        Ok(evidence_for_seam(predicate, &index)
+            .related_tests
+            .iter()
+            .map(|g| {
+                (
+                    g.file.to_string_lossy().replace('\\', "/"),
+                    g.relation_reason,
+                )
+            })
+            .collect())
+    };
+    let count = |rows: &[(String, RelationReason)], prefix: &str, reason: RelationReason| {
+        rows.iter()
+            .filter(|(file, r)| file.starts_with(prefix) && *r == reason)
+            .count()
+    };
+    let small = reasons(4)?;
+    assert_eq!(
+        count(&small, "src/analysis/sibling_", RelationReason::SameModule),
+        4,
+        "{small:?}"
+    );
+    assert_eq!(
+        count(
+            &small,
+            "src/elsewhere/",
+            RelationReason::AssertionTargetAffinity
+        ),
+        4,
+        "{small:?}"
+    );
+    let crowded = reasons(70)?;
+    assert_eq!(
+        count(
+            &crowded,
+            "src/analysis/sibling_",
+            RelationReason::SameModule
+        ),
+        0,
+        "{crowded:?}"
+    );
+    assert_eq!(
+        count(
+            &crowded,
+            "src/elsewhere/",
+            RelationReason::AssertionTargetAffinity
+        ),
+        0,
+        "{crowded:?}"
+    );
+    assert_eq!(
+        count(
+            &crowded,
+            "src/analysis/tests.rs",
+            RelationReason::SameModule
+        ),
+        1,
+        "{crowded:?}"
+    );
+    assert_eq!(
+        count(
+            &crowded,
+            "src/analysis/cancellation/tests.rs",
+            RelationReason::SameModule
+        ) + count(
+            &crowded,
+            "src/analysis/cancellation/tests.rs",
+            RelationReason::SameTestFile
+        ),
+        1,
+        "{crowded:?}"
+    );
+    Ok(())
+}
+
+/// #4434: two target tokens that are each under the crowded limit can still
+/// relate most of the suite together. Past the limit the affinity relation
+/// keeps the tests that assert the most target tokens.
+#[test]
+fn given_affinity_union_past_the_limit_then_tests_asserting_more_target_tokens_win()
+-> Result<(), String> {
+    let owner = PathBuf::from("src/cancellation.rs");
+    let owner_src =
+        "pub fn cancel_after(elapsed: i32, deadline: i32) -> bool { elapsed >= deadline }\n";
+    let deadline_src =
+        "#[test] fn deadline_only() { let deadline = 1; assert_eq!(deadline, 1); }\n";
+    let elapsed_src = "#[test] fn elapsed_only() { let elapsed = 1; assert_eq!(elapsed, 1); }\n";
+    let both_src = "#[test] fn both_tokens() { let (elapsed, deadline) = (1, 2); assert!(elapsed < deadline); }\n";
+    let mut files: Vec<(PathBuf, &str)> = vec![(owner.clone(), owner_src)];
+    for k in 0..40 {
+        files.push((
+            PathBuf::from(format!("tests/deadline_{k}.rs")),
+            deadline_src,
+        ));
+        files.push((PathBuf::from(format!("tests/elapsed_{k}.rs")), elapsed_src));
+    }
+    files.push((PathBuf::from("tests/zz_both.rs"), both_src));
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(std::slice::from_ref(&owner), &index);
+    let predicate = seams
+        .iter()
+        .find(|s| s.kind() == SeamKind::PredicateBoundary)
+        .ok_or_else(|| "predicate seam present".to_string())?;
+    let affinity = evidence_for_seam(predicate, &index)
+        .related_tests
+        .iter()
+        .filter(|g| g.relation_reason == RelationReason::AssertionTargetAffinity)
+        .map(|g| g.file.to_string_lossy().replace('\\', "/"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        affinity.len(),
+        crowded_relation_limit(index.tests.len()),
+        "{affinity:?}"
+    );
+    assert!(
+        affinity.iter().any(|file| file == "tests/zz_both.rs"),
+        "{affinity:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn is_fixture_named_recognises_each_prefix_and_suffix() {
     let positives = [
         "fixture_quote",

@@ -52,6 +52,7 @@ pub(in crate::analysis) struct RelatedTestCandidateIndex {
     by_path_trigram: BTreeMap<[u8; RELATION_TRIGRAM_WIDTH], Vec<usize>>,
     by_test_stem: BTreeMap<String, Vec<usize>>,
     by_function_name: BTreeMap<String, Vec<usize>>,
+    common_tokens: CommonTestTokens,
     all_tests: Vec<usize>,
 }
 
@@ -108,6 +109,7 @@ impl RelatedTestCandidateIndex {
                 push_index(&mut candidates.by_test_stem, stem, test_index);
             }
         }
+        candidates.common_tokens = CommonTestTokens::new(&index.tests);
 
         candidates
     }
@@ -608,10 +610,31 @@ fn find_related_tests_with_candidates<'a>(
         && struct_package_prefix.is_none()
         && path_is_absolute_form(&probe.location.file);
 
-    // Probe tokens that are long enough to assert ownership via assertion text.
+    #[cfg(test)]
+    let computed_common_tokens: CommonTestTokens;
+    let common_tokens = match candidates {
+        RelatedTestCandidates::Indexed(candidate_index) => &candidate_index.common_tokens,
+        #[cfg(test)]
+        RelatedTestCandidates::FullScan => {
+            computed_common_tokens = CommonTestTokens::new(&index.tests);
+            &computed_common_tokens
+        }
+    };
+    let common_tokens = common_tokens.for_package(
+        owner_package_prefix
+            .as_deref()
+            .or(struct_package_prefix.as_deref()),
+    );
+    let common_words = &common_tokens.name_words;
+
+    // Probe tokens that are long enough, and specific enough, to assert
+    // ownership via assertion text. A token most assertions observe
+    // (`format`, `owner` in this repository) ties no test to the probe.
     let long_probe_tokens: Vec<&str> = probe_tokens
         .iter()
         .filter(|t| t.len() >= ASSERTION_TOKEN_MIN_LEN)
+        .filter(|t| !GENERIC_PROBE_TOKENS.contains(&t.as_str()))
+        .filter(|t| !common_tokens.assertion_tokens.contains(t.as_str()))
         .map(String::as_str)
         .collect();
 
@@ -622,6 +645,12 @@ fn find_related_tests_with_candidates<'a>(
         #[cfg(test)]
         RelatedTestCandidates::FullScan => (0..index.tests.len()).collect(),
     };
+    // Tests only the pre-#4434 substring rules relate (a probe token or the
+    // source stem anywhere in a test name or path). They are kept only when
+    // nothing else relates: an empty list reads as reach `No` and so
+    // `no_static_path`, while these proximity-only tests keep reach `Weak`
+    // for an owner that may be reached unseen (trait method, named caller).
+    let mut substring_only_fallback = Vec::new();
     for test_index in candidate_indices {
         let test = &index.tests[test_index];
         // Compute calls_owner BEFORE the package-prefix guard so a cross-crate
@@ -787,12 +816,11 @@ fn find_related_tests_with_candidates<'a>(
         // not publish it as file identity.  A short source stem such as
         // `config` can occur in unrelated test paths (for example
         // `reconfigure.rs`).
-        let file_path_token_matches =
-            !file_name.is_empty() && normalize_path(&test.file).contains(&file_name);
+        let file_path_token_matches = test_path_names_probe_stem(&test.file, &file_name);
         let owner_name_in_test = !owner_name_lc.is_empty() && test_name.contains(&owner_name_lc);
         let token_in_test_name = probe_tokens
             .iter()
-            .any(|token| token.len() > 2 && test_name.contains(&token.to_ascii_lowercase()));
+            .any(|token| test_name_names_probe_token(&test_name, token, common_words));
         let same_file_or_named =
             same_test_file || file_path_token_matches || owner_name_in_test || token_in_test_name;
 
@@ -812,6 +840,14 @@ fn find_related_tests_with_candidates<'a>(
             && !helper_chain_reaches
             && !calls_seam_callee
         {
+            let substring_named = (!file_name.is_empty()
+                && normalize_path(&test.file).contains(&file_name))
+                || probe_tokens.iter().any(|token| {
+                    token.len() > 2 && test_name.contains(&token.to_ascii_lowercase())
+                });
+            if substring_named {
+                substring_only_fallback.push((test, RelationReason::WeakTokenSubstring));
+            }
             continue;
         }
 
@@ -852,6 +888,9 @@ fn find_related_tests_with_candidates<'a>(
         };
 
         related.push((test, reason));
+    }
+    if related.is_empty() {
+        related = substring_only_fallback;
     }
 
     related.sort_by(|(a, _), (b, _)| a.name.cmp(&b.name).then_with(|| a.file.cmp(&b.file)));
@@ -1343,6 +1382,215 @@ fn normalize_path(path: &Path) -> String {
         .to_string()
 }
 
+/// Whether a lowercased test name contains a probe token, lowercased, as
+/// whole `_`-separated words (`vat` in `vat_boundary_is_checked`,
+/// `loyalty_price` in `loyalty_price_rounds`).
+///
+/// A raw substring test let short tokens and generic Rust names link
+/// thousands of unrelated tests (`new` in `renews_`, `Weak` in `weakly_`,
+/// `format` in every formatting test), so every probe fanned out to most of
+/// the suite. A domain word such as `vat` still links `vat_boundary_..`.
+///
+/// A single-word token that many test names use (`changed`, `owner`, `line`
+/// in this repository's own suite) names no particular code either, so it is
+/// skipped when it is one of `common_words`; a multi-word token such as
+/// `changed_arm` is specific enough by itself.
+///
+/// The match only narrows the old substring test: it never splits a
+/// CamelCase token into words. Splitting `MalformedSource` related
+/// `malformed_source_variant_is_distinct`, a test that never calls the
+/// changed code, and its strong assertion then read as the discriminator
+/// once another test supplied reach, so a mutation no test catches read
+/// `exposed`.
+fn test_name_names_probe_token(
+    test_name: &str,
+    token: &str,
+    common_words: &BTreeSet<String>,
+) -> bool {
+    if token.len() < 3 || GENERIC_PROBE_TOKENS.contains(&token) {
+        return false;
+    }
+    let lowered = token.to_ascii_lowercase();
+    if common_words.contains(&lowered) {
+        return false;
+    }
+    format!("_{test_name}_").contains(&format!("_{lowered}_"))
+}
+
+/// Tokens so widespread across a package's tests that sharing one ties no
+/// test to a probe: test-name words and assertion-observed tokens that more
+/// than `max(16, tests / 100)` of that package's tests use. Counted per
+/// package (`package_prefix` of the test file) so another crate's common
+/// token cannot silence the only local test that asserts it. The floor
+/// keeps small workspaces' domain words (`vat`, `loyalty`) usable.
+#[derive(Clone, Debug, Default)]
+struct CommonTestTokens {
+    by_package: BTreeMap<Option<String>, PackageCommonTokens>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PackageCommonTokens {
+    name_words: BTreeSet<String>,
+    assertion_tokens: BTreeSet<String>,
+}
+
+static NO_COMMON_TOKENS: PackageCommonTokens = PackageCommonTokens {
+    name_words: BTreeSet::new(),
+    assertion_tokens: BTreeSet::new(),
+};
+
+impl CommonTestTokens {
+    fn new(tests: &[TestSummary]) -> Self {
+        let mut packages: BTreeMap<Option<String>, Vec<&TestSummary>> = BTreeMap::new();
+        for test in tests {
+            packages
+                .entry(package_prefix(&test.file))
+                .or_default()
+                .push(test);
+        }
+        let by_package = packages
+            .into_iter()
+            .map(|(package, tests)| {
+                let name_words = common_across_tests(&tests, |test| {
+                    test.name
+                        .to_ascii_lowercase()
+                        .split('_')
+                        .filter(|word| !word.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                });
+                let assertion_tokens = common_across_tests(&tests, |test| {
+                    test.assertions
+                        .iter()
+                        .flat_map(|assertion| assertion.observed_tokens.iter().cloned())
+                        .collect()
+                });
+                (
+                    package,
+                    PackageCommonTokens {
+                        name_words,
+                        assertion_tokens,
+                    },
+                )
+            })
+            .collect();
+        Self { by_package }
+    }
+
+    /// Common tokens among the tests of `package` (the owner's
+    /// `package_prefix`); none when that package has no tests.
+    fn for_package(&self, package: Option<&str>) -> &PackageCommonTokens {
+        self.by_package
+            .get(&package.map(str::to_string))
+            .unwrap_or(&NO_COMMON_TOKENS)
+    }
+}
+
+/// Tokens that more than `max(16, tests / 100)` tests carry, counting each
+/// test once per token.
+fn common_across_tests(
+    tests: &[&TestSummary],
+    tokens_of: impl Fn(&TestSummary) -> BTreeSet<String>,
+) -> BTreeSet<String> {
+    let threshold = (tests.len() / 100).max(16);
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for test in tests {
+        for token in tokens_of(test) {
+            *counts.entry(token).or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .filter(|(_, count)| *count > threshold)
+        .map(|(token, _)| token)
+        .collect()
+}
+
+/// Identifiers that appear in so many Rust bodies that naming one in a test
+/// name says nothing about which code the test reaches.
+const GENERIC_PROBE_TOKENS: &[&str] = &[
+    "String",
+    "Result",
+    "Option",
+    "Error",
+    "format",
+    "return",
+    "clone",
+    "collect",
+    "expect",
+    "unwrap",
+    "insert",
+    "contains",
+    "to_string",
+    "as_str",
+    "into_iter",
+    "value",
+    "values",
+    "Default",
+    "default",
+    "assert",
+    "assert_eq",
+    "false",
+    "true",
+    "new",
+    "len",
+    "iter",
+    "map",
+    "get",
+    "set",
+    "Some",
+    "None",
+    "self",
+    "Self",
+    "Vec",
+    "Box",
+    "mut",
+    "let",
+    "str",
+    "usize",
+    "u32",
+    "u64",
+    "i32",
+    "i64",
+    "f64",
+    "bool",
+    "into",
+    "from",
+    "test",
+    "tests",
+];
+
+/// Whether a test file is named for the probe's source stem: the stem is a
+/// whole `_` word of the test file's own stem (`tests/pricing.rs`,
+/// `pricing_edge_tests.rs`), or the test file's immediate parent directory is
+/// named for it and the file itself has a test-like name (`tests`, `test`,
+/// `mod`, `test_*`, `*_test`, `*_tests`: `pricing/tests.rs`,
+/// `pricing/boundary_tests.rs`), wherever that directory sits.
+///
+/// A raw substring of the whole path linked every test under a directory
+/// that merely contains the stem (`python.rs` to all of `python/**`,
+/// `evidence.rs` to `test_grip_evidence/**`), so one finding listed thousands
+/// of related tests.
+fn test_path_names_probe_stem(test_file: &Path, stem: &str) -> bool {
+    if stem.is_empty() {
+        return false;
+    }
+    let path = normalize_path(test_file);
+    let mut components = path.rsplit('/');
+    let test_stem = normalized_file_stem(test_file);
+    let _file = components.next();
+    let parent = components.next().unwrap_or_default();
+    let words_name_stem = |text: &str| format!("_{text}_").contains(&format!("_{stem}_"));
+    words_name_stem(&test_stem)
+        || (parent == stem
+            && (test_stem == "tests"
+                || test_stem == "test"
+                || test_stem == "mod"
+                || test_stem.starts_with("test_")
+                || test_stem.ends_with("_tests")
+                || test_stem.ends_with("_test")))
+}
+
 /// Extract a source-file stem after normalizing separators from either host.
 /// Analysis inputs can contain paths produced on a different platform than the
 /// host running the association pass. Non-UTF-8 paths fail closed: lossy
@@ -1581,6 +1829,44 @@ mod tests {
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].0.name, "reaches_through_helper");
         assert_eq!(related[0].1, RelationReason::HelperOwnerCall);
+    }
+
+    #[test]
+    fn camel_case_token_relates_no_snake_named_test_on_either_path() {
+        let index = RustIndex {
+            tests: vec![test(
+                "tests/other_area.rs",
+                "io_error_is_reported",
+                "assert!(run().is_ok());",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/pipeline.rs", "IoError::default()");
+
+        let indexed = find_related_tests_with_candidate_index(
+            &probe,
+            None,
+            &index,
+            true,
+            None,
+            None,
+            &RelatedTestCandidateIndex::new(&index),
+        );
+        let full_scan = find_related_tests_with_candidates(
+            &probe,
+            None,
+            &index,
+            true,
+            None,
+            None,
+            RelatedTestCandidates::FullScan,
+        );
+
+        // `io_error_is_reported` never calls the changed code; splitting
+        // `IoError` into words would relate it on the full scan while the
+        // index, queried with `ioerror`, would not.
+        assert!(full_scan.is_empty(), "full scan must not split IoError");
+        assert!(indexed.is_empty(), "index must not split IoError");
     }
 
     #[test]
@@ -2953,23 +3239,87 @@ fn crate_c_score_test() {
     }
 
     #[test]
-    fn path_substring_match_is_weak_not_same_test_file() {
+    fn path_substring_inside_another_word_is_not_related_beside_a_named_test() {
         let owner = function("crates/core/src/config.rs", "load_config");
-        let index = RustIndex {
+        let substring_only = test(
+            "crates/core/tests/reconfigure.rs",
+            "checks_value",
+            "assert_eq!(value, 3);",
+        );
+        let alone = RustIndex {
             functions: vec![owner.clone()],
-            tests: vec![test(
-                "crates/core/tests/reconfigure.rs",
-                "checks_value",
-                "assert_eq!(value, 3);",
-            )],
+            tests: vec![substring_only.clone()],
+            ..RustIndex::default()
+        };
+        let beside = RustIndex {
+            functions: vec![owner.clone()],
+            tests: vec![
+                substring_only,
+                test(
+                    "crates/core/tests/config.rs",
+                    "config_file",
+                    "assert!(true);",
+                ),
+            ],
             ..RustIndex::default()
         };
         let probe = probe("crates/core/src/config.rs", "marker");
 
-        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+        let alone = find_related_tests(&probe, Some(&owner), &alone, true, None, None);
+        let beside = find_related_tests(&probe, Some(&owner), &beside, true, None, None);
 
-        assert_eq!(related.len(), 1);
+        // `config` inside `reconfigure` names a different file; it used to
+        // relate as a weak token substring and fan every probe out. It only
+        // stays as the fallback when nothing else relates, so an empty list
+        // does not read as `no_static_path`.
+        let names = |related: &[(&TestSummary, RelationReason)]| {
+            related
+                .iter()
+                .map(|(test, reason)| (test.name.clone(), *reason))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            names(&alone),
+            vec![(
+                "checks_value".to_string(),
+                RelationReason::WeakTokenSubstring
+            )]
+        );
+        assert!(
+            names(&beside).iter().all(|(name, _)| name == "config_file"),
+            "{beside:?}"
+        );
+    }
+
+    #[test]
+    fn given_trait_owner_tested_only_through_plural_file_then_reach_stays_weak() {
+        // `impl Display for Price` in `src/price.rs`, exercised through
+        // `to_string()` in `tests/prices.rs`: no whole-word rule relates the
+        // test, and an empty list would read as `no_static_path`. The
+        // substring fallback keeps the proximity relation so reach stays
+        // `Weak` for an owner a trait call may reach unseen.
+        let owner = function("src/price.rs", "fmt");
+        let index = RustIndex {
+            functions: vec![owner.clone()],
+            tests: vec![test(
+                "tests/prices.rs",
+                "formats_two_decimals",
+                "assert_eq!(Price(100).to_string(), \"1.00\");",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe(
+            "src/price.rs",
+            "write!(f, \"{}.{:02}\", self.0 / 100, self.0 % 100)",
+        );
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+        let reach =
+            crate::analysis::classify::reach::reach_evidence(&related, Some(&owner), || true);
+
+        assert_eq!(related.len(), 1, "{related:?}");
         assert_eq!(related[0].1, RelationReason::WeakTokenSubstring);
+        assert_eq!(reach.state, crate::domain::StageState::Weak, "{reach:?}");
     }
 
     #[test]
@@ -3065,6 +3415,119 @@ fn crate_c_score_test() {
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].0.name, "vat_boundary_is_checked_by_macro");
         assert_eq!(related[0].1, RelationReason::WeakTokenSubstring);
+    }
+
+    #[test]
+    fn test_path_names_probe_stem_needs_the_file_or_a_tests_child() {
+        let named = |path: &str| super::test_path_names_probe_stem(Path::new(path), "pricing");
+        assert!(named("tests/pricing.rs"));
+        assert!(named("crates/core/tests/pricing_edge_tests.rs"));
+        assert!(named("src/pricing/tests.rs"));
+        assert!(named("src/pricing/boundary_tests.rs"));
+        assert!(named("src\\pricing\\tests.rs"));
+        // A directory or word that only contains the stem is not the file.
+        assert!(!named("src/pricing/discount_rules.rs"));
+        assert!(!named("src/repricing/tests.rs"));
+        assert!(!named("tests/pricingtable.rs"));
+        assert!(!super::test_path_names_probe_stem(
+            Path::new("tests/pricing.rs"),
+            ""
+        ));
+    }
+
+    #[test]
+    fn test_name_token_match_needs_whole_words_and_a_specific_token() {
+        let none = BTreeSet::new();
+        let names = |test_name: &str, token: &str| {
+            super::test_name_names_probe_token(test_name, token, &none)
+        };
+        // A CamelCase token is not split into words: that would relate
+        // tests the old substring match never did.
+        assert!(!names("stage_evidence_keeps_weak_reach", "StageEvidence"));
+        assert!(!names(
+            "malformed_source_variant_is_distinct",
+            "MalformedSource"
+        ));
+        assert!(names("stageevidence_keeps_weak", "StageEvidence"));
+        assert!(names("vat_boundary_is_checked", "vat"));
+        // Substrings inside other words carry no identity.
+        assert!(!names("renews_the_lease", "new"));
+        assert!(!names("weakly_exposed_stays", "Weak"));
+        assert!(!names("private_key_rotates", "vat"));
+        // Generic Rust names never link a test, even as a whole word.
+        assert!(!names("format_renders_json", "format"));
+        assert!(!names("creates_new_owner", "new"));
+        assert!(!names("ab_case", "ab"));
+        // A word common across the suite's test names links nothing; a
+        // multi-word token containing it still does.
+        let common = BTreeSet::from(["changed".to_string()]);
+        assert!(!super::test_name_names_probe_token(
+            "a_matching_literal_does_not_bypass_the_changed_arm",
+            "changed",
+            &common
+        ));
+        assert!(super::test_name_names_probe_token(
+            "changed_arm_is_reported",
+            "changed_arm",
+            &common
+        ));
+    }
+
+    #[test]
+    fn common_test_tokens_count_each_test_once_above_the_floor() {
+        let tests = (0..17)
+            .map(|index| test("tests/t.rs", &format!("changed_changed_case_{index}"), ""))
+            .chain(std::iter::once(test("tests/t.rs", "vat_boundary", "")))
+            .collect::<Vec<_>>();
+        let common = super::CommonTestTokens::new(&tests)
+            .for_package(None)
+            .name_words
+            .clone();
+        assert!(
+            common.contains("changed"),
+            "17 tests exceed the floor of 16"
+        );
+        assert!(common.contains("case"));
+        assert!(!common.contains("vat"), "one test is not common");
+        let sixteen = &tests[..16];
+        assert!(
+            !super::CommonTestTokens::new(sixteen)
+                .for_package(None)
+                .name_words
+                .contains("changed"),
+            "a repeated word inside one name counts once, and 16 tests do not exceed the floor"
+        );
+    }
+
+    #[test]
+    fn given_probe_token_only_inside_another_word_of_test_name_then_test_is_not_related() {
+        let owner = function("src/lib.rs", "tax_total");
+        let index = RustIndex {
+            tests: vec![
+                test(
+                    "tests/lease.rs",
+                    "renews_the_lease_with_format",
+                    "assert_eq!(renew(1), 2);",
+                ),
+                test(
+                    "tests/tax.rs",
+                    "tax_total_adds_rate",
+                    "assert_eq!(tax_total(1), 2);",
+                ),
+            ],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "return Renewal::new(format!(\"x\"))");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert!(
+            related
+                .iter()
+                .all(|(test, _)| test.name == "tax_total_adds_rate"),
+            "unexpected relations: {related:?}"
+        );
+        assert!(!related.is_empty());
     }
 
     #[test]
@@ -4017,6 +4480,97 @@ try_parse_summary(raw).map_err(Into::into)"
 
         assert_eq!(related.len(), 1);
         assert_eq!(related[0].0.name, "repo_lane_deserializes_fields_correctly");
+        assert_eq!(related[0].1, RelationReason::AssertionTargetAffinity);
+    }
+
+    /// Another crate's common assertion token does not silence the only
+    /// local test that asserts it: commonness is counted per package.
+    #[test]
+    fn given_token_common_only_in_another_crate_then_local_assertion_still_relates() {
+        let assertion = |text: &str| {
+            vec![oracle_fact(
+                text,
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )]
+        };
+        let mut tests = (0..17)
+            .map(|index| {
+                test_with_assertions(
+                    "crates/b/tests/reports.rs",
+                    &format!("report_{index}"),
+                    "",
+                    assertion("assert_eq!(report.severity, Level::High);"),
+                )
+            })
+            .collect::<Vec<_>>();
+        tests.push(test_with_assertions(
+            "crates/a/tests/config.rs",
+            "loads_the_configured_level",
+            "",
+            assertion("assert_eq!(cfg.severity, Level::Low);"),
+        ));
+        let index = RustIndex {
+            tests,
+            ..RustIndex::default()
+        };
+        let probe = struct_field_probe("crates/a/src/settings.rs", "severity");
+
+        let related = find_related_tests(&probe, None, &index, true, None, None);
+
+        assert_eq!(
+            related
+                .iter()
+                .map(|(test, _)| test.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["loads_the_configured_level"]
+        );
+    }
+
+    /// The #1052 signal ties a field probe to a test through a token its
+    /// assertion observes. When most of the suite observes that token, the
+    /// match names no particular test, so none relates through it; a token
+    /// only one test observes still relates that test.
+    #[test]
+    fn given_field_token_observed_across_the_suite_then_assertion_affinity_does_not_relate() {
+        let observer = |index: usize| {
+            let assertion_text = "assert_eq!(report.severity, Severity::High);";
+            test_with_assertions(
+                "crates/ripr/tests/reports.rs",
+                &format!("report_case_{index}"),
+                assertion_text,
+                vec![oracle_fact(
+                    assertion_text,
+                    OracleKind::ExactValue,
+                    OracleStrength::Strong,
+                )],
+            )
+        };
+        let specific_text = "assert_eq!(lane.open_in, OpenIn::Browser);";
+        let mut tests = (0..17).map(observer).collect::<Vec<_>>();
+        tests.push(test_with_assertions(
+            "crates/ripr/tests/repo_lane.rs",
+            "repo_lane_reads_open_in",
+            specific_text,
+            vec![oracle_fact(
+                specific_text,
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        ));
+        let index = RustIndex {
+            tests,
+            ..RustIndex::default()
+        };
+
+        let common = struct_field_probe("crates/ripr/src/config.rs", "severity");
+        assert!(
+            find_related_tests(&common, None, &index, true, None, None).is_empty(),
+            "a token 17 of 18 tests observe relates none of them"
+        );
+        let specific = struct_field_probe("crates/ripr/src/config.rs", "open_in");
+        let related = find_related_tests(&specific, None, &index, true, None, None);
+        assert_eq!(related.len(), 1);
         assert_eq!(related[0].1, RelationReason::AssertionTargetAffinity);
     }
 

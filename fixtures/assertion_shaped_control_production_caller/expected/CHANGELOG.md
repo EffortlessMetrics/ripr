@@ -154,3 +154,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — assertion_shaped_control_production_caller (4)
+
+Reason:
+RIPR-SPEC-0133: test-name token relations now need whole words and a specific token, so the helper-chain relation (reach yes) is no longer shadowed by a weak name match; class unchanged
+
+Command:
+`cargo xtask goldens bless assertion_shaped_control_production_caller --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
