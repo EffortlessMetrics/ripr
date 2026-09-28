@@ -1229,6 +1229,13 @@ are scoped or reviewed.
 
 ### Docs
 
+- The README and quickstart first run now define "discriminator" where it
+  first appears and state `ripr check`'s exit codes. They add a one-line
+  `cargo install --locked --git` development install and a short section on
+  running ripr from a coding agent, including keeping `target/` gitignored
+  between repair phases. A stale `ripr doctor` troubleshooting claim was removed
+  ([#4413](https://github.com/EffortlessMetrics/ripr-swarm/pull/4413)).
+
 - `docs/REPAIR_ATTEMPT.md` and `docs/COMMAND_HIERARCHY.md` now document
   the three-phase governed Python repair sequence: trust-selection flags
   on `before` only, matching `--edit-authorized` / `--edit-authority`

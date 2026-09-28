@@ -1,7 +1,8 @@
 # ripr documentation
 
-Start with the [Quickstart](QUICKSTART.md). It covers the ordinary CLI, VS Code,
-GitHub Actions, and agent paths, including honest no-action and limited results.
+Start with the [Quickstart](QUICKSTART.md). It covers the CLI, VS Code,
+GitHub Actions, and coding-agent paths, including what a no-action or limited
+result means.
 
 ## Choose a task
 

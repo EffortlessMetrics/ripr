@@ -19,13 +19,10 @@ cargo install ripr
 This requires Rust 1.95 or newer. Git must be available for the diff workflow.
 The editor installation below normally does not require Cargo.
 
-Rust 1.95 is RIPR's build/install MSRV, not a minimum compiler version for the
-repository being analyzed. An already-built CLI or bundled server can perform
-static analysis for a repository that pins an older Rust toolchain. Project
-verification still uses that repository's selected toolchain and can succeed,
-fail, or be unavailable independently. `ripr doctor` discloses an older or
-missing workspace compiler as an advisory for installed-binary analysis;
-`ripr doctor --profile source-build` checks RIPR's build prerequisites.
+Rust 1.95 is needed to build ripr, not by the repository you analyze: ripr's
+static analysis does not run your compiler, so a repository pinned to an older
+toolchain can still be analyzed. Your own tests still run with that repository's toolchain.
+`ripr doctor --profile source-build` checks what building ripr needs.
 
 The latest GitHub release is [0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0).
 This guide describes **0.11 development**, including `--worktree`, bounded
@@ -35,12 +32,14 @@ use the [versioned README](https://github.com/EffortlessMetrics/ripr/blob/v0.10.
 and that binary's help. The 0.10 CLI defaults to `origin/main`; use `--base REF`
 with another existing branch or commit when needed.
 
-To use this guide's development features, run the following from the root of a
-`ripr-swarm` checkout, then return to the repository you want to analyze:
+To use this guide's development features, install the development build
+(Rust 1.95 or newer):
 
 ```bash
-cargo install --path crates/ripr
+cargo install --locked --git https://github.com/EffortlessMetrics/ripr-swarm ripr
 ```
+
+From a `ripr-swarm` checkout, `cargo install --path crates/ripr` does the same.
 
 For another installation method or a pinned server, see
 [Server provisioning](SERVER_PROVISIONING.md).
@@ -76,8 +75,9 @@ before any test edit.
 
 ### Choose the change
 
-By default, `check` compares committed history. In this development build,
-include staged and unstaged edits with:
+By default, `check` takes the changed lines from committed history; it reads
+test files as they are on disk. In this development build, include staged and
+unstaged edits to tracked files in the diff with:
 
 ```bash
 ripr check --worktree
@@ -103,11 +103,11 @@ For broader repository analysis and a suggested Rust repair, run:
 ripr pilot --root .
 ```
 
-This is broader than checking one change. It writes pilot reports and either
-names a supported next action or explains why no repair is ready. Follow its
-retry guidance when analysis is partial. Non-Rust workspaces are routed to the
-appropriate diff-analysis or unavailable-adapter guidance, not the Rust repair
-sequence.
+This is broader than checking one change. It writes reports under
+`target/ripr/pilot/` and either names a supported next action or explains why
+no repair is ready. Follow its retry guidance when analysis is partial.
+Non-Rust workspaces are routed to the appropriate diff-analysis or
+unavailable-adapter guidance, not the Rust repair sequence.
 
 ## VS Code First Hour
 
@@ -162,14 +162,21 @@ route, not an arbitrary finding ID:
 ripr pilot --root .
 ```
 
-When pilot recommends a repair, run the exact `ripr agent repair ... --phase before`
-command it prints. Pilot supplies the repository-scoped seam ID; the probe IDs
-printed by `ripr check` are different and cannot be substituted.
+Before starting a repair, make sure `target/` is in a committed `.gitignore`
+(see below). When pilot recommends a repair, run the exact
+`ripr agent repair ... --phase before` command it prints. That command carries pilot's seam ID, which names a code
+location across the repository. The `probe:...` IDs printed by `ripr check`
+name findings in one diff and are not accepted here.
 
 The before phase prepares the packet and prints an `--attempt` continuation
 command. Read the allowed test files, proposed assertion, verification command,
 and stop conditions. Make the focused test edit yourself or delegate that packet
-to an external coding agent. Run the focused test command when authorized.
+to an external coding agent, and change only test files. Run the test yourself:
+ripr does not run it. The attempt refuses any new file outside the allowed test
+files, whether Git ignores it or not, except build output under a `target/`
+that was already gitignored when the before phase ran; a `.gitignore` change
+made mid-attempt is itself refused. Redirect ripr output under `target/ripr/` or
+outside the repository.
 
 Then run the exact `--attempt ... --phase after` command printed before the edit.
 It records the after snapshot and a receipt of static evidence movement.
@@ -187,9 +194,9 @@ ripr agent status --root .
 
 Use the reported continuation or recovery step. The full phase and identity
 reference is [Repair attempt identity](REPAIR_ATTEMPT.md).
-Trust-bound Python repair has a separately authorized third verification phase;
-follow [the Python sequence](REPAIR_ATTEMPT.md#governed-python-sequence), not
-the Rust sequence above.
+A trust-bound Python repair adds a third `verify` phase, run with its own
+authorization flags; follow [the Python sequence](REPAIR_ATTEMPT.md#governed-python-sequence),
+not the Rust sequence above.
 
 For lower-level control, see [Agent workflows](AGENT_WORKFLOWS.md) and
 [the LLM operator guide](LLM_OPERATOR_GUIDE.md). No LLM provider is called by
@@ -207,7 +214,7 @@ PR-facing packet. It does not run analysis or repair the code. See
 | Symptom | Next step |
 | --- | --- |
 | Cargo installation fails. | Check the first Cargo error and `rustc --version` (Rust 1.95 or newer). Fix the reported build or download problem before retrying. |
-| ripr is installed, but repository setup fails. | Run `ripr doctor` and inspect its individual capability results. In current 0.11 development builds, an older workspace compiler can still be misreported as a RIPR build failure even though static analysis does not invoke it. |
+| ripr is installed, but repository setup fails. | Run `ripr doctor` and inspect its individual capability results. |
 | `check` sees no change after an edit. | In a development build, use `--worktree` for staged and unstaged edits. Otherwise inspect a committed change using your installed version's supported options. |
 | The wrong base is selected. | Use `--base REF` with an existing reference in this repository. |
 | Configuration is rejected. | Run `ripr config validate` and fix the named setting. Configuration is optional, but an invalid file is not ignored. |

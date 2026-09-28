@@ -10,13 +10,14 @@
 /// `help_overview_fits_one_screen` pins the envelope so this cannot silently
 /// grow back into a dump.
 ///
-/// The first line is not free prose: "changed Rust code where the nearby tests
-/// may not actually catch the behavior" is the canonical description of what
-/// `ripr` looks for, listed as such in `docs/TERMINOLOGY.md` and reused in
-/// `docs/QUICKSTART.md`. Reword it there first, everywhere, or not at all —
-/// `help_runs` in `tests/cli_smoke.rs` holds this line to that vocabulary.
-pub(super) const HELP: &str = r#"ripr — find changed Rust code where nearby tests may not actually catch the
-       changed behavior.
+/// The first line is not free prose: "changed code where the nearby tests may
+/// not actually catch the behavior" is the canonical description of what
+/// `ripr` looks for, listed as such in `docs/TERMINOLOGY.md`. Reword it there
+/// first, everywhere, or not at all — `help_runs` in `tests/cli_smoke.rs`
+/// holds this line to that vocabulary. The language note stops Python and
+/// TypeScript users from concluding ripr does not apply to them.
+pub(super) const HELP: &str = r#"ripr — find changed code where nearby tests may not actually catch the
+       changed behavior (Rust; Python and TypeScript in preview).
 
 Usage:
   ripr <command> [options]

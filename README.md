@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Write tests that notice changed behavior.</strong><br />
-  Static mutation-exposure analysis
+  Static analysis of what your tests check in a diff
 </p>
 
 <p align="center">
@@ -41,7 +41,8 @@ A test can run the changed code without checking the behavior that changed:
 ```
 
 Tests below and above the threshold can pass in both versions. The case that
-separates them is `amount == discount_threshold`, with an assertion on the result.
+separates them is `amount == discount_threshold`, with an assertion on the
+result. ripr calls that missing case or assertion a *discriminator*.
 
 ## Example output
 
@@ -54,9 +55,8 @@ Selected lines from the development [boundary example's checked output](fixtures
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
 ```
 
-The missing discriminator is the case or assertion that would distinguish the
-intended behavior from a plausible wrong result. ripr looks for it statically;
-it does not run mutants or prove that a test would fail.
+ripr finds this statically, from source. It does not run your tests or
+mutants, and it does not prove that a test would fail.
 
 ## The first useful run
 
@@ -70,18 +70,24 @@ ripr check
 ```
 
 Read the changed behavior, the related tests, and the recommended next test.
-No configuration file is required. A result with no findings or limited evidence
-is not a clean bill of health.
+No configuration file is required. `ripr check` is advisory: it exits 0 whether
+or not it finds a gap, and exit 2 means the analysis could not complete. On the
+base branch itself there are no changed files, and ripr says so. A result with
+no findings or limited evidence is not a clean bill of health.
 
 Cargo installation requires Rust 1.95 or newer; the diff workflow needs Git.
 See the [CLI quickstart](docs/QUICKSTART.md#cli-first-hour) for choosing a base,
 including uncommitted edits in a development build, and diagnosing setup.
 
-This checkout documents **0.11 development**. The latest GitHub release is
-[0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0);
-its [versioned instructions](https://github.com/EffortlessMetrics/ripr/blob/v0.10.0/README.md)
-describe the released workflow. Build this checkout to use the development
-output and durable repair steps below; see [installation](docs/QUICKSTART.md#installation).
+`cargo install ripr` installs the latest published release,
+[0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0), whose
+[versioned instructions](https://github.com/EffortlessMetrics/ripr/blob/v0.10.0/README.md)
+describe that workflow. This page documents **0.11 development**. The output
+shown above, `--worktree`, and the repair steps below need a development build:
+
+```bash
+cargo install --locked --git https://github.com/EffortlessMetrics/ripr-swarm ripr
+```
 
 <a id="start-from-the-surface-you-already-use"></a>
 
@@ -99,6 +105,32 @@ output and durable repair steps below; see [installation](docs/QUICKSTART.md#ins
 agent write the test. `ripr first-pr` composes existing PR evidence rather than
 running analysis. See the [command guide](docs/COMMAND_HIERARCHY.md) for the
 complete paths, including read-only [MCP status](docs/interop/mcp.md).
+
+## Using ripr from a coding agent
+
+```bash
+ripr check
+ripr pilot --root .
+```
+
+`check` reports gaps in the current change and prints the `ripr explain` and
+`ripr context` commands for the top finding; add `--format json` for
+machine-readable results, which omit those commands. `pilot` names one supported
+repair or explains why none is ready. Run the follow-up commands ripr prints
+(`ripr explain`, `ripr context`, `ripr agent repair ...`) exactly as printed:
+their IDs belong to that run and cannot be copied from documentation.
+`agent repair --seam-id` takes the seam ID that `pilot` prints; the `probe:...`
+IDs from `check` are rejected there.
+
+Between the repair phases, the attempt refuses any new file outside the allowed
+test files, whether Git ignores it or not. Build output under a gitignored
+`target/` is the exception. Before starting a repair, make sure `target/` is in
+a committed `.gitignore`; changing `.gitignore` mid-attempt is itself refused.
+Redirect ripr output under `target/ripr/` or outside the repository.
+Exit `0` means the command completed and `2` means it could not, which includes
+a refused repair attempt; `3` means a gate blocked or a typed refusal answered.
+See [exit codes](docs/EXIT_CODES.md). The
+[LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) covers the full repair loop.
 
 <a id="how-ripr-works-reference"></a>
 

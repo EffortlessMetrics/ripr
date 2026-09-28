@@ -1394,7 +1394,8 @@ fn help_runs() {
     let output = run_ripr(&["--help"]);
     assert_success(&output);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("find changed Rust code where nearby tests"));
+    assert!(stdout.contains("find changed code where nearby tests"));
+    assert!(stdout.contains("(Rust; Python and TypeScript in preview)"));
     assert!(stdout.contains("Usage:"));
 }
 
