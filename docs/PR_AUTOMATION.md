@@ -16,6 +16,23 @@ Humans and coding agents should spend attention on behavior, evidence,
 exceptions, and public contracts. They should not spend attention on formatting,
 allowlist order, report directory setup, generated indexes, or gate ordering.
 
+## Changelog inputs
+
+The release cut assembles its `Unreleased` section from the swarm and source
+changelogs as a semantic union. A contract-changing PR should normally add a
+short `Unreleased` entry with an issue or PR link, including compatibility
+effects such as a newly refused path or a changed finding class. The author
+and reviewer decide whether a change is notable; a path-only check cannot
+establish that a user contract changed or that a useful note was written.
+
+An entry may instead be drafted retrospectively during the release cut. In
+that case, the PR should say where the change will be found in the release
+inventory and why the entry is deferred. The release checklist requires an
+explicit inventory of merged contract changes, including deferred entries,
+before the semantic union. `check-pr` does not enforce completeness of
+`CHANGELOG.md`; a green check must not be read as a complete release-note
+inventory.
+
 Codex Goals consume this harness. The `/goal` loop may advance a multi-PR
 campaign, but each work item should still leave the same shaped PR, reports, and
 review artifacts described here. Machine-readable receipts record which gates
