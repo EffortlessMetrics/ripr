@@ -7892,6 +7892,8 @@ id = "RIPR-SPEC-0129"
 name = "editor integration contract and support matrix"
 spec = "docs/specs/RIPR-SPEC-0129-editor-integration-contract.md"
 tests = [
+  "crates/ripr/src/lsp/diagnostics.rs::lsp_next_step_parity_tests::unwitnessed_finding_fallback_explains_class_and_inspection",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_names_preview_inspection_route",
   "crates/ripr/src/lsp/agent_protocol.rs::tests::capability_is_fail_closed_until_handlers_land",
   "crates/ripr/src/lsp/capabilities.rs::tests::initialize_result_advertises_the_fail_closed_agent_capability",
   "crates/ripr/src/lsp/capabilities.rs::tests::initialize_result_advertises_pull_diagnostic_provider",
@@ -7953,6 +7955,8 @@ code = [
   "crates/ripr/src/lsp/agent_protocol.rs",
   "crates/ripr/src/lsp/actions.rs",
   "crates/ripr/src/lsp/action_contract.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/hover.rs",
   "editors/vscode/src/client.ts",
   "editors/vscode/package.json",
   "crates/ripr/src/lsp/client_features.rs",

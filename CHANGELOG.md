@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Fixed
+
+- LSP fallback diagnostics explain their static classification and point to
+  hover evidence without promising an unavailable clipboard action or repair
+  route. Missing-path guidance remains explicitly static (#4328).
+
 ### Added
 
 - `ripr --version` now names the commit the binary was built from, as

@@ -183,6 +183,13 @@ does not advertise fails the parity tests.
 
 ## Acceptance Examples
 
+Diagnostic fallbacks for findings without a recommendation and gaps without a
+repair route use plain-language explanations and direct readers to hover the
+highlighted code for static evidence. They must not promise a clipboard code
+action that a standard client cannot execute, a repair packet that an
+inspect-only gap does not own, or an absent next step. Missing test paths remain
+qualified as static analysis results; diagnostic codes and data remain stable.
+
 - A standard LSP client (e.g. Neovim) that does NOT advertise
   `experimental.riprEditor` receives zero `ripr.copyContext` or
   `ripr.openRelatedTest` command IDs in code actions — only server-executed
