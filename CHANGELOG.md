@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- LSP: the server now asks clients for `textDocument/didSave`. It advertised
+  only the numeric full-sync kind, which under the LSP spec does not request
+  save notifications, so a strictly conforming editor could save without ripr
+  re-analyzing. The capability is now the options form with `save: true`,
+  which the VS Code extension's compatibility check already accepts.
 - LSP: opening a second repository in the same Helix session no longer stops
   ripr for the first. Helix adds the new repository as a workspace folder to
   the running server, which made the folder set ambiguous and stopped

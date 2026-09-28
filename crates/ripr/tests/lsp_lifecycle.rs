@@ -473,6 +473,27 @@ fn initialize_is_accepted_exactly_once() -> Result<(), String> {
     exit_and_wait(&mut session)
 }
 
+#[test]
+fn initialize_advertises_full_sync_with_save_notifications() -> Result<(), String> {
+    // Saved content is ripr's analysis input. Under the LSP spec only the
+    // options form's `save` field opts a client into `textDocument/didSave`;
+    // the bare numeric kind does not. `save: true` is also the shape the VS
+    // Code compatibility check accepts.
+    let mut session = LspSession::spawn()?;
+    let response = session.request("initialize", initialize_params())?;
+    let result = expect_result(&response, "initialize")?;
+    let sync = &result["capabilities"]["textDocumentSync"];
+    if sync["openClose"] != serde_json::json!(true)
+        || sync["change"] != serde_json::json!(1)
+        || sync["save"] != serde_json::json!(true)
+    {
+        return Err(format!(
+            "textDocumentSync must request open/close, full changes and didSave: {sync}"
+        ));
+    }
+    exit_and_wait(&mut session)
+}
+
 // ── 3. `initialized` notification transition ──
 
 #[test]

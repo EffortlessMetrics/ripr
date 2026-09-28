@@ -12,7 +12,8 @@ use tower_lsp_server::ls_types::{
     DiagnosticOptions, DiagnosticServerCapabilities, ExecuteCommandOptions,
     HoverProviderCapability, InitializeParams, InitializeResult, OneOf, PositionEncodingKind,
     ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
-    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -53,7 +54,18 @@ pub(super) fn initialize_result_for_client(
 ) -> InitializeResult {
     InitializeResult {
         capabilities: ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            // Options form, not the bare `Kind`: under the LSP spec only
+            // `save` opts a client into `textDocument/didSave`, and saved
+            // content is what ripr analyzes. The VS Code compatibility check
+            // accepts `save: true`.
+            text_document_sync: Some(TextDocumentSyncCapability::Options(
+                TextDocumentSyncOptions {
+                    open_close: Some(true),
+                    change: Some(TextDocumentSyncKind::FULL),
+                    save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                    ..TextDocumentSyncOptions::default()
+                },
+            )),
             position_encoding: Some(position_encoding),
             diagnostic_provider: supports_pull_diagnostics.then_some(
                 DiagnosticServerCapabilities::Options(DiagnosticOptions {

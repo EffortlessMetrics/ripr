@@ -7973,6 +7973,7 @@ id = "RIPR-SPEC-0129"
 name = "editor integration contract and support matrix"
 spec = "docs/specs/RIPR-SPEC-0129-editor-integration-contract.md"
 tests = [
+  "crates/ripr/tests/lsp_lifecycle.rs::initialize_advertises_full_sync_with_save_notifications",
   "crates/ripr/src/lsp/diagnostics.rs::lsp_next_step_parity_tests::unwitnessed_finding_fallback_explains_class_and_inspection",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::gap_record_diagnostic_names_preview_inspection_route",
   "crates/ripr/src/lsp/agent_protocol.rs::tests::capability_is_fail_closed_until_handlers_land",

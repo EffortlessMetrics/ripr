@@ -92,7 +92,16 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
 
     assert_eq!(
         result.capabilities.text_document_sync,
-        Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL))
+        Some(TextDocumentSyncCapability::Options(
+            tower_lsp_server::ls_types::TextDocumentSyncOptions {
+                open_close: Some(true),
+                change: Some(TextDocumentSyncKind::FULL),
+                save: Some(
+                    tower_lsp_server::ls_types::TextDocumentSyncSaveOptions::Supported(true)
+                ),
+                ..tower_lsp_server::ls_types::TextDocumentSyncOptions::default()
+            }
+        ))
     );
     assert_eq!(
         result.capabilities.hover_provider,

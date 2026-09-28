@@ -35,6 +35,10 @@ Any off-the-shelf LSP client (Neovim, Helix, Eglot, etc.) that implements
 the base LSP specification.
 
 Consumes:
+- full document sync advertised as `{openClose: true, change: 1, save: true}`,
+  so every conforming client sends `textDocument/didSave` (saved content is
+  the analysis input; the bare numeric kind does not request save
+  notifications)
 - `textDocument/publishDiagnostics` (push) or `textDocument/diagnostic` (pull)
 - `textDocument/hover`
 - `textDocument/codeAction` (kind strings are metadata visible to every
@@ -240,6 +244,9 @@ qualified as static analysis results; diagnostic codes and data remain stable.
 
 - `capabilities.rs` tests verify the capability advertisement shape
   (pull diagnostics, code action kinds, riprAgent capability).
+- `tests/lsp_lifecycle.rs::initialize_advertises_full_sync_with_save_notifications`
+  verifies over the real wire that the document-sync advertisement requests
+  `didSave`.
 - `tests.rs` code-action tests verify the negotiated client-command filter
   (#1776): an unenhanced client receives only server-executed commands, a
   client advertising a subset keeps exactly that subset, and every emitted
