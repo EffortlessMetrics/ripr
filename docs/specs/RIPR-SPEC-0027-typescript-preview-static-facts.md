@@ -50,6 +50,13 @@ emits an explicit `static_limit_kind` instead of silently coercing to
 
 ## Inputs
 
+Source reads use a no-follow open followed by opened-handle regular-file
+validation. On supported Linux and macOS targets the open is nonblocking, so
+a file replaced with a FIFO between path inspection and open cannot wait for
+a writer. Windows opens the reparse point itself and validates the handle;
+other targets refuse the guarded open. The FIFO regression must bound its
+child process and verify that the intended child test actually executed.
+
 - TypeScript or JavaScript source files routed to this adapter.
 - Diff spans inside those files.
 - Repo configuration including `[languages] enabled` and any future
