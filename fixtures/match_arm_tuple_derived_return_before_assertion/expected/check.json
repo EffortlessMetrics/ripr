@@ -1,0 +1,297 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/match_arm_tuple_derived_return_before_assertion/input",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:4e199c0eccf51c6d5b9c8a38663a6828536667f4f6f887e312a343ef4f5a8f37","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:match_arm:802442a0",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:match_arm:802442a0",
+        "family": "match_arm",
+        "delta": "control",
+        "file": "fixtures/match_arm_tuple_derived_return_before_assertion/input/src/lib.rs",
+        "line": 27,
+        "expression": "(true, false) =>"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach terminalize_proof: request_only_projection_observes_join"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence match arm result: (true, false) =>"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach terminalize_proof: request_only_projection_observes_join", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence match arm result: (true, false) =>", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches match arm result: (true, false) => (line 27)", "related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1);", "related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, \"receipt-1\");", "related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, \"request_identity_v2\");", "observed assertion argument value 1 at line 21", "observed assertion argument value \"receipt-1\" at line 22", "observed assertion argument value 0 at line 22", "observed assertion argument value \"request_identity_v2\" at line 24", "observed assertion argument value 0 at line 24", "observed assertion argument value 1 at line 24"],
+      "flow_sinks": [
+        {"kind":"match_arm","text":"(true, false) =>","line":27}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence match arm result: (true, false) =>", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach terminalize_proof: request_only_projection_observes_join"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "21": "assert_eq!(terminal.len(), 1);",
+        "22": "assert_eq!(terminal[0].0.id, \"receipt-1\");",
+        "24": "assert_eq!(terminal[0].1, \"request_identity_v2\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 21,
+            "value": "1",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 22,
+            "value": "\"receipt-1\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 22,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 24,
+            "value": "\"request_identity_v2\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 24,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 24,
+            "value": "1",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 21,
+          "value": "1",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 22,
+          "value": "\"receipt-1\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 22,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 24,
+          "value": "\"request_identity_v2\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 24,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 24,
+          "value": "1",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "request_only_projection_observes_join",
+          "file": "tests/projection.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(terminal.len(), 1);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "request_only_projection_observes_join",
+          "file": "tests/projection.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(terminal[0].0.id, \"receipt-1\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "request_only_projection_observes_join",
+          "file": "tests/projection.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(terminal[0].1, \"request_identity_v2\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:match_arm:210aa0af",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:match_arm:210aa0af",
+        "family": "match_arm",
+        "delta": "control",
+        "file": "fixtures/match_arm_tuple_derived_return_before_assertion/input/src/lib.rs",
+        "line": 27,
+        "expression": "(true, false) => \"request_identity_v1\","
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach terminalize_proof: request_only_projection_observes_join"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence match arm result: \"request_identity_v1\""},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach terminalize_proof: request_only_projection_observes_join", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence match arm result: \"request_identity_v1\"", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches match arm result: \"request_identity_v1\" (line 27)", "related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1);", "related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, \"receipt-1\");", "related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, \"request_identity_v2\");", "observed assertion argument value 1 at line 21", "observed assertion argument value \"receipt-1\" at line 22", "observed assertion argument value 0 at line 22", "observed assertion argument value \"request_identity_v2\" at line 24", "observed assertion argument value 0 at line 24", "observed assertion argument value 1 at line 24"],
+      "flow_sinks": [
+        {"kind":"match_arm","text":"\"request_identity_v1\"","line":27}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence match arm result: \"request_identity_v1\"", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach terminalize_proof: request_only_projection_observes_join"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "21": "assert_eq!(terminal.len(), 1);",
+        "22": "assert_eq!(terminal[0].0.id, \"receipt-1\");",
+        "24": "assert_eq!(terminal[0].1, \"request_identity_v2\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 21,
+            "value": "1",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 22,
+            "value": "\"receipt-1\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 22,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 24,
+            "value": "\"request_identity_v2\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 24,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 24,
+            "value": "1",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 21,
+          "value": "1",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 22,
+          "value": "\"receipt-1\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 22,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 24,
+          "value": "\"request_identity_v2\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 24,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 24,
+          "value": "1",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "request_only_projection_observes_join",
+          "file": "tests/projection.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(terminal.len(), 1);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "request_only_projection_observes_join",
+          "file": "tests/projection.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(terminal[0].0.id, \"receipt-1\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "request_only_projection_observes_join",
+          "file": "tests/projection.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(terminal[0].1, \"request_identity_v2\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust",
+      "source_currentness": "base_deleted"
+    }
+  ]
+}

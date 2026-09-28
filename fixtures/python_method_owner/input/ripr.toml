@@ -1,0 +1,5 @@
+[languages]
+# Enable the Python preview adapter for this fixture so the adapter
+# actually runs against `.py` changed files. The default repo posture
+# stays `["rust"]`; this fixture opts in explicitly per RIPR-SPEC-0026.
+enabled = ["rust", "python"]

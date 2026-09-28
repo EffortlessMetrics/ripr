@@ -1,0 +1,246 @@
+# Golden Output Changes
+
+## Pending
+
+Reason:
+RIPR-SPEC-0005: pin same-crate constructor linkage with an exact destructured-field observer
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0005: pin direct member field observer and fail closed on unlinked record patterns
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+#2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+#2567: default human render no longer prints a 'Hidden: 0 lower-priority finding(s) omitted' block when nothing was omitted; the format pointers now sit under a 'More:' heading. Formatting-only drift; no evidence, class, or JSON change.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+Issue #2598: default human output now exposes bounded explain and context follow-up commands for the selected finding.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+Issue #2659: finding navigation commands now preserve the analyzed root, diff or artifact scope and shell-safe identity.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: publish typed analysis outcome in human and JSON output.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: align fixture outputs with the typed incomplete-outcome and unquoted human outcome contract.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0023: classification hint added to digest (#2614)
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0151: rebless check JSON for the additive source_currentness field; classifications, stages, confidence, counts, and recorded coordinates remain unchanged.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0160: the additive git_candidate_subject identity field (null for ordinary runs) in the check JSON identity block
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0162: the propagation_unknown why-hint stops asserting the propagation the class marks unknown, and unknown-class limitation prose renders under the Analyzer limit label (human-only; the shared decision-layer text is unchanged)
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (2)
+
+Reason:
+RIPR-SPEC-0108: #1746 identity gate withholds Yes discriminator for unresolved caller chain (SPEC-0005 conservative diff-scoped principle); classification unchanged propagation_unknown
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (3)
+
+Reason:
+RIPR-SPEC-0108: withheld discriminator names actual linkage
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (4)
+
+Reason:
+RIPR-SPEC-0108: discriminate message follows delta-token confirmation; class unchanged
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (5)
+
+Reason:
+RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (6)
+
+Reason:
+RIPR-SPEC-0001: reach is weak when every related test is linked only by file or name-token proximity (weak_token_substring); class unchanged, reach stage yes->weak
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (7)
+
+Reason:
+RIPR-SPEC-0005: J trial join regeneration; swarm #4002 omits the default base under --diff, swarm no_static_path why-text; findings unchanged
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_constructor_field_observation (8)
+
+Reason:
+RIPR-SPEC-0122: human-full carries per-finding drill-in commands (#4379); digest why-line names the incomplete stage; unreached static_unknown asks for a test first
+
+Command:
+`cargo xtask goldens bless rust_constructor_field_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

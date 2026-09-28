@@ -1,0 +1,130 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "blocked",
+  "mode": "acknowledgeable",
+  "root": ".",
+  "inputs": {
+    "repo_exposure": null,
+    "pr_guidance": null,
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json",
+    "sarif_policy": null,
+    "labels_json": null,
+    "labels": [],
+    "agent_verify": null,
+    "agent_receipt": null,
+    "recommendation_calibration": null,
+    "mutation_calibration": null,
+    "baseline": null
+  },
+  "policy": {
+    "mode": "acknowledgeable",
+    "threshold": "high_confidence_new_gap",
+    "acknowledgement_labels": ["ripr-waive"],
+    "default_workflow_posture": "advisory"
+  },
+  "summary": {
+    "evaluated": 1,
+    "blocking": 1,
+    "acknowledged": 0,
+    "advisory": 0,
+    "suppressed": 0,
+    "not_applicable": 0,
+    "unknown_confidence": 0
+  },
+  "new_unsuppressed": {
+    "basis": "diff",
+    "count": 1,
+    "reason": null
+  },
+  "causal_comparison": {
+    "available": true,
+    "coverage": {
+      "base_items": 0,
+      "head_items": 1,
+      "matched_items": 0,
+      "ambiguous_items": 0,
+      "unknown_items": 0,
+      "complete": true,
+      "low_coverage_disclosed": false
+    }
+  },
+  "decisions": [
+    {
+      "id": "ripr-gate-gap-pricing-threshold",
+      "source": "gap_decision_ledger",
+      "decision": "blocking",
+      "gate_reason": "candidate-current static evidence without an acknowledgement label",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "seam_id": "seam:pricing:threshold-boundary",
+      "source_id": "gap:rust:pricing:discount:threshold-boundary",
+      "gap_state": "actionable",
+      "static_class": "weakly_exposed",
+      "severity": "warning",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 42
+      },
+      "policy": {
+        "mode": "acknowledgeable",
+        "threshold": "high_confidence_new_gap",
+        "acknowledgement_label": null,
+        "baseline_identity": "gap:rust:pricing:discount:threshold-boundary"
+      },
+      "repair_route": {
+        "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+        "seam_id": "seam:pricing:threshold-boundary",
+        "classification": "weakly_exposed",
+        "changed_owner": "pricing::discount",
+        "changed_behavior": "discount applies at amount >= threshold",
+        "missing_discriminator": "amount == threshold boundary assertion",
+        "repair_target": {
+          "kind": "related_test",
+          "name": "discount_applies_at_inclusive_threshold",
+          "file": "tests/pricing.rs",
+          "line": 12
+        },
+        "test_intent": "Exercise pricing::discount and assert the inclusive threshold edge",
+        "repair_command": null,
+        "verify_command": "cargo xtask fixtures boundary_gap",
+        "receipt_command": "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary",
+        "inspection_command": "ripr agent brief --root . --seam-id seam:pricing:threshold-boundary --json",
+        "authority_boundary": "static_ripr_evidence_only",
+        "limitation": null
+      },
+      "evidence": {
+        "missing_discriminator": "amount == threshold boundary assertion",
+        "assertion_shape": "assert_eq!(discount(amount, threshold), expected)",
+        "candidate_values": [],
+        "recommended_test": "tests/pricing.rs::discount_applies_at_inclusive_threshold",
+        "nearby_test_changed": false,
+        "suppressed": false,
+        "configured_off": false,
+        "recommendation_calibration": {
+          "available": false,
+          "outcome": null,
+          "confidence_effect": "not_used"
+        },
+        "mutation_calibration": {
+          "available": false,
+          "outcome": null,
+          "confidence_effect": "not_used"
+        }
+      },
+      "delta_attribution": "introduced_by_change",
+      "base_state": null,
+      "head_state": {
+        "canonical_owner": "crate::pricing::discount",
+        "behavior_identity": "predicate:amount>=threshold",
+        "discriminator_identity": "amount==threshold",
+        "gap_state": "actionable",
+        "oracle_strength": "weak"
+      },
+      "attribution_basis": ["base_item_absent"],
+      "comparison_confidence": "fixture_backed"
+    }
+  ],
+  "warnings": [],
+  "config_errors": [],
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied."
+}

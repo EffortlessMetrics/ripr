@@ -1,0 +1,112 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_review_front_panel",
+  "status": "incomplete",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "first_action": "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact/first-useful-action.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "assistant_health": null,
+    "ledger": null,
+    "baseline_delta": null,
+    "zero_status": null,
+    "gate_decision": null,
+    "recommendation_calibration": null,
+    "mutation_calibration": null,
+    "coverage_frontier": null,
+    "receipt": null
+  },
+  "summary": {
+    "status": "incomplete",
+    "headline": "Regenerate missing assistant proof before acting.",
+    "top_issue_state": "missing_required_input",
+    "policy_state": "none",
+    "placement": "not_available",
+    "movement_state": "unknown",
+    "coverage_grip_state": "not_available",
+    "blocking_candidates": 0,
+    "acknowledged": 0,
+    "waived": 0,
+    "suppressed": 0,
+    "new_policy_eligible": 0,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "warnings": 1
+  },
+  "top_issue": null,
+  "movement": {
+    "state": "unknown",
+    "before_class": null,
+    "after_class": null,
+    "source_artifact": null
+  },
+  "debt_delta": {
+    "new_policy_eligible": 0,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "acknowledged": 0,
+    "waived": 0,
+    "suppressed": 0,
+    "blocking_candidates": 0
+  },
+  "policy": {
+    "mode": null,
+    "decision": "advisory",
+    "authority_artifact": null,
+    "acknowledgement_label": null
+  },
+  "calibration": {
+    "recommendation": "not_available",
+    "mutation": "not_available",
+    "source_artifacts": []
+  },
+  "coverage_grip": {
+    "state": "not_available",
+    "coverage_delta": null,
+    "grip_delta": null,
+    "source_artifact": null
+  },
+  "artifacts": [
+    {
+      "group": "start_here",
+      "label": "PR review front panel",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.md",
+      "available": true,
+      "required": true
+    },
+    {
+      "group": "repair",
+      "label": "Missing assistant proof",
+      "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+      "available": false,
+      "required": true
+    },
+    {
+      "group": "evidence",
+      "label": "First useful action",
+      "path": "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact/first-useful-action.md",
+      "available": true,
+      "required": false
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "missing_required_input",
+      "message": "Assistant proof artifact is missing.",
+      "source_artifact": "target/ripr/reports/test-oracle-assistant-proof.json"
+    }
+  ],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}

@@ -1,0 +1,92 @@
+schema_version = "2.0"
+id = "ripr.slice.ts-4104e-predicate-witness-input-resolution.v1"
+generation = 1
+
+source_issue = "issue:4104"
+design_reference = "RIPR-SPEC-0027"
+change_class = "behavior_change"
+
+claim_boundary = """
+Closes the three conservative under-credit candidates in issue #4104
+section E for the TypeScript preview adapter's predicate boundary witness
+(RIPR-SPEC-0027), each fail-closed today on current main. E1: a bare-local
+`observed_expression` whose single `const`/`let` initializer IS the owner
+call (`const result = applyDiscount(100); expect(result).toBe(90)`) now
+witnesses the changed boundary through the initializer's arguments, reusing
+the landed owner-call argument path (position, arity, standalone-literal,
+object-pin, receiver, shadow, and expected-side guards unchanged); a wrapper
+around the call, a derived value, a reassigned `let`, or a twice-declared
+name stays fail-closed. E2: `?.` normalizes to member access and `??` reads
+as the nullish boundary comparison inside the quote-aware comparison parse,
+and a `yield <comparison>` tail classifies as a specific predicate and
+strips the keyword; for a nullish boundary the nullish input
+(`null`/`undefined`) at the left operand's read position also witnesses;
+parenthesized compound forms, call-shaped tails, and quoted `?` never
+normalize. E3: an UPPER_CASE boundary operand resolves through a single
+immutable integer `const` in the owner's own module (recorded owner span
+first, then the owner file through the workspace root), and an UPPER_CASE
+argument resolves through the test body or via the import record to a single
+such declaration in the owner's own module, mirroring the Rust
+`analysis/value_resolution.rs::named_constant` strictness; `let`/`var`,
+computed initializers, repeated declarations, off-value constants, and
+constants from modules that do not resolve to the owner stay fail-closed.
+Three new RIPR-SPEC-0027 fixtures pin the shapes
+(`ts_predicate_boundary_const_result_local`,
+`ts_predicate_boundary_optional_chaining`, `ts_boundary_named_constant_test`
+— each reblessed as its own new-fixture golden with spec reason). The
+over-credit classes closed by #4102/#4103/#4117/#4125 (dead-argument
+literals, nested containment, receiver-qualified same-name, body-local
+shadows, dead/tautological expected sides, unanchored bare calls,
+mocked/spied modules) remain closed; the verified controls (direct boundary
+call, async `.resolves`, identical args, namespace member) remain
+`exposed`. No schema, gate, support-tier, or output-contract changes beyond
+the newly analyzable predicates now producing discriminators instead of
+silence.
+"""
+
+non_goals = [
+  "lowercase local-argument resolution (`applyDiscount(t)` behind `const t = 100`) — still fail-closed, recorded as a later candidate",
+  "constants imported from a module that is not the owner's own module (`applyDiscount(IMPORTED_CONSTANT)` from a config module) — stays fail-closed; the adapter carries no third-module source index",
+  "parenthesized compound nullish operands (`(value ?? 50) >= 100`) — stay fail-closed",
+  "test-file module-level constants outside the test body and outside the owner module — stay fail-closed",
+  "any Rust-adapter or value_resolution change (the TS slice mirrors its strictness only)",
+  "support-tier promotion for typescript (stays preview/advisory)",
+  "mutation-runtime outcome vocabulary or any real mutation-execution claim",
+]
+
+return_conditions = [
+  "Return to root if any existing golden drifts (only the three new own-fixture goldens may be blessed, each with a RIPR-SPEC-0027 reason).",
+  "Return to root if any spec_0027, overcredit_4103, or SPEC-0098 observation-guard test fails, or any pinned over-credit class flips to exposed.",
+  "Return to root if the named-constant path promotes a finding to repair_packet_ready: true or claims more than static boundary-carrying evidence.",
+]
+
+owned_seams = [
+  "seam:ripr:analysis:language-typescript-matchers",
+  "seam:ripr:analysis:language-typescript-related-tests",
+  "seam:ripr:fixtures:ts-predicate-boundary-const-result-local",
+  "seam:ripr:fixtures:ts-predicate-boundary-optional-chaining",
+  "seam:ripr:fixtures:ts-boundary-named-constant-test",
+]
+
+shared_seams = [
+  "seam:ripr:output:golden-fixture-outputs",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:language-perl-adapter",
+  "seam:ripr:output:schema-shape",
+  "seam:ripr:analysis:classification-decision",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0027"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

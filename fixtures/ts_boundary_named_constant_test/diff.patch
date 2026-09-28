@@ -1,0 +1,20 @@
+diff --git a/src/pricing.ts b/src/pricing.ts
+index 0000000..1111111 100644
+--- a/src/pricing.ts
++++ b/src/pricing.ts
+@@ -1,7 +1,7 @@
+ export const DISCOUNT_THRESHOLD = 100;
+ 
+ export function applyDiscount(total: number): number {
+-    if (total > DISCOUNT_THRESHOLD) {
++    if (total >= DISCOUNT_THRESHOLD) {
+         return 0.9;
+     }
+     return 1;
+@@ -10,7 +10,7 @@
+ export function freeShipping(items: number): boolean {
+-    if (items > 5) {
++    if (items >= 5) {
+         return true;
+     }
+     return false;

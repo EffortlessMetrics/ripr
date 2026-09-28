@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/no_workspace",
+  "packet_state": "not_projected",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false,
+  "next_safe_action": "Open a workspace folder before inspecting first-pr packets."
+}

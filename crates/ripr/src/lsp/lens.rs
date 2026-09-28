@@ -1,0 +1,818 @@
+/// Advisory LSP codeLens for changed symbols.
+///
+/// RIPR-SPEC-0099: emits one advisory `CodeLens` per `Finding` whose probe
+/// location maps to the requested document URI. The title cites the finding's
+/// `related_tests.len()` from the cached `AnalysisSnapshot` — the same source
+/// that feeds `finding.class` — so the count is never fabricated.
+///
+/// Honesty invariants (enforced by unit tests):
+/// - `snapshot == None` → empty Vec (absence of analysis ≠ fabricated 0-count).
+/// - Count comes solely from `finding.related_tests.len()`, never from the
+///   diagnostic projection or any runtime test runner output.
+/// - Static-language vocab only (approved RIPR exposure terms); no runtime
+///   mutation-testing vocabulary in any title.
+/// - Preview-tier findings (TS / Python — `language_status == Some(Preview)`)
+///   are prefixed with `preview:` and softened so the count is not read as
+///   confirmed by a static discriminator.
+/// - N == 0 uses "no related tests found" + the class label, not the
+///   forbidden unexercised-synonym that belongs to runtime mutation tooling.
+use super::state::AnalysisSnapshot;
+use super::uri::{file_uri_for_path, file_uris_match};
+use crate::domain::{ExposureClass, Finding, LanguageStatus};
+use std::path::Path;
+use std::time::Duration;
+use tower_lsp_server::ls_types::{CodeLens, Command, Position, Range, Uri};
+
+/// Deterministic identity of the *visible* lens set for one committed
+/// snapshot (#2032, RIPR-SPEC-0138).
+///
+/// The publish path compares this identity against the last one for which it
+/// requested `workspace/codeLens/refresh` and sends the request only when the
+/// identity changed. The identity is built from structured inputs only:
+/// per-finding (finding id, canonical document URI, lens line, related-test
+/// count, classification class, preview/limitation markers) plus the
+/// snapshot's input identity. Wall-clock fields (snapshot age, the rendered
+/// `· as of Xs ago` title suffix) are deliberately excluded — they change on
+/// every snapshot without changing the semantic lens view, so comparing
+/// rendered titles would falsely trigger a refresh on every commit.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct LensViewIdentity {
+    input_identity: Option<String>,
+    items: Vec<LensViewItem>,
+}
+
+impl LensViewIdentity {
+    /// The empty visible view: no snapshot is current (root removed,
+    /// ambiguous, or analysis state cleared), so every lens should vanish.
+    pub(super) fn cleared() -> Self {
+        Self {
+            input_identity: None,
+            items: Vec::new(),
+        }
+    }
+}
+
+/// One finding's contribution to the visible lens set.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct LensViewItem {
+    finding_id: String,
+    document_uri: String,
+    line: u32,
+    related_test_count: usize,
+    class: String,
+    preview: bool,
+    static_limit_kind: Option<String>,
+}
+
+/// Compute the lens-view identity for a snapshot. Pure: reads only the
+/// snapshot's structured fields, never the wall clock or rendered titles.
+// #3282: the identity mirrors the visible lens set, so a change
+// touching only non-actionable findings does not trigger a spurious
+// workspace/codeLens/refresh.
+pub(super) fn lens_view_identity(snapshot: &AnalysisSnapshot) -> LensViewIdentity {
+    let mut items: Vec<LensViewItem> = snapshot
+        .findings
+        .iter()
+        .filter(|finding| finding.is_candidate_actionable())
+        .map(|finding| {
+            let file = &finding.probe.location.file;
+            let absolute = if file.is_absolute() {
+                file.clone()
+            } else {
+                snapshot.root.join(file)
+            };
+            let document_uri = match file_uri_for_path(&absolute) {
+                Ok(uri) => uri.as_str().to_string(),
+                Err(_) => absolute.display().to_string(),
+            };
+            LensViewItem {
+                finding_id: finding.id.clone(),
+                document_uri,
+                line: finding.probe.location.line.saturating_sub(1) as u32,
+                related_test_count: finding.related_tests.len(),
+                class: finding.class.as_str().to_string(),
+                preview: finding
+                    .language_status
+                    .as_ref()
+                    .is_some_and(|status| *status == LanguageStatus::Preview),
+                static_limit_kind: finding
+                    .static_limit_kind
+                    .as_ref()
+                    .map(|kind| kind.as_str().to_string()),
+            }
+        })
+        .collect();
+    // Sort so a findings-order change that does not alter the visible set
+    // does not read as a lens-view change.
+    items.sort();
+    LensViewIdentity {
+        input_identity: snapshot.input_identity_id(),
+        items,
+    }
+}
+
+/// Produce advisory `CodeLens` items for all findings that map to `uri`
+/// inside `snapshot`.
+///
+/// Returns an empty Vec when `snapshot` is `None` — absence of an analysis
+/// snapshot is not the same as confirmed absence of related tests.
+pub(super) fn code_lens_response(uri: &Uri, snapshot: Option<&AnalysisSnapshot>) -> Vec<CodeLens> {
+    let Some(snapshot) = snapshot else {
+        return Vec::new();
+    };
+    let age = snapshot.refresh.age();
+    lens_findings(uri, snapshot)
+        .map(|finding| finding_to_code_lens(finding, age))
+        .collect()
+}
+
+/// The findings the code lens shows for `uri`, in snapshot order.
+fn lens_findings<'a>(
+    uri: &'a Uri,
+    snapshot: &'a AnalysisSnapshot,
+) -> impl Iterator<Item = &'a Finding> + 'a {
+    snapshot
+        .findings
+        .iter()
+        // Candidate-actionable eligibility (#3282, per RIPR-SPEC-0152):
+        // a lens anchors an advisory at the finding's recorded line,
+        // and a base-deleted finding's recorded line is the projected
+        // new-side coordinate — not a candidate position to pin.
+        .filter(|finding| finding.is_candidate_actionable())
+        .filter(|finding| finding_matches_uri(finding, uri, &snapshot.root))
+}
+
+/// The findings whose code lens sits on the zero-based `line` of `uri`, so
+/// hover can describe exactly what the lens on that line shows.
+pub(super) fn lens_findings_at_line<'a>(
+    uri: &'a Uri,
+    snapshot: &'a AnalysisSnapshot,
+    line: u32,
+) -> Vec<&'a Finding> {
+    lens_findings(uri, snapshot)
+        .filter(|finding| lens_line(finding) == line)
+        .collect()
+}
+
+fn lens_line(finding: &Finding) -> u32 {
+    finding.probe.location.line.saturating_sub(1) as u32
+}
+
+/// Build one `CodeLens` for a single finding.
+///
+/// The `command` field carries the advisory text as its `title`. Although the
+/// LSP spec allows a CodeLens with `command == null` for display-only lenses,
+/// many clients (including VS Code) only render the title when a `Command`
+/// object is present. We emit a `Command` with an empty no-op id so the title
+/// is displayed without triggering any action. `data` is `None` (no resolve
+/// round-trip needed; `resolve_provider` is `false`).
+fn finding_to_code_lens(finding: &Finding, age: Option<Duration>) -> CodeLens {
+    let line = lens_line(finding);
+    let range = Range {
+        start: Position { line, character: 0 },
+        end: Position { line, character: 0 },
+    };
+    let title = related_test_lens_title(finding, age);
+    CodeLens {
+        range,
+        command: Some(Command {
+            title,
+            command: String::new(),
+            arguments: None,
+        }),
+        data: None,
+    }
+}
+
+/// Decide whether a `Finding` belongs to the requested document URI.
+///
+/// Uses `file_uri_for_path` (the same helper used by `diagnostics.rs`) to
+/// build the finding's canonical file URI, then compares with
+/// `file_uris_match` for cross-platform correctness (Windows drive-letter
+/// case insensitivity, percent-encoding normalization).
+fn finding_matches_uri(finding: &Finding, uri: &Uri, root: &Path) -> bool {
+    let file = &finding.probe.location.file;
+    let absolute = if file.is_absolute() {
+        file.clone()
+    } else {
+        root.join(file)
+    };
+    match file_uri_for_path(&absolute) {
+        Ok(finding_uri) => file_uris_match(&finding_uri, uri),
+        Err(_) => false,
+    }
+}
+
+/// Build the advisory lens title for a finding.
+///
+/// Rules (all vocabulary passes `check-static-language`):
+///
+/// - Preview tier (`language_status == Some(Preview)`): prefix `preview:`,
+///   use softened phrasing — the count may be incomplete for preview adapters.
+/// - N > 0 + discriminating class (`Exposed`):
+///   `ripr: N related tests (exposed) · static, cached`
+/// - N > 0 + non-discriminating class (anything except `Exposed`):
+///   `ripr: N related tests, no static discriminator (CLASS) · static, cached`
+/// - N == 0: `ripr: no related tests found (CLASS) · static, cached`
+/// - Appends `· as of Xs ago` when the snapshot age is known.
+///
+/// Vocabulary enforcement: titles must not contain runtime mutation-testing
+/// terms (the gate bans those words in all tracked prose). // ripr-allow: static-language: doc describing the vocabulary constraint, not emitting the terms
+pub(super) fn related_test_lens_title(finding: &Finding, age: Option<Duration>) -> String {
+    let is_preview = finding
+        .language_status
+        .as_ref()
+        .is_some_and(|s| *s == LanguageStatus::Preview);
+    let class_label = finding.class.as_str();
+    let count = finding.related_tests.len();
+
+    let body = if is_preview {
+        // Preview tier: count may be incomplete; soften claim.
+        if count == 0 {
+            format!("preview: no related tests found ({class_label}) · static, cached")
+        } else {
+            format!("preview: {count} related tests (preview, {class_label}) · static, cached")
+        }
+    } else {
+        match (count, &finding.class) {
+            (0, _) => {
+                format!("ripr: no related tests found ({class_label}) · static, cached")
+            }
+            (n, ExposureClass::Exposed) => {
+                format!("ripr: {n} related tests (exposed) · static, cached")
+            }
+            (n, _) => {
+                format!(
+                    "ripr: {n} related tests, no static discriminator ({class_label}) · static, cached"
+                )
+            }
+        }
+    };
+
+    match age {
+        Some(d) => format!("{body} · as of {}s ago", d.as_secs()),
+        None => body,
+    }
+}
+
+/// Check that a generated lens title contains none of the forbidden
+/// static-language vocabulary terms. Used by tests.
+#[cfg(test)]
+pub(super) fn lens_title_is_static_language_clean(title: &str) -> bool {
+    // These string literals are test guards checking that the words do not
+    // appear in production output — the strings themselves are not output.
+    let forbidden = [
+        "killed", // ripr-allow: static-language: test guard verifying this term does not appear in lens output
+        "survived", // ripr-allow: static-language: test guard verifying this term does not appear in lens output
+        "proven", // ripr-allow: static-language: test guard verifying this term does not appear in lens output
+        "adequate", // ripr-allow: static-language: test guard verifying this term does not appear in lens output
+        "covered", // ripr-allow: static-language: test guard verifying this term does not appear in lens output
+        "passing", // ripr-allow: static-language: test guard verifying this term does not appear in lens output
+        "untested", // ripr-allow: static-language: test guard verifying this term does not appear in lens output
+    ];
+    !forbidden.iter().any(|word| title.contains(word))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::Mode;
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, LanguageStatus,
+        OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState, SymbolId,
+    };
+    use crate::lsp::gap_artifacts::{GapArtifactRejection, ValidatedGapArtifact};
+    use crate::lsp::state::{AnalysisSnapshot, RefreshMetadata};
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use tower_lsp_server::ls_types::{Diagnostic, Position, Range};
+
+    fn parse_uri(s: &str) -> Result<Uri, String> {
+        s.parse()
+            .map_err(|e| format!("failed to parse test URI {s}: {e}"))
+    }
+
+    fn make_related_test(i: usize) -> RelatedTest {
+        RelatedTest {
+            name: format!("test_{i}"),
+            file: PathBuf::from("tests/lib.rs"),
+            line: 10 + i,
+            oracle: None,
+            oracle_kind: OracleKind::Unknown,
+            oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
+        }
+    }
+
+    fn make_finding(
+        file: &str,
+        line: usize,
+        class: ExposureClass,
+        related_test_count: usize,
+        language_status: Option<LanguageStatus>,
+    ) -> Finding {
+        let related_tests = (0..related_test_count).map(make_related_test).collect();
+        Finding {
+            id: format!("probe:{file}:{line}:test_family:aabbccdd"),
+            canonical_gap: None,
+            probe: Probe {
+                id: ProbeId(format!("probe:{file}:{line}:test_family:aabbccdd")),
+                location: SourceLocation::new(file, line, 1),
+                owner: Some(SymbolId("owner::fn".to_string())),
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Value,
+                before: None,
+                after: Some("true".to_string()),
+                expression: "x > 0".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            },
+            class,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::High, "reachable"),
+                infect: StageEvidence::new(StageState::Yes, Confidence::High, "infectable"),
+                propagate: StageEvidence::new(StageState::Yes, Confidence::Medium, "propagatable"),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(StageState::Weak, Confidence::Medium, "observed"),
+                    discriminate: StageEvidence::new(
+                        StageState::Weak,
+                        Confidence::Medium,
+                        "discriminated",
+                    ),
+                },
+            },
+            confidence: 1.0,
+            evidence: Vec::new(),
+            missing: Vec::new(),
+            flow_sinks: Vec::new(),
+            activation: ActivationEvidence::default(),
+            stop_reasons: Vec::new(),
+            related_tests,
+            recommended_next_step: None,
+            language: None,
+            language_status,
+            owner_kind: None,
+            static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
+        }
+    }
+
+    fn make_snapshot_with_findings(root: &str, findings: Vec<Finding>) -> AnalysisSnapshot {
+        // Build a diagnostics_by_uri that satisfies is_consistent():
+        // one diagnostic per finding, each carrying "finding_id".
+        let mut diagnostics_by_uri = BTreeMap::new();
+        for finding in &findings {
+            let file = &finding.probe.location.file;
+            let absolute = if file.is_absolute() {
+                file.clone()
+            } else {
+                PathBuf::from(root).join(file)
+            };
+            if let Ok(uri) = file_uri_for_path(&absolute) {
+                let line = finding.probe.location.line.saturating_sub(1) as u32;
+                let diag = Diagnostic {
+                    range: Range {
+                        start: Position { line, character: 0 },
+                        end: Position {
+                            line,
+                            character: 120,
+                        },
+                    },
+                    severity: None,
+                    code: None,
+                    code_description: None,
+                    source: Some("ripr".to_string()),
+                    message: "test".to_string(),
+                    related_information: None,
+                    tags: None,
+                    data: Some(serde_json::json!({ "finding_id": finding.id })),
+                };
+                diagnostics_by_uri
+                    .entry(uri)
+                    .or_insert_with(Vec::new)
+                    .push(diag);
+            }
+        }
+        AnalysisSnapshot {
+            root: PathBuf::from(root),
+            input_identity: None,
+            base: None,
+            mode: Mode::Draft,
+            refresh: RefreshMetadata::default(),
+            findings,
+            analysis_outcome: None,
+            diagnostic_profile: crate::config::LspDiagnosticProfile::Full,
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::<ValidatedGapArtifact>::new(),
+            gap_artifact_rejections: Vec::<GapArtifactRejection>::new(),
+            harness_facts: super::super::state::HarnessFactsOnSnapshot::NotRegistered,
+            diagnostics_by_uri,
+            delivery_selection: None,
+            seams_deferred: false,
+            partial_scope: None,
+            component_outcomes: Vec::new(),
+            out_of_scope_test_file_findings: 0,
+        }
+    }
+
+    #[test]
+    fn lens_view_identity_ignores_wall_clock_age() -> Result<(), String> {
+        // The wall-clock trap (#2032): a byte-identical re-commit differs only
+        // in refresh metadata, which feeds the rendered `· as of Xs ago`
+        // title suffix. The structured identity must NOT change, or every
+        // snapshot would falsely trigger a codeLens refresh.
+        let root = "/workspace";
+        let finding = make_finding("src/lib.rs", 10, ExposureClass::Exposed, 2, None);
+        let first = make_snapshot_with_findings(root, vec![finding.clone()]);
+        let mut second = make_snapshot_with_findings(root, vec![finding]);
+        second.refresh.generated_at = first
+            .refresh
+            .generated_at
+            .checked_add(Duration::from_hours(1))
+            .ok_or_else(|| "failed to offset test timestamp".to_string())?;
+        second.refresh.duration = Some(Duration::from_millis(42));
+
+        if lens_view_identity(&first) != lens_view_identity(&second) {
+            return Err(
+                "wall-clock-only snapshot difference must not change the lens-view identity"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lens_view_identity_tracks_semantic_lens_fields() -> Result<(), String> {
+        let root = "/workspace";
+        let base = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                2,
+                None,
+            )],
+        ));
+
+        let count_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                3,
+                None,
+            )],
+        ));
+        if base == count_changed {
+            return Err(
+                "a related-test count change must change the lens-view identity".to_string(),
+            );
+        }
+
+        let class_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::WeaklyExposed,
+                2,
+                None,
+            )],
+        ));
+        if base == class_changed {
+            return Err("a classification change must change the lens-view identity".to_string());
+        }
+
+        let line_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                11,
+                ExposureClass::Exposed,
+                2,
+                None,
+            )],
+        ));
+        if base == line_changed {
+            return Err("a lens line change must change the lens-view identity".to_string());
+        }
+
+        let preview_changed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                2,
+                Some(LanguageStatus::Preview),
+            )],
+        ));
+        if base == preview_changed {
+            return Err("a preview-marker change must change the lens-view identity".to_string());
+        }
+
+        // Findings order alone does not change the visible lens set.
+        let finding_a = make_finding("src/a.rs", 10, ExposureClass::Exposed, 1, None);
+        let finding_b = make_finding("src/b.rs", 20, ExposureClass::NoStaticPath, 0, None);
+        let ordered = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![finding_a.clone(), finding_b.clone()],
+        ));
+        let reversed = lens_view_identity(&make_snapshot_with_findings(
+            root,
+            vec![finding_b, finding_a],
+        ));
+        if ordered != reversed {
+            return Err("findings order must not change the lens-view identity".to_string());
+        }
+
+        // The snapshot's input identity is part of the view identity.
+        let mut identified = make_snapshot_with_findings(
+            root,
+            vec![make_finding(
+                "src/lib.rs",
+                10,
+                ExposureClass::Exposed,
+                2,
+                None,
+            )],
+        );
+        let config = crate::lsp::config::LspAnalysisConfig::default();
+        identified.input_identity = Some(
+            crate::lsp::input_identity::LspAnalysisInputIdentity::from_refresh_inputs(
+                PathBuf::from(root),
+                7,
+                &config,
+            ),
+        );
+        if lens_view_identity(&identified) == base {
+            return Err("an input-identity change must change the lens-view identity".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_response_reports_real_related_test_count() -> Result<(), String> {
+        let root = "/workspace";
+        let finding = make_finding("src/lib.rs", 10, ExposureClass::Exposed, 3, None);
+        let snapshot = make_snapshot_with_findings(root, vec![finding]);
+        let uri = parse_uri("file:///workspace/src/lib.rs")?;
+
+        let lenses = code_lens_response(&uri, Some(&snapshot));
+
+        if lenses.len() != 1 {
+            return Err(format!("expected exactly 1 lens, got {}", lenses.len()));
+        }
+        let title = lenses[0]
+            .command
+            .as_ref()
+            .ok_or("expected command (title) in lens")?
+            .title
+            .clone();
+        if !title.contains("3") {
+            return Err(format!("title should cite 3 related tests, got: {title}"));
+        }
+        if !title.contains("exposed") {
+            return Err(format!("title should cite class 'exposed', got: {title}"));
+        }
+        // Line should be 0-indexed (10 - 1 = 9)
+        let line = lenses[0].range.start.line;
+        if line != 9 {
+            return Err(format!("expected lens at line 9 (0-indexed), got {line}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_response_zero_related_tests_is_honest() -> Result<(), String> {
+        let root = "/workspace";
+        let finding = make_finding("src/lib.rs", 5, ExposureClass::NoStaticPath, 0, None);
+        let snapshot = make_snapshot_with_findings(root, vec![finding]);
+        let uri = parse_uri("file:///workspace/src/lib.rs")?;
+
+        let lenses = code_lens_response(&uri, Some(&snapshot));
+
+        if lenses.len() != 1 {
+            return Err(format!("expected 1 lens, got {}", lenses.len()));
+        }
+        let title = lenses[0]
+            .command
+            .as_ref()
+            .ok_or("expected command in lens")?
+            .title
+            .clone();
+        if !title.contains("no related tests found") {
+            return Err(format!(
+                "title must say 'no related tests found', got: {title}"
+            ));
+        }
+        if !title.contains("no_static_path") {
+            return Err(format!(
+                "title must include class 'no_static_path', got: {title}"
+            ));
+        }
+        // Test guard: confirm the lens title uses none of the forbidden
+        // static-language vocabulary (delegates to the shared helper, which
+        // holds the flagged terms on stable, fmt-safe array lines).
+        if !lens_title_is_static_language_clean(&title) {
+            return Err(format!(
+                "title must not use forbidden static-language vocabulary, got: {title}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_response_preview_finding_softens() -> Result<(), String> {
+        let root = "/workspace";
+        let finding = make_finding(
+            "src/service.ts",
+            20,
+            ExposureClass::Exposed,
+            1,
+            Some(LanguageStatus::Preview),
+        );
+        let snapshot = make_snapshot_with_findings(root, vec![finding]);
+        let uri = parse_uri("file:///workspace/src/service.ts")?;
+
+        let lenses = code_lens_response(&uri, Some(&snapshot));
+
+        if lenses.len() != 1 {
+            return Err(format!("expected 1 lens, got {}", lenses.len()));
+        }
+        let title = lenses[0]
+            .command
+            .as_ref()
+            .ok_or("expected command in lens")?
+            .title
+            .clone();
+        if !title.contains("preview") {
+            return Err(format!(
+                "preview finding must have 'preview' in title, got: {title}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_response_uncertain_class_does_not_claim_grip() -> Result<(), String> {
+        let root = "/workspace";
+        let finding = make_finding("src/lib.rs", 8, ExposureClass::ReachableUnrevealed, 2, None);
+        let snapshot = make_snapshot_with_findings(root, vec![finding]);
+        let uri = parse_uri("file:///workspace/src/lib.rs")?;
+
+        let lenses = code_lens_response(&uri, Some(&snapshot));
+
+        if lenses.len() != 1 {
+            return Err(format!("expected 1 lens, got {}", lenses.len()));
+        }
+        let title = lenses[0]
+            .command
+            .as_ref()
+            .ok_or("expected command in lens")?
+            .title
+            .clone();
+        if !title.contains("no static discriminator") {
+            return Err(format!(
+                "uncertain class must state 'no static discriminator', got: {title}"
+            ));
+        }
+        if !title.contains("reachable_unrevealed") {
+            return Err(format!(
+                "title must include class 'reachable_unrevealed', got: {title}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_response_no_snapshot_emits_nothing() -> Result<(), String> {
+        let uri = parse_uri("file:///workspace/src/lib.rs")?;
+        let lenses = code_lens_response(&uri, None);
+        if !lenses.is_empty() {
+            return Err(
+                "no snapshot must produce empty Vec, not a fabricated 0-count lens".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_response_filters_to_requested_file() -> Result<(), String> {
+        let root = "/workspace";
+        let finding_a = make_finding("src/a.rs", 10, ExposureClass::Exposed, 2, None);
+        let finding_b = make_finding("src/b.rs", 20, ExposureClass::NoStaticPath, 0, None);
+        let snapshot = make_snapshot_with_findings(root, vec![finding_a, finding_b]);
+
+        let uri_a = parse_uri("file:///workspace/src/a.rs")?;
+        let lenses = code_lens_response(&uri_a, Some(&snapshot));
+
+        if lenses.len() != 1 {
+            return Err(format!(
+                "expected 1 lens for file a (only its finding), got {}",
+                lenses.len()
+            ));
+        }
+        let title = lenses[0]
+            .command
+            .as_ref()
+            .ok_or("expected command in lens")?
+            .title
+            .clone();
+        if !title.contains("2") {
+            return Err(format!(
+                "lens for a.rs must cite 2 related tests, got: {title}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_response_static_language_clean() -> Result<(), String> {
+        let root = "/workspace";
+        let classes: &[(ExposureClass, usize)] = &[
+            (ExposureClass::Exposed, 3),
+            (ExposureClass::WeaklyExposed, 1),
+            (ExposureClass::ReachableUnrevealed, 2),
+            (ExposureClass::NoStaticPath, 0),
+            (ExposureClass::InfectionUnknown, 1),
+            (ExposureClass::PropagationUnknown, 0),
+            (ExposureClass::StaticUnknown, 0),
+        ];
+        for (i, (class, count)) in classes.iter().enumerate() {
+            let finding = make_finding(&format!("src/file{i}.rs"), 10, class.clone(), *count, None);
+            let snapshot = make_snapshot_with_findings(root, vec![finding]);
+            let uri = parse_uri(&format!("file:///workspace/src/file{i}.rs"))?;
+            let lenses = code_lens_response(&uri, Some(&snapshot));
+            for lens in &lenses {
+                if let Some(cmd) = &lens.command
+                    && !lens_title_is_static_language_clean(&cmd.title)
+                {
+                    return Err(format!(
+                        "forbidden vocab in lens title for class {:?}: {}",
+                        class.as_str(),
+                        cmd.title
+                    ));
+                }
+            }
+        }
+        // Also check preview tier.
+        let preview_finding = make_finding(
+            "src/preview.ts",
+            5,
+            ExposureClass::Exposed,
+            1,
+            Some(LanguageStatus::Preview),
+        );
+        let snapshot = make_snapshot_with_findings(root, vec![preview_finding]);
+        let uri = parse_uri("file:///workspace/src/preview.ts")?;
+        let lenses = code_lens_response(&uri, Some(&snapshot));
+        for lens in &lenses {
+            if let Some(cmd) = &lens.command
+                && !lens_title_is_static_language_clean(&cmd.title)
+            {
+                return Err(format!(
+                    "forbidden vocab in preview lens title: {}",
+                    cmd.title
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn base_deleted_findings_get_no_code_lens() -> Result<(), String> {
+        // #3282: a lens anchors an advisory at the finding's recorded line.
+        // A base-deleted finding's recorded coordinate is the projected
+        // new-side line (the #3212 incident shape — base line 29 against
+        // a 13-line candidate), so pinning a lens there presents
+        // deleted-side evidence at an impossible candidate position with
+        // no revision marker. Candidate-actionable eligibility gates the
+        // lens exactly as it gates diagnostics and annotations
+        // (RIPR-SPEC-0152).
+        let uri = parse_uri("file:///ws/src/lib.rs")?;
+        let mut deleted = make_finding("src/lib.rs", 29, ExposureClass::NoStaticPath, 1, None);
+        deleted.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        let current = make_finding("src/lib.rs", 3, ExposureClass::NoStaticPath, 1, None);
+        let snapshot = make_snapshot_with_findings("/ws", vec![deleted, current]);
+        let lenses = code_lens_response(&uri, Some(&snapshot));
+        let lines: Vec<u32> = lenses.iter().map(|lens| lens.range.start.line).collect();
+        assert!(
+            !lines.contains(&(29 - 1)),
+            "base_deleted finding must not receive a lens at its projected coordinate: {lines:?}"
+        );
+        assert!(
+            lines.contains(&(3 - 1)),
+            "the candidate-current twin keeps its lens: {lines:?}"
+        );
+        Ok(())
+    }
+}

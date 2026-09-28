@@ -1,0 +1,3 @@
+[languages]
+# Enable the TypeScript preview adapter for this fixture.
+enabled = ["rust", "typescript"]

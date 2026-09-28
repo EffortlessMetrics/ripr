@@ -1,0 +1,14 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,9 @@
+ pub fn quote_body(rest: &str, open: char, close: char) -> Option<&str> {
+     let start = open.len_utf8();
+     let end = rest.rfind(close)?;
+-    if end > start {
++    if end == start {
++        Some("")
++    } else if end > start {
+         Some(&rest[start..end])
+     } else {
+         None

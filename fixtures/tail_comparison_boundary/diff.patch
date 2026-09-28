@@ -1,0 +1,16 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,4 +1,4 @@
+ /// True when an order ships free.
+ pub fn ships_free(items: u32) -> bool {
+-    items > 10
++    items >= 10
+ }
+@@ -15,4 +15,4 @@ pub fn shipping(items: u32) -> u32 {
+ /// True when a basket earns a gift.
+ pub fn earns_gift(items: u32) -> bool {
+-    items > 5
++    items >= 5
+ }

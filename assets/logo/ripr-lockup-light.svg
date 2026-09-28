@@ -1,0 +1,18 @@
+<svg width="960" height="240" viewBox="0 0 960 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">ripr horizontal lockup</title>
+  <desc id="desc">A four-node RIPR rail mark paired with the ripr wordmark.</desc>
+  <rect width="960" height="240" rx="40" fill="#F5F1E8"/>
+
+  <!-- Rail mark -->
+  <g transform="translate(92 120)">
+    <path d="M0 0H248" stroke="#156B76" stroke-width="22" stroke-linecap="round"/>
+    <circle cx="0" cy="0" r="30" fill="#156B76"/>
+    <circle cx="82.667" cy="0" r="30" fill="#156B76"/>
+    <circle cx="165.333" cy="0" r="30" fill="#156B76"/>
+    <circle cx="248" cy="0" r="39" fill="#F5F1E8" stroke="#156B76" stroke-width="20"/>
+    <circle cx="248" cy="0" r="13" fill="#E1A82C"/>
+  </g>
+
+  <!-- Wordmark. Convert text to outlines in final production artwork. -->
+  <text x="410" y="154" font-family="Satoshi, Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="118" font-weight="650" letter-spacing="-0.055em" fill="#1A1A1A">ripr</text>
+</svg>

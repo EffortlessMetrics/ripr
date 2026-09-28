@@ -1,0 +1,11 @@
+{
+  "name": "unknown-runner-pkg",
+  "version": "1.0.0",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "xo": "^0.60.0"
+  },
+  "scripts": {
+    "test": "xo && npm run build"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "case": "wrong_root",
+  "state": "wrong_root",
+  "diagnostics_projected": 0,
+  "actions_projected": [
+    "refresh"
+  ],
+  "fail_closed": true
+}

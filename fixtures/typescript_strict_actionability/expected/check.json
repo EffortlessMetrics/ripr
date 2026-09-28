@@ -1,0 +1,409 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/typescript_strict_actionability/input",
+  "summary": {"changed_rust_files":0,"probes":3,"findings":3,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":3}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:a38ec3dcbfcafbd5d8c6a5b2798be0aa1df040d6d0fb263d1bb14e8346ff4d52","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":3,"changed_line_count":6,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_context.ts:typescript_preview:74e6172a",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_context.ts:typescript_preview:74e6172a",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/context.ts",
+        "line": 2,
+        "expression": "    if (amount >= 100) {",
+        "owner": "typescript:src/context.ts::thresholdLabel"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related test(s) found for owner `thresholdLabel`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+       },
+      "evidence_path": ["reach no: 0 related test(s) found for owner `thresholdLabel`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: thresholdLabel", "gap_state: advisory", "actionability_category: missing_context", "why_not_actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route", "repair_route: add trusted related-test matching for this owner shape before emitting a repair packet", "missing_actionability_fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/context.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_context.ts:typescript_preview:74e6172a;owner=thresholdLabel", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["No test references `thresholdLabel(` — add a test that calls the changed owner.", "TypeScript preview actionability `advisory` / `missing_context`: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route. Repair route: add trusted related-test matching for this owner shape before emitting a repair packet"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/context.ts:2: `if (amount >= 100) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": null,
+        "oracle_kind": "unknown",
+        "oracle_strength": "none",
+        "owner": "thresholdLabel",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": null,
+        "repair_packet_ready": false,
+        "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Add an exact boundary assertion for the changed predicate.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
+      },
+      "preview_actionability": {
+        "actionability_category": "missing_context",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "trusted related test or observer, target shape, verify command, receipt command, and edit boundaries",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "related_test_or_observer",
+          "target_test_shape",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "missing_graph_legs": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/context.ts",
+            "kind": "typescript_preview_probe",
+            "leg": null,
+            "line": 2,
+            "owner": "thresholdLabel",
+            "raw": "file=src/context.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_context.ts:typescript_preview:74e6172a;owner=thresholdLabel",
+            "sample": null,
+            "source_id": "probe:src_context.ts:typescript_preview:74e6172a"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
+        "unlock_condition": null,
+        "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_observed.ts:typescript_preview:d09a8abb",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_observed.ts:typescript_preview:d09a8abb",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/observed.ts",
+        "line": 2,
+        "expression": "    return count + 1;",
+        "owner": "typescript:src/observed.ts::normalizeCount"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"1 related test(s) found for owner `normalizeCount`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter: strong oracle found but no assertion's observed_expression flows from the changed sub-expression; observation_unverified — discriminate unknown."}
+       },
+      "evidence_path": ["reach weak: 1 related test(s) found for owner `normalizeCount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator weak: TypeScript preview adapter: strong oracle found but no assertion's observed_expression flows from the changed sub-expression; observation_unverified — discriminate unknown.", "local flow reaches returned value: return count + 1; (line 2)", "related test tests/observed.test.ts:1 normalizeCount exact value uses strong exact value oracle: expect(...).toBe(...)", "missing discriminator return value == count + 1: changed TypeScript returned-value at line 2 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return count + 1;","line":2}
+      ],
+      "evidence": ["owner: normalizeCount", "missing_discriminator: return value == count + 1", "typescript_oracle_observed: normalizeCount(4)", "typescript_oracle_expected: 5", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: tests/observed.test.ts:2", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/observed.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_observed.ts:typescript_preview:d09a8abb;owner=normalizeCount", "related_test_relation: same_file_proximity (normalizeCount exact value)", "related_test_uncertain: same_file_proximity (normalizeCount exact value)", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Only heuristic TypeScript test links were found for `normalizeCount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "return value == count + 1",
+            "reason": "changed TypeScript returned-value at line 2 lacks a concrete preview discriminator",
+            "flow_sink": {"kind":"return_value","text":"return count + 1;","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "return value == count + 1",
+          "reason": "changed TypeScript returned-value at line 2 lacks a concrete preview discriminator",
+          "flow_sink": {"kind":"return_value","text":"return count + 1;","line":2}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "normalizeCount exact value",
+          "file": "tests/observed.test.ts",
+          "line": 1,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "expect(...).toBe(...)"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "return_value changed at src/observed.ts:2: `return count + 1;`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "return value == count + 1",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "owner": "normalizeCount",
+        "owner_kind": "function",
+        "probe_family": "return_value",
+        "related_test": {
+          "file": "tests/observed.test.ts",
+          "line": 1,
+          "name": "normalizeCount exact value"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Exact-value evidence is present; verify it targets the changed discriminator.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
+      "preview_actionability": {
+        "actionability_category": "incomplete_repair_packet",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "canonical_gap_id",
+          "repair_kind",
+          "target_test_shape",
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "missing_graph_legs": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/observed.ts",
+            "kind": "typescript_preview_probe",
+            "leg": null,
+            "line": 2,
+            "owner": "normalizeCount",
+            "raw": "file=src/observed.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_observed.ts:typescript_preview:d09a8abb;owner=normalizeCount",
+            "sample": null,
+            "source_id": "probe:src_observed.ts:typescript_preview:d09a8abb"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == count + 1`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "suggested_next_action": "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == count + 1`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_pricing.ts:typescript_preview:eaef2ad8",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing.ts:typescript_preview:eaef2ad8",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing.ts",
+        "line": 2,
+        "expression": "    if (amount >= threshold) {",
+        "owner": "typescript:src/pricing.ts::discountedTotal"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"1 related test(s) found for owner `discountedTotal`"},
+        "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
+        "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `smoke_only` (rank 2)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`."}
+       },
+      "evidence_path": ["reach weak: 1 related test(s) found for owner `discountedTotal`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `smoke_only` (rank 2)", "discriminator weak: TypeScript preview adapter found no strong discriminator; missing proof: `amount == threshold`.", "related test tests/pricing.test.ts:1 discountedTotal smoke uses smoke smoke only oracle: expect(...).toBeTruthy(...)", "missing discriminator amount == threshold: changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator"],
+      "flow_sinks": [
+      ],
+      "evidence": ["owner: discountedTotal", "missing_discriminator: amount == threshold", "typescript_oracle_observed: result", "typescript_oracle_confidence: low", "typescript_oracle_evidence_ref: tests/pricing.test.ts:3", "gap_state: advisory", "actionability_category: incomplete_repair_packet", "why_not_actionable: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract", "repair_route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available", "missing_actionability_fields: canonical_gap_id, repair_kind, target_test_shape, related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints", "raw_evidence_ref: file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:eaef2ad8;owner=discountedTotal", "related_test_relation: same_file_proximity (discountedTotal smoke)", "related_test_uncertain: same_file_proximity (discountedTotal smoke)", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Only heuristic TypeScript test links were found for `discountedTotal`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract. Repair route: project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "amount == threshold",
+            "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+            "flow_sink": null
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "amount == threshold",
+          "reason": "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator",
+          "flow_sink": null
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "discountedTotal smoke",
+          "file": "tests/pricing.test.ts",
+          "line": 1,
+          "oracle_strength": "smoke",
+          "oracle_kind": "smoke_only",
+          "oracle": "expect(...).toBeTruthy(...)"
+        }
+      ],
+      "typescript_preview_card": {
+        "authority_boundary": "preview_advisory_only",
+        "bun_cross_language_grip": null,
+        "card_version": "typescript_preview_card.v1",
+        "changed_behavior": "predicate changed at src/pricing.ts:2: `if (amount >= threshold) {`",
+        "language": "typescript",
+        "language_status": "preview",
+        "limits": [
+          "Syntax-first TypeScript/JavaScript preview evidence only.",
+          "No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.",
+          "This card is advisory and is not a repair packet."
+        ],
+        "missing_discriminator": "amount == threshold",
+        "oracle_kind": "smoke_only",
+        "oracle_strength": "smoke",
+        "owner": "discountedTotal",
+        "owner_kind": "function",
+        "probe_family": "predicate",
+        "related_test": {
+          "file": "tests/pricing.test.ts",
+          "line": 1,
+          "name": "discountedTotal smoke"
+        },
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "source": "check_typescript_preview",
+        "static_limits": [],
+        "suggested_assertion_shape": "Replace or augment the truthiness check with an exact-value toBe/toEqual/toStrictEqual assertion.",
+        "verify": {
+          "command": null
+        },
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
+      "preview_actionability": {
+        "actionability_category": "incomplete_repair_packet",
+        "authority_boundary": "preview_advisory_only",
+        "evidence_needed_to_promote": "canonical gap identity, repair kind, target test shape, related observer, verify command, receipt command, raw evidence refs, and edit constraints",
+        "gap_state": "advisory",
+        "missing_actionability_fields": [
+          "canonical_gap_id",
+          "repair_kind",
+          "target_test_shape",
+          "related_test_or_observer",
+          "verify_command",
+          "receipt_command",
+          "must_not_change",
+          "allowed_edit_surface",
+          "raw_evidence_refs"
+        ],
+        "missing_graph_legs": [],
+        "raw_evidence_refs": [
+          {
+            "file": "src/pricing.ts",
+            "kind": "typescript_preview_probe",
+            "leg": null,
+            "line": 2,
+            "owner": "discountedTotal",
+            "raw": "file=src/pricing.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:eaef2ad8;owner=discountedTotal",
+            "sample": null,
+            "source_id": "probe:src_pricing.ts:typescript_preview:eaef2ad8"
+          }
+        ],
+        "repair_packet_ready": false,
+        "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+        "unlock_condition": null,
+        "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract"
+      },
+      "stop_reasons": [],
+      "oracle_kind": "smoke_only",
+      "oracle_strength": "smoke",
+      "recommended_next_step": "TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "suggested_next_action": "TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.",
+      "language": "typescript",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "source_currentness": "candidate_current"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "typescript",
+      "file_count": 3,
+      "sample_paths": ["src/context.ts", "src/observed.ts", "src/pricing.ts"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

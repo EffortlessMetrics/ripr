@@ -1,0 +1,15 @@
+{
+  "id": 20661783,
+  "name": "release-transaction-pins",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": ["refs/tags/ripr-release-old"],
+      "include": ["refs/tags/ripr-release-*", "refs/tags/other-*"]
+    }
+  },
+  "rules": [
+    {"type": "update"}
+  ]
+}

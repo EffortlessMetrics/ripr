@@ -1,0 +1,38 @@
+name: Output contract change
+description: Change human, JSON, GitHub, SARIF, LSP, or context-packet output
+title: "output: "
+labels: ["scope:output-contract"]
+body:
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract being changed
+      description: Which output surface changes?
+    validations:
+      required: true
+  - type: textarea
+    id: goldens
+    attributes:
+      label: Required golden updates
+      value: |
+        - Human:
+        - JSON:
+        - Context packet:
+        - LSP diagnostic:
+        - GitHub/SARIF:
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility
+      description: Does this require a schema, diagnostic-code, or context-packet version change?
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should this issue not expand into?
+    validations:
+      required: true

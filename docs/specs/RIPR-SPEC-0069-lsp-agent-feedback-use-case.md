@@ -1,0 +1,445 @@
+# RIPR-SPEC-0069: LSP / Agent Feedback Use Case
+
+Status: proposed
+
+Owner: product / swarm
+
+Created: 2026-06-06
+
+Linked proposal:
+
+- None yet
+
+Linked ADRs:
+
+- None yet
+
+Linked plan:
+
+- plans/use-case-specs/implementation-plan.md (planned)
+
+Linked issues:
+
+- None yet
+
+Linked PRs:
+
+- None yet
+
+Support-tier impact:
+
+- None. This spec writes the user-facing contract for the existing
+  `ripr lsp --stdio` surface and its agent-facing packets. It
+  promotes no language, surface, or evidence class to a stronger
+  support tier. Preview evidence shown through the LSP stays
+  advisory under the canonical boundary in
+  [support tiers](../status/SUPPORT_TIERS.md).
+
+Policy impact:
+
+- Register this spec in `policy/doc-artifacts.toml`.
+- Nothing new beyond the spec itself: no new crate, binary,
+  dependency, parser, runtime executor, LSP server, artifact type,
+  or workflow.
+
+## Problem
+
+The LSP sidecar already exists as mechanism: `serve_stdio` in
+`crates/ripr/src/lsp.rs`, workspace diagnostics
+(`lsp/diagnostics.rs`, `workspace_diagnostic_batches`), code actions
+(`lsp/actions.rs`), gap-artifact validation (`lsp/gap_artifacts.rs`),
+hover (`lsp/hover.rs`), and snapshot state (`lsp/state.rs`). What is
+missing is the product contract that says what this surface is for
+and what it must refuse to offer.
+
+The framing decision this spec records: the LSP surface is an
+**agent cockpit first, human editor decoration second**. Squiggles
+and hovers are projections; the product is the bounded, copyable
+packet an agent can act on safely.
+
+The user question this surface owns:
+
+```text
+What is the first safe bounded action
+an agent should take in this workspace?
+```
+
+Without a written contract, the LSP can drift into decoration-only
+output (pretty diagnostics with no bounded next step) or, worse,
+into offering repair actions whose edit boundaries were never
+established.
+
+## Behavior
+
+### Surface
+
+`ripr lsp --stdio` serves a saved-workspace model over
+`tower-lsp-server`. Diagnostics come in three closed kinds, selected by the
+explicit LSP diagnostic profile:
+
+- finding-based diagnostics (`actionable` by default; `full` preserves the
+  audit/debug projection);
+- seam grip-class diagnostics (configurable via
+  `enable_seam_diagnostics`, default on
+  (`DEFAULT_LSP_SEAM_DIAGNOSTICS = true` in
+  `crates/ripr/src/config.rs`); opt out via the
+  `seamDiagnostics: false` initialization option or repo config; a
+  seam-walk failure downgrades to "no seam diagnostics this
+  refresh", never a hard failure);
+- `GapRecord` projections from validated gap artifacts.
+
+The exposed command vocabulary is closed (`crates/ripr/src/lsp.rs`):
+
+- `ripr.copyContext`
+- `ripr.copyAgentPacketCommand`
+- `ripr.copyAgentBriefCommand`
+- `ripr.copyAfterSnapshotCommand`
+- `ripr.copyAgentVerifyCommand`
+- `ripr.copyAgentReceiptCommand`
+- `ripr.copySuggestedAssertion`
+- `ripr.copyTargetedTestBrief`
+- `ripr.collectContext`
+- `ripr.collectEvidenceContext`
+- `ripr.collectWorkspaceStatus`
+- `ripr.openRelatedTest`
+- `ripr.refresh`
+
+No command outside this vocabulary may ship without amending this
+spec. Every command is read-only or copy-to-clipboard; none edits
+source.
+
+First-useful-action integration is projection-only:
+`target/ripr/reports/first-useful-action.json` is consumed
+read-only. The LSP server validates the artifact
+(`lsp/gap_artifacts.rs`) and projects it into hover and
+diagnostics; the status-bar rendering is the VS Code extension
+client's surface (`editors/vscode/src/client.ts`), not the LSP's.
+Neither generates a new report nor performs source edits.
+
+```text
+The user should be able to answer:
+- What is the first safe bounded action here?
+   -> one repair packet with edit boundaries, or one named
+      limitation when no repair is safe.
+- Is this analysis current?
+   -> runtime status; stale snapshots say so before any
+      repair work is assigned.
+- What may I touch, and what must I not change?
+   -> allowed_edit_surface and must_not_change on every
+      actionable packet.
+- How do I verify and receipt the attempt?
+   -> copyable verify command and receipt command.
+```
+
+### What the LSP must expose
+
+For the agent-cockpit contract, the surface must expose:
+
+- the first useful repair packet (when one is safely derivable);
+- the top named limitation when no repair is safe;
+- runtime status (fresh versus stale snapshot; stale status routes
+  to `ripr.refresh` before repair work is assigned);
+- `allowed_edit_surface` on every actionable packet;
+- `must_not_change` on every actionable packet;
+- a verify command;
+- a receipt command;
+- a copyable packet (`ripr.copyAgentPacketCommand` and
+  `ripr.copyAgentBriefCommand`) so the agent leaves the editor with
+  the full bounded brief, not a paraphrase.
+
+Diff-scoped finding diagnostics additionally expose a producer-owned
+discriminator witness when one is available. The witness carries the exact
+changed expression and before/after facts, expected sink, named missing
+discriminators, producer-identified test fix site, current oracle, exact
+oracle source location when available, explain command, confidence basis, and
+named limitations. The same typed witness is projected into diagnostic data,
+hover, context packets, and copy-context actions without renderer-specific
+derivation.
+
+The server also emits the versioned `ripr/analysisStatus` notification and
+returns the same `analysis_status` object from `ripr.collectWorkspaceStatus`.
+Its stable fields are:
+
+```json
+{
+  "schema_version": "0.1",
+  "kind": "analysis_status",
+  "attempt_id": "7",
+  "state": "failed",
+  "reason": "did_save",
+  "requested_scope": "interactive",
+  "snapshot_id": "snapshot:6",
+  "last_success_snapshot_id": "snapshot:6",
+  "current_input_identity": "input:<current-input-fingerprint>",
+  "last_success_input_identity": "input:<snapshot-input-fingerprint>",
+  "last_success_age_ms": 1234,
+  "run_status": "stale",
+  "failure": { "kind": "analysis_error", "message": "bounded detail" },
+  "pending": false,
+  "retry_command": "ripr.refresh",
+  "repair_actions_available": false,
+  "root_state": "selected_single_root",
+  "effective_root": "<selected-workspace-root>",
+  "candidate_roots": [],
+  "root_input_identity": "root:<selected-workspace-root>",
+  "root_detail": null,
+  "root_recovery_route": "refresh",
+  "input_authority": {
+    "configuration_state": "valid",
+    "repository_config_source": "<root>/ripr.toml",
+    "session_options_present": true,
+    "current": {
+      "input_identity": "input:<current-input-fingerprint>",
+      "root_identity": "root:<root-fingerprint>",
+      "effective_root": "<selected-workspace-root>",
+      "requested_base": "origin/main",
+      "resolved_base": "<resolved-commit>",
+      "mode": "draft",
+      "profile": "actionable",
+      "enabled_languages": ["rust"],
+      "manifest_identity": "<manifest-fingerprint>",
+      "lockfile_identity": "<lockfile-fingerprint>",
+      "analyzer_version": "<ripr-version>",
+      "schema_version": "lsp-analysis-input-v1"
+    },
+    "last_success": {
+      "input_identity": "input:<snapshot-input-fingerprint>"
+    }
+  }
+}
+```
+
+`state` describes the current attempt, while `snapshot_id` identifies the
+last retained analysis. A failed, cancelled, or superseded attempt never
+replaces that snapshot and sets `run_status` to `stale` (or `no_snapshot` if
+there is no completed snapshot). The notification is the typed authority for
+attempt health and stale/failure state; `window/logMessage` remains
+human-readable diagnostic output. A successful typed status may still be
+followed by the completion log, which provides rich counts such as actionable
+gap artifacts and enabled languages for clients that project those details. A
+completion log must not override a typed failed, cancelled, or superseded
+state. Timing and queue fields belong only in this health surface, never in
+diagnostic or semantic gap identities.
+
+`current_input_identity` identifies the effective root, saved-workspace
+revision, repository and session configuration, requested/resolved base,
+language/profile selection, relevant Cargo manifest and lockfile content,
+analyzer version, and identity schema used by the current request. The value
+is an opaque stable fingerprint; it does not expose configuration contents or
+absolute paths. `last_success_input_identity` is the corresponding producer
+identity stored on the retained snapshot. They must differ visibly when a
+newer request has different inputs, even while the last-good snapshot remains
+available for stale inspection.
+
+`input_authority` is the bounded recovery view for the same producer-owned
+identity. It exposes configuration source presence and the non-secret input
+components needed to diagnose a stale or invalid session; it does not expose
+repository configuration text. `current` is null while configuration is
+invalid or no effective root is selected. `last_success` remains the retained
+snapshot's exact input view when one exists, and an invalid or changed current
+input must not make that retained view authorize current repair actions.
+
+The server owns one explicit workspace-root state for each session. A single
+valid `workspaceFolders` entry is selected; a valid `rootUri` is the
+compatibility fallback when workspace folders are absent. Multiple workspace
+folders, invalid or inaccessible roots, and removal of the selected root are
+typed states that publish no ordinary repair diagnostics and suppress repair
+actions. The server advertises `workspace/didChangeWorkspaceFolders` support,
+invalidates scheduler generations and retained snapshots when root authority
+changes, and verifies projected diagnostic and related-information URIs remain
+inside the selected root. Absolute checkout spelling participates in the
+session root input identity but never changes canonical semantic gap identity.
+
+"Repair packet" here is the canonical RIPR-SPEC-0061 contract, not
+a separate LSP shape. A complete packet carries the full
+RIPR-SPEC-0061 field list — `packet_id`, `canonical_gap_id`,
+`repair_kind`, `target_test_shape`, `related_test_or_observer`,
+`verify_command`, `receipt_command`, `confidence`,
+`must_not_change[]`, `allowed_edit_surface[]`, and structured
+`raw_evidence_refs[]`. The bullets above name the fields this
+surface enforces on every offer; the packet contract itself is
+owned by RIPR-SPEC-0061 and is not restated or narrowed here.
+
+`lsp/gap_artifacts.rs` already validates that an actionable packet
+must carry `allowed_edit_surface` and `must_not_change`; this spec
+makes that the product rule for every action the LSP offers, not
+just artifact ingestion.
+
+### Fail closed
+
+- No complete packet -> show the named limitation, not a repair
+  action. Missing fields are listed by name (for example:
+  `missing_actionability_fields: verify_command, receipt_command,
+  must_not_change`).
+- Preview evidence (TypeScript/Bun, Perl, cross-language) ->
+  advisory only; no agent repair packet, no edit surface, no
+  receipt synthesis.
+- Missing edit surface -> no action. A packet without
+  `allowed_edit_surface` and `must_not_change` is context, never an
+  instruction.
+- Stale or absent snapshot -> refresh-only guidance; a diagnostic
+  without a current snapshot offers `ripr.refresh`, nothing else.
+- Invalid or unvalidated gap artifact -> rejected with the named
+  validation failure; never projected as an actionable diagnostic.
+- Missing or ambiguous witness evidence -> retain the named limitation and
+  omit the unavailable field. A renderer must not infer an exact assertion,
+  target test, or source location from path, line, class, or prose proximity.
+- A witness is evidence context only. It never creates an edit action or
+  changes gate authority; suggested assertions remain absent until a producer
+  supplies a symbol-resolved template.
+
+### Required and forbidden wording
+
+Required wording examples:
+
+- "First safe action: add a boundary assertion near
+  `tests/pricing.rs::discount_above_threshold`. Allowed edit
+  surface: `tests/pricing.rs`. Must not change:
+  `src/pricing.rs`. Verify: `cargo test -p ripr ...`."
+- "No safe bounded action: cross-language test target unresolved.
+  Route: analysis/cross-language-target-resolution."
+- "Editor status is stale; refresh analysis before assigning repair
+  work."
+
+Forbidden wording examples:
+
+- "Apply this fix" with no edit boundary attached.
+- "This change is fully tested" or any runtime-adequacy claim from
+  static evidence.
+- Presenting a preview-language hover as a repair instruction.
+
+### Non-claims
+
+The LSP surface does not claim analyzer authority of its own: every
+diagnostic, hover, action, and packet is a projection of canonical
+actionability (RIPR-SPEC-0061) plus runtime completeness. It does
+not re-derive state from raw findings, and an empty diagnostic set
+is a scope statement, never an all-clear.
+
+## Non-Goals
+
+- No autonomous edits. The LSP never modifies source; every command
+  is read-only or copy-only.
+- No generated test patches. Suggested assertion shapes are
+  guidance text, not applied edits.
+- No provider integration: no model calls from the LSP, and no
+  packet field that requires one.
+- No second analyzer: the LSP projects existing reports and
+  snapshots; it adds no new analysis truth.
+- No new report generation from the first-useful-action
+  integration; it remains a read-only projection.
+- The `actionable` profile does not publish route-less findings or seam
+  diagnostics; `full` remains available for analyzer investigation and audit.
+  The separate `enable_seam_diagnostics` setting still controls whether seam
+  inventory is computed in the `full` profile.
+
+## Required Evidence
+
+- This spec registered in `docs/specs/README.md` and
+  `policy/doc-artifacts.toml`.
+- Existing LSP tests (`crates/ripr/src/lsp/tests.rs`,
+  `lsp/gap_artifacts.rs` validation tests) mapped to the packet
+  contract as implementation slices land.
+- Fixture-backed examples for: a complete actionable packet, a
+  named-limitation state, a stale-snapshot refresh-only state, and
+  a preview-evidence advisory state.
+
+Fail-closed verifier reject list — the surface must refuse to render
+these states as an actionable offer:
+
+- a repair action without both `allowed_edit_surface` and
+  `must_not_change`;
+- an actionable packet missing a verify command or receipt command
+  (must surface as `missing_actionability_fields: ...`);
+- a repair action derived from preview evidence
+  (`language_status = "preview"` or
+  `authority_boundary = "preview_advisory_only"`);
+- a repair action offered against a stale or absent snapshot
+  (refresh-only guidance is the only allowed offer);
+- a gap artifact that fails validation projected as a diagnostic;
+- a first-useful-action status item synthesized without the
+  underlying `target/ripr/reports/first-useful-action.json`;
+- an empty diagnostic set presented as "workspace clean" instead of
+  a scope statement;
+- a command outside the closed command vocabulary.
+
+## Acceptance Examples
+
+- An agent connects to `ripr lsp --stdio`, queries diagnostics, and
+  invokes `ripr.copyAgentPacketCommand` on the top diagnostic. The
+  copied packet names the gap, the allowed edit surface, the
+  must-not-change set, the verify command, and the receipt command.
+  The agent edits only within the surface, runs verify, then
+  receipts.
+- The same workspace with an unresolved cross-language target
+  yields a hover that names the limitation and its route; no copy
+  command produces a repair instruction for it.
+- A diagnostic raised before the snapshot was refreshed offers only
+  `ripr.refresh`; after refresh the full action set returns.
+- A successful snapshot followed by a failed refresh retains its diagnostics
+  and inspection context, reports `state: "failed"` with `run_status: "stale"`,
+  and suppresses repair actions until a later successful snapshot.
+- A human in VS Code sees the first-useful-action title in the
+  status bar (rendered by the extension client, sourced read-only
+  from `target/ripr/reports/first-useful-action.json`); opening it
+  routes to the same bounded packet the agent would copy.
+- An actionable-gaps artifact with an empty `allowed_edit_surface`
+  is rejected at validation with the named error
+  ("actionable packet must carry allowed_edit_surface") and never
+  becomes a diagnostic.
+
+## Test Mapping
+
+- None yet. This spec is docs-only; traceability entries are added
+  when the implementation slices land tests against the packet
+  contract, the closed command vocabulary, and the reject list
+  above.
+
+## Implementation Mapping
+
+- docs/specs/RIPR-SPEC-0069-lsp-agent-feedback-use-case.md — this
+  document.
+- plans/use-case-specs/implementation-plan.md (planned) — the
+  "LSP agent packet" slice: make every offered action carry the
+  full bounded packet (edit surface, must-not-change, verify,
+  receipt) or degrade to a named limitation, and add the
+  reject-list checks to LSP tests.
+- Existing mechanism: `crates/ripr/src/lsp.rs` (`serve_stdio`,
+  command vocabulary), `crates/ripr/src/lsp/diagnostics.rs`,
+  `crates/ripr/src/lsp/actions.rs`,
+  `crates/ripr/src/lsp/gap_artifacts.rs`,
+  `crates/ripr/src/lsp/hover.rs`, `crates/ripr/src/lsp/state.rs`.
+
+## Metrics
+
+- Packet completeness rate: share of offered actions carrying edit
+  surface, must-not-change, verify, and receipt (target: 100% by
+  construction once the reject list is enforced).
+- Limitation honesty: share of no-action states that name a
+  limitation and route rather than rendering nothing.
+- Stale-snapshot safety: zero repair actions offered against stale
+  snapshots in tests.
+- Agent outcome quality (with RIPR-SPEC-0073, a sibling proposed
+  spec in this use-case stack): receipt closure or improvement rate
+  for packets copied from the LSP surface.
+- Promotion rule: move this spec to `accepted` when the closed
+  command vocabulary, the packet-completeness rule, and the
+  reject-list checks are enforced by LSP tests, and the linked plan
+  slice is complete.
+
+## Failure Modes
+
+- Decoration drift: diagnostics ship without bounded packets — the
+  packet-completeness metric and reject list make this a named
+  defect, not a style choice.
+- Boundary erosion: an action offers an edit without
+  `allowed_edit_surface` / `must_not_change` — validation in
+  `gap_artifacts.rs` plus the reject list fail closed.
+- Preview leakage: preview evidence reaches an agent as a repair
+  instruction — non-claim fields and the advisory-only rule keep it
+  context.
+- Stale authority: an agent acts on an outdated snapshot — runtime
+  status plus refresh-only guidance route the agent to
+  `ripr.refresh` first.
+- Vocabulary creep: new commands appear without a spec change — the
+  closed command list in this spec is the review checkpoint.

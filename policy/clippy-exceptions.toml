@@ -1,0 +1,43 @@
+schema_version = "1.0"
+policy = "clippy-exceptions"
+owner = "core/rust"
+status = "active"
+
+# Recorded Clippy lint exceptions.
+#
+# An exception is a per-call-site `#[expect(...)]` or `#[allow(...)]` that
+# is intentionally retained instead of fixed. Bare `#[allow(...)]` without
+# a `reason = "..."` is forbidden by `clippy::allow_attributes_without_reason`.
+#
+# No live exceptions. `cargo xtask check-covered-by` still parses this file.
+# Add a row only for a suppression that is intentionally retained instead of
+# fixed. Each entry must record:
+#   id              stable identifier referenced in PR descriptions
+#   lint            full clippy lint name
+#   path            file the suppression appears in
+#   selector        function or item the suppression covers
+#   owner           team/area responsible for the suppression
+#   reason          one-line justification (matches the `reason = "..."` in
+#                   the source attribute)
+#   covered_by      check or test that exercises the path with the
+#                   suppression in place
+#   expires         (optional) date the exception must be re-justified
+#
+# This file is the reviewable counterpart to `.ripr/allow-attributes.txt`.
+# `cargo xtask check-covered-by` parses it as TOML: required nonblank
+# fields, unique ids, optional ISO `expires` dates that are not in the
+# past, and test-valued `covered_by` resolution. It does not match every
+# count-allowlist row; `.ripr/allow-attributes.txt` remains the counted
+# source-suppression budget.
+
+# Example shape (commented so it does not collide with live rows):
+#
+# [[exception]]
+# id = "clippy-exception-example"
+# lint = "clippy::needless_pass_by_value"
+# path = "crates/ripr/src/cli/mod.rs"
+# selector = "fn run_with_args"
+# owner = "core/cli"
+# reason = "CLI dispatch takes ownership intentionally to align with subcommand signatures."
+# covered_by = "cargo test -p ripr cli_smoke"
+# expires = "2027-03-31"

@@ -1,0 +1,31 @@
+# Architecture Decision Records
+
+ADRs record decisions that should not be rediscovered or re-litigated in every
+PR. They should be short, dated, and focused on consequences.
+
+## Index
+
+| ADR | Status | Decision |
+| --- | --- | --- |
+| [0001](0001-one-published-package.md) | accepted | Keep one published package with internal module seams. |
+| [0002](0002-static-exposure-language.md) | accepted | Use conservative static exposure language. |
+| [0003](0003-fixtures-before-analyzer-rewrites.md) | accepted | Build fixture lab before parser and flow rewrites. |
+| [0004](0004-docs-as-planning-artifacts.md) | accepted | Track PR-by-PR implementation through docs, specs, and metrics. |
+| [0005](0005-scoped-evidence-heavy-prs.md) | accepted | Scope PRs by production risk, not line count. |
+| [0006](0006-rust-syntax-substrate.md) | accepted | Use `ra_ap_syntax` behind the syntax adapter for Campaign 2. |
+| [0007](0007-lsp-server-framework.md) | accepted | Use `tower-lsp-server` for the LSP sidecar. |
+| [0008](0008-typescript-parser-substrate.md) | accepted | Use `oxc_parser` for the TypeScript preview adapter. |
+| [0009](0009-python-parser-substrate.md) | accepted | Use `rustpython-parser` for the Python preview adapter. |
+| [0010](0010-fixture-first-evidence-confidence.md) | accepted | Keep Lane 1 evidence confidence fixture-first and class-scoped. |
+| [0011](0011-editor-preview-routing-is-projection-only.md) | accepted | Keep editor preview routing projection-only. |
+| [0012](0012-editor-gap-projection-is-read-only.md) | accepted | Keep editor gap projection read-only. |
+| [0013](0013-editor-setup-diagnostics-are-read-only.md) | accepted | Keep editor setup diagnostics read-only. |
+| [0014](0014-editor-first-pr-projection-is-read-only.md) | accepted | Keep editor first-pr packet projection read-only. |
+| [0015](0015-start-here-surfaces-use-canonical-gap-records.md) | accepted | Keep start-here surfaces centered on canonical gap records. |
+| [0016](0016-editor-adoption-assurance-remains-read-only.md) | accepted | Keep editor adoption assurance read-only. |
+| [0017](0017-editor-gap-queue-is-read-only.md) | accepted | Keep editor actionable gap queue projection read-only. |
+| [0018](0018-perl-lsp-fact-substrate.md) | proposed | Use `perl-lsp` batch fact export as the Perl intelligence substrate. |
+| [0019](0019-language-adapters-reuse-shared-packet-contract.md) | accepted | Language adapters reuse the shared packet contract: one validator, shared renderers, parity test. |
+| [0020](0020-repair-artifacts-carry-producer-identity.md) | accepted | Repair artifacts carry producer identity, repository revision, worktree state, and a bounded content commitment. |
+| [0021](0021-static-and-executed-assurance-axes.md) | accepted | Keep static movement, executed verification, receipt issuance, and external runtime mutation on separate axes. |
+| [0022](0022-mcp-is-a-bounded-projection.md) | accepted | Keep MCP as a bounded projection over shared RIPR authority. |

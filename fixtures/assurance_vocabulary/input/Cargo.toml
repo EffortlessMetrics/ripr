@@ -1,0 +1,8 @@
+[package]
+name = "assurance_vocabulary_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "assurance_vocabulary_fixture"
+path = "src/lib.rs"

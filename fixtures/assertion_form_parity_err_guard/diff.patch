@@ -1,0 +1,28 @@
+diff --git a/src/lib.rs b/src/lib.rs
+new file mode 100644
+--- /dev/null
++++ b/src/lib.rs
+@@ -0,0 +1,7 @@
++pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {
++    if amount >= discount_threshold {
++        amount - 10
++    } else {
++        amount
++    }
++}
+diff --git a/tests/pricing.rs b/tests/pricing.rs
+new file mode 100644
+--- /dev/null
++++ b/tests/pricing.rs
+@@ -0,0 +1,10 @@
++use parity_err_guard::discounted_total;
++
++#[test]
++fn boundary_matches_expected() -> Result<(), String> {
++    let actual = discounted_total(100, 100);
++    let expected = 90;
++    if actual != expected {
++        return Err(format!("actual={actual:?}"));
++    }
++    Ok(())
++}

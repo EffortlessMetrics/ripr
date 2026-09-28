@@ -1,0 +1,72 @@
+schema_version = "2.0"
+id = "ripr.slice.code-action-resolve.v1"
+generation = 1
+
+source_issue = "issue:1751"
+design_reference = "RIPR-SPEC-0129"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Extends the editor integration contract (RIPR-SPEC-0129) with the
+codeAction/resolve revalidation statement (#1751): the server advertises
+resolveProvider: true, but resolve is revalidation, never command
+stripping — textDocument/codeAction keeps emitting fully-resolved actions
+so clients without resolve support keep working, and a resolve-capable
+client revalidates before executing. The resolve handler fails closed with
+InvalidParams on a missing, foreign-versioned, malformed, or
+fingerprint-inconsistent data payload, and re-checks a well-formed action
+against the same health/root gate as textDocument/codeAction, the snapshot
+input_identity, the addressed artifact (validated gap artifact, classified
+seam, or finding), and the negotiated client-command permission; a lapsed
+check returns the action in the inert disabled form naming stale_snapshot
+or client_capability_missing from the existing emitted disabled-reason
+vocabulary. The refresh action addresses no snapshot artifact and stays
+enabled as the recovery path out of staleness. Adds one typed payload
+parse/validate authority in lsp/action_contract.rs, one resolve helper in
+lsp/actions.rs reusing the shared disabled-form and command-permission
+machinery, the backend handler, the capability advertisement, spec and
+traceability amendments, and tests; it changes no wire output of
+textDocument/codeAction and no golden.
+"""
+
+non_goals = [
+  "command stripping or lazy edit computation (resolve is revalidation only)",
+  "new disabled-reason vocabulary (stale_document stays reserved; no producer)",
+  "textDocument/codeAction wire-output or golden changes",
+  "VS Code extension changes",
+  "quickfix repair-action resolve content (#1904 owns fix-site resolution)",
+]
+
+return_conditions = [
+  "Return to root if a golden or the textDocument/codeAction wire output drifts.",
+  "Return to root if the fail-closed InvalidParams shape cannot mirror the unsupported-command rejection.",
+  "Return to root if revalidation appears to need a new disabled reason outside the emitted vocabulary.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:code-action-resolve-revalidation",
+]
+
+shared_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+  "seam:ripr:lsp:code-action-client-command-filter",
+  "seam:ripr:lsp:code-action-disabled-policy",
+]
+
+forbidden_seams = [
+  "seam:ripr:editors:vscode-extension",
+  "seam:ripr:fixtures:goldens",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

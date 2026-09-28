@@ -1,0 +1,8 @@
+[package]
+name = "rust_constructor_field_wrong_field_observer_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "rust_constructor_field_wrong_field_observer_fixture"
+path = "src/lib.rs"

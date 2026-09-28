@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "editor",
+  "sequence": 3,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2351",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {
+    "safe_defer_post_0_11": 1
+  },
+  "records": [
+    {
+      "commit_sha": "ce3f1bdd109b73e453a074ee1102f8a9eb55fc14",
+      "pr": "EffortlessMetrics/ripr-swarm#2199",
+      "title": "ux(vscode): editor and context menus, default keybindings, and manifest contract tests",
+      "primary_category": "editor",
+      "change_class": "production_ux",
+      "candidate_disposition": "safe_defer_post_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "common status and repair commands are discoverable from editor context menus and default keybindings",
+      "reason": "Useful first-use affordance, but independently deferrable if packaged extension docs preserve the palette and code-action paths honestly.",
+      "non_claim": "VS Code exposes no diagnostic-source context key, so menu gating remains language/context based rather than proof of a RIPR diagnostic target.",
+      "secondary_impacts": ["vscode_manifest", "VSIX", "manifest_tests", "README"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

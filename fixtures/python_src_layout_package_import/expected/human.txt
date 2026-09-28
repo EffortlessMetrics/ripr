@@ -1,0 +1,44 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_src_layout_package_import/input
+
+Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: python: 2.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 2 changed file(s), 4 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
+  File: src/pricing/discounts.py:2
+  Language: python
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/pricing/discounts.py:bulk_discount:predicate_boundary:predicate:quantity>100
+  Changed behavior: if quantity > 100:
+  Missing discriminator: A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test…
+  Related test: tests/test_discounts.py:4 test_bulk_discount_large_order
+  Suggested test file: tests/test_discounts.py
+  Suggested test: test_bulk_discount_large_order
+  Test node: tests/test_discounts.py::test_bulk_discount_large_order
+  Verify command: pytest tests/test_discounts.py::test_bulk_discount_large_order (high)
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `quantity == 100`.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `bulk_discount`
+    - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.
+    - 6 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_src_layout_package_import/input --diff fixtures/python_src_layout_package_import/diff.patch --mode fast probe:src_pricing_discounts.py:python_preview:230c5b86
+  ripr context --root fixtures/python_src_layout_package_import/input --diff fixtures/python_src_layout_package_import/diff.patch --mode fast --at probe:src_pricing_discounts.py:python_preview:230c5b86
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 2 Python files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

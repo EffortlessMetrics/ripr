@@ -1,0 +1,289 @@
+# Clippy and Lint Policy
+
+`ripr` runs panic safety on a **dual-rail** design. Both rails must pass for a
+PR to land, and both rails describe the same policy from different angles.
+
+## The two rails
+
+```text
+Rail A — Clippy (code-shape, fast feedback)
+  Catches panic-family code shapes (panic!, unreachable!, todo!, dbg!,
+  unimplemented!, etc.) close to the editor and on every `cargo clippy`.
+  Levels live in `[workspace.lints.clippy]` in Cargo.toml and apply to every
+  crate via `[lints] workspace = true`.
+
+Rail B — Semantic checker (authoritative, identity-stable)
+  `cargo xtask check-no-panic-family` parses the AST and matches each call
+  site against `policy/no-panic-allowlist.toml` using
+  `path + family + selector` identity. Line/column drift is advisory; the
+  allowlist still matches when code moves.
+  Schema and selectors: docs/NO_PANIC_SEMANTIC_ALLOWLIST.md.
+```
+
+The two rails serve different purposes:
+
+- Clippy is the **fast** rail. It surfaces problems in IDEs and on the first
+  `cargo clippy` invocation, before any xtask runs.
+- The semantic checker is the **stable** rail. It owns the allowlist of
+  intentional exceptions, with classification and selector identity that
+  survives refactors.
+
+A panic-family call site is acceptable only if it satisfies **both rails**.
+
+## What the policy says
+
+- Production code may not panic, unwrap, expect, `panic!`, `todo!`,
+  `unimplemented!`, or `unreachable!` outside an explicit, allowlisted
+  exception with a written explanation.
+- Test code follows the same rule. There are no test carveouts.
+  [`clippy.toml`](../clippy.toml) deliberately does not enable
+  `allow-unwrap-in-tests`, `allow-expect-in-tests`, `allow-panic-in-tests`,
+  `allow-dbg-in-tests`, or `allow-indexing-slicing-in-tests`. The same file
+  pins `msrv = "1.95"` so newer Clippy releases — when run via `rustup` or
+  in an advisory CI lane on a more recent toolchain — do not suggest APIs
+  that violate the workspace's declared minimum supported Rust version.
+- Every suppression carries a written reason. `clippy::allow_attributes_without_reason`
+  is denied at the workspace level, so `#[allow(...)]` and `#[expect(...)]`
+  must include `reason = "..."`.
+- Blanket category enables (`clippy::all`, `clippy::pedantic`,
+  `clippy::nursery`, `clippy::restriction`) are not used as the policy
+  surface. Lints are listed individually so the active set is reviewable.
+- `unsafe_code = "forbid"` workspace-wide. Adding an unsafe island requires
+  a separate, dedicated PR and review.
+
+## Active lints
+
+The authoritative source is `[workspace.lints.*]` in Cargo.toml. A reviewable
+ledger lives in [`policy/clippy-lints.toml`](../policy/clippy-lints.toml),
+including active 1.94 / 1.95 lint flips and deferred lints that remain planned
+with explicit blockers.
+
+Currently denied at the workspace level (selected highlights):
+
+- Panic family: `clippy::panic`, `clippy::unreachable`, `clippy::todo`,
+  `clippy::unimplemented`, `clippy::dbg_macro`,
+  `clippy::should_panic_without_expect`, `clippy::unwrap_used`,
+  `clippy::expect_used`, `clippy::get_unwrap`,
+  `clippy::unwrap_in_result`.
+- Memory / drop footguns: `clippy::mem_forget`, `clippy::forget_non_drop`,
+  `clippy::drop_non_drop`.
+- Unsafe-block hygiene (belt-and-suspenders for `unsafe_code = "forbid"`,
+  active so a future scoped unsafe island still has a receipt):
+  `unsafe_op_in_unsafe_fn`, `clippy::undocumented_unsafe_blocks`,
+  `clippy::multiple_unsafe_ops_per_block`,
+  `clippy::repr_packed_without_abi`.
+- Numeric correctness: `clippy::float_cmp`, `clippy::float_cmp_const`,
+  `clippy::float_equality_without_abs`, `clippy::lossy_float_literal`,
+  `clippy::invalid_upcast_comparisons`, `clippy::cast_sign_loss`,
+  `clippy::cast_abs_to_unsigned`, `clippy::cast_enum_truncation`,
+  `clippy::cast_nan_to_int`. Width-loss casts
+  (`cast_possible_truncation`, `cast_possible_wrap`,
+  `cast_precision_loss`) and `arithmetic_side_effects` are intentionally
+  not yet active — they fire heavily on legitimate counter-shape code
+  and warrant their own scoped flips with per-site review.
+- Silent failure: `clippy::let_underscore_future`,
+  `clippy::let_underscore_lock`, `clippy::unused_result_ok`,
+  `clippy::map_err_ignore`, `clippy::assertions_on_result_states`,
+  `clippy::lines_filter_map_ok`, `clippy::match_result_ok`.
+  `clippy::let_underscore_must_use` is
+  intentionally **not** yet active — best-effort cleanup patterns
+  (`let _ = fs::remove_dir_all(&dir)`) are pervasive across tests, and the
+  flip is recorded as `clippy-debt-0001` in
+  [`policy/clippy-debt.toml`](../policy/clippy-debt.toml). Tests asserting
+  that a `Result` is `Err` should use `.expect_err("why")` rather than
+  `assert!(x.is_err())`.
+- Format / I/O footguns: `clippy::format_in_format_args`,
+  `clippy::to_string_in_format_args`, `clippy::unused_format_specs`,
+  `clippy::suspicious_open_options`, `clippy::nonsensical_open_options`,
+  `clippy::ineffective_open_options`, `clippy::path_buf_push_overwrite`,
+  `clippy::join_absolute_paths`.
+- AST / UTF-8 / parser safety:
+  `clippy::char_indices_as_byte_indices`,
+  `clippy::sliced_string_as_bytes`, `clippy::index_refutable_slice`,
+  `clippy::out_of_bounds_indexing`. `clippy::indexing_slicing` and
+  `clippy::string_slice` are deferred — parser/diff code uses bounded
+  slice arithmetic where indices come from validated AST text ranges.
+  The flip pairs the two lints together with per-site `#[expect]`
+  receipts and is tracked in `policy/clippy-lints.toml` as planned.
+- Collection / ownership helpers: `clippy::same_length_and_capacity`,
+  `clippy::manual_ilog2`, `clippy::needless_type_cast`,
+  `clippy::decimal_bitwise_operands`, `clippy::manual_checked_ops`,
+  `clippy::manual_take`, `clippy::duration_suboptimal_units`,
+  `clippy::unnecessary_trailing_comma`.
+- API and trait correctness: `clippy::iter_not_returning_iterator`,
+  `clippy::expl_impl_clone_on_copy`, `clippy::infallible_try_from`,
+  `clippy::fallible_impl_from`, `clippy::error_impl_error`. Catches trait
+  contract mismatches that compile but silently mislead callers.
+- Async / concurrency: `clippy::await_holding_lock`,
+  `clippy::await_holding_refcell_ref`,
+  `clippy::await_holding_invalid_type`, `clippy::arc_with_non_send_sync`,
+  `clippy::rc_mutex`, `clippy::mut_mutex_lock`,
+  `clippy::readonly_write_lock`. Holding a lock or `RefCell` borrow across
+  an `.await` point is the canonical async deadlock shape; the rest catch
+  threading-primitive misuse.
+- Suppression governance: `clippy::allow_attributes_without_reason`,
+  `clippy::blanket_clippy_restriction_lints`.
+- Rust: `unsafe_code = "forbid"`, `unused_must_use`,
+  `unsafe_op_in_unsafe_fn`, `const_item_interior_mutations`,
+  `function_casts_as_integer`.
+
+`clippy::unwrap_used` and `clippy::expect_used` are denied at the Clippy
+rail. Every existing call site is receipted on **both** rails:
+
+- the semantic rail: a `[[allow]]` entry in
+  `policy/no-panic-allowlist.toml` with selector identity;
+- the clippy rail: a module-level `#[expect(clippy::unwrap_used, reason
+  = "...")]` (or `expect_used`) attribute on the enclosing
+  `#[cfg(test)]` block (or, for the `cli_smoke` integration test crate,
+  a crate-level `#![expect]`), tracked in
+  `.ripr/allow-attributes.txt`.
+
+The module-level attribute scope keeps the receipt count small (one per
+test-module surface, not one per call) while remaining auditable. A new
+panic-family call site on a production path requires both an allowlist
+entry **and** a fresh `#[expect]` receipt with a written reason; the
+semantic checker is still the authoritative gate that owns the per-site
+selector identity.
+
+## Adding an exception
+
+If a call site genuinely needs a panic-family construct:
+
+1. Add a `[[allow]]` entry to `policy/no-panic-allowlist.toml` with
+   `id`, `path`, `family`, `classification`, `owner`, `explanation`,
+   `expires`, and a stable selector.
+   See [`docs/NO_PANIC_SEMANTIC_ALLOWLIST.md`](NO_PANIC_SEMANTIC_ALLOWLIST.md).
+2. If Clippy also fires (for example `clippy::panic`), add an
+   `#[expect(clippy::<lint>, reason = "...")]` attribute on the enclosing
+   item. The reason should reference the matching allowlist explanation.
+3. CI runs `cargo clippy -- -D warnings` and `cargo xtask
+   check-no-panic-family`. Both must succeed.
+
+## Reviewing a flip from `warn` to `deny`
+
+Flipping a lint to `deny` is a behavior change. The PR doctrine in
+[CLAUDE.md](../CLAUDE.md) and [`docs/SCOPED_PR_CONTRACT.md`](SCOPED_PR_CONTRACT.md)
+applies:
+
+- Document the flip in `policy/clippy-lints.toml`.
+- Resolve every existing finding in the same PR or receipt it with a
+  reasoned suppression that points to the underlying policy entry.
+- Do not bundle unrelated cleanup. A lint flip is one production behavior.
+
+## Keeping the ledger and Cargo.toml in sync
+
+`cargo xtask check-lint-policy` (run as part of `precommit` and `check-pr`)
+verifies that:
+
+- every `[[active.<group>]]` entry in `policy/clippy-lints.toml` is
+  configured in `[workspace.lints.*]` in `Cargo.toml` at the same level;
+- every `[[planned]]` entry is **not** yet configured in `Cargo.toml`
+  (they're future flips, not active);
+- every `[workspace.lints.*]` line has a matching ledger entry;
+- every `[[planned]]` `activate_when_msrv` that is already met by
+  `[workspace.package] rust-version` has a remaining non-MSRV `blocked_by`
+  (empty or MSRV-only `blocked_by` text fails; `reason` does not satisfy
+  this check);
+- every `[[debt]]` row in `policy/clippy-debt.toml` is valid TOML with
+  unique `id` / `lint`, required nonblank fields, a `target` that is not
+  in the past, and a lint that is not already `[[active]]`, `[[planned]]`,
+  or present in `Cargo.toml`.
+
+`activate_when_msrv` on `[[planned]]` entries is compared to
+`[workspace.package] rust-version`. When the recorded MSRV is already
+met, the entry must have a remaining non-MSRV `blocked_by` or be promoted.
+A `blocked_by` that only names an MSRV or Rust version is treated as missing.
+`reason` is narrative and does not satisfy the gate. The values are not
+verified available-since (`clippy::manual_pop_if` records `1.95` while
+`blocked_by` says pinned 1.95.0 Clippy does not recognize the lint).
+
+When promoting a planned lint, move the entry from `[[planned]]` to
+`[[active.<group>]]`, add the matching `Cargo.toml` line, and update
+this doc — the gate makes Cargo.toml drift visible immediately. An
+already-met `activate_when_msrv` without `blocked_by` is overdue, not a
+silent documentary leftover.
+
+## Companion ledgers
+
+Two companion ledgers track Clippy state alongside the active/planned table:
+
+- [`policy/clippy-debt.toml`](../policy/clippy-debt.toml) records lints that
+  are intentionally **deferred** with a named owner, a blocking dependency,
+  and a target date for clearing the debt. It currently records
+  `clippy::let_underscore_must_use` as `clippy-debt-0001`.
+- [`policy/clippy-exceptions.toml`](../policy/clippy-exceptions.toml) records
+  per-call-site `#[expect(...)]` / `#[allow(...)]` suppressions with an `id`,
+  `owner`, `reason`, `covered_by`, and `expires`. It is the reviewable
+  counterpart to `.ripr/allow-attributes.txt`. It has no live rows;
+  `clippy-exception-0001` was retired when `PanicAllowEntryVersioned::V2`
+  was boxed.
+
+These companion ledgers are gated as follows:
+
+- `cargo xtask check-lint-policy` reads `policy/clippy-debt.toml` as
+  TOML (`deny_unknown_fields`): unique ids, required nonblank fields
+  (`id`, `lint`, `level`, `owner`, `reason`, `blocked_by`, `target`),
+  ISO `target` dates that are not in the past, and debt lints that are
+  not already `[[active]]`, `[[planned]]`, or present in `Cargo.toml`.
+  Invalid TOML, duplicate keys, unknown fields, and trailing garbage fail.
+- `cargo xtask check-covered-by` reads `policy/clippy-exceptions.toml` as
+  TOML (`deny_unknown_fields`): unique ids, required nonblank fields
+  (`id`, `lint`, `path`, `selector`, `owner`, `reason`, `covered_by`),
+  optional ISO `expires` dates that are not in the past, and every
+  test-valued `covered_by` against a static scan of the workspace's
+  actual `#[test]`-family functions. Invalid TOML, duplicate keys,
+  unknown fields, and trailing garbage fail. `check-allow-attributes`
+  still reads only `.ripr/allow-attributes.txt`.
+
+## MSRV 1.95 rollout
+
+The current workspace MSRV is `1.95`.
+
+PR 03 promoted these lints after the MSRV 1.95 bump:
+
+| Lint | Level | Reason |
+| --- | --- | --- |
+| `clippy::same_length_and_capacity` | deny | Catch raw-parts reconstruction mistakes. |
+| `clippy::manual_ilog2` | warn | Prefer the standard integer log helper. |
+| `clippy::needless_type_cast` | warn | Avoid stale numeric type drift. |
+| `clippy::decimal_bitwise_operands` | warn | Make bit masks visually inspectable. |
+| `clippy::manual_checked_ops` | warn | Prefer checked arithmetic over manual guards. |
+| `clippy::manual_take` | warn | Use the standard ownership helper. |
+| `clippy::duration_suboptimal_units` | warn | Make durations legible without unit conversion. |
+| `clippy::unnecessary_trailing_comma` | warn | Keep format macro calls clean. |
+
+Planned lints retained after PR 03:
+
+| Lint | Blocker |
+| --- | --- |
+| `clippy::disallowed_fields` | Requires a reviewed `clippy.toml` `disallowed-fields = [...]` protected-seam list; without that config the lint is a no-op. |
+| `clippy::manual_pop_if` | Rust 1.95.0 Clippy does not recognize this lint; promote after the pinned toolchain supports it. |
+| `clippy::indexing_slicing` | Requires per-call `#[expect]` receipts on parser/diff bounded indexing. |
+| `clippy::string_slice` | Pairs with `indexing_slicing`; requires per-call receipts on AST-bounded slicing. |
+
+The rollout PR stack is in `docs/ci/ripr-rollout-plan.md`. Future lint flips
+must move entries from `[[planned]]` to `[[active]]` only after the matching
+toolchain support, configuration, and receipts in `blocked_by` are present.
+`check-lint-policy` compares `activate_when_msrv` to workspace
+`rust-version` and requires a remaining non-MSRV `blocked_by` when that
+version is already met (MSRV-only `blocked_by` text fails; `reason` does
+not satisfy the gate).
+
+## See also
+
+- [`policy/clippy-lints.toml`](../policy/clippy-lints.toml) — declarative
+  ledger and planned flips.
+- [`policy/clippy-debt.toml`](../policy/clippy-debt.toml) — deferred lints
+  with owner and target date; consumed by `check-lint-policy`.
+- [`policy/clippy-exceptions.toml`](../policy/clippy-exceptions.toml) —
+  per-site suppressions; consumed by `check-covered-by`.
+- [`docs/NO_PANIC_SEMANTIC_ALLOWLIST.md`](NO_PANIC_SEMANTIC_ALLOWLIST.md) —
+  selector-based allowlist schema.
+- [`docs/NO_PANIC_POLICY.md`](NO_PANIC_POLICY.md) — no-panic policy overview.
+- [`docs/FILE_POLICY.md`](FILE_POLICY.md) — non-Rust file policy.
+- [`docs/POLICY_ALLOWLISTS.md`](POLICY_ALLOWLISTS.md) — all allowlists index.
+- [`docs/ci/ripr-rollout-plan.md`](ci/ripr-rollout-plan.md) — MSRV 1.95 rollout stack.
+- [`policy/no-panic-allowlist.toml`](../policy/no-panic-allowlist.toml) —
+  canonical governed no-panic exceptions (schema 0.3).
+- [`.ripr/no-panic-allowlist.toml`](../.ripr/no-panic-allowlist.toml) —
+  legacy schema 0.2 compatibility mirror while older branches drain.

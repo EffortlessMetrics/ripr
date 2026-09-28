@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/artifact_missing",
+  "receipt_state": "receipt_missing",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Generate current evidence before emitting a receipt."
+}

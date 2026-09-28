@@ -1,0 +1,96 @@
+# Archived by `cargo xtask closeout --goal lane1-large-repo-runtime-completeness` on 2026-06-03.
+id = "lane1-large-repo-runtime-completeness"
+title = "Lane 1 Large-Repo Runtime Completeness"
+status = "closed"
+lane = "lane1"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/909"
+no_current_goal = true
+
+# Selected after Lane 1 Real-Repo Trust Readiness closed with
+# `no_current_goal = true`. Live repo state on 2026-06-03 shows #909 remains
+# open as the canonical large-repo cache/scaling follow-up after #928 made
+# cache skips explicit and #932 closed the trust-readiness campaign. The
+# selected work items landed through #935; no successor campaign is selected
+# by this closeout.
+
+objective = """
+Make large-repo repo-exposure warm paths usable without representing limited
+or sampled input as full truth: the full classified seam cache should avoid
+all-or-nothing store skips on large monorepos, cache reports/GC should keep
+new cache files visible, and remaining fast-path or scaling work should stay
+named instead of becoming fake actionability.
+"""
+
+end_state = [
+  "full classified seam cache stores large repo-exposure results in bounded shards instead of silently skipping the entire cache entry",
+  "warm repo-exposure loads stitch shard files only when the manifest and every shard match the current cache key",
+  "cache report and GC continue to scan every shard under target/ripr/cache without touching reports, receipts, build output, workflow artifacts, or source files",
+  "RIPR_REPO_SEAM_CACHE_LIMIT remains a positive integer tuning knob with documented default behavior and clear invalid-value diagnostics",
+  "large-repo runtime reports keep full, sampled, stale, timeout, incomplete, runner-failure, and large-cache states explicit",
+  "diff-scoped large-repo review fast paths report changed production files plus bounded immediate callers as scoped review evidence instead of full-repo truth",
+]
+
+hard_rules = [
+  "do not represent sampled, stale, timeout, runner-failure, incomplete, or cache-limited runs as full",
+  "do not count raw findings as product truth",
+  "do not create public repair packets from static limitations",
+  "do not claim full large-monorepo optimization is complete before diff-scoped review runtime is validated",
+  "do not claim 0.8.0 on crates.io includes post-release swarm fixes",
+  "source ripr remains release, signing, publishing, and distribution authority",
+]
+
+non_goals = [
+  "no provider integration",
+  "no autonomous edits",
+  "no mutation execution",
+  "no default blocking CI or badge semantic switch",
+  "no full cross-language oracle proof",
+  "no language-aware external test target placement",
+  "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
+]
+
+[[work_item]]
+id = "cache/large-repo-sharded-seam-cache"
+status = "done"
+branch = "cache-large-repo-sharded-seam-cache"
+stackable = false
+acceptance = "Full repo seam cache entries larger than RIPR_REPO_SEAM_CACHE_LIMIT are written and reloaded as bounded shard files; corrupt or incomplete shard sets fail closed to cold compute; cache report/gc still see the files under target/ripr/cache; docs preserve the default and non-claims."
+commands = [
+  "cargo test -p ripr seam_cache -- --test-threads=1",
+  "cargo test -p ripr seam_inventory -- --test-threads=1",
+  "cargo test -p xtask cache -- --test-threads=1",
+  "cargo xtask cache report",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/large-repo-cache-shard-summary"
+status = "done"
+branch = "report-large-repo-cache-shard-summary"
+stackable = false
+blocked_by = ["cache/large-repo-sharded-seam-cache"]
+acceptance = "Cache reports summarize sharded seam-cache families with shard counts, manifest counts, bytes, largest shard sets, and any orphan or incomplete shard sets without reading source or build artifacts."
+commands = [
+  "cargo test -p xtask cache -- --test-threads=1",
+  "cargo xtask cache report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/diff-scoped-large-repo-review-fast-path"
+status = "done"
+branch = "analysis-diff-scoped-large-repo-review-fast-path"
+stackable = false
+blocked_by = ["report/large-repo-cache-shard-summary"]
+acceptance = "A tiny diff in a large repo can review only changed seams plus bounded immediate callers when the full repo path is too expensive, while reporting the narrowed input as limited or scoped rather than full-repo truth."
+commands = [
+  "cargo test -p ripr review_comments -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

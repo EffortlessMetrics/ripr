@@ -1,0 +1,8 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -4,4 +3,0 @@
+-fn retired_helper(value: i32) -> i32 {
+-    if value > 100 { price(value, 50) } else { price(value, 0) }
+-}
+-

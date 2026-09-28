@@ -1,0 +1,1018 @@
+mod artifacts;
+mod json;
+mod markdown;
+mod receipt;
+mod report;
+pub(crate) mod types;
+mod util;
+
+pub(crate) use json::render_agent_review_summary_json;
+pub(crate) use markdown::{NO_RECEIPT_BEFORE_REPAIR, render_agent_review_summary_markdown};
+pub(crate) use report::build_agent_review_summary_report;
+#[cfg(test)]
+mod tests {
+    use super::artifacts::{
+        LSP_COCKPIT_ARTIFACT, OPERATOR_COCKPIT_ARTIFACT, REPO_EXPOSURE_ARTIFACT,
+    };
+    use super::types::AGENT_REVIEW_SUMMARY_SCHEMA_VERSION;
+    use super::*;
+    use crate::agent::loop_commands::{
+        WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
+        WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+        WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+        WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT, check_repo_exposure_command,
+    };
+    use crate::output::markdown::powershell_command;
+    use crate::testing::cwd_placeholder::project_renderer_cwd;
+    use serde_json::Value;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_agent_review_summary_test_dir(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "ripr-agent-review-summary-{label}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
+    fn workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    fn fixture_value(relative_path: &str) -> Result<Value, String> {
+        let text = std::fs::read_to_string(workspace_root().join(relative_path))
+            .map_err(|err| format!("read fixture {relative_path}: {err}"))?;
+        serde_json::from_str(&text).map_err(|err| format!("parse fixture {relative_path}: {err}"))
+    }
+
+    fn write_file(path: &Path, text: &str) -> Result<(), String> {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent).map_err(|err| format!("create parent: {err}"))?;
+        }
+        std::fs::write(path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    fn write_common_workflow_artifacts(root: &Path) -> Result<(), String> {
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        write_file(
+            &root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "no_scope",
+      "identity": {"base_revision": "origin/main", "git_candidate_subject": null},
+      "counts": {
+        "changed_file_count": 0,
+        "changed_line_count": 0,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
+  "findings": []
+}"#,
+        )?;
+        Ok(())
+    }
+
+    fn write_complete_artifacts(root: &Path) -> Result<(), String> {
+        write_common_workflow_artifacts(root)?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            r#"{"changed_seams":[{"seam_id":"seam-a"}],"unchanged_seams":[],"new_gaps":[],"resolved_gaps":[]}"#,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            r#"{
+  "schema_version": "0.3",
+  "tool": "ripr",
+  "status": "advisory",
+  "provenance": {
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
+    "movement": "improved",
+    "verify_artifact": {
+      "path": "target/ripr/workflow/agent-verify.json",
+      "sha256": "sha256:verify"
+    }
+  },
+  "seam": {
+    "seam_id": "seam-a",
+    "file": "src/lib.rs",
+    "line": 42,
+    "seam_kind": "predicate_boundary",
+    "before": "weakly_gripped",
+    "after": "strongly_gripped",
+    "change": "improved",
+    "grip_class": "strongly_gripped"
+  },
+  "summary": {
+    "remaining_gap": "No remaining static gap is named by this receipt.",
+    "next_recommendation": "Keep the focused test and attach the receipt.",
+    "next_action": {
+      "kind": "improved",
+      "summary": "Static grip improved.",
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
+    }
+  }
+}"#,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_MANIFEST_ARTIFACT),
+            r#"{"status":"ready","seam":{"seam_id":"seam-a","file":"src/lib.rs","line":42,"seam_kind":"predicate_boundary"}}"#,
+        )?;
+        write_file(
+            &root.join(REPO_EXPOSURE_ARTIFACT),
+            r#"{"status":"ready","metrics":{"seams_total":2,"weakly_gripped":1}}"#,
+        )?;
+        write_file(
+            &root.join(OPERATOR_COCKPIT_ARTIFACT),
+            r#"{"status":"ready","top_weak_seams":[{"seam_id":"seam-a"}],"next_commands":[]}"#,
+        )?;
+        write_file(&root.join(LSP_COCKPIT_ARTIFACT), r#"{"status":"ready"}"#)?;
+        Ok(())
+    }
+
+    struct ReviewFixtureCase<'a> {
+        name: &'a str,
+        seam_id: &'a str,
+        movement: &'a str,
+        before: &'a str,
+        after: &'a str,
+        grip_class: &'a str,
+        action_kind: &'a str,
+        action_summary: &'a str,
+        action_recommendation: &'a str,
+    }
+
+    fn write_review_summary_case_artifacts(
+        root: &Path,
+        case: &ReviewFixtureCase<'_>,
+    ) -> Result<(), String> {
+        write_common_workflow_artifacts(root)?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "changed_seams": [{"seam_id": case.seam_id}],
+                "unchanged_seams": [],
+                "new_gaps": [],
+                "resolved_gaps": []
+            }))
+            .map_err(|err| format!("render verify fixture: {err}"))?,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_MANIFEST_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": "0.1",
+                "tool": "ripr",
+                "status": "ready",
+                "seam": {
+                    "seam_id": case.seam_id,
+                    "file": "src/pricing.rs",
+                    "line": 42,
+                    "seam_kind": "predicate_boundary"
+                }
+            }))
+            .map_err(|err| format!("render workflow fixture: {err}"))?,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": "0.3",
+                "tool": "ripr",
+                "status": "advisory",
+                "provenance": {
+                    "before_class": case.before,
+                    "after_class": case.after,
+                    "movement": case.movement,
+                    "verify_artifact": {
+                        "path": WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                        "sha256": "sha256:verify"
+                    }
+                },
+                "seam": {
+                    "seam_id": case.seam_id,
+                    "file": "src/pricing.rs",
+                    "line": 42,
+                    "seam_kind": "predicate_boundary",
+                    "before": case.before,
+                    "after": case.after,
+                    "change": case.movement,
+                    "grip_class": case.grip_class
+                },
+                "summary": {
+                    "remaining_gap": "Fixture-controlled static review state.",
+                    "next_recommendation": case.action_recommendation,
+                    "next_action": {
+                        "kind": case.action_kind,
+                        "summary": case.action_summary,
+                        "recommended_action": case.action_recommendation,
+                    }
+                }
+            }))
+            .map_err(|err| format!("render receipt fixture: {err}"))?,
+        )?;
+        Ok(())
+    }
+
+    fn assert_review_summary_matches_fixture(
+        root: &Path,
+        root_argument: &Path,
+        case_name: &str,
+    ) -> Result<(), String> {
+        let report = build_agent_review_summary_report(root, root_argument);
+        let rendered = render_agent_review_summary_json(&report)?;
+        let mut actual: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse rendered review summary: {err}"))?;
+        // Issue #3872: next-command redirects anchor at the resolved --root,
+        // so the machine prefix projects to `<cwd>/` before comparing
+        // against the checked-in expectation (placeholder rule:
+        // loop_commands).
+        project_renderer_cwd(&mut actual);
+        let fixture_path =
+            format!("fixtures/boundary_gap/expected/llm-work-loop/{case_name}/review-summary.json");
+        assert_eq!(
+            actual,
+            fixture_value(&fixture_path)?,
+            "{case_name} fixture drifted"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_joins_status_receipt_cockpit_repo_and_lsp() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("joined");
+        write_complete_artifacts(&root)?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["schema_version"], AGENT_REVIEW_SUMMARY_SCHEMA_VERSION);
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["target_seam"]["seam_id"], "seam-a");
+        assert_eq!(value["static_movement"]["state"], "improved");
+        assert_eq!(
+            value["static_movement"]["next_action"]["recommended_action"],
+            "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
+        );
+        assert!(
+            value["surfaces"]
+                .as_array()
+                .ok_or_else(|| "expected surfaces".to_string())?
+                .iter()
+                .any(|surface| surface["name"] == "operator_cockpit"
+                    && surface["state"] == "present")
+        );
+        assert!(
+            value["ci_artifacts"]
+                .as_array()
+                .ok_or_else(|| "expected ci artifacts".to_string())?
+                .iter()
+                .any(|artifact| artifact["name"] == "agent_receipt"
+                    && artifact["state"] == "present")
+        );
+        assert_eq!(value["next_command"], Value::Null);
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_reports_missing_receipt_with_next_command() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("missing-receipt");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["static_movement"]["state"], "missing_artifact");
+        assert_eq!(value["next_command"]["step"], "select_seam");
+        assert_eq!(
+            value["static_movement"]["next_action"]["recommended_action"],
+            "Run the next command listed by agent status."
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_fails_closed_on_incomplete_analysis_outcome() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("incomplete-outcome");
+        write_complete_artifacts(&root)?;
+        write_file(
+            &root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {},
+  "analysis_outcome": {
+    "analysis_complete": false,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "unsupported_input",
+      "identity": {"base_revision": "origin/main", "git_candidate_subject": null},
+      "counts": {
+        "changed_file_count": 1,
+        "changed_line_count": 2,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [{
+        "kind": "malformed_diff",
+        "producer_stage": "diff_parse",
+        "path": "src/lib.rs",
+        "affected_items": 1,
+        "bounded_detail": "fixture input is malformed",
+        "recovery": {
+          "kind": "inspect_failure",
+          "detail": "inspect the malformed diff"
+        }
+      }],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
+  "findings": []
+}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["analysis_outcome"]["analysis_complete"], false);
+        assert_eq!(
+            value["analysis_outcome"]["outcome"]["kind"],
+            "unsupported_input"
+        );
+        assert_eq!(
+            value["surfaces"]
+                .as_array()
+                .and_then(|surfaces| {
+                    surfaces
+                        .iter()
+                        .find(|surface| surface["name"] == "analysis_outcome")
+                })
+                .and_then(|surface| surface["status"].as_str()),
+            Some("incomplete")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_rejects_malformed_analysis_outcome() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("malformed-outcome");
+        write_complete_artifacts(&root)?;
+        write_file(&root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT), "{")?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["analysis_outcome"], Value::Null);
+        assert_eq!(
+            value["surfaces"]
+                .as_array()
+                .and_then(|surfaces| {
+                    surfaces
+                        .iter()
+                        .find(|surface| surface["name"] == "analysis_outcome")
+                })
+                .and_then(|surface| surface["state"].as_str()),
+            Some("invalid_json")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixtures_pin_core_states() -> Result<(), String> {
+        let cases = [
+            ReviewFixtureCase {
+                name: "happy",
+                seam_id: "seam-happy",
+                movement: "improved",
+                before: "weakly_gripped",
+                after: "strongly_gripped",
+                grip_class: "strongly_gripped",
+                action_kind: "improved",
+                action_summary: "Static grip improved.",
+                action_recommendation: "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
+            },
+            ReviewFixtureCase {
+                name: "unchanged",
+                seam_id: "seam-unchanged",
+                movement: "unchanged",
+                before: "weakly_gripped",
+                after: "weakly_gripped",
+                grip_class: "weakly_gripped",
+                action_kind: "unchanged",
+                action_summary: "Static grip did not improve.",
+                action_recommendation: "Add the missing discriminator or stronger assertion named by the packet.",
+            },
+            ReviewFixtureCase {
+                name: "regressed",
+                seam_id: "seam-regressed",
+                movement: "regressed",
+                before: "weakly_gripped",
+                after: "ungripped",
+                grip_class: "ungripped",
+                action_kind: "regressed",
+                action_summary: "Static grip regressed.",
+                action_recommendation: "Revisit the test or code change before merge.",
+            },
+        ];
+
+        for case in cases {
+            let root = unique_agent_review_summary_test_dir(case.name);
+            write_review_summary_case_artifacts(&root, &case)?;
+            assert_review_summary_matches_fixture(&root, Path::new("."), case.name)?;
+            std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixture_pins_missing_artifact() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("missing-artifact");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        assert_review_summary_matches_fixture(&root, Path::new("."), "missing-artifact")?;
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixture_pins_stale_artifact() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("stale-artifact");
+        let case = ReviewFixtureCase {
+            name: "stale-artifact",
+            seam_id: "seam-stale",
+            movement: "unchanged",
+            before: "weakly_gripped",
+            after: "weakly_gripped",
+            grip_class: "weakly_gripped",
+            action_kind: "unchanged",
+            action_summary: "Static grip did not improve.",
+            action_recommendation: "Add the missing discriminator or stronger assertion named by the packet.",
+        };
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        write_common_workflow_artifacts(&root)?;
+        write_file(
+            &root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            r#"{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {
+      "schema_version": "0.1",
+      "kind": "complete_no_findings",
+      "identity": {"base_revision": "origin/main", "git_candidate_subject": null},
+      "counts": {
+        "changed_file_count": 0,
+        "changed_line_count": 0,
+        "candidate_line_count": 0,
+        "probe_count": 0,
+        "finding_count": 0
+      },
+      "limitations": [],
+      "claim_boundary": "Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."
+    }
+  },
+  "findings": []
+}"#,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_MANIFEST_ARTIFACT),
+            r#"{"schema_version":"0.1","tool":"ripr","status":"ready","seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary"}}"#,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            r#"{"schema_version":"0.5","tool":"ripr","status":"advisory","provenance":{"before_class":"weakly_gripped","after_class":"weakly_gripped","movement":"unchanged","verify_artifact":{"path":"target/ripr/workflow/agent-verify.json","sha256":"sha256:verify"}},"seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary","before":"weakly_gripped","after":"weakly_gripped","change":"unchanged","grip_class":"weakly_gripped"},"summary":{"remaining_gap":"Fixture-controlled static review state.","next_recommendation":"Add the missing discriminator or stronger assertion named by the packet.","next_action":{"kind":"unchanged","summary":"Static grip did not improve.","recommended_action":"Add the missing discriminator or stronger assertion named by the packet."}}}"#,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "changed_seams": [{"seam_id": case.seam_id}],
+                "unchanged_seams": [],
+                "new_gaps": [],
+                "resolved_gaps": []
+            }))
+            .map_err(|err| format!("render verify fixture: {err}"))?,
+        )?;
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        // Pin artifact mtimes explicitly. The stale-artifact warnings compare
+        // mtime order, and sleep-separated writes flake on coarse filesystem
+        // timestamp granularity; explicit stamps keep the pinned stale state
+        // (receipt older than verify older than the snapshots) deterministic.
+        let stale_base = std::time::UNIX_EPOCH + std::time::Duration::from_hours(500_000);
+        for (relative, offset_secs) in [
+            (WORKFLOW_AGENT_RECEIPT_ARTIFACT, 0),
+            (WORKFLOW_AGENT_VERIFY_ARTIFACT, 10),
+            (WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, 20),
+            (WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, 20),
+        ] {
+            let path = root.join(relative);
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|file| {
+                    file.set_modified(stale_base + std::time::Duration::from_secs(offset_secs))
+                })
+                .map_err(|err| format!("pin mtime {}: {err}", path.display()))?;
+        }
+        assert_review_summary_matches_fixture(&root, Path::new("."), "stale-artifact")?;
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixtures_pin_path_arguments() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("path-arguments");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        assert_review_summary_matches_fixture(&root, Path::new("repo root"), "path-with-spaces")?;
+        assert_review_summary_matches_fixture(
+            &root,
+            Path::new("repo\\root"),
+            "windows-separators",
+        )?;
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_markdown_names_review_focus_and_limits() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("markdown");
+        write_complete_artifacts(&root)?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+
+        assert!(rendered.contains("# RIPR Agent Review Summary"));
+        assert!(rendered.contains("Target seam: seam-a"));
+        assert!(rendered.contains("Movement: improved"));
+        // A present receipt is not the pre-repair state (#3906, N5).
+        assert!(!rendered.contains(NO_RECEIPT_BEFORE_REPAIR), "{rendered}");
+        assert!(rendered.contains("Static artifact relationship only."));
+        assert!(rendered.contains("No runtime mutation execution."));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_warns_for_invalid_optional_surface() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("invalid-surface");
+        write_complete_artifacts(&root)?;
+        write_file(&root.join(OPERATOR_COCKPIT_ARTIFACT), "{")?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "warning");
+        assert!(
+            value["surfaces"]
+                .as_array()
+                .ok_or_else(|| "expected surfaces".to_string())?
+                .iter()
+                .any(|surface| surface["name"] == "operator_cockpit"
+                    && surface["state"] == "invalid_json"
+                    && surface["summary"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .contains("could not be parsed as JSON"))
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_recovers_target_from_workflow() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("workflow-target");
+        write_file(
+            &root.join(WORKFLOW_MANIFEST_ARTIFACT),
+            r#"{"status":"ready","seam":{"seam_id":"workflow-seam","file":"src/workflow.rs","line":7,"seam_kind":"branch"}}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["target_seam"]["seam_id"], "workflow-seam");
+        assert_eq!(value["target_seam"]["source"], "agent_workflow");
+        assert_eq!(value["target_seam"]["file"], "src/workflow.rs");
+        assert_eq!(value["target_seam"]["line"], 7);
+        assert_eq!(value["target_seam"]["seam_kind"], "branch");
+        assert_eq!(value["static_movement"]["state"], "missing_artifact");
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_recovers_target_from_status_verify() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("status-target");
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            r#"{"changed_seams":[],"unchanged_seams":[],"new_gaps":[{"seam_id":"verify-seam"}],"resolved_gaps":[]}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["target_seam"]["seam_id"], "verify-seam");
+        assert_eq!(value["target_seam"]["source"], "agent_verify");
+        assert_eq!(value["next_command"]["step"], "before_snapshot");
+        assert!(
+            value["next_command"]["command"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("repo-exposure-json")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_treats_lsp_cockpit_as_optional() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("optional-lsp");
+        write_complete_artifacts(&root)?;
+        std::fs::remove_file(root.join(LSP_COCKPIT_ARTIFACT))
+            .map_err(|err| format!("remove lsp cockpit: {err}"))?;
+        write_file(
+            &root.join(REPO_EXPOSURE_ARTIFACT),
+            r#"{"status":"ready","summary":{"total_seams":3,"weakly_exposed":2}}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "ready");
+        assert!(
+            value["surfaces"]
+                .as_array()
+                .ok_or_else(|| "expected surfaces".to_string())?
+                .iter()
+                .any(|surface| surface["name"] == "lsp_cockpit"
+                    && surface["state"] == "optional_missing")
+        );
+        assert!(
+            value["surfaces"]
+                .as_array()
+                .ok_or_else(|| "expected surfaces".to_string())?
+                .iter()
+                .any(|surface| surface["name"] == "repo_exposure"
+                    && surface["summary"]
+                        == "Repo exposure artifact lists 3 seams and 2 weak seams.")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_handles_receipt_without_next_action() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("no-next-action");
+        write_complete_artifacts(&root)?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            r#"{"seam":{"seam_id":"seam-without-next","change":"unchanged"}}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["target_seam"]["seam_id"], "seam-without-next");
+        assert_eq!(value["static_movement"]["state"], "unchanged");
+        assert_eq!(value["static_movement"]["before_class"], Value::Null);
+        assert_eq!(value["static_movement"]["verify_artifact"], Value::Null);
+        assert_eq!(
+            value["reviewer_summary"]["remaining"],
+            "No next action was recovered from the available artifacts."
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_markdown_includes_next_command_when_incomplete() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("markdown-next-command");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+
+        assert!(rendered.contains("Target seam: unknown"));
+        assert!(rendered.contains("Next command:"));
+        assert!(
+            rendered.contains(&crate::app::agent_status::pilot_select_command(
+                &crate::agent::loop_commands::bound_root(".")
+            ))
+        );
+        assert!(rendered.contains("No generated tests."));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// #3906 (F60-2): the review summary places the post-edit note before a
+    /// next command that runs after the focused test edit, and only there.
+    /// The renderer is driven with constructed next commands, so the
+    /// labelling contract holds whichever step status routes to (#3931).
+    #[test]
+    fn agent_review_summary_markdown_labels_constructed_next_commands() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("markdown-constructed-next");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let mut report = build_agent_review_summary_report(&root, Path::new("."));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        let command = |step: &str, command: &str| crate::app::agent_status::AgentStatusCommand {
+            step: step.to_string(),
+            artifact: "target/ripr/workflow/x.json".to_string(),
+            reason: format!("{step} is missing"),
+            command: command.to_string(),
+        };
+        let note = crate::app::agent_status::AFTER_TEST_EDIT_NOTE;
+
+        let post_edit = "ripr agent verify --root . --json";
+        report.next_command = Some(command("agent_verify", post_edit));
+        let rendered = render_agent_review_summary_markdown(&report);
+        let heading = rendered
+            .find("Next command:")
+            .ok_or_else(|| format!("next command missing:\n{rendered}"))?;
+        let at = rendered
+            .find(note)
+            .ok_or_else(|| format!("post-edit note missing:\n{rendered}"))?;
+        let fence = rendered
+            .find(format!("```bash\n{post_edit}\n```\n").as_str())
+            .ok_or_else(|| format!("post-edit command missing:\n{rendered}"))?;
+        assert!(heading < at && at < fence, "{rendered}");
+
+        for (step, pre_edit) in [
+            (
+                "before_snapshot",
+                "ripr check --root . --format repo-exposure-json",
+            ),
+            ("select_seam", "ripr pilot --root ."),
+            (
+                "repair_attempt_before",
+                "ripr agent repair --root . --seam-id seam-a --phase before",
+            ),
+        ] {
+            report.next_command = Some(command(step, pre_edit));
+            let rendered = render_agent_review_summary_markdown(&report);
+            assert!(
+                rendered.contains(&format!("```bash\n{pre_edit}\n```\n")),
+                "{rendered}"
+            );
+            assert!(!rendered.contains(note), "{step}: {rendered}");
+        }
+        Ok(())
+    }
+
+    /// #3906 (F60-2, N5): the before side a CI run writes, with its seam in
+    /// the packet and the workflow directory present, leaves the after
+    /// snapshot as the next command whether status reads only the artifact
+    /// loop or also repair attempts and pilot (#3931). The summary names the
+    /// missing receipt as the pre-repair state and labels the command as
+    /// post-edit; an empty root's pre-edit command carries no note.
+    #[test]
+    fn agent_review_summary_markdown_labels_post_edit_next_command() -> Result<(), String> {
+        let empty = unique_agent_review_summary_test_dir("markdown-next-command-before-side");
+        std::fs::create_dir_all(&empty).map_err(|err| format!("create root: {err}"))?;
+        let report = build_agent_review_summary_report(&empty, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+        assert!(rendered.contains("Next command:"), "{rendered}");
+        assert!(
+            !rendered.contains(crate::app::agent_status::AFTER_TEST_EDIT_NOTE),
+            "{rendered}"
+        );
+        std::fs::remove_dir_all(&empty).map_err(|err| format!("remove root: {err}"))?;
+
+        let root = unique_agent_review_summary_test_dir("markdown-next-command-after-side");
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_PACKET_ARTIFACT),
+            r#"{"packets":[{"seam_id":"seam-a"}]}"#,
+        )?;
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+        let receipt = rendered
+            .find(&format!(
+                "Movement: missing_artifact\nReceipt: {NO_RECEIPT_BEFORE_REPAIR}\n"
+            ))
+            .ok_or_else(|| format!("no-receipt line missing:\n{rendered}"))?;
+        let next = check_repo_exposure_command(
+            &crate::agent::loop_commands::bound_root("."),
+            "draft",
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        );
+        let heading = rendered
+            .find("Next command:")
+            .ok_or_else(|| format!("next command missing:\n{rendered}"))?;
+        let note = rendered
+            .find(crate::app::agent_status::AFTER_TEST_EDIT_NOTE)
+            .ok_or_else(|| format!("post-edit note missing:\n{rendered}"))?;
+        let fence = rendered
+            .find(format!("```bash\n{next}\n```\n").as_str())
+            .ok_or_else(|| format!("after-snapshot command missing:\n{rendered}"))?;
+        assert!(
+            receipt < heading && heading < note && note < fence,
+            "{rendered}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// The review-summary Next command block must offer both shells (#2628):
+    /// the bash fence stays byte-identical, the PowerShell fence derives
+    /// through the shared `powershell_command` translation, and the cmd.exe
+    /// boundary is stated.
+    #[test]
+    fn agent_review_summary_markdown_next_command_offers_powershell_variant() -> Result<(), String>
+    {
+        let root = unique_agent_review_summary_test_dir("markdown-next-command-powershell");
+        // A known seam and an existing workflow directory keep the legacy
+        // redirect route selected, which is the translation this pins.
+        write_file(
+            &root.join(WORKFLOW_AGENT_PACKET_ARTIFACT),
+            r#"{"packets":[{"seam_id":"seam-a"}]}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+
+        // Issue #3872: the next-command redirect anchors at the resolved
+        // --root, so both presented forms build from the same builder output
+        // (the anchor math itself is pinned in loop_commands tests).
+        let next = check_repo_exposure_command(
+            &crate::agent::loop_commands::bound_root("."),
+            "draft",
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+        );
+        let bash_form = format!("```bash\n{next}\n```\n");
+        assert!(
+            rendered.contains(bash_form.as_str()),
+            "bash next command drifted:\n{rendered}"
+        );
+        let powershell_form = format!(
+            "```powershell\n{}\n```\n",
+            powershell_command(&next)
+                .ok_or_else(|| "redirect commands gain a powershell variant".to_string())?
+        );
+        assert!(
+            rendered.contains(powershell_form.as_str()),
+            "powershell next command missing or drifted:\n{rendered}"
+        );
+        let bash_fence = rendered
+            .find(bash_form.as_str())
+            .ok_or_else(|| format!("bash fence must exist: {rendered}"))?;
+        let powershell_fence = rendered
+            .find(powershell_form.as_str())
+            .ok_or_else(|| format!("powershell fence must exist: {rendered}"))?;
+        assert!(
+            bash_fence < powershell_fence,
+            "bash form must be presented before the PowerShell variant"
+        );
+        assert!(
+            rendered.contains("cmd.exe is not supported."),
+            "next command presentation must state the cmd.exe boundary:\n{rendered}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// The agent status surface must count only artifacts the active loop mode
+    /// actually requires as "required" (docs/LEARNINGS.md, 2026-07-25
+    /// false-confidence gates): with no repair attempt every artifact is
+    /// required, and with a repair attempt present the repository-global
+    /// projections the attempt authority supersedes must not be called
+    /// "required".
+    #[test]
+    fn agent_review_summary_status_surface_counts_only_required_artifacts() -> Result<(), String> {
+        use crate::app::agent_status::{
+            AgentStatusArtifact, AgentStatusRepairAttempt, AgentStatusReport,
+        };
+        let artifacts = [
+            ("before_snapshot", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT),
+            ("after_snapshot", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT),
+            ("analysis_outcome", WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            ("agent_brief", WORKFLOW_AGENT_BRIEF_ARTIFACT),
+            ("agent_packet", WORKFLOW_AGENT_PACKET_ARTIFACT),
+            ("agent_verify", WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            ("agent_receipt", WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        ]
+        .iter()
+        .map(|(name, path)| AgentStatusArtifact {
+            name: name.to_string(),
+            label: name.replace('_', " "),
+            path: path.to_string(),
+            present: true,
+            bytes: Some(1),
+            modified: None,
+        })
+        .collect::<Vec<_>>();
+        let attempt = |seam: &str| AgentStatusRepairAttempt {
+            attempt_id: format!("repair-attempt-{seam}"),
+            seam_id: seam.to_string(),
+            state: "awaiting_edit",
+            head_current: Some(true),
+            disposition: "resumable",
+            manifest: String::new(),
+            command: None,
+            evidence_head: String::new(),
+            receipt: crate::app::agent_status::AgentStatusAttemptReceipt::NotApplicable,
+            last_after_refusal: None,
+            diverged_recovery: None,
+        };
+        let report = |attempts: Vec<AgentStatusRepairAttempt>| AgentStatusReport {
+            root: ".".to_string(),
+            seam: None,
+            artifacts: artifacts.clone(),
+            repair_attempts: attempts,
+            missing_commands: Vec::new(),
+            next_command: None,
+            warnings: Vec::new(),
+        };
+
+        let legacy = super::artifacts::agent_status_surface(&report(Vec::new()), ".");
+        assert!(
+            legacy
+                .summary
+                .starts_with("7 of 7 required artifacts present, 0 missing"),
+            "legacy loop requires every artifact: {}",
+            legacy.summary
+        );
+
+        let repair = super::artifacts::agent_status_surface(&report(vec![attempt("a")]), ".");
+        assert!(
+            repair
+                .summary
+                .starts_with("0 of 0 required artifacts present, 0 missing"),
+            "a repair attempt supersedes the projections, so none is required: {}",
+            repair.summary
+        );
+        Ok(())
+    }
+}
