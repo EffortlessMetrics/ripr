@@ -147,7 +147,7 @@
 
       },
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_b_observed.py:python_preview:3c7333c2",

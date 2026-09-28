@@ -10,7 +10,9 @@ use crate::output::agent_seam_packets::{
 use crate::output::json::escape as json_escape;
 use crate::output::markdown::{PowershellForm, powershell_form};
 use crate::output::path::{display_path, display_path_text};
-use crate::output::pilot::commands::{PilotCommands, repair_start_command};
+use crate::output::pilot::commands::{
+    PilotCommands, python_card_first_pr_command, repair_start_command,
+};
 use crate::output::pilot::ranking::{actionable_total, top_actionable_seams};
 use crate::output::pilot::{
     PILOT_SUMMARY_SCHEMA_VERSION, PilotLanguageRoute, PilotLanguageRoutes, PilotPythonFirstUse,
@@ -268,6 +270,8 @@ pub(crate) fn render_pilot_summary_md(
     // One ordinary route (#3906): when the top seam can be repaired, the
     // repair transaction replaces the manual before/after snapshot pair.
     let routes = required_routes(context);
+    let python_card = python_top_repair_card(context.python_first_use).filter(|_| top.is_empty());
+    let python_first_pr = python_card_first_pr_command(context.root);
     let next_commands: Vec<&String> = match (repair.as_ref(), routes) {
         (Some(command), _) => {
             out.push_str(
@@ -278,6 +282,37 @@ pub(crate) fn render_pilot_summary_md(
         // #3906: with no Rust seams, the repo-exposure snapshot pair would
         // only report that no seams moved. Route to the diff-first check that
         // analyzes the languages pilot did not rank.
+        // rc rehearsal (py-pricing): a Python repair card is the top
+        // recommendation, so the next commands follow its route; `ripr check`
+        // would only lead back to pilot.
+        (None, _) if python_card.is_some() => match python_card {
+            Some(card) => {
+                let edit = format!(
+                    "{} `{}` in `{}` (test files only)",
+                    capitalized(repair_action_label(&card.repair_action)),
+                    card.suggested_test_name,
+                    card.suggested_test_file
+                );
+                match card.receipt_command.as_ref() {
+                    Some(receipt) => {
+                        out.push_str(&format!(
+                            "{edit}, then run the card's verify command and its receipt command:\n\n"
+                        ));
+                        vec![&card.verify_command, receipt]
+                    }
+                    None => {
+                        out.push_str(&format!(
+                            "Run `ripr first-pr` before the test edit: it names this gap's receipt command (run any regeneration command it prints first). Then {} `{}` in `{}` (test files only), run the card's verify command, and run that receipt command:\n\n",
+                            repair_action_label(&card.repair_action),
+                            card.suggested_test_name,
+                            card.suggested_test_file
+                        ));
+                        vec![&python_first_pr, &card.verify_command]
+                    }
+                }
+            }
+            None => Vec::new(),
+        },
         (None, Some(routes)) => {
             let commands = PilotLanguageRoutes::commands(routes);
             if commands.is_empty() {
@@ -458,6 +493,35 @@ pub(crate) fn render_pilot_terminal(
         out.push_str(
             "  (do not redirect these commands' output into the checkout, for example `> packet.json`: the edit cage counts that file as an edit; use target/ripr/ or a directory outside the repository)\n",
         );
+        return out;
+    }
+    // rc rehearsal (py-pricing): with no Rust seam but a Python repair card,
+    // the card is the top recommendation, so the closing block names the
+    // card's route, not `ripr check`, which only leads back here.
+    if top.is_empty()
+        && let Some(card) = python_top_repair_card(context.python_first_use)
+    {
+        let edit = format!(
+            "{} {} in {} (test files only): {}",
+            repair_action_label(&card.repair_action),
+            card.suggested_test_name,
+            card.suggested_test_file,
+            card.suggested_assertion
+        );
+        out.push_str("Next, in order:\n");
+        if let Some(receipt) = card.receipt_command.as_deref() {
+            out.push_str(&format!("  1. {edit}\n"));
+            out.push_str(&format!("  2. {}\n", card.verify_command));
+            out.push_str(&format!("  3. {receipt}\n"));
+        } else {
+            out.push_str(&format!(
+                "  1. {} (names this gap's receipt command; run any regeneration command it prints first)\n",
+                python_card_first_pr_command(context.root)
+            ));
+            out.push_str(&format!("  2. {edit}\n"));
+            out.push_str(&format!("  3. {}\n", card.verify_command));
+            out.push_str("  4. run the receipt command step 1 printed\n");
+        }
         return out;
     }
     if let Some(routes) = routes {
@@ -958,6 +1022,13 @@ fn push_python_repair_card_terminal(out: &mut String, card: &PythonRepairCard) {
         out.push_str(&format!("  receipt status: {}\n", card.receipt_status));
     }
     out.push_str(&format!("  receipt guidance: {}\n", card.receipt_guidance));
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 fn repair_action_label(action: &str) -> &'static str {

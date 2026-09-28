@@ -9,7 +9,7 @@ Changed file(s) by language: typescript: 1.
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
 
-WARNING src/guards.ts:2
+INFO src/guards.ts:2
 
 Changed
   after:      if (order?.role === "admin") {
@@ -35,7 +35,7 @@ Preview actionability
   raw evidence: src/guards.ts:2 (typescript_preview_probe) source=probe:src_guards.ts:typescript_preview:7098c2ff owner=userIsAdmin
 
 Static exposure
-  exposed (warning, confidence 0.60)
+  exposed (info, confidence 0.60)
 
 Evidence
   - reach yes: 1 related test(s) found for owner `userIsAdmin`
@@ -76,7 +76,7 @@ Drill in:
   ripr explain --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast probe:src_guards.ts:typescript_preview:7098c2ff
   ripr context --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast --at probe:src_guards.ts:typescript_preview:7098c2ff
 
-WARNING src/guards.ts:9
+INFO src/guards.ts:9
 
 Changed
   after:      if (name ?? "temp") {
@@ -102,7 +102,7 @@ Preview actionability
   raw evidence: src/guards.ts:9 (typescript_preview_probe) source=probe:src_guards.ts:typescript_preview:0d3ee5b2 owner=pickLabel
 
 Static exposure
-  exposed (warning, confidence 0.60)
+  exposed (info, confidence 0.60)
 
 Evidence
   - reach yes: 1 related test(s) found for owner `pickLabel`
@@ -143,7 +143,7 @@ Drill in:
   ripr explain --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast probe:src_guards.ts:typescript_preview:0d3ee5b2
   ripr context --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast --at probe:src_guards.ts:typescript_preview:0d3ee5b2
 
-WARNING src/guards.ts:15
+INFO src/guards.ts:15
 
 Changed
   after:      yield total >= 50;
@@ -169,7 +169,7 @@ Preview actionability
   raw evidence: src/guards.ts:15 (typescript_preview_probe) source=probe:src_guards.ts:typescript_preview:31d04e16 owner=thresholdsAbove
 
 Static exposure
-  exposed (warning, confidence 0.60)
+  exposed (info, confidence 0.60)
 
 Evidence
   - reach yes: 1 related test(s) found for owner `thresholdsAbove`

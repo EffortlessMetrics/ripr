@@ -865,7 +865,7 @@ Use suppressions for accepted debt; Finding severities cannot be `off`.
 
 | Key | Default |
 | --- | --- |
-| `exposed` | `warning` |
+| `exposed` | `info` |
 | `weakly_exposed` | `warning` |
 | `reachable_unrevealed` | `warning` |
 | `no_static_path` | `warning` |

@@ -1,0 +1,42 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_rebound_constant_boundary_limit/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: this Python preview finding has no repair card (static evidence names no concrete missing discriminator), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.
+  File: src/pricing.py:10
+  Language: python
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/pricing.py:discounted_total:predicate_boundary:predicate:amount>=discount_threshold
+  Changed behavior: if amount >= DISCOUNT_THRESHOLD:
+  Missing discriminator: A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary. No strong related test call places…
+  Related test: tests/test_pricing.py:8 test_discount_far_above_threshold
+  Suggested test file: tests/test_pricing.py
+  Suggested test: test_discount_far_above_threshold
+  Test node: tests/test_pricing.py::test_discount_far_above_threshold
+  Verify command: pytest tests/test_pricing.py::test_discount_far_above_threshold (high)
+  Evidence:
+    - reach yes: 2 related Python test(s) found for owner `discounted_total`
+    - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.
+    - 8 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_rebound_constant_boundary_limit/input --diff fixtures/python_rebound_constant_boundary_limit/diff.patch --mode fast probe:src_pricing.py:python_preview:e56dfcdf
+  ripr context --root fixtures/python_rebound_constant_boundary_limit/input --diff fixtures/python_rebound_constant_boundary_limit/diff.patch --mode fast --at probe:src_pricing.py:python_preview:e56dfcdf
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

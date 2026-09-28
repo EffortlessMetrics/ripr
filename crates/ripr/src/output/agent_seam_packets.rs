@@ -192,10 +192,10 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
     if let Some(info) = limit_info {
         let repair_route = match info.source {
             SeamLimitSource::Default => {
-                "Set RIPR_PILOT_SEAM_BUDGET=0 to render packets for all seams, or use `ripr check --diff` to scope the run."
+                "Set RIPR_PILOT_SEAM_BUDGET=0 to render packets for all seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
             }
             SeamLimitSource::Configured => {
-                "Remove or raise RIPR_PILOT_SEAM_BUDGET to render packets for more seams, or use `ripr check --diff`."
+                "Remove or raise RIPR_PILOT_SEAM_BUDGET to render packets for more seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
             }
         };
         out.push_str("  \"limitations\": [\n");

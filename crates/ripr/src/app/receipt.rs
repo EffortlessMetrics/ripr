@@ -80,6 +80,25 @@ impl ReceiptCrossRefResult {
         }
     }
 
+    /// What the state does and does not say, printed after the token. The
+    /// RC walk found agents reading `receipt_ok` against the before and the
+    /// after ledger as "the fix is confirmed"; it only says the receipt still
+    /// names a gap the ledger lists.
+    pub(crate) fn meaning(&self) -> &'static str {
+        match self {
+            Self::NotAvailable => {
+                "no ledger was cross-referenced; pass --ledger to compare against the current gap set"
+            }
+            Self::ReceiptOk => {
+                "the receipt names a gap this ledger lists; this does not say the gap is closed, so re-run `ripr check` for the current class"
+            }
+            Self::OrphanReceipt => "the receipt names a gap this ledger does not list",
+            Self::ReceiptGapMismatch => {
+                "the ledger lists the receipt's gap id with a different fingerprint"
+            }
+        }
+    }
+
     /// Returns `true` if this result represents a real problem that should
     /// cause a non-zero exit from `ripr receipt check`.
     pub(crate) fn is_error(&self) -> bool {
@@ -187,9 +206,10 @@ pub(crate) fn check_receipt(
     let cross_ref = cross_reference_receipt(&canonical_gap_id, opts.ledger.as_deref());
 
     let msg = format!(
-        "receipt at {} is structurally valid; cross_reference: {}",
+        "receipt at {} is structurally valid; cross_reference: {} ({})",
         path.display(),
-        cross_ref.as_str()
+        cross_ref.as_str(),
+        cross_ref.meaning()
     );
     Ok((msg, cross_ref))
 }
@@ -1132,6 +1152,11 @@ mod tests {
         assert!(
             msg.contains("receipt_ok"),
             "message should mention receipt_ok, got: {msg}"
+        );
+        // The state must not read as a closure verdict (RC walk).
+        assert!(
+            msg.contains("does not say the gap is closed"),
+            "receipt_ok must say what it does not establish, got: {msg}"
         );
 
         let _ = std::fs::remove_dir_all(&dir);

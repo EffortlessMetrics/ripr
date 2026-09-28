@@ -26,7 +26,7 @@ Evidence
   - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
   - propagation unknown: Propagation is not statically obvious from syntax-first analysis
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - discriminator missing: `capacity == threshold`; related oracle: Strong oracle found: exact value or pattern assertion
   - related test src/lib.rs:10 above_threshold_gets_reduced uses strong exact value oracle: assert_eq!(result, 90);
   - observed function argument value capacity = 100 at line 11
   - observed function argument value threshold = 50 at line 11

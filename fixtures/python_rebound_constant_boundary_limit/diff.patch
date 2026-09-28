@@ -1,0 +1,12 @@
+diff --git a/src/pricing.py b/src/pricing.py
+index 0000000..1111111 100644
+--- a/src/pricing.py
++++ b/src/pricing.py
+@@ -7,6 +7,6 @@ def configure(threshold):
+ 
+ 
+ def discounted_total(amount):
+-    if amount > DISCOUNT_THRESHOLD:
++    if amount >= DISCOUNT_THRESHOLD:
+         return amount - amount // 10
+     return amount

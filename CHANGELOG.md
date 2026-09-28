@@ -145,6 +145,44 @@ are scoped or reviewed.
   command that keeps base, head, and root arguments literal when copied, including
   refs with shell syntax and roots with spaces (#4367).
 
+- `ripr receipt check --ledger` explains each cross-reference state after its
+  token. `receipt_ok` now says it only means the ledger still lists the
+  receipt's gap, not that the gap is closed, so it no longer reads as a fix
+  confirmation. The Python context witness's `fix_site` names the same
+  suggested test as `check`, `explain` and the repair card.
+
+- TypeScript preview boundary findings get a delegatable repair packet when
+  the boundary input is statically derivable: a changed `amount >= 5000` or
+  `amount >= DISCOUNT_THRESHOLD` (single immutable integer module `const`)
+  with tests only off the boundary now targets `expect(shipping(5000))` /
+  `expect(discountedTotal(10000))` instead of failing closed, `ripr check`'s
+  Start-here line names the packet's action, test file, and verify command,
+  and an exposed TypeScript finding no longer leaves the gap ledger empty
+  (first-pr no longer loops on "blocked" after the boundary test lands).
+  Rebindable (`let`/`var`), computed, imported, or shadowed constants,
+  written parameters, and comparisons with arithmetic, a sign, or a member
+  read on either side (`OFFSET + amount >= LIMIT`, `amount >= LIMIT + 1`)
+  still fail closed. So does a comparison that some calls may skip: the
+  changed line must be a top-level statement of the owner's own body that
+  opens with the comparison (`if (`, `return`, or `const|let|var NAME =`),
+  with no earlier `return`/`throw`/`break`/`continue`/`yield`, loop or
+  `await`, and the owner may not be a generator or a curried or returned
+  function.
+
+- `ripr pilot` on a Python-only change with a repair card now ends with the
+  card's route (`ripr first-pr` before the edit to name the receipt command,
+  the test edit, its verify command, then that receipt command) instead of
+  `ripr check --root .`, which only led back to pilot.
+
+- `ripr check`'s Start here prefers a Python preview finding that has a
+  repair card over one that has none, so it no longer reports "no repair card"
+  while `ripr pilot` and `ripr first-pr` route a card for the same diff.
+
+- `ripr check` now names the repair loop for a Rust top gap that has a repair
+  route: one `Repair loop:` line under the drill-in commands points to
+  `ripr pilot --root <root>`, which prints the `ripr agent repair` start.
+  Preview-language, static-limited, and route-less findings do not get it.
+
 - Actionable working-set review cards write the verify and analysis-outcome
   artifacts consumed by their receipt command. Gate and onboarding projections
   carry the complete optional command chain, preserving the selected base in
@@ -486,6 +524,23 @@ are scoped or reviewed.
   ([#3565](https://github.com/EffortlessMetrics/ripr-swarm/issues/3565)).
 
 ### Changed
+
+- The Python preview adapter now resolves a module-level named constant used
+  as a comparison threshold (`if amount >= DISCOUNT_THRESHOLD:` with
+  `DISCOUNT_THRESHOLD = 10_000`), matching the Rust and TypeScript adapters.
+  The boundary gets a repair card for `amount == DISCOUNT_THRESHOLD`, the
+  missing-discriminator reason names the constant's value, and a test that calls the owner with `10_000` or with
+  the imported constant now counts as observing the boundary. A name that can
+  be rebound (a second binding, `global`, walrus, star import, `exec`/`globals`/
+  `sys.modules`, a nested scope in the owner, a test-file attribute
+  assignment) or a non-literal value stays unresolved and gets no repair card
+  ([#4227](https://github.com/EffortlessMetrics/ripr-swarm/issues/4227)).
+  Two guided-route loops on that card are closed: `ripr agent status` after a
+  pilot run that produced only a Python repair card now names the
+  `ripr first-pr` route instead of sending the user back to `ripr pilot`, and
+  `ripr first-pr` on a Python or TypeScript root reports `stale_artifact` with
+  the refresh command when the named test or changed source was edited after
+  the gap ledger was written, instead of repeating the finished repair.
 
 - `ripr doctor` now separates installed-binary analysis readiness from the
   prerequisites for building RIPR from source. The default `analysis` profile

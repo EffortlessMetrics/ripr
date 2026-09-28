@@ -393,6 +393,7 @@ Updated:
 
 Reason:
 RIPR-SPEC-0122: human-full carries per-finding drill-in commands (#4379); digest why-line names the incomplete stage; unreached static_unknown asks for a test first
+RIPR-SPEC-0087: derive the TypeScript boundary input from a read-only parameter and a literal or single immutable integer module const; a complete packet's Start-here line names its action, test file, and verify command
 
 Command:
 `cargo xtask goldens bless ts_repair_packet_complete --reason "..."`

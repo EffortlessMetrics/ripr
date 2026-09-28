@@ -104,7 +104,13 @@ mod tests {
         assert!(human.contains("Analysis outcome: unsupported_input (analysis incomplete)."));
         assert!(!human.contains("Analysis outcome: \"unsupported_input\""));
         assert!(human.contains("analysis incomplete"));
-        assert!(human.contains("Zero findings is not a clean result"));
+        // The sample output carries findings, so the zero-findings hedge is
+        // replaced by the analyzed-scope caveat.
+        assert_eq!(
+            human.contains("Zero findings is not a clean result"),
+            output.findings.is_empty()
+        );
+        assert!(output.findings.is_empty() || human.contains("finding(s) below cover only"));
         assert!(human.contains("combined_hunk_unsupported"));
         assert!(human.contains("two-way diff"));
         Ok(())

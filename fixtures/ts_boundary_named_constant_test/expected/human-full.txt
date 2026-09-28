@@ -9,7 +9,7 @@ Changed file(s) by language: typescript: 1.
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
-WARNING src/pricing.ts:4
+INFO src/pricing.ts:4
 
 Changed
   after:      if (total >= DISCOUNT_THRESHOLD) {
@@ -35,7 +35,7 @@ Preview actionability
   raw evidence: src/pricing.ts:4 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:129143e0 owner=applyDiscount
 
 Static exposure
-  exposed (warning, confidence 0.60)
+  exposed (info, confidence 0.60)
 
 Evidence
   - reach yes: 1 related test(s) found for owner `applyDiscount`
@@ -76,7 +76,7 @@ Drill in:
   ripr explain --root fixtures/ts_boundary_named_constant_test/input --diff fixtures/ts_boundary_named_constant_test/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:129143e0
   ripr context --root fixtures/ts_boundary_named_constant_test/input --diff fixtures/ts_boundary_named_constant_test/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:129143e0
 
-WARNING src/pricing.ts:11
+INFO src/pricing.ts:11
 
 Changed
   after:      if (items >= 5) {
@@ -102,7 +102,7 @@ Preview actionability
   raw evidence: src/pricing.ts:11 (typescript_preview_probe) source=probe:src_pricing.ts:typescript_preview:1c8a3e62 owner=freeShipping
 
 Static exposure
-  exposed (warning, confidence 0.60)
+  exposed (info, confidence 0.60)
 
 Evidence
   - reach yes: 1 related test(s) found for owner `freeShipping`

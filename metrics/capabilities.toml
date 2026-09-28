@@ -1570,6 +1570,7 @@ evidence = [
   "python_test_placement_verify pins suggested pytest and unittest test placement, verify commands, and verify-command confidence for direct weak Python findings",
   "direct weak Python findings with canonical gaps, concrete missing discriminators, placement, and verify commands now carry python_repair_card output with changed owner, changed behavior, current test evidence, test shape, suggested assertion, suggested location, verify command, preview/advisory authority boundary, receipt status, stop conditions, and limits",
   "fixtures/python_parametrized_boundary_repair_gap pins pytest boundary repair-card guidance that keeps the equality case as the minimum repair while offering optional below/equal/above parameterized rows without invented expected values",
+  "fixtures/python_named_constant_boundary_repair_gap pins a module-level named-constant threshold resolving to its literal so the boundary gets a repair card; fixtures/python_rebound_constant_boundary_limit pins a constant that a global declaration can rebind staying unresolved with no repair card (#4227)",
   "field/object Python repair cards now specialize suggested assertions for returned mapping fields, response JSON fields, and response status-code fields without changing canonical gap identity",
   "fixtures/python_model_field_repair_gap pins a syntax-only returned constructor keyword field repair card that recommends result.active object-field evidence and adds a stop condition when the object does not expose the keyword as a public attribute",
   "ripr pilot projects the top Python preview repair card into pilot-summary.{json,md} and terminal first-use output for Python diff runs",
@@ -1633,6 +1634,8 @@ evidence = [
 fixtures = [
   "fixtures/python_boundary_gap",
   "fixtures/python_parametrized_boundary_repair_gap",
+  "fixtures/python_named_constant_boundary_repair_gap",
+  "fixtures/python_rebound_constant_boundary_limit",
   "fixtures/python_unittest_basic",
   "fixtures/python_method_owner",
   "fixtures/python_parametrize_basic",

@@ -15,8 +15,8 @@ related tests with:
 - A discoverable `package.json` with `jest` in `devDependencies` and `scripts.test`
 - `package-lock.json` confirming npm runner
 - A named missing discriminator (`DISCOUNT_THRESHOLD == amount`, operand order
-  kept by the analysis side) whose boundary
-  operand is a constant the repair-packet projection does not resolve to a value
+  kept by the analysis side) whose boundary operand is a single immutable
+  integer module `const`
 
 ## When
 
@@ -31,22 +31,20 @@ ripr check \
 The TypeScript preview adapter:
 
 - Classifies the finding as `WeaklyExposed`
-- Projects a `GapRecord` whose `assertion_shape` is the boundary placeholder
-  `expect(discountedTotal(/* boundary input for DISCOUNT_THRESHOLD == amount */)).toBe(expected)`;
-  it must NOT reuse an observed input such as `discountedTotal(20000)`, which is
-  not shown to equal the unresolved constant (G-G, #4215)
-- Fails the packet closed through the shared validator
-  (`agent_packet` ineligible): `repair_packet_ready` stays `false`
-- Keeps `actionability_category: incomplete_repair_packet` and
-  `gap_state: advisory` (no complete-packet flip)
+- Emits `typescript_boundary_input: parameter=amount;index=0;operand=DISCOUNT_THRESHOLD;value=10000`:
+  the module binds `DISCOUNT_THRESHOLD` once with `export const ... = 10000`
+- Reads the leading constant with the operator mirrored and projects a
+  `GapRecord` whose `assertion_shape` is the derived boundary input
+  `expect(discountedTotal(10000)).toBe(expected)`; it must NOT reuse the
+  observed `discountedTotal(20000)` (G-G, #4215)
+- Passes the shared validator: `repair_packet_ready: true`,
+  `actionability_category: complete_repair_packet`, `gap_state: actionable`
 - Keeps `authority_boundary: preview_advisory_only`
-- Omits `typescript_repair_packet` from the check JSON
+- Emits `typescript_repair_packet`
 
 ## Must Not
 
-- Emit `repair_packet_ready: true` when the discriminator's boundary operand is
-  an unresolved named constant, on either side, and no observed argument names
-  it (#4215 review)
+- Treat the constant written first as the receiver (#4215 review)
 - Present a non-boundary observed input as the assertion shape for the missing
   discriminator
 - Emit `typescript_repair_packet` without the shared validator returning `Ok(())`

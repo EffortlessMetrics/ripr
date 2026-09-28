@@ -12,7 +12,7 @@
     {
       "id": "probe:src_math.ts:typescript_preview:025f98d6",
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_math.ts:typescript_preview:025f98d6",

@@ -863,7 +863,11 @@ ripr init --ci github
 ```
 
 Copy the generated file, not a workflow from this page. Run
-`ripr init --ci github --dry-run` to print it without writing anything. It
+`ripr init --ci github --dry-run` to print it without writing anything. The
+workflow installs the ripr version that generated it
+(`cargo install ripr --version <that version> --locked`), so a later release
+does not change CI behavior until you rerun `ripr init --ci github --force`
+with the newer ripr and review the diff. It
 uploads the pilot, report, and agent artifact directories. The official GitHub
 SARIF upload documentation uses `github/codeql-action/upload-sarif@v4`; keep
 the RIPR job, artifact upload, and optional SARIF steps advisory until the

@@ -2469,6 +2469,9 @@ tests = [
   "crates/ripr/src/output/python_repair_card.rs::tests::field_cards_suggest_direct_assertion_shapes",
   "crates/ripr/src/output/python_repair_card.rs::tests::pytest_boundary_cards_suggest_parametrized_rows_without_expected_values",
   "crates/ripr/src/output/python_repair_card.rs::tests::pytest_boundary_parametrization_fails_closed_for_unclear_values",
+  "crates/ripr/src/analysis/language/python/module_constants/tests.rs::off_boundary_calls_name_the_constant_boundary_with_its_value",
+  "crates/ripr/src/analysis/language/python/module_constants/tests.rs::rebound_constant_names_no_repair_target",
+  "crates/ripr/src/analysis/language/python/module_constants/tests.rs::boundary_call_by_literal_or_imported_constant_is_exposed",
   "crates/ripr/src/analysis/language/python.rs::tests::classify_change_uses_constructor_keyword_field_discriminator",
   "crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card",
   "crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked",
@@ -2494,6 +2497,8 @@ fixtures = [
   "fixtures/python/basic",
   "fixtures/python_boundary_gap",
   "fixtures/python_parametrized_boundary_repair_gap",
+  "fixtures/python_named_constant_boundary_repair_gap",
+  "fixtures/python_rebound_constant_boundary_limit",
   "fixtures/python_async_owner",
   "fixtures/python_unittest_basic",
   "fixtures/python_method_owner",
@@ -5926,6 +5931,14 @@ tests = [
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::canonical_gap_id_normalizes_backslashes",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::projected_receipt_command_is_canonical_receipt_write",
   "crates/ripr/src/output/typescript_packet_projection.rs::tests::must_not_change_includes_preview_clause_via_shared_function",
+  # G-G derived boundary input (#4215 follow-up)
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::missed_literal_boundary_with_input_fact_derives_the_boundary_call",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::resolved_constant_boundary_with_input_fact_is_delegatable",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::mismatched_input_facts_keep_the_packet_closed",
+  "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::same_file_integer_const_resolves_to_the_boundary_input",
+  "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::rebindable_or_non_literal_constants_stay_unresolved",
+  "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::written_or_rebound_parameters_stay_unresolved",
+  "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_exposed_finding_is_a_report_only_no_action_record",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_repair_packet_becomes_agent_packet_gap_record",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_fixture_synthesizes_receipt_write_for_packet",
   "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_from_typescript_packet_json_matches_canonical_gap_ids",
@@ -5946,6 +5959,11 @@ fixtures = [
   # Complete-contract fixture (flips repair_packet_ready: true)
   "fixtures/ts_repair_packet_complete",
   "fixtures/first_successful_pr/typescript-preview-gap",
+  "fixtures/ts_repair_packet_boundary_constant_resolved",
+  "fixtures/ts_repair_packet_boundary_constant_first",
+  "fixtures/ts_repair_packet_boundary_literal_derived",
+  "fixtures/ts_repair_packet_boundary_constant_unresolved",
+  "fixtures/ts_repair_packet_boundary_literal_guarded",
   # Non-actionable fixtures (each pins a named failure family)
   "fixtures/ts_dynamic_oracle",
   "fixtures/ts_heuristic_relation",
@@ -5958,6 +5976,7 @@ fixtures = [
 code = [
   "crates/ripr/src/output/typescript_packet_projection.rs",
   "crates/ripr/src/output/preview_actionability.rs",
+  "crates/ripr/src/analysis/language/typescript/boundary_input.rs",
   # §8 consumer routing (issue #2028)
   "crates/ripr/src/lsp/actions.rs",
   "crates/ripr/src/lsp/backend.rs",

@@ -371,3 +371,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_async_owner (6)
+
+Reason:
+RIPR-SPEC-0122: exposed findings default to info severity
+
+Command:
+`cargo xtask goldens bless python_async_owner --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

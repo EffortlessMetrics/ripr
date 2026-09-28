@@ -7,7 +7,7 @@ Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 2 no path, 1 unknown
 Changed file(s) by language: typescript: 3.
 
 Analysis outcome: partial_with_limitations (analysis incomplete).
-  Zero findings is not a clean result because the analyzed scope is incomplete.
+  The 3 finding(s) below cover only the analyzed scope; behavior outside it has no finding.
   Limitation: language_scope_unsupported at language_adapter (src/deep_over_budget.ts); affected items: 1; recovery: retry — Fix the TypeScript or JavaScript parse error, then re-run the analysis.
 
 Start here:

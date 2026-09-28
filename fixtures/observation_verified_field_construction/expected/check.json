@@ -12,7 +12,7 @@
     {
       "id": "probe:src_lib.rs:field_construction:66b24106",
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:field_construction:66b24106",
@@ -99,7 +99,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_has_three_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches unknown sink: unknown sink (line 9)", "related test tests/item_tests.rs:4 config_has_three_retries uses strong exact value oracle: assert_eq!(cfg.retries, 3);", "observed assertion argument value 3 at line 6"],
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_has_three_retries", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (propagation_unknown); related oracle: Strong oracle found: exact value or pattern assertion", "local flow reaches unknown sink: unknown sink (line 9)", "related test tests/item_tests.rs:4 config_has_three_retries uses strong exact value oracle: assert_eq!(cfg.retries, 3);", "observed assertion argument value 3 at line 6"],
       "flow_sinks": [
         {"kind":"unknown","text":"unknown sink","line":9}
       ],

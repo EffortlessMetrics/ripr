@@ -383,3 +383,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_unittest_assertions (7)
+
+Reason:
+RIPR-SPEC-0122: exposed findings default to info severity
+
+Command:
+`cargo xtask goldens bless python_unittest_assertions --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -359,3 +359,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_owner_file_match (6)
+
+Reason:
+RIPR-SPEC-0122: exposed findings default to info severity
+
+Command:
+`cargo xtask goldens bless python_owner_file_match --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

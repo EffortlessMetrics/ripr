@@ -526,7 +526,7 @@ pub(super) fn imported_module_matches_owner(import: &PythonImport, owner: &Pytho
 /// projects that really write `from src.pricing.discounts import ...` still
 /// match. Each form is a complete module path compared by exact equality; no
 /// stem or suffix matching is introduced.
-fn owner_module_paths(file: &Path) -> Vec<String> {
+pub(super) fn owner_module_paths(file: &Path) -> Vec<String> {
     let normalized = normalized_path(file);
     let mut parts = normalized
         .split('/')

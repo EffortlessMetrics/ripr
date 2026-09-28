@@ -2801,6 +2801,25 @@ mod tests {
         assert!(workflow.contains(&format!("echo '- Receipt: {NO_RECEIPT_BEFORE_REPAIR}'")));
     }
 
+    /// W5: an unpinned `cargo install ripr` installs whatever release is
+    /// latest, so CI could run an older ripr that lacks the commands this
+    /// workflow calls, or change behavior silently on a later release. The
+    /// install pins the generating binary's own version and keeps `--locked`.
+    #[test]
+    fn generated_workflow_pins_the_generating_ripr_version() {
+        let workflow = generated_github_actions_workflow();
+        let pinned = format!(
+            "run: cargo install ripr --version {} --locked",
+            env!("CARGO_PKG_VERSION")
+        );
+        assert!(workflow.contains(&pinned), "missing {pinned}");
+        let installs: Vec<&str> = workflow
+            .lines()
+            .filter(|line| line.contains("run: cargo install"))
+            .collect();
+        assert_eq!(installs.len(), 1, "{installs:?}");
+    }
+
     /// The `cli_smoke` tests drive `ripr init` as a subprocess, so they prove
     /// end-to-end behavior but leave the planning logic uninstrumented. These
     /// in-process tests exercise `init_plan` and its precondition helpers

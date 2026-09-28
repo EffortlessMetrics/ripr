@@ -31,6 +31,17 @@ pub(super) fn repair_start_command(root: &Path, entry: &ClassifiedSeam) -> Optio
     ))
 }
 
+/// `ripr first-pr` for a Python repair card without its own receipt command.
+/// First-pr builds the gap ledger and names the gap's receipt command; it must
+/// run before the test edit, because once the edit closes the gap first-pr no
+/// longer selects it.
+pub(super) fn python_card_first_pr_command(root: &Path) -> String {
+    format!(
+        "ripr first-pr --root {}",
+        loop_commands::shell_arg(&loop_commands::bound_root(&display_path(root)))
+    )
+}
+
 pub(super) struct PilotCommands {
     pub(super) after_snapshot: String,
     pub(super) outcome: String,

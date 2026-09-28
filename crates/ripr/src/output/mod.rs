@@ -12,6 +12,7 @@ pub(crate) mod baseline_delta;
 pub(crate) mod baseline_update;
 pub(crate) mod coverage_grip_frontier;
 pub(crate) mod diff_report;
+pub(crate) mod discriminator_line;
 pub(crate) mod doctor;
 pub(crate) mod doctor_binary;
 pub(crate) mod evidence_health;

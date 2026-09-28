@@ -29,7 +29,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax", "infection weak: Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "propagation yes: Changed behavior appears to influence returned value: 400", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 400 (line 20)", "related test tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax uses strong exact value oracle: assert_eq!(fragile_fee(weight), 400);", "related test tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax uses strong exact value oracle: assert_eq!(tax_bps(\"EU\"), 2000);", "observed assertion argument value 400 at line 6", "observed assertion argument value \"EU\" at line 7", "observed assertion argument value 2000 at line 7"],
+      "evidence_path": ["reach yes: Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax", "infection weak: Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "propagation yes: Changed behavior appears to influence returned value: 400", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (weakly_exposed); related oracle: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 400 (line 20)", "related test tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax uses strong exact value oracle: assert_eq!(fragile_fee(weight), 400);", "related test tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax uses strong exact value oracle: assert_eq!(tax_bps(\"EU\"), 2000);", "observed assertion argument value 400 at line 6", "observed assertion argument value \"EU\" at line 7", "observed assertion argument value 2000 at line 7"],
       "flow_sinks": [
         {"kind":"return_value","text":"400","line":20}
       ],
@@ -113,7 +113,7 @@
     {
       "id": "probe:src_lib.rs:predicate:a97c7c7c",
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:predicate:a97c7c7c",

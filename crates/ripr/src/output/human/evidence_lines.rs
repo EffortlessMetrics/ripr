@@ -26,11 +26,7 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
             finding.ripr.reveal.observe.state.as_str(),
             finding.ripr.reveal.observe.summary
         ),
-        format!(
-            "discriminator {}: {}",
-            finding.ripr.reveal.discriminate.state.as_str(),
-            finding.ripr.reveal.discriminate.summary
-        ),
+        crate::output::discriminator_line::discriminator_evidence_line(finding),
     ];
 
     for sink in &finding.flow_sinks {

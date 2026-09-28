@@ -213,9 +213,18 @@ fn render_analysis_outcome_disclosure(out: &mut String, output: &CheckOutput) {
         ));
         return;
     }
-    out.push_str(
-        "  Zero findings is not a clean result because the analyzed scope is incomplete.\n",
-    );
+    // The "zero findings" hedge only makes sense when there are zero findings;
+    // a partial run with findings gets the scope caveat instead.
+    if output.findings.is_empty() {
+        out.push_str(
+            "  Zero findings is not a clean result because the analyzed scope is incomplete.\n",
+        );
+    } else {
+        out.push_str(&format!(
+            "  The {} finding(s) below cover only the analyzed scope; behavior outside it has no finding.\n",
+            output.findings.len()
+        ));
+    }
     for limitation in &outcome.limitations {
         out.push_str(&format!(
             "  Limitation: {} at {}",
@@ -657,6 +666,68 @@ mod tests {
         assert!(!rendered.contains("Next:"));
     }
 
+    fn partial_outcome_output(findings: Vec<Finding>) -> Result<CheckOutput, String> {
+        use crate::analysis_outcome::{
+            AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+            AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+            AnalysisStage,
+        };
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::CombinedHunkUnsupported,
+            AnalysisStage::DiffParse,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::UseTwoWayDiff,
+                "Re-run against a two-way diff of the merge result.",
+            )?,
+        );
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisIdentity::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 2,
+                finding_count: u64::try_from(findings.len()).unwrap_or(u64::MAX),
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![limitation],
+        )?;
+        Ok(CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings,
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: Some(outcome),
+            partial_scope: None,
+        })
+    }
+
+    #[test]
+    fn partial_outcome_with_findings_does_not_claim_zero_findings() -> Result<(), String> {
+        let rendered = render(&partial_outcome_output(vec![sample_finding()])?);
+        assert!(rendered.contains("analysis incomplete"));
+        assert!(
+            !rendered.contains("Zero findings is not a clean result"),
+            "{rendered}"
+        );
+        assert!(rendered.contains(
+            "  The 1 finding(s) below cover only the analyzed scope; behavior outside it has no finding.\n"
+        ));
+
+        let empty = render(&partial_outcome_output(Vec::new())?);
+        assert!(empty.contains("Zero findings is not a clean result"));
+        assert!(!empty.contains("finding(s) below cover only"));
+        Ok(())
+    }
+
     #[test]
     fn bounded_human_output_suggests_explain_and_context_for_top_finding() {
         let finding = sample_finding();
@@ -689,6 +760,90 @@ mod tests {
         assert!(rendered.contains("Next: drill into the top finding:"));
         assert!(rendered.contains(&format!("  ripr explain {finding_id}\n")));
         assert!(rendered.contains(&format!("  ripr context --at {finding_id}\n")));
+    }
+
+    /// A Python preview finding; `carded` controls whether the Python repair
+    /// card authority (`python_repair_card`) can build a card for it.
+    fn python_preview_finding(line: usize, carded: bool) -> Finding {
+        let mut finding = sample_finding();
+        finding.id = format!("probe:pricing___init__.py:python_preview:{line}");
+        finding.probe.location = SourceLocation::new("pricing/__init__.py", line, 5);
+        finding.language = Some(LanguageId::Python);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.confidence = 0.4;
+        finding.canonical_gap = Some(FindingCanonicalGap {
+            id: format!(
+                "gap:python:pricing/__init__.py:owner{line}:predicate_boundary:predicate:x"
+            ),
+            language: "python".to_string(),
+            file: "pricing/__init__.py".to_string(),
+            owner: format!("owner{line}"),
+            behavior_kind: "predicate_boundary".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "x".to_string(),
+        });
+        if carded {
+            finding.evidence = vec![
+                "suggested_test_file: tests/test_pricing.py".to_string(),
+                "suggested_test_name: test_small_order_pays_shipping".to_string(),
+                "suggested_verify_command: pytest tests/test_pricing.py::test_small_order_pays_shipping".to_string(),
+                "suggested_verify_command_confidence: high".to_string(),
+            ];
+        } else {
+            finding.activation.missing_discriminators.clear();
+        }
+        finding
+    }
+
+    /// rc rehearsal (py-pricing): Start here picked the card-less constant
+    /// finding at line 5 over the carded literal finding at line 11, so check
+    /// said "no ripr command routes this" while pilot had a card. A Python
+    /// finding with a repair card now outranks one without; classification
+    /// stays the same.
+    #[test]
+    fn start_here_prefers_a_python_finding_with_a_repair_card() {
+        let uncarded = python_preview_finding(5, false);
+        let carded = python_preview_finding(11, true);
+        assert!(crate::output::python_repair_card::python_repair_card(&uncarded).is_none());
+        assert!(crate::output::python_repair_card::python_repair_card(&carded).is_some());
+        for findings in [
+            vec![uncarded.clone(), carded.clone()],
+            vec![carded.clone(), uncarded.clone()],
+        ] {
+            let output = CheckOutput {
+                harness_projections: Vec::new(),
+                schema_version: "0.1".to_string(),
+                tool: "ripr".to_string(),
+                mode: Mode::Draft,
+                root: PathBuf::from("repo"),
+                base: None,
+                summary: Summary {
+                    probes: 2,
+                    findings: 2,
+                    weakly_exposed: 2,
+                    ..Summary::default()
+                },
+                findings,
+                preview_language_advisories: Vec::new(),
+                language_runs: Vec::new(),
+                no_scope_provided: false,
+                unanalyzed_working_tree: false,
+                suppression: None,
+                analysis_outcome: None,
+                partial_scope: None,
+            };
+            let rendered = render(&output);
+            assert!(rendered.contains("State: preview_limited"), "{rendered}");
+            assert!(
+                rendered.contains("  File: pricing/__init__.py:11\n"),
+                "{rendered}"
+            );
+            assert!(!rendered.contains("has no repair card"), "{rendered}");
+            assert!(
+                rendered.contains("apply the next step below to the suggested test"),
+                "{rendered}"
+            );
+        }
     }
 
     /// #2567: nothing was omitted, so the render must not advertise a hidden
@@ -1362,9 +1517,15 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("State: preview_limited"));
-        assert!(rendered.contains(
-            "  Safe next action: preview-language evidence is advisory; the repair packet is complete but remains advisory, so verify independently before acting.\n"
-        ));
+        // The complete packet names its own action, test file, and verify
+        // command instead of a bare "verify independently" with no route.
+        assert!(
+            rendered.contains(
+                "  Safe next action: preview-language evidence is advisory; the repair packet is complete: in `tests/discount.test.ts`, add a focused assertion for the missing discriminator `amount == threshold`, shaped like `expect(result).toBe(expected)`; run `jest tests/discount.test.ts`, then rerun `ripr check`.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("verify independently before acting"));
         assert!(!rendered.contains("complete the missing repair-packet fields before acting"));
     }
 
@@ -2398,6 +2559,30 @@ mod tests {
         finding.recommended_next_step = Some("Add a focused Perl assertion.".to_string());
         finding.language = Some(LanguageId::Perl);
         finding.language_status = Some(LanguageStatus::Preview);
+    }
+
+    #[test]
+    fn discriminator_line_never_says_yes_for_a_non_exposed_finding() {
+        // CLI parity with the editor hover (#4419): a strong related oracle
+        // on a weakly_exposed finding must not read as "discriminator yes".
+        use crate::output::discriminator_line::discriminator_evidence_line;
+        let mut finding = sample_finding();
+        finding.ripr.reveal.discriminate =
+            stage(StageState::Yes, Confidence::High, "Strong oracle found");
+        assert_eq!(
+            discriminator_evidence_line(&finding),
+            "discriminator missing: `enabled == false`; related oracle: Strong oracle found"
+        );
+        finding.activation.missing_discriminators.clear();
+        assert_eq!(
+            discriminator_evidence_line(&finding),
+            "discriminator not established (weakly_exposed); related oracle: Strong oracle found"
+        );
+        finding.class = ExposureClass::Exposed;
+        assert_eq!(
+            discriminator_evidence_line(&finding),
+            "discriminator yes: Strong oracle found"
+        );
     }
 
     fn sample_finding() -> Finding {

@@ -806,6 +806,7 @@ fn gap_records_from_check_output_json(contents: &str) -> Result<Vec<GapRecord>, 
             let Some(mut record) = gap_record_from_python_repair_finding(finding, index)
                 .or_else(|| gap_record_from_typescript_repair_finding(finding, index))
                 .or_else(|| gap_record_from_typescript_not_delegatable_finding(finding, index))
+                .or_else(|| gap_record_from_typescript_no_action_finding(finding, index))
                 .or_else(|| gap_record_from_python_static_limit_finding(finding, index))
                 .or_else(|| gap_record_from_python_no_action_finding(finding, index))
                 .or_else(|| gap_record_from_python_no_repair_card_finding(finding, index))
@@ -1532,6 +1533,107 @@ fn gap_record_from_typescript_not_delegatable_finding(
             false,
             has_local_anchor,
             "static_limitation",
+        ),
+        verification_commands: Vec::new(),
+        command_specs: None,
+        receipt_command: None,
+        regeneration_commands: Vec::new(),
+        receipt: None,
+        safe_gate_predicate: None,
+        authority_boundary: "preview_advisory_only".to_string(),
+    })
+}
+
+/// An exposed or no-path TypeScript preview finding as a report-only
+/// no-action record, mirroring the Python no-action record. Without it a
+/// TypeScript diff whose boundary test now exists (for example after
+/// following a delegatable repair packet) left the ledger empty, so it read
+/// `blocked` and first-pr looped on "refresh the first-run evidence". It
+/// never promotes: no repair route, verify command, receipt, or gate
+/// predicate, and every authority projection stays off.
+fn gap_record_from_typescript_no_action_finding(
+    finding: &Value,
+    index: usize,
+) -> Option<GapRecord> {
+    if string_at(finding, &["language"]) != Some("typescript")
+        || finding.get("typescript_repair_packet").is_some()
+        || string_at(finding, &["static_limit_kind"]).is_some()
+    {
+        return None;
+    }
+    let (gap_state, kind) = match string_at(finding, &["classification"])? {
+        "exposed" => ("already_observed", "NoActionAlreadyObserved"),
+        "no_static_path" => ("no_related_test", "NoActionNoRelatedTest"),
+        _ => return None,
+    };
+    let behavior_kind = string_at(finding, &["typescript_preview_card", "probe_family"])
+        .or_else(|| string_at(finding, &["probe", "family"]))
+        .unwrap_or("typescript_preview");
+    let source_file = string_at(finding, &["probe", "file"]).map(ToString::to_string);
+    let source_line = u64_at(finding, &["probe", "line"]);
+    let changed_owner = string_at(finding, &["typescript_preview_card", "owner"])
+        .or_else(|| string_at(finding, &["probe", "owner"]))
+        .map(ToString::to_string);
+    let canonical_gap_id = string_at(finding, &["canonical_gap_id"])
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            let file = source_file
+                .as_deref()
+                .map(|file| file.replace('\\', "/"))
+                .filter(|file| !file.trim().is_empty())
+                .unwrap_or_else(|| format!("check-output-item-{index}"));
+            let owner = changed_owner
+                .as_deref()
+                .and_then(non_empty)
+                .map(python_static_limit_gap_component)
+                .unwrap_or_else(|| "module".to_string());
+            format!(
+                "gap:typescript:{file}:{owner}:{gap_state}:{}",
+                python_static_limit_gap_component(behavior_kind)
+            )
+        });
+    let has_local_anchor = source_file.is_some() && source_line.is_some();
+    let anchor = GapAnchor {
+        file: source_file,
+        line: source_line,
+        owner: changed_owner,
+        dedupe_fingerprint: Some(canonical_gap_id.clone()),
+    };
+    let mut evidence_ids = Vec::new();
+    if let Some(id) = string_at(finding, &["id"]) {
+        evidence_ids.push(id.to_string());
+    }
+    if !evidence_ids.iter().any(|id| id == &canonical_gap_id) {
+        evidence_ids.push(canonical_gap_id.clone());
+    }
+
+    Some(GapRecord {
+        gap_id: format!("gap:pr:{canonical_gap_id}"),
+        canonical_gap_id,
+        seam_id: None,
+        source_currentness: None,
+        kind: kind.to_string(),
+        language: "typescript".to_string(),
+        language_status: string_at(finding, &["language_status"])
+            .unwrap_or("preview")
+            .to_string(),
+        scope: "pr_local".to_string(),
+        evidence_class: behavior_kind.to_string(),
+        gap_state: gap_state.to_string(),
+        policy_state: "not_policy_targeted".to_string(),
+        repairability: "no_action".to_string(),
+        repair_route: None,
+        static_limit_kind: None,
+        static_limit_detail: None,
+        static_limits: Vec::new(),
+        anchor: Some(anchor),
+        evidence_ids,
+        projection_eligibility: projection_eligibility_from_pr_evidence(
+            "no_action",
+            false,
+            false,
+            has_local_anchor,
+            gap_state,
         ),
         verification_commands: Vec::new(),
         command_specs: None,
@@ -4248,8 +4350,12 @@ mod tests {
         // `bulk_discount` finding from `exposed` to `weakly_exposed` gives it a
         // repair card it previously could not carry, raising the direct-aligned
         // repair-card inventory from 2 to 3 (the boundary-downgraded card in
-        // `python_src_layout_package_import`).
-        if (direct, no_strong, orthogonal) != (3, 28, 11) {
+        // `python_src_layout_package_import`). #4227: resolving module-level
+        // named-constant thresholds adds two more direct-aligned boundary cards
+        // (`python_named_constant_boundary_repair_gap` and the
+        // `DISCOUNT_THRESHOLD` boundary in
+        // `python_same_stem_sibling_owner_not_related`).
+        if (direct, no_strong, orthogonal) != (5, 28, 11) {
             return Err(format!(
                 "corpus inventory drift: direct={direct}, unknown={no_strong}, orthogonal={orthogonal}"
             ));
@@ -4601,6 +4707,33 @@ mod tests {
         );
     }
 
+    // An exposed TypeScript finding (for example after the boundary test a
+    // delegatable packet asked for) is a report-only no-action record, so the
+    // ledger is not empty and first-pr does not loop on "blocked".
+    #[test]
+    fn check_output_typescript_exposed_finding_is_a_report_only_no_action_record() {
+        let check = include_str!(
+            "../../../../fixtures/ts_predicate_boundary_optional_chaining/expected/check.json"
+        );
+        assert!(check.contains("\"classification\": \"exposed\""));
+        let report = check_output_ledger(check.to_string());
+        assert_eq!(report.status, "advisory", "{:?}", report.warnings);
+        assert!(!report.records.is_empty());
+        for record in &report.records {
+            assert_eq!(record.language, "typescript");
+            assert_eq!(record.gap_state, "already_observed");
+            assert_eq!(record.kind, "NoActionAlreadyObserved");
+            assert_eq!(record.repairability, "no_action");
+            assert!(record.repair_route.is_none());
+            assert!(record.verification_commands.is_empty());
+            assert!(record.receipt_command.is_none());
+            for projection in ["agent_packet", "pr_comment", "gate_candidate"] {
+                assert!(!projection_eligible(record, projection), "{projection}");
+            }
+        }
+        assert_eq!(report.summary.no_action_total, report.records.len());
+    }
+
     #[test]
     fn check_output_typescript_fail_closed_packet_is_never_delegatable() -> Result<(), String> {
         let report = check_output_ledger(typescript_fail_closed_packet_check_output());
@@ -4660,9 +4793,13 @@ mod tests {
         Ok(())
     }
 
+    // The no-card premise is the rebound-constant fixture: `global` can rebind
+    // `DISCOUNT_THRESHOLD`, so it stays unresolved and no card forms (#4227).
+    // The same-stem sibling fixture carried this premise until #4227 resolved
+    // its once-bound constant and gave it a card.
     fn python_no_repair_card_check_output() -> String {
         include_str!(
-            "../../../../fixtures/python_same_stem_sibling_owner_not_related/expected/check.json"
+            "../../../../fixtures/python_rebound_constant_boundary_limit/expected/check.json"
         )
         .to_string()
     }

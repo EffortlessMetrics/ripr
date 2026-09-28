@@ -12,7 +12,7 @@
     {
       "id": "probe:src_lib.rs:error_path:99b06ce7",
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:error_path:99b06ce7",
@@ -92,7 +92,7 @@
     {
       "id": "probe:src_lib.rs:return_value:e21dcccc",
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:return_value:e21dcccc",

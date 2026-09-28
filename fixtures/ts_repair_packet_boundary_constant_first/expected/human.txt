@@ -11,7 +11,7 @@ Analysis outcome: complete_with_findings (analysis complete).
 
 Start here:
   State: preview_limited
-  Safe next action: this TypeScript preview finding's repair packet is not ready (boundary constant `DISCOUNT_THRESHOLD` in the missing discriminator `DISCOUNT_THRESHOLD == amount` is not resolved to a concrete value, so the observed call input…); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.
+  Safe next action: preview-language evidence is advisory; the repair packet is complete: in `tests/pricing.test.ts`, add a focused assertion for the missing discriminator `DISCOUNT_THRESHOLD == amount`, shaped like `expect(discountedTotal(10000)).toBe(expected)`; run `jest tests/pricing.test.ts`, then rerun `ripr check`.
   File: src/pricing.ts:4
   Language: typescript
   Language status: preview
@@ -20,7 +20,7 @@ Start here:
   Changed behavior: if (DISCOUNT_THRESHOLD <= amount) {
   Missing discriminator: Related tests reach `discountedTotal` with a strong oracle, but no strong assertion observes a `discountedTotal(...)` call at the changed predicate boundary…
   Related test: tests/pricing.test.ts:3 no discount below threshold
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `DISCOUNT_THRESHOLD == amount`; no actionable repair packet is emitted until verify,…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `DISCOUNT_THRESHOLD == amount`; the repair packet is complete and delegatable…
   Evidence:
     - reach yes: 2 related test(s) found for owner `discountedTotal`
     - infection unknown: TypeScript preview adapter does not yet model infection.

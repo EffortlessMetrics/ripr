@@ -1,0 +1,13 @@
+diff --git a/src/shipping.ts b/src/shipping.ts
+index 0000000..1111111 100644
+--- a/src/shipping.ts
++++ b/src/shipping.ts
+@@ -1,7 +1,7 @@
+ export function shipping(amount: number): number {
+   if (amount === 5000) return 0;
+-  if (amount >= 5000) {
++  if (amount > 5000) {
+     return 1;
+   }
+   return 2;
+ }

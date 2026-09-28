@@ -11,7 +11,7 @@ Analysis outcome: complete_with_findings (analysis complete).
 
 Start here:
   State: preview_limited
-  Safe next action: preview-language evidence is advisory; the repair packet is complete but remains advisory, so verify independently before acting.
+  Safe next action: preview-language evidence is advisory; the repair packet is complete: in `tests/discount.test.ts`, add a focused assertion for the missing discriminator `amount == threshold`, shaped like `expect(result).toBe(expected)`; run `jest tests/discount.test.ts`, then rerun `ripr check`.
   File: src/discount.ts:2
   Language: typescript
   Language status: preview

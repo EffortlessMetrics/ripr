@@ -250,7 +250,9 @@ fn resolved_module_edges(
     // child file). The candidates loop runs first and skips ambiguous
     // children; the moved set then seeds their errors.
     for (child, owners) in &candidates {
-        if owners.len() > 1 || ambiguous.contains(child) {
+        if ambiguous.contains(child)
+            || (owners.len() > 1 && !is_shared_integration_test_module(child, owners, &candidates))
+        {
             edges.insert(child.clone(), Err(REASON_MODULE_AMBIGUOUS_PARENT));
         }
     }
@@ -260,7 +262,10 @@ fn resolved_module_edges(
             .or_insert_with(|| Err(REASON_MODULE_AMBIGUOUS_PARENT));
     }
     for (child, owners) in candidates {
-        if owners.len() > 1 || edges.contains_key(&child) {
+        // Multiple owners reach here only as the shared integration-test
+        // helper layout, whose owners agree on context; the first owner in
+        // deterministic order stands for all of them.
+        if edges.contains_key(&child) {
             continue;
         }
         if let Some((parent, line, declaration, requires_test)) = owners.into_iter().next() {
@@ -276,6 +281,49 @@ fn resolved_module_edges(
         }
     }
     edges
+}
+
+/// The idiomatic shared integration-test helper layout: several Cargo
+/// integration-test crate roots (`tests/<name>.rs`) each declare the same
+/// `mod common;` for `tests/common/mod.rs` (or `tests/common.rs`). Every
+/// integration test is its own crate, so each owner compiles its own copy of
+/// the module; the owners are not competing parents. The layout composes as
+/// one context only when every owner is a direct `tests/` crate root in the
+/// child's `tests/` directory, no owner is itself a module child, and every
+/// declaration agrees on name and test requirement. Anything else stays
+/// ambiguous and fails closed.
+fn is_shared_integration_test_module(
+    child: &Path,
+    owners: &BTreeSet<(PathBuf, usize, String, bool)>,
+    candidates: &BTreeMap<PathBuf, BTreeSet<(PathBuf, usize, String, bool)>>,
+) -> bool {
+    let Some(tests_dir) = integration_test_module_tests_dir(child) else {
+        return false;
+    };
+    let mut declarations = owners
+        .iter()
+        .map(|(_, _, declaration, requires_test)| (declaration, requires_test));
+    let Some(first) = declarations.next() else {
+        return false;
+    };
+    declarations.all(|other| other == first)
+        && owners.iter().all(|(parent, _, _, _)| {
+            parent.parent() == Some(tests_dir)
+                && parent.extension().and_then(|ext| ext.to_str()) == Some("rs")
+                && !candidates.contains_key(parent)
+        })
+}
+
+/// The `tests/` directory owning a `tests/<m>/mod.rs` or `tests/<m>.rs`
+/// module file, when the file has that shape.
+fn integration_test_module_tests_dir(child: &Path) -> Option<&Path> {
+    let parent = child.parent()?;
+    let tests_dir = if child.file_name().and_then(|name| name.to_str()) == Some("mod.rs") {
+        parent.parent()?
+    } else {
+        parent
+    };
+    (tests_dir.file_name().and_then(|name| name.to_str()) == Some("tests")).then_some(tests_dir)
 }
 
 /// Retain each physical file's possible search directories. A file reached
@@ -1517,6 +1565,55 @@ mod tests {
             provenance.earliest_unresolved_reason.as_deref(),
             Some(REASON_MODULE_AMBIGUOUS_PARENT),
             "the earliest unresolved edge must be named"
+        );
+        Ok(())
+    }
+
+    /// The idiomatic `tests/common/mod.rs` layout, declared by several
+    /// integration-test crate roots, is not an ambiguous parent: each test is
+    /// its own crate. Owners that disagree on test requirement stay ambiguous.
+    #[test]
+    fn shared_integration_test_common_module_is_not_ambiguous() -> Result<(), String> {
+        let root = temp_dir("shared-tests-common")?;
+        write_manifest(&root)?;
+        let files = vec![
+            write(&root, "src/lib.rs", "pub fn lib_fn() -> i32 { 1 }\n")?,
+            write(&root, "tests/alpha.rs", "mod common;\n")?,
+            write(&root, "tests/beta.rs", "mod common;\n")?,
+            write(
+                &root,
+                "tests/common/mod.rs",
+                "pub fn shared_helper() -> i32 { 1 }\n",
+            )?,
+        ];
+        let index = crate::analysis::facts::build_index(&root, &files)
+            .map_err(|error| error.to_string())?;
+        let provenance = &index.files[Path::new("tests/common/mod.rs")].role_provenance;
+        assert_eq!(provenance.earliest_unresolved_reason, None);
+        assert_eq!(provenance.edges.len(), 1, "{:?}", provenance.edges);
+        assert_eq!(provenance.edges[0].parent, PathBuf::from("tests/alpha.rs"));
+
+        // Disagreeing owners are still ambiguous.
+        let root = temp_dir("shared-tests-common-conflict")?;
+        write_manifest(&root)?;
+        let files = vec![
+            write(&root, "src/lib.rs", "pub fn lib_fn() -> i32 { 1 }\n")?,
+            write(&root, "tests/alpha.rs", "mod common;\n")?,
+            write(&root, "tests/beta.rs", "#[cfg(test)]\nmod common;\n")?,
+            write(
+                &root,
+                "tests/common/mod.rs",
+                "pub fn shared_helper() -> i32 { 1 }\n",
+            )?,
+        ];
+        let index = crate::analysis::facts::build_index(&root, &files)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            index.files[Path::new("tests/common/mod.rs")]
+                .role_provenance
+                .earliest_unresolved_reason
+                .as_deref(),
+            Some(REASON_MODULE_AMBIGUOUS_PARENT)
         );
         Ok(())
     }

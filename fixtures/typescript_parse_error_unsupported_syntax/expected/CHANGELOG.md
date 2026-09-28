@@ -455,3 +455,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_parse_error_unsupported_syntax (5)
+
+Reason:
+RIPR-SPEC-0122: partial outcome with findings no longer claims zero findings; the analyzed-scope caveat names the finding count
+
+Command:
+`cargo xtask goldens bless typescript_parse_error_unsupported_syntax --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

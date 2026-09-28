@@ -250,10 +250,10 @@ fn write_repo_exposure_json_document<W: io::Write>(
         if let Some(info) = limit_info {
             let repair_route = match info.source {
                 SeamLimitSource::Default => {
-                    "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or use `ripr check --diff` to scope the run."
+                    "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
                 }
                 SeamLimitSource::Configured => {
-                    "Remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or use `ripr check --diff`."
+                    "Remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
                 }
             };
             writeln!(out, "    {{")?;
@@ -736,6 +736,13 @@ fn push_classified_json(
     out.push_str("    }");
 }
 
+/// Next step printed when the repo inventory found nothing to analyze and no
+/// language guidance applies.
+const REPO_EXPOSURE_EMPTY_NEXT_STEP: &str = "\nNothing was found to analyze under this root. \
+Next: point `--root` at the directory holding `Cargo.toml` (or at TypeScript or Python \
+sources with that language enabled in `ripr.toml`), then run `ripr doctor --root <DIR>` \
+to see what the root can analyze.\n";
+
 /// Render the repo exposure Markdown report. The output uses the
 /// static seam evidence vocabulary only — no runtime-mutation outcome
 /// words per RIPR-SPEC-0005 § Static-Language Boundaries.
@@ -777,10 +784,10 @@ pub(crate) fn render_repo_exposure_md(
         if let Some(info) = limit_info {
             let control = match info.source {
                 SeamLimitSource::Default => {
-                    "set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or use `ripr check --diff` to scope the run"
+                    "set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)"
                 }
                 SeamLimitSource::Configured => {
-                    "remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or use `ripr check --diff`"
+                    "remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)"
                 }
             };
             out.push_str(&format!(
@@ -820,6 +827,12 @@ pub(crate) fn render_repo_exposure_md(
             "\nNo classified seams. The repo seam inventory is empty or no \
              production seams were detected.\n",
         );
+        // An empty report must still name a next step (an empty directory
+        // used to end here with nothing to do). Language guidance above
+        // already names its own next step.
+        if ts_guidance.is_none() && python_guidance.is_none() {
+            out.push_str(REPO_EXPOSURE_EMPTY_NEXT_STEP);
+        }
         return out;
     }
 
@@ -1627,6 +1640,45 @@ mod tests {
             md.contains("analyzed 3 of 500 seams"),
             "seam counts missing in:\n{md}"
         );
+    }
+
+    #[test]
+    fn empty_markdown_report_names_a_next_step() {
+        let md = render_repo_exposure_md(&[], None, None, None);
+        assert!(md.contains("No classified seams."), "{md}");
+        assert!(
+            md.ends_with(REPO_EXPOSURE_EMPTY_NEXT_STEP),
+            "empty report must end with a next step: {md}"
+        );
+        assert!(md.contains("ripr doctor --root <DIR>"), "{md}");
+        // A non-empty report does not carry the empty-report next step.
+        let populated = render_repo_exposure_md(&[weakly_gripped_classified()], None, None, None);
+        assert!(!populated.contains("Nothing was found to analyze"));
+    }
+
+    #[test]
+    fn seam_limit_hint_names_a_runnable_check_command() {
+        use crate::analysis::{SeamLimitInfo, SeamLimitSource};
+        for source in [SeamLimitSource::Default, SeamLimitSource::Configured] {
+            let info = SeamLimitInfo {
+                analyzed: 3,
+                total: 500,
+                source,
+            };
+            for rendered in [
+                render_repo_exposure_md(&[], Some(&info), None, None),
+                render_repo_exposure_json(&[], Some(&info), None, None),
+            ] {
+                assert!(
+                    rendered.contains("`ripr check --base <REV>` (or `ripr check --diff <PATH>`)"),
+                    "hint must be runnable: {rendered}"
+                );
+                assert!(
+                    !rendered.contains("`ripr check --diff`"),
+                    "--diff without PATH is not runnable: {rendered}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -290,6 +290,18 @@ boundary without changing the guards (#4104 E):
   initializers, repeated declarations, off-value constants, and constants
   imported from a module the adapter cannot resolve to the owner stay
   fail-closed.
+- **Boundary input evidence**: for a changed predicate with a named missing
+  discriminator `<param> == <operand>`, the adapter emits
+  `typescript_boundary_input: parameter=<param>;index=<i>;operand=<operand>;value=<v>`
+  only when, on the oxc token stream of the owner's module, `<param>` is the
+  owner's plain positional parameter at index `<i>` and every later
+  occurrence in the owner is a plain read (no write, update, redeclaration,
+  nested parameter, catch, loop, or destructuring binding; no `arguments`,
+  `eval`, `with`, or escaped identifier), and `<operand>` is a plain decimal
+  integer literal or an UPPER_CASE name bound exactly once, at the module top
+  level, by a non-`declare` `const` with an integer literal initializer, whose
+  every other occurrence in the module is a plain read. Anything else emits
+  nothing.
 
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:

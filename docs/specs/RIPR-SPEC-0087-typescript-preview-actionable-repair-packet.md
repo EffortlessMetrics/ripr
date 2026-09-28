@@ -222,6 +222,17 @@ non-actionable category from `typescript_actionability_for`
   (`typescript/bun_bridge.rs`) are *named limitations*; such findings stay
   preview.
 
+- **G-G. Boundary target shape (#4105, #4215).** The projected assertion
+  shape must hit the missing boundary discriminator. An observed call input
+  that provably misses it, or a named-constant boundary the discriminator text
+  alone cannot resolve, fails the packet closed with a boundary placeholder —
+  unless the analysis side emitted `typescript_boundary_input` evidence for
+  exactly that comparison (read-only positional parameter; integer literal or
+  single immutable top-level integer `const` whose other occurrences are all
+  plain reads). Then the shape is the observed call with that argument set to
+  the boundary value, the observed call stays as stop-condition context, and
+  the shared validator decides as for any other packet.
+
 If G-A through G-F all hold, the finding has *exactly* the evidence the Rust
 packet requires except the four projection fields named in §3. PR 7 produces
 those four fields, builds the `GapRecord`, and calls the shared validator.

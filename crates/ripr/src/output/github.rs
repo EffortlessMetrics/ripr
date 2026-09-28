@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn render_uses_warning_for_exposed_and_default_message_without_stop_reason() {
+    fn render_uses_notice_for_exposed_and_default_message_without_stop_reason() {
         let output = CheckOutput {
             harness_projections: Vec::new(),
             schema_version: "0.1".to_string(),
@@ -549,7 +549,10 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("::warning file=src/lib.rs,line=21,title=ripr exposed::"));
+        // An exposed finding is already discriminated; it annotates as a
+        // notice, not a warning, by default.
+        assert!(rendered.contains("::notice file=src/lib.rs,line=21,title=ripr exposed::"));
+        assert!(!rendered.contains("::warning "));
         assert!(rendered.contains("Static RIPR exposure finding"));
         assert!(!rendered.contains("Stop reason"));
     }

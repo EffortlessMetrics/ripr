@@ -11,7 +11,7 @@ Analysis outcome: complete_with_findings (analysis complete).
 
 Start here:
   State: preview_limited
-  Safe next action: this Python preview finding has no repair card (static evidence names no concrete missing discriminator), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
   File: pricing.py:5
   Language: python
   Language status: preview
@@ -19,12 +19,13 @@ Start here:
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:pricing.py:discounted_total:predicate_boundary:predicate:amount>=discount_threshold
   Changed behavior: if amount >= DISCOUNT_THRESHOLD:
-  Missing discriminator: A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary. No strong related test call places…
+  Missing discriminator: A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary `amount == DISCOUNT_THRESHOLD`. No…
   Related test: tests/test_pricing.py:8 test_discounts_far_above_threshold
   Suggested test file: tests/test_pricing.py
   Suggested test: test_discounts_far_above_threshold
   Test node: tests/test_pricing.py::test_discounts_far_above_threshold
   Verify command: pytest tests/test_pricing.py::test_discounts_far_above_threshold (high)
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == DISCOUNT_THRESHOLD`.
   Evidence:
     - reach yes: 2 related Python test(s) found for owner `discounted_total`
     - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.

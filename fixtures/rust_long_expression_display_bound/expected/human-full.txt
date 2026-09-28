@@ -27,7 +27,7 @@ Evidence
   - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
   - propagation unknown: Propagation is not statically obvious from syntax-first analysis
   - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - discriminator missing: `decisions.iter().filter(|d| d.decision == "blocking").count() == 0`; related oracle: Strong oracle found: exact value or pattern assertion
   - related test src/lib.rs:25 single_blocking_decision_reports_its_reason uses strong exact value oracle: assert_eq!(blocking_reason(&decisions, "unknown"), "stale_baseline");
   - observed assertion argument value "stale_baseline" at line 27
   - observed function argument value fallback = "unknown" at line 27

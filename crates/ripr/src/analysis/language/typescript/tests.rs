@@ -13062,6 +13062,58 @@ fn analyze_diff_emits_test_extraction_partial_for_template_literal_title() -> Re
     Ok(())
 }
 
+/// Several unrelated test files with unindexed shapes collapse into ONE
+/// summary limitation carrying the file count, and the recovery names an
+/// inspection or rewrite rather than a bare retry.
+#[test]
+fn analyze_diff_collapses_test_extraction_partial_into_one_summary() -> Result<(), String> {
+    let root = ts_unique_tempdir("tmpltitle-many")?;
+    ts_write_file(
+        &root.join("src/calc.ts"),
+        "export function add(a: number, b: number): number {\n  return a + b;\n}\n",
+    )?;
+    for index in 1..=5 {
+        ts_write_file(
+            &root.join(format!("tests/calc{index}.test.ts")),
+            "import { add } from '../src/calc';\nit(`adds ${1} and ${2}`, () => {\n  expect(add(1, 2)).toBe(3);\n});\n",
+        )?;
+    }
+
+    let adapter = TypeScriptAdapter;
+    let options = ts_analysis_options(root.clone());
+    let result = adapter.analyze_diff(
+        &options,
+        &OraclePolicy::default(),
+        &[changed_with_lines("src/calc.ts", &[(2, "  return a + b;")])],
+    )?;
+    let extraction = result
+        .limitations
+        .iter()
+        .filter(|limitation| {
+            limitation
+                .bounded_detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("typescript_test_extraction_partial"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(extraction.len(), 1, "{:?}", result.limitations);
+    let summary = extraction[0];
+    assert_eq!(summary.affected_items, Some(5));
+    assert_eq!(summary.path, None);
+    assert_eq!(summary.recovery.kind, AnalysisRecoveryKind::InspectFailure);
+    assert!(
+        summary
+            .bounded_detail
+            .as_deref()
+            .is_some_and(|detail| detail.starts_with(
+                "typescript_test_extraction_partial: 5 test file(s) register tests the extractor does not index; e.g. "
+            ) && detail.ends_with("(+2 more)")),
+        "{summary:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
 /// #4099 end-to-end: a VALID tagged-template `.each` registration (the table
 /// jest itself accepts) parses cleanly, is not extractable by design, and
 /// must surface `typescript_test_extraction_partial` through `analyze_diff`

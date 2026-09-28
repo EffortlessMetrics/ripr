@@ -131,7 +131,7 @@ Bounded run (default cap, `limit_source: "default"`):
       "seams_total": 42000,
       "limit_source": "default",
       "control": "RIPR_REPO_EXPOSURE_SEAM_LIMIT",
-      "repair_route": "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or use `ripr check --diff` to scope the run."
+      "repair_route": "Set RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 to analyze all seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
     }
   ],
   "metrics": { ... }
@@ -152,7 +152,7 @@ Bounded run (env-configured cap, `limit_source: "configured"`):
       "seams_total": 42,
       "limit_source": "configured",
       "control": "RIPR_REPO_EXPOSURE_SEAM_LIMIT",
-      "repair_route": "Remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or use `ripr check --diff`."
+      "repair_route": "Remove or raise RIPR_REPO_EXPOSURE_SEAM_LIMIT to analyze more seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
     }
   ],
   "metrics": { ... }

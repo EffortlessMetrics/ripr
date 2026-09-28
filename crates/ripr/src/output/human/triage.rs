@@ -3,6 +3,7 @@ use crate::config::RiprConfig;
 use crate::domain::{ExposureClass, Finding, LanguageId};
 use crate::output::preview_actionability::preview_actionability_for;
 use crate::output::python_repair_card::python_repair_card;
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
 use std::collections::BTreeSet;
 
 use super::sections::{one_line, render_finding_digest_with_config};
@@ -134,9 +135,12 @@ pub(crate) fn render_human_triage(
             // genuinely missing fields. Languages without a structured preview
             // packet (for example Python) fall through to the generic line.
             match triage.selected.and_then(preview_actionability_for) {
-                Some(actionability) if actionability.repair_packet_ready => out.push_str(
-                    "  Safe next action: preview-language evidence is advisory; the repair packet is complete but remains advisory, so verify independently before acting.\n",
-                ),
+                Some(actionability) if actionability.repair_packet_ready => {
+                    out.push_str(&complete_packet_preview_safe_action(
+                        triage.selected,
+                        &actionability.repair_route,
+                    ));
+                }
                 Some(actionability)
                     if actionability.missing_actionability_fields.is_empty()
                         && triage
@@ -206,6 +210,42 @@ pub(crate) fn render_human_triage(
     }
     out.push_str("  Full evidence: rerun with --format human-full\n");
     out.push_str("  Machine data: rerun with --format json\n\n");
+}
+
+/// A complete (validator-approved) preview packet: name the packet's own
+/// repair action, test file, and verify command so the operator can act on
+/// it, rather than a bare "verify independently" with no route. Falls back to
+/// the generic advisory line when the projected record lacks a test file or
+/// verify command (for example a synthetic Perl packet). Readiness is only
+/// read here, never decided.
+fn complete_packet_preview_safe_action(finding: Option<&Finding>, repair_route: &str) -> String {
+    const GENERIC: &str = "  Safe next action: preview-language evidence is advisory; the repair packet is complete but remains advisory, so verify independently before acting.\n";
+    let Some(record) = finding.and_then(typescript_gap_record_for) else {
+        return GENERIC.to_string();
+    };
+    let target_file = record
+        .repair_route
+        .as_ref()
+        .and_then(|route| route.target_file.as_deref())
+        .filter(|file| !file.trim().is_empty());
+    let verify = record
+        .verification_commands
+        .first()
+        .map(String::as_str)
+        .filter(|command| !command.trim().is_empty());
+    let (Some(target_file), Some(verify)) = (target_file, verify) else {
+        return GENERIC.to_string();
+    };
+    // The action is the packet's own instruction and carries the concrete
+    // assertion shape, so it is collapsed to one line but not truncated.
+    let action = repair_route
+        .replacen(" in the related test", "", 1)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        "  Safe next action: preview-language evidence is advisory; the repair packet is complete: in `{target_file}`, {action}; run `{verify}`, then rerun `ripr check`.\n"
+    )
 }
 
 /// An exposed preview finding has nothing to repair, in any preview language.
@@ -306,9 +346,7 @@ fn triage_rank(finding: &Finding) -> (u8, u8, u8, u8, u8, i32, &std::path::Path,
         ExposureClass::Exposed => 9,
     };
     let preview_rank = u8::from(is_preview_limited(finding));
-    let repair_rank = if finding.class != ExposureClass::Exposed
-        && !is_preview_limited(finding)
-        && has_repair_route(finding)
+    let repair_rank = if finding.class != ExposureClass::Exposed && has_ranked_repair_route(finding)
     {
         0
     } else {
@@ -324,6 +362,19 @@ fn triage_rank(finding: &Finding) -> (u8, u8, u8, u8, u8, i32, &std::path::Path,
         finding.probe.location.file.as_path(),
         finding.probe.location.line,
     )
+}
+
+/// A stable finding ranks by its repair route; a preview finding only by the
+/// repair authority for its language (#4216 rc rehearsal): a Python finding
+/// with a repair card outranks one without, so Start here does not pick a
+/// card-less finding that no ripr command routes over one pilot and first-pr
+/// do route. Other preview languages keep their class rank. Classification is
+/// unchanged; only the selection order moves.
+fn has_ranked_repair_route(finding: &Finding) -> bool {
+    if !is_preview_limited(finding) {
+        return has_repair_route(finding);
+    }
+    finding.language == Some(LanguageId::Python) && python_repair_card(finding).is_some()
 }
 
 fn has_repair_route(finding: &Finding) -> bool {

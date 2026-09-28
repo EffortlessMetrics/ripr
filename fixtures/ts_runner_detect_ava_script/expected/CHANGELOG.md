@@ -286,3 +286,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — ts_runner_detect_ava_script (6)
+
+Reason:
+RIPR-SPEC-0122: exposed findings default to info severity
+
+Command:
+`cargo xtask goldens bless ts_runner_detect_ava_script --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

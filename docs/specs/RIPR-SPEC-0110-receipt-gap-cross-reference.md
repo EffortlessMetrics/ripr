@@ -144,7 +144,7 @@ unchanged.
 ### Orphan receipt — gap absent from ledger
 
 ```
-receipt at /tmp/r/receipt.json is structurally valid; cross_reference: orphan_receipt
+receipt at /tmp/r/receipt.json is structurally valid; cross_reference: orphan_receipt (the receipt names a gap this ledger does not list)
 ripr: receipt cross-reference failed: orphan_receipt
 ```
 
@@ -153,7 +153,7 @@ Exit code: non-zero.
 ### No ledger — fail-closed not_available
 
 ```
-receipt at /tmp/r/receipt.json is structurally valid; cross_reference: not_available
+receipt at /tmp/r/receipt.json is structurally valid; cross_reference: not_available (no ledger was cross-referenced; pass --ledger to compare against the current gap set)
 ```
 
 Exit code: 0. Ledger absent ≠ receipt valid.
@@ -161,7 +161,7 @@ Exit code: 0. Ledger absent ≠ receipt valid.
 ### Gap present in ledger
 
 ```
-receipt at /tmp/r/receipt.json is structurally valid; cross_reference: receipt_ok
+receipt at /tmp/r/receipt.json is structurally valid; cross_reference: receipt_ok (the receipt names a gap this ledger lists; this does not say the gap is closed, so re-run `ripr check` for the current class)
 ```
 
 Exit code: 0.

@@ -875,6 +875,73 @@ fn pilot_found_no_repair_target(root: &Path) -> bool {
             .is_some_and(Value::is_null)
 }
 
+/// The Python preview repair card a complete `ripr pilot` run recorded when
+/// it ranked no seam and recorded no repair start (`python_first_use.status`
+/// is `ready`). `ripr agent repair` targets ranked seams only, so sending the
+/// user back to pilot only records the same card again (onboarding Python
+/// walk, #4227). Returns the card's missing discriminator and verify command
+/// when the summary carries them.
+struct PilotPythonCard {
+    missing_discriminator: Option<String>,
+    verify_command: Option<String>,
+}
+
+fn pilot_python_repair_card_ready(root: &Path) -> Option<PilotPythonCard> {
+    let text = std::fs::read_to_string(root.join(PILOT_SUMMARY_ARTIFACT)).ok()?;
+    let summary = serde_json::from_str::<Value>(&text).ok()?;
+    let complete = summary.pointer("/status").and_then(Value::as_str) == Some("complete");
+    let no_seams = summary
+        .pointer("/top_actionable_seams")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty);
+    let no_repair_start = summary
+        .pointer("/next/repair_command")
+        .is_some_and(Value::is_null);
+    let first_use = summary.pointer("/python_first_use")?;
+    let ready = first_use.get("status").and_then(Value::as_str) == Some("ready")
+        && first_use
+            .get("repair_cards_total")
+            .and_then(Value::as_u64)
+            .is_some_and(|total| total > 0);
+    if !(complete && no_seams && no_repair_start && ready) {
+        return None;
+    }
+    let card = first_use.get("top_repair_card");
+    let text_at = |pointer: &str| {
+        card.and_then(|card| card.pointer(pointer))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string)
+    };
+    Some(PilotPythonCard {
+        missing_discriminator: text_at("/missing_discriminator"),
+        verify_command: text_at("/verify_command"),
+    })
+}
+
+fn pilot_python_repair_card_message(card: &PilotPythonCard, root_display: &str) -> String {
+    let mut message = "the last complete `ripr pilot` run ranked no seam but produced a Python preview repair card".to_string();
+    if let Some(discriminator) = &card.missing_discriminator {
+        message.push_str(&format!(" for missing discriminator `{discriminator}`"));
+    }
+    message.push_str(&format!(
+        "; `ripr agent repair` targets ranked seams only, and running pilot again unchanged records the same card. Follow the card from `ripr first-pr --root {root}`, which names the test to strengthen and its verify command",
+        root = shell_arg(root_display)
+    ));
+    if let Some(verify) = &card.verify_command {
+        message.push_str(&format!(" (`{verify}`)"));
+    }
+    message.push_str(&format!(
+        ", then rerun `ripr check --root {}` to see whether static evidence now finds the discriminator",
+        shell_arg(root_display)
+    ));
+    message.push_str(&format!(
+        ". If the workspace changed since that run, rerun `{}`",
+        pilot_select_command(root_display)
+    ));
+    message
+}
+
 /// Python first-use statuses that record "pilot produced no repair card"
 /// (`output::pilot::types::PilotPythonFirstUseStatus`). `analysis_unavailable`
 /// is a failed analysis, not that fact, and `ready` has repair cards.
@@ -1053,6 +1120,14 @@ fn legacy_next_command(
                 kind: "pilot_routed_to_check_no_repair_target".to_string(),
                 artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
                 message: pilot_routed_to_check_message(&routes, root_display),
+            });
+            return None;
+        }
+        if let Some(card) = pilot_python_repair_card_ready(root) {
+            warnings.push(AgentStatusWarning {
+                kind: "pilot_python_repair_card_no_agent_repair".to_string(),
+                artifact: PILOT_SUMMARY_ARTIFACT.to_string(),
+                message: pilot_python_repair_card_message(&card, root_display),
             });
             return None;
         }
@@ -2644,13 +2719,6 @@ mod tests {
             summary(
                 "complete",
                 "required",
-                r#""python_first_use": {"status": "ready", "repair_cards_total": 1},"#,
-                enabled_routes,
-                "null",
-            ),
-            summary(
-                "complete",
-                "required",
                 r#""python_first_use": {"status": "analysis_unavailable", "repair_cards_total": 0},"#,
                 enabled_routes,
                 "null",
@@ -2691,6 +2759,72 @@ mod tests {
             report.next_command.as_ref().map(|next| next.step.as_str()),
             Some("select_seam")
         );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// #4227 onboarding Python walk: a complete pilot run that ranked no seam
+    /// and recorded no repair start but produced a Python preview repair card
+    /// used to send status back to `ripr pilot`, which records the same card
+    /// again. Status now stops and names the first-pr route for the card.
+    #[test]
+    fn agent_status_routes_a_pilot_python_repair_card_to_first_pr() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("pilot-python-card");
+        let summary = |status: &str, seams: &str, first_use: &str, repair: &str| {
+            format!(
+                r#"{{"status": "{status}", "top_actionable_seams": {seams}, "python_first_use": {first_use}, "language_routes": {{"state": "required", "routes": [{{"language": "python", "enabled": true, "command": "ripr check --root ."}}]}}, "next": {{"repair_command": {repair}}}}}"#
+            )
+        };
+        let ready = r#"{"status": "ready", "repair_cards_total": 1, "top_repair_card": {"missing_discriminator": "amount == DISCOUNT_THRESHOLD", "verify_command": "pytest tests/test_pricing.py::test_discount"}}"#;
+        write_file(
+            &root.join(PILOT_SUMMARY_ARTIFACT),
+            &summary("complete", "[]", ready, "null"),
+        )?;
+        let report = build_agent_status_report(&root, Path::new("."));
+        assert!(report.next_command.is_none(), "{:?}", report.next_command);
+        let warning = report
+            .warnings
+            .iter()
+            .find(|warning| warning.kind == "pilot_python_repair_card_no_agent_repair")
+            .ok_or_else(|| format!("expected a Python card warning: {:?}", report.warnings))?;
+        assert_eq!(warning.artifact, PILOT_SUMMARY_ARTIFACT);
+        for expected in [
+            "produced a Python preview repair card for missing discriminator `amount == DISCOUNT_THRESHOLD`",
+            "running pilot again unchanged records the same card",
+            "`ripr first-pr --root",
+            "(`pytest tests/test_pricing.py::test_discount`)",
+            "then rerun `ripr check --root",
+            "If the workspace changed since that run, rerun `ripr pilot --root",
+        ] {
+            assert!(warning.message.contains(expected), "{}", warning.message);
+        }
+        let rendered = render_agent_status_markdown(&report);
+        assert!(
+            !rendered.contains("```bash\nripr pilot --root"),
+            "{rendered}"
+        );
+
+        // Controls: a ranked seam, a recorded repair start, an incomplete run,
+        // or a ready status without cards keeps status on `select_seam`.
+        for control in [
+            summary("timed_out", "[]", ready, "null"),
+            summary("complete", "[]", ready, r#""ripr check --root .""#),
+            summary(
+                "complete",
+                "[]",
+                r#"{"status": "ready", "repair_cards_total": 0}"#,
+                "null",
+            ),
+        ] {
+            write_file(&root.join(PILOT_SUMMARY_ARTIFACT), &control)?;
+            let report = build_agent_status_report(&root, Path::new("."));
+            let next = report
+                .next_command
+                .as_ref()
+                .ok_or_else(|| format!("expected pilot for control {control}"))?;
+            assert_eq!(next.step, "select_seam", "{control}");
+        }
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())

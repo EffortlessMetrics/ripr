@@ -6986,7 +6986,7 @@ fn diagnostic_for_finding_attaches_related_test_information() -> Result<(), Stri
 #[test]
 fn diagnostic_severity_tracks_static_exposure_class() {
     let cases = [
-        (ExposureClass::Exposed, DiagnosticSeverity::WARNING),
+        (ExposureClass::Exposed, DiagnosticSeverity::INFORMATION),
         (ExposureClass::WeaklyExposed, DiagnosticSeverity::WARNING),
         (
             ExposureClass::ReachableUnrevealed,

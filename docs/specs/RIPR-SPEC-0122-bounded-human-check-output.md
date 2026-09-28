@@ -97,6 +97,13 @@ exposure class, changed behavior, first missing discriminator when known,
 related test when known, suggested repair or verify command when known, and a
 short evidence summary.
 
+Start here ranks a finding with a repair route ahead of one without. For a
+stable finding the route is a recommended next step or suggested verify
+command; for a Python preview finding it is a repair card from the Python
+repair-card authority. A card-less Python finding therefore never hides a
+carded one, so `check` does not report "no repair card" while `ripr pilot` and
+`ripr first-pr` route a card for the same diff. Classification is unchanged.
+
 The digest's discriminator line label reflects the discriminator state:
 
 - `Missing discriminator` — the finding is not `exposed`; the named
@@ -275,6 +282,7 @@ suggested write cannot fail on the same missing base.
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_caps_many_findings_and_reports_omitted_count`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_does_not_select_exposed_over_non_exposed_repair`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_missing_scope_as_start_here_state`
+- `crates/ripr/src/output/human.rs::tests::start_here_prefers_a_python_finding_with_a_repair_card`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_keeps_preview_language_in_preview_limited_state`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_prefers_stable_gap_over_preview_with_route`
 - `crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_no_actionable_gap_when_all_findings_suppressed`

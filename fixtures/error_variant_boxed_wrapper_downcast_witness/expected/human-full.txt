@@ -7,7 +7,7 @@ Summary: 16 probe(s), 4 exposed, 12 weak, 0 unrevealed, 0 no path, 0 unknown
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 16 changed line(s), 8 candidate line(s), 16 probe(s), 16 finding(s).
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -19,7 +19,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source
@@ -39,7 +39,7 @@ Drill in:
   ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -51,7 +51,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source
@@ -71,7 +71,7 @@ Drill in:
   ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:f573bd5d
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -83,7 +83,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source
@@ -103,7 +103,7 @@ Drill in:
   ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117.2
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117.2
 
-WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -115,7 +115,7 @@ Probe
   owner:  src/lib.rs::try_parse_summary
 
 Static exposure
-  exposed (warning, confidence 1.00)
+  exposed (info, confidence 1.00)
 
 Evidence
   - reach yes: Related tests appear to reach try_parse_summary: parse_summary_fails_closed_on_malformed_source

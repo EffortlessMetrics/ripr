@@ -106,6 +106,10 @@ pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String>
     ))
 }
 
+/// Concrete next step appended when a file has more than one claiming parent
+/// module (`rust_module_ambiguous_parent`).
+const MODULE_AMBIGUOUS_PARENT_NEXT_STEP: &str = "To resolve rust_module_ambiguous_parent, give each listed file one owner: declare it from a single parent `mod` item (drop duplicate `#[path]` declarations and keep only one of `<name>.rs` or `<name>/mod.rs`); a shared `tests/<name>/mod.rs` helper needs the same `mod <name>;` declaration, with the same `#[cfg(test)]` gating, in every integration test.";
+
 /// Closing sentence of [`module_composition_disclosure`] (#4378).
 const MODULE_COMPOSITION_ORIENTATION: &str = "This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing.";
 
@@ -146,8 +150,16 @@ pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String>
     if count == 0 {
         return None;
     }
+    let next_step = if details
+        .iter()
+        .any(|detail| detail.ends_with(":rust_module_ambiguous_parent"))
+    {
+        format!(" {MODULE_AMBIGUOUS_PARENT_NEXT_STEP}")
+    } else {
+        String::new()
+    };
     Some(format!(
-        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed. {MODULE_COMPOSITION_ORIENTATION}",
+        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed. {MODULE_COMPOSITION_ORIENTATION}{next_step}",
         details.into_iter().collect::<Vec<_>>().join(", ")
     ))
 }
@@ -1043,11 +1055,21 @@ fn feature_gated_test() {}
         // #4378: a whole-workspace index names files outside the diff, so the
         // line tells a first-time reader it is not a finding to act on.
         assert!(
-            disclosure.ends_with(
+            disclosure.contains(
                 "affected module contexts remain fail-closed. This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing."
             ),
             "the disclosure closes with one orienting sentence: {disclosure}"
         );
+
+        // An ambiguous parent names a concrete next step.
+        assert!(
+            disclosure.ends_with(MODULE_AMBIGUOUS_PARENT_NEXT_STEP),
+            "ambiguous parents name a next step: {disclosure}"
+        );
+        // Without an ambiguous parent, no ambiguity next step is printed.
+        index.files.remove(Path::new("src/shared.rs"));
+        let unresolved_only = module_composition_disclosure(&index).ok_or_else(no_disclosure)?;
+        assert!(!unresolved_only.contains("rust_module_ambiguous_parent"));
 
         // No limitations: no disclosure.
         let clean = RustIndex::default();

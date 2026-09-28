@@ -45,6 +45,9 @@ mod actionability;
 mod annotation_only;
 #[cfg(test)]
 mod annotation_only_tests;
+mod boundary_input;
+#[cfg(test)]
+mod boundary_input_tests;
 mod bounded_read;
 mod bun_bridge;
 mod classifier;
@@ -75,6 +78,7 @@ mod types;
 // uses `use super::*;` can access all items.
 pub(crate) use actionability::*;
 pub(crate) use annotation_only::*;
+pub(crate) use boundary_input::*;
 pub(crate) use bounded_read::*;
 pub(crate) use bun_bridge::*;
 pub(crate) use classifier::*;
@@ -525,8 +529,9 @@ impl LanguageAdapter for TypeScriptAdapter {
                 .with_detail(format!("read failed: {}", failure.error))?,
             );
         }
-        // Partial test extraction: one typed limitation per affected test
-        // file, carrying the taxonomy name so JSON consumers can key on it.
+        // Partial test extraction: one typed limitation summarizing the
+        // affected test files (a single file keeps its path), carrying the
+        // taxonomy name so JSON consumers can key on it.
         // The index is workspace-wide, so a diff that classified nothing
         // against it (Rust-only, or TS test edits only) is not made partial by
         // test shapes it never consulted (#4261).
@@ -535,24 +540,11 @@ impl LanguageAdapter for TypeScriptAdapter {
         } else {
             &[]
         };
-        for gap in consulted_gaps {
-            let limitation = test_extraction_partial_limitation(gap);
-            limitations.push(
-                AnalysisLimitation::new(
-                    AnalysisLimitationKind::LanguageScopeUnsupported,
-                    AnalysisStage::LanguageAdapter,
-                    AnalysisRecovery::new(
-                        AnalysisRecoveryKind::Retry,
-                        "Re-run analysis after the adapter learns to extract the disclosed test shape.",
-                    )?,
-                )
-                .with_path(gap.file.to_string_lossy())?
-                .with_affected_items(1)?
-                .with_detail(format!(
-                    "typescript_test_extraction_partial: {} at {}",
-                    gap.shape, limitation.sample_source
-                ))?,
-            );
+        // One summary limitation for the whole workspace-wide index, not one
+        // line per unrelated test file: the gaps are not in the diff, so a
+        // per-file list buried the changed-file result.
+        if let Some(limitation) = test_extraction_partial_summary(consulted_gaps)? {
+            limitations.push(limitation);
         }
         // Partial owner extraction (#4104-A): changed lines inside owner
         // shapes the extractor does not index produce no finding, so this
@@ -717,5 +709,85 @@ impl LanguageAdapter for TypeScriptAdapter {
             skipped_files: 0,
             partial_reason: Some("typescript_repo_mode_not_implemented_diff_first".to_string()),
         })
+    }
+}
+
+/// Recovery for partial test extraction. Re-running cannot change the
+/// result, so the recovery names what the reader can inspect or rewrite.
+const TEST_EXTRACTION_PARTIAL_RECOVERY: &str = "Some test files (affected items) register tests in shapes the TypeScript extractor does not index; the JSON limitation detail names samples. Check whether they exercise the changed code before trusting a no-path or weak result, or register them as top-level `test`/`it` calls with plain string titles (array-form `.each` is indexed)";
+
+/// Samples named in a multi-file extraction-partial summary.
+const TEST_EXTRACTION_PARTIAL_SAMPLES: usize = 3;
+
+/// Collapse per-file test-extraction gaps into one typed limitation. A single
+/// gap keeps its path; several gaps carry the file count, the first few
+/// samples, and the remainder count.
+fn test_extraction_partial_summary(
+    gaps: &[TypeScriptTestExtractionGap],
+) -> Result<Option<AnalysisLimitation>, String> {
+    let recovery = || {
+        AnalysisRecovery::new(
+            AnalysisRecoveryKind::InspectFailure,
+            TEST_EXTRACTION_PARTIAL_RECOVERY,
+        )
+    };
+    match gaps {
+        [] => Ok(None),
+        [gap] => {
+            let limitation = test_extraction_partial_limitation(gap);
+            Ok(Some(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    recovery()?,
+                )
+                .with_path(gap.file.to_string_lossy())?
+                .with_affected_items(1)?
+                .with_detail(format!(
+                    "typescript_test_extraction_partial: {} at {}",
+                    gap.shape, limitation.sample_source
+                ))?,
+            ))
+        }
+        _ => {
+            let files = gaps
+                .iter()
+                .map(|gap| normalized_path(&gap.file))
+                .collect::<std::collections::BTreeSet<_>>();
+            let samples = gaps
+                .iter()
+                .take(TEST_EXTRACTION_PARTIAL_SAMPLES)
+                .map(|gap| {
+                    format!(
+                        "{} at {}",
+                        gap.shape,
+                        test_extraction_partial_limitation(gap).sample_source
+                    )
+                })
+                .collect::<Vec<_>>();
+            let remainder = gaps.len().saturating_sub(samples.len());
+            let head = format!(
+                "typescript_test_extraction_partial: {} test file(s) register tests the extractor does not index",
+                files.len()
+            );
+            let mut detail = format!("{head}; e.g. {}", samples.join("; "));
+            if remainder > 0 {
+                detail.push_str(&format!(" (+{remainder} more)"));
+            }
+            if detail.chars().count()
+                > crate::analysis_outcome::MAX_ANALYSIS_LIMITATION_DETAIL_CHARS
+            {
+                detail = head;
+            }
+            Ok(Some(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    recovery()?,
+                )
+                .with_affected_items(u64::try_from(files.len()).unwrap_or(u64::MAX))?
+                .with_detail(detail)?,
+            ))
+        }
     }
 }

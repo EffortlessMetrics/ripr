@@ -12,7 +12,7 @@
     {
       "id": "probe:src_lib.rs:predicate:566edf6b",
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:predicate:566edf6b",
@@ -166,7 +166,7 @@
     {
       "id": "probe:src_lib.rs:predicate:a6097ff7",
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 1.00,
       "probe": {
         "id": "probe:src_lib.rs:predicate:a6097ff7",
@@ -306,7 +306,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach shipping: shipping_boundary", "infection unknown: Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a matching literal input, or an argument naming FREE_SHIPPING would resolve it), so activation/infection is unknown", "propagation yes: Changed behavior appears to influence returned value: 0", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 0 (line 31)", "related test tests/pricing.rs:17 shipping_boundary uses strong exact value oracle: assert_eq!(shipping(1_000), 500);", "related test tests/pricing.rs:17 shipping_boundary uses strong exact value oracle: assert_eq!(shipping(5_000), 0);", "observed assertion argument value 500 at line 18", "observed function argument value amount = 1_000 at line 18", "observed assertion argument value 0 at line 19", "observed function argument value amount = 5_000 at line 19"],
+      "evidence_path": ["reach yes: Related tests appear to reach shipping: shipping_boundary", "infection unknown: Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a matching literal input, or an argument naming FREE_SHIPPING would resolve it), so activation/infection is unknown", "propagation yes: Changed behavior appears to influence returned value: 0", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (infection_unknown); related oracle: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 0 (line 31)", "related test tests/pricing.rs:17 shipping_boundary uses strong exact value oracle: assert_eq!(shipping(1_000), 500);", "related test tests/pricing.rs:17 shipping_boundary uses strong exact value oracle: assert_eq!(shipping(5_000), 0);", "observed assertion argument value 500 at line 18", "observed function argument value amount = 1_000 at line 18", "observed assertion argument value 0 at line 19", "observed function argument value amount = 5_000 at line 19"],
       "flow_sinks": [
         {"kind":"return_value","text":"0","line":31}
       ],

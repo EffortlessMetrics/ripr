@@ -263,3 +263,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — ts_static_limit (5)
+
+Reason:
+RIPR-SPEC-0122: exposed findings default to info severity
+
+Command:
+`cargo xtask goldens bless ts_static_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -6,7 +6,8 @@ Spec: RIPR-SPEC-0087
 
 A single-package TypeScript workspace (the onboarding `tsapp` shape, issue
 #4215) where `discountedTotal` has a boundary condition change (`>` → `>=`)
-against a named module constant `DISCOUNT_THRESHOLD`, and oracle-eligible
+against a named module binding `DISCOUNT_THRESHOLD` declared with
+`export let` (rebindable, so it never resolves to a value), and oracle-eligible
 related tests with:
 
 - A direct import-aware call relation (`import { discountedTotal } from '../src/pricing'`)
@@ -29,6 +30,8 @@ ripr check \
 The TypeScript preview adapter:
 
 - Classifies the finding as `WeaklyExposed`
+- Emits no `typescript_boundary_input` evidence (a `let` binding can be
+  reassigned, so no boundary input is derived)
 - Projects a `GapRecord` whose `assertion_shape` is the boundary placeholder
   `expect(discountedTotal(/* boundary input for amount == DISCOUNT_THRESHOLD */)).toBe(expected)`;
   it must NOT reuse an observed input such as `discountedTotal(20000)`, which is

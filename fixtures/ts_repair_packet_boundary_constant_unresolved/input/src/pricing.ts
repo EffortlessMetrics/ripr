@@ -1,4 +1,4 @@
-export const DISCOUNT_THRESHOLD = 10000;
+export let DISCOUNT_THRESHOLD = 10000;
 
 export function discountedTotal(amount: number): number {
   if (amount > DISCOUNT_THRESHOLD) {

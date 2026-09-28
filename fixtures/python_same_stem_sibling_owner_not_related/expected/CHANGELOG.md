@@ -77,6 +77,19 @@ Updated:
 Reason:
 RIPR-SPEC-0028: the unpaired def header of the new loyalty_price owner (line 10) is no longer a probe because its body lines carry their own added probes; body findings unchanged
 RIPR-SPEC-0122: omit zero-count languages, keep the empty-result caveat to empty runs, cut digest lines at word boundaries
+RIPR-SPEC-0028: the module-constant threshold DISCOUNT_THRESHOLD now resolves to 10000, so discounted_total names amount == DISCOUNT_THRESHOLD, gets a Python repair card and a Next step, and the Safe next action moves from the no-repair-card row to the apply-the-next-step row (#4227); loyalty_price claims unchanged
+
+Command:
+`cargo xtask goldens bless python_same_stem_sibling_owner_not_related --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — python_same_stem_sibling_owner_not_related (8)
+
+Reason:
+RIPR-SPEC-0122: integrate first-hour output fixes with Python and TypeScript boundary packets
 
 Command:
 `cargo xtask goldens bless python_same_stem_sibling_owner_not_related --reason "..."`
