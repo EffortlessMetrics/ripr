@@ -233,6 +233,13 @@ fn legacy_stdio_lifecycle_lists_and_reads_the_same_bounded_status() -> Result<()
     let structured = responses[3]
         .pointer("/result/structuredContent")
         .ok_or_else(|| "tool result omitted structuredContent".to_string())?;
+    // A ready workspace needs no recovery text: the document is the only content.
+    if responses[3].pointer("/result/content/1").is_some() {
+        return Err(format!(
+            "ready status must not carry recovery text: {}",
+            responses[3]
+        ));
+    }
     if structured
         .pointer("/workspace/authority/source_edit_capability")
         .and_then(Value::as_str)
@@ -442,6 +449,19 @@ fn current_discovery_requires_metadata_and_rejects_legacy_ping() -> Result<(), S
             != Some("root_missing")
     {
         return Err("invalid explicit root did not fail closed in status".to_string());
+    }
+    // The text a host shows the model names the cause and the recovery.
+    let recovery = responses[3]
+        .pointer("/result/content/1/text")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !recovery.contains("Workspace unavailable (root_missing)")
+        || !recovery.contains("ripr mcp --stdio --root <repository>")
+    {
+        return Err(format!(
+            "unavailable status must carry a recovery: {}",
+            responses[3]
+        ));
     }
     let rejected_root = root.to_string_lossy();
     if String::from_utf8_lossy(&output.stdout).contains(rejected_root.as_ref()) {

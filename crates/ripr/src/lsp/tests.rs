@@ -11968,7 +11968,7 @@ fn finding_projection_emits_one_limited_diagnostic_for_mixed_canonical_group() -
     Ok(())
 }
 
-fn sample_finding() -> Finding {
+pub(super) fn sample_finding() -> Finding {
     Finding {
         id: "probe:pricing:88:predicate".to_string(),
         canonical_gap: None,
@@ -12051,7 +12051,7 @@ fn sample_typescript_preview_actionability_finding() -> Finding {
     finding
 }
 
-fn sample_canonical_gap() -> FindingCanonicalGap {
+pub(super) fn sample_canonical_gap() -> FindingCanonicalGap {
     FindingCanonicalGap {
         id: "gap:python:src/pricing.py:apply_discount:predicate_boundary:predicate:amount>=threshold"
             .to_string(),
@@ -13292,7 +13292,8 @@ fn execute_command_collect_evidence_context_returns_typed_stale_for_unknown_seam
 }
 
 #[test]
-fn execute_command_collect_context_returns_none_for_unknown_finding() -> Result<(), String> {
+fn execute_command_collect_context_rejects_unknown_finding_with_invalid_params()
+-> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -13320,9 +13321,90 @@ fn execute_command_collect_context_returns_none_for_unknown_finding() -> Result<
             })],
             work_done_progress_params: Default::default(),
         };
-        let result = backend.execute_command(params).await;
-        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
-        assert!(packet.is_none(), "expected None for unknown finding");
+        let error = match backend.execute_command(params).await {
+            Ok(value) => return Err(format!("expected an error, got {value:?}")),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.code,
+            tower_lsp_server::jsonrpc::ErrorCode::InvalidParams
+        );
+        assert!(
+            error
+                .message
+                .contains("`finding_id` `probe:unknown:1:predicate`")
+                && error.message.contains("ripr.refresh"),
+            "error must name the missing id and the refresh route: {}",
+            error.message
+        );
+        Ok(())
+    })
+}
+
+/// A context command called with a shape it cannot read answers with a
+/// typed InvalidParams error that quotes the accepted shapes, never a null.
+#[test]
+fn execute_command_context_commands_reject_unreadable_arguments_with_shapes() -> Result<(), String>
+{
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let cases: [(&str, Vec<serde_json::Value>, &str); 6] = [
+            (COLLECT_CONTEXT_COMMAND, vec![], "expects one object"),
+            (
+                COLLECT_CONTEXT_COMMAND,
+                vec![serde_json::json!("probe:src/lib.rs:1:predicate")],
+                "expects one object",
+            ),
+            (
+                COLLECT_CONTEXT_COMMAND,
+                vec![serde_json::json!({"id": "probe:src/lib.rs:1:predicate"})],
+                "one of `gap_id`, `seam_id`, `finding_id`",
+            ),
+            (
+                COLLECT_CONTEXT_COMMAND,
+                vec![serde_json::json!({"finding_id": "   "})],
+                "one of `gap_id`, `seam_id`, `finding_id`",
+            ),
+            (
+                COLLECT_EVIDENCE_CONTEXT_COMMAND,
+                vec![],
+                "expects one object",
+            ),
+            (
+                COLLECT_EVIDENCE_CONTEXT_COMMAND,
+                vec![serde_json::json!({"finding_id": "probe:src/lib.rs:1:predicate"})],
+                "non-empty string `seam_id`",
+            ),
+        ];
+        for (command, arguments, expected) in cases {
+            let described = format!("{command} {arguments:?}");
+            let result = backend
+                .execute_command(ExecuteCommandParams {
+                    command: command.to_string(),
+                    arguments,
+                    work_done_progress_params: Default::default(),
+                })
+                .await;
+            let error = match result {
+                Ok(value) => return Err(format!("{described}: expected an error, got {value:?}")),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.code,
+                tower_lsp_server::jsonrpc::ErrorCode::InvalidParams,
+                "{described}"
+            );
+            assert!(
+                error.message.contains(expected) && error.message.contains("seam_id"),
+                "{described}: error must name the accepted shape: {}",
+                error.message
+            );
+        }
         Ok(())
     })
 }
@@ -14511,6 +14593,73 @@ fn execute_command_collect_repair_packet_missing_actionable_gaps_falls_back_to_l
             packet["source_location"]["line"].as_u64(),
             Some(42),
             "ledger fallback must resolve a real anchor line"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_repair_packet_without_a_packet_source_names_the_route()
+-> Result<(), String> {
+    // A current snapshot with neither packet artifact on disk answers with a
+    // sentinel whose reason names the missing sources and the CLI route; a
+    // bare null left the editor with only "server did not respond".
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-no-source")?;
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        for (arguments, subject) in [
+            (vec![], "no repair packet:"),
+            (
+                vec![serde_json::json!({"gap_id": "gap:rust:missing"})],
+                "no repair packet for gap `gap:rust:missing`",
+            ),
+        ] {
+            let packet = backend
+                .execute_command(ExecuteCommandParams {
+                    command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+                    arguments,
+                    work_done_progress_params: Default::default(),
+                })
+                .await
+                .map_err(|err| format!("execute_command failed: {err}"))?
+                .ok_or_else(|| "expected a no-source sentinel, not null".to_string())?;
+            assert_eq!(packet["kind"], "repair_packet");
+            assert_eq!(packet["status"], "not_actionable_or_incomplete");
+            let reason = packet["reason"].as_str().ok_or("reason must be a string")?;
+            assert!(
+                reason.starts_with(subject)
+                    && reason.contains("target/ripr/reports/actionable-gaps.json")
+                    && reason.contains("ripr pilot --root ."),
+                "reason must name the sources and the route: {reason}"
+            );
+        }
+        // A first argument that is not an object is a caller error.
+        let result = backend
+            .execute_command(ExecuteCommandParams {
+                command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+                arguments: vec![serde_json::json!("gap:rust:missing")],
+                work_done_progress_params: Default::default(),
+            })
+            .await;
+        let error = match result {
+            Ok(value) => return Err(format!("expected an error, got {value:?}")),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.code,
+            tower_lsp_server::jsonrpc::ErrorCode::InvalidParams
+        );
+        assert!(
+            error.message.contains("{\"gap_id\": \"...\"}"),
+            "error must name the accepted shape: {}",
+            error.message
         );
         Ok(())
     })

@@ -1,4 +1,4 @@
-use crate::workspace_status::WorkspaceStatus;
+use crate::workspace_status::{WorkspaceState, WorkspaceStatus};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -13,6 +13,15 @@ pub(super) const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
     "2025-11-25",
     CURRENT_PROTOCOL_VERSION,
 ];
+
+/// What a host shows a model before any call. Cold agents read the earlier
+/// text ("bounded, read-only static workspace status") as the whole of RIPR
+/// and stopped, or guessed the CLI from `ripr --help`. Name what RIPR answers,
+/// what this server does not, and the CLI route that does the analysis. Naming
+/// a route is not invoking it: the server still executes nothing (ADR 0022).
+pub(super) const INSTRUCTIONS: &str = "RIPR is a static analyzer that asks whether the current tests would notice if the behavior changed in a diff were wrong. This MCP server only reports whether the workspace root is usable (tool `ripr_workspace_status`); it does not analyze the diff, edit source, or run tests or mutation. To analyze, run the ripr CLI in the repository: `ripr check --format json` names each changed-behavior gap and its missing test input; `ripr pilot --root .` lists repair seam IDs with the exact `ripr agent repair` commands; `ripr agent status --root . --json` gives the next command in a repair loop.";
+
+const STATUS_TOOL_DESCRIPTION: &str = "Report whether the RIPR workspace root is usable: root validation, repository markers, configuration presence, and the authority this server declares. Read-only; it does not run analysis or load project-local provider configuration. It answers no gap question: after a `ready` result, run `ripr check --format json` in the repository for findings.";
 
 pub(super) const ERROR_RESOURCE_NOT_FOUND: i64 = -32002;
 pub(super) const ERROR_UNSUPPORTED_PROTOCOL_VERSION: i64 = -32022;
@@ -47,7 +56,7 @@ pub(super) fn initialize_result(protocol_version: &str) -> Value {
         "protocolVersion": protocol_version,
         "capabilities": server_capabilities(),
         "serverInfo": server_info(),
-        "instructions": "RIPR exposes bounded, read-only static workspace status. It does not edit source or execute verification or mutation."
+        "instructions": INSTRUCTIONS
     })
 }
 
@@ -123,16 +132,41 @@ pub(super) fn status_tool_result(
         .map_err(|error| format!("serialize workspace status: {error}"))?;
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("render workspace status: {error}"))?;
+    let mut content = vec![json!({
+        "type": "text",
+        "text": text
+    })];
+    if let Some(recovery) = unavailable_recovery(status) {
+        content.push(json!({
+            "type": "text",
+            "text": recovery
+        }));
+    }
     Ok(with_result_type(
         json!({
-            "content": [{
-                "type": "text",
-                "text": text
-            }],
+            "content": content,
             "structuredContent": structured,
             "isError": false
         }),
         current_protocol,
+    ))
+}
+
+/// One sentence a model can act on when the root is unusable. The status
+/// document carries only `root.error_code`; a host shows the text content, so
+/// name the cause and the recovery there. The cause is the root owner's own
+/// wording (`RootErrorCode::cause`). The server resolves its root once at
+/// startup (ADR 0022), so every recovery is a restart with a different root.
+fn unavailable_recovery(status: &WorkspaceStatus) -> Option<String> {
+    if status.workspace_state != WorkspaceState::Unavailable {
+        return None;
+    }
+    let (code, cause) = match status.root.error_code {
+        Some(code) => (code.as_str(), code.cause(status.root.source)),
+        None => ("unknown", "the root could not be validated".to_string()),
+    };
+    Some(format!(
+        "Workspace unavailable ({code}): {cause}. This server resolves its root once at startup; restart it with `ripr mcp --stdio --root <repository>` pointing at the repository to analyze."
     ))
 }
 
@@ -201,7 +235,7 @@ fn status_tool_descriptor() -> Value {
     json!({
         "name": STATUS_TOOL_NAME,
         "title": "RIPR workspace status",
-        "description": "Return bounded, read-only workspace discovery and authority status without running analysis or loading project-local provider configuration.",
+        "description": STATUS_TOOL_DESCRIPTION,
         "inputSchema": {
             "type": "object",
             "properties": {},

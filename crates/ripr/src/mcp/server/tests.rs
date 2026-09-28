@@ -309,8 +309,20 @@ fn unknown_tool_call_is_rejected_with_typed_invalid_params() -> Result<(), Strin
     {
         return Err("unknown tool must be rejected as invalid params".to_string());
     }
-    if response.pointer("/error/message").and_then(Value::as_str) != Some("unknown RIPR tool") {
-        return Err("unknown tool error message drifted".to_string());
+    if response.pointer("/error/message").and_then(Value::as_str)
+        != Some("unknown RIPR tool; the only tool is `ripr_workspace_status`")
+    {
+        return Err("unknown tool error must name the valid tool".to_string());
+    }
+    if response
+        .pointer("/error/data/available/0")
+        .and_then(Value::as_str)
+        != Some(protocol::STATUS_TOOL_NAME)
+        || response.pointer("/error/data/name").and_then(Value::as_str) != Some("ripr_everything")
+    {
+        return Err(format!(
+            "unknown tool error data must list the valid tool: {response}"
+        ));
     }
     if response.get("id") != Some(&json!(2)) {
         return Err("unknown tool rejection must echo the request id".to_string());
@@ -370,8 +382,14 @@ fn current_protocol_resource_miss_uses_invalid_params() -> Result<(), String> {
     {
         return Err("current-protocol resource miss must be invalid params".to_string());
     }
-    if response.pointer("/error/message").and_then(Value::as_str) != Some("unknown RIPR resource") {
-        return Err("current-protocol resource miss message drifted".to_string());
+    if response.pointer("/error/message").and_then(Value::as_str)
+        != Some("unknown RIPR resource; the only resource is `ripr://workspace/status`")
+        || response
+            .pointer("/error/data/available/0")
+            .and_then(Value::as_str)
+            != Some(protocol::STATUS_RESOURCE_URI)
+    {
+        return Err("current-protocol resource miss must name the valid resource".to_string());
     }
     Ok(())
 }
@@ -453,6 +471,40 @@ fn discover_after_initialize_is_rejected() -> Result<(), String> {
         != Some("server/discover cannot replace an initialized session")
     {
         return Err("discover-after-initialize message drifted".to_string());
+    }
+    Ok(())
+}
+
+/// A host shows `instructions` and the tool description to the model before
+/// any call. Both must say this server does not analyze the diff and name the
+/// CLI route that does, or a cold agent stops at workspace status.
+#[test]
+fn initialize_instructions_and_tool_description_name_the_analysis_route() -> Result<(), String> {
+    let result = protocol::initialize_result("2025-11-25");
+    let instructions = result
+        .pointer("/instructions")
+        .and_then(Value::as_str)
+        .ok_or("initialize result has no instructions")?;
+    for needle in [
+        "does not analyze the diff",
+        "`ripr check --format json`",
+        "`ripr pilot --root .`",
+    ] {
+        if !instructions.contains(needle) {
+            return Err(format!(
+                "instructions must contain {needle:?}: {instructions}"
+            ));
+        }
+    }
+    let tools = protocol::tools_list_result(false);
+    let description = tools
+        .pointer("/tools/0/description")
+        .and_then(Value::as_str)
+        .ok_or("tool has no description")?;
+    if !description.contains("`ripr check --format json`") {
+        return Err(format!(
+            "tool description must name the analysis route: {description}"
+        ));
     }
     Ok(())
 }

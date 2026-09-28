@@ -11,6 +11,18 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Cold LLM-agent walks of 0.11 no longer dead-end on four routes. Passing a
+  `ripr check` finding ID (`probe:...`) to `ripr agent repair --seam-id` now
+  says it is not a seam ID and names `ripr pilot --root .`. The
+  uncommitted-changes note says test files outside the diff are still read
+  from disk, and `ripr check` warns on stderr when a file in the committed
+  diff also has uncommitted edits, since its probes can be misplaced or
+  missing. After a repair, the after phase and `ripr agent status` say the
+  repair receipt records no test run (`test_run.status: "not_recorded"`),
+  because a failing test can still show movement `improved`. The MCP
+  server's instructions and tool description say it does not analyze the diff
+  and name the CLI route that does; an unusable root and unknown tool or
+  resource names now carry a recovery.
 - `ripr check` analyzes Rust crate roots declared outside `src/`
   (`[lib] path = "lib/foo.rs"`, `[[bin]] path = ...`). A change there used
   to report zero candidate lines as a complete analysis, and Draft mode
@@ -58,6 +70,16 @@ are scoped or reviewed.
   command that keeps base, head, and root arguments literal when copied, including
   refs with shell syntax and roots with spaces (#4367).
 
+- LSP `ripr.collectContext`, `ripr.collectEvidenceContext` and
+  `ripr.collectRepairPacket` no longer answer `null`. An unreadable argument
+  or an id missing from the current snapshot is a `-32602` InvalidParams
+  error naming the accepted shapes, and a repair packet with no source says
+  which artifacts are missing and names the CLI route. `ripr help lsp` lists
+  every server-executed command's arguments. `ripr/listActionableItems` adds
+  `selected` and `omitted` item lists, so its self-named continuation route
+  returns items rather than only counts, and a `hidden_gaps` list naming the
+  gaps the actionable profile never publishes because they have no repair
+  route, such as a new function no test calls.
 - LSP fallback diagnostics explain their static classification and point to
   hover evidence without promising an unavailable clipboard action or repair
   route. Missing-path guidance remains explicitly static (#4328).

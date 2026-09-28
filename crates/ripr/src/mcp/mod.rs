@@ -23,6 +23,7 @@ Options:
 The MCP surface is read-only. It exposes `ripr_workspace_status` and
 `ripr://workspace/status`; it does not edit source, execute verification or
 mutation, load project-local provider configuration, or embed a model provider.
+It does not analyze the diff either: run `ripr check --format json` for findings.
 Protocol messages are the only stdout output. Operational failures use stderr.
 "#;
 

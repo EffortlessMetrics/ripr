@@ -393,4 +393,24 @@ Usage: ripr lsp [--stdio] [--version]
 Options:
   --stdio       Run the language server over stdio LSP framing. This is the default.
   --version     Print the language server version.
+
+Server-executed commands (workspace/executeCommand), with their arguments:
+  ripr.refresh                  no arguments; re-runs analysis with the full seam inventory
+  ripr.collectContext           one object: {"finding_id": "probe:..."},
+                                {"seam_id": "...", "evidence_identity": {...}}, or
+                                {"gap_id": "...", "gap_ledger": "..."} (gap_ledger optional)
+  ripr.collectEvidenceContext   one object: {"seam_id": "...", "evidence_identity": {...}}
+  ripr.collectRepairPacket      no arguments for the top packet, or {"gap_id": "..."}
+  ripr.collectWorkspaceStatus   no arguments
+  ripr.collectTopLimitation     no arguments
+  ripr.collectReceiptStatus     no arguments
+
+  Copy ids and evidence_identity from a ripr diagnostic's data. A shape the
+  server cannot read, or an id missing from the current snapshot, is a
+  -32602 InvalidParams error that names the accepted shapes; it is never null.
+  `ripr/listActionableItems` (custom request) lists the delivered and
+  omitted diagnostics by canonical id, and under `hidden_gaps` the gaps the
+  default actionable profile never publishes because they have no repair
+  route, such as a new function no test calls. Set `[lsp] diagnostic_profile =
+  "full"` in ripr.toml to publish those as diagnostics too.
 "#;

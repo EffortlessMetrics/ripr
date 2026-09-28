@@ -3595,6 +3595,80 @@ impl Backend {
                 })));
             }
         };
+        // The item lists make this route an answer rather than a loop: it
+        // names itself as the continuation route, so counts alone left a
+        // client with nothing new to inspect. `selected` is already bounded
+        // by the workspace item budget; `omitted` is capped here.
+        let selected = result
+            .selected
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "canonical_id": item.canonical_id,
+                    "document": item.document,
+                })
+            })
+            .collect::<Vec<_>>();
+        let omitted = result
+            .omitted
+            .iter()
+            .take(LIST_ACTIONABLE_OMITTED_MAX)
+            .map(|item| {
+                serde_json::json!({
+                    "canonical_id": item.canonical_id,
+                    "reason": omitted_diagnostic_reason_name(item.reason),
+                })
+            })
+            .collect::<Vec<_>>();
+        // Gaps the actionable profile hides because they have no bounded repair
+        // route (a new function no test calls is the common case). They are not
+        // diagnostics by design (RIPR-SPEC-0069), so this list is the only
+        // LSP surface that names them for an agent; each id is a valid
+        // `ripr.collectContext` `finding_id`.
+        // Filter canonical-group primaries, as publishing does, so a group
+        // counts once and a published group's other members are not listed.
+        // Only the three gap classes qualify: the `*_unknown` classes are
+        // missing static evidence, not gaps, and must not be named as such.
+        let hidden = if snapshot.diagnostic_profile == LspDiagnosticProfile::Actionable {
+            super::diagnostics::canonical_finding_groups(&snapshot.findings)
+                .into_iter()
+                .map(|(primary, _)| primary)
+                .filter(|finding| {
+                    finding.is_candidate_actionable()
+                        && matches!(
+                            finding.class,
+                            crate::domain::ExposureClass::WeaklyExposed
+                                | crate::domain::ExposureClass::ReachableUnrevealed
+                                | crate::domain::ExposureClass::NoStaticPath
+                        )
+                        && !super::diagnostics::finding_is_visible_in_profile(
+                            LspDiagnosticProfile::Actionable,
+                            finding,
+                        )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let hidden_gaps = hidden
+            .iter()
+            .take(LIST_ACTIONABLE_HIDDEN_MAX)
+            .map(|finding| {
+                serde_json::json!({
+                    "finding_id": finding.id,
+                    "file": display_path(
+                        finding
+                            .probe
+                            .location
+                            .file
+                            .strip_prefix(&snapshot.root)
+                            .unwrap_or(&finding.probe.location.file),
+                    ),
+                    "line": finding.probe.location.line,
+                    "class": finding.class.as_str(),
+                })
+            })
+            .collect::<Vec<_>>();
         Ok(Some(serde_json::json!({
             "kind": "actionable_items",
             "status": "ok",
@@ -3608,6 +3682,11 @@ impl Backend {
             "selected_count": result.selected.len(),
             "omitted_count": result.omitted.len(),
             "total_count": result.total_canonical_items,
+            "selected": selected,
+            "omitted": omitted,
+            "omitted_truncated": result.omitted.len() > LIST_ACTIONABLE_OMITTED_MAX,
+            "hidden_gaps": hidden_gaps,
+            "hidden_gap_count": hidden.len(),
             "budget_identity": result.snapshot_profile_budget_identity,
             "complete_evidence_identity": result.complete_evidence_identity,
             "continuation_or_inspect_route": result.continuation_or_inspect_route,
@@ -4283,6 +4362,66 @@ fn context_arguments(arguments: &[LSPAny]) -> Option<&serde_json::Map<String, se
     first.as_object()
 }
 
+/// Accepted argument shapes for `ripr.collectContext`, quoted in its errors.
+pub(crate) const COLLECT_CONTEXT_ARGUMENT_SHAPES: &str = "one object: \
+{\"finding_id\": \"probe:...\"}, {\"seam_id\": \"...\", \"evidence_identity\": {...}}, \
+or {\"gap_id\": \"...\", \"gap_ledger\": \"target/ripr/reports/gap-decision-ledger.json\"} \
+(gap_ledger optional); copy the ids and evidence_identity from a ripr diagnostic's data";
+
+/// Accepted argument shape for `ripr.collectEvidenceContext`.
+pub(crate) const COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES: &str = "one object: \
+{\"seam_id\": \"...\", \"evidence_identity\": {...}}; copy both from a ripr seam \
+diagnostic's data";
+
+/// Longest client-supplied id echoed back in an error message.
+const ECHOED_ID_MAX_CHARS: usize = 120;
+
+/// Resolves which target key a context command will look up, in the
+/// handler's own precedence order, or rejects the arguments with the
+/// accepted shapes.
+fn context_command_target(
+    command: &str,
+    arguments: &[LSPAny],
+    keys: &[&'static str],
+    shapes: &str,
+) -> LspResult<(&'static str, String)> {
+    let Some(args) = context_arguments(arguments) else {
+        return Err(LspError::invalid_params(format!(
+            "`{command}` expects {shapes}"
+        )));
+    };
+    keys.iter()
+        .find_map(|key| {
+            args.get(*key)
+                .and_then(|value| value.as_str())
+                .filter(|id| !id.trim().is_empty())
+                .map(|id| (*key, id.to_string()))
+        })
+        .ok_or_else(|| {
+            let one_of = if keys.len() > 1 { "one of " } else { "" };
+            LspError::invalid_params(format!(
+                "`{command}` needs a non-empty string {one_of}`{}`; it expects {shapes}",
+                keys.join("`, `")
+            ))
+        })
+}
+
+fn context_target_not_found(command: &str, key: &str, id: &str) -> LspError {
+    let mut echoed: String = id.chars().take(ECHOED_ID_MAX_CHARS).collect();
+    if echoed.len() < id.len() {
+        echoed.push_str("...");
+    }
+    let source = if key == "gap_id" {
+        "the gap ledger (`gap_ledger`, default target/ripr/reports/gap-decision-ledger.json)"
+    } else {
+        "the current analysis snapshot"
+    };
+    LspError::invalid_params(format!(
+        "`{command}`: `{key}` `{echoed}` is not in {source}, or no analysis snapshot is \
+available yet; run `ripr.refresh` and retry with an id from a current ripr diagnostic's data"
+    ))
+}
+
 impl Backend {
     /// Inner `textDocument/diagnostic` handler, wrapped by the trait
     /// method so redacted protocol tracing (#2035, RIPR-SPEC-0137)
@@ -4479,16 +4618,51 @@ impl Backend {
                 .await;
             return Ok(None);
         }
+        // A context command that cannot answer returns a typed InvalidParams
+        // error naming the accepted argument shapes, never a bare null: a
+        // null gave editor and agent clients nothing to correct.
         if params.command == COLLECT_CONTEXT_COMMAND {
-            return Ok(self.collect_context_packet(&params.arguments).await);
+            let (key, id) = context_command_target(
+                COLLECT_CONTEXT_COMMAND,
+                &params.arguments,
+                &["gap_id", "seam_id", "finding_id"],
+                COLLECT_CONTEXT_ARGUMENT_SHAPES,
+            )?;
+            return match self.collect_context_packet(&params.arguments).await {
+                Some(packet) => Ok(Some(packet)),
+                None => Err(context_target_not_found(COLLECT_CONTEXT_COMMAND, key, &id)),
+            };
         }
         if params.command == COLLECT_EVIDENCE_CONTEXT_COMMAND {
-            return Ok(self.collect_evidence_context_packet(&params.arguments));
+            let (key, id) = context_command_target(
+                COLLECT_EVIDENCE_CONTEXT_COMMAND,
+                &params.arguments,
+                &["seam_id"],
+                COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES,
+            )?;
+            return match self.collect_evidence_context_packet(&params.arguments) {
+                Some(packet) => Ok(Some(packet)),
+                None => Err(context_target_not_found(
+                    COLLECT_EVIDENCE_CONTEXT_COMMAND,
+                    key,
+                    &id,
+                )),
+            };
         }
         if params.command == COLLECT_WORKSPACE_STATUS_COMMAND {
             return Ok(self.collect_workspace_status());
         }
         if params.command == COLLECT_REPAIR_PACKET_COMMAND {
+            if params
+                .arguments
+                .first()
+                .is_some_and(|first| !first.is_object() && !first.is_null())
+            {
+                return Err(LspError::invalid_params(format!(
+                    "`{COLLECT_REPAIR_PACKET_COMMAND}` expects no arguments for the top packet, \
+or one object {{\"gap_id\": \"...\"}} for a specific gap"
+                )));
+            }
             return Ok(self.collect_repair_packet(&params.arguments));
         }
         if params.command == COLLECT_TOP_LIMITATION_COMMAND {
@@ -4970,6 +5144,14 @@ fn diagnostic_budget_result_json(
         "inline_detail_measurement": "not_available",
     })
 }
+
+/// Most omitted items `ripr/listActionableItems` lists; `omitted_count`
+/// still reports the full number.
+const LIST_ACTIONABLE_OMITTED_MAX: usize = 200;
+
+/// Most profile-hidden gaps `ripr/listActionableItems` lists;
+/// `hidden_gap_count` still reports the full number.
+const LIST_ACTIONABLE_HIDDEN_MAX: usize = 50;
 
 fn omitted_diagnostic_reason_name(
     reason: crate::lsp::diagnostic_budget::OmittedDiagnosticReason,
@@ -6267,6 +6449,13 @@ impl Backend {
         // Fallback: gap-decision-ledger.json using the existing GapRecord machinery.
         let ledger_path = absolute_join(&root, Path::new(DEFAULT_GAP_DECISION_LEDGER_OUT));
         collect_repair_packet_from_ledger(&root, &ledger_path, gap_id_arg.as_deref())
+            // Neither source holds a packet: say so and name the route,
+            // instead of a null the client can only render as "no response".
+            .or_else(|| {
+                Some(repair_packet_sentinel(&no_repair_packet_reason(
+                    gap_id_arg.as_deref(),
+                )))
+            })
     }
 
     fn collect_top_limitation(&self) -> Option<LSPAny> {
@@ -6894,6 +7083,25 @@ fn collect_repair_packet_from_ledger(
         "limits_note": "Static evidence only; advisory, not a gate decision.",
     });
     serde_json::from_value(result).ok()
+}
+
+fn no_repair_packet_reason(gap_id: Option<&str>) -> String {
+    let subject = match gap_id {
+        Some(id) => {
+            let mut echoed: String = id.chars().take(ECHOED_ID_MAX_CHARS).collect();
+            if echoed.len() < id.len() {
+                echoed.push_str("...");
+            }
+            format!("no repair packet for gap `{echoed}`")
+        }
+        None => "no repair packet".to_string(),
+    };
+    format!(
+        "{subject}: neither {DEFAULT_ACTIONABLE_GAPS_OUT} nor {DEFAULT_GAP_DECISION_LEDGER_OUT} \
+holds one; run `ripr pilot --root .` for seams with their repair commands, or write the gap \
+ledger with `ripr reports gap-ledger --check-output PATH` from saved `ripr check --format json` \
+output"
+    )
 }
 
 fn repair_packet_sentinel(reason: &str) -> LSPAny {
@@ -9008,6 +9216,15 @@ mod list_actionable_items_tests {
         assert_eq!(response["selected_count"], 1);
         assert_eq!(response["omitted_count"], 0);
         assert_eq!(response["total_count"], 1);
+        assert_eq!(
+            response["selected"],
+            serde_json::json!([{
+                "canonical_id": "gap:1",
+                "document": "file:///workspace/src/lib.rs",
+            }])
+        );
+        assert_eq!(response["omitted"], serde_json::json!([]));
+        assert_eq!(response["omitted_truncated"], false);
         assert!(
             response["budget_identity"]
                 .as_str()
@@ -9025,6 +9242,140 @@ mod list_actionable_items_tests {
             serde_json::json!(["source_edits", "workspace_edit", "autonomous_repair"])
         );
         assert!(response.get("error").is_none());
+        Ok(())
+    }
+
+    /// Omitted items are listed with their reason and capped; the count
+    /// still reports every omitted item.
+    #[test]
+    fn list_actionable_items_lists_omitted_items_up_to_the_cap() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|error| format!("parse test URI: {error}"))?;
+        let total = LIST_ACTIONABLE_OMITTED_MAX + 2;
+        let diagnostics = (0..total)
+            .map(|index| actionable_diagnostic(&format!("gap:{index:04}")))
+            .collect::<Vec<_>>();
+        let mut diagnostics_by_uri = BTreeMap::new();
+        diagnostics_by_uri.insert(uri, diagnostics);
+        let budget = DiagnosticBudget {
+            max_items_per_document: 1,
+            max_items_per_workspace_response: 1,
+            ..DiagnosticBudget::default()
+        };
+        let selection = DiagnosticDeliverySelection::evaluate(
+            &diagnostics_by_uri,
+            &budget,
+            "snapshot:test-profile",
+            "evidence:test",
+        );
+        let harness = handler_harness()?;
+        install_snapshot(&harness, snapshot_with_selection(Some(selection)))?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["selected_count"], 1);
+        assert_eq!(response["omitted_count"], total - 1);
+        let omitted = response["omitted"]
+            .as_array()
+            .ok_or("omitted must be an array")?;
+        assert_eq!(omitted.len(), LIST_ACTIONABLE_OMITTED_MAX);
+        assert_eq!(response["omitted_truncated"], true);
+        assert!(
+            omitted
+                .iter()
+                .all(|item| item["reason"] == "document_item_limit"
+                    && item["canonical_id"]
+                        .as_str()
+                        .is_some_and(|id| id.starts_with("gap:"))),
+            "every omitted item names its id and reason: {omitted:?}"
+        );
+        Ok(())
+    }
+
+    /// The actionable profile hides a candidate gap with no repair route (an
+    /// new function no test calls is the common case); the list names it with an
+    /// id `ripr.collectContext` takes. Exposed and base-side findings, and
+    /// every finding under the full profile, are not listed.
+    #[test]
+    fn list_actionable_items_names_gaps_the_actionable_profile_hides() -> Result<(), String> {
+        let hidden = crate::lsp::tests::sample_finding();
+        let mut exposed = hidden.clone();
+        exposed.id = "probe:pricing:90:predicate".to_string();
+        exposed.class = crate::domain::ExposureClass::Exposed;
+        let mut base_side = hidden.clone();
+        base_side.id = "probe:pricing:92:predicate".to_string();
+        base_side.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        let mut unknown = hidden.clone();
+        unknown.id = "probe:pricing:94:predicate".to_string();
+        unknown.class = crate::domain::ExposureClass::StaticUnknown;
+        // Two members of one canonical gap count once, as one diagnostic would.
+        let mut grouped_first = hidden.clone();
+        grouped_first.id = "probe:pricing:96:predicate".to_string();
+        grouped_first.probe.location.line = 96;
+        grouped_first.canonical_gap = Some(crate::lsp::tests::sample_canonical_gap());
+        let mut grouped_second = grouped_first.clone();
+        grouped_second.id = "probe:pricing:97:predicate".to_string();
+        grouped_second.probe.location.line = 97;
+        let mut snapshot = snapshot_with_selection(Some(applied_selection()?));
+        snapshot.findings = vec![
+            hidden,
+            exposed,
+            base_side,
+            unknown,
+            grouped_first,
+            grouped_second,
+        ];
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Actionable;
+        let harness = handler_harness()?;
+        install_snapshot(&harness, snapshot.clone())?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["hidden_gap_count"], 2, "{response:#}");
+        let listed = response["hidden_gaps"]
+            .as_array()
+            .ok_or("hidden_gaps is not an array")?
+            .iter()
+            .map(|gap| gap["finding_id"].as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            listed.contains(&"probe:pricing:88:predicate".to_string()),
+            "{response:#}"
+        );
+        assert!(
+            !listed.iter().any(|id| id.ends_with(":94:predicate")),
+            "a static_unknown finding is not a gap: {response:#}"
+        );
+        assert_eq!(
+            listed
+                .iter()
+                .filter(|id| id.ends_with(":96:predicate") || id.ends_with(":97:predicate"))
+                .count(),
+            1,
+            "one canonical gap is listed once: {response:#}"
+        );
+        let first = response["hidden_gaps"]
+            .as_array()
+            .and_then(|gaps| {
+                gaps.iter()
+                    .find(|gap| gap["finding_id"] == "probe:pricing:88:predicate")
+            })
+            .ok_or("probe 88 missing")?;
+        assert_eq!(
+            first,
+            &serde_json::json!({
+                "finding_id": "probe:pricing:88:predicate",
+                "file": "src/pricing.rs",
+                "line": 88,
+                "class": "weakly_exposed",
+            })
+        );
+
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Full;
+        let full_harness = handler_harness()?;
+        install_snapshot(&full_harness, snapshot)?;
+        let full = call_handler(&full_harness)?;
+        assert_eq!(full["hidden_gap_count"], 0);
+        assert_eq!(full["hidden_gaps"], serde_json::json!([]));
         Ok(())
     }
 
@@ -9060,9 +9411,14 @@ mod list_actionable_items_tests {
                 "budget_identity",
                 "complete_evidence_identity",
                 "continuation_or_inspect_route",
+                "hidden_gap_count",
+                "hidden_gaps",
                 "kind",
                 "must_not_change",
+                "omitted",
                 "omitted_count",
+                "omitted_truncated",
+                "selected",
                 "selected_count",
                 "snapshot_id",
                 "status",

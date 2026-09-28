@@ -592,6 +592,17 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     if committed_history_diff && analysis::working_tree_has_tracked_changes(&input_root) {
         output.unanalyzed_working_tree = true;
     }
+    // The committed diff's line numbers are applied to the on-disk file, so an
+    // edited diff file gets misplaced or missing probes. Name those files on
+    // stderr so every format (JSON included) carries the warning. This is not
+    // gated on the probe above: that probe sees only `--root`, while the
+    // analyzed diff covers the whole repository.
+    if committed_history_diff && let Some(base) = output.base.as_deref() {
+        let files = analysis::committed_diff_files_with_uncommitted_edits(&input_root, base);
+        if !files.is_empty() {
+            eprintln!("{}", edited_diff_files_warning(base, &files));
+        }
+    }
     let navigation = if worktree_explicitly_provided && write_artifact.is_none() {
         None
     } else {
@@ -608,6 +619,27 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         navigation.as_ref(),
     )?)?;
     Ok(())
+}
+
+/// Stderr warning for diff files that also carry uncommitted edits: their
+/// findings are unreliable until the edits are committed or `--worktree`
+/// diffs the edited content itself.
+fn edited_diff_files_warning(base: &str, files: &[String]) -> String {
+    let (verb, be) = if files.len() == 1 {
+        ("has", "is")
+    } else {
+        ("have", "are")
+    };
+    format!(
+        "ripr: warning: {} {verb} uncommitted edits and {be} also in the analyzed `{base}...HEAD` diff; \
+         findings there apply committed line numbers to edited content and can be misplaced or missing. \
+         Commit the edits, or rerun with `--worktree`.",
+        files
+            .iter()
+            .map(|file| format!("`{file}`"))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
 }
 
 /// The stderr hedge for an explicit `--diff` run that produced zero findings
@@ -1022,6 +1054,16 @@ mod tests {
             assert!(hedge.contains("not a valid unified diff"), "{hedge}");
         }
         Ok(())
+    }
+
+    #[test]
+    fn edited_diff_files_warning_agrees_in_number_and_names_the_recovery() {
+        let one = edited_diff_files_warning("origin/main", &["src/lib.rs".to_string()]);
+        assert!(one.contains("`src/lib.rs` has uncommitted edits and is also in the analyzed `origin/main...HEAD` diff"));
+        assert!(one.ends_with("Commit the edits, or rerun with `--worktree`."));
+        let two =
+            edited_diff_files_warning("origin/main", &["a.rs".to_string(), "b.rs".to_string()]);
+        assert!(two.contains("`a.rs`, `b.rs` have uncommitted edits and are also in"));
     }
 
     #[test]

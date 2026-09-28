@@ -130,20 +130,47 @@ When `unanalyzed_working_tree` is true, the following note is appended:
 In the empty-findings branch (after "No diff-derived static exposure probes found."):
 
 ```
-Note: uncommitted changes to tracked source were not analyzed. `ripr check`
-compares committed history only; add `--worktree` to include staged and
-unstaged tracked edits (for example `ripr check --worktree`).
+Note: uncommitted edits to tracked source are not in the analyzed diff;
+`ripr check` diffs committed history. Test files outside the diff are still
+read as they are on disk, so uncommitted tests there already count as
+evidence; add `--worktree` to
+include staged and unstaged tracked edits in the diff (for example
+`ripr check --worktree`).
 ```
 
 In the non-empty-findings branch (after the all-no-path-disclosure):
 
 ```
-Note: uncommitted changes to tracked source were not analyzed. `ripr check`
-compares committed history only; add `--worktree` to include staged and
-unstaged tracked edits (for example `ripr check --worktree`).
+Note: uncommitted edits to tracked source are not in the analyzed diff;
+`ripr check` diffs committed history. Test files outside the diff are still
+read as they are on disk, so uncommitted tests there already count as
+evidence; add `--worktree` to
+include staged and unstaged tracked edits in the diff (for example
+`ripr check --worktree`).
 ```
 
 The note does not change the exit code or pass/fail status.
+
+### Edited diff files (stderr warning)
+
+With a resolved base, the check also names each source file that is both in
+the committed `<base>...HEAD` diff and edited in the working tree. Such a file
+is read from disk while its probes use the committed diff's line numbers, so
+its findings can be misplaced or missing. One stderr line, for example:
+
+```
+ripr: warning: `src/pricing.rs` has uncommitted edits and is also in the
+analyzed `main...HEAD` diff; findings there apply committed line numbers to
+edited content and can be misplaced or missing. Commit the edits, or rerun
+with `--worktree`.
+```
+
+Only files whose extension routes to a language adapter are named, since
+other files carry no probes; a file in a language the configuration turns off
+can still be named. Paths are repository-relative and unquoted, matching the
+analyzed diff, which covers the whole repository even under `--root <subdir>`.
+Any git failure names no files. The warning does not change the exit code or
+the JSON output.
 
 ### JSON output (`--json`)
 
@@ -191,6 +218,10 @@ required per the additive field policy in [`docs/OUTPUT_SCHEMA.md`](../OUTPUT_SC
    With a clean tracked worktree (untracked files only) → no disclosure.
 5. **File diff mode**: `ripr check --diff change.diff` → no disclosure; file
    diff is not a live worktree query.
+6. **Edited diff file**: `ripr check --base main` where `src/pricing.rs` is in
+   the committed diff and also edited on disk → stderr names `src/pricing.rs`
+   with `--worktree`; an edited file outside the committed diff, or an edited
+   non-source file in it, is not named.
 
 ## Required Evidence
 
@@ -211,6 +242,7 @@ required per the additive field policy in [`docs/OUTPUT_SCHEMA.md`](../OUTPUT_SC
 | --- | --- | --- |
 | Human text `Note:` line | None | Additive; absent when worktree is clean or --diff was used; does not change exit code |
 | JSON `"unanalyzed_working_tree": true` | Additive field | Absent when false; no schema version bump |
+| Stderr `ripr: warning:` edited-diff-file line | None | Only with a resolved base and an edited source file in the committed diff |
 
 ## Test Mapping
 
@@ -218,6 +250,7 @@ required per the additive field policy in [`docs/OUTPUT_SCHEMA.md`](../OUTPUT_SC
 - `crates/ripr/tests/cli_smoke.rs::check_base_head_with_clean_worktree_does_not_show_unanalyzed_working_tree_disclosure`
 - `crates/ripr/tests/cli_smoke.rs::check_default_base_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosure`
 - `crates/ripr/tests/cli_smoke.rs::check_default_base_with_clean_worktree_keeps_no_scope_note_only`
+- `crates/ripr/tests/cli_smoke.rs::check_base_names_diff_files_with_uncommitted_edits`
 
 ## Implementation Mapping
 

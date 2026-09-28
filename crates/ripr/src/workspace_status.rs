@@ -72,6 +72,43 @@ pub(crate) enum RootErrorCode {
     RepositoryMarkerMissing,
 }
 
+impl RootErrorCode {
+    /// Stable wire code, as serialized in `root.error_code`.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::CurrentDirectoryUnavailable => "current_directory_unavailable",
+            Self::RootMissing => "root_missing",
+            Self::RootNotDirectory => "root_not_directory",
+            Self::RootCanonicalizeFailed => "root_canonicalize_failed",
+            Self::RepositoryMarkerMissing => "repository_marker_missing",
+        }
+    }
+
+    /// The cause a person or model can act on. An explicit root is checked
+    /// by itself; only a discovered root searches ancestors.
+    pub(crate) fn cause(self, source: RootSource) -> String {
+        match self {
+            Self::CurrentDirectoryUnavailable => {
+                "the server's current directory could not be read".to_string()
+            }
+            Self::RootMissing => "the configured root does not exist".to_string(),
+            Self::RootNotDirectory => "the configured root is not a directory".to_string(),
+            Self::RootCanonicalizeFailed => "the configured root could not be resolved".to_string(),
+            Self::RepositoryMarkerMissing => {
+                let place = if source == RootSource::Explicit {
+                    "at the configured root"
+                } else {
+                    "at the current directory or its ancestors"
+                };
+                format!(
+                    "no repository marker ({}) was found {place}",
+                    REPOSITORY_MARKERS.join(", ")
+                )
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct ConfigurationStatus {
     pub(crate) project_config_state: ProjectConfigState,
@@ -304,6 +341,29 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn root_error_code_text_matches_its_wire_code_and_root_source() -> Result<(), String> {
+        for code in [
+            RootErrorCode::CurrentDirectoryUnavailable,
+            RootErrorCode::RootMissing,
+            RootErrorCode::RootNotDirectory,
+            RootErrorCode::RootCanonicalizeFailed,
+            RootErrorCode::RepositoryMarkerMissing,
+        ] {
+            let wire = serde_json::to_value(code).map_err(|error| error.to_string())?;
+            assert_eq!(wire, code.as_str(), "{code:?}");
+        }
+        let explicit = RootErrorCode::RepositoryMarkerMissing.cause(RootSource::Explicit);
+        assert!(
+            explicit.ends_with("found at the configured root"),
+            "{explicit}"
+        );
+        assert!(explicit.contains("Cargo.toml") && explicit.contains("Makefile.PL"));
+        let discovered = RootErrorCode::RepositoryMarkerMissing.cause(RootSource::Unavailable);
+        assert!(discovered.ends_with("its ancestors"), "{discovered}");
+        Ok(())
+    }
 
     fn temporary_root(label: &str) -> PathBuf {
         let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);

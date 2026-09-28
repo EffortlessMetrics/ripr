@@ -137,7 +137,25 @@ impl RpcError {
         Self {
             code: protocol::ERROR_RESOURCE_NOT_FOUND,
             message: "Resource not found",
-            data: Some(json!({ "uri": uri })),
+            data: Some(json!({ "uri": uri, "available": [protocol::STATUS_RESOURCE_URI] })),
+        }
+    }
+
+    /// Unknown tool names carry the one valid name in the message and in
+    /// `data`, so a model can retry without another `tools/list` round trip.
+    pub(super) fn unknown_tool(name: &str) -> Self {
+        Self {
+            code: protocol::ERROR_INVALID_PARAMS,
+            message: "unknown RIPR tool; the only tool is `ripr_workspace_status`",
+            data: Some(json!({ "name": name, "available": [protocol::STATUS_TOOL_NAME] })),
+        }
+    }
+
+    pub(super) fn unknown_resource(uri: &str) -> Self {
+        Self {
+            code: protocol::ERROR_INVALID_PARAMS,
+            message: "unknown RIPR resource; the only resource is `ripr://workspace/status`",
+            data: Some(json!({ "uri": uri, "available": [protocol::STATUS_RESOURCE_URI] })),
         }
     }
 

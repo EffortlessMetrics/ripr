@@ -7,9 +7,13 @@ use std::collections::BTreeSet;
 /// or the resolved default base) exclude staged and unstaged tracked edits;
 /// `--worktree` (RIPR-SPEC-0116) is the remedy that actually includes them.
 /// Committing works too, but staging alone does not change a `--base` diff.
-const UNANALYZED_WORKING_TREE_NOTE: &str = "\nNote: uncommitted changes to tracked source were not analyzed. \
-`ripr check` compares committed history only; add `--worktree` to include staged \
-and unstaged tracked edits (for example `ripr check --worktree`).\n";
+/// Test files are read from disk either way, so the note says so: cold agents
+/// read "were not analyzed" as "my new uncommitted test was ignored" while the
+/// counts had already moved because of it.
+const UNANALYZED_WORKING_TREE_NOTE: &str = "\nNote: uncommitted edits to tracked source are not in the analyzed diff; \
+`ripr check` diffs committed history. Test files outside the diff are still read as they \
+are on disk, so uncommitted tests there already count as evidence; add `--worktree` to include staged and \
+unstaged tracked edits in the diff (for example `ripr check --worktree`).\n";
 
 /// Render the bounded triage report in the default human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {

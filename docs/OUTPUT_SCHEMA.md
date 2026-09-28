@@ -7184,6 +7184,23 @@ Success payload (200-level result object, no `protocol_version`,
   contract lands. `null` when the snapshot carries no generation identity.
 - `selected_count` / `omitted_count` / `total_count` — diagnostic-budget
   counts from the committed delivery selection.
+- `selected` — `[{canonical_id, document}]` for every delivered diagnostic
+  (already bounded by the workspace item budget). `canonical_id` is the
+  diagnostic's budget identity (its `diagnostic_id`, gap, finding or seam id);
+  the diagnostic's own `data` carries the ids `ripr.collectContext` takes.
+- `omitted` — `[{canonical_id, reason}]` for withheld diagnostics, at most
+  200 entries. `reason` is `profile_filtered`, `document_item_limit`,
+  `workspace_item_limit`, or `serialized_byte_limit`.
+- `omitted_truncated` — `true` when `omitted_count` exceeds the listed
+  `omitted` entries.
+- `hidden_gaps` — `[{finding_id, file, line, class}]`, at most 50: candidate
+  gaps (`weakly_exposed`, `reachable_unrevealed` or `no_static_path`, one entry
+  per canonical gap) that the `actionable` profile does not publish as
+  diagnostics because they have no bounded repair route (RIPR-SPEC-0069). The
+  `*_unknown` classes are missing evidence, not gaps, and are not listed. A new function no test calls is the common case. `file` is
+  root-relative; `finding_id` is a valid `ripr.collectContext` argument.
+  Always empty under the `full` profile, which publishes these findings.
+- `hidden_gap_count` — the full number of such canonical gaps.
 - `budget_identity` — the snapshot profile budget identity string.
 - `complete_evidence_identity` — the complete-evidence identity string.
 - `continuation_or_inspect_route` — the route string for continuing or
@@ -12208,6 +12225,7 @@ JSON shape:
     "reason": "agent packet artifact is missing",
     "command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
   },
+  "test_run": null,
   "warnings": []
 }
 ```
@@ -12273,8 +12291,9 @@ Field contract:
     when that is another attempt: the workflow keeps one receipt, so a later
     attempt's after phase replaced this attempt's receipt; otherwise `null`),
     and, when it is issued for this attempt, the receipt's `status`,
-    `movement`, `receipt_state`, `recommended_action`, and
-    `analysis_outcome_error`, plus `shows_gap_closed` (`true` only for an
+    `movement`, `receipt_state`, `recommended_action`,
+    `analysis_outcome_error`, and `verification_status` (the receipt's
+    `verification.status`), plus `shows_gap_closed` (`true` only for an
     `advisory` receipt with movement `improved`; it records improved static
     grip, not a runtime or mutation result). Unbound receipts leave these
     `null` and `shows_gap_closed` `false`.
@@ -12283,6 +12302,17 @@ Field contract:
     attempt manifest's `last_after_refusal`: the final error followed by the
     cause and recovery the after phase printed, such as the changed analysis
     inputs, bounded to 4096 bytes).
+- `test_run` - `null`, or `{status, test_changed, next_step}` when a repair
+  receipt issued for an attempt records `verification.status`
+  `verification_not_run`. `status` is `"not_recorded"`: the repair receipt
+  holds no test run. A trust-bound `--phase verify` run writes a separate
+  verification receipt that this field does not read. `test_changed` is the
+  receipt's `test_changed` (a path or test name, as `--test` gave it) or
+  `null`; `next_step` says to run the focused test with the project's test
+  command and keep it only if it passes. `status: "complete"` never means the test passed:
+  static movement `improved` survives a failing test, so a consumer that needs
+  a test result runs the test itself. The Markdown form prints the same as a
+  `Test run: none recorded.` line under `Seam:`.
 - `next_command` - selected in the order RIPR-SPEC-0011 documents (#3906): the
   one current awaiting repair attempt's recorded after command
   (`repair_attempt_after`; when that attempt recorded a refused after phase,

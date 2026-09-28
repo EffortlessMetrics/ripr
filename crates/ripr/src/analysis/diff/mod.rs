@@ -7,9 +7,10 @@ mod path;
 pub mod records;
 
 pub use load::{
-    load_diff, load_diff_range, load_diff_with_effective_base, load_pr_evidence_diff_range,
-    load_worktree_diff, load_worktree_diff_with_effective_base, resolve_base_commit,
-    resolve_default_base_commit, resolve_effective_base, working_tree_has_tracked_changes,
+    committed_diff_files_with_uncommitted_edits, load_diff, load_diff_range,
+    load_diff_with_effective_base, load_pr_evidence_diff_range, load_worktree_diff,
+    load_worktree_diff_with_effective_base, resolve_base_commit, resolve_default_base_commit,
+    resolve_effective_base, working_tree_has_tracked_changes,
 };
 #[allow(
     unused_imports,

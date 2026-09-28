@@ -230,7 +230,7 @@ impl McpServer {
             .and_then(Value::as_str)
             .ok_or_else(|| RpcError::invalid_params("tools/call requires name"))?;
         if name != protocol::STATUS_TOOL_NAME {
-            return Err(RpcError::invalid_params("unknown RIPR tool"));
+            return Err(RpcError::unknown_tool(name));
         }
         if let Some(arguments) = params.get("arguments") {
             let Some(arguments) = arguments.as_object() else {
@@ -265,7 +265,7 @@ impl McpServer {
             .ok_or_else(|| RpcError::invalid_params("resources/read requires uri"))?;
         if uri != protocol::STATUS_RESOURCE_URI {
             return if current_protocol {
-                Err(RpcError::invalid_params("unknown RIPR resource"))
+                Err(RpcError::unknown_resource(uri))
             } else {
                 Err(RpcError::resource_not_found(uri))
             };

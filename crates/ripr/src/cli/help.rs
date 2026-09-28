@@ -673,6 +673,8 @@ mod tests {
         assert!(LSP_HELP.starts_with("Start the experimental ripr LSP server"));
         assert!(LSP_HELP.contains("--stdio"));
         assert!(LSP_HELP.contains("--version"));
+        assert!(LSP_HELP.contains("ripr.collectContext           one object"));
+        assert!(LSP_HELP.contains("InvalidParams"));
         // Pin: cache status/clear help lives beside the parser and is imported
         // here. Drop CACHE_STATUS_HELP / CACHE_CLEAR_HELP from this test module
         // import list and this test fails to compile.

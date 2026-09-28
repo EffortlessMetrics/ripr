@@ -115,6 +115,13 @@ carries:
 If the packet field is absent or the status reported `not_available`, the packet
 is not ready. Do not fabricate a packet or attempt an edit without one.
 
+The command takes no arguments for the top packet, or one object
+`{"gap_id": "..."}` for a specific gap; any other first argument is a `-32602`
+InvalidParams error. When neither `target/ripr/reports/actionable-gaps.json`
+nor `target/ripr/reports/gap-decision-ledger.json` holds a packet, the result
+is a `not_actionable_or_incomplete` packet whose `reason` names both files and
+the CLI route (`ripr pilot --root .`), never `null`.
+
 ---
 
 ## Step 3 — Edit Only the `allowed_edit_surface`

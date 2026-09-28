@@ -22,6 +22,10 @@ Ordinary repair path:
   # edit one focused test outside RIPR
   ripr agent repair --attempt ID --phase after
 
+Seam IDs come from `ripr pilot --root .` (or `ripr agent status`), which
+prints the exact `--phase before` command. The `probe:...` finding IDs that
+`ripr check` prints are not seam IDs.
+
 Run `ripr agent repair --help` for the primary repair workflow. Run
 `ripr agent status --help` to inspect an interrupted or incomplete local loop.
 The lower-level `start`, `brief`, `packet`, `verify`, `verify-execute`,
@@ -207,7 +211,9 @@ Usage: ripr agent repair [--root PATH] --seam-id ID --phase before
 Options:
   --root PATH          Workspace root. Defaults to current directory.
   --seam-id ID         Select one visible seam by ID; required for `before` and
-                       the compatibility selector for `after`.
+                       the compatibility selector for `after`. `ripr pilot
+                       --root .` lists seam IDs; `ripr check` finding IDs
+                       (`probe:...`) are not seam IDs.
   --attempt ID         Select one durable repair attempt; valid for `after`
                        and `verify` (verify accepts only `--attempt`).
   --phase before|after|verify
