@@ -115,12 +115,27 @@ returns a named, actionable `Err` rather than a raw git error or a silent
 empty result. The message is:
 
 ```
-could not resolve a default base (no origin/main, origin/master, or local main/master found). Pass `--base <ref>` to diff against a specific ref, or run `ripr check --root . --format repo-exposure-md` for a full-repo scan.
+could not resolve a default base (no origin/main, origin/master, or local main/master found).<context> Pass `--base <ref>` to diff against a specific ref, or run `ripr check --root . --format repo-exposure-md` for a full-repo scan.
 ```
+
+`<context>` is empty or one sentence naming the repository fact that
+explains the failure, checked in this order: HEAD has no commits yet; the
+clone is shallow and never fetched a base branch (name `git fetch
+--unshallow` and `fetch-depth: 0`); other branches exist (name up to five,
+never the current branch, with a `--base` example); the current branch is
+the only one. A Git probe that fails to run adds no context rather than a
+guessed cause.
 
 This message explicitly says the analysis did not run (unlike "No probes
 found", which means the analysis ran and found nothing). It names the
 problem and the two remediation paths.
+
+When an explicit or resolved base exists but `<base>...HEAD` has no merge
+base, the Git failure text is kept and followed by its cause: a shallow
+clone (repair: `git fetch --unshallow`, or `fetch-depth: 0` on
+`actions/checkout`) or unrelated histories (repair: a `--base` on HEAD's
+history). An explicit base that does not resolve in a shallow clone names
+the unshallow repair instead of `git fetch origin`.
 
 ### Honesty bar
 

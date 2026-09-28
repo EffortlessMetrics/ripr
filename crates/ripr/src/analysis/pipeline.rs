@@ -351,6 +351,21 @@ fn rename_disclosure_message(
     })
 }
 
+/// Whether a diff-parse limitation touches a file this run analyzes.
+///
+/// A conflict region or n-way hunk in a file no enabled adapter reads (a
+/// workflow `.yml`, a `.md`, or a preview language left disabled) removes
+/// nothing from the analysis, so it must not turn the whole run into
+/// `unsupported_input`. A diff that resolves conflict markers committed to
+/// `.github/workflows/*.yml` did exactly that. Limitations without a path
+/// (a malformed diff) always count.
+fn diff_limitation_in_scope(limitation: &AnalysisLimitation, languages: &[LanguageId]) -> bool {
+    let Some(path) = limitation.path.as_deref() else {
+        return true;
+    };
+    route(std::path::Path::new(path)).is_some_and(|language| languages.contains(&language))
+}
+
 fn run_pipeline_for_diff_text(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
@@ -360,7 +375,11 @@ fn run_pipeline_for_diff_text(
 ) -> Result<AnalysisResult, String> {
     let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
     let changed_files = parsed_diff.changed_files;
-    let mut limitations = parsed_diff.limitations;
+    let mut limitations = parsed_diff
+        .limitations
+        .into_iter()
+        .filter(|limitation| diff_limitation_in_scope(limitation, languages))
+        .collect::<Vec<_>>();
     let mut harness_projections: Vec<crate::analysis::harness_projection::TestHarnessProjection> =
         Vec::new();
     let deleted_file_count = parsed_diff.deleted_file_count;
@@ -1474,6 +1493,74 @@ mod tests {
         assert!(detail.starts_with("typescript: "));
         assert!(
             detail.chars().count() <= crate::analysis_outcome::MAX_ANALYSIS_LIMITATION_DETAIL_CHARS
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn conflict_markers_in_unanalyzed_files_do_not_mark_the_run_unsupported() -> Result<(), String>
+    {
+        // clap's history resolves conflict markers committed to a workflow
+        // file. No adapter reads `.yml`, so the Rust change beside it must
+        // still analyze as a complete run; the same region in a `.rs` file
+        // keeps the fail-closed `unsupported_input` outcome.
+        let run = |path: &str| -> Result<AnalysisOutcomeKind, String> {
+            let root = temp_root("analysis-outcome-conflict-scope")?;
+            let diff = format!(
+                "diff --git a/{path} b/{path}\n\
+                 --- a/{path}\n\
+                 +++ b/{path}\n\
+                 @@ -1,5 +1,1 @@\n\
+                 -<<<<<<< ours\n\
+                 -on: push\n\
+                 -=======\n\
+                 -on: pull_request\n\
+                 ->>>>>>> theirs\n\
+                 +on: push\n\
+                 diff --git a/src/lib.rs b/src/lib.rs\n\
+                 --- /dev/null\n\
+                 +++ b/src/lib.rs\n\
+                 @@ -0,0 +1 @@\n\
+                 +pub fn value() -> u32 {{ 1 }}\n"
+            );
+            let result = run_pipeline_for_diff_text(
+                &AnalysisOptions {
+                    root,
+                    base: None,
+                    diff_file: None,
+                    mode: AnalysisMode::Draft,
+                    resolved_subject_identity: None,
+                    include_unchanged_tests: false,
+                    resolve_tsconfig_paths: false,
+                    perl_facts_path: None,
+                    git_timeout: None,
+                    git_candidate: None,
+                    production_like_targets: Default::default(),
+                    test_harnesses: Vec::new(),
+                },
+                &OraclePolicy::default(),
+                &[LanguageId::Rust],
+                &[],
+                &diff,
+            )?;
+            result
+                .analysis_outcome
+                .map(|outcome| outcome.kind)
+                .ok_or_else(|| "every run carries an analysis outcome".to_string())
+        };
+
+        let yaml = run(".github/workflows/pre-commit.yml")?;
+        assert!(
+            !matches!(
+                yaml,
+                AnalysisOutcomeKind::UnsupportedInput | AnalysisOutcomeKind::PartialWithLimitations
+            ),
+            "a conflict in an unanalyzed file must not limit the run, got {yaml:?}"
+        );
+        assert_eq!(
+            run("src/merge.rs")?,
+            AnalysisOutcomeKind::UnsupportedInput,
+            "a conflict in an analyzed Rust file stays fail-closed"
         );
         Ok(())
     }

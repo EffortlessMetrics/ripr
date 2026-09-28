@@ -9153,7 +9153,7 @@ tests = [
   "crates/ripr/src/analysis/workspace/select.rs::tests::draft_and_fast_keep_nested_multi_target_crate_together",
   "crates/ripr/src/analysis/workspace/select.rs::tests::instant_selection_leaves_integration_tests_behind_for_bin_only_change",
   "crates/ripr/src/analysis/workspace/select.rs::tests::module_closure_brings_lib_sibling_for_bin_only_change",
-  "crates/ripr/src/analysis/workspace/select.rs::tests::custom_target_change_without_dependents_stays_changed_files_only",
+  "crates/ripr/src/analysis/workspace/select.rs::tests::custom_target_change_keeps_its_manifest_package_together",
   "crates/ripr/src/analysis/workspace/select.rs::tests::dependent_custom_target_files_enter_selection_by_root_prefix",
   "crates/ripr/src/analysis/workspace/select.rs::tests::nested_crate_inside_dependent_stays_out_unless_itself_dependent",
   "crates/ripr/src/analysis/workspace/select.rs::tests::dependent_packages_enter_draft_and_fast_selection",

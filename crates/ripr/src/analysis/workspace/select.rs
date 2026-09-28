@@ -53,9 +53,24 @@ pub(crate) fn select_rust_files_for_mode_with_dependent_packages(
         return sorted_unique(all_files.iter().cloned());
     }
 
+    // Ownership for a path with no heuristic root (custom Cargo target
+    // paths such as `b/lib/core.rs`) is the nearest discovered manifest
+    // directory: the longest matching prefix, so a nested crate never
+    // claims its parent's files.
+    let manifest_owner = |file: &PathBuf| -> Option<&String> {
+        let normalized = file.to_string_lossy().replace('\\', "/");
+        manifest_dir_prefixes
+            .iter()
+            .filter(|prefix| normalized.starts_with(prefix.as_str()))
+            .max_by_key(|prefix| prefix.len())
+    };
+    // A changed `[lib] path = "lib/foo.rs"` root has no heuristic root
+    // either; its manifest owner keeps the package narrowing (and the
+    // package's tests) in scope instead of falling back to changed files
+    // only, which left every test unindexed.
     let package_roots = changed_rust_files
         .iter()
-        .filter_map(|path| package_root(path))
+        .filter_map(|path| package_root(path).or_else(|| manifest_owner(path).cloned()))
         .collect::<Vec<_>>();
     // #3616 review: custom-target changed files can carry no heuristic root
     // while the expansion still attributed dependent packages, so the
@@ -71,21 +86,17 @@ pub(crate) fn select_rust_files_for_mode_with_dependent_packages(
                 || dependent_package_roots.contains(&root)
         } else {
             // #3616 review: a file with no heuristic root can still belong
-            // to an expanded dependent package (custom Cargo target paths
-            // such as `b/lib/core.rs`). Ownership is the nearest discovered
-            // manifest directory — the same longest-prefix rule the
-            // expansion seeding used — so a nested crate inside a dependent
-            // does not leak into scope unless the nested manifest is itself
-            // a dependent (#3616 review, second round).
-            let normalized = file.to_string_lossy().replace('\\', "/");
-            let Some(owner) = manifest_dir_prefixes
-                .iter()
-                .filter(|prefix| normalized.starts_with(prefix.as_str()))
-                .max_by_key(|prefix| prefix.len())
-            else {
+            // to a changed or expanded dependent package (custom Cargo
+            // target paths such as `b/lib/core.rs`). Ownership is the
+            // nearest discovered manifest directory — the same
+            // longest-prefix rule the expansion seeding used — so a nested
+            // crate inside a dependent does not leak into scope unless the
+            // nested manifest is itself a dependent (#3616 review, second
+            // round).
+            let Some(owner) = manifest_owner(file) else {
                 return false;
             };
-            dependent_package_roots.contains(owner)
+            package_roots.contains(owner) || dependent_package_roots.contains(owner)
         }
     });
     with_module_context_files(
@@ -666,7 +677,7 @@ mod tests {
                 &prefixes
             ),
             files(&["t/lib/core.rs"]),
-            "without dependents the selection stays the changed files only"
+            "without dependents only the changed file's own package t enters"
         );
     }
 
@@ -832,43 +843,54 @@ mod tests {
         );
     }
 
-    /// #3705 / RIPR-SPEC-0174: honest custom-path fallback. A changed
-    /// custom-target file with no heuristic root and no attributed
-    /// dependents selects changed files only — the sibling integration
-    /// test stays out until dependents attribute the package. That
-    /// omission is the current limitation, not an exclusion license.
+    /// #3705 / RIPR-SPEC-0174: custom-path ownership. A changed
+    /// custom-target file with no heuristic root (`[lib] path =
+    /// "lib/core.rs"`) belongs to its nearest manifest, so Draft narrowing
+    /// keeps that package together. The earlier changed-files-only fallback
+    /// left every sibling integration test unindexed, turning a tested
+    /// change into `no_static_path`. A nested package still owns its own
+    /// custom targets, and the root package's tests stay out of its scope.
     #[test]
-    fn custom_target_change_without_dependents_stays_changed_files_only() {
-        let all = files(&["pkg/lib/core.rs", "pkg/tests/core.rs"]);
-        let changed = files(&["pkg/lib/core.rs"]);
-        let prefixes = ["pkg/".to_string()];
+    fn custom_target_change_keeps_its_manifest_package_together() {
+        let all = files(&[
+            "lib/odd.rs",
+            "lib/odd/helper.rs",
+            "pkg/lib/core.rs",
+            "pkg/tests/core.rs",
+            "tests/t.rs",
+        ]);
+        let prefixes = ["".to_string(), "pkg/".to_string()];
+        let select = |changed: &[&str], dependents: &[&str]| {
+            select_rust_files_for_mode_with_dependent_packages(
+                &all,
+                &files(changed),
+                AnalysisMode::Draft,
+                true,
+                &dependents.iter().map(|root| root.to_string()).collect(),
+                &prefixes,
+            )
+        };
 
         assert_eq!(
-            select_rust_files_for_mode_with_dependent_packages(
-                &all,
-                &changed,
-                AnalysisMode::Draft,
-                true,
-                &std::collections::BTreeSet::new(),
-                &prefixes
-            ),
-            files(&["pkg/lib/core.rs"]),
-            "no heuristic root and no dependents: changed files only"
-        );
-        let dependents = ["pkg/".to_string()]
-            .into_iter()
-            .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(
-            select_rust_files_for_mode_with_dependent_packages(
-                &all,
-                &changed,
-                AnalysisMode::Draft,
-                true,
-                &dependents,
-                &prefixes
-            ),
+            select(&["pkg/lib/core.rs"], &[]),
             files(&["pkg/lib/core.rs", "pkg/tests/core.rs"]),
-            "attributed dependents bring the package's tests back in"
+            "the nested manifest owns its custom target and brings its tests; root tests stay out"
+        );
+        assert_eq!(
+            select(&["lib/odd.rs"], &[]),
+            files(&["lib/odd/helper.rs", "lib/odd.rs", "tests/t.rs"]),
+            "the root package's custom lib root brings its module and tests; pkg stays out"
+        );
+        assert_eq!(
+            select(&["lib/odd.rs"], &["pkg/"]),
+            files(&[
+                "lib/odd/helper.rs",
+                "lib/odd.rs",
+                "pkg/lib/core.rs",
+                "pkg/tests/core.rs",
+                "tests/t.rs",
+            ]),
+            "attributed dependents still add their packages"
         );
     }
 }

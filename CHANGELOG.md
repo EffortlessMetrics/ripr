@@ -11,6 +11,19 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr check` analyzes Rust crate roots declared outside `src/`
+  (`[lib] path = "lib/foo.rs"`, `[[bin]] path = ...`). A change there used
+  to report zero candidate lines as a complete analysis, and Draft mode
+  dropped the package's tests, so a tested change read as
+  `no_static_path`.
+- Base-resolution failures name their cause and the next step. A shallow
+  CI checkout no longer stops at raw `fatal: ... no merge base`; it names
+  `git fetch --unshallow` and `fetch-depth: 0`. A repository with no
+  commits, or whose default branch is not `main`/`master`, is told which
+  `--base` would work.
+- A diff that touches conflict markers in a file no enabled adapter reads
+  (for example resolving markers committed to a workflow `.yml`) no longer
+  turns the whole run into `unsupported_input`.
 - An empty `ripr check --diff` result now leads with its true cause. A config
   whose `[languages].enabled` leaves out `rust` records a typed
   `language_adapter_unavailable` limitation for the Rust files it skipped

@@ -4824,6 +4824,86 @@ let _ = (result, note, raw);"##,
     }
 
     #[test]
+    fn diff_analysis_seeds_declared_lib_root_outside_src_with_its_tests() -> Result<(), String> {
+        // `[lib] path = "lib/odd.rs"` has no `src` component. A change there
+        // used to report one changed file, zero candidate lines and a
+        // complete analysis; Draft narrowing also dropped the package's
+        // tests, so even a seeded probe read as `no_static_path`.
+        let root = temp_root("declared-lib-root")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='odd'\nversion='0.1.0'\nedition='2021'\n[lib]\npath='lib/odd.rs'\n",
+        )?;
+        write(
+            &root.join("lib/odd.rs"),
+            "pub fn discount(total: u32) -> u32 {\n    if total > 100 { total - 10 } else { total }\n}\n",
+        )?;
+        write(
+            &root.join("tests/t.rs"),
+            "#[test]\nfn discount_applies() {\n    assert_eq!(odd::discount(150), 140);\n}\n",
+        )?;
+        let changed_files = diff::parse_unified_diff(
+            "diff --git a/lib/odd.rs b/lib/odd.rs\n\
+         --- a/lib/odd.rs\n\
+         +++ b/lib/odd.rs\n\
+         @@ -1,3 +1,3 @@\n\
+          pub fn discount(total: u32) -> u32 {\n\
+         -    if total >= 100 { total - 10 } else { total }\n\
+         +    if total > 100 { total - 10 } else { total }\n\
+          }\n",
+        );
+
+        let result = RustAdapter.analyze_diff(
+            &AnalysisOptions {
+                root: root.clone(),
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
+                include_unchanged_tests: true,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
+            },
+            &OraclePolicy::default(),
+            &changed_files,
+        )?;
+
+        assert_eq!(result.changed_files, 1);
+        let finding = result
+            .findings
+            .iter()
+            .find(|finding| {
+                finding
+                    .probe
+                    .location
+                    .file
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .ends_with("lib/odd.rs")
+            })
+            .ok_or_else(|| {
+                format!(
+                    "the changed lib-root predicate must become a probe: {:?}",
+                    result.findings
+                )
+            })?;
+        assert!(
+            finding
+                .related_tests
+                .iter()
+                .any(|test| test.name == "discount_applies"),
+            "the package's integration test must stay in the Draft index: {:?}",
+            finding.related_tests
+        );
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
     fn diff_analysis_skips_build_scripts_cargo_never_compiles() -> Result<(), String> {
         // `package.build = false`: Cargo never compiles this `build.rs`
         // (it may not even type-check), so it must not seed findings.

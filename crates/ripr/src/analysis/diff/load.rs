@@ -173,10 +173,17 @@ pub fn resolve_effective_base(
     match git_ref_output(root, &commit, git_timeout) {
         Some(output) if !output.status.success() => Err(not_a_work_tree(root, git_timeout)
             .unwrap_or_else(|| {
+                // `git fetch origin` never deepens a shallow clone, so an
+                // ancestor base like `HEAD~5` needs the unshallow repair.
+                let fetch = if is_shallow_repository(root, git_timeout) {
+                    "This is a shallow clone: fetch the missing history with `git fetch \
+                     --unshallow` (in GitHub Actions, set `fetch-depth: 0` on actions/checkout)"
+                } else {
+                    "Fetch the ref (for example `git fetch origin`)"
+                };
                 format!(
                     "the base `{explicit}` does not resolve to a commit (the analysis did not \
-                     run). Fetch the ref (for example `git fetch origin`) or pass `--base <ref>` \
-                     for a ref this repository has."
+                     run). {fetch} or pass `--base <ref>` for a ref this repository has."
                 )
             })),
         _ => Ok(explicit.to_string()),
@@ -256,12 +263,91 @@ fn resolve_default_base(root: &Path, git_timeout: Option<Duration>) -> Result<St
     // Fail closed: nothing resolves — emit a named, actionable message.
     // This is distinct from "analyzed and found nothing": the analysis did
     // not run because there was no base to diff against.
-    Err(
+    Err(format!(
         "could not resolve a default base (no origin/main, origin/master, or local main/master \
-         found). Pass `--base <ref>` to diff against a specific ref, or run \
-         `ripr check --root . --format repo-exposure-md` for a full-repo scan."
-            .to_string(),
-    )
+         found).{} Pass `--base <ref>` to diff against a specific ref, or run \
+         `ripr check --root . --format repo-exposure-md` for a full-repo scan.",
+        default_base_failure_context(root, git_timeout)
+    ))
+}
+
+/// Repository facts that explain why no default base resolved and which
+/// `--base` would work: an unborn HEAD has nothing to diff, a shallow CI
+/// checkout never fetched its base branch, and a repository whose default
+/// branch is not `main`/`master` (`trunk`, `develop`) names its branches.
+/// Empty when none applies or Git cannot answer.
+fn default_base_failure_context(root: &Path, git_timeout: Option<Duration>) -> String {
+    // Only a `rev-parse` that ran and answered "no" proves an unborn HEAD;
+    // a missing or timed-out Git proves nothing, so it adds no context.
+    let Ok(head) = crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--verify", "--quiet", "HEAD"],
+        git_timeout,
+    ) else {
+        return String::new();
+    };
+    if !head.status.success() {
+        return " This repository has no commits yet; commit once, then analyze uncommitted \
+                edits with `--base HEAD --worktree`."
+            .to_string();
+    }
+    if is_shallow_repository(root, git_timeout) {
+        return " This is a shallow clone that did not fetch a base branch; fetch it with \
+                `git fetch --unshallow origin` (in GitHub Actions, set `fetch-depth: 0` on \
+                actions/checkout)."
+            .to_string();
+    }
+    let git_lines = |args: &[&str]| -> Vec<String> {
+        crate::git::run_git_output_with_deadline(root, args, git_timeout)
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let current = git_lines(&["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    let others = git_lines(&[
+        "for-each-ref",
+        "--count=8",
+        "--format=%(refname)",
+        "refs/heads",
+        "refs/remotes",
+    ])
+    .into_iter()
+    // Full ref names, shortened here: `%(refname:short)` abbreviates any
+    // remote's `HEAD` pointer to the bare remote name, which is no branch.
+    .filter(|name| !name.ends_with("/HEAD"))
+    .filter_map(|name| {
+        name.strip_prefix("refs/heads/")
+            .or_else(|| name.strip_prefix("refs/remotes/"))
+            .map(str::to_string)
+    })
+    // The current branch cannot be its own base.
+    .filter(|name| !current.contains(name))
+    .take(5)
+    .collect::<Vec<_>>();
+    match (others.first(), current.first()) {
+        (Some(first), _) => format!(
+            " Other branches here: {}; for example `--base {first}`.",
+            others
+                .iter()
+                .map(|name| format!("`{name}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        (None, Some(only)) => format!(
+            " `{only}` is the only branch, so there is no separate base to compare; use \
+             `--base HEAD~1` for the last commit or `--base HEAD --worktree` for uncommitted \
+             edits."
+        ),
+        (None, None) => String::new(),
+    }
 }
 
 /// Resolve the diff loader's default base for `root` together with the
@@ -623,13 +709,53 @@ fn run_git_diff_bytes(
         Err(err) => return Err(format!("failed to run git diff: {err}")),
     };
     if !output.status.success() {
-        return Err(format!(
-            "git diff failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr.trim();
+        let hint = if stderr.contains("no merge base") {
+            no_merge_base_hint(root, range, git_timeout)
+        } else {
+            String::new()
+        };
+        return Err(format!("git diff failed: {stderr}{hint}"));
     }
 
     Ok(output.stdout)
+}
+
+/// Name the cause and the repair when `<base>...HEAD` has no merge base.
+///
+/// Raw `fatal: origin/main...HEAD: no merge base` names neither. The usual
+/// cause is a shallow clone, which is what `actions/checkout` produces by
+/// default: the base and HEAD tips are present but the history joining
+/// them was never fetched. Otherwise the two refs really are unrelated
+/// histories and only a different base helps.
+fn no_merge_base_hint(root: &Path, range: &str, git_timeout: Option<Duration>) -> String {
+    let base = range.split_once("...").map_or(range, |(base, _)| base);
+    if is_shallow_repository(root, git_timeout) {
+        format!(
+            ". This is a shallow clone, so `{base}` and HEAD share no fetched history \
+             (the analysis did not run). Fetch the full history with `git fetch --unshallow` \
+             (in GitHub Actions, set `fetch-depth: 0` on actions/checkout), then re-run."
+        )
+    } else {
+        format!(
+            ". `{base}` and HEAD share no commit (unrelated histories; the analysis did not \
+             run). Pass `--base <ref>` for a ref on HEAD's history."
+        )
+    }
+}
+
+/// Whether `root` is a shallow clone. `false` when Git cannot answer, so a
+/// failed probe never invents a shallow-clone diagnosis.
+fn is_shallow_repository(root: &Path, git_timeout: Option<Duration>) -> bool {
+    crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--is-shallow-repository"],
+        git_timeout,
+    )
+    .is_ok_and(|output| {
+        output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true"
+    })
 }
 
 #[cfg(test)]
@@ -1140,8 +1266,113 @@ mod tests {
             err.contains("--format repo-exposure-md"),
             "expected --format repo-exposure-md guidance in message, got: {err}"
         );
+        assert!(
+            err.contains("no commits yet"),
+            "an unborn HEAD must be named as the cause, got: {err}"
+        );
 
         ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn default_base_failure_names_the_branches_that_would_work() -> std::io::Result<()> {
+        // A `trunk`-default repository with no remote matches none of the
+        // fixed candidates. The failure must name the branch to pass, and a
+        // lone branch must say there is nothing separate to compare.
+        let dir = unique_fixture_root("resolve-base-trunk")?;
+        init_git_repo(&dir, "trunk")?;
+        let err = resolve_default_base(&dir, None).expect_err("trunk is not a default candidate");
+        assert!(
+            err.contains("`trunk` is the only branch") && err.contains("--base HEAD~1"),
+            "a single-branch repository must say so, got: {err}"
+        );
+
+        run_git_checked(&dir, &["checkout", "-b", "feature/discount"])?;
+        let err = resolve_default_base(&dir, None).expect_err("still no default candidate");
+        assert!(
+            err.contains("Other branches here: `trunk`") && err.contains("`--base trunk`"),
+            "the failure must name the base that would work, got: {err}"
+        );
+        assert!(
+            !err.contains("`feature/discount`"),
+            "the current branch is never offered as its own base, got: {err}"
+        );
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn missing_merge_base_names_shallow_clone_or_unrelated_history() -> std::io::Result<()> {
+        // `actions/checkout` clones one commit deep by default. Fetching the
+        // base tip alone leaves `origin/main...HEAD` with no merge base, and
+        // raw `fatal: ... no merge base` names neither the cause nor the fix.
+        let origin = unique_fixture_root("no-merge-base-origin")?;
+        init_git_repo(&origin, "main")?;
+        run_git_checked(&origin, &["checkout", "-b", "feat"])?;
+        fs::write(origin.join("lib.rs"), "pub fn f() -> bool { 1 > 0 }\n")?;
+        run_git_checked(&origin, &["add", "."])?;
+        run_git_checked(&origin, &["commit", "-m", "feat"])?;
+        run_git_checked(&origin, &["checkout", "main"])?;
+        fs::write(origin.join("README"), "moved on")?;
+        run_git_checked(&origin, &["commit", "-am", "main moves"])?;
+
+        let shallow = unique_fixture_path("no-merge-base-shallow");
+        let origin_url = format!("file://{}", origin.display());
+        let parent = shallow.parent().unwrap_or(Path::new("."));
+        let shallow_arg = shallow.to_string_lossy().to_string();
+        run_git_checked(
+            parent,
+            &[
+                "clone",
+                "-q",
+                "--depth",
+                "1",
+                "--branch",
+                "feat",
+                &origin_url,
+                &shallow_arg,
+            ],
+        )?;
+        run_git_checked(
+            &shallow,
+            &[
+                "fetch",
+                "-q",
+                "--depth",
+                "1",
+                "origin",
+                "main:refs/remotes/origin/main",
+            ],
+        )?;
+        let err = load_diff(&shallow, Some("HEAD~1"), None, None)
+            .expect_err("a depth-1 clone has no parent commit");
+        assert!(
+            err.contains("does not resolve to a commit") && err.contains("git fetch --unshallow"),
+            "an ancestor base in a shallow clone must name the unshallow repair, got: {err}"
+        );
+        let err = load_diff(&shallow, Some("origin/main"), None, None)
+            .expect_err("a shallow clone has no merge base");
+        assert!(
+            err.starts_with("git diff failed:") && err.contains("no merge base"),
+            "the git failure text stays intact, got: {err}"
+        );
+        assert!(
+            err.contains("shallow clone") && err.contains("fetch-depth: 0"),
+            "a shallow clone must be named with its repair, got: {err}"
+        );
+
+        // A full clone with truly unrelated histories gets the other cause.
+        run_git_checked(&origin, &["checkout", "-q", "--orphan", "island"])?;
+        run_git_checked(&origin, &["commit", "-q", "-m", "island"])?;
+        let err = load_diff(&origin, Some("main"), None, None)
+            .expect_err("unrelated histories have no merge base");
+        assert!(
+            err.contains("unrelated histories") && !err.contains("shallow clone"),
+            "a full clone must not be diagnosed as shallow, got: {err}"
+        );
+        ignore_remove_dir_all(&shallow);
+        ignore_remove_dir_all(&origin);
         Ok(())
     }
 
