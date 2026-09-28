@@ -864,6 +864,103 @@ fn generated_workflow_places_findings_on_pr_head_lines_when_base_moved()
     Ok(())
 }
 
+/// GitHub gives Dependabot-triggered `pull_request` runs a read-only token
+/// whatever the workflow's `permissions:` block grants. The generated plan
+/// step must then not claim write permission, or the plan marks inline
+/// comments safe and the publish step fails with 403. A run by any other
+/// actor keeps the same-repo plan publishable (the control).
+#[cfg(unix)]
+#[test]
+fn generated_comment_plan_withholds_write_permission_for_dependabot() -> Result<(), Box<dyn Error>>
+{
+    for tool in ["bash", "git", "jq"] {
+        if !replay::tool_available(tool) {
+            if std::env::var_os("GITHUB_ACTIONS").is_some() {
+                return Err(format!("`{tool}` is not on PATH under GitHub Actions").into());
+            }
+            eprintln!(
+                "SKIPPED generated_comment_plan_withholds_write_permission_for_dependabot: `{tool}` is not on PATH"
+            );
+            return Ok(());
+        }
+    }
+    let plan_for = |overrides: &[(&str, &str)]| -> Result<serde_json::Value, Box<dyn Error>> {
+        let base = replay::unique_temp_dir("dependabot-plan")?;
+        let root = base.join("repo");
+        replay::write_pr_fixture(&root)?;
+        let init = replay::ripr(&root, &["init", "--root", ".", "--ci", "github"])?;
+        assert!(
+            init.status.success(),
+            "ripr init failed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+        let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
+        let wanted = [
+            "Capture pull request diff",
+            "Run RIPR PR guidance report",
+            "Plan RIPR inline comments",
+        ];
+        let steps = replay::parse_steps(&workflow)
+            .into_iter()
+            .filter(|step| wanted.contains(&step.name.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(steps.len(), wanted.len(), "template step names changed");
+        let mut env = vec![("RIPR_COMMENT_MODE", "inline")];
+        env.extend_from_slice(overrides);
+        let runs = replay::run_workflow_with_env(&root, &base, &steps, &env)?;
+        assert_eq!(runs.len(), wanted.len(), "a step was skipped");
+        for run in &runs {
+            assert_eq!(
+                run.exit_code,
+                Some(0),
+                "{} failed:\n{}",
+                run.name,
+                run.output
+            );
+        }
+        let plan = serde_json::from_str(&fs::read_to_string(
+            root.join("target/ripr/review/comment-publish-plan.json"),
+        )?)?;
+        fs::remove_dir_all(base)?;
+        Ok(plan)
+    };
+
+    let control = plan_for(&[])?;
+    assert_eq!(
+        control.pointer("/summary/safe_to_publish"),
+        Some(&serde_json::Value::Bool(true)),
+        "control: a same-repo run by a user must stay publishable: {control}"
+    );
+
+    // Dependabot as the event actor, and a maintainer reopening a
+    // Dependabot-authored PR (the actor is the maintainer).
+    for (case, overrides) in [
+        ("dependabot actor", [("RIPR_ACTOR", "dependabot[bot]")]),
+        (
+            "dependabot-authored PR",
+            [("RIPR_PR_AUTHOR", "dependabot[bot]")],
+        ),
+    ] {
+        let plan = plan_for(&overrides)?;
+        assert_eq!(
+            plan.pointer("/summary/safe_to_publish"),
+            Some(&serde_json::Value::Bool(false)),
+            "{case}: the run has a read-only token: {plan}"
+        );
+        let reasons = plan["blocked"]
+            .as_array()
+            .ok_or("plan has no blocked array")?
+            .iter()
+            .filter_map(|blocked| blocked["blocked_reason"].as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            reasons.contains(&"missing_write_permission"),
+            "{case}: blocked reasons: {reasons:?}"
+        );
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 mod replay {
     use std::collections::BTreeMap;
@@ -1141,6 +1238,7 @@ fn far_above_threshold_discounts() {
             "github.event.pull_request.head.repo.full_name" => "ripr-test/pricing",
             "github.event.pull_request.head.sha" => head_sha,
             "github.token" => "replay-token-unused",
+            "github.actor" | "github.event.pull_request.user.login" => "ripr-test-user",
             "vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only'" => "true",
             _ => return None,
         };
@@ -1221,6 +1319,19 @@ fn far_above_threshold_discounts() {
         base: &Path,
         steps: &[Step],
     ) -> TestResult<Vec<StepRun>> {
+        run_workflow_with_env(root, base, steps, &[])
+    }
+
+    /// `run_workflow` with environment overrides that win over both the
+    /// workflow-level defaults (so step conditions see them) and each
+    /// step's own `env:` entries, as a repository variable or a different
+    /// event actor would.
+    pub(super) fn run_workflow_with_env(
+        root: &Path,
+        base: &Path,
+        steps: &[Step],
+        overrides: &[(&str, &str)],
+    ) -> TestResult<Vec<StepRun>> {
         let head = Command::new("git")
             .args(["rev-parse", "HEAD"])
             .current_dir(root)
@@ -1264,6 +1375,9 @@ fn far_above_threshold_discounts() {
             ("GITHUB_WORKSPACE".to_string(), root.display().to_string()),
             ("RUNNER_TEMP".to_string(), base.display().to_string()),
         ]);
+        for (name, value) in overrides {
+            env.insert((*name).to_string(), (*value).to_string());
+        }
         let mut runs = Vec::new();
         for step in steps {
             let Some(script) = &step.run else {
@@ -1283,6 +1397,9 @@ fn far_above_threshold_discounts() {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect::<Vec<_>>();
             for (name, value) in &step.env {
+                if overrides.iter().any(|(overridden, _)| overridden == name) {
+                    continue;
+                }
                 step_env.push((name.clone(), substitute(value, &head_sha)?));
             }
             let output = bash(root, &script, &step_env)?;

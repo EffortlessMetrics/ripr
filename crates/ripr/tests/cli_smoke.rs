@@ -9103,6 +9103,14 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
         env!("CARGO_PKG_VERSION")
     )));
     assert!(!workflow.contains("cargo install ripr --locked"));
+    // A newer push cancels the older run of the same PR, so two runs never
+    // publish the same inline cards (#4448).
+    assert!(workflow.contains(
+        "\nconcurrency:\n  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}\n  cancel-in-progress: true\n"
+    ));
+    // Every third-party action is pinned to a commit SHA (#4452).
+    assert!(workflow.contains("dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87"));
+    assert!(!workflow.contains("dtolnay/rust-toolchain@stable"));
     assert!(workflow.contains("ripr pilot"));
     assert!(workflow.contains("--format sarif"));
     assert!(workflow.contains("--format repo-sarif"));
