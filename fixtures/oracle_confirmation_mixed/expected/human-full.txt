@@ -38,3 +38,6 @@ Weakness
 
 Next step
   Strengthen the related assertion so it discriminates the changed behavior.
+Drill in:
+  ripr explain --root fixtures/oracle_confirmation_mixed/input --diff fixtures/oracle_confirmation_mixed/diff.patch --mode fast probe:src_lib.rs:call_deletion:ed1574df
+  ripr context --root fixtures/oracle_confirmation_mixed/input --diff fixtures/oracle_confirmation_mixed/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:ed1574df
