@@ -37,7 +37,11 @@ The profile is advisory while its findings are made low-noise. The former
 not a live selector; GitHub issues named in this plan carry current
 execution state. `.allow/spec-system/slices/` remains PR-local scope after
 that selection, not a second scheduler. cargo-allow
-issue #2119 remains the dialect blocker for spec-system validation, not a
+issues [#2260](https://github.com/EffortlessMetrics/cargo-allow/issues/2260)
+and [#2196](https://github.com/EffortlessMetrics/cargo-allow/issues/2196)
+remain the dialect blockers for spec-system validation (the prior #2119
+blocker was closed as not planned on 2026-08-25 when the explicit
+dialect/source-adapter architecture superseded it), not a
 reason to revive the deleted file. The installed cargo-allow 0.1.10
 requires `--config .allow/profiles/spec-system.toml` for this owned profile;
 cargo-allow issue #2117 tracks the owned-versus-legacy default-path friction.
@@ -48,7 +52,7 @@ cargo-allow issue #2117 tracks the owned-versus-legacy default-path friction.
 | ---: | --- | --- | --- |
 | 0A | `control-plane/cargo-allow-spec-system-adoption` | — | cargo-allow doctor, audit, and worklist artifacts |
 | 0B | `control-plane/rust-one-shot-goal` | 0A | goals/doc/plan checks and structural indexing |
-| 0C | `control-plane/cargo-allow-active-goal-dialect` | 0A | blocked on cargo-allow #2119 or separately approved migration |
+| 0C | `control-plane/cargo-allow-active-goal-dialect` | 0A | blocked on cargo-allow [#2260](https://github.com/EffortlessMetrics/cargo-allow/issues/2260) / [#2196](https://github.com/EffortlessMetrics/cargo-allow/issues/2196) or separately approved migration |
 | 1A | `output/bounded-start-here` | 0 | human/human-full fixtures and output contracts |
 | 1B | `docs/first-screen-agent-loop` | 1A | README/doc checks |
 | 2A | `review/card-oracle-projection` | 0 | review-card schema and traceability checks |
@@ -212,7 +216,9 @@ gate renderer.
 
 The remaining campaign blockers are explicit: #1543 needs an authorized
 real/current-repository CallPresence receipt before any policy-eligible route
-can be claimed; the cargo-allow active-goal dialect remains blocked on #2119;
+can be claimed; the cargo-allow active-goal dialect remains blocked on
+cargo-allow [#2260](https://github.com/EffortlessMetrics/cargo-allow/issues/2260)
+and [#2196](https://github.com/EffortlessMetrics/cargo-allow/issues/2196);
 and the final dogfood item lacks the required receipt-backed attempts across at
 least three authorized Rust repositories. Synthetic fixture rows do not satisfy
 that corpus requirement.
