@@ -6,6 +6,12 @@ on:
   pull_request:
     types: [labeled, opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      repeat_nested_alias:
+        description: "Repeat #4377 nested-alias unit test in native Windows isolation"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,7 +53,8 @@ concurrency:
 #   - schedule: a daily standing signal independent of PR traffic.
 #   - pull_request with the `windows-ci` or `full-ci` label: opt-in for authors
 #     touching path handling, fixtures, or process/IO code.
-#   - workflow_dispatch: manual run.
+#   - workflow_dispatch: manual run; `repeat_nested_alias` adds three isolated
+#     native repetitions for #4377 only when requested.
 #
 # The suite runs **twice** on purpose, because one sample cannot separate a
 # reproducible failure from a load-dependent flake.
@@ -173,6 +180,53 @@ jobs:
           done | tee -a target/windows-verdict.md
           cat target/windows-verdict.md >> "$GITHUB_STEP_SUMMARY"
 
+      # Manual, ref-selected isolation for #4377. Broad workspace runs
+      # above remain the parallel-load evidence.
+      - name: Repeat nested-alias test in isolation (#4377)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.repeat_nested_alias == true }}
+        shell: bash
+        run: |
+          mkdir -p target
+          test_name=analysis::test_grip_evidence::tests::nested_test_module_alias_ancestry_resolves_through_production_path
+          command=(cargo test -p ripr --lib "$test_name" -- --exact --nocapture --test-threads=1)
+          { echo "head=$(git rev-parse HEAD)"; rustc -Vv; cargo -V; printf 'command='; printf '%q ' "${command[@]}"; printf '\n'; } | tee target/nested-alias-isolated-env.log
+          for run in 1 2 3; do
+            set +e
+            "${command[@]}" 2>&1 | tee "target/nested-alias-isolated-$run.log"
+            statuses=("${PIPESTATUS[@]}")
+            set -e
+            printf '%s\n' "${statuses[0]}" > "target/nested-alias-isolated-$run.status"
+            test "${statuses[1]}" -eq 0 || { echo "run $run: log capture failed" >&2; exit 1; }
+          done
+
+      - name: Summarize isolated nested-alias repeats (#4377)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.repeat_nested_alias == true }}
+        shell: bash
+        run: |
+          cargo xtask windows-advisory-isolated-summary --dir target | tee target/nested-alias-isolated-verdict.md | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # A copied bad status must fail the real xtask command while preserving all
+      # three printed rows through `tee`, including the trailing failure row.
+      - name: Prove isolated verdict refusal survives tee (#4377)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.repeat_nested_alias == true }}
+        shell: bash
+        run: |
+          mkdir -p target/nested-alias-negative
+          for run in 1 2 3; do
+            cp "target/nested-alias-isolated-$run.log" "target/nested-alias-negative/nested-alias-isolated-$run.log"
+            cp "target/nested-alias-isolated-$run.status" "target/nested-alias-negative/nested-alias-isolated-$run.status"
+          done
+          printf '101\n' > target/nested-alias-negative/nested-alias-isolated-2.status
+          set +e
+          cargo xtask windows-advisory-isolated-summary --dir target/nested-alias-negative | tee target/nested-alias-negative-verdict.md
+          statuses=("${PIPESTATUS[@]}")
+          set -e
+          printf '%s\n' "${statuses[0]}" > target/nested-alias-negative.status
+          test "${statuses[0]}" -ne 0
+          test "${statuses[1]}" -eq 0
+          test "$(grep -c '^- run ' target/nested-alias-negative-verdict.md)" -eq 3
+          grep -q '^- run 2: EVIDENCE_FAILURE' target/nested-alias-negative-verdict.md
+
       - name: Upload advisory logs
         if: always()
         uses: actions/upload-artifact@v7
@@ -191,4 +245,10 @@ jobs:
             target/nofeatures-test.status
             target/allfeatures-check.log
             target/allfeatures-check.status
+            target/nested-alias-isolated-*.log
+            target/nested-alias-isolated-*.status
+            target/nested-alias-isolated-env.log
+            target/nested-alias-isolated-verdict.md
+            target/nested-alias-negative-verdict.md
+            target/nested-alias-negative.status
           if-no-files-found: ignore

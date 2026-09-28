@@ -38,6 +38,7 @@
 //! read as covered by a green lane that never executed its only native proof.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
 use std::path::Path;
 
 /// One named native-Windows control for a release seam (#3922).
@@ -368,6 +369,148 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
             "windows-advisory-summary could not produce trustworthy evidence: {}",
             unusable.join("; ")
         ))
+    }
+}
+
+const NESTED_ALIAS_TEST: &str = "analysis::test_grip_evidence::tests::nested_test_module_alias_ancestry_resolves_through_production_path";
+
+#[derive(Debug, PartialEq, Eq)]
+enum IsolatedObservation {
+    Pass { status: i32, result: String },
+    TestFailure { status: i32, result: String },
+    EvidenceFailure(String),
+}
+
+fn exact_isolated_result(result: &str, passed: bool) -> bool {
+    let prefix = if passed {
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; "
+    } else {
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; "
+    };
+    let Some(rest) = result.strip_prefix(prefix) else {
+        return false;
+    };
+    let Some((filtered, duration)) = rest.split_once(" filtered out; finished in ") else {
+        return false;
+    };
+    if filtered.is_empty() || !filtered.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    let Some(seconds) = duration.strip_suffix('s') else {
+        return false;
+    };
+    filtered.parse::<u64>().is_ok()
+        && seconds
+            .parse::<f64>()
+            .is_ok_and(|value| value.is_finite() && value >= 0.0)
+}
+
+fn classify_isolated(log: Option<&str>, raw_status: Option<&str>) -> IsolatedObservation {
+    let Some(log) = log else {
+        return IsolatedObservation::EvidenceFailure("log missing or unreadable".to_string());
+    };
+    let Some(raw_status) = raw_status else {
+        return IsolatedObservation::EvidenceFailure("status missing or unreadable".to_string());
+    };
+    let Ok(status) = raw_status.trim().parse::<i32>() else {
+        return IsolatedObservation::EvidenceFailure(format!(
+            "invalid cargo exit status {:?}",
+            raw_status.trim()
+        ));
+    };
+    let rows = log
+        .lines()
+        .filter_map(|line| test_result_line(strip_ansi(line).trim()))
+        .collect::<Vec<_>>();
+    let outcome = parse_log(log);
+    if rows.len() != 1
+        || rows
+            .first()
+            .is_none_or(|(name, _)| name.as_str() != NESTED_ALIAS_TEST)
+    {
+        return IsolatedObservation::EvidenceFailure(format!(
+            "expected exactly one named test row, found {} total test row(s)",
+            rows.len()
+        ));
+    }
+    if outcome.targets.len() != 1 || outcome.results.len() != 1 {
+        return IsolatedObservation::EvidenceFailure(format!(
+            "expected one test target and one result total, found {} target(s) and {} result(s)",
+            outcome.targets.len(),
+            outcome.results.len()
+        ));
+    }
+    let Some((_, row_failed)) = rows.first() else {
+        return IsolatedObservation::EvidenceFailure("named test row missing".to_string());
+    };
+    let Some(result) = outcome.results.first().cloned() else {
+        return IsolatedObservation::EvidenceFailure("result total missing".to_string());
+    };
+    if status == 0 && !*row_failed && exact_isolated_result(&result, true) {
+        IsolatedObservation::Pass { status, result }
+    } else if status != 0 && *row_failed && exact_isolated_result(&result, false) {
+        IsolatedObservation::TestFailure { status, result }
+    } else {
+        IsolatedObservation::EvidenceFailure(format!(
+            "cargo exit {status}, named row failed={}, result {result:?} disagree",
+            row_failed
+        ))
+    }
+}
+
+/// Summarize three explicitly requested native Windows named-test repetitions.
+/// Unlike the broad advisory verdict, any failed named repetition fails this
+/// opt-in proof. Every run is reported before the command returns its status.
+pub(crate) fn run_isolated(args: &[String]) -> Result<(), String> {
+    let [flag, directory] = args else {
+        return Err("windows-advisory-isolated-summary requires --dir <path>".to_string());
+    };
+    if flag != "--dir" || directory.is_empty() || directory.starts_with('-') {
+        return Err("windows-advisory-isolated-summary requires --dir <path>".to_string());
+    }
+    let directory = Path::new(directory);
+    println!("### Nested-alias isolated native Windows repeats (#4377)\n");
+    let mut failed = false;
+    for run in 1..=3 {
+        let log_path = directory.join(format!("nested-alias-isolated-{run}.log"));
+        let status_path = directory.join(format!("nested-alias-isolated-{run}.status"));
+        let log = std::fs::read_to_string(&log_path);
+        let status = std::fs::read_to_string(&status_path);
+        let verdict = match (&log, &status) {
+            (Ok(log), Ok(status)) => classify_isolated(Some(log), Some(status)),
+            (Err(error), _) => IsolatedObservation::EvidenceFailure(format!(
+                "read {}: {error}",
+                log_path.display()
+            )),
+            (_, Err(error)) => IsolatedObservation::EvidenceFailure(format!(
+                "read {}: {error}",
+                status_path.display()
+            )),
+        };
+        match verdict {
+            IsolatedObservation::Pass { status, result } => {
+                println!("- run {run}: PASS (cargo exit {status}; {result})");
+            }
+            IsolatedObservation::TestFailure { status, result } => {
+                failed = true;
+                println!("- run {run}: TEST_FAIL (cargo exit {status}; {result})");
+            }
+            IsolatedObservation::EvidenceFailure(reason) => {
+                failed = true;
+                println!("- run {run}: EVIDENCE_FAILURE ({reason})");
+            }
+        }
+    }
+    std::io::stdout()
+        .flush()
+        .map_err(|error| format!("flush isolated Windows verdict: {error}"))?;
+    if failed {
+        Err(
+            "nested-alias isolated repetitions did not all pass; see the verdict and raw logs"
+                .to_string(),
+        )
+    } else {
+        Ok(())
     }
 }
 
@@ -821,6 +964,132 @@ mod tests {
     }
 
     use super::*;
+
+    fn isolated_log(row: &str, result: &str) -> String {
+        format!(
+            "Running unittests src/lib.rs (target/debug/deps/ripr-test.exe)\ntest {NESTED_ALIAS_TEST} ... {row}\n{result}\n"
+        )
+    }
+
+    fn expect_isolated_evidence_failure(
+        observed: IsolatedObservation,
+        label: &str,
+    ) -> Result<(), String> {
+        if matches!(&observed, IsolatedObservation::EvidenceFailure(_)) {
+            Ok(())
+        } else {
+            Err(format!(
+                "{label}: expected evidence failure, got {observed:?}"
+            ))
+        }
+    }
+
+    #[test]
+    fn isolated_summary_accepts_one_exact_named_pass_and_reports_named_failure()
+    -> Result<(), String> {
+        let pass = isolated_log(
+            "ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6032 filtered out; finished in 0.01s",
+        );
+        let expected_pass = IsolatedObservation::Pass {
+            status: 0,
+            result: "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6032 filtered out; finished in 0.01s"
+                .to_string(),
+        };
+        let actual_pass = classify_isolated(Some(&pass), Some("0\n"));
+        if actual_pass != expected_pass {
+            return Err(format!(
+                "exact named pass: expected {expected_pass:?}, got {actual_pass:?}"
+            ));
+        }
+        let fail = isolated_log(
+            "FAILED",
+            "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6032 filtered out; finished in 0.01s",
+        );
+        let actual_fail = classify_isolated(Some(&fail), Some("101\n"));
+        if !matches!(
+            &actual_fail,
+            IsolatedObservation::TestFailure { status: 101, .. }
+        ) {
+            return Err(format!(
+                "named test failure should be distinct: {actual_fail:?}"
+            ));
+        }
+        expect_isolated_evidence_failure(
+            classify_isolated(Some(&fail), Some("0")),
+            "failed row with zero exit",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn isolated_summary_refuses_missing_or_fake_observations() -> Result<(), String> {
+        let pass = isolated_log(
+            "ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6032 filtered out; finished in 0.01s",
+        );
+        for (label, log, status) in [
+            ("missing log", None, Some("0")),
+            ("missing status", Some(pass.as_str()), None),
+            ("invalid status", Some(pass.as_str()), Some("not-an-exit")),
+            (
+                "pass row with nonzero exit",
+                Some(pass.as_str()),
+                Some("101"),
+            ),
+        ] {
+            expect_isolated_evidence_failure(classify_isolated(log, status), label)?;
+        }
+        let wrong_total = isolated_log(
+            "ok",
+            "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 6032 filtered out; finished in 0.01s",
+        );
+        let duplicate_result = format!(
+            "{pass}test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6032 filtered out; finished in 0.01s\n"
+        );
+        let duplicate_row = pass.replace(
+            "test result:",
+            &format!("test {NESTED_ALIAS_TEST} ... ok\ntest result:"),
+        );
+        let extra_test = pass.replace("test result:", "test unrelated::test ... ok\ntest result:");
+        let no_target = pass.replacen(
+            "Running unittests src/lib.rs (target/debug/deps/ripr-test.exe)\n",
+            "",
+            1,
+        );
+        let truncated_total = isolated_log("ok", "test result: ok. 1 passed; 0 failed;");
+        let missing_counts = isolated_log(
+            "ok",
+            "test result: ok. 1 passed; 0 failed; 6032 filtered out; finished in 0.01s",
+        );
+        let nonnumeric_filtered = isolated_log(
+            "ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; many filtered out; finished in 0.01s",
+        );
+        let missing_duration = isolated_log(
+            "ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6032 filtered out",
+        );
+        let nonnumeric_duration = isolated_log(
+            "ok",
+            "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6032 filtered out; finished in later",
+        );
+        for (label, log) in [
+            ("wrong total", wrong_total),
+            ("duplicate result", duplicate_result),
+            ("duplicate named row", duplicate_row),
+            ("extra test", extra_test),
+            ("missing target", no_target),
+            ("truncated total", truncated_total),
+            ("missing counts", missing_counts),
+            ("nonnumeric filtered", nonnumeric_filtered),
+            ("missing duration", missing_duration),
+            ("nonnumeric duration", nonnumeric_duration),
+        ] {
+            expect_isolated_evidence_failure(classify_isolated(Some(&log), Some("0")), label)?;
+        }
+        Ok(())
+    }
 
     /// Real bytes from a Windows lane run (#2393): cargo's `Running` lines are
     /// ANSI-coloured because CI sets `CARGO_TERM_COLOR: always`, libtest's are
