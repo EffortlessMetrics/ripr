@@ -75,7 +75,7 @@
     "test:e2e": "cargo xtask vscode-test-e2e"
   },
   "dependencies": {
-    "vscode-languageclient": "10.1.1"
+    "vscode-languageclient": "10.1.2"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
