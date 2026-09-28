@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/artifact_stale",
+  "status": "artifact_stale",
+  "projection": "fail_closed",
+  "workspace_root": "fixtures/editor_first_run_usability/artifact_stale/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "artifacts": {
+    "first_useful_action": "stale",
+    "gap_decision_ledger": "stale",
+    "agent_receipt": "stale"
+  },
+  "next_safe_action": "Refresh saved-workspace evidence before acting."
+}

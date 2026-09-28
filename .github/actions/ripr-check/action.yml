@@ -1,0 +1,40 @@
+name: 'ripr check'
+description: 'Run ripr static mutation-exposure analysis on a PR diff'
+author: 'EffortlessMetrics'
+
+inputs:
+  mode:
+    description: 'Analysis mode: draft, deep, or ready'
+    required: false
+    default: 'draft'
+  format:
+    description: 'Output format: human, json, or sarif'
+    required: false
+    default: 'human'
+  base:
+    description: 'Base ref for diff (default: origin/main)'
+    required: false
+    default: 'origin/main'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install ripr
+      shell: bash
+      run: |
+        if ! command -v ripr &>/dev/null; then
+          echo "Installing ripr from source..."
+          cargo install ripr --locked || {
+            echo "::error::Failed to install ripr. Pre-built binaries: https://github.com/EffortlessMetrics/ripr/releases"
+            exit 1
+          }
+        fi
+
+    - name: Run ripr check
+      shell: bash
+      run: |
+        ripr check --root . --base ${{ inputs.base }} --mode ${{ inputs.mode }} --format ${{ inputs.format }}
+
+branding:
+  icon: 'shield'
+  color: 'blue'

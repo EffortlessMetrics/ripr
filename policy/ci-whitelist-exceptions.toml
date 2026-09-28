@@ -1,0 +1,62 @@
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "Temporary ledger of current CI behavior that differs from target CI economics."
+
+# Exceptions document places where the current workflows differ from the target
+# CI economics policy. They are not suppressions for failing checks.
+
+[[exception]]
+id = "release_proof_still_in_primary_ci"
+kind = "legacy_posture"
+paths = [".github/workflows/ci.yml"]
+lanes = ["release-package", "publish-dry-run"]
+current_behavior = "cargo package and cargo publish dry-run run inside the primary rust job on pushes to main or master and on pull requests labeled release-check or full-ci."
+target_behavior = "Keep release-bearing proof out of ordinary pull requests; run each release lane only from its explicitly wired main, workflow_dispatch, release-check, or full-ci trigger."
+review_note = "Keep visible until the release-surface gate PR moves these steps."
+
+[[exception]]
+id = "vscode_runs_on_all_primary_prs"
+kind = "legacy_posture"
+paths = [".github/workflows/ci.yml"]
+lanes = ["vscode-compile", "vscode-e2e"]
+current_behavior = "The vscode job runs on pushes to main or master, workflow_dispatch, and pull requests labeled full-ci; it is not yet path-gated or wired to the vscode label."
+target_behavior = "Run editor lanes for editor path changes, main, vscode label, or full-ci."
+review_note = "Do not add more editor checks to the default front door before path gating."
+
+[[exception]]
+id = "coverage_upload_blocks_trusted_runs"
+kind = "trusted_upload"
+paths = [".github/workflows/coverage.yml"]
+lanes = ["coverage"]
+current_behavior = "Trusted coverage runs use fail_ci_if_error for Codecov upload."
+target_behavior = "Coverage remains advisory until project and patch gates are deliberately ratcheted."
+review_note = "Fork PRs still upload the lcov artifact and skip Codecov secrets."
+
+[[exception]]
+id = "test_analytics_label_gated_on_pull_requests"
+kind = "advisory_workflow"
+paths = [".github/workflows/test-analytics.yml"]
+lanes = ["test-analytics"]
+current_behavior = "The Test Analytics workflow runs on pushes to main or master, manual dispatch, and pull requests carrying the full-ci label; label events re-evaluate pull-request selection."
+target_behavior = "Keep the JUnit artifact advisory, selected explicitly for expensive pull-request verification, and eligible for future risk-pack selection."
+review_note = "Trusted selected runs may upload to Codecov Test Analytics when CODECOV_TOKEN is available; ordinary pull requests remain unselected."
+
+[[exception]]
+id = "droid_review_is_advisory_but_visible"
+kind = "advisory_review"
+paths = [".github/workflows/droid-review.yml"]
+lanes = ["droid-review"]
+current_behavior = "Droid review posts findings and a check result, but review comments are evaluated by humans or agents."
+target_behavior = "Keep automated review evidence advisory unless a separate policy explicitly promotes a class of finding."
+review_note = "Do not treat LGTM as a sufficient review record; inspect posted findings."
+
+[[exception]]
+id = "ci_plan_and_actuals_not_yet_generated"
+kind = "planned_artifact"
+paths = [".github/workflows/pr-plan.yml", "policy/ci-budget.toml", "policy/ci-lane-whitelist.toml", "policy/ci-risk-packs.toml"]
+artifact_families = ["ci-plan"]
+current_behavior = "The structural PR Plan workflow exists and emits a changed-file advisory artifact, but no workflow or xtask command emits numeric target/ci/ci-plan.json or target/ci/ci-actuals.json yet."
+target_behavior = "A follow-up PR should add the numeric planner that emits target/ci/ci-plan.json, then wire per-lane target/ci/ci-actuals.json telemetry."
+review_note = "This exception should disappear after the numeric plan and actuals lanes exist."

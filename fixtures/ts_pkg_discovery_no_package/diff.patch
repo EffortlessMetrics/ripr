@@ -1,0 +1,15 @@
+diff --git a/src/utils.ts b/src/utils.ts
+index 0000000..1111111 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -1,8 +1,8 @@
+ export function clamp(value: number, min: number, max: number): number {
+-    if (value < min) {
++    if (value <= min) {
+         return min;
+     }
+-    if (value > max) {
++    if (value >= max) {
+         return max;
+     }
+     return value;

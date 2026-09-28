@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/server_missing",
+  "receipt_state": "receipt_unavailable",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Start a ripr server before inspecting receipts."
+}

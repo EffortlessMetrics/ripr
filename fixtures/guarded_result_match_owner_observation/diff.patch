@@ -1,0 +1,10 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -43,5 +43,5 @@
+             reason: format!("id mismatch {trimmed}"),
+         }));
+     }
+-    Ok(build_response(expected_id, trimmed)?)
++    Ok(build_response(expected_id, trimmed.trim())?)
+ }

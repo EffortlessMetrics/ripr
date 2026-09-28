@@ -1,0 +1,138 @@
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "Seed risk-pack map for planned CI PR forecasting."
+
+# Risk packs map changed paths to the lanes future CI planning may select. The
+# current workflow does not consume this file yet.
+
+[risk_pack.docs_only]
+paths = ["docs/**", "README.md", "CHANGELOG.md", ".github/pull_request_template.md"]
+required = ["docs", "static-language"]
+advisory = []
+on_demand = []
+artifact_families = []
+estimated_lem = 5
+owner = "repo-maintainers"
+reason = "Documentation and review-template changes should pay for docs and static-language proof, not release proof."
+
+[risk_pack.rust_product]
+paths = ["crates/ripr/src/**", "crates/ripr/Cargo.toml"]
+required = ["rust", "msrv", "static-language", "policy", "output-contracts", "traceability"]
+advisory = ["coverage", "ripr-self-dogfood", "agent-loop-artifacts"]
+on_demand = []
+artifact_families = ["ripr-evidence", "editor-agent-loop"]
+estimated_lem = 24
+owner = "repo-maintainers"
+reason = "Product analyzer, CLI, output, LSP, or library Rust changes can alter static evidence behavior."
+
+[risk_pack.rust_tests]
+paths = ["crates/ripr/tests/**", "crates/ripr/examples/**"]
+required = ["rust", "policy", "output-contracts"]
+advisory = ["coverage", "test-analytics"]
+on_demand = []
+artifact_families = ["ripr-evidence"]
+estimated_lem = 18
+owner = "repo-maintainers"
+reason = "Rust integration tests, examples, and smoke surfaces should prove existing behavior without release proof."
+
+[risk_pack.xtask_policy]
+paths = ["xtask/src/**"]
+required = ["rust", "policy", "traceability"]
+advisory = ["coverage", "test-analytics"]
+on_demand = []
+artifact_families = ["ripr-evidence"]
+estimated_lem = 18
+owner = "repo-maintainers"
+reason = "Repository automation and policy checker changes affect local and CI evidence gates."
+
+[risk_pack.policy_metadata]
+paths = ["policy/**", ".ripr/**", "deny.toml", "codecov.yml"]
+required = ["policy", "traceability"]
+advisory = ["security-posture"]
+on_demand = []
+artifact_families = []
+estimated_lem = 8
+owner = "repo-maintainers"
+reason = "Policy metadata, repository config, and allowlist changes should be mechanically checked and reviewable."
+
+[risk_pack.workflow_policy]
+paths = [".github/workflows/**", ".github/dependabot.yml"]
+required = ["policy", "security-posture"]
+advisory = ["droid-review"]
+on_demand = ["release-readiness-proof"]
+artifact_families = []
+estimated_lem = 12
+owner = "repo-maintainers"
+reason = "GitHub workflow, action runtime, or automation schedule changes affect CI behavior."
+
+[risk_pack.output_schema]
+paths = ["docs/OUTPUT_SCHEMA.md", "policy/output_contracts.txt", "fixtures/**/expected/**"]
+required = ["output-contracts", "traceability"]
+advisory = ["ripr-self-dogfood", "agent-loop-artifacts"]
+on_demand = []
+artifact_families = ["ripr-evidence", "editor-agent-loop"]
+estimated_lem = 12
+owner = "repo-maintainers"
+reason = "Output contracts, fixture goldens, and schema documentation affect downstream consumers."
+
+[risk_pack.fixture_corpus]
+paths = ["fixtures/**"]
+required = ["output-contracts", "traceability"]
+advisory = ["ripr-self-dogfood"]
+on_demand = []
+artifact_families = ["ripr-evidence"]
+estimated_lem = 10
+owner = "repo-maintainers"
+reason = "Fixture inputs, expected outputs, and corpus docs define behavior evidence."
+
+[risk_pack.vscode]
+paths = ["editors/vscode/**"]
+required = ["vscode-compile", "vscode-e2e", "policy"]
+advisory = ["droid-review"]
+on_demand = ["vsix-package"]
+artifact_families = ["editor-agent-loop", "release-readiness"]
+estimated_lem = 26
+owner = "repo-maintainers"
+reason = "VS Code extension implementation, package, or tests need editor-loop proof."
+
+[risk_pack.release_surface]
+paths = ["docs/RELEASE.md", "docs/RELEASE_BINARIES.md", "docs/RELEASE_MARKETPLACE.md", "docs/PUBLISHING.md", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml", "Cargo.toml", "Cargo.lock"]
+required = ["rust", "policy", "security-posture"]
+advisory = ["coverage"]
+on_demand = ["release-package", "publish-dry-run", "vsix-package", "extension-marketplace-publish", "server-archive", "release-readiness-proof"]
+artifact_families = ["release-readiness"]
+estimated_lem = 60
+owner = "repo-maintainers"
+reason = "Release, packaging, publishing, or binary distribution changes carry release-bearing risk."
+
+[risk_pack.dependency]
+paths = ["Cargo.toml", "Cargo.lock", "editors/vscode/package.json", "editors/vscode/package-lock.json", "deny.toml"]
+required = ["rust", "policy", "security-posture"]
+advisory = ["coverage", "test-analytics"]
+on_demand = ["release-package"]
+artifact_families = ["ripr-evidence"]
+estimated_lem = 22
+owner = "repo-maintainers"
+reason = "Rust or npm dependency graph changes need supply-chain and build proof."
+
+[risk_pack.agent_loop]
+paths = ["docs/AGENT_DISPATCH_WORKFLOW.md", "docs/EDITOR_AGENT_INTEGRATION.md", "docs/TARGETED_TEST_WORKFLOW.md", "fixtures/boundary_gap/expected/editor-agent-loop/**", "crates/ripr/src/output/agent*.rs"]
+required = ["rust", "output-contracts", "traceability"]
+advisory = ["agent-loop-artifacts", "ripr-self-dogfood"]
+on_demand = []
+artifact_families = ["editor-agent-loop"]
+estimated_lem = 18
+owner = "repo-maintainers"
+reason = "Agent brief, packet, verify, receipt, and cockpit evidence should stay aligned."
+
+[risk_pack.config_policy]
+paths = ["docs/CONFIGURATION.md", "docs/specs/RIPR-SPEC-0007-repository-configuration.md", "ripr.toml.example", "crates/ripr/src/config.rs"]
+required = ["rust", "policy", "output-contracts", "traceability"]
+advisory = ["ripr-self-dogfood", "sarif-upload"]
+on_demand = []
+artifact_families = ["ripr-evidence"]
+estimated_lem = 18
+owner = "repo-maintainers"
+reason = "Repository configuration and severity/suppression behavior affect CI evidence surfaces."

@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "blocked",
+  "warnings": [
+    "read missing.json failed: not found"
+  ],
+  "summary": {
+    "records_total": 0
+  },
+  "records": []
+}

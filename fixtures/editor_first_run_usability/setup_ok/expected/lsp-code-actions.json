@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/setup_ok",
+  "actions": [
+    {
+      "title": "Copy first repair packet",
+      "command": "ripr.copyContext",
+      "arguments": [
+        {
+          "label": "first_repair_packet",
+          "gap_identity": "gap:rust:pricing",
+          "packet": "RIPR first repair packet\nGap identity: gap:rust:pricing\nLanguage: rust\nSuggested action:\n- Add one focused assertion.\nVerify command:\nripr agent verify --root . --json\nReceipt command:\nripr agent receipt --root . --json\nLimits and non-claims:\n- Static editor evidence only."
+        }
+      ]
+    },
+    {
+      "title": "Write targeted test: open best related test",
+      "command": "ripr.openRelatedTest"
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh"
+    }
+  ]
+}

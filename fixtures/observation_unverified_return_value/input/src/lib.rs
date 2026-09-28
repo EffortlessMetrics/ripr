@@ -1,0 +1,3 @@
+pub fn compute_score(base: i32) -> i32 {
+    base * 2
+}

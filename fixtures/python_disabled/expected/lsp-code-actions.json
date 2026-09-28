@@ -1,0 +1,10 @@
+{
+  "actions": [
+    {
+      "arguments": [],
+      "command": "ripr.refresh",
+      "title": "Refresh Analysis - Saved Workspace Check"
+    }
+  ],
+  "fixture": "python_disabled"
+}

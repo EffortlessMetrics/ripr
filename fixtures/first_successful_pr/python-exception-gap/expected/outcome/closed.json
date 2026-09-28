@@ -1,0 +1,153 @@
+{
+  "after": {
+    "activation_unknown": 0,
+    "discrimination_unknown": 0,
+    "intentional": 0,
+    "observation_unknown": 0,
+    "opaque": 0,
+    "propagation_unknown": 0,
+    "reachable_unrevealed": 0,
+    "seams_total": 1,
+    "strongly_gripped": 1,
+    "suppressed": 0,
+    "ungripped": 0,
+    "weakly_gripped": 0
+  },
+  "before": {
+    "activation_unknown": 0,
+    "discrimination_unknown": 0,
+    "intentional": 0,
+    "observation_unknown": 0,
+    "opaque": 0,
+    "propagation_unknown": 0,
+    "reachable_unrevealed": 0,
+    "seams_total": 1,
+    "strongly_gripped": 0,
+    "suppressed": 0,
+    "ungripped": 0,
+    "weakly_gripped": 1
+  },
+  "inputs": {
+    "after": "fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json",
+    "before": "fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json"
+  },
+  "moved": [
+    {
+      "activate_delta": null,
+      "after": "strongly_gripped",
+      "before": "weakly_gripped",
+      "direction": "improved",
+      "discriminate_delta": {
+        "after_confidence": "low",
+        "after_state": "yes",
+        "after_summary": "Related Python test uses a `exact_error_variant` oracle; static evidence suggests the changed behavior is discriminated.",
+        "before_confidence": "low",
+        "before_state": "weak",
+        "before_summary": "Python preview adapter found no strong discriminator; missing proof: `raises ValueError matching \"positive required\"`."
+      },
+      "evidence_delta": [
+        "grip class moved from weakly_gripped to strongly_gripped",
+        "observe evidence moved from weak to yes",
+        "discriminate evidence moved from weak to yes",
+        "missing discriminator no longer reported: raises ValueError matching \"positive required\" (changed Python exception at line 3 lacks a concrete repair discriminator)",
+        "stronger related oracle visible: weak -> strong"
+      ],
+      "evidence_source": "check_output_finding",
+      "file": "src/validation.py",
+      "gap_movement": "closed",
+      "line": 3,
+      "missing_discriminators_reopened": [],
+      "missing_discriminators_resolved": [
+        "raises ValueError matching \"positive required\" (changed Python exception at line 3 lacks a concrete repair discriminator)"
+      ],
+      "no_movement_reason": null,
+      "observe_delta": {
+        "after_confidence": "low",
+        "after_state": "yes",
+        "after_summary": "Strongest extracted Python oracle kind: `exact_error_variant` (rank 5)",
+        "before_confidence": "low",
+        "before_state": "weak",
+        "before_summary": "Strongest extracted Python oracle kind: `broad_error` (rank 3)"
+      },
+      "observed_values_added": [],
+      "observed_values_removed": [],
+      "oracle_strength_delta": "weak -> strong",
+      "propagate_delta": null,
+      "reach_delta": null,
+      "related_test_delta": 0,
+      "seam_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+      "seam_kind": "exception_path"
+    }
+  ],
+  "new": [],
+  "regressed": [],
+  "removed": [],
+  "review_receipt": {
+    "focused_proof_added": [
+      "exception_path at src/validation.py:3 shows static evidence movement for focused proof outside RIPR: observe evidence moved from weak to yes; discriminate evidence moved from weak to yes; missing discriminator no longer reported: raises ValueError matching \"positive required\" (changed Python exception at line 3 lacks a concrete repair discriminator)."
+    ],
+    "gap_movement": {
+      "changed": 0,
+      "closed": 1,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 0,
+      "weakened": 0
+    },
+    "movement_after_verification": [
+      "1 improved, 0 changed without ranking higher, 0 regressed, 0 unchanged.",
+      "Gap movement: 1 closed, 0 opened, 0 strengthened, 0 weakened, 0 unchanged, 0 new, 0 removed, 0 changed.",
+      "exception_path at src/validation.py:3 moved weakly_gripped -> strongly_gripped (improved)."
+    ],
+    "remaining_weak_or_unknown": [
+      "No weak or unknown after-snapshot seams were present in the compared artifacts."
+    ],
+    "reviewer_may_believe": [
+      "RIPR compared only the listed static snapshots: fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json and fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json.",
+      "The listed focused-proof signals are static evidence visible after a test or output proof changed outside RIPR.",
+      "The movement and remaining-weak sections define the static claim boundary for this receipt."
+    ],
+    "reviewer_should_inspect": [
+      "Open the compared artifacts: fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json and fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json.",
+      "Inspect the focused test or output proof corresponding to each listed evidence delta.",
+      "Review remaining weak, unknown, new, or regressed seams before treating the repair loop as complete."
+    ],
+    "reviewer_should_not_believe": [
+      "Runtime mutation result.",
+      "Coverage adequacy.",
+      "General correctness.",
+      "Merge approval.",
+      "That RIPR edited source or generated tests."
+    ],
+    "ripr_flagged_before": [
+      "weakly_gripped before exception_path at src/validation.py:3."
+    ],
+    "what_changed": [
+      "Compared before snapshot fixtures/first_successful_pr/python-exception-gap/inputs/reports/before-check.json with after snapshot fixtures/first_successful_pr/python-exception-gap/inputs/reports/after-check.json.",
+      "Static seam movement: 1 moved, 0 unchanged, 0 regressed, 0 new, 0 removed."
+    ]
+  },
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "gap_movement": {
+      "changed": 0,
+      "closed": 1,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 0,
+      "weakened": 0
+    },
+    "moved": 1,
+    "new": 0,
+    "regressed": 0,
+    "removed": 0,
+    "unchanged": 0
+  },
+  "tool": "ripr",
+  "unchanged": []
+}

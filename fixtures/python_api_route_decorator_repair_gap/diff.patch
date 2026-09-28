@@ -1,0 +1,12 @@
+diff --git a/app/checkout.py b/app/checkout.py
+index 0000000..1111111 100644
+--- a/app/checkout.py
++++ b/app/checkout.py
+@@ -17,6 +17,6 @@ api = Api()
+ def checkout(coupon_expired):
+     response = Response(200, "ok")
+     if coupon_expired:
+-        response.status_code = 200
++        response.status_code = 422
+         response.detail = "coupon expired"
+     return response

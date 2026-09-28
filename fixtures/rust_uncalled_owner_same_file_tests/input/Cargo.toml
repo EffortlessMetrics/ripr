@@ -1,0 +1,8 @@
+[package]
+name = "rust_uncalled_owner_same_file_tests_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "rust_uncalled_owner_same_file_tests_fixture"
+path = "src/lib.rs"

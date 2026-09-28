@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "productVersion": "0.11.0",
+  "channel": "development",
+  "releaseTag": "v0.11.0",
+  "releaseRef": "refs/tags/v0.11.0",
+  "manifestFile": "ripr-server-manifest-v0.11.0.json",
+  "sourceRepository": "https://github.com/EffortlessMetrics/ripr"
+}

@@ -1,0 +1,177 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "root": ".",
+  "base": "origin/main",
+  "head": "HEAD",
+  "mode": "draft",
+  "inputs": {
+    "gap_ledger": "target/ripr/reports/gap-decision-ledger.json"
+  },
+  "analysis_scope": {
+    "scope": "gap_ledger_artifact",
+    "run_status": "artifact_scope",
+    "basis": "supplied_gap_decision_ledger",
+    "changed_files": [
+      "src/pricing.rs"
+    ],
+    "changed_lines": 1,
+    "changed_owner_functions": 0,
+    "changed_production_files": [
+      "src/pricing.rs"
+    ],
+    "immediate_caller_files": [],
+    "scoped_production_files": [
+      "src/pricing.rs"
+    ],
+    "total_rust_files": null,
+    "total_production_files": null,
+    "production_files_considered": 1,
+    "classified_seams_considered": 3,
+    "downstream_consumable": true,
+    "limitation": "review_comments_gap_ledger_artifact_scope_only",
+    "repair_route": "reports/gap-decision-ledger"
+  },
+  "rendering_limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "summary": {
+    "comments": 1,
+    "summary_only": 0,
+    "suppressed": 2,
+    "unchanged_tests": true
+  },
+  "comments": [
+    {
+      "id": "ripr-review-gap:pr:pricing:threshold-boundary",
+      "source": "gap_decision_ledger",
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "gap_kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "seam_id": "seam:pricing:threshold-boundary",
+      "dedupe_key": "gap:rust:pricing:discount:threshold-boundary",
+      "source_location": {
+        "status": "resolved",
+        "file": "src/pricing.rs",
+        "line": 42,
+        "span": null,
+        "limitation": null,
+        "repair_route": null
+      },
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 42,
+        "side": "RIGHT",
+        "mode": "gap_record_anchor"
+      },
+      "kind": "MissingBoundaryAssertion",
+      "grip_class": "predicate_boundary",
+      "severity": "warning",
+      "reason": "Changed behavior `amount == discount_threshold` has a repairable MissingBoundaryAssertion gap.",
+      "missing_discriminator": "amount == discount_threshold",
+      "suggested_test": {
+        "intent": "Add a boundary assertion.",
+        "candidate_values": [],
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+        "assertion_kind": "AddBoundaryAssertion",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "tests/pricing.rs::discount_above_threshold",
+        "near_test": "tests/pricing.rs::discount_above_threshold",
+        "related_test": {
+          "name": "tests/pricing.rs::discount_above_threshold",
+          "file": "tests/pricing.rs",
+          "line": null
+        }
+      },
+      "repair_card": {
+        "gap_kind": "MissingBoundaryAssertion",
+        "changed_behavior": "amount == discount_threshold",
+        "why_this_matters": "Changed behavior `amount == discount_threshold` has a repairable MissingBoundaryAssertion gap.",
+        "repair": "assert_eq!(discount(100, 100), 90)",
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "related_test": "tests/pricing.rs::discount_above_threshold",
+          "assertion_shape": "assert_eq!(discount(100, 100), 90)",
+          "changed_behavior": "amount == discount_threshold"
+        },
+        "evidence_ids": [
+          "evidence:pricing-threshold-reached",
+          "evidence:related-test-no-boundary-assertion"
+        ],
+        "verification_commands": [
+          "cargo xtask fixtures boundary_gap",
+          "cargo xtask goldens check"
+        ],
+        "verify_command": "cargo xtask fixtures boundary_gap",
+        "source_artifact": "target/ripr/reports/gap-decision-ledger.json",
+        "authority_boundary": "gate_decision_artifact_only"
+      },
+      "llm_guidance": {
+        "prompt": "assert_eq!(discount(100, 100), 90) Do not change production behavior unless the existing tests prove it is necessary. Verify with `cargo xtask fixtures boundary_gap`.",
+        "command": "ripr first-action --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json",
+        "verify_command": "cargo xtask fixtures boundary_gap"
+      }
+    }
+  ],
+  "summary_only": [],
+  "suppressed": [
+    {
+      "gap_id": "gap:rust:pricing:discount:missing-seam",
+      "file": null,
+      "line": null,
+      "reason": "missing_seam_identity",
+      "message": "PR comments require producer-owned seam identity."
+    },
+    {
+      "gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "reason": "not_pr_comment_eligible",
+      "message": "missing_pr_comment_projection"
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Advisory static evidence only; gap-ledger repair cards do not edit source, generate tests, run mutation testing, or change CI/gate authority.",
+  "run_receipt": {
+    "schema_version": "0.2",
+    "status": "complete",
+    "root_identity": ".",
+    "base_sha": "origin/main",
+    "head_sha": "HEAD",
+    "requested_mode": "draft",
+    "analysis_identity": null,
+    "phase_evidence": [
+      {
+        "phase": "artifact_io",
+        "duration_ms": 1,
+        "reused": false,
+        "subject_count": 2,
+        "stop_reason": "complete",
+        "input_identity_digest": null
+      }
+    ],
+    "primary_failure": null,
+    "configured_timeout_ms": 120000,
+    "last_completed_phase": "artifact_io",
+    "active_phase": null,
+    "completed_artifacts": [
+      "comments.json",
+      "comments.md"
+    ],
+    "missing_artifacts": [],
+    "reusable_cache_identity": "sha256:fixture",
+    "limitations": [],
+    "non_claims": [
+      "static review guidance is advisory evidence only"
+    ],
+    "atomic_write_status": "committed"
+  }
+}

@@ -1,0 +1,496 @@
+use crate::analysis;
+use crate::app::{self, CheckInput, Mode, OutputFormat};
+use crate::cli::commands_numeric::{parse_positive_u64, parse_positive_usize};
+use crate::cli::commands_options::PilotOptions;
+use crate::cli::help;
+use crate::cli::parse::{expect_value, parse_mode};
+use crate::cli::suggest::unknown_argument;
+use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
+use crate::output;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Duration;
+
+const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
+
+/// Budget for the auto-retry when the default timeout fires (#2424).
+/// A cold fact cache on a multi-crate workspace can need ~155s; the
+/// default 30s is too low for first-run. The retry budget is set high
+/// enough to cover a cold cache on the ripr-swarm repo itself.
+const PILOT_RETRY_TIMEOUT_MS: u64 = 240_000;
+
+/// Write pilot's `repo-exposure.json`.
+///
+/// When pilot saw the same seam population `ripr check --format
+/// repo-exposure-json` would, the snapshot carries the same producer-owned
+/// `artifact` identity, so it can be the `--before` of `ripr agent verify`
+/// that the first-PR workflow and the evidence records name (#3906). When the
+/// pilot seam budget truncated the population, the snapshot is written
+/// without that identity: a stamped partial snapshot would pass verify's
+/// comparability check against a full after snapshot and compare two
+/// different populations. Verify then refuses it rather than misreporting.
+fn write_pilot_repo_exposure_json(
+    path: &Path,
+    input: &CheckInput,
+    config: &RiprConfig,
+    classified: &[analysis::ClassifiedSeam],
+    limit_info: Option<&analysis::SeamLimitInfo>,
+    pilot_budget_truncated: bool,
+) -> Result<(), String> {
+    let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(&input.root, classified);
+    let python_guidance =
+        output::render::detect_python_repo_exposure_guidance_pub(&input.root, classified);
+    let write_failed = |err: String| format!("write {} failed: {err}", path.display());
+    if pilot_budget_truncated {
+        return std::fs::write(
+            path,
+            output::repo_exposure::render_repo_exposure_json(
+                classified,
+                limit_info,
+                ts_guidance.as_ref(),
+                python_guidance.as_ref(),
+            ),
+        )
+        .map_err(|err| write_failed(err.to_string()));
+    }
+    // Base `None`: pilot's printed after-snapshot command passes no `--base`
+    // or `--diff`, so both snapshots intentionally carry no base under
+    // RIPR-SPEC-0084. Keep this explicit rather than coupling artifact
+    // identity to the `CheckInput` default.
+    let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+        input.root.clone(),
+        input.mode.as_str().to_string(),
+        None,
+        config,
+    )?;
+    let file = std::fs::File::create(path).map_err(|err| write_failed(err.to_string()))?;
+    let mut writer = std::io::BufWriter::new(file);
+    output::repo_exposure::write_repo_exposure_json_with_context(
+        classified,
+        limit_info,
+        ts_guidance.as_ref(),
+        python_guidance.as_ref(),
+        &context,
+        &mut writer,
+    )
+    .map_err(write_failed)?;
+    std::io::Write::flush(&mut writer).map_err(|err| write_failed(err.to_string()))
+}
+
+pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_pilot_help();
+        return Ok(());
+    }
+
+    let options = parse_pilot_options(args)?;
+    if !options.root.is_dir() {
+        return Err(format!(
+            "pilot root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let config = load_for_root(&options.root)?;
+    let mut input = CheckInput {
+        root: options.root.clone(),
+        mode: options.mode.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut input, &config, options.explicit);
+
+    let artifacts = pilot_artifacts(&options.out_dir);
+    std::fs::create_dir_all(&options.out_dir)
+        .map_err(|err| format!("create {} failed: {err}", options.out_dir.display()))?;
+
+    let analysis_root = input.root.clone();
+    let analysis_config = config.clone();
+    let mut analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, {
+        let root = analysis_root.clone();
+        let cfg = analysis_config.clone();
+        move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
+    })?;
+
+    // Auto-retry at a higher budget when the default timeout fires and the
+    // user did not pass an explicit --timeout-ms (#2424). A cold fact cache
+    // on a multi-crate workspace can need ~155s; the 30s default is too low
+    // for first-run. The retry gives a complete result on the first
+    // invocation — just slower.
+    if matches!(analysis_result, PilotAnalysisResult::TimedOut)
+        && options.timeout_ms == DEFAULT_PILOT_TIMEOUT_MS
+    {
+        eprintln!(
+            "ripr: pilot timed out at {}ms; retrying at {}ms (cold cache needs more time)...",
+            DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
+        );
+        analysis_result = run_pilot_analysis_with_timeout(PILOT_RETRY_TIMEOUT_MS, {
+            let root = analysis_root.clone();
+            let cfg = analysis_config.clone();
+            move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
+        })?;
+        // Update timeout_ms so the retry hint (if it times out again) uses the
+        // retry budget, not the original default.
+        // (context struct reads options.timeout_ms for the hint)
+    }
+    let PilotAnalysisResult::Complete((mut classified, inventory_limit_info)) = analysis_result
+    else {
+        let context = output::pilot::PilotSummaryContext {
+            root: &input.root,
+            mode: &input.mode,
+            config_path: config.source_path(),
+            max_seams: options.max_seams,
+            timeout_ms: options.timeout_ms,
+            artifacts: &artifacts,
+            python_first_use: None,
+            language_routes: None,
+        };
+        std::fs::write(
+            &artifacts.pilot_summary_json,
+            output::pilot::render_pilot_timeout_summary_json(context),
+        )
+        .map_err(|err| {
+            format!(
+                "write {} failed: {err}",
+                artifacts.pilot_summary_json.display()
+            )
+        })?;
+        std::fs::write(
+            &artifacts.pilot_summary_md,
+            output::pilot::render_pilot_timeout_summary_md(context),
+        )
+        .map_err(|err| {
+            format!(
+                "write {} failed: {err}",
+                artifacts.pilot_summary_md.display()
+            )
+        })?;
+        print!("{}", output::pilot::render_pilot_timeout_terminal(context));
+        return Ok(());
+    };
+
+    // Apply the pilot artifact seam budget.  The inventory may already have
+    // been capped by the repo-exposure seam limit; we then further cap the
+    // classified slice for the two pilot artifacts so they stay under a
+    // manageable size.  `limit_info` carries whichever cap fired (pilot
+    // budget wins when both fire; inventory limit is the outer bound).
+    let pilot_budget_info = analysis::apply_pilot_seam_budget(&mut classified);
+    let pilot_budget_truncated = pilot_budget_info.is_some();
+    let limit_info = pilot_budget_info.or(inventory_limit_info);
+    let (causal_projection, causal_projection_warning) =
+        crate::app::causal_projection::CausalDeltaArtifact::load_optional(&input.root);
+    if let Some(warning) = causal_projection_warning {
+        eprintln!("ripr pilot: {warning}");
+    }
+
+    let python_first_use = collect_pilot_python_first_use(&input, &config);
+    // #3906: pilot ranks Rust seams only. Name the languages it did not rank
+    // so an empty ranking is never read as a clean result for them.
+    let language_routes = output::pilot::PilotLanguageRoutes::from_discovered(
+        &input.root,
+        !classified.is_empty(),
+        config.languages().enabled(),
+        &analysis::workspace_preview_language_files(&input.root),
+    );
+    let context = output::pilot::PilotSummaryContext {
+        root: &input.root,
+        mode: &input.mode,
+        config_path: config.source_path(),
+        max_seams: options.max_seams,
+        timeout_ms: options.timeout_ms,
+        artifacts: &artifacts,
+        python_first_use: python_first_use.as_ref(),
+        language_routes: Some(&language_routes),
+    };
+
+    let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
+    let python_guidance =
+        output::render::detect_python_repo_exposure_guidance_pub(&input.root, &classified);
+    write_pilot_repo_exposure_json(
+        &artifacts.repo_exposure_json,
+        &input,
+        &config,
+        &classified,
+        limit_info.as_ref(),
+        pilot_budget_truncated,
+    )?;
+    std::fs::write(
+        &artifacts.repo_exposure_md,
+        output::repo_exposure::render_repo_exposure_md(
+            &classified,
+            limit_info.as_ref(),
+            ts_guidance.as_ref(),
+            python_guidance.as_ref(),
+        ),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.repo_exposure_md.display()
+        )
+    })?;
+    std::fs::write(
+        &artifacts.agent_seam_packets_json,
+        output::agent_seam_packets::render_agent_seam_packets_json_with_causal(
+            &classified,
+            limit_info.as_ref(),
+            causal_projection.as_ref(),
+        ),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.agent_seam_packets_json.display()
+        )
+    })?;
+
+    std::fs::write(
+        &artifacts.pilot_summary_json,
+        output::pilot::render_pilot_summary_json(&classified, context),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.pilot_summary_json.display()
+        )
+    })?;
+    std::fs::write(
+        &artifacts.pilot_summary_md,
+        output::pilot::render_pilot_summary_md(&classified, context),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.pilot_summary_md.display()
+        )
+    })?;
+
+    print!(
+        "{}",
+        output::pilot::render_pilot_terminal(&classified, context)
+    );
+    Ok(())
+}
+
+fn collect_pilot_python_first_use(
+    input: &CheckInput,
+    config: &RiprConfig,
+) -> Option<output::pilot::PilotPythonFirstUse> {
+    if !config
+        .languages()
+        .enabled()
+        .contains(&crate::domain::LanguageId::Python)
+    {
+        return None;
+    }
+
+    let mut check_input = input.clone();
+    check_input.format = OutputFormat::Json;
+    Some(
+        match app::check_workspace_with_config(check_input, config) {
+            Ok(output) => output::pilot::PilotPythonFirstUse::from_check_output(&output),
+            Err(error) => output::pilot::PilotPythonFirstUse::analysis_unavailable(error),
+        },
+    )
+}
+
+fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
+    let mut options = PilotOptions {
+        root: PathBuf::from("."),
+        out_dir: PathBuf::from("target/ripr/pilot"),
+        mode: Mode::Draft,
+        explicit: CheckInputExplicit::default(),
+        max_seams: 5,
+        timeout_ms: DEFAULT_PILOT_TIMEOUT_MS,
+    };
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                options.root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--out" => {
+                i += 1;
+                options.out_dir = PathBuf::from(expect_value(args, i, "--out")?);
+            }
+            "--mode" => {
+                i += 1;
+                options.mode = parse_mode(expect_value(args, i, "--mode")?)?;
+                options.explicit.mode = true;
+            }
+            "--max-seams" => {
+                i += 1;
+                options.max_seams =
+                    parse_positive_usize(expect_value(args, i, "--max-seams")?, "--max-seams")?;
+            }
+            "--timeout-ms" => {
+                i += 1;
+                options.timeout_ms =
+                    parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
+            }
+            other => return Err(unknown_argument("pilot", other)),
+        }
+        i += 1;
+    }
+    Ok(options)
+}
+
+enum PilotAnalysisResult {
+    Complete(
+        (
+            Vec<analysis::ClassifiedSeam>,
+            Option<analysis::SeamLimitInfo>,
+        ),
+    ),
+    TimedOut,
+}
+
+fn run_pilot_analysis_with_timeout<F>(
+    timeout_ms: u64,
+    runner: F,
+) -> Result<PilotAnalysisResult, String>
+where
+    F: FnOnce() -> Result<
+            (
+                Vec<analysis::ClassifiedSeam>,
+                Option<analysis::SeamLimitInfo>,
+            ),
+            String,
+        > + Send
+        + 'static,
+{
+    let cancellation_token = crate::analysis::cancellation::AnalysisCancellationToken::new();
+    let worker_token = cancellation_token.clone();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = crate::analysis::cancellation::with_token(&worker_token, runner);
+        let _ignored = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+        Ok(result) => result.map(PilotAnalysisResult::Complete),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            cancellation_token
+                .cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            Ok(PilotAnalysisResult::TimedOut)
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("pilot analysis stopped before producing a result".to_string())
+        }
+    }
+}
+
+fn pilot_artifacts(out_dir: &Path) -> output::pilot::PilotArtifacts {
+    output::pilot::PilotArtifacts {
+        repo_exposure_json: out_dir.join("repo-exposure.json"),
+        repo_exposure_md: out_dir.join("repo-exposure.md"),
+        agent_seam_packets_json: out_dir.join("agent-seam-packets.json"),
+        pilot_summary_json: out_dir.join("pilot-summary.json"),
+        pilot_summary_md: out_dir.join("pilot-summary.md"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn pilot_requires_values_for_value_flags() {
+        assert_eq!(
+            pilot(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            pilot(&args(&["--out"])),
+            Err("missing value for --out".to_string())
+        );
+        assert_eq!(
+            pilot(&args(&["--mode"])),
+            Err("missing value for --mode".to_string())
+        );
+        assert_eq!(
+            pilot(&args(&["--max-seams"])),
+            Err("missing value for --max-seams".to_string())
+        );
+        assert_eq!(
+            pilot(&args(&["--timeout-ms"])),
+            Err("missing value for --timeout-ms".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_rejects_unknown_arguments() {
+        assert_eq!(
+            pilot(&args(&["--wat"])),
+            Err("unknown pilot argument \"--wat\". Run `ripr pilot --help`.".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_rejects_non_positive_max_seams() {
+        assert_eq!(
+            parse_pilot_options(&args(&["--max-seams", "0"])),
+            Err("invalid --max-seams: expected a positive integer".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_rejects_non_positive_timeout() {
+        assert_eq!(
+            parse_pilot_options(&args(&["--timeout-ms", "0"])),
+            Err("invalid --timeout-ms: expected a positive integer".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_parses_root_out_mode_max_seams_and_timeout() {
+        let options = parse_pilot_options(&args(&[
+            "--root",
+            "repo",
+            "--out",
+            "target/pilot",
+            "--mode",
+            "ready",
+            "--max-seams",
+            "3",
+            "--timeout-ms",
+            "120000",
+        ]));
+
+        assert_eq!(
+            options,
+            Ok(PilotOptions {
+                root: PathBuf::from("repo"),
+                out_dir: PathBuf::from("target/pilot"),
+                mode: Mode::Ready,
+                explicit: CheckInputExplicit {
+                    mode: true,
+                    include_unchanged_tests: false,
+                },
+                max_seams: 3,
+                timeout_ms: 120_000,
+            })
+        );
+    }
+
+    #[test]
+    fn pilot_analysis_timeout_cancels_worker() {
+        let (cancelled_tx, cancelled_rx) = mpsc::channel();
+        let result = run_pilot_analysis_with_timeout(1, move || {
+            loop {
+                if crate::analysis::cancellation::checkpoint().is_err() {
+                    let _ignored = cancelled_tx.send(());
+                    return Err("analysis cancelled".to_string());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+
+        assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
+        assert_eq!(cancelled_rx.recv_timeout(Duration::from_secs(1)), Ok(()));
+    }
+}

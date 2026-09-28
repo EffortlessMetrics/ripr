@@ -1,0 +1,197 @@
+diff --git a/crates/ripr/src/app/repair_attempt.rs b/crates/ripr/src/app/repair_attempt.rs
+index ffa95ef44..7f081d0e7 100644
+--- a/crates/ripr/src/app/repair_attempt.rs
++++ b/crates/ripr/src/app/repair_attempt.rs
+@@ -104,6 +104,9 @@ pub(crate) struct RepairAttemptManifest {
+ pub(crate) struct RepairAttemptAfter {
+     pub(crate) attempt_id: RepairAttemptId,
+     pub(crate) repository_head: String,
++    /// Hash of the agent-attributable delta (operational writes excluded),
++    /// not the full cage delta: RIPR's own finalization outputs land after
++    /// this record and must not perturb re-invoked receipt bindings.
+     pub(crate) delta_sha256: String,
+     pub(crate) packet_sha256: String,
+     pub(crate) current: bool,
+@@ -209,9 +212,32 @@ pub(crate) fn receipt_binding(
+     let baseline: AttemptBaseline = serde_json::from_slice(&baseline_bytes)
+         .map_err(|error| format!("decode edit-cage baseline failed: {error}"))?;
+     let (delta, verdict) = evaluate_repository_edit_cage_with_delta(&baseline)?;
+-    let delta_bytes = serde_json::to_vec(&delta)
++    // Same agent-attributable restriction as the after-phase record:
++    // RIPR's own finalization outputs must not perturb this comparison.
++    let agent_delta = crate::edit_cage::agent_attributable_delta(baseline.policy(), &delta);
++    let agent_delta_bytes = serde_json::to_vec(&agent_delta)
+         .map_err(|error| format!("serialize repair delta failed: {error}"))?;
+-    if sha256_bytes(&delta_bytes) != after.delta_sha256 || verdict != after.verdict {
++    // The verdict comparison binds status plus violations only, not the
++    // changed-paths display list: operational outputs extend that list
++    // after the after phase records it, while the agent-attributable hash
++    // above already binds every agent-surface path addition, deletion, or
++    // kind change. Status or violation drift still refuses.
++    let agent_matches = sha256_bytes(&agent_delta_bytes) == after.delta_sha256;
++    let verdict_matches =
++        verdict.status == after.verdict.status && verdict.violations == after.verdict.violations;
++    if !agent_matches || !verdict_matches {
++        // Pre-#1738 manifests hashed the full delta instead: when the tree
++        // still matches that record exactly, the attempt predates the new
++        // semantics — say so actionably instead of crying tamper. The
++        // after phase is terminal (no re-entry from ReadyToFinish), so the
++        // only rebind path is a fresh attempt with the current binary.
++        if !agent_matches && verdict_matches {
++            let full_delta_bytes = serde_json::to_vec(&delta)
++                .map_err(|error| format!("serialize repair delta failed: {error}"))?;
++            if sha256_bytes(&full_delta_bytes) == after.delta_sha256 {
++                return Err("repair attempt was recorded by an older binary; start a new repair attempt with this binary to rebind the receipt".to_string());
++            }
++        }
+         return Err("repair attempt after verdict binding is tampered or stale".to_string());
+     }
+     let manifest_path = display_path(&manifest_path);
+@@ -897,12 +923,18 @@ pub(crate) fn finish_repair_attempt(
+     if !current {
+         verdict.status = crate::edit_cage::EditCageVerdictStatus::Incomparable;
+     }
+-    let delta_bytes = serde_json::to_vec(&delta)
++    // The durable binding covers the agent-attributable delta only:
++    // RIPR's own finalization outputs (receipt, status, apply record) land
++    // after this record, and hashing them would refuse every re-invoked
++    // receipt as stale (#1738). The verdict above still evaluated the full
++    // delta, so policy violations refuse here before anything is recorded.
++    let agent_delta = crate::edit_cage::agent_attributable_delta(baseline.policy(), &delta);
++    let agent_delta_bytes = serde_json::to_vec(&agent_delta)
+         .map_err(|error| format!("serialize repair delta failed: {error}"))?;
+     let after = RepairAttemptAfter {
+         attempt_id: manifest.repair_attempt_id.clone(),
+         repository_head: current_head,
+-        delta_sha256: sha256_bytes(&delta_bytes),
++        delta_sha256: sha256_bytes(&agent_delta_bytes),
+         packet_sha256,
+         current,
+         verdict,
+diff --git a/crates/ripr/src/cli/commands/agent.rs b/crates/ripr/src/cli/commands/agent.rs
+index d9d4e164d..fb8729ec2 100644
+--- a/crates/ripr/src/cli/commands/agent.rs
++++ b/crates/ripr/src/cli/commands/agent.rs
+@@ -567,9 +567,10 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
+                 crate::app::python_repair_binding::confirm_manifest_unchanged(binding)?;
+             }
+ 
+-            // Finish only after all command-owned after artifacts exist. This
+-            // makes the durable delta the exact delta the receipt binds, while
+-            // the receipt itself remains outside the measured edit window.
++            // Finish only after all command-owned after artifacts exist. The
++            // durable binding covers the agent-attributable delta, so the
++            // receipt, status, and apply-record outputs below do not perturb
++            // it; the agent's edit surface stays bound instead.
+             let cage_after = crate::app::repair_attempt::finish_repair_attempt(
+                 &root,
+                 &attempt.attempt_id,
+@@ -606,8 +607,8 @@ fn run_agent_repair(options: AgentRepairOptions) -> Result<(), String> {
+             })?;
+ 
+             // The apply record is published last: the receipt re-evaluates the
+-            // edit cage over the exact delta finish measured, so no artifact
+-            // write may land between finish and the receipt binding.
++            // edit cage over the agent-attributable delta finish measured,
++            // so operational outputs below do not perturb the binding.
+             // The retained binding's manifest bytes are confirmed once more
+             // immediately before the record write: the earlier confirmation
+             // ran before the durable finish, so a manifest replaced inside
+diff --git a/crates/ripr/src/edit_cage.rs b/crates/ripr/src/edit_cage.rs
+index 551fbb3d1..8c69ae20b 100644
+--- a/crates/ripr/src/edit_cage.rs
++++ b/crates/ripr/src/edit_cage.rs
+@@ -492,6 +492,39 @@ fn delta_from_repository_states(before: &AttemptBaseline, after: &AttemptBaselin
+     }
+ }
+ 
++/// Restricts a cage delta to agent-attributable changes by dropping change
++/// entries whose path matches the policy's expected operational writes.
++/// RIPR's own finalization outputs (receipt, status, and apply-record
++/// artifacts under `target/ripr`) necessarily land after the after phase
++/// records its delta; hashing them would make every re-invoked receipt
++/// refuse as stale (#1738). The agent's edit surface stays fully bound,
++/// and the full verdict (computed over the unfiltered delta) still
++/// refuses policy violations. Consumed artifacts carry individual content
++/// bindings (packet, baseline, and verify digests), so ignoring
++/// operational path-set churn loses no content-integrity evidence the
++/// delta hash ever carried — it binds path sets, never contents.
++pub(crate) fn agent_attributable_delta(
++    policy: &EditCagePolicy,
++    delta: &AttemptDelta,
++) -> AttemptDelta {
++    AttemptDelta {
++        comparable: delta.comparable,
++        changes: delta
++            .changes
++            .iter()
++            .filter(|change| {
++                let normalized = normalize_repo_relative_path(&change.path)
++                    .unwrap_or_else(|_| change.path.to_string_lossy().to_string());
++                !policy
++                    .expected_operational_writes
++                    .iter()
++                    .any(|rule| rule.matches(&normalized))
++            })
++            .cloned()
++            .collect(),
++    }
++}
++
+ fn canonical_repository_root(root: &Path) -> Result<PathBuf, String> {
+     let requested = fs::canonicalize(root)
+         .map_err(|err| format!("canonicalize repository root {}: {err}", root.display()))?;
+@@ -2633,4 +2666,53 @@ mod tests {
+         assert!(verdict.violations.is_empty());
+         Ok(())
+     }
++
++    #[test]
++    fn agent_delta_ignores_operational_churn_but_binds_agent_surface() -> Result<(), String> {
++        let policy = policy()?;
++        // RIPR's own finalization outputs land after the after phase
++        // records its delta; they must not perturb the binding (#1738).
++        let with_churn = AttemptDelta {
++            comparable: true,
++            changes: vec![
++                AttemptPathChange::modified("tests/pricing.rs"),
++                AttemptPathChange::added("target/ripr/reports/agent-receipt.json"),
++                AttemptPathChange::modified(
++                    "target/ripr/repair-attempts/repair-attempt-x/attempt.json",
++                ),
++            ],
++        };
++        let filtered = agent_attributable_delta(&policy, &with_churn);
++        assert!(filtered.comparable);
++        assert_eq!(
++            filtered.changes,
++            vec![AttemptPathChange::modified("tests/pricing.rs")]
++        );
++        // Operational churn alone hashes identically: the re-invoked
++        // receipt sees the same agent delta after RIPR writes its outputs.
++        let without_churn = AttemptDelta {
++            comparable: true,
++            changes: vec![AttemptPathChange::modified("tests/pricing.rs")],
++        };
++        let clean = agent_attributable_delta(&policy, &without_churn);
++        assert_eq!(
++            serde_json::to_vec(&filtered).map_err(|err| err.to_string())?,
++            serde_json::to_vec(&clean).map_err(|err| err.to_string())?
++        );
++        // An agent-surface addition still changes the bound delta.
++        let tampered = AttemptDelta {
++            comparable: true,
++            changes: vec![
++                AttemptPathChange::modified("tests/pricing.rs"),
++                AttemptPathChange::added("tests/extra.rs"),
++            ],
++        };
++        let bound = agent_attributable_delta(&policy, &tampered);
++        assert!(
++            serde_json::to_vec(&bound).map_err(|err| err.to_string())?
++                != serde_json::to_vec(&clean).map_err(|err| err.to_string())?,
++            "agent-surface churn must perturb the binding"
++        );
++        Ok(())
++    }
+ }

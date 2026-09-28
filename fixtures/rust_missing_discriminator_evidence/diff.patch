@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -7,7 +7,7 @@ pub enum PricingError {
+ pub fn classify_boundary(value: i32) -> Result<(), PricingError> {
+     if value == 100 {
+-        Err(PricingError::Boundary)
++        Err(PricingError::Other)
+     } else {
+         Err(PricingError::Other)
+     }

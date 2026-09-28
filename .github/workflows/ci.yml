@@ -1,0 +1,436 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel in-flight runs on the same PR when new commits are pushed
+# (`synchronize`), but never on label or other PR-action events. The
+# label-event cancellation bug described in docs/CI.md caused in-progress runs
+# to be cancelled on label toggling.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+jobs:
+  rust:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    # Product gates take ~28 min; the PR-evidence step allows 1,800s, so the
+    # 45-minute cap kills evidence past ~17 min (observed 2026-09-17). 90
+    # matches routed rust-github and covers gates plus a full evidence run.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-rust-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - run: cargo fmt --check
+      - run: cargo check --workspace --all-targets
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo nextest run --workspace
+      # Exercise Perl alongside the product's required/default adapters. A
+      # Perl-only no-default build is invalid because RIPR requires lang-rust,
+      # and doctor intentionally shares optional Python framework detection.
+      - run: cargo check -p ripr --features lang-perl
+      - run: cargo test -p ripr --features lang-perl --lib analysis::language::perl
+      - run: cargo xtask check-static-language
+      - run: cargo xtask check-no-panic-family
+      - run: cargo xtask check-allow-attributes
+      - run: cargo xtask check-local-context
+      - run: cargo xtask check-file-policy
+      - run: cargo xtask check-executable-files
+      - run: cargo xtask check-workflows
+      - run: cargo xtask check-droid-review-config
+      - run: cargo xtask check-spec-format
+      - run: cargo xtask check-spec-numbering
+      - run: cargo xtask check-fixture-contracts
+      - run: cargo xtask check-evidence-promotion-honesty
+      - run: cargo xtask check-generated
+      - run: cargo xtask check-badge-diff-policy
+      - run: cargo xtask check-generated-clean
+      - run: cargo xtask check-dependencies
+      - run: cargo xtask check-process-policy
+      - run: cargo xtask check-network-policy
+      # Release-surface steps run only when the PR targets a release path:
+      # push to main, the `release-check` label, or the `full-ci` label.
+      # Ordinary code PRs skip them; package metadata and publish dry-run
+      # are still validated on every release-bearing change.
+      - name: Package list (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: cargo package -p ripr --list
+      - name: Publish dry-run (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: cargo publish -p ripr --dry-run
+      - name: Release readiness (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: |
+          release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
+          cargo xtask release-readiness --version "$release_version"
+      - name: Upload release-readiness receipts
+        if: always() && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-readiness-${{ github.run_id }}
+          path: |
+            target/ripr/reports/release-readiness.json
+            target/ripr/reports/release-readiness.md
+            target/ripr/reports/agent-receipt.json
+            target/ripr/reports/gap-decision-ledger.json
+            target/ripr/reports/lsp-cockpit.json
+            target/ripr/reports/lsp-cockpit.md
+            target/ripr/reports/repo-exposure-latency.json
+            target/ripr/reports/repo-exposure-latency.md
+            target/ripr/reports/start-here.md
+            target/ripr/release-readiness/
+          if-no-files-found: warn
+      - name: Generate ripr test-efficiency report
+        if: always()
+        run: cargo xtask test-efficiency-report || true
+      - name: Generate ripr badge artifacts
+        if: always()
+        run: cargo xtask badge-artifacts || true
+      - name: Generate ripr PR summary
+        if: always()
+        run: cargo xtask pr-summary || true
+      - name: Generate RIPR PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          # The combined #1660 candidate measures 5,048 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          # The repaired #1660 candidate measures 5,316 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
+          # PR #1710 evidence analysis measures ~500s locally (18 files,
+          # 1,709-line diff, complete_with_findings packet, 2026-09-16), so
+          # the 120s evidence-producer default is ~4x too small and the step
+          # times out on CI runners; the 1,800s ceiling stays well under the
+          # 45-minute job cap (precedent: rust-gates.yml sets 3,600s).
+          RIPR_PR_EVIDENCE_TIMEOUT_SECS: "1800"
+        run: |
+          cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
+          cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
+      - name: Generate RIPR review guidance
+        if: github.event_name == 'pull_request'
+        env:
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check-output target/ripr/pr/check.json --check
+      - name: Generate impacted evidence
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+      - name: Generate PR evidence summary
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+      - name: Generate RIPR annotations
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+      - name: Generate ripr receipts
+        if: always()
+        run: cargo xtask receipts || true
+      - name: Generate ripr report index
+        if: always()
+        run: cargo xtask reports index || true
+      - name: Write ripr report summary
+        if: always()
+        run: |
+          if [ -f target/ripr/reports/index.md ]; then
+            cat target/ripr/reports/index.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write ripr badge summary
+        if: always()
+        run: |
+          if [ -f target/ripr/reports/ripr-badges.md ]; then
+            cat target/ripr/reports/ripr-badges.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write PR evidence summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/ripr/pr/summary.md ]; then
+            cat target/ripr/pr/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write RIPR review guidance summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/ripr/review/comments.md ]; then
+            printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/ripr/review/comments.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write impacted evidence summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/xtask/impacted-evidence/latest.md ]; then
+            printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/xtask/impacted-evidence/latest.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
+      - name: Upload ripr reports
+        if: failure() || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-pr-reports
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+
+  release-proof:
+    name: Perl and release proof
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    # Same evidence-ceiling composition as the rust job: gates plus a 1,800s
+    # evidence step do not fit in 45 minutes.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-release-proof-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The routed Rust workflow owns ordinary merge-safety and repository
+      # policy. This job retains only proof that is unique to the legacy lane.
+      - name: Check Perl feature adapter
+        run: cargo check -p ripr --features lang-perl
+      - name: Test Perl language analysis
+        run: cargo test -p ripr --features lang-perl --lib analysis::language::perl
+
+      - name: Package list (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: cargo package -p ripr --list
+      - name: Publish dry-run (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: cargo publish -p ripr --dry-run
+      # `cargo install ripr` without `--locked` ignores Cargo.lock and resolves
+      # fresh, so a lock-only pin never reaches it (#3787). Build the packaged
+      # crate the way that command does: drop its lockfile and re-resolve.
+      - name: Unlocked install resolution (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: |
+          cargo package -p ripr --no-verify && tar xzf "target/package/ripr-$(cargo pkgid -p ripr | sed 's/.*#//').crate" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/ripr-$(cargo pkgid -p ripr | sed 's/.*#//')" && rm Cargo.lock && cargo generate-lockfile
+          cargo check --target-dir "$RUNNER_TEMP/unlocked-target"
+      - name: Release readiness (release surface)
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: |
+          release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
+          cargo xtask release-readiness --version "$release_version"
+      - name: Upload release-readiness receipts
+        if: always() && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-readiness-${{ github.run_id }}
+          path: |
+            target/ripr/reports/release-readiness.json
+            target/ripr/reports/release-readiness.md
+            target/ripr/reports/agent-receipt.json
+            target/ripr/reports/gap-decision-ledger.json
+            target/ripr/reports/lsp-cockpit.json
+            target/ripr/reports/lsp-cockpit.md
+            target/ripr/reports/repo-exposure-latency.json
+            target/ripr/reports/repo-exposure-latency.md
+            target/ripr/reports/start-here.md
+            target/ripr/release-readiness/
+          if-no-files-found: warn
+      - name: Generate ripr test-efficiency report
+        if: always()
+        run: cargo xtask test-efficiency-report || true
+      - name: Generate ripr badge artifacts
+        if: always()
+        run: cargo xtask badge-artifacts || true
+      - name: Generate ripr PR summary
+        if: always()
+        run: cargo xtask pr-summary || true
+      - name: Generate RIPR PR evidence
+        if: github.event_name == 'pull_request'
+        env:
+          # The combined #1660 candidate measures 5,048 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          # The repaired #1660 candidate measures 5,316 changed Rust lines;
+          # keep the explicit safety envelope narrowly above that denominator.
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "5400"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "5400"
+          # PR #1710 evidence analysis measures ~500s locally (18 files,
+          # 1,709-line diff, complete_with_findings packet, 2026-09-16), so
+          # the 120s evidence-producer default is ~4x too small and the step
+          # times out on CI runners; the 1,800s ceiling stays well under the
+          # 45-minute job cap (precedent: rust-gates.yml sets 3,600s).
+          RIPR_PR_EVIDENCE_TIMEOUT_SECS: "1800"
+        run: |
+          cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}"
+          cargo xtask ripr-pr --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check
+      - name: Generate RIPR review guidance
+        if: github.event_name == 'pull_request'
+        env:
+          RIPR_REVIEW_COMMENTS_TIMEOUT_SECS: "60"
+        run: |
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check-output target/ripr/pr/check.json
+          cargo xtask ripr-review-comments --base "${{ github.event.pull_request.base.sha }}" --head "${{ github.event.pull_request.head.sha }}" --check-output target/ripr/pr/check.json --check
+      - name: Generate impacted evidence
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          cargo xtask impacted-evidence
+          cargo xtask impacted-evidence --check
+      - name: Generate PR evidence summary
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+      - name: Generate RIPR annotations
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+      - name: Generate ripr receipts
+        if: always()
+        run: cargo xtask receipts || true
+      - name: Generate ripr report index
+        if: always()
+        run: cargo xtask reports index || true
+      - name: Write ripr report summary
+        if: always()
+        run: |
+          if [ -f target/ripr/reports/index.md ]; then
+            cat target/ripr/reports/index.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write ripr badge summary
+        if: always()
+        run: |
+          if [ -f target/ripr/reports/ripr-badges.md ]; then
+            cat target/ripr/reports/ripr-badges.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write PR evidence summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/ripr/pr/summary.md ]; then
+            cat target/ripr/pr/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write RIPR review guidance summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/ripr/review/comments.md ]; then
+            printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/ripr/review/comments.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write impacted evidence summary
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          if [ -f target/xtask/impacted-evidence/latest.md ]; then
+            printf "\n" >> "$GITHUB_STEP_SUMMARY" && cat target/xtask/impacted-evidence/latest.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Remove RIPR analysis cache before artifact upload
+        if: always()
+        run: rm -rf target/ripr/cache
+      - name: Upload ripr reports
+        if: failure() || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-pr-reports
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
+            target/ripr/pr/
+            target/ripr/review/
+            target/xtask/impacted-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  rust-only-features:
+    # #4252: the Rust-only feature lane (#2400, #3128) otherwise runs only in
+    # the Windows advisory workflow, whose verdict hid this step's result
+    # until #4229. It runs before merge on PRs that change the Rust crate,
+    # fixtures, or Cargo manifests, and on every push to main; label events
+    # and docs-only PRs skip the compile, matching the routed lane's posture.
+    name: Rust-only feature lane
+    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Detect Rust surface change
+        id: surface
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=crates/; [ -z "$BASE_SHA" ] || changed="$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || echo crates/)"
+          if grep -qE '^(crates/|fixtures/|Cargo\.(toml|lock)$|rust-toolchain|\.cargo/)' <<< "$changed"; then rust=true; else rust=false; fi
+          echo "rust=$rust" | tee -a "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@1.95.0
+        if: steps.surface.outputs.rust == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.surface.outputs.rust == 'true'
+        with:
+          shared-key: ripr-rust-only-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test --no-default-features --features lang-rust
+        if: steps.surface.outputs.rust == 'true'
+        run: cargo test -p ripr --locked --no-default-features --features lang-rust --no-fail-fast
+
+  msrv:
+    # Routed Rust already runs the declared 1.95.0 toolchain on every ordinary
+    # PR and main push. Keep the duplicate named proof only for explicit full
+    # CI and manual investigation.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-msrv-1.95-${{ runner.os }}
+          save-if: false
+      - run: cargo check --workspace --all-targets
+
+  vscode:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - run: npm ci
+      - run: npm run compile
+      - run: npm run package
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: xvfb-run -a npm run test:e2e

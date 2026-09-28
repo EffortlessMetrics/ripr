@@ -1,0 +1,65 @@
+schema_version = "2.0"
+id = "ripr.slice.client-feature-profile.v1"
+generation = 1
+
+source_issue = "issue:1987"
+design_reference = "RIPR-SPEC-0143"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Centralizes LSP client capability negotiation into one immutable typed
+ClientFeatureProfile parsed exactly once at initialize: the standard
+negotiated fields, the riprEditor and riprAgent experimental blocks with
+fail-closed malformed handling, and a bounded status/receipt projection. It
+does not implement every negotiated feature, add source edits, advertise
+agent requests, promote client support tiers, or change any classification,
+finding set, actionability, canonical identity, output schema version, or
+CLI golden.
+"""
+
+non_goals = [
+  "implementing every negotiated feature (hover format selection, code-action resolve, workspace edits, guarded test edits)",
+  "source edits of any kind",
+  "advertising agent requests",
+  "client support tier changes",
+  "classification, finding-set, actionability, or canonical-identity changes",
+  "output schema version changes",
+  "raw capability-document dumps in status or receipts",
+]
+
+return_conditions = [
+  "Return to root if existing LSP capability tests cannot keep passing without semantic changes.",
+  "Return to root if the bounded status projection changes CLI goldens or output contracts.",
+  "Return to root if profile parsing cannot stay fail-closed without breaking the standard session.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:client-feature-profile",
+  "seam:ripr:lsp:capability-negotiation",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:backend-initialize",
+  "seam:ripr:lsp:status-payload-shape",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:evidence",
+  "seam:ripr:output:cli-goldens",
+  "seam:ripr:lsp:git-input-authority",
+  "seam:ripr:lsp:input-identity",
+  "seam:ripr:lsp:refresh-scheduler",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0143"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

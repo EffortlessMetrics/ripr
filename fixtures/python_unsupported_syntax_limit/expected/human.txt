@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_unsupported_syntax_limit/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: static limitation `unsupported_syntax` keeps this Python preview finding from a repair card, so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; check by hand whether a test observes this change, then rerun `ripr check`.
+  File: src/mapper.py:2
+  Language: python
+  Language status: preview
+  Static exposure: static_unknown (note, confidence 0.20)
+  Why static_unknown: the analysis could not determine a static exposure state
+  Changed behavior: return lambda value: value + 2
+  Analyzer limit: Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet.
+  Related test: tests/test_mapper.py:4 test_make_mapper_adds_two
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `make_mapper`
+    - infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_unsupported_syntax_limit/input --diff fixtures/python_unsupported_syntax_limit/diff.patch --mode fast probe:src_mapper.py:python_preview:ebfdf92c
+  ripr context --root fixtures/python_unsupported_syntax_limit/input --diff fixtures/python_unsupported_syntax_limit/diff.patch --mode fast --at probe:src_mapper.py:python_preview:ebfdf92c
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

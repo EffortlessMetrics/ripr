@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.1",
+  "case": "disabled_language",
+  "state": "disabled_language",
+  "language": "python",
+  "language_status": "preview",
+  "diagnostics_projected": 0,
+  "actions_projected": [
+    "refresh"
+  ],
+  "fail_closed": true
+}

@@ -1,0 +1,24 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,16 +1,16 @@
+ pub enum Subject {
+-    Invalid(String),
+-    Ambiguous(String),
++    Invalid(std::string::String),
++    Ambiguous(std::string::String),
+ }
+ 
+-pub struct Wrap(String);
++pub struct Wrap(std::string::String);
+ 
+ pub fn note(message: String) {
+-    Subject::Invalid(message);
++    Subject::Invalid(message.clone());
+ }
+ 
+ pub fn send(message: &str) {
+-    record(message);
++    record(message.trim());
+ }
+ 
+ fn record(message: &str) {

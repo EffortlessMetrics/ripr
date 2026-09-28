@@ -1,0 +1,8 @@
+[package]
+name = "enum_variant_declaration_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "enum_variant_declaration_fixture"
+path = "src/lib.rs"

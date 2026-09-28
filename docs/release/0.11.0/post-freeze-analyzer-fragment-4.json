@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "analyzer",
+  "sequence": 4,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2352",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {"must_include_0_11": 1},
+  "records": [
+    {
+      "commit_sha": "86f526efe3eeff89ec430d9a140a4afd77a7a261",
+      "pr": "EffortlessMetrics/ripr-swarm#2212",
+      "title": "refactor(analysis): one producer-owned repair-packet eligibility authority",
+      "primary_category": "analyzer",
+      "change_class": "production_authority_refactor",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "all repair-packet consumers use one typed fail-closed eligibility authority",
+      "reason": "Duplicated readiness/actionability conjunctions can diverge across agent, review, and editor surfaces; parity tests show the refactor preserves current exclusions while centralizing ownership.",
+      "non_claim": "Centralized eligibility does not promote preview evidence, execute edits, or prove a suggested repair is correct.",
+      "secondary_impacts": ["agent_packets", "review_comments", "lsp_actions", "cross_language_policy"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

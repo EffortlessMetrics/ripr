@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "trust",
+  "sequence": 2,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2350",
+  "review_status": "provisional",
+  "record_count": 2,
+  "disposition_counts": {
+    "must_include_0_11": 2
+  },
+  "records": [
+    {
+      "commit_sha": "b9dc4b5e5b903da0251c256ec5516b3ad852b5d5",
+      "pr": "EffortlessMetrics/ripr-swarm#2213",
+      "title": "feat(protocol): add typed command spec scaffold",
+      "primary_category": "trust",
+      "change_class": "domain_contract_and_validation",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "machine-facing command routes use one validated typed CommandSpec rather than parsing human display strings",
+      "reason": "This is the foundational domain and path-confinement contract consumed by #2218 and #2223; omitting it makes their authority model impossible.",
+      "non_claim": "A valid CommandSpec does not authorize or prove command execution.",
+      "secondary_impacts": ["domain_api", "lsp_validation", "path_confinement", "schema"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "aba78937b81041de37ceedfdcff1941c678c4e6d",
+      "pr": "EffortlessMetrics/ripr-swarm#2243",
+      "title": "docs(gate): define repair-route eligibility contract",
+      "primary_category": "trust",
+      "change_class": "normative_contract",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "gate eligibility has one explicit producer-owned completeness and fail-closed contract",
+      "reason": "The typed seam implementation and command-level blocking proof rely on this contract to distinguish complete, limited, stale, failed, unavailable, preview, advisory, and blocking evidence.",
+      "non_claim": "The contract does not change default gate mode or make incomplete evidence block.",
+      "secondary_impacts": ["spec_0067", "traceability", "gate_tests"],
+      "source_conflict_risk": "medium"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+[[analysis.test_harnesses]]
+registration_id = "mimic-suite"
+target = "tests/mimic.rs"
+kind = "custom_harness"
+adapter = "libtest_mimic_v1"
+marker = "libtest_mimic"

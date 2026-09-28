@@ -1,0 +1,231 @@
+# Support Tiers
+
+Artifact ID: `RIPR-SUPPORT-0001`
+
+This page answers the adoption question before the implementation question:
+
+```text
+Can I use this today, where, and what should I not over-trust yet?
+```
+
+The deeper source of truth remains the [capability matrix](../CAPABILITY_MATRIX.md)
+and its machine-readable source in
+[`metrics/capabilities.toml`](../../metrics/capabilities.toml). This page is
+the buyer-readable map over those artifacts.
+
+## Tier Vocabulary
+
+| Tier | Meaning |
+| --- | --- |
+| `stable building block` | Fixture-backed behavior that is expected to hold inside its documented static-analysis scope. |
+| `usable` | End-to-end product loop is proof-linked and ready for advisory adoption in its documented scope, but is not a stability or runtime-adequacy claim. |
+| `usable alpha` | Implemented and useful for advisory PR work, with known static limits and proof artifacts. |
+| `preview` | Opt-in surface that is fixture-backed enough to evaluate, but not a default promise or gate input. |
+| `scaffold` | Plumbing exists, but the product loop is not useful yet without the next fact-extraction slices. |
+| `blocked` | The surface is intentionally waiting on a named upstream capability. |
+| `deferred` | Valid product direction, but not part of the current safe adoption path. |
+
+All tiers are static evidence tiers. None of them means runtime mutation
+adequacy, coverage adequacy, or general correctness.
+
+## Structural Validation Claim
+
+This compact table is the cargo-allow `spec-system` structural claim surface.
+It does not replace the buyer-facing support map below or promote any product
+surface. The active RIPR execution manifest remains outside cargo-allow's
+native active-goal validator until upstream compatibility issue
+`EffortlessMetrics/cargo-allow#2119` is resolved. The table's fixed vocabulary
+and shape are a transitional projection tracked by
+`EffortlessMetrics/cargo-allow#2120`. This projection does not create a second
+product-claim authority.
+
+| Surface | Tier | Claim | Proof command | Notes |
+| --- | --- | --- | --- | --- |
+| Source-of-truth artifact graph | advisory | cargo-allow validates registered artifact paths, kinds, lifecycle states, and links; it does not execute proof commands or validate RIPR's active-goal dialect. | `cargo-allow check --profile spec-system --config .allow/profiles/spec-system.toml --mode audit` | Advisory adoption; RIPR xtask remains the proof executor. |
+
+## Current Support Map
+
+| Capability | Tier | Surface | Proof | Known limits |
+| --- | --- | --- | --- | --- |
+| Rust static exposure loop | `usable alpha` | CLI, generated CI, editor, reports | [RIPR-SPEC-0001](../specs/RIPR-SPEC-0001-static-exposure-loop.md), [capability matrix](../CAPABILITY_MATRIX.md), `cargo xtask fixtures`, `cargo xtask goldens check` | Static only; unknowns stay explicit; mutation testing remains the runtime backstop. |
+| Rust gap repair loop | `usable alpha` | CLI, generated CI, PR repair cards, editor packets, agent packets, receipts | [First successful PR workflow](../FIRST_PR_WORKFLOW.md), [gap decision ledger spec](../specs/RIPR-SPEC-0046-gap-decision-ledger.md), `cargo xtask rust-repair-trust-report`, `cargo xtask check-output-contracts`, `cargo xtask check-capabilities` | Fixture-, package-, editor-, and transaction-proven for bounded advisory test-only repairs when a valid route exists. Governed real-repository route yield and ordinary-user success remain unestablished: the corpus currently has zero eligible attempts. Runtime mutation and coverage remain separate signals. |
+| Local delta flow and activation/value modeling | `stable building block` | Rust analysis output and evidence records | [capability matrix](../CAPABILITY_MATRIX.md#capability-matrix), [Lane 1 tracker](../lanes/LANE_1_EVIDENCE_SPINE.md), `cargo xtask lane1-evidence-audit` | Stable inside documented syntax-first scope; unsupported propagation and value sources remain static limitations. |
+| First useful PR action | `usable alpha` | Generated CI summary, reports, editor projection | [First useful action workflow](../FIRST_USEFUL_ACTION_WORKFLOW.md), [RIPR-SPEC-0020](../specs/RIPR-SPEC-0020-first-useful-action-report.md), `cargo xtask check-output-contracts` | Advisory routing only; missing or stale inputs must be refreshed before assigning work. |
+| PR review cockpit | `usable alpha` | Generated CI summary and uploaded report packet | [PR review front panel workflow](../PR_REVIEW_FRONT_PANEL_WORKFLOW.md), [Report packet index workflow](../REPORT_PACKET_INDEX_WORKFLOW.md), `cargo xtask check-output-contracts` | Composes explicit artifacts; summaries do not create analyzer truth or pass/fail authority. |
+| Agent repair packets | `usable alpha` | CLI, editor handoff, reports | [Quickstart agent path](../QUICKSTART.md#agent-or-reviewer-first-hour), [agent workflows](../AGENT_WORKFLOWS.md), `cargo xtask actionable-gap-outcomes` | Source-edit-free packet generation only; agents or developers write the test outside RIPR and then attach a receipt. |
+| Repo-scoped public badges | `usable alpha` | README, crate page, extension store, checked badge endpoints | [Badge policy](../BADGE_POLICY.md), [verification](../VERIFICATION.md), `cargo xtask check-badge-diff-policy`, `cargo xtask check-badge-endpoints` | Public badges count unresolved actionable canonical repair items; seam-native inventory remains internal analyzer-health pressure. They must not imply PR-local test adequacy, full test adequacy, runtime mutation confirmation, coverage, or merge approval. |
+| PR-local evidence and gates | `usable alpha` | PR summaries, artifacts, optional gate decision | [Blocking readiness](../BLOCKING_READINESS.md), [calibrated gate policy](../CALIBRATED_GATE_POLICY.md), `cargo xtask check-output-contracts` | Advisory by default; only explicit gate-decision artifacts own configured pass/fail authority. |
+| Source-of-truth artifact graph | `stable building block` | Source-of-truth docs, proposal/spec ledger, and xtask validator | [Source-of-truth proposal](../proposals/RIPR-PROP-0015-source-of-truth-control-plane.md), [source-of-truth spec](../specs/RIPR-SPEC-0060-source-of-truth-stack.md), `cargo xtask check-doc-artifacts`, `cargo xtask check-support-tiers` | Validates registered document artifact IDs, paths, statuses, kind/path fit, links, supersession, and support-tier proof-command drift. It does not infer support-tier impact, policy impact, completion, graph reports, or CI promotion. |
+| TypeScript and JavaScript preview | `preview` | Opt-in CLI/report evidence, editor routing, and grouped generated CI | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [RIPR-SPEC-0027](../specs/RIPR-SPEC-0027-typescript-preview-static-facts.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md), [TypeScript preview completion closeout](../handoffs/2026-05-30-typescript-preview-completion-closeout.md), [Bun UB TypeScript preview closeout](../handoffs/2026-06-03-bun-ub-typescript-preview-closeout.md), [Post-0.8.1 TypeScript/Bun support decision](../handoffs/2026-06-05-post-081-typescript-bun-support-decision.md), TypeScript fixture families | Syntax-first; preview-labeled; no default blocking; owner ids and owner kinds are fixture-backed for current function, component, method, class-method, arrow-function, and module-initializer shapes; strict preview actionability, repair-loop receipts, route-quality metrics, and Bun Blob / ArrayBuffer cross-language evidence are advisory evidence only; static limits such as mocked modules are visible instead of hidden. |
+| Python repair routing | `usable alpha` | CLI, JSON, Markdown, SARIF, PR summary, LSP repair actions, agent packets, swarm queue/ingest, dogfood metrics, and before/after receipts | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [Python repair routing proposal](../proposals/RIPR-PROP-0017-python-repair-routing-lane.md), [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [Python repair routing usable-alpha closeout](../handoffs/2026-05-31-python-repair-routing-usable-alpha-closeout.md), [capability matrix](../CAPABILITY_MATRIX.md), `cargo xtask dogfood`, `cargo xtask check-output-contracts`, `cargo xtask check-capabilities` | Scoped to selected static pytest/unittest repair routes with direct weak evidence, concrete missing discriminators, safe test locations, verify commands, stop conditions, bounded agent packets, and receipt movement. It remains advisory: no arbitrary imports, no default test execution, no generated tests, no provider calls, no mutation adequacy claim, no correctness proof, no default gate/RIPR Zero/baseline/public-badge role, and no production-code edit authorization. |
+| Python preview static facts | `preview` | Advisory CLI/report owner, test, assertion/oracle, probe, related-test, RIPR-stage, static-limit, editor, and generated-CI grouping evidence | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [Python repair routing proposal](../proposals/RIPR-PROP-0017-python-repair-routing-lane.md), [RIPR-SPEC-0028](../specs/RIPR-SPEC-0028-python-preview-static-facts.md), [ADR 0009](../adr/0009-python-parser-substrate.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md), Python owner/test, assertion/oracle, probe, related-test, RIPR evidence, repair-class discriminator, and static-limit fixture families | Owner, test, assertion/oracle, core probe, conservative related-test, syntax-first RIPR evidence, selected repair-class missing-discriminator facts, and fail-closed static-limit facts are fixture-backed; Python runs when `[languages]` enables it or, with no `ripr.toml`, when Python project markers or Python source under `src/`/`tests/` are detected (a `ripr.toml` with `enabled = ["rust"]` opts out); generated CI grouping remains advisory. Static-limit, heuristic-only, no-path, and already-observed states stay out of Python repair packets. |
+| Perl repair routing | `preview` | Opt-in `--perl-facts`, managed producer request, doctor checks, fixture baselines, and two-binary proof harness (advisory only) | [RIPR-PROP-0018](../proposals/RIPR-PROP-0018-perl-repair-routing-lane.md), [RIPR-SPEC-0064](../specs/RIPR-SPEC-0064-perl-fact-packet-contract.md), [ADR 0018](../adr/0018-perl-lsp-fact-substrate.md), [ADR 0019](../adr/0019-language-adapters-reuse-shared-packet-contract.md), Campaign 31 (#1379) | Production `lang-perl` plumbing, router recognition, packet ingestion, managed-producer request rendering, doctor preview, fixture baselines, and one fixture-scoped real producer two-binary proof exist. The canonical producer is `perl-ripr-facts`; `perllsp` and `perl-lsp` are compatibility wrappers only. Default release builds do not compile `lang-perl`, `perl-ripr-facts` is not yet published, and the published `perllsp` does not accept the managed `ripr-facts` argv, so no released ripr build plus exporter combination analyzes Perl yet. The loop remains blocked on real-repo producer proof and >= 5 real Perl repo receipts; no public badge, gate, RIPR Zero, stable support, or repair-packet authority is claimed. |
+| Editor preview language routing | `preview` | VS Code/LSP | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [Lane 3 tracker](../lanes/LANE_3_EDITOR_LSP.md), [RIPR-SPEC-0036](../specs/RIPR-SPEC-0036-editor-preview-routing.md), [RIPR-SPEC-0037](../specs/RIPR-SPEC-0037-editor-preview-static-limit-projection.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md) | VS Code registers TypeScript/JavaScript/Python selectors and LSP diagnostics preserve preview metadata and static limits; `[languages]` remains the analysis gate and Rust editor behavior remains the default. |
+| Language-aware generated CI grouping | `preview` | Generated GitHub workflow | [Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md), [RIPR-SPEC-0038](../specs/RIPR-SPEC-0038-generated-pr-ci-review-workflow.md), [Lane 4 tracker](../lanes/LANE_4_PR_CI_REVIEW.md), [Campaign 27 closeout](../handoffs/2026-05-13-campaign-27-closeout.md) | The generated summary groups TypeScript/Python advisory evidence only when the effective language set enables preview adapters (`[languages]`, or Python auto-enabled by project markers when no `ripr.toml` exists); Rust-default output and gate authority remain unchanged. |
+| Preview evidence policy promotion | `deferred` | Policy reports and future promotion packets | [Preview evidence policy boundary](../specs/RIPR-SPEC-0030-preview-evidence-policy-boundary.md), [preview promotion criteria](../policy/PREVIEW_PROMOTION_CRITERIA.md), [policy readiness closeout](../handoffs/2026-05-12-policy-readiness-closeout.md) | Preview evidence is visible and advisory by default; it is not gate, RIPR Zero, or baseline-check eligible without later explicit promotion and the required criteria. |
+
+## How To Read A Claim
+
+Use the tier with the surface:
+
+```text
+usable alpha + Rust gap repair loop:
+  safe to evaluate when RIPR emits a complete bounded test-only route: repair
+  one named Rust gap, verify movement, and keep the receipt. Package, editor,
+  and transaction paths are proved; ordinary real-repository route yield and
+  success rate are not yet established.
+
+usable alpha + generated CI:
+  safe to try in advisory PR workflows, but not a default merge gate.
+
+preview + TypeScript:
+  safe to evaluate when explicitly enabled, but not a parity claim with Rust.
+
+usable alpha + Python repair routing:
+  safe to try for selected pytest/unittest advisory repair work: read the
+  Python repair card, delegate only the bounded test packet, run the verify
+  command, and keep the before/after receipt.
+
+preview + Python static facts:
+  useful for opt-in or detected syntax-first evidence, including owner, test,
+  assertion, probe, related-test, RIPR-stage, selected repair-class
+  discriminator, and static-limit facts. Broader Python support is not Rust
+  parity, a runtime proof, or a default gate input.
+
+preview + editor routing:
+  useful for opt-in editor projection, but not a Rust maturity or runtime
+  adequacy claim.
+
+stable building block + source-of-truth artifact graph:
+  safe to rely on registered proposal/spec artifact links being mechanically
+  checked by `cargo xtask check-doc-artifacts`; not a claim that support-tier
+  or policy impact has been inferred, or that graph reports or CI promotion are
+  generated or validated.
+```
+
+## Rust Gap Repair Promotion Contract
+
+Promotion of the Rust gap repair loop from `usable alpha` to `usable` requires
+an explicit evidence-backed decision, not a wording-only change. The decision
+must show all of the following:
+
+- the canonical governed trust report has a nonzero route denominator, meets
+  its full corpus threshold, and does not invent a rate from missing input;
+- at least one exact real attempt ends `improved` or `closed`;
+- the installed CLI and packaged VS Code pilot includes five unique real
+  attempts across at least three repositories;
+- wrong- or unsafe-target, false-actionability, timeout, limitation, and
+  archaeology incidents remain visible in the governed denominator; and
+- the promoted statement says whether it covers a bounded repair family or the
+  broad Rust gap-repair loop. Broad `usable` support must not exceed the full
+  governed corpus without an explicit narrower boundary.
+
+`cargo xtask check-support-tiers` requires exactly one row with the canonical
+`Rust gap repair loop` identity and hard-caps it at `usable alpha`. Missing,
+renamed, duplicate, `usable`, and `stable building block` rows fail closed. The
+cap remains until one canonical promotion decision covers both the full
+governed corpus (#3076) and the installed CLI/packaged VS Code pilot (#1702).
+Even a complete trust report with real `improved` or `closed` movement is
+necessary evidence, not sufficient promotion authority by itself.
+
+## Trust Boundaries
+
+- Public badges are repo-scoped trust markers, not PR-local evidence.
+- PR summaries and packets are diff-scoped advisory artifacts, not public repo
+  badges.
+- Gate decisions, when configured, own pass/fail authority; summaries and
+  indexes do not.
+- Runtime mutation testing is the execution-backed confirmation step; RIPR's
+  normal output is static evidence.
+- The Rust gap repair transaction is `usable alpha`: a complete producer-owned
+  route can be carried through package, editor, and receipt surfaces, but the
+  governed real-repository corpus does not yet establish how often ordinary
+  changes produce such a route or finish successfully.
+- Preview-language evidence and the scoped Python repair-routing usable-alpha
+  loop remain visibly labeled and advisory unless an explicit policy promotes a
+  stronger gate, baseline, RIPR Zero, or badge role.
+- Source-of-truth artifact validation proves the registered document graph,
+  not the correctness of product behavior beyond the named proof commands.
+- A preview finding that is `repair_packet_ready: true` is a delegatable
+  advisory repair packet, not a tier promotion: it never carries gate, badge,
+  baseline, or RIPR Zero authority, and `authority_boundary` stays
+  `preview_advisory_only`. When a preview finding is not actionable, RIPR emits
+  a named limitation identifying the missing analyzer capability, never a vague
+  failure.
+
+## Preview But Actionable
+
+`preview` and `actionable` are independent axes. A preview-language finding can
+carry a delegatable advisory repair packet without ever changing tier.
+
+For a TypeScript or JavaScript finding, `repair_packet_ready: true` means RIPR
+has projected a complete, bounded work-packet — canonical gap id, repair route,
+verify command, receipt command, allowed edit surface, and must-not-change
+boundaries — that a developer or coding agent can act on directly. It does
+**not** promote the language. The packet stays preview, and its
+`authority_boundary` stays `preview_advisory_only`:
+
+- `repair_packet_ready: true` is a **delegatable advisory**, not a gate input,
+  not a badge input, not a baseline or RIPR Zero input, and not a merge or
+  pass/fail signal.
+- The packet authorizes a bounded **test** edit only. It never authorizes a
+  production-code edit, never runs the test, never generates the test, and
+  never calls a provider.
+- The flip is **fail-closed**: it is `true` only when the shared validator
+  accepts the full packet, and `false` by default otherwise.
+
+When a preview finding is **not** actionable, RIPR does not emit a vague
+failure. It emits a **named limitation** that states precisely why the packet
+was withheld and which analyzer capability is missing — for example a dynamic
+oracle, a heuristic-only related-test link, a cross-package test, a missing
+verify command, a static limit such as a mocked module, or a cross-language
+bridge limit. The limitation is the honest, reviewable output; an absent or
+generic "could not analyze" is a bug, not an acceptable state.
+
+```text
+preview + TypeScript, repair_packet_ready: true:
+  safe to delegate the bounded test packet to a developer or agent, run the
+  verify command, and keep the receipt. Still advisory only — not a gate,
+  badge, baseline, or RIPR Zero input, and not a Rust-parity claim.
+
+preview + TypeScript, repair_packet_ready: false:
+  read the named limitation. It says exactly which analyzer capability is
+  missing, so you know what to wait for rather than over-trusting a quiet
+  result.
+```
+
+This posture is implemented per
+[RIPR-SPEC-0087](../specs/RIPR-SPEC-0087-typescript-preview-actionable-repair-packet.md)
+§PR7 (the `repair_packet_ready` flip authority) and
+[RIPR-SPEC-0088](../specs/RIPR-SPEC-0088-typescript-repair-packet-projection.md)
+§PR8 (the four-surface packet and named-limitation projection: human field-note,
+JSON `typescript_repair_packet`, LSP hover section, LSP copy action). The
+single-validator constraint behind the flip is recorded in
+[ADR 0019](../adr/0019-language-adapters-reuse-shared-packet-contract.md).
+
+## Next Adoption Steps
+
+For first use, start with the [Quickstart](../QUICKSTART.md). For a
+single-PR adoption proof, use the
+[first successful PR workflow](../FIRST_PR_WORKFLOW.md). The shortest proof
+loop is:
+
+```text
+ripr pilot --root .
+-> read the top actionable test gap
+-> add one focused test outside RIPR
+-> capture an after snapshot
+-> run ripr outcome
+-> keep the receipt or PR summary
+```
+
+For PR review, start with the generated CI job summary and uploaded report
+packet. For coding agents, start with
+[`ripr agent status --root .`](../QUICKSTART.md#agent-or-reviewer-first-hour)
+and then generate a bounded packet for one selected seam.
+
+For TypeScript, JavaScript, or broader Python static-fact evaluation, start with
+[Language adapter preview workflow](../LANGUAGE_ADAPTER_PREVIEW.md) so the
+preview/advisory boundary is explicit before rollout. For scoped Python repair
+routing, keep the `usable alpha` limits above attached to every packet and
+receipt.

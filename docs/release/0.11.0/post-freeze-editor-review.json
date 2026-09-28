@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_category_review",
+  "category": "editor",
+  "status": "accepted",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2351",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "input_fragments": [
+    "post-freeze-editor-fragment.json",
+    "post-freeze-editor-fragment-2.json",
+    "post-freeze-editor-fragment-3.json",
+    "post-freeze-editor-fragment-4.json",
+    "post-freeze-editor-fragment-5.json",
+    "post-freeze-editor-fragment-6.json",
+    "post-freeze-editor-fragment-7.json",
+    "post-freeze-editor-fragment-8.json",
+    "post-freeze-editor-fragment-9.json"
+  ],
+  "record_count": 36,
+  "accepted_dispositions": {
+    "must_include_0_11": 31,
+    "safe_defer_post_0_11": 4,
+    "release_infrastructure_only": 1
+  },
+  "safe_deferrals": [
+    "live trace-level reconfiguration",
+    "editor/context-menu and default-keybinding convenience",
+    "palette-specific diagnostic-target guidance",
+    "standard redacted protocol tracing"
+  ],
+  "accepted_atomic_groups": [
+    "budget enforcement, omission disclosure, zero-selection semantics, and stored push/pull selection",
+    "debounce, saved-content deduplication, dirty-buffer quarantine, and saved-workspace currentness",
+    "real-binary lifecycle, work-done progress, Git timeout, refresh deadline, and terminal status",
+    "transport resource bounds, typed client capability, configuration pull, and component degradation",
+    "typed action data, command filtering, context.only, resolve-time validation, unsupported-command rejection, and push/pull action parity",
+    "Workspace Trust, multi-root/root identity, server-resolution recovery, Windows PATH behavior, and environment limitations"
+  ],
+  "nonclaims": [
+    "no analysis of unsaved text",
+    "no automatic source edit or command execution",
+    "no browser-only or virtual-workspace support",
+    "no bundled native server in the selected candidate",
+    "no universal third-party-client interoperability claim"
+  ],
+  "decision": "accept_for_replacement_candidate_and_refresh_source_1507"
+}

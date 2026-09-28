@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ pub fn apply_fee(amount: i32, fee: i32) -> i32 {
+-    if amount > fee {
++    if amount >= fee {
+         amount - fee
+     } else {
+         amount
+     }
+ }

@@ -1,0 +1,6 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gate_decision",
+  "decision": "blocked"
+}

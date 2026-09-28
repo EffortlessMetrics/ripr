@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -12,7 +12,7 @@ pub struct HirLet {
+ fn lower_statement(name: String, storage: Storage) -> HirLet {
+     HirLet {
+         name,
+-        storage: Storage::Local,
++        storage,
+     }
+ }

@@ -1,0 +1,145 @@
+name: 'CI scratch lease'
+description: 'Own self-hosted CI scratch per-run trees with a kernel flock lease and reclaim only terminal orphans this repository owns (#3841)'
+author: 'EffortlessMetrics'
+
+# One ownership/liveness authority for /mnt/ci-scratch/{cargo-home,target,tmp}
+# per-run trees, consumed by both the inline rust-gates.yml reclaim and the
+# scheduled scratch-gc.yml sweep (#3841).
+#
+# acquire: before any per-run tree exists, create
+#   <scratch-root>/leases/<run_id>-<run_attempt>.lock recording the owner
+#   (repository, run, attempt, job, runner, created) and keep an exclusive
+#   flock on it in a background holder. The runner kills the holder with the
+#   job's other orphan processes at job end; cancellation, timeout, and crash
+#   release it the same way. The holder also expires after the job timeout
+#   plus 60 minutes, so a missed orphan kill cannot pin a tree forever.
+# reclaim: look only at top-level entries of the three roots. For a
+#   <run_id>-<run_attempt> directory whose lease this repository owns, take
+#   `flock -n` on the lease and delete that id's trees and lease while holding
+#   the lock. A held lock is live. A missing, foreign, or malformed lease, a
+#   symlink, or a non-directory is unknown, and unknown is never permission to
+#   delete. There is no age threshold, and live trees are never walked.
+# release: after own-run cleanup, drop this job's lease once none of its
+#   trees remain.
+# Self-check: reclaim and release both probe this job's own lease and report
+#   `own_lease=held|lost|none`. `lost` means the holder died before the job
+#   ended, so the job's live trees were reclaimable by other cleaners; it is
+#   raised as an error annotation so every self-hosted job records whether
+#   the holder-survives-steps assumption held. Reclaim never deletes the
+#   trees of its own run id, even when its own lease is lost.
+#
+# Every failure path warns and exits 0: an unleased tree stays protected
+# (unknown), so a lease failure can leak disk but can never delete a live tree;
+# ci-disk-guard and the exit-75 hosted fallback bound the leak. Trees left by
+# the pre-#3841 age-only selector have no lease and stay until an operator
+# removes them on an idle host.
+
+inputs:
+  mode:
+    description: 'acquire, reclaim, or release'
+    required: true
+  scratch-root:
+    description: 'Scratch root holding cargo-home, target, tmp, and leases'
+    required: false
+    default: '/mnt/ci-scratch'
+  job-timeout-minutes:
+    description: 'Job deadline; the lease holder expires 60 minutes after it'
+    required: false
+    default: '120'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: CI scratch lease
+      shell: bash
+      env:
+        CI_SCRATCH_MODE: ${{ inputs.mode }}
+        CI_SCRATCH_ROOT: ${{ inputs.scratch-root }}
+        CI_SCRATCH_JOB_TIMEOUT_MINUTES: ${{ inputs.job-timeout-minutes }}
+      run: |
+        root="${CI_SCRATCH_ROOT:-/mnt/ci-scratch}"; leases="$root/leases"; mode="${CI_SCRATCH_MODE:-}"
+        repo="${GITHUB_REPOSITORY:-}"; id="${GITHUB_RUN_ID:-}-${GITHUB_RUN_ATTEMPT:-}"
+        out="${GITHUB_OUTPUT:-/dev/null}"; summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+        finish() { echo "::warning::ci-scratch-lease $mode: $2"; echo "status=$1" >> "$out"; exit 0; }
+        command -v flock >/dev/null 2>&1 || finish flock_unavailable "flock unavailable; nothing leased or reclaimed"
+        [[ "$repo" == */* ]] || finish owner_unknown "GITHUB_REPOSITORY is unset; ownership unknown"
+        categories=(cargo-home target tmp)
+        own="$leases/$id.lock"
+        own_lease() {
+          local probe
+          [[ -f "$own" && ! -L "$own" ]] || { echo none; return; }
+          { exec {probe}< "$own"; } 2>/dev/null || { echo none; return; }
+          if flock -n -x "$probe"; then echo lost; else echo held; fi
+        }
+        lost() { echo "::error::ci-scratch-lease $mode: lease_lost: $own is no longer held, so this job's live trees were unprotected from other cleaners"; echo "- ci-scratch-lease $mode: \`lease_lost\` $own" >> "$summary"; }
+        if [[ "$mode" == acquire ]]; then
+          [[ "$id" =~ ^[0-9]+-[0-9]+$ ]] || finish unleased "run identity '$id' is malformed; trees stay unleased"
+          lease="$leases/$id.lock"
+          mkdir -p "$leases" 2>/dev/null || finish unleased "cannot create $leases; trees stay unleased"
+          if ! (set -C; printf 'schema=ci-scratch-lease/v1\nrepository=%s\nid=%s\nrun_id=%s\nrun_attempt=%s\njob=%s\nrunner=%s\ncreated=%s\n' "$repo" "$id" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "${GITHUB_JOB:-}" "${RUNNER_NAME:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$lease") 2>/dev/null; then
+            finish unleased "lease $lease exists or is unwritable; trees stay unleased"
+          fi
+          minutes="${CI_SCRATCH_JOB_TIMEOUT_MINUTES:-}"; [[ "$minutes" =~ ^[0-9]+$ ]] || minutes=240; lifetime=$(( (minutes + 60) * 60 ))
+          flock -x -w 30 -o "$lease" sleep "$lifetime" < /dev/null > /dev/null 2>&1 &
+          holder=$!
+          for _ in $(seq 1 100); do
+            kill -0 "$holder" 2>/dev/null || break
+            if ! flock -n -x "$lease" true 2>/dev/null; then
+              { echo "status=leased"; echo "lease=$lease"; echo "holder_pid=$holder"; } >> "$out"
+              echo "ci-scratch-lease acquire: holding $lease for $repo (holder pid $holder)"; exit 0
+            fi
+            sleep 0.1
+          done
+          kill "$holder" 2>/dev/null || true; rm -f -- "$lease" || true
+          finish unleased "lease holder never took $lease; trees stay unleased"
+        elif [[ "$mode" == release ]]; then
+          ownstate="$(own_lease)"; echo "own_lease=$ownstate" >> "$out"; [[ "$ownstate" != lost ]] || lost
+          for category in "${categories[@]}"; do
+            if [[ -e "$root/$category/$id" || -L "$root/$category/$id" ]]; then finish lease_kept "$root/$category/$id remains; lease kept"; fi
+          done
+          rm -f -- "$leases/$id.lock" || finish lease_kept "cannot remove $leases/$id.lock"
+          echo "status=released" >> "$out"; exit 0
+        fi
+        [[ "$mode" == reclaim ]] || finish usage "unknown mode '$mode'"
+        started=$SECONDS; ids=0; entries=0; kib=0; live=0; unknown=0; foreign=0; lease_only=0
+        ownstate="$(own_lease)"; [[ "$ownstate" != lost ]] || lost
+        declare -A decided=(["$id"]=live); safe=()
+        for category in "${categories[@]}"; do
+          base="$root/$category"
+          if [[ -d "$base" && ! -L "$base" ]]; then safe+=("$category"); elif [[ -e "$base" || -L "$base" ]]; then unknown=$((unknown + 1)); fi
+        done
+        shopt -s nullglob dotglob
+        for category in "${safe[@]}"; do
+          for entry in "$root/$category"/*; do
+            name="${entry##*/}"; lease="$leases/$name.lock"
+            [[ -e "$entry" || -L "$entry" ]] || continue
+            if [[ -L "$entry" || ! -d "$entry" || ! "$name" =~ ^[0-9]+-[0-9]+$ ]]; then unknown=$((unknown + 1)); continue; fi
+            case "${decided[$name]:-}" in live) live=$((live + 1)); continue ;; foreign) foreign=$((foreign + 1)); continue ;; ?*) unknown=$((unknown + 1)); continue ;; esac
+            decided[$name]=unknown
+            if [[ -L "$lease" || ! -f "$lease" || ! -r "$lease" ]] || ! grep -qx 'schema=ci-scratch-lease/v1' "$lease"; then unknown=$((unknown + 1)); continue; fi
+            owner="$(sed -n '/^repository=/{s///p;q;}' "$lease" 2>/dev/null)" || owner=""
+            if [[ -z "$owner" ]]; then unknown=$((unknown + 1)); continue; fi
+            if [[ "$owner" != "$repo" ]]; then decided[$name]=foreign; foreign=$((foreign + 1)); continue; fi
+            exec {fd}< "$lease" || { unknown=$((unknown + 1)); continue; }
+            if ! flock -n -x "$fd"; then exec {fd}<&-; decided[$name]=live; live=$((live + 1)); continue; fi
+            if [[ "$(stat -L -c %d:%i -- "$lease" 2>/dev/null)" != "$(stat -L -c %d:%i "/dev/fd/$fd")" ]]; then exec {fd}<&-; unknown=$((unknown + 1)); continue; fi
+            kept=0
+            for owned in "${safe[@]}"; do
+              tree="$root/$owned/$name"
+              if [[ -L "$tree" || ( -e "$tree" && ! -d "$tree" ) ]]; then kept=1; continue; fi
+              [[ -d "$tree" ]] || continue
+              size="$(du -sk -- "$tree" 2>/dev/null | cut -f1)" || size=0
+              if rm -rf -- "$tree" 2>/dev/null && [[ ! -e "$tree" ]]; then entries=$((entries + 1)); kib=$((kib + ${size:-0})); else kept=1; fi
+            done
+            if [[ "$kept" -eq 0 && "${#safe[@]}" -eq "${#categories[@]}" ]]; then rm -f -- "$lease" || true; fi
+            exec {fd}<&-; decided[$name]=reclaimed; ids=$((ids + 1))
+          done
+        done
+        for lease in "$leases"/*.lock; do
+          name="${lease##*/}"; name="${name%.lock}"; orphan=1
+          for category in "${categories[@]}"; do if [[ -e "$root/$category/$name" || -L "$root/$category/$name" ]]; then orphan=0; fi; done
+          lease_only=$((lease_only + orphan))
+        done
+        report="reclaimed_ids=$ids reclaimed_entries=$entries reclaimed_kib=$kib skipped_live=$live skipped_foreign=$foreign skipped_unknown=$unknown lease_only=$lease_only own_lease=$ownstate elapsed_s=$((SECONDS - started))"
+        echo "ci-scratch-lease reclaim: $report"; echo "- ci-scratch-lease reclaim: \`$report\`" >> "$summary"
+        { echo "status=reclaimed"; for field in $report; do echo "$field"; done; } >> "$out"

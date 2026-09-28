@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "baseline_debt_delta",
+  "items": [
+    {
+      "bucket": "still_present",
+      "identity": {
+        "seam_id": "baseline-boundary-0001"
+      },
+      "kind": "predicate_boundary",
+      "path": "src/lib.rs",
+      "line": 2,
+      "classification": "weakly_exposed",
+      "missing_discriminator": "input that hits the boundary: amount >= discount_threshold"
+    }
+  ]
+}

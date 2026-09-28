@@ -1,0 +1,1257 @@
+{
+  "schema_version": "0.1",
+  "kind": "cross_language_oracle_graph_corpus",
+  "spec": "RIPR-SPEC-0062",
+  "description": "Bounded Bun TypeScript cross-language oracle graph corpus for #910/#908 and stable-byte profile intake.",
+  "authority_boundary": "preview_advisory_only",
+  "cases": [
+    {
+      "id": "bun_blob_complete_ts_discriminated_advisory",
+      "source": "#910-complete-configured-bun-blob-route",
+      "profile": "bun_blob_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1280,
+        "entrypoints": [
+          "new Blob",
+          "blob.arrayBuffer"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1286,
+        "kind": "stable_byte_copy",
+        "strength": "strong"
+      },
+      "expected": {
+        "state": "rust_ungripped_ts_discriminated",
+        "gap_state": "already_observed",
+        "limitation_category": "not_applicable",
+        "repair_route": "manual-review/cross-language-advisory-witness",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [],
+        "unlock_condition": "not_applicable"
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "Blob::from_js_without_defer_gc checks array_buffer.shared || array_buffer.resizable"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1282,
+          "kind": "typescript_discriminator",
+          "source_id": "#910",
+          "sample": "SharedArrayBuffer and resizable ArrayBuffer Blob inputs are both represented"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_ub",
+          "sample": "configured Bun Blob bridge maps Blob tests to Blob::from_js_without_defer_gc"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1280,
+          "kind": "typescript_callsite",
+          "source_id": "#910",
+          "sample": "new Blob followed by blob.arrayBuffer reaches the configured external surface"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1286,
+          "kind": "typescript_assertion",
+          "source_id": "#910",
+          "sample": "stable copied bytes are observed after Blob construction"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "A complete configured witness can suppress wrong Rust remediation but remains advisory because public repair-packet fields are absent."
+    },
+    {
+      "id": "bun_blob_missing_resizable_oracle_limitation",
+      "source": "#910-missing-resizable-discriminator",
+      "profile": "bun_blob_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1304,
+        "entrypoints": [
+          "new Blob",
+          "blob.arrayBuffer"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1311,
+        "kind": "stable_byte_copy",
+        "strength": "missing_discriminator"
+      },
+      "expected": {
+        "state": "rust_ungripped_ts_missing_discriminator",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_oracle_visibility_unresolved",
+        "repair_route": "analysis/cross-language-oracle-visibility",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "test/js/web/fetch/blob.test.ts",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [
+          "resizable_array_buffer"
+        ],
+        "missing_graph_legs": [
+          "boundary_discriminator:resizable_array_buffer"
+        ],
+        "unlock_condition": "Add or inspect a TypeScript Blob observer for a resizable ArrayBuffer in test/js/web/fetch/blob.test.ts; keep repair-packet projection blocked until verify, receipt, and edit-surface evidence exists."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "Blob::from_js_without_defer_gc checks both SharedArrayBuffer and resizable ArrayBuffer branches"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1306,
+          "kind": "typescript_discriminator",
+          "source_id": "#910",
+          "sample": "SharedArrayBuffer is represented but resizable ArrayBuffer evidence is absent"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_ub",
+          "sample": "configured Bun Blob bridge is present"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1304,
+          "kind": "typescript_callsite",
+          "source_id": "#910",
+          "sample": "Blob construction callsite exists for the configured route"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1311,
+          "kind": "typescript_assertion",
+          "source_id": "#910",
+          "sample": "stable byte observation exists for the shared-buffer path only"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The graph is visible enough to name the missing resizable discriminator but not enough to create a repair packet."
+    },
+    {
+      "id": "bun_blob_missing_external_oracle_limitation",
+      "source": "#910-partial-blob-observer-without-stable-oracle",
+      "profile": "bun_blob_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1320,
+        "entrypoints": [
+          "new Blob"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": true
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1324,
+        "kind": "stable_byte_copy_missing",
+        "strength": "static_unknown"
+      },
+      "expected": {
+        "state": "rust_ungripped_ts_missing_external_oracle",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_oracle_visibility_unresolved",
+        "repair_route": "analysis/cross-language-oracle-visibility",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "external_oracle:stable_byte_copy"
+        ],
+        "unlock_condition": "Connect the partial Blob observer evidence to a stable byte oracle before crediting the Rust seam or suggesting placement."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "Blob::from_js_without_defer_gc checks both SharedArrayBuffer and resizable ArrayBuffer branches"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1322,
+          "kind": "typescript_discriminator",
+          "source_id": "#910",
+          "sample": "SharedArrayBuffer and resizable ArrayBuffer Blob inputs are visible"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_ub",
+          "sample": "configured Bun Blob bridge is present"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1320,
+          "kind": "typescript_callsite",
+          "source_id": "#910",
+          "sample": "Blob construction callsite exists but no stable byte read is asserted"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The graph has a configured bridge and Blob callsite sample, but the stable-byte oracle edge is absent, so it remains a named limitation."
+    },
+    {
+      "id": "bun_blob_mention_not_observer_limitation",
+      "source": "#910-max-byte-length-token-only",
+      "profile": "bun_blob_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1330,
+        "entrypoints": [
+          "maxByteLength token mention"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": true
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1333,
+        "kind": "mention_only",
+        "strength": "weak"
+      },
+      "expected": {
+        "state": "ts_mention_not_observer",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_oracle_visibility_unresolved",
+        "repair_route": "analysis/cross-language-oracle-visibility",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "external_callsite:view_backed_blob_input",
+          "external_oracle:stable_byte_copy"
+        ],
+        "unlock_condition": "Connect the token mention to a Blob input and stable byte observer before it can affect oracle visibility."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "Rust seam requires Blob ArrayBuffer branch evidence"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1330,
+          "kind": "typescript_token",
+          "source_id": "#910",
+          "sample": "maxByteLength appears without a Blob byte observer"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_ub",
+          "sample": "configured bridge alone is not enough to credit a token mention"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1330,
+          "kind": "typescript_token",
+          "source_id": "#910",
+          "sample": "maxByteLength token is present"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1333,
+          "kind": "mention_only",
+          "source_id": "#910",
+          "sample": "no stable Blob byte assertion is visible"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "A TypeScript token mention is not an external oracle for the Rust seam until the Blob input and stable observer are both visible."
+    },
+    {
+      "id": "bun_blob_bridge_unknown_limitation",
+      "source": "#910-discriminators-without-bridge",
+      "profile": "bun_blob_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "binding_edge": {
+        "kind": "unresolved",
+        "confidence": "unknown"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1360,
+        "entrypoints": [
+          "new Blob",
+          "blob.arrayBuffer"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1368,
+        "kind": "stable_byte_copy",
+        "strength": "bridge_unknown"
+      },
+      "expected": {
+        "state": "bridge_unknown",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_oracle_visibility_unresolved",
+        "repair_route": "analysis/cross-language-oracle-visibility",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "binding_or_ffi_edge"
+        ],
+        "unlock_condition": "Name a configured or generated binding edge from the TypeScript Blob surface to Blob::from_js_without_defer_gc."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "Rust owner is known but no bridge fact ties this owner to the external test"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1362,
+          "kind": "typescript_discriminator",
+          "source_id": "#910",
+          "sample": "SharedArrayBuffer and resizable ArrayBuffer facts are visible externally"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1360,
+          "kind": "typescript_callsite",
+          "source_id": "#910",
+          "sample": "Blob construction appears in TypeScript"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1368,
+          "kind": "typescript_assertion",
+          "source_id": "#910",
+          "sample": "stable copied bytes are asserted externally"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "External TypeScript discriminators stay a limitation when no binding or FFI edge connects them to the Rust owner."
+    },
+    {
+      "id": "bun_blob_target_unresolved_limitation",
+      "source": "#911-cross-language-test-target-unresolved",
+      "profile": "bun_blob_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/Blob.rs",
+        "line": 3420,
+        "owner": "Blob::from_js_without_defer_gc",
+        "boundary": "array_buffer.shared || array_buffer.resizable"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1390,
+        "entrypoints": [
+          "new Blob",
+          "blob.arrayBuffer"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1398,
+        "kind": "target_unresolved",
+        "strength": "static_unknown"
+      },
+      "expected": {
+        "state": "cross_language_target_unresolved",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_target_unresolved",
+        "repair_route": "analysis/cross-language-test-target-inference",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "safe_external_observer_target"
+        ],
+        "unlock_condition": "Identify a safe external observer target and edit surface before any test placement or LSP repair action is exposed."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "rust_owner",
+          "source_id": "#911",
+          "sample": "Rust seam is local but target placement is cross-language"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1392,
+          "kind": "typescript_discriminator",
+          "source_id": "#911",
+          "sample": "external discriminator samples exist but safe placement is unresolved"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/jsc/Blob.rs",
+          "line": 3420,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_ub",
+          "sample": "configured bridge prevents guessing an unrelated Rust test file"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1390,
+          "kind": "typescript_callsite",
+          "source_id": "#911",
+          "sample": "external Blob callsite exists"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1398,
+          "kind": "target_unresolved",
+          "source_id": "#911",
+          "sample": "no safe observer target or edit surface has been inferred"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The fixture forces target inference to fail closed rather than point at an unrelated Rust file."
+    },
+    {
+      "id": "bun_array_buffer_copy_to_unshared_configured_bridge_advisory",
+      "source": "#910-copy-to-unshared-ts-covered-configured-bridge",
+      "profile": "bun_array_buffer_copy_to_unshared",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/jsc/array_buffer.rs",
+        "line": 341,
+        "owner": "copy_to_unshared",
+        "boundary": "SharedArrayBuffer and resizable ArrayBuffer copy semantics"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1280,
+        "entrypoints": [
+          "new Blob",
+          "blob.arrayBuffer",
+          "copy_to_unshared via Blob ArrayBuffer copy"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": true,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": true,
+        "stable_byte_copy_oracle": true,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/web/fetch/blob.test.ts",
+        "line": 1286,
+        "kind": "stable_byte_copy",
+        "strength": "strong"
+      },
+      "expected": {
+        "state": "rust_ungripped_ts_discriminated",
+        "gap_state": "already_observed",
+        "limitation_category": "not_applicable",
+        "repair_route": "manual-review/cross-language-advisory-witness",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [],
+        "unlock_condition": "not_applicable"
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/jsc/array_buffer.rs",
+          "line": 341,
+          "kind": "rust_owner",
+          "source_id": "#910",
+          "sample": "copy_to_unshared is the reported Rust seam for the TypeScript-tested ArrayBuffer copy path"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1282,
+          "kind": "typescript_discriminator",
+          "source_id": "#910",
+          "sample": "SharedArrayBuffer and resizable ArrayBuffer inputs are visible in the external Blob tests"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/jsc/array_buffer.rs",
+          "line": 341,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_array_buffer_copy_to_unshared",
+          "sample": "configured Bun ArrayBuffer bridge maps Blob ArrayBuffer copy tests to copy_to_unshared"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1280,
+          "kind": "typescript_callsite",
+          "source_id": "#910",
+          "sample": "Blob construction and blob.arrayBuffer are visible externally through the configured copy_to_unshared bridge"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/web/fetch/blob.test.ts",
+          "line": 1286,
+          "kind": "typescript_assertion",
+          "source_id": "#910",
+          "sample": "stable copied bytes are asserted externally"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The #910 copy_to_unshared sample now names a configured bridge plus external TypeScript discriminator and oracle samples; it is an advisory witness only because public repair-packet fields remain absent."
+    },
+    {
+      "id": "bun_markdown_resizable_array_buffer_configured_bridge_advisory",
+      "source": "#951-markdownobject-ts-covered-configured-bridge",
+      "profile": "bun_markdown_resizable_array_buffer",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/runtime/api/MarkdownObject.rs",
+        "line": 60,
+        "owner": "MarkdownObject::to_string",
+        "boundary": "self.0.resizable && !self.0.shared"
+      },
+      "binding_edge": {
+        "kind": "configured_bridge",
+        "confidence": "configured_hint"
+      },
+      "external_callsite": {
+        "file": "test/js/bun/md/md-edge-cases.test.ts",
+        "line": 44,
+        "entrypoints": [
+          "Bun.markdown",
+          "resizable ArrayBuffer MarkdownObject path"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": true,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/bun/md/md-edge-cases.test.ts",
+        "line": 47,
+        "kind": "markdown_strong_oracle",
+        "strength": "strong"
+      },
+      "expected": {
+        "state": "rust_ungripped_ts_discriminated",
+        "gap_state": "already_observed",
+        "limitation_category": "not_applicable",
+        "repair_route": "manual-review/cross-language-advisory-witness",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [],
+        "unlock_condition": "not_applicable"
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/runtime/api/MarkdownObject.rs",
+          "line": 60,
+          "kind": "rust_owner",
+          "source_id": "#951",
+          "sample": "MarkdownObject.rs checks self.0.resizable && !self.0.shared before materializing markdown input"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "test/js/bun/md/md-edge-cases.test.ts",
+          "line": 44,
+          "kind": "resizable_array_buffer",
+          "source_id": "#951",
+          "sample": "the TypeScript integration test constructs a resizable ArrayBuffer for the markdown path"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/runtime/api/MarkdownObject.rs",
+          "line": 60,
+          "kind": "configured_bridge",
+          "source_id": "profiles.bun_markdown_resizable_array_buffer",
+          "sample": "configured Bun MarkdownObject bridge maps md-edge-cases TypeScript tests to MarkdownObject::to_string"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/bun/md/md-edge-cases.test.ts",
+          "line": 45,
+          "kind": "bun_markdown_callsite",
+          "source_id": "#951",
+          "sample": "Bun.markdown reaches the configured MarkdownObject external surface"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/bun/md/md-edge-cases.test.ts",
+          "line": 47,
+          "kind": "markdown_strong_oracle",
+          "source_id": "#951",
+          "sample": "the TypeScript test asserts the markdown output instead of only checking Rust test presence"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The #951 MarkdownObject sample has a configured bridge plus external TypeScript discriminator and oracle samples; it suppresses wrong Rust-test remediation but remains an advisory witness because public repair-packet fields are absent."
+    },
+    {
+      "id": "bun_ffi_negative_offset_panic_boundary_limitation",
+      "source": "#950-ffi-negative-offset-public-reachable-panic-boundary",
+      "profile": "bun_ffi_negative_offset_panic_boundary",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "src/bun.js/bindings/FFIObject.rs",
+        "line": 277,
+        "owner": "FFIObject::read",
+        "boundary": "usize::try_from(to_int32()).expect(\"int cast\")"
+      },
+      "binding_edge": {
+        "kind": "ffi_binding",
+        "confidence": "heuristic"
+      },
+      "external_callsite": {
+        "file": "unresolved:typescript-test-surface",
+        "line": null,
+        "entrypoints": [
+          "read.u8(ptr, -1)",
+          "Bun FFI read negative offset path"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "unresolved:negative-offset-panic-oracle",
+        "line": null,
+        "kind": "negative_offset_panic_oracle_unresolved",
+        "strength": "missing_boundary"
+      },
+      "expected": {
+        "state": "public_reachable_panic_boundary_unrevealed",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_panic_boundary_visibility_unresolved",
+        "repair_route": "analysis/cross-language-panic-boundary-visibility",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [
+          "negative_offset"
+        ],
+        "missing_graph_legs": [
+          "external_oracle:negative_offset_panic_boundary",
+          "safe_external_observer_target"
+        ],
+        "unlock_condition": "Trace the Bun FFI read.u8 negative-offset entrypoint to FFIObject.rs and resolve TypeScript oracle evidence that observes the panic boundary before any test placement, verify command, receipt command, allowed edit surface, or public repair packet is emitted."
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "src/bun.js/bindings/FFIObject.rs",
+          "line": 277,
+          "kind": "rust_panic_boundary",
+          "source_id": "#950",
+          "sample": "FFIObject.rs converts the JavaScript offset with usize::try_from(...).expect(\"int cast\")"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "issue:#950",
+          "line": 1,
+          "kind": "negative_offset_discriminator_missing",
+          "source_id": "#950",
+          "sample": "the public entrypoint sample is read.u8(ptr, -1), but a TypeScript negative-offset oracle is unresolved"
+        },
+        {
+          "leg": "binding_edge",
+          "file": "src/bun.js/bindings/FFIObject.rs",
+          "line": 277,
+          "kind": "ffi_binding",
+          "source_id": "#950",
+          "sample": "the issue identifies the Rust panic boundary as reachable through the public Bun FFI read surface"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "issue:#950",
+          "line": 1,
+          "kind": "typescript_ffi_callsite",
+          "source_id": "#950",
+          "sample": "read.u8(ptr, -1) is the external-language callsite shape that should reach the Rust offset conversion"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "issue:#950",
+          "line": 1,
+          "kind": "typescript_assertion_missing",
+          "source_id": "#950",
+          "sample": "the graph has no resolved TypeScript assertion or observer for the negative-offset panic boundary"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The #950 Bun FFI negative-offset sample is public-reachable through TypeScript but the external panic-boundary oracle and safe placement route are unresolved, so it remains a named static limitation instead of a misleading Rust repair packet."
+    },
+    {
+      "id": "bun_node_fs_scalar_write_manifest_only_profile",
+      "source": "profile-intake-node-fs-scalar-write",
+      "profile": "bun_node_fs_scalar_write",
+      "profile_status": "manifest_only",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "unresolved:node-fs-scalar-write-rust-seam",
+        "line": null,
+        "owner": "node:fs scalar write sink",
+        "boundary": "JS-owned bytes must be copied before native write scalar sinks"
+      },
+      "binding_edge": {
+        "kind": "manifest_only",
+        "confidence": "manifest_only"
+      },
+      "external_callsite": {
+        "file": "test/js/node/fs/fs.test.ts",
+        "line": 1,
+        "entrypoints": [
+          "node:fs scalar write",
+          "fs.writeFileSync",
+          "fs.writeSync"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/node/fs/fs.test.ts",
+        "line": 1,
+        "kind": "stable_byte_scalar_write_oracle_manifest_only",
+        "strength": "manifest_only"
+      },
+      "expected": {
+        "state": "named_static_limitation",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_profile_manifest_only",
+        "repair_route": "analysis/cross-language-profile-intake",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "test/js/node/fs/fs.test.ts",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "binding_or_ffi_edge:node_fs_scalar_write",
+          "external_oracle:stable_byte_scalar_write"
+        ],
+        "unlock_condition": "Audit the node:fs scalar write Rust sink and bridge/oracle evidence before analyzer projection.",
+        "proof_mode": "observable_red_green"
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "issue:node-fs-scalar-write-profile",
+          "line": 1,
+          "kind": "rust_seam_unresolved",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "node:fs scalar write Rust sink remains unresolved in the manifest-only profile"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "issue:node-fs-scalar-write-profile",
+          "line": 1,
+          "kind": "stable_byte_scalar_write_discriminator",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "scalar write is the stable-byte boundary shape under intake"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/node/fs/fs.test.ts",
+          "line": 1,
+          "kind": "typescript_node_fs_callsite",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "node:fs scalar writes are expected to be witnessed in fs.test.ts"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/node/fs/fs.test.ts",
+          "line": 1,
+          "kind": "typescript_assertion_manifest_only",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "stable-byte scalar write assertion shape is manifest-only"
+        },
+        {
+          "leg": "placement",
+          "file": "test/js/node/fs/fs.test.ts",
+          "line": 1,
+          "kind": "typed_test_placement",
+          "source_id": "profile-intake-node-fs-scalar-write",
+          "sample": "typed node:fs placement is pinned without actionability"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The node:fs scalar write stable-byte profile is pinned as manifest-only with observable red/green proof mode, typed witness placement, and missing bridge/oracle graph legs; it remains non-actionable until the Rust sink, bridge, and oracle evidence are audited."
+    },
+    {
+      "id": "bun_write_helper_gated_manifest_only_profile",
+      "source": "profile-intake-bun-write-helper-gated",
+      "profile": "bun_write_helper_gated",
+      "profile_status": "manifest_only",
+      "language": "typescript",
+      "language_status": "preview",
+      "rust_seam": {
+        "file": "unresolved:bun-write-stable-byte-rust-seam",
+        "line": null,
+        "owner": "Bun.write stable-byte sink",
+        "boundary": "JS-owned bytes must not cross Bun.write native sinks without a helper"
+      },
+      "binding_edge": {
+        "kind": "manifest_only",
+        "confidence": "manifest_only"
+      },
+      "external_callsite": {
+        "file": "test/js/bun/write.test.ts",
+        "line": 1,
+        "entrypoints": [
+          "Bun.write",
+          "Bun.write stable-byte sink"
+        ]
+      },
+      "observed_ts_facts": {
+        "shared_array_buffer": false,
+        "resizable_array_buffer": false,
+        "view_backed_blob_input": false,
+        "stable_byte_copy_oracle": false,
+        "max_byte_length_mention_only": false
+      },
+      "external_oracle": {
+        "file": "test/js/bun/write.test.ts",
+        "line": 1,
+        "kind": "stable_byte_write_oracle_helper_gated",
+        "strength": "helper_gated"
+      },
+      "expected": {
+        "state": "named_static_limitation",
+        "gap_state": "static_limitation",
+        "limitation_category": "cross_language_profile_manifest_only",
+        "repair_route": "analysis/cross-language-profile-intake",
+        "authority_boundary": "preview_advisory_only",
+        "public_projection_eligible": false,
+        "repair_packet_ready": false,
+        "suggested_test_file": "not_applicable",
+        "allowed_edit_surface": [],
+        "missing_discriminators": [],
+        "missing_graph_legs": [
+          "binding_or_ffi_edge:bun_write_sink",
+          "helper:bun_write_fixture_helper",
+          "external_oracle:stable_byte_write"
+        ],
+        "unlock_condition": "Land or identify bun_write_fixture_helper and audit the Bun.write bridge/oracle before analyzer projection.",
+        "proof_mode": "helper_gated"
+      },
+      "raw_evidence_refs": [
+        {
+          "leg": "rust_seam",
+          "file": "issue:bun-write-helper-gated-profile",
+          "line": 1,
+          "kind": "rust_seam_unresolved",
+          "source_id": "profile-intake-bun-write-helper-gated",
+          "sample": "Bun.write stable-byte Rust sink remains unresolved in the manifest-only profile"
+        },
+        {
+          "leg": "boundary_discriminator",
+          "file": "issue:bun-write-helper-gated-profile",
+          "line": 1,
+          "kind": "stable_byte_write_discriminator",
+          "source_id": "profile-intake-bun-write-helper-gated",
+          "sample": "Bun.write is the helper-gated stable-byte boundary shape under intake"
+        },
+        {
+          "leg": "external_callsite",
+          "file": "test/js/bun/write.test.ts",
+          "line": 1,
+          "kind": "typescript_bun_write_callsite",
+          "source_id": "profile-intake-bun-write-helper-gated",
+          "sample": "Bun.write callsites are expected to be witnessed in write.test.ts"
+        },
+        {
+          "leg": "external_oracle",
+          "file": "test/js/bun/write.test.ts",
+          "line": 1,
+          "kind": "typescript_assertion_helper_gated",
+          "source_id": "profile-intake-bun-write-helper-gated",
+          "sample": "stable-byte write assertion shape is blocked on bun_write_fixture_helper"
+        }
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Bun execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion",
+        "no public repair packet",
+        "no TypeScript Rust parity claim",
+        "no full cross-language proof",
+        "no verify command",
+        "no receipt command",
+        "no allowed edit surface"
+      ],
+      "reason": "The Bun.write stable-byte route is pinned as a helper-gated manifest-only profile: the helper, binding edge, and stable-byte write oracle remain missing, so no placement or repair packet is emitted."
+    }
+  ]
+}

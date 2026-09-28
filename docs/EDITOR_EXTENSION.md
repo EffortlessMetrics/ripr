@@ -1,0 +1,697 @@
+# Editor Extension
+
+Use the RIPR extension in VS Code to inspect saved-workspace changes, understand
+one focused test gap or named limitation, and copy a bounded next action. The
+extension presents static evidence; it does not edit source, generate tests, run
+mutation testing, execute project verification, or make merge decisions.
+
+## Install
+
+For an ordinary editor install, use either public extension registry:
+
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr): install `EffortlessMetrics.ripr`.
+- [Open VSX](https://open-vsx.org/extension/EffortlessMetrics/ripr): install `EffortlessMetrics.ripr`.
+
+The released extension normally resolves a matching server without a separate
+`cargo install ripr` step. A local VSIX can be built and installed for
+source-development smoke testing; offline, pinned, and controlled server paths
+remain available under [Package and server details](#package-and-server-details).
+
+## First Useful Editor Path
+
+1. Install the extension and open the repository workspace.
+2. Save the files you want RIPR to analyze. The current model analyzes saved
+   workspace state, not unsaved editor buffers.
+3. Run `ripr: Show Status`. It names the selected workspace root, server source,
+   analysis state, enabled languages, and the next safe action.
+4. Let analysis refresh, or run `ripr: Refresh Diagnostics`. Use
+   `ripr: Restart Server` after changing server or startup settings.
+5. Open Problems and hover a RIPR diagnostic to inspect the changed behavior,
+   related test, missing discriminator, or static limitation.
+6. Use the bounded action that is actually offered: open the best related test,
+   copy a targeted-test brief or repair packet, copy verification/receipt
+   guidance, or refresh/diagnose setup when no repair is safe.
+7. Make the focused test or fixture edit yourself, run the repository's normal
+   verification outside the extension, and retain any RIPR before/after receipt
+   separately from the project test result.
+
+The useful result is not always a repair command. Status may report:
+
+- one current actionable gap;
+- no focused test gap found under the available evidence;
+- stale analysis because a relevant buffer has unsaved edits;
+- a limited or preview-language result with a named static boundary;
+- an unavailable or failed server/analysis state with a recovery action; or
+- a wrong-root, malformed, or stale artifact that was refused.
+
+An empty Problems panel is not proof that testing is complete. Read
+`ripr: Show Status` before interpreting absence as a clean result.
+
+### Trust Boundary
+
+Editor diagnostics and actions are advisory, saved-workspace static evidence.
+They do not grant source-edit authority, execute a copied command, run mutants,
+establish runtime test adequacy, choose a gate result, or approve a merge.
+TypeScript, JavaScript, and Python remain preview surfaces within their
+published limits; an installed adapter does not imply Rust parity.
+
+For the shortest install-to-first-PR walkthrough, see
+[Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md). For the local
+install-to-receipt loop, see
+[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+the local actionable queue, current repair packet, and repo map, see
+[Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md). For
+the handoff from receipt to `start-here` packet, see
+[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
+the diagnostic-to-gap-state repair loop, see
+[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
+saved-workspace seam walkthrough, see
+[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
+to internal vocabulary bridge, see [Terminology](TERMINOLOGY.md). For
+preview-language static-limit labels, see [Static limits](STATIC_LIMITS.md).
+
+## Package and Server Details
+
+The VS Code extension is a separate artifact from the Rust crate:
+
+```text
+Rust crate:
+  ripr
+
+VS Code extension:
+  EffortlessMetrics.ripr
+
+Open VSX extension:
+  EffortlessMetrics.ripr
+```
+
+The extension is a universal VSIX preview client. It does not yet publish
+platform-specific VSIXs with bundled native binaries.
+
+### Server Resolution
+
+On activation, the extension resolves the server in this order and records the
+selected source in the `ripr` output channel:
+
+```text
+1. ripr.server.path
+2. bundled server binary, if present
+3. downloaded cached server binary
+4. verified first-run download from GitHub Releases
+5. ripr on PATH
+6. actionable error
+```
+
+Normal Marketplace and Open VSX installs should not require Cargo. For offline,
+pinned, or controlled environments, manual installation remains available:
+
+```bash
+cargo install ripr
+```
+
+Set `ripr.server.path` when the server should come from an explicit executable.
+A source-built extension needs a compatible source-built or explicitly pinned
+server; do not assume an unreleased matching server is publicly downloadable.
+
+### Source Location and Local VSIX
+
+The extension source lives at:
+
+```text
+editors/vscode/
+```
+
+This directory is intentionally outside the Cargo workspace. It is a Node/VS
+Code extension package, not a Rust package.
+
+For a local VSIX smoke, run `npm run package`, then install
+`editors/vscode/dist/ripr-VERSION.vsix`, replacing `VERSION` with the package
+version.
+
+### Managed Download Integrity
+
+Managed downloads are admitted to the cache only after a unique sibling
+staging directory has passed manifest-version, archive-digest, executable
+probe, executable-digest, and completed-receipt validation. Promotion to the
+version/target cache path is an atomic rename guarded by a per-version/target
+install lock, so concurrent extension hosts converge on one completed install
+and interrupted installs are not launch candidates. A failed install of a new
+version does not disturb an already completed prior version.
+
+The receipt records local installation integrity; it is not a release
+provenance attestation. Producer-owned provenance verification remains a
+separate supply-chain boundary.
+
+## Settings
+
+- `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.
+- `ripr.enabled`: enables saved-workspace diagnostics, hovers, status, and code
+  actions. Defaults to `true`; set it to `false` for an explicit disabled
+  editor status without starting the language server.
+- `ripr.server.args`: arguments used to start the language server. Defaults to
+  `["lsp", "--stdio"]`.
+- `ripr.server.autoDownload`: automatically download a matching server when
+  needed. Defaults to `true`.
+- `ripr.server.version`: pinned server version. Empty means match the extension
+  version.
+- `ripr.server.downloadBaseUrl`: override the manifest base URL for internal
+  mirrors.
+- `ripr.check.mode`: preferred editor check mode for LSP diagnostics and
+  context commands. Defaults to `draft`.
+- `ripr.baseRef`: Git base ref used by LSP diagnostics and context commands.
+  Defaults to `origin/main`.
+- `ripr.includeUnchangedTests`: include unchanged tests as static evidence.
+  Defaults to `true`.
+- `ripr.seamDiagnostics`: publish repository seam diagnostics in addition to
+  diff-derived findings. Defaults to `true`.
+- `ripr.diagnosticProfile`: `actionable` (default) publishes only
+  producer-backed bounded routes; `full` keeps audit and debug visibility.
+- `ripr.gitTimeoutMs`: deadline for each git invocation in the server's refresh
+  path. Defaults to `30000`.
+- `ripr.refreshDeadlineMs`: deadline for one whole refresh attempt; an attempt
+  that exceeds it is dropped fail-closed. Defaults to `600000`.
+- `ripr.trace.server`: language-server trace setting.
+
+The extension passes `ripr.baseRef`, `ripr.check.mode`,
+`ripr.includeUnchangedTests`, `ripr.seamDiagnostics`, and
+`ripr.diagnosticProfile` to the language server as initialization options, and
+serves those five plus `ripr.gitTimeoutMs` and `ripr.refreshDeadlineMs` through
+`workspace/configuration`. Changing
+`ripr.enabled`, `ripr.server.*`, `ripr.check.mode`, or `ripr.baseRef` restarts
+the client so the next diagnostic refresh uses the new configuration.
+`ripr.trace.server` applies live. The server re-reads the other keys without a
+restart.
+
+## Status and Staleness
+
+The status bar item and `ripr: Show Status` command name the current
+saved-workspace state using user-readable copy. The underlying JSON keeps
+stable internal status IDs so editor automation and tests stay deterministic.
+`ripr: Show Status` also prints the workspace root, resolved server source and
+command, editor selector set, enabled languages reported by the last server
+refresh, and the next safe action for the current state. This is the first
+place to check when no diagnostics appear.
+
+- disabled by `ripr.enabled = false`
+- workspace unresolved
+- server unavailable
+- analysis queued
+- analysis running
+- analysis complete (ripr-flagged changes present)
+- no enabled languages (`[languages] enabled = []`)
+- no focused test gap found (internal status ID: `no-actionable-seam`)
+- actionable gap available from a trusted gap artifact
+- already observed, with no local repair action needed
+- preview adapter unavailable in the current server binary
+- wrong-root, malformed, or unsupported gap artifact ignored
+- stale because a Rust or preview-language buffer has unsaved edits
+- analysis failed
+
+When `target/ripr/reports/first-useful-action.json` already exists in the
+workspace, the status item and `ripr: Show Status` also project its top action,
+selected seam, missing discriminator, target, related test, verify command,
+receipt command, warnings, fallback, and static-evidence limits. The extension
+only reads that existing report, and ignores reports whose `root` does not match
+the open workspace. It does not run `ripr first-action`, add new diagnostics,
+edit source, generate tests, call providers, run mutation testing, or make gate
+decisions.
+
+The LSP model remains saved-workspace only. When a Rust buffer is dirty, the
+extension keeps stale status visible, including when a first-useful-action
+report is present, so diagnostics are not presented as fresh evidence for
+unsaved text. Saving or closing the Rust buffer clears the stale marker and
+queues the next saved-workspace refresh.
+
+Preview-language static limits should be read before action language in hover
+and status text. A static limit names what RIPR could not safely infer from
+syntax-first evidence; it does not mean the editor ran mutation testing, edited
+source, generated a test, or made the finding policy-eligible.
+
+When gap cockpit artifacts are present, status and actions stay fail-closed:
+wrong-root, stale, malformed, disabled-language, unavailable-adapter, and
+out-of-workspace related-test states suppress repair actions and leave status
+inspection or refresh as the safe next step.
+
+When first-pr packet artifacts are present, `ripr: Show Status` and
+`ripr: Diagnose Setup` can project the packet state from:
+
+```text
+target/ripr/reports/start-here.{json,md}
+target/ripr/first-pr/start-here.{json,md}
+```
+
+The editor validates the JSON packet before showing stronger first-pr actions.
+Missing, stale, wrong-root, malformed, unsupported, path-unsafe, and
+command-unsafe packets fail closed: repair, verify, receipt, and packet-copy
+claims are suppressed, while refresh, setup diagnosis, or first-pr regeneration
+guidance remain safe. A found packet is advisory and does not prove merge
+readiness, runtime adequacy, mutation coverage, policy eligibility, or gate
+status.
+
+When actionable-gap queue artifacts are present, `ripr: Show Status` can
+project the queue from:
+
+```text
+target/ripr/reports/actionable-gaps.json
+target/ripr/reports/actionable-gaps.md
+```
+
+The editor validates typed JSON fields before offering queue actions. The queue
+surface can name the top actionable gap, report-only groups,
+static-limit-only groups, receipt state, first-pr state, and the next safe
+action. Missing, stale, wrong-root, malformed, unsupported, path-unsafe,
+command-unsafe, disabled-language, unavailable-adapter, receipt-mismatched,
+first-pr-mismatched, and static-limit-only states fail closed: repair packet
+actions are suppressed, while refresh, Diagnose Setup, or regeneration guidance
+remain safe. See [Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md)
+for the workflow and non-claims.
+
+## Defaults-First Stance
+
+The editor surface follows the defaults-first adoption contract in
+[RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md): diagnostics,
+hovers, targeted-test briefs, context packets, best related-test navigation,
+and refresh status should be discoverable without forcing users to understand
+every report artifact first.
+
+The current LSP model remains saved-workspace analysis. Unsaved-buffer overlays
+are not enabled by default. The defaults-first target is useful bounded editor
+feedback without requiring `ripr init`: saved-workspace diagnostics, hovers,
+briefs, related-test navigation, and refresh status are available through
+built-in defaults. `ripr init` is optional; when a team commits `ripr.toml`,
+that repo policy makes the same defaults explicit and reviewable, or tunes them
+quieter.
+
+## Commands
+
+- `ripr: Restart Server`
+- `ripr: Refresh Diagnostics`
+- `ripr: Select Workspace Root`
+- `ripr: Show Output`
+- `ripr: Show Status`
+- `ripr: Diagnose Setup`
+- `ripr: Start Current Repair`
+- `ripr: Copy Current Repair Packet`
+- `ripr: Copy Repo Gap Map`
+- `ripr: First PR - Open Packet`
+- `ripr: First PR - Copy Summary`
+- `ripr: First PR - Copy Repair Packet`
+- `ripr: Copy Repair Packet at Cursor`
+- `ripr: First PR - Copy Verify Command`
+- `ripr: First PR - Copy Receipt Command`
+- `ripr: First PR - Copy Regeneration Guidance`
+- `ripr: Inspect Test Gap - Copy Context`
+- `ripr: Write Targeted Test - Copy Suggested Assertion`
+- `ripr: Write Targeted Test - Copy Brief`
+- `ripr: Agent Handoff - Copy Packet Command`
+- `ripr: Agent Handoff - Copy Brief Command`
+- `ripr: Verify After Test - Copy After Snapshot Command`
+- `ripr: Verify After Test - Copy Verify Command`
+- `ripr: Review Result - Copy Receipt Command`
+- `ripr: Write Targeted Test - Open Best Related Test`
+- `ripr: Open Settings`
+- `ripr: Copy Top Repair Packet`
+- `ripr: Copy Verify Command`
+- `ripr: Copy Receipt Command (Top Repair Packet)`
+- `ripr: Open Report`
+- `ripr: Show Top Limitation`
+- `ripr: Show Receipt Status`
+- `ripr: Copy Receipt Command`
+- `ripr: Open Attempt Ledger`
+- `ripr: Show Route Quality`
+
+### Inspect Test Gap - Copy Context
+
+The `ripr: Inspect Test Gap - Copy Context` command (command ID
+`ripr.copyContext`) first attempts to collect context through the running LSP
+server via `workspace/executeCommand` with `ripr.collectContext`. If the server
+has a matching analysis snapshot, it returns a JSON context packet directly.
+If the LSP command is unavailable or returns no result, the extension falls
+back to shelling out to the `ripr` CLI (`ripr context --at <selector> --json`).
+
+The code action `Inspect finding: copy context packet` includes `finding_id` and
+`probe_id` from the diagnostic data so the server can resolve the finding
+without re-running workspace analysis.
+
+### Start Current Repair
+
+The `ripr: Start Current Repair` command is editor-side orchestration over the
+current projected gap. It selects the current or nearest `ripr` gap diagnostic,
+asks the LSP for the existing code actions at that diagnostic range, and runs
+one of those already-bounded actions. It does not read report files, parse hover
+text, rerun hidden analysis, generate tests, edit source, or change gate
+authority.
+
+When a current repair is available, the command offers the same actions exposed
+on the diagnostic: copy the first repair packet, copy the gap repair packet,
+open the best related test, copy the verify command, copy the receipt command,
+or copy a static-limit note. If only refresh/setup actions are available, the
+command reports that no current bounded repair action is available.
+
+### Actionable Gap Queue Actions
+
+When `target/ripr/reports/actionable-gaps.json` validates for the current
+workspace, the extension can expose two queue-oriented commands:
+
+- `ripr: Copy Current Repair Packet`: copies one bounded work order for the
+  top validated actionable gap. The packet includes Task, Context, Repair,
+  Verification, Receipt, Stop conditions, and Do not do sections.
+- `ripr: Copy Repo Gap Map`: copies read-only orientation over actionable,
+  report-only, static-limit-only, preview, receipt, first-pr, and no-action
+  states.
+
+These commands use typed fields such as `canonical_gap_id`, `language`,
+`language_status`, `gap_state`, `repair_route`, `related_test`,
+`verify_command`, `receipt_command`, `receipt_movement`, `confidence_basis`,
+artifact freshness, and workspace root. They do not parse Markdown prose to
+decide actionability.
+
+The current repair packet is suppressed unless the queue item has a current
+workspace match, repair route, safe verify command, receipt command or path,
+workspace-local paths, fresh artifacts, and no blocking static limit. The repo
+gap map remains orientation only and must not imply gate pass/fail, merge
+readiness, runtime proof, mutation proof, coverage adequacy, or policy
+eligibility.
+
+### Seam Code Actions
+
+When seam diagnostics are enabled and a diagnostic carries `seam_id`, the LSP
+server can provide seam-aware code actions:
+
+- `Inspect Test Gap - Copy Context`: copies the server-owned agent seam packet
+  for the selected test gap through `ripr.collectContext`.
+- `Write targeted test: copy brief`: copies a plain-language work order for
+  adding one focused test from the same seam packet guidance.
+- `Start repair: copy repair command`: copies
+  `ripr agent repair --root . --seam-id <id> --phase before` through
+  `ripr.copyAgentRepairCommand`, the start of a retained repair attempt for
+  the selected seam. It leads the agent-loop actions.
+- `Agent handoff: copy packet command`: copies the `ripr agent packet` command
+  for the selected seam.
+- `Agent handoff: copy brief command`: copies the `ripr agent brief --seam-id`
+  command for the selected seam.
+- `Verify after test: copy after-snapshot command`: copies the
+  `ripr check --format repo-exposure-json` after-snapshot command for the
+  current mode.
+- `Verify after test: copy verify command`: copies the `ripr agent verify`
+  command that compares the pilot before snapshot to the after snapshot.
+- `Review result: copy receipt command`: copies the `ripr agent receipt`
+  command for the selected seam.
+- `Write targeted test: copy suggested assertion`: copies a concrete assertion
+  suggestion from the seam packet.
+- `Write targeted test: open best related test`: opens the strongest related
+  test to imitate when one is available, then falls back to the
+  highest-confidence related test.
+- `Refresh Analysis - Saved Workspace Check`: asks the LSP server to refresh
+  diagnostics with `ripr.refresh`.
+
+The repair-start, targeted-test, assertion, and related-test actions are
+conditional. `Start repair: copy repair command` is shown only when
+`ripr agent repair` would accept the seam: it passes the fail-closed
+repair-packet flip (RIPR-SPEC-0087 §8) and its recommended test file is a test
+surface. Any other seam (for example, one whose oracle path is cross-language
+unresolved, or one whose only related test is an inline `#[cfg(test)]` module
+in the source file) gets no repair start in the action list, hover, or
+evidence-context packet, and the remaining handoff, verify, and receipt
+actions stay as they were.
+`Write targeted test: copy brief` is shown only when the seam has related-test
+context or a concrete assertion suggestion.
+`Write targeted test: copy suggested assertion` is shown only when the seam has
+a concrete assertion suggestion, and `Write targeted test: open best related
+test` is shown only when the current analysis snapshot can resolve a related
+test location. Refresh remains available even when no diagnostic is selected.
+
+The agent-loop copy commands are workspace-relative by contract. They use
+`--root .` and the same `target/ripr/pilot` plus `target/ripr/agent` artifact
+paths used by the operator cockpit and generated CI workflow, so paste them in a
+terminal rooted at the open workspace. This keeps command text stable across
+Windows and Unix workspace path separators, including workspace roots with
+spaces, without needing shell-specific quoting for absolute workspace paths. If
+a diagnostic is stale and its `seam_id` no longer maps to the current analysis
+snapshot, the LSP does not emit agent-loop copy actions; refresh analysis first.
+
+### Gap Cockpit Actions
+
+When a diagnostic maps to a trusted gap or evidence artifact, the LSP server can
+also project repair-oriented actions. These actions use typed diagnostic and
+artifact fields such as gap identity, language status, related-test path,
+repair route, static-limit kind, verify command, and receipt command. They do
+not parse prose to decide what is safe.
+
+Gap cockpit actions remain conditional:
+
+- `Write targeted test: open best related test` appears only for a
+  workspace-local related test in the current language.
+- `ripr: Start Current Repair` only dispatches to the repair actions already
+  produced for the current or nearest gap diagnostic.
+- `Inspect Test Gap - Copy Context` and repair-packet actions appear only when
+  gap identity and repair route exist.
+- `Write targeted test: copy brief` appears only when there is enough evidence
+  to describe one focused test.
+- verify and receipt copy actions appear only when the command payloads match
+  the current workspace contract.
+- static-limit notes appear only when a limit is present.
+- refresh remains the safe fallback when the server is available.
+
+Stale, wrong-root, malformed, disabled-language, unavailable-adapter, and path
+escape states suppress repair actions. The editor may explain the state in
+status or hover, but it should not offer an unsafe packet.
+
+### First-PR Packet Actions
+
+First-pr packet actions bridge the local repair loop to the PR-facing
+`start-here` packet. They consume existing packet artifacts only; the editor
+does not run `ripr first-pr`, publish PR comments, compose generated CI
+summaries, or decide gate state.
+
+The command set is:
+
+- `ripr: First PR - Open Packet`: opens the workspace-local Markdown packet
+  when the JSON packet validates and the Markdown path exists.
+- `ripr: First PR - Copy Summary`: copies an advisory summary for safe found
+  packet states.
+- `ripr: First PR - Copy Repair Packet`: copies a bounded work packet only when
+  the current diagnostic identity matches the packet gap identity.
+- `ripr: First PR - Copy Verify Command`: copies the validated verify command
+  for the matching current diagnostic.
+- `ripr: First PR - Copy Receipt Command`: copies the validated receipt command
+  for the matching current diagnostic.
+- `ripr: First PR - Copy Regeneration Guidance`: copies guidance for missing,
+  stale, blocked, or no-action packet states without running the command.
+
+The diagnostic-scoped actions match typed fields such as `canonical_gap_id` and
+`gap_id`; they do not infer identity from hover or Markdown prose. Treat
+preview-language first-pr packets as preview evidence: syntax-first, advisory,
+static-limit bounded, and not Rust-level confidence.
+
+## Missing Server Behavior
+
+If no usable server can be resolved, the extension shows:
+
+```text
+ripr server is not available: <cause>. Enable automatic download, install with `cargo install ripr`, or set `ripr.server.path` (`ripr.server.downloadBaseUrl` for a mirror).
+```
+
+Actions:
+
+- Open Settings
+- Copy Diagnostic
+- Copy Install Command
+- Retry
+
+The extension does not auto-install Rust or Cargo. It only downloads verified
+release archives when `ripr.server.autoDownload` is enabled.
+
+## Local Gates
+
+```bash
+cd editors/vscode
+npm ci
+npm run compile
+npm run package
+npm run test:e2e
+VERSION=0.11.0
+code --install-extension "dist/ripr-${VERSION}.vsix" --force
+```
+
+Manual smoke:
+
+```text
+Open a Rust workspace with Cargo.toml.
+Confirm the extension activates.
+Open the ripr output channel.
+Confirm the resolved server source is logged.
+Confirm ripr lsp --stdio starts.
+Confirm diagnostics can arrive from saved-workspace analysis.
+Confirm hover evidence, `Write targeted test: copy brief`, and
+`Write targeted test: open best related test` are available on seam diagnostics
+when the analysis snapshot includes the required data.
+Confirm missing-server state gives the documented actionable message.
+Confirm Restart Server, Show Output, and Open Settings work.
+```
+
+## Diagnostic Refresh Model
+
+The preview LSP server currently analyzes the saved workspace diff. It stores
+open document text for future hover/actions work, but unsaved edits are not yet
+used as analyzer overlays.
+
+Diagnostics refresh when a document opens, when a document is saved, or when the
+`ripr.refresh` LSP command runs. Text changes update server document state but
+do not trigger full workspace analysis until the change is saved or refreshed
+explicitly.
+
+The server logs refresh lifecycle messages to the LSP output stream. A normal
+refresh logs when analysis starts and when it completes. Completion logs include
+the refresh duration, total diagnostic count, finding count, seam diagnostic
+count, published file count, and cleared file count. If a newer refresh
+supersedes an older one, the older result is not published.
+
+Refresh failures clear previously published diagnostics and log a warning with
+the failure reason. Normal refreshes and one-off failures do not show user-facing
+popups; the output stream is the intended place to inspect refresh state.
+
+## Diagnostic Data
+
+LSP diagnostics include a stable JSON `data` payload for editor commands:
+
+```json
+{
+  "schema_version": "0.1",
+  "finding_id": "probe:src/pricing.rs:88:predicate",
+  "probe_id": "probe:src/pricing.rs:88:predicate",
+  "classification": "weakly_exposed",
+  "probe_family": "predicate",
+  "confidence": 0.75,
+  "source_range": {
+    "file": "src/pricing.rs",
+    "line": 88,
+    "column": 1
+  }
+}
+```
+
+Diagnostics remain advisory. `exposed` and weak or missing exposure
+findings render as warnings; `propagation_unknown` and `static_unknown`
+are informational.
+
+## Hover Content
+
+When the cursor is on a diagnostic range and a matching analysis snapshot is
+available, the hover renders evidence-rich finding content:
+
+```text
+**ripr** `weakly_exposed`
+
+Add an exact boundary assertion.
+
+## RIPR Evidence
+
+* reach yes: related tests found
+* infection yes: predicate can alter branch behavior
+* propagation yes: branch influences return value
+* observation weak: return value asserted
+* discriminator weak: boundary value missing
+
+## Related Tests
+
+- `tests/pricing.rs:12` `discount_boundary_is_exact` — strong exact_value oracle: assert_eq!(total, expected)
+
+## Weakness
+
+- no equality-boundary case was found
+
+---
+Analysis snapshot: generated 2 seconds ago; last refresh took 138 ms.
+```
+
+Fallback behavior preserves three levels:
+
+1. **Snapshot + matching finding** — evidence-rich hover with RIPR stage
+   summaries, related tests, weakness notes, and snapshot age.
+2. **Diagnostic without matching finding** — diagnostic-only hover showing the
+   classification, message, and finding or probe identifiers.
+3. **No diagnostic at position** — generic guidance hover.
+
+Seam hovers use the same snapshot footer when a matching seam diagnostic is
+available. They also include a `Why this diagnostic?` section that makes the
+static classification legible:
+
+```text
+## Why this diagnostic?
+Grip class: `weakly_gripped` — the current static evidence has a weak discriminator or a named missing discriminator.
+
+Strong evidence:
+- reach yes: related tests reach discounted_total
+- observation yes: exact value assertion exists
+
+Weak / missing evidence:
+- discrimination weak: equality boundary missing
+- missing discriminator `discount_threshold (equality boundary)`: observed values do not include the equality-boundary case
+
+## Suggested test shape
+- file: `tests/pricing.rs`
+- name: `discounted_total_boundary_discriminator`
+- assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)
+
+## First useful action
+- status: `actionable`
+- action: `write_focused_test`
+- title: Add equality-boundary discriminator test
+- target: `tests/pricing.rs`
+- verify: `ripr agent verify --root . --json`
+- receipt: `ripr agent receipt --root . --json`
+
+## Handoff, verify, and receipt commands
+- packet: `ripr agent packet --root . --seam-id <seam-id> --json > target/ripr/agent/agent-packet.json`
+- brief: `ripr agent brief --root . --seam-id <seam-id> --json > target/ripr/agent/agent-brief.json`
+- after snapshot: `ripr check --root . --base <base-ref> --mode <mode> --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json`
+- verify: `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json`
+- receipt: `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json`
+
+## Limits
+- Static evidence only; this hover does not run mutation testing or prove runtime adequacy.
+
+Recommended next move: Add an exact-value assertion for the equality boundary.
+```
+
+The first-useful-action block appears only when
+`target/ripr/reports/first-useful-action.json` exists, matches the current
+workspace root, and selects the same seam ID as the hover diagnostic.
+
+This keeps saved-workspace staleness visible without claiming that unsaved
+document text has been analyzed.
+
+## VS Code Extension Tests
+
+Smoke tests run inside a real VS Code instance via `@vscode/test-electron`:
+
+```bash
+cd editors/vscode
+npm ci
+npm run test:e2e
+```
+
+The suite activates the extension in a fixture Rust workspace and verifies
+command registration, defaults-first `draft` mode, LSP-first seam context
+collection with CLI fallback, targeted-test brief copying, suggested assertion
+copying, related-test opening, malformed command argument handling, and
+`restartServer` callability. When a test server path is supplied, the suite also
+opens the boundary-gap and editor gap cockpit fixtures through the real server
+path, waits for diagnostics, checks hover evidence and static-limit ordering,
+checks bounded actions, copies packet, verify, and receipt payloads, and opens
+the best related test only when the path is safe. Agent-loop command copy
+handlers fail closed unless the payload matches the expected label, root, base,
+mode, identity, and target artifact contract. CI runs the suite headless with
+`xvfb-run`.
+
+## Current Limitations
+
+The preview extension does not yet provide:
+
+- bundled native server binaries
+- platform-specific VSIX packages
+- automatic Rust or Cargo installation
+- deep editor UI beyond diagnostics, evidence hovers, code actions, and basic
+  commands
+- unsaved-buffer analysis overlays

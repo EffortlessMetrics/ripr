@@ -1,0 +1,85 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/first_successful_pr/python-output-gap",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1,
+    "exposed": 1,
+    "weakly_exposed": 0,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0
+  },
+  "findings": [
+    {
+      "id": "probe:src_notifications.py:5:python_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.78,
+      "canonical_gap_id": "gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+      "canonical_gap": {
+        "id": "gap:python:src/notifications.py:warn_coupon:call_or_output_effect:side_effect:logger.warning_coupon_expired",
+        "language": "python",
+        "file": "src/notifications.py",
+        "owner": "warn_coupon",
+        "behavior_kind": "call_or_output_effect",
+        "probe_kind": "side_effect",
+        "normalized_discriminator": "logger.warning_coupon_expired"
+      },
+      "probe": {
+        "id": "probe:src_notifications.py:5:python_preview",
+        "family": "side_effect",
+        "delta": "value",
+        "file": "src/notifications.py",
+        "line": 5,
+        "expression": "    logger.warning(\"coupon expired\")",
+        "owner": "python:src/notifications.py::warn_coupon"
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "1 related Python test(s) found for owner `warn_coupon`"
+        },
+        "infect": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed Python call or output effect can alter observable side effects: `logger.warning(\"coupon expired\")`"
+        },
+        "propagate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred."
+        },
+        "observe": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Strongest extracted Python oracle kind: `exact_value` (rank 5)"
+        },
+        "discriminate": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."
+        }
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {
+          "name": "test_warn_coupon_exact_output",
+          "file": "tests/test_notifications.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert caplog.text == \"coupon expired\""
+        }
+      ],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

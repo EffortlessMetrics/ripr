@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_panel_portable_index",
+  "publication_state": "complete",
+  "generation_id": "cd1d39f2e4fd49449492f926d6aef52c0738ee4c69e3ba16f011ed7e6d2b7bc9",
+  "manifest_sha256": "sha256:e6d2a31d0ef736e0ad6472aa8cf9066281d7066eea42afd5e6f17411f6ce17fb",
+  "subjects_sha256": "sha256:3086bfdb4a9bfce0dde5b805708c37b8ee226d55c4fb75966d56ab763d22fb38",
+  "packets": [
+    {
+      "case_id": "rust-boundary-exact-equality-should-stay-quiet",
+      "packet_path": "metrics/rust-judged-behavior-panel/portable/generations/cd1d39f2e4fd49449492f926d6aef52c0738ee4c69e3ba16f011ed7e6d2b7bc9/packets/rust-boundary-exact-equality-should-stay-quiet.json",
+      "packet_sha256": "sha256:42ad4615916a556c65d873b7646f3eb52696427af2e21569d096fafd09814b55",
+      "semantic_sha256": "sha256:a705a6ff2c4c64b0029209fae038f89905e5f70aa96982e4d838574d384fb1f0"
+    },
+    {
+      "case_id": "rust-boundary-missing-equality-should-gap",
+      "packet_path": "metrics/rust-judged-behavior-panel/portable/generations/cd1d39f2e4fd49449492f926d6aef52c0738ee4c69e3ba16f011ed7e6d2b7bc9/packets/rust-boundary-missing-equality-should-gap.json",
+      "packet_sha256": "sha256:860d781d11f98059bf336204b2001e6d833b47e13e33e9bc14c26bcd3ea7300e",
+      "semantic_sha256": "sha256:9f03211dba0ad1ca8045a0e1ffc793e59933c11f2cfa25ee243efe073c916966"
+    },
+    {
+      "case_id": "rust-macro-wrapped-reach-should-limit",
+      "packet_path": "metrics/rust-judged-behavior-panel/portable/generations/cd1d39f2e4fd49449492f926d6aef52c0738ee4c69e3ba16f011ed7e6d2b7bc9/packets/rust-macro-wrapped-reach-should-limit.json",
+      "packet_sha256": "sha256:32116ddfbeb8095f054069a2879c54509ab21fd9a3456ee217c50219e387ac71",
+      "semantic_sha256": "sha256:f29240c2da3fd72beeab0e0d76ac96096e96f12ce08e66fb9aa28d023fd98cd3"
+    }
+  ],
+  "non_claims": [
+    "bounded static projection only; no independent semantic judgment",
+    "no runtime mutation calibration, accuracy rate, badge, gate, or support claim"
+  ]
+}
