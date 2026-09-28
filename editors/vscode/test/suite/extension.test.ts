@@ -407,6 +407,11 @@ suite('Extension Smoke', () => {
     }
 
     const uri = workspaceFileUri('src/lib.rs');
+    const selectedRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    assert.ok(selectedRoot, 'real-server workspace root must be open');
+    const displayRoot = selectedRoot.replace(/\\/g, '/');
+    const rootArg = serverShellArg(displayRoot);
+    const anchored = (artifact: string) => serverShellArg(`${displayRoot}/${artifact}`);
     const config = vscode.workspace.getConfiguration('ripr', uri);
     const previousProfile = config.get<'actionable' | 'full'>('diagnosticProfile', 'actionable');
     try {
@@ -514,30 +519,30 @@ suite('Extension Smoke', () => {
 
     await vscode.commands.executeCommand(packetCommand.command, ...(packetCommand.arguments ?? []));
     const packetText = await waitForClipboardText((text) => text.includes('ripr agent packet'));
-    assert.ok(packetText.includes('ripr agent packet --root . --seam-id 67fc764ba37d77bd'), packetText);
-    assert.ok(packetText.includes('target/ripr/agent/agent-packet.json'), packetText);
+    assert.ok(packetText.includes(`ripr agent packet --root ${rootArg} --seam-id 67fc764ba37d77bd`), packetText);
+    assert.ok(packetText.endsWith(` > ${anchored('target/ripr/agent/agent-packet.json')}`), packetText);
 
     await vscode.commands.executeCommand(briefCommand.command, ...(briefCommand.arguments ?? []));
     const briefText = await waitForClipboardText((text) => text.includes('ripr agent brief'));
-    assert.ok(briefText.includes('ripr agent brief --root . --seam-id 67fc764ba37d77bd'), briefText);
-    assert.ok(briefText.includes('target/ripr/agent/agent-brief.json'), briefText);
+    assert.ok(briefText.includes(`ripr agent brief --root ${rootArg} --seam-id 67fc764ba37d77bd`), briefText);
+    assert.ok(briefText.endsWith(` > ${anchored('target/ripr/agent/agent-brief.json')}`), briefText);
 
     await vscode.commands.executeCommand(afterSnapshotCommand.command, ...(afterSnapshotCommand.arguments ?? []));
     const afterSnapshotText = await waitForClipboardText((text) =>
       text.includes('ripr check') && text.includes('target/ripr/pilot/after.repo-exposure.json')
     );
-    assert.ok(afterSnapshotText.includes('ripr check --root . --base '), afterSnapshotText);
+    assert.ok(afterSnapshotText.includes(`ripr check --root ${rootArg} --base `), afterSnapshotText);
     assert.ok(afterSnapshotText.includes('--format repo-exposure-json'), afterSnapshotText);
-    assert.ok(afterSnapshotText.includes('target/ripr/pilot/after.repo-exposure.json'), afterSnapshotText);
+    assert.ok(afterSnapshotText.endsWith(` > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`), afterSnapshotText);
 
     await vscode.commands.executeCommand(verifyCommand.command, ...(verifyCommand.arguments ?? []));
     const verifyText = await waitForClipboardText((text) => text.includes('ripr agent verify'));
-    assert.ok(verifyText.includes('ripr agent verify --root .'), verifyText);
-    assert.ok(verifyText.includes('target/ripr/pilot/after.repo-exposure.json'), verifyText);
+    assert.ok(verifyText.includes(`ripr agent verify --root ${rootArg}`), verifyText);
+    assert.ok(verifyText.endsWith(` > ${anchored('target/ripr/agent/agent-verify.json')}`), verifyText);
 
     await vscode.commands.executeCommand(receiptCommand.command, ...(receiptCommand.arguments ?? []));
     const receiptText = await waitForClipboardText((text) => text.includes('ripr agent receipt'));
-    assert.ok(receiptText.includes('ripr agent receipt --root .'), receiptText);
+    assert.ok(receiptText.includes(`ripr agent receipt --root ${rootArg}`), receiptText);
     assert.ok(receiptText.includes('--seam-id 67fc764ba37d77bd'), receiptText);
     assert.ok(receiptText.includes('target/ripr/agent/agent-receipt.json'), receiptText);
 
@@ -3718,40 +3723,45 @@ suite('Extension Smoke', () => {
       await writeWorkspaceFile(relativePath, 'pub fn agent_loop_command_target() {}\n');
       const document = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(document);
+      await context.controller.start();
       const seamId = '67fc764ba37d77bd';
+      const selectedRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      assert.ok(selectedRoot, 'test workspace root must be open');
+      const rootArg = serverShellArg(selectedRoot.replace(/\\/g, '/'));
+      const anchored = (artifact: string) => serverShellArg(`${selectedRoot.replace(/\\/g, '/')}/${artifact}`);
       const targets = [
         agentLoopCommandTarget(
           'agent_repair',
-          `ripr agent repair --root . --seam-id ${seamId} --phase before`,
+          `ripr agent repair --root ${rootArg} --seam-id ${seamId} --phase before`,
           'target/ripr/repair-attempts',
           { seamId }
         ),
         agentLoopCommandTarget(
           'agent_packet',
-          `ripr agent packet --root . --seam-id ${seamId} --json > target/ripr/agent/agent-packet.json`,
+          `ripr agent packet --root ${rootArg} --seam-id ${seamId} --json > ${anchored('target/ripr/agent/agent-packet.json')}`,
           'target/ripr/agent/agent-packet.json',
           { seamId }
         ),
         agentLoopCommandTarget(
           'agent_brief',
-          `ripr agent brief --root . --seam-id ${seamId} --json > target/ripr/agent/agent-brief.json`,
+          `ripr agent brief --root ${rootArg} --seam-id ${seamId} --json > ${anchored('target/ripr/agent/agent-brief.json')}`,
           'target/ripr/agent/agent-brief.json',
           { seamId }
         ),
         agentLoopCommandTarget(
           'after_snapshot',
-          "ripr check --root . --base 'origin/main with space' --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+          `ripr check --root ${rootArg} --base 'origin/main with space' --mode ready --format repo-exposure-json > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`,
           'target/ripr/pilot/after.repo-exposure.json',
           { base: 'origin/main with space', mode: 'ready' }
         ),
         agentLoopCommandTarget(
           'agent_verify',
-          'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json',
+          `ripr agent verify --root ${rootArg} --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > ${anchored('target/ripr/agent/agent-verify.json')}`,
           'target/ripr/agent/agent-verify.json'
         ),
         agentLoopCommandTarget(
           'agent_receipt',
-          `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`,
+          `ripr agent receipt --root ${rootArg} --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`,
           'target/ripr/agent/agent-receipt.json',
           { seamId }
         ),
@@ -3781,8 +3791,8 @@ suite('Extension Smoke', () => {
   });
 
   test('copyAgentLoopCommand accepts redirects anchored at the session root (#4220)', async () => {
-    // Since #3938 the server writes `> <cwd>/<artifact>` for `--root .`,
-    // and its cwd is the session workspace root.
+    // The server binds both the root argument and redirect to the selected
+    // session workspace root.
     const relativePath = 'src/agent-loop-anchored.rs';
     const uri = workspaceFileUri(relativePath);
     const context = createControllerTestContext({});
@@ -3793,10 +3803,11 @@ suite('Extension Smoke', () => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       assert.ok(root, 'test workspace root must be open');
       const anchored = (artifact: string) => serverShellArg(`${root.replace(/\\/g, '/')}/${artifact}`);
+      const rootArg = serverShellArg(root.replace(/\\/g, '/'));
       const seamId = '67fc764ba37d77bd';
       const packetTo = (redirect: string) => agentLoopCommandTarget(
         'agent_packet',
-        `ripr agent packet --root . --seam-id ${seamId} --json > ${redirect}`,
+        `ripr agent packet --root ${rootArg} --seam-id ${seamId} --json > ${redirect}`,
         'target/ripr/agent/agent-packet.json',
         { seamId }
       );
@@ -3804,19 +3815,19 @@ suite('Extension Smoke', () => {
         packetTo(anchored('target/ripr/agent/agent-packet.json')),
         agentLoopCommandTarget(
           'agent_brief',
-          `ripr agent brief --root . --seam-id ${seamId} --json > ${anchored('target/ripr/agent/agent-brief.json')}`,
+          `ripr agent brief --root ${rootArg} --seam-id ${seamId} --json > ${anchored('target/ripr/agent/agent-brief.json')}`,
           'target/ripr/agent/agent-brief.json',
           { seamId }
         ),
         agentLoopCommandTarget(
           'after_snapshot',
-          `ripr check --root . --base origin/main --mode fast --format repo-exposure-json > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`,
+          `ripr check --root ${rootArg} --base origin/main --mode fast --format repo-exposure-json > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`,
           'target/ripr/pilot/after.repo-exposure.json',
           { mode: 'fast' }
         ),
         agentLoopCommandTarget(
           'agent_verify',
-          `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > ${anchored('target/ripr/agent/agent-verify.json')}`,
+          `ripr agent verify --root ${rootArg} --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > ${anchored('target/ripr/agent/agent-verify.json')}`,
           'target/ripr/agent/agent-verify.json'
         )
       ];
@@ -3899,7 +3910,8 @@ suite('Extension Smoke', () => {
   test('agent loop commands must equal the body the server renders from the payload (#4225)', () => {
     const seamId = '67fc764ba37d77bd';
     const root = path.resolve('/work/R&D/$repo');
-    const anchored = (artifact: string) => serverShellArg(`${root.replace(/\\/g, '/')}/${artifact}`);
+    const rootDisplay = root.replace(/\\/g, '/');
+    const anchored = (artifact: string) => `'${rootDisplay}/${artifact}'`;
     const accepts = (target: RiprAgentLoopCommandTarget) =>
       validatedAgentLoopCommand(target, [root]) === target.command;
     const packet = (body: string, redirect = anchored('target/ripr/agent/agent-packet.json')) =>
@@ -3907,15 +3919,39 @@ suite('Extension Smoke', () => {
     const snapshot = (commandBase: string, payloadBase: string | null): RiprAgentLoopCommandTarget => ({
       ...agentLoopCommandTarget(
         'after_snapshot',
-        `ripr check --root .${commandBase} --mode fast --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json`,
+        `ripr check --root ${commandRoot}${commandBase} --mode fast --format repo-exposure-json > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`,
         'target/ripr/pilot/after.repo-exposure.json',
         { mode: 'fast' }
       ),
       base: payloadBase
     });
 
-    // A workspace path the server single-quotes keeps its `&` and `$`.
-    assert.ok(accepts(packet(`ripr agent packet --root . --seam-id ${seamId} --json`)));
+    // The real server binds the selected root in the command while the payload
+    // retains its portable `root: "."` role. This must fail on the old client.
+    const commandRoot = process.platform === 'win32' ? `'${rootDisplay}'` : "'/work/R&D/$repo'";
+    assert.ok(accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`)));
+    assert.ok(!accepts(packet(`ripr agent packet --root . --seam-id ${seamId} --json`)));
+    const otherRoot = path.resolve('/work/other').replace(/\\/g, '/');
+    assert.ok(!accepts(packet(`ripr agent packet --root ${otherRoot} --seam-id ${seamId} --json`)));
+    assert.ok(!accepts(packet(
+      `ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      `${otherRoot}/target/ripr/agent/agent-packet.json`
+    )));
+    // Both spellings may be selected (symlink and realpath), but the command
+    // and redirect must use the SAME one. A relative tail is not a bound tail.
+    const otherPacket = packet(
+      `ripr agent packet --root ${otherRoot} --seam-id ${seamId} --json`,
+      `${otherRoot}/target/ripr/agent/agent-packet.json`
+    );
+    assert.strictEqual(validatedAgentLoopCommand(otherPacket, [root, otherRoot]), otherPacket.command);
+    assert.strictEqual(validatedAgentLoopCommand(packet(
+      `ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      `${otherRoot}/target/ripr/agent/agent-packet.json`
+    ), [root, otherRoot]), undefined);
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      'target/ripr/agent/agent-packet.json')));
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      serverShellArg(`${root.replace(/\\/g, '/')}/../other/target/ripr/agent/agent-packet.json`))));
     // Bases the server single-quotes, and no `--base` when the payload has none.
     for (const base of ['HEAD~1', 'HEAD^', '@{u}', 'origin/main with space']) {
       assert.ok(accepts(snapshot(` --base ${serverShellArg(base)}`, base)), base);
@@ -3923,8 +3959,8 @@ suite('Extension Smoke', () => {
     assert.ok(accepts(snapshot('', null)));
 
     // Extra tokens before the redirect, including command substitution.
-    assert.ok(!accepts(packet(`ripr agent packet --root . --seam-id ${seamId} $(touch pwned) --json`)));
-    assert.ok(!accepts(packet(`ripr agent packet --root . --seam-id ${seamId} --json --extra`)));
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} $(touch pwned) --json`)));
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json --extra`)));
     assert.ok(!accepts(agentLoopCommandTarget(
       'agent_verify',
       'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json $(touch pwned) > target/ripr/agent/agent-verify.json',

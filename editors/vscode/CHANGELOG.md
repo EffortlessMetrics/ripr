@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Copy agent-loop commands from real-server code actions when the server binds
+  the selected absolute workspace root; reject cross-root, relative, or unsafe
+  artifact redirects instead of leaving the previous clipboard text unchanged
+  ([#4396](https://github.com/EffortlessMetrics/ripr-swarm/issues/4396)).
+
 ## 0.8.0
 
 - Aligns the marketplace extension metadata with RIPR 0.8.0's evidence-to-repair

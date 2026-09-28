@@ -4357,13 +4357,13 @@ interface AgentLoopCommandContract {
   // with `shell_arg` quoting), without the redirect; `undefined` when the
   // payload cannot have produced one. Equality leaves no room for an extra
   // token such as `$(cmd)` (#4225).
-  expectedBody?: (target: RiprAgentLoopCommandTarget) => string | undefined;
+  expectedBody?: (target: RiprAgentLoopCommandTarget, commandRoot: string) => string | undefined;
   // Labels the payload does not pin down are checked by prefix and substrings.
   startsWith?: string;
   includes?: string[];
   // The command ends in `> <targetArtifact>`. Since #3938 the server anchors
   // that redirect at the resolved `--root`, so the tail is checked by
-  // `redirectTargetMatches` rather than as fixed text.
+  // the exact selected-root tail for fixed LSP actions.
   redirectsToTargetArtifact?: boolean;
 }
 
@@ -4374,16 +4374,16 @@ const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
   // target/ripr/repair-attempts.
   agent_repair: {
     targetArtifact: 'target/ripr/repair-attempts',
-    expectedBody: withSeamId((seamId) => `ripr agent repair --root . --seam-id ${seamId} --phase before`)
+    expectedBody: withSeamId((seamId, commandRoot) => `ripr agent repair --root ${commandRoot} --seam-id ${seamId} --phase before`)
   },
   agent_packet: {
     targetArtifact: 'target/ripr/agent/agent-packet.json',
-    expectedBody: withSeamId((seamId) => `ripr agent packet --root . --seam-id ${seamId} --json`),
+    expectedBody: withSeamId((seamId, commandRoot) => `ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`),
     redirectsToTargetArtifact: true
   },
   agent_brief: {
     targetArtifact: 'target/ripr/agent/agent-brief.json',
-    expectedBody: withSeamId((seamId) => `ripr agent brief --root . --seam-id ${seamId} --json`),
+    expectedBody: withSeamId((seamId, commandRoot) => `ripr agent brief --root ${commandRoot} --seam-id ${seamId} --json`),
     redirectsToTargetArtifact: true
   },
   after_snapshot: {
@@ -4393,13 +4393,13 @@ const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
   },
   agent_verify: {
     targetArtifact: 'target/ripr/agent/agent-verify.json',
-    expectedBody: () => 'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json',
+    expectedBody: (_target, commandRoot) => `ripr agent verify --root ${commandRoot} --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json`,
     redirectsToTargetArtifact: true
   },
   agent_receipt: {
     targetArtifact: 'target/ripr/agent/agent-receipt.json',
-    expectedBody: withSeamId((seamId) =>
-      `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`
+    expectedBody: withSeamId((seamId, commandRoot) =>
+      `ripr agent receipt --root ${commandRoot} --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`
     )
   },
   gap_verify: {
@@ -4413,15 +4413,15 @@ const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
 };
 
 function withSeamId(
-  render: (seamId: string) => string
-): (target: RiprAgentLoopCommandTarget) => string | undefined {
-  return (target) =>
-    boundedPayloadString(target.seam_id) ? render(serverShellArg(target.seam_id)) : undefined;
+  render: (seamId: string, commandRoot: string) => string
+): (target: RiprAgentLoopCommandTarget, commandRoot: string) => string | undefined {
+  return (target, commandRoot) =>
+    boundedPayloadString(target.seam_id) ? render(serverShellArg(target.seam_id), commandRoot) : undefined;
 }
 
 // `check_repo_exposure_command_with_base`: `--base` appears exactly when the
 // payload names one.
-function afterSnapshotBody(target: RiprAgentLoopCommandTarget): string | undefined {
+function afterSnapshotBody(target: RiprAgentLoopCommandTarget, commandRoot: string): string | undefined {
   const mode = target.mode;
   if (typeof mode !== 'string' || !['instant', 'draft', 'fast', 'deep', 'ready'].includes(mode)) {
     return undefined;
@@ -4433,7 +4433,7 @@ function afterSnapshotBody(target: RiprAgentLoopCommandTarget): string | undefin
     }
     base = ` --base ${serverShellArg(target.base)}`;
   }
-  return `ripr check --root .${base} --mode ${mode} --format repo-exposure-json`;
+  return `ripr check --root ${commandRoot}${base} --mode ${mode} --format repo-exposure-json`;
 }
 
 export function validatedAgentLoopCommand(
@@ -4459,6 +4459,43 @@ export function validatedAgentLoopCommand(
   ) {
     return undefined;
   }
+  if (contract.expectedBody) {
+    // LSP copy actions bind the selected absolute root in the command, even
+    // though the payload keeps its portable root role (`"."`). Compare the
+    // entire server-rendered body and, when present, its redirect against the
+    // SAME selected spelling. An absolute command with a relative or other-root
+    // redirect is never equivalent (#4396).
+    for (const root of redirectRoots) {
+      if (!path.isAbsolute(root) || (process.platform !== 'win32' && root.includes('\\'))) {
+        continue;
+      }
+      const displayRoot = path.normalize(root).replace(/\\/g, '/');
+      // Apostrophe/backslash quoting is not portable across supported shells;
+      // likewise refuse characters that can end or alter a quoted span.
+      if (/[\r\n\0`\\"'\u2018-\u201f]/.test(displayRoot)) {
+        continue;
+      }
+      const commandRoot = serverShellArg(displayRoot);
+      let body = command;
+      if (contract.redirectsToTargetArtifact && contract.targetArtifact !== undefined) {
+        const expectedTail = serverShellArg(
+          `${displayRoot.replace(/\/$/, '')}/${contract.targetArtifact}`
+        );
+        if (!command.endsWith(` > ${expectedTail}`)) {
+          continue;
+        }
+        body = command.slice(0, -` > ${expectedTail}`.length);
+      }
+      if (
+        body === contract.expectedBody(target, commandRoot) &&
+        !hasUnsafeShellMetacharacter(body.replace(`--root ${commandRoot}`, '--root .'))
+      ) {
+        return command;
+      }
+    }
+    return undefined;
+  }
+  // Gap commands retain their separate, legacy prefix contract.
   let body = command;
   if (contract.redirectsToTargetArtifact && contract.targetArtifact !== undefined) {
     const redirectAt = command.lastIndexOf(' > ');
@@ -4474,13 +4511,8 @@ export function validatedAgentLoopCommand(
     }
     body = command.slice(0, redirectAt);
   }
-  // The redirect tail is owned by `redirectTargetMatches`, which lets a
-  // quoted workspace path keep its `&` or `$`; everything before it is not.
   if (hasUnsafeShellMetacharacter(body)) {
     return undefined;
-  }
-  if (contract.expectedBody) {
-    return body === contract.expectedBody(target) ? command : undefined;
   }
   // One redirect only: a `>` here would truncate some other file.
   if (
@@ -4494,9 +4526,8 @@ export function validatedAgentLoopCommand(
 }
 
 /**
- * Roots a `--root .` redirect may be anchored at: the cwd of the server or
- * CLI that rendered it, which is the workspace root. That cwd is read back
- * from the OS, which resolves symlinks, so the real path is accepted too.
+ * Selected workspace spellings accepted for a bound command and redirect.
+ * The server may render the real path when the workspace folder is a symlink.
  */
 async function workspaceRedirectRoots(workspaceRoot: string | undefined): Promise<string[]> {
   if (!workspaceRoot) {
