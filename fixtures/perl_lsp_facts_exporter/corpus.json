@@ -1,0 +1,47 @@
+{
+  "kind": "perl_lsp_facts_exporter_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0064",
+  "cases": [
+    {
+      "id": "exact_return_batch_export",
+      "description": "perl-lsp exports a deterministic fact packet for a Test::More exact return assertion without emitting RIPR-derived actionability.",
+      "input_root": "fixtures/perl_lsp_facts_exporter/input",
+      "expected_packet": "fixtures/perl_lsp_facts_exporter/expected/ripr-perl-facts-v1.json",
+      "exporter": "perl-lsp",
+      "packet_schema": "ripr-perl-facts-v1",
+      "authority_boundary": "preview_advisory_only",
+      "must_not_claim": [
+        "ripr_check_executes_perl_lsp",
+        "perl_runtime_executed",
+        "test_command_executed",
+        "canonical_gap_id_emitted_by_perl_lsp",
+        "gap_state_emitted_by_perl_lsp",
+        "repair_packet_ready",
+        "default_gate_authority",
+        "public_badge_contribution",
+        "support_tier_promotion"
+      ]
+    },
+    {
+      "id": "source_test_oracle_taxonomy_batch_export",
+      "description": "perl-lsp exports source, test, oracle, runner, and limitation facts that distinguish strong exact Perl oracles from smoke, mention-only, dies-only, unknown-helper, and dynamic-framework advisory evidence.",
+      "input_root": "fixtures/perl_lsp_facts_exporter/input",
+      "expected_packet": "fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json",
+      "exporter": "perl-lsp",
+      "packet_schema": "ripr-perl-facts-v1",
+      "authority_boundary": "preview_advisory_only",
+      "must_not_claim": [
+        "ripr_check_executes_perl_lsp",
+        "perl_runtime_executed",
+        "test_command_executed",
+        "canonical_gap_id_emitted_by_perl_lsp",
+        "gap_state_emitted_by_perl_lsp",
+        "repair_packet_ready",
+        "default_gate_authority",
+        "public_badge_contribution",
+        "support_tier_promotion"
+      ]
+    }
+  ]
+}

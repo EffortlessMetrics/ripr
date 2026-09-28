@@ -1,0 +1,9 @@
+diff --git a/src/util.ts b/src/util.ts
+index 0000000..1111111 100644
+--- a/src/util.ts
++++ b/src/util.ts
+@@ -1,3 +1,3 @@
+ export function format(value: number): string {
+-    return String(value);
++    return String(value) + '';
+ }

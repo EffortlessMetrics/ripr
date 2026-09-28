@@ -1,0 +1,1185 @@
+use crate::config::RiprConfig;
+use crate::domain::{
+    ExposureClass, Finding, LanguageId, LanguageStatus, MISSING_DISCRIMINATOR_VALUE_PREFIX,
+    RiprEvidence, StageState,
+};
+use crate::output::agent_seam_packets::{
+    allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
+    validate_agent_gap_record_packet,
+};
+use crate::output::next_step::reconcile_next_step;
+use crate::output::path::display_path;
+use crate::output::perl_preview_card::{PerlPreviewCard, PerlRawEvidenceRef, perl_preview_card};
+use crate::output::preview_actionability::{
+    PreviewActionability, PreviewRawEvidenceRef, preview_actionability_for,
+};
+use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
+use crate::output::typescript_preview_card::{
+    TypeScriptPreviewCard, bun_cross_language_advisory_packet, stable_byte_proof_mode,
+    typescript_preview_card,
+};
+
+use super::evidence_lines::{evidence_path_lines, weakness_lines};
+use super::{is_wrappable_advisory_prose, wrap_human_prose};
+
+pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &RiprConfig) -> String {
+    let mut out = String::new();
+    let severity = config.severity().for_exposure(&finding.class).as_str();
+    out.push_str(&format!(
+        "  File: {}:{}\n",
+        display_path(&finding.probe.location.file),
+        finding.probe.location.line
+    ));
+    if should_render_language_metadata(finding) {
+        if let Some(language) = finding.language {
+            out.push_str(&format!("  Language: {}\n", language.as_str()));
+        }
+        if let Some(status) = finding.language_status {
+            out.push_str(&format!("  Language status: {}\n", status.as_str()));
+        }
+    }
+    out.push_str(&format!(
+        "  Static exposure: {} ({}, confidence {:.2})\n",
+        finding.class.as_str(),
+        severity,
+        finding.confidence
+    ));
+    // #2614: add a brief classification hint so the digest reader understands
+    // WHY the finding is at this class without reading the full form.
+    if let Some(hint) = classification_hint(&finding.class, &finding.ripr) {
+        out.push_str(&format!("  Why {0}: {hint}\n", finding.class.as_str()));
+    }
+    if let Some(gap) = &finding.canonical_gap {
+        out.push_str(&format!("  Canonical gap: {}\n", gap.id));
+    }
+    let changed = finding
+        .probe
+        .after
+        .as_deref()
+        .or(finding.probe.before.as_deref())
+        .unwrap_or(&finding.probe.expression);
+    out.push_str(&format!("  Changed behavior: {}\n", one_line(changed)));
+    if let Some(missing) = finding.missing.first() {
+        // #2273: preview-language classifiers record an observation rationale
+        // (not a missing discriminator) in this field for `exposed` findings;
+        // label it as observed advisory evidence so the header does not
+        // contradict the machine state. Rust `exposed` findings never carry a
+        // `missing` entry, so this switch only affects advisory preview output.
+        // #3317 follow-up: the unknown-class `missing` entry is
+        // analyzer-limitation prose ("No clear propagation path…"), not a
+        // discriminator a test could supply. Label it as the limitation it
+        // is when no real discriminator is missing; keep the
+        // discriminator label whenever one exists.
+        let label = if finding.class == ExposureClass::Exposed {
+            "Discriminator (observed, advisory)"
+        } else if matches!(
+            finding.class,
+            ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown
+        ) && finding.activation.missing_discriminators.is_empty()
+        {
+            "Analyzer limit"
+        } else {
+            "Missing discriminator"
+        };
+        // `decision.rs` builds these entries as `Missing discriminator value:
+        // <value>`, which restates the label the renderer is about to print:
+        // `Missing discriminator: Missing discriminator value: X`. Print the
+        // value alone. Entries that are not value-shaped ("No strong
+        // discriminator was detected") carry no such prefix and are unchanged.
+        // `evidence_lines.rs` strips the same prefix for the same reason.
+        let missing = missing
+            .strip_prefix(MISSING_DISCRIMINATOR_VALUE_PREFIX)
+            .unwrap_or(missing);
+        out.push_str(&format!("  {label}: {}\n", one_line(missing)));
+    }
+    if let Some(test) = finding.related_tests.first() {
+        out.push_str(&format!(
+            "  Related test: {}:{} {}\n",
+            display_path(&test.file),
+            test.line,
+            test.name
+        ));
+    }
+    if let Some(placement) = repair_placement_from_evidence(finding) {
+        out.push_str(&format!("  Suggested test file: {}\n", placement.test_file));
+        out.push_str(&format!("  Suggested test: {}\n", placement.test_name));
+        if let Some(node_id) = placement.test_node_id {
+            out.push_str(&format!("  Test node: {node_id}\n"));
+        }
+        out.push_str(&format!(
+            "  Verify command: {} ({})\n",
+            placement.verify_command, placement.verify_confidence
+        ));
+    }
+    if finding.recommended_next_step.is_some() {
+        out.push_str(&format!(
+            "  Next step: {}\n",
+            one_line(&reconcile_next_step(finding))
+        ));
+    }
+    let evidence = evidence_path_lines(finding);
+    if !evidence.is_empty() {
+        out.push_str("  Evidence:\n");
+        for line in evidence.iter().take(2) {
+            out.push_str(&format!("    - {}\n", one_line(line)));
+        }
+        if evidence.len() > 2 {
+            out.push_str(&format!(
+                "    - {} more evidence line(s) hidden\n",
+                evidence.len() - 2
+            ));
+        }
+    }
+    out
+}
+
+/// Collapse a possibly-multi-line value to one bounded display line.
+///
+/// This is the *digest* policy: the digest shows one selected finding and routes
+/// the reader to `--format human-full`, so losing detail here is recoverable.
+/// The full form must not use it — see [`wrapped_fragment`].
+pub(super) fn one_line(value: &str) -> String {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() <= LINE_BUDGET {
+        collapsed
+    } else {
+        let mut truncated = collapsed.chars().take(LINE_BUDGET).collect::<String>();
+        // Cut at a word boundary when one is near, so the line never ends
+        // mid-word ("places amo…"); a long unbroken token still cuts hard.
+        if let Some(space) = truncated.rfind(" ")
+            && truncated[space..].chars().count() <= WORD_BOUNDARY_SLACK
+        {
+            truncated.truncate(space);
+        }
+        // Never leave a code span open: "input `discountedTotal(…" reads as
+        // a broken command. Cut before the unmatched backtick when that loses
+        // little; when the span is long, keep its start and close it
+        // ("`xxxx…`") instead of wiping the line down to "see…".
+        if truncated.matches('`').count() % 2 == 1
+            && let Some(open) = truncated.rfind('`')
+        {
+            if truncated[open..].chars().count() <= CODE_SPAN_SLACK {
+                truncated.truncate(open);
+                truncated.truncate(truncated.trim_end().len());
+            } else {
+                truncated.push_str("…`");
+                return truncated;
+            }
+        }
+        truncated.push('…');
+        truncated
+    }
+}
+
+/// Maximum displayed characters for one rendered source fragment.
+const LINE_BUDGET: usize = 180;
+
+/// How far back from [`LINE_BUDGET`] `one_line` looks for a word boundary.
+const WORD_BOUNDARY_SLACK: usize = 30;
+
+/// Longest open code span `one_line` drops whole rather than closing.
+const CODE_SPAN_SLACK: usize = 60;
+
+/// Render a changed-source fragment for the exhaustive surface: **complete**,
+/// but hard-wrapped so no display line runs past the budget.
+///
+/// Truncating here would be wrong in two ways that review on #2752 caught:
+///
+/// - `--format json` serializes only `probe.expression`, never `probe.before`
+///   or `probe.after` (`output/json/report.rs`). When a long `before` differs
+///   from the shorter probe expression — the normal case for a widened branch —
+///   truncating the full form would leave the complete changed source in *no*
+///   ripr output at all.
+/// - Collapsing whitespace can erase the delta itself. A diff that changes
+///   `"a  b"` to `"a b"` renders as two identical lines once whitespace is
+///   normalized, hiding exactly the behavior that changed.
+///
+/// So the wrap is positional, not whitespace-aware: every character survives,
+/// including runs of spaces, and a reader sees the whole fragment.
+fn wrapped_fragment(label: &str, value: &str) -> String {
+    // The label column is the continuation indent, so wrapped lines line up
+    // under the value rather than under the field name.
+    let indent = " ".repeat(label.chars().count());
+    let budget = LINE_BUDGET.saturating_sub(indent.chars().count()).max(1);
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= budget {
+        return format!("{label}{value}\n");
+    }
+    let mut out = String::new();
+    for (index, chunk) in chars.chunks(budget).enumerate() {
+        let prefix = if index == 0 { label } else { indent.as_str() };
+        out.push_str(prefix);
+        out.extend(chunk.iter());
+        out.push('\n');
+    }
+    out
+}
+
+pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig) -> String {
+    let mut out = String::new();
+    let severity = config.severity().for_exposure(&finding.class).as_str();
+    out.push_str(&format!(
+        "{} {}:{}\n",
+        severity.to_ascii_uppercase(),
+        display_path(&finding.probe.location.file),
+        finding.probe.location.line
+    ));
+
+    // #2752: these three printed at full source width, so a long changed
+    // expression (a chained iterator, a jq pipeline, a heredoc) rendered 400+
+    // characters on one line inside output whose every other line stays under
+    // ~100. They are bounded by wrapping rather than truncation, because this is
+    // the only surface that carries `before`/`after` at all — see
+    // `wrapped_fragment`.
+    out.push_str("\nChanged\n");
+    if let Some(before) = &finding.probe.before {
+        out.push_str(&wrapped_fragment("  before: ", before));
+    }
+    if let Some(after) = &finding.probe.after {
+        out.push_str(&wrapped_fragment("  after:  ", after));
+    } else {
+        out.push_str(&wrapped_fragment("  expr:   ", &finding.probe.expression));
+    }
+    // Revision labelling (#3281): base-side evidence stays visible here —
+    // the human surface explicitly supports historical context — but is
+    // labelled non-actionable so it cannot read as a current obligation.
+    if !finding.is_candidate_actionable() {
+        out.push_str(&format!(
+            "  source:  {} — base-side evidence, not a candidate edit target\n",
+            finding.source_currentness.as_str()
+        ));
+    }
+
+    out.push_str("\nProbe\n");
+    out.push_str(&format!(
+        "  family: {}\n  delta:  {}\n",
+        finding.probe.family.as_str(),
+        finding.probe.delta.as_str()
+    ));
+    if let Some(owner) = &finding.probe.owner {
+        out.push_str(&format!("  owner:  {owner}\n"));
+    }
+    if let Some(gap) = &finding.canonical_gap {
+        out.push_str(&format!("  canonical gap: {}\n", gap.id));
+    }
+
+    if should_render_language_metadata(finding) {
+        out.push_str("\nLanguage\n");
+        if let Some(language) = finding.language {
+            out.push_str(&format!("  language: {}\n", language.as_str()));
+        }
+        if let Some(status) = finding.language_status {
+            out.push_str(&format!("  status: {}\n", status.as_str()));
+        }
+        if let Some(owner_kind) = finding.owner_kind {
+            out.push_str(&format!("  owner kind: {}\n", owner_kind.as_str()));
+        }
+    }
+
+    if let Some(actionability) = preview_actionability_for(finding) {
+        push_preview_actionability(&mut out, &actionability);
+    }
+
+    out.push_str("\nStatic exposure\n");
+    out.push_str(&format!(
+        "  {} ({}, confidence {:.2})\n",
+        finding.class.as_str(),
+        severity,
+        finding.confidence
+    ));
+
+    out.push_str("\nEvidence\n");
+    for line in evidence_path_lines(finding) {
+        if is_wrappable_advisory_prose(&line) {
+            out.push_str(&wrap_human_prose(&line, "  - ", "    "));
+        } else {
+            out.push_str(&format!("  - {line}"));
+        }
+        out.push('\n');
+    }
+
+    let weakness = weakness_lines(finding);
+    if !weakness.is_empty() {
+        out.push_str("\nWeakness\n");
+        for line in weakness {
+            out.push_str(&format!("  - {line}\n"));
+        }
+    }
+
+    let stop_reasons = finding.effective_stop_reasons();
+    if !stop_reasons.is_empty() {
+        out.push_str("\nStop reasons:\n");
+        for reason in &stop_reasons {
+            out.push_str(&format!("  - {}\n", reason.as_str()));
+        }
+    }
+
+    // #1162 explain enhancement: when a named static limitation is present,
+    // surface its plain-English meaning (not just the snake_case token) so a CLI
+    // reader understands *why* ripr could not resolve the path. Fail-closed
+    // disclosure only — `describe()` asserts no coverage.
+    if let Some(static_limit_kind) = &finding.static_limit_kind {
+        out.push_str("\nStatic limitation\n");
+        out.push_str(&format!(
+            "  {} \u{2014} {}\n",
+            static_limit_kind.as_str(),
+            static_limit_kind.describe()
+        ));
+    }
+
+    // RIPR-SPEC-0115/0117: when a Rust no_static_path limitation named a
+    // witnessing test, surface it in human output as a concrete "Where to look"
+    // pointer. The witness prose lives in `evidence` (the limitation channel);
+    // we recognize it by the shared prefix so JSON evidence and human output
+    // stay single-sourced.
+    if let Some(witness) = finding
+        .evidence
+        .iter()
+        .find(|line| line.starts_with(crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX))
+    {
+        out.push_str("\nWhere to look\n");
+        out.push_str(&format!("  {witness}\n"));
+    }
+
+    let limitation_details = limitation_detail_lines(finding);
+    if !limitation_details.is_empty() {
+        out.push_str("\nLimitation detail\n");
+        for (label, value) in limitation_details {
+            out.push_str(&format!("  {label}: {value}\n"));
+        }
+    }
+
+    if let Some(card) = python_repair_card(finding) {
+        push_python_repair_card(&mut out, &card);
+    } else if let Some(card) = typescript_preview_card(finding) {
+        push_typescript_preview_card(&mut out, &card);
+        // §PR8 (RIPR-SPEC-0088): surface the full work-packet field-note when
+        // actionable, or the named limitation when blocked. Emitted after the
+        // preview card so it reads as a separate operator-facing section.
+        push_typescript_repair_packet_field_note(&mut out, finding);
+        // ADR-0019 §83-86 bespoke path (Campaign 31 item 6): advisory-only,
+        // hard-pinned to never flip an authority flag. See perl_preview_card.rs
+        // `advisory_only_readiness()` + the invariant test. Decommissioned in
+        // the post-Phase-B PR.
+    } else if let Some(card) = perl_preview_card(finding) {
+        push_perl_preview_card(&mut out, &card);
+    } else if let Some(placement) = repair_placement_from_evidence(finding) {
+        out.push_str("\nRepair placement\n");
+        out.push_str(&format!("  suggested file: {}\n", placement.test_file));
+        out.push_str(&format!("  suggested test: {}\n", placement.test_name));
+        if let Some(node_id) = placement.test_node_id {
+            out.push_str(&format!("  pytest node: {node_id}\n"));
+        }
+        out.push_str(&format!(
+            "  verify: {} ({})\n",
+            placement.verify_command, placement.verify_confidence
+        ));
+    }
+
+    if finding.recommended_next_step.is_some() {
+        out.push_str("\nNext step\n");
+        out.push_str(&format!("  {}\n", reconcile_next_step(finding)));
+    }
+
+    out
+}
+
+fn limitation_detail_lines(finding: &Finding) -> Vec<(&'static str, &str)> {
+    [
+        (
+            "last established edge",
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        ),
+        (
+            "first unresolved edge",
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        ),
+        (
+            "analyzer route",
+            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX,
+        ),
+        ("non-claim", crate::domain::LIMITATION_NON_CLAIM_PREFIX),
+    ]
+    .into_iter()
+    .filter_map(|(label, prefix)| {
+        finding
+            .evidence
+            .iter()
+            .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
+            .map(|value| (label, value))
+    })
+    .collect()
+}
+
+fn push_preview_actionability(out: &mut String, actionability: &PreviewActionability) {
+    out.push_str("\nPreview actionability\n");
+    out.push_str(&format!(
+        "  authority: {}\n",
+        actionability.authority_boundary
+    ));
+    out.push_str(&format!("  gap state: {}\n", actionability.gap_state));
+    out.push_str(&format!(
+        "  category: {}\n",
+        actionability.actionability_category
+    ));
+    out.push_str(&format!(
+        "  repair packet ready: {}\n",
+        actionability.repair_packet_ready
+    ));
+    // RIPR-SPEC-0088 §PR8: an actionable finding must not emit
+    // "why not actionable" / "evidence needed" / blocked-case messaging — that
+    // contradicts the complete packet. Relabel to "why actionable" and the
+    // actual repair action, and drop the "evidence needed" line.
+    if actionability.repair_packet_ready {
+        out.push_str(&format!(
+            "  why actionable: {}\n",
+            actionability.why_not_actionable
+        ));
+        out.push_str(&format!(
+            "  repair action: {}\n",
+            actionability.repair_route
+        ));
+    } else {
+        out.push_str(&format!(
+            "  why not actionable: {}\n",
+            actionability.why_not_actionable
+        ));
+        out.push_str(&format!("  repair route: {}\n", actionability.repair_route));
+    }
+    if !actionability.missing_actionability_fields.is_empty() {
+        out.push_str(&format!(
+            "  missing fields: {}\n",
+            actionability.missing_actionability_fields.join(", ")
+        ));
+    }
+    if !actionability.missing_graph_legs.is_empty() {
+        out.push_str(&format!(
+            "  missing graph legs: {}\n",
+            actionability.missing_graph_legs.join(", ")
+        ));
+    }
+    if let Some(unlock_condition) = &actionability.unlock_condition {
+        out.push_str(&format!("  unlock condition: {unlock_condition}\n"));
+    }
+    if !actionability.repair_packet_ready && !actionability.evidence_needed_to_promote.is_empty() {
+        out.push_str(&format!(
+            "  evidence needed: {}\n",
+            actionability.evidence_needed_to_promote
+        ));
+    }
+    for raw_ref in &actionability.raw_evidence_refs {
+        out.push_str("  raw evidence: ");
+        push_raw_ref(out, raw_ref);
+        out.push('\n');
+    }
+}
+
+fn push_raw_ref(out: &mut String, raw_ref: &PreviewRawEvidenceRef) {
+    if let (Some(file), Some(line)) = (raw_ref.file.as_deref(), raw_ref.line) {
+        if let Some(leg) = &raw_ref.leg {
+            out.push_str(&format!("{leg} "));
+        }
+        out.push_str(&format!("{file}:{line}"));
+        if let Some(kind) = &raw_ref.kind {
+            out.push_str(&format!(" ({kind})"));
+        }
+        if let Some(source_id) = &raw_ref.source_id {
+            out.push_str(&format!(" source={source_id}"));
+        }
+        if let Some(owner) = &raw_ref.owner {
+            out.push_str(&format!(" owner={owner}"));
+        }
+        if let Some(sample) = &raw_ref.sample {
+            out.push_str(&format!(" sample={sample}"));
+        }
+    } else {
+        out.push_str(&raw_ref.raw);
+    }
+}
+
+fn push_python_repair_card(out: &mut String, card: &PythonRepairCard) {
+    out.push_str("\nPython repair card (preview/advisory)\n");
+    out.push_str(&format!("  card version: {}\n", card.card_version));
+    out.push_str(&format!("  canonical gap: {}\n", card.canonical_gap_id));
+    out.push_str(&format!(
+        "  authority: {} ({}/{})\n",
+        card.authority_boundary, card.language, card.language_status
+    ));
+    out.push_str(&format!("  repair action: {}\n", card.repair_action));
+    out.push_str(&format!("  changed owner: {}\n", card.changed_owner));
+    out.push_str(&format!("  changed behavior: {}\n", card.changed_behavior));
+    out.push_str(&format!(
+        "  current test evidence: {}\n",
+        card.current_test_evidence
+    ));
+    out.push_str(&format!(
+        "  missing discriminator: {}\n",
+        card.missing_discriminator
+    ));
+    out.push_str(&format!(
+        "  recommended test shape: {}\n",
+        card.recommended_test_shape
+    ));
+    out.push_str(&format!(
+        "  suggested assertion: {}\n",
+        card.suggested_assertion
+    ));
+    out.push_str(&format!("  suggested file: {}\n", card.suggested_test_file));
+    out.push_str(&format!("  suggested test: {}\n", card.suggested_test_name));
+    if let Some(node_id) = &card.suggested_test_node_id {
+        out.push_str(&format!("  pytest node: {node_id}\n"));
+    }
+    out.push_str(&format!(
+        "  verify: {} ({})\n",
+        card.verify_command, card.verify_command_confidence
+    ));
+    if let Some(command) = &card.receipt_command {
+        out.push_str(&format!("  receipt command: {command}\n"));
+    } else {
+        out.push_str(&format!("  receipt: {}\n", card.receipt_status));
+    }
+    out.push_str(&format!("  receipt guidance: {}\n", card.receipt_guidance));
+    out.push_str("  stop conditions:\n");
+    for condition in &card.stop_conditions {
+        out.push_str(&format!("    - {condition}\n"));
+    }
+    out.push_str("  limits:\n");
+    for limit in &card.limits {
+        out.push_str(&format!("    - {limit}\n"));
+    }
+}
+
+fn push_typescript_preview_card(out: &mut String, card: &TypeScriptPreviewCard) {
+    out.push_str("\nTypeScript preview card (advisory)\n");
+    out.push_str(&format!("  card version: {}\n", card.card_version));
+    out.push_str(&format!(
+        "  authority: {} ({}/{})\n",
+        card.authority_boundary, card.language, card.language_status
+    ));
+    out.push_str(&format!("  owner: {}\n", card.owner));
+    if let Some(owner_kind) = &card.owner_kind {
+        out.push_str(&format!("  owner kind: {owner_kind}\n"));
+    }
+    out.push_str(&format!("  changed behavior: {}\n", card.changed_behavior));
+    if let Some(test) = &card.related_test {
+        out.push_str(&format!(
+            "  related test: {}:{} {}\n",
+            test.file, test.line, test.name
+        ));
+    }
+    out.push_str(&format!(
+        "  oracle: {} ({})\n",
+        card.oracle_kind, card.oracle_strength
+    ));
+    for (index, grip) in card.bun_cross_language_grips.iter().enumerate() {
+        if card.bun_cross_language_grips.len() == 1 {
+            out.push_str("  Bun cross-language grip:\n");
+        } else {
+            out.push_str(&format!(
+                "  Bun cross-language grip {}/{}:\n",
+                index + 1,
+                card.bun_cross_language_grips.len()
+            ));
+        }
+        out.push_str(&format!("    state: {}\n", grip.state));
+        out.push_str(&format!(
+            "    Rust seam: {} owner={} boundary={}\n",
+            grip.rust_file, grip.rust_owner, grip.rust_boundary
+        ));
+        out.push_str(&format!(
+            "    TypeScript evidence: {} verdict={} confidence={}\n",
+            grip.ts_test_file, grip.ts_verdict, grip.bridge_confidence
+        ));
+        if !grip.missing_discriminators.is_empty() {
+            out.push_str(&format!(
+                "    missing discriminators: {}\n",
+                grip.missing_discriminators.join(", ")
+            ));
+        }
+        if !grip.missing_graph_legs.is_empty() {
+            out.push_str(&format!(
+                "    missing graph legs: {}\n",
+                grip.missing_graph_legs.join(", ")
+            ));
+        }
+        if let Some(unlock_condition) = &grip.unlock_condition {
+            out.push_str(&format!("    unlock condition: {unlock_condition}\n"));
+        }
+        out.push_str(&format!(
+            "    limitation category: {}\n",
+            grip.limitation_category
+        ));
+        out.push_str(&format!("    repair route: {}\n", grip.repair_route));
+        out.push_str(&format!("    action: {}\n", grip.action));
+        out.push_str(&format!(
+            "    suggested test file: {}\n",
+            grip.suggested_test_file
+        ));
+        if let Some(placement) = &grip.placement {
+            out.push_str(&format!(
+                "    placement: rank {} {}\n",
+                placement.rank, placement.suggested_test_file
+            ));
+            out.push_str(&format!("    placement reason: {}\n", placement.reason));
+        }
+        let proof_mode = stable_byte_proof_mode(grip);
+        out.push_str(&format!("    proof mode: {}\n", proof_mode.mode));
+        out.push_str(&format!("    proof mode reason: {}\n", proof_mode.reason));
+        out.push_str(&format!(
+            "    proof execution: runtime={} mutation={} miri={} proof_claim={}\n",
+            proof_mode.runtime_execution,
+            proof_mode.mutation_execution,
+            proof_mode.miri_execution,
+            proof_mode.proof_claim
+        ));
+        let advisory_packet = bun_cross_language_advisory_packet(grip);
+        out.push_str("    advisory packet:\n");
+        out.push_str(&format!(
+            "      version: {}\n",
+            advisory_packet.packet_version
+        ));
+        out.push_str(&format!(
+            "      next action: {}\n",
+            advisory_packet.next_action
+        ));
+        out.push_str(&format!(
+            "      ts test file: {}\n",
+            advisory_packet
+                .ts_test_file
+                .as_deref()
+                .unwrap_or("not_applicable")
+        ));
+        out.push_str(&format!(
+            "      suggested shape: {}\n",
+            advisory_packet.suggested_shape
+        ));
+        out.push_str(&format!(
+            "      stop condition: {}\n",
+            advisory_packet.stop_condition
+        ));
+        out.push_str(&format!(
+            "      must not change: {}\n",
+            advisory_packet.must_not_change.join(", ")
+        ));
+        out.push_str(&format!(
+            "      public repair packet: {}\n",
+            advisory_packet.public_repair_packet
+        ));
+        out.push_str(&format!(
+            "      repair packet ready: {}\n",
+            advisory_packet.repair_packet_ready
+        ));
+        out.push_str(&format!("    authority: {}\n", grip.authority_boundary));
+        out.push_str(&format!(
+            "    repair packet ready: {}\n",
+            grip.repair_packet_ready
+        ));
+    }
+    if let Some(discriminator) = &card.missing_discriminator {
+        out.push_str(&format!("  missing discriminator: {discriminator}\n"));
+    }
+    out.push_str(&format!(
+        "  suggested assertion shape: {}\n",
+        card.suggested_assertion_shape
+    ));
+    if !card.static_limits.is_empty() {
+        out.push_str(&format!(
+            "  static limits: {}\n",
+            card.static_limits.join(", ")
+        ));
+    }
+    if let Some(command) = &card.verify_command {
+        out.push_str(&format!("  verify: {command}\n"));
+    }
+    out.push_str(&format!(
+        "  repair packet ready: {}\n",
+        card.repair_packet_ready
+    ));
+    // RIPR-SPEC-0088 §PR8: relabel for the actionable case so the card does not
+    // emit blocked-case "why not actionable" / "only after available" text that
+    // contradicts the complete packet.
+    if card.repair_packet_ready {
+        out.push_str(&format!("  why actionable: {}\n", card.why_not_actionable));
+        out.push_str(&format!("  repair action: {}\n", card.repair_route));
+    } else {
+        out.push_str(&format!(
+            "  why not actionable: {}\n",
+            card.why_not_actionable
+        ));
+        out.push_str(&format!("  repair route: {}\n", card.repair_route));
+    }
+    out.push_str("  limits:\n");
+    for limit in &card.limits {
+        out.push_str(&format!("    - {limit}\n"));
+    }
+}
+
+/// Render the TypeScript repair packet field-note when actionable, or a named
+/// limitation when blocked. Called from `render_finding_with_config` after the
+/// preview card when the finding is TypeScript/JavaScript preview.
+///
+/// RIPR-SPEC-0088 §PR8: the full work-packet is surfaced ONLY when
+/// `repair_packet_ready: true`; blocked findings get the named limitation.
+pub(crate) fn push_typescript_repair_packet_field_note(out: &mut String, finding: &Finding) {
+    // Only emit for TypeScript/JavaScript preview findings.
+    if !matches!(
+        finding.language,
+        Some(LanguageId::TypeScript | LanguageId::JavaScript)
+    ) {
+        return;
+    }
+
+    let maybe_record = typescript_gap_record_for(finding);
+
+    // The packet field-note is actionable only when the projected record
+    // passes the SHARED validator — the same flip authority as the JSON
+    // packet and `preview_actionability` (#4105). A projected-but-ineligible
+    // record (e.g. the observed oracle input cannot reach the named
+    // discriminator boundary) must not render as a delegatable packet.
+    let record_is_actionable = maybe_record
+        .as_ref()
+        .is_some_and(|record| validate_agent_gap_record_packet(record).is_ok());
+
+    match maybe_record {
+        Some(record) if record_is_actionable => {
+            // Actionable — render the full work-packet field-note.
+            out.push_str("\nTypeScript repair packet (advisory)\n");
+            out.push_str(&format!("  canonical gap: {}\n", record.canonical_gap_id));
+            // Source / owner from anchor
+            if let Some(anchor) = &record.anchor {
+                let file = anchor.file.as_deref().unwrap_or("unknown");
+                let line = anchor
+                    .line
+                    .map(|l| l.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                let owner = anchor.owner.as_deref().unwrap_or("unknown");
+                out.push_str(&format!("  source: {owner} at {file}:{line}\n"));
+            }
+            // Related test + oracle from repair_route
+            if let Some(route) = &record.repair_route {
+                if let Some(related) = &route.related_test {
+                    out.push_str(&format!("  related test: {related}\n"));
+                }
+                if let Some(shape) = &route.assertion_shape {
+                    out.push_str(&format!("  oracle: {shape}\n"));
+                }
+                // Allowed edit surface via shared fn
+                let edit_surface = allowed_edit_surface_for_gap_route(route);
+                if !edit_surface.is_empty() {
+                    out.push_str(&format!("  edit surface: {}\n", edit_surface.join(", ")));
+                }
+            }
+            // Verify + receipt commands
+            if let Some(verify) = record.verification_commands.first() {
+                out.push_str(&format!("  verify: {verify}\n"));
+            }
+            if let Some(receipt) = record.receipt_command.as_deref() {
+                out.push_str(&format!("  receipt: {receipt}\n"));
+            }
+            // must_not_change via shared fn
+            let must_not_change = gap_record_packet_do_not_do(&record);
+            if !must_not_change.is_empty() {
+                out.push_str("  must not change:\n");
+                for item in &must_not_change {
+                    out.push_str(&format!("    - {item}\n"));
+                }
+            }
+            out.push_str("  why actionable: complete-contract TypeScript finding — package root, runner, owner, oracle all resolved; no blocking limitation\n");
+            out.push_str("  authority: preview_advisory_only\n");
+        }
+        maybe_record => {
+            // Blocked — name the limitation, never emit a partial packet.
+            // Only render this subsection if we have at least some preview
+            // actionability data to surface (otherwise stay silent).
+            let why = evidence_value(finding, "why_not_actionable: ")
+                .or_else(|| evidence_value(finding, "gap_state: "))
+                .unwrap_or("TypeScript preview; repair packet not yet complete");
+            let next_capability = evidence_value(finding, "evidence_needed_to_promote: ")
+                .unwrap_or("no further capability information");
+            out.push_str("\nTypeScript repair packet (advisory)\n");
+            out.push_str("  status: not actionable\n");
+            out.push_str(&format!("  limitation: {why}\n"));
+            // #4105: when a record WAS projected but the shared validator kept
+            // it ineligible, disclose the non-delegatable target shape so the
+            // boundary stays visible without presenting a delegatable packet.
+            if let Some(shape) = maybe_record
+                .as_ref()
+                .and_then(|record| record.repair_route.as_ref())
+                .and_then(|route| route.assertion_shape.as_deref())
+                .filter(|shape| !shape.trim().is_empty())
+            {
+                out.push_str(&format!("  target shape (not delegatable): {shape}\n"));
+            }
+            out.push_str(&format!("  next capability needed: {next_capability}\n"));
+        }
+    }
+}
+
+fn push_perl_preview_card(out: &mut String, card: &PerlPreviewCard) {
+    out.push_str("\nPerl preview card (advisory)\n");
+    out.push_str(&format!("  card version: {}\n", card.card_version));
+    out.push_str(&format!(
+        "  authority: {} ({}/{})\n",
+        card.authority_boundary, card.language, card.language_status
+    ));
+    out.push_str(&format!("  surface scope: {}\n", card.surface_scope));
+    out.push_str(&format!(
+        "  public projection ready: {}\n",
+        card.public_projection_ready
+    ));
+    out.push_str(&format!(
+        "  public repair packet: {}\n",
+        card.public_repair_packet
+    ));
+    out.push_str(&format!(
+        "  repair packet ready: {}\n",
+        card.repair_packet_ready
+    ));
+    out.push_str(&format!(
+        "  agent packet ready: {}\n",
+        card.agent_packet_ready
+    ));
+    out.push_str(&format!("  gate candidate: {}\n", card.gate_candidate));
+    out.push_str(&format!("  badge candidate: {}\n", card.badge_candidate));
+    out.push_str(&format!(
+        "  RIPR Zero candidate: {}\n",
+        card.ripr_zero_candidate
+    ));
+    out.push_str(&format!("  packet id: {}\n", card.packet_id));
+    out.push_str(&format!("  canonical gap: {}\n", card.canonical_gap_id));
+    out.push_str(&format!("  gap state: {}\n", card.gap_state));
+    out.push_str(&format!("  changed owner: {}\n", card.changed_owner));
+    out.push_str(&format!("  evidence class: {}\n", card.evidence_class));
+    out.push_str(&format!("  repair route: {}\n", card.repair_route));
+    out.push_str(&format!(
+        "  current test evidence: {}\n",
+        card.current_test_evidence
+    ));
+    out.push_str(&format!(
+        "  missing discriminator: {}\n",
+        card.missing_discriminator
+    ));
+    out.push_str(&format!(
+        "  target test shape: {}\n",
+        card.target_test_shape
+    ));
+    out.push_str(&format!(
+        "  suggested location: {}\n",
+        card.suggested_test_location
+    ));
+    out.push_str(&format!(
+        "  suggested assertion: {}\n",
+        card.suggested_assertion
+    ));
+    out.push_str(&format!(
+        "  verify: {} (preview_fact_only_not_delegated)\n",
+        card.verify_command
+    ));
+    out.push_str("  receipt: preview_available_not_delegated\n");
+    out.push_str(&format!("  confidence: {}\n", card.confidence));
+    for raw_ref in &card.raw_evidence_refs {
+        out.push_str("  raw evidence: ");
+        push_perl_raw_ref(out, raw_ref);
+        out.push('\n');
+    }
+    if !card.stop_if.is_empty() {
+        out.push_str("  stop if:\n");
+        for condition in &card.stop_if {
+            out.push_str(&format!("    - {condition}\n"));
+        }
+    }
+    if !card.must_not_change.is_empty() {
+        out.push_str("  must not change:\n");
+        for boundary in &card.must_not_change {
+            out.push_str(&format!("    - {boundary}\n"));
+        }
+    }
+    out.push_str("  limits:\n");
+    for limit in &card.limits {
+        out.push_str(&format!("    - {limit}\n"));
+    }
+}
+
+fn push_perl_raw_ref(out: &mut String, raw_ref: &PerlRawEvidenceRef) {
+    out.push_str(&format!(
+        "{} {}:{}",
+        raw_ref.leg, raw_ref.file, raw_ref.line
+    ));
+    out.push_str(&format!(" ({})", raw_ref.kind));
+    out.push_str(&format!(" source={}", raw_ref.source_id));
+    out.push_str(&format!(" owner={}", raw_ref.owner));
+    if let Some(sample) = &raw_ref.sample {
+        out.push_str(&format!(" sample={sample}"));
+    }
+}
+
+struct RepairPlacement<'a> {
+    test_file: &'a str,
+    test_name: &'a str,
+    test_node_id: Option<&'a str>,
+    verify_command: &'a str,
+    verify_confidence: &'a str,
+}
+
+/// Returns a one-line hint explaining why a finding landed at its exposure
+/// class (#2614). Only emitted for classes where the reasoning is non-obvious
+/// from the class name alone. The hint restates the stage evidence that put
+/// the finding in its class, so it must agree with the reach/observe lines
+/// printed beneath it (F5-10).
+/// Names the first incomplete stage instead of deferring to the full form
+/// (#4379 rewalk W4): "partially complete — see full form" told a reader
+/// nothing they could act on from the digest.
+fn partial_path_hint(ripr: &RiprEvidence) -> &'static str {
+    let incomplete = |stage: &crate::domain::StageEvidence| stage.state != StageState::Yes;
+    // An Unknown stage is not established, so its hint says so rather than
+    // stating the gap as fact (#4411 review).
+    if incomplete(&ripr.infect) {
+        if ripr.infect.state == StageState::Unknown {
+            "a related test reaches this change, but static evidence cannot tell whether any test input tells the old and new behavior apart"
+        } else {
+            "a related test reaches this change, but no test input tells the old and new behavior apart"
+        }
+    } else if incomplete(&ripr.propagate) {
+        "a related test reaches this change, but the path from it to what the test checks is only partly traced"
+    } else if incomplete(&ripr.reveal.observe) {
+        if ripr.reveal.observe.state == StageState::Unknown {
+            "a related test reaches this change, but whether its assertions observe the result is not established"
+        } else {
+            "a related test reaches this change, but its assertions observe the result only loosely"
+        }
+    } else {
+        "a related test reaches this change, but the static evidence path is partially complete — see full form for details"
+    }
+}
+
+fn classification_hint(class: &ExposureClass, ripr: &RiprEvidence) -> Option<String> {
+    let reveal = &ripr.reveal;
+    match class {
+        ExposureClass::WeaklyExposed => {
+            if reveal.discriminate.state == StageState::Weak {
+                Some("a related test reaches this change but does not observe the exact changed value".to_string())
+            } else {
+                Some(partial_path_hint(ripr).to_string())
+            }
+        }
+        ExposureClass::ReachableUnrevealed => {
+            if reveal.observe.state == StageState::No {
+                Some(
+                    "a related test reaches this change, but no assertion observes the changed behavior"
+                        .to_string(),
+                )
+            } else {
+                Some(partial_path_hint(ripr).to_string())
+            }
+        }
+        ExposureClass::NoStaticPath => {
+            if ripr.reach.state == StageState::No {
+                Some("no related test was found that reaches this change".to_string())
+            } else {
+                Some("no static path from a related test to this change was found".to_string())
+            }
+        }
+        ExposureClass::InfectionUnknown => Some(
+            "the change reaches a sink but infection could not be determined statically"
+                .to_string(),
+        ),
+        ExposureClass::PropagationUnknown => Some(
+            "the path from the changed behavior to an observable sink is not statically clear"
+                .to_string(),
+        ),
+        ExposureClass::StaticUnknown => {
+            Some("the analysis could not determine a static exposure state".to_string())
+        }
+        ExposureClass::Exposed => None, // self-explanatory: strong oracle observes the change
+    }
+}
+
+fn repair_placement_from_evidence(finding: &Finding) -> Option<RepairPlacement<'_>> {
+    Some(RepairPlacement {
+        test_file: evidence_value(finding, "suggested_test_file: ")?,
+        test_name: evidence_value(finding, "suggested_test_name: ")?,
+        test_node_id: evidence_value(finding, "suggested_test_node_id: "),
+        verify_command: evidence_value(finding, "suggested_verify_command: ")?,
+        verify_confidence: evidence_value(finding, "suggested_verify_command_confidence: ")?,
+    })
+}
+
+fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .find_map(|entry| entry.strip_prefix(prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn should_render_language_metadata(finding: &Finding) -> bool {
+    finding
+        .language
+        .is_some_and(|language| language != LanguageId::Rust)
+        || finding
+            .language_status
+            .is_some_and(|status| status != LanguageStatus::Stable)
+        || finding.owner_kind.is_some()
+}
+
+#[cfg(test)]
+mod classification_hint_tests {
+    use super::classification_hint;
+    use crate::domain::{
+        Confidence, ExposureClass, RevealEvidence, RiprEvidence, StageEvidence, StageState,
+    };
+
+    fn ripr(reach: StageState, observe: StageState) -> RiprEvidence {
+        let stage = |state: StageState| StageEvidence::new(state, Confidence::Low, "fixture");
+        RiprEvidence {
+            reach: stage(reach),
+            infect: stage(StageState::Yes),
+            propagate: stage(StageState::Yes),
+            reveal: RevealEvidence {
+                observe: stage(observe),
+                discriminate: stage(StageState::No),
+            },
+        }
+    }
+
+    #[test]
+    fn no_static_path_hint_names_the_missing_reach_not_an_output_trace() {
+        let hint = classification_hint(
+            &ExposureClass::NoStaticPath,
+            &ripr(StageState::No, StageState::No),
+        );
+        assert_eq!(
+            hint.as_deref(),
+            Some("no related test was found that reaches this change")
+        );
+    }
+
+    #[test]
+    fn no_static_path_hint_without_missing_reach_does_not_claim_no_test() {
+        let hint = classification_hint(
+            &ExposureClass::NoStaticPath,
+            &ripr(StageState::Weak, StageState::No),
+        );
+        assert_eq!(
+            hint.as_deref(),
+            Some("no static path from a related test to this change was found")
+        );
+    }
+
+    #[test]
+    fn reachable_unrevealed_hint_agrees_with_a_reaching_test() {
+        let hint = classification_hint(
+            &ExposureClass::ReachableUnrevealed,
+            &ripr(StageState::Yes, StageState::No),
+        );
+        assert_eq!(
+            hint.as_deref(),
+            Some(
+                "a related test reaches this change, but no assertion observes the changed behavior"
+            )
+        );
+        let partial = classification_hint(
+            &ExposureClass::ReachableUnrevealed,
+            &ripr(StageState::Yes, StageState::Weak),
+        );
+        assert!(
+            partial
+                .as_deref()
+                .is_some_and(|hint| !hint.contains("no related test")),
+            "a reaching test must never be described as absent: {partial:?}"
+        );
+    }
+
+    #[test]
+    fn weakly_exposed_hint_names_the_incomplete_stage() {
+        // Rewalk W4: the boundary gap (infection weak, exact oracle present)
+        // used to read "partially complete — see full form for details".
+        let mut evidence = ripr(StageState::Yes, StageState::Yes);
+        evidence.reveal.discriminate = StageEvidence::new(StageState::Yes, Confidence::High, "x");
+        evidence.infect = StageEvidence::new(StageState::Weak, Confidence::Medium, "x");
+        let hint = classification_hint(&ExposureClass::WeaklyExposed, &evidence);
+        assert_eq!(
+            hint.as_deref(),
+            Some(
+                "a related test reaches this change, but no test input tells the old and new behavior apart"
+            )
+        );
+
+        evidence.infect = StageEvidence::new(StageState::Yes, Confidence::High, "x");
+        evidence.reveal.observe = StageEvidence::new(StageState::Weak, Confidence::Low, "x");
+        let hint = classification_hint(&ExposureClass::WeaklyExposed, &evidence);
+        assert_eq!(
+            hint.as_deref(),
+            Some(
+                "a related test reaches this change, but its assertions observe the result only loosely"
+            )
+        );
+
+        // Unknown is not established evidence, so the hint must not state
+        // the gap as fact.
+        evidence.reveal.observe = StageEvidence::new(StageState::Unknown, Confidence::Low, "x");
+        let hint = classification_hint(&ExposureClass::WeaklyExposed, &evidence);
+        assert_eq!(
+            hint.as_deref(),
+            Some(
+                "a related test reaches this change, but whether its assertions observe the result is not established"
+            )
+        );
+        evidence.reveal.observe = StageEvidence::new(StageState::Yes, Confidence::High, "x");
+        evidence.infect = StageEvidence::new(StageState::Unknown, Confidence::Low, "x");
+        let hint = classification_hint(&ExposureClass::WeaklyExposed, &evidence);
+        assert_eq!(
+            hint.as_deref(),
+            Some(
+                "a related test reaches this change, but static evidence cannot tell whether any test input tells the old and new behavior apart"
+            )
+        );
+    }
+}
+
+#[cfg(test)]
+mod one_line_tests {
+    use super::{LINE_BUDGET, one_line};
+
+    #[test]
+    fn one_line_closes_a_long_open_code_span_instead_of_dropping_it() {
+        // #4411 review: cutting before a long span's backtick reduced
+        // "see `xxxx…` then" to "see…".
+        let text = format!("see `{}` then", "x".repeat(200));
+        let rendered = one_line(&text);
+        assert!(rendered.starts_with("see `xxxx"), "{rendered}");
+        assert!(rendered.ends_with("…`"), "{rendered}");
+        assert_eq!(rendered.matches('`').count() % 2, 0, "{rendered}");
+    }
+
+    #[test]
+    fn one_line_truncates_at_a_word_boundary() {
+        // Rewalk W4: the Python digest cut "places amount" to "places amo…".
+        let text = format!("{} places amount at the boundary", "word ".repeat(34));
+        let rendered = one_line(&text);
+        assert!(rendered.ends_with("places…"), "{rendered}");
+        assert!(rendered.chars().count() <= LINE_BUDGET + 1);
+    }
+
+    #[test]
+    fn one_line_never_leaves_a_code_span_open() {
+        // Rewalk (TypeScript): the safe-next-action reason ended
+        // "the observed call input `discountedTotal(…" with an open span.
+        let text = format!(
+            "{}missing discriminator `amount == DISCOUNT_THRESHOLD` is absent",
+            "word ".repeat(29)
+        );
+        let rendered = one_line(&text);
+        assert_eq!(rendered.matches('`').count() % 2, 0, "{rendered}");
+        assert!(rendered.ends_with("missing discriminator…"), "{rendered}");
+    }
+
+    #[test]
+    fn one_line_cuts_an_unbroken_token_hard() {
+        let rendered = one_line(&"x".repeat(LINE_BUDGET + 20));
+        assert_eq!(rendered.chars().count(), LINE_BUDGET + 1);
+        assert!(rendered.ends_with('…'));
+    }
+}

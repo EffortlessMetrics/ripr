@@ -1,0 +1,1915 @@
+//! Resolve test argument expressions to literal values for
+//! `analysis::test_grip_evidence::activate_evidence` (Campaign 5A,
+//! `analysis/value-extraction-v2`).
+//!
+//! Before this module, `scalar_values` rejected every bare identifier
+//! at the call site, so a test like:
+//!
+//! ```ignore
+//! let threshold = 100;
+//! discounted_total(threshold, threshold);
+//! ```
+//!
+//! produced zero observed values and the seam classified as
+//! `activation_unknown`. `ValueEnv` resolves identifiers through a
+//! priority chain that stays purely syntactic - no symbol-table, no
+//! HIR, no proc-macro expansion.
+//!
+//! Resolution priority for `analysis/value-extraction-v2`:
+//!
+//! 1. literal argument (`scalar_values` direct hit)
+//! 2. `let IDENT = LITERAL;` in the same test body
+//! 3. `#[case(LITERAL, ...)]` rstest parameter at a matching position
+//! 4. `for (IDENT, ...) in [(LITERAL, ...), ...] { ... }` table-row binding
+//! 5. `const NAME: T = LITERAL;` / `static NAME: T = LITERAL;` in the
+//!    same source file
+//! 6. `Some(L)` / `Err(L)` constructor unwrap (one level)
+//! 7. `std::path::Path::new(L)` / `std::path::PathBuf::from(L)`,
+//!    plus bare `Path::new(L)` / `PathBuf::from(L)` only when the
+//!    test file syntactically imports those std path types without a
+//!    same-file shadow
+//! 8. shared-borrowed forms such as `&IDENT` / `&Path::new(L)`
+//!    resolve one level into the same syntactic chain
+//! 9. `let NAME = Type { field: LITERAL };` plus `NAME.field` in the
+//!    same test body
+//!
+//! Builder method values (`.amount(100).threshold(100)`) are handled
+//! by a separate scan in `extract_builder_facts`; they don't fit the
+//! single-arg resolver shape, and they only count when the method name
+//! aligns with seam/owner tokens.
+//!
+//! All scans strip `//` line comments and string-literal contents
+//! before matching, mirroring the comment/string-stripping defense
+//! `analysis/related-test-precision-v1` added for `import_path_affinity`.
+//! Without that, a comment like `// let threshold = 999;` would
+//! shadow the real binding.
+
+use super::rust_index::{FileFacts, RustIndex, TestSummary};
+use super::seams::{RepoSeam, RequiredDiscriminator};
+use crate::domain::{ValueContext, ValueFact};
+use std::collections::BTreeMap;
+
+/// Per-test value facts that do not depend on a specific seam. Built
+/// once per indexed test and reused while classifying every seam.
+#[derive(Default)]
+pub(crate) struct ValueEnvFacts {
+    /// Test body with comments stripped so binding scans don't pick
+    /// up `// let threshold = 999;` shadows.
+    body_clean: String,
+    /// `IDENT -> LITERAL` from `let IDENT = LITERAL;` lines in the
+    /// test body (single-test scope).
+    let_bindings: BTreeMap<String, String>,
+    /// Each row of `#[case(L, L, ...)]`. `case_param_names` carries
+    /// the test fn's parameter names in source order so a positional
+    /// IDENT can be looked up across cases.
+    rstest_cases: Vec<Vec<String>>,
+    case_param_names: Vec<String>,
+    /// `IDENT -> [row0_value, row1_value, ...]` from table-driven
+    /// `for (IDENT, ...) in [(L, ...), ...]` loops in the test body.
+    table_bindings: BTreeMap<String, Vec<String>>,
+    /// `NAME -> LITERAL` from `const NAME: T = LITERAL;` and
+    /// `static NAME: T = LITERAL;` at the test's source-file top
+    /// level (same-file scope).
+    module_constants: BTreeMap<String, String>,
+    /// `IDENT.field -> LITERAL` from same-test struct literals such as
+    /// `let case = DiscountCase { amount: 100 };`, plus source-order
+    /// invalidations so later shadows do not erase earlier safe calls.
+    struct_field_bindings: BTreeMap<String, StructFieldBinding>,
+    struct_field_invalidations: BTreeMap<String, Vec<SourcePosition>>,
+    /// Direct `IDENT.field = VALUE` writes in the same test. The
+    /// binding and write positions keep these facts local to the
+    /// exact object, field, and owner-call ordering.
+    field_assignments: BTreeMap<(String, String), Vec<FieldAssignmentBinding>>,
+    local_binding_positions: BTreeMap<String, Vec<SourcePosition>>,
+    field_assignment_invalidations: BTreeMap<String, Vec<SourcePosition>>,
+    /// Bare `Path::new(...)` / `PathBuf::from(...)` only count when
+    /// the source file imports the std path type by that exact name
+    /// and does not define a same-file shadow. Fully qualified std
+    /// constructors do not need this.
+    bare_std_path_imported: bool,
+    bare_std_path_buf_imported: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StructFieldBinding {
+    position: SourcePosition,
+    fields: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FieldAssignmentBinding {
+    position: SourcePosition,
+    values: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SourcePosition {
+    line: usize,
+    column: usize,
+}
+
+impl SourcePosition {
+    fn at_or_before(self, other: Self) -> bool {
+        self.line < other.line || (self.line == other.line && self.column <= other.column)
+    }
+}
+
+/// Whole-file scans shared by every test in one file. Evidence builds this
+/// once per file per pass: rebuilding it per test re-scanned large files
+/// with many inline tests once for each of those tests.
+#[derive(Default)]
+pub(crate) struct FileValueScan {
+    module_constants: BTreeMap<String, String>,
+    path_constructor_imports: PathConstructorImports,
+}
+
+impl FileValueScan {
+    pub(crate) fn build(test: &TestSummary, index: &RustIndex) -> Self {
+        file_facts_for(test, index)
+            .map(|facts| Self {
+                module_constants: extract_module_constants(&facts.source),
+                path_constructor_imports: extract_path_constructor_imports(&facts.source),
+            })
+            .unwrap_or_default()
+    }
+}
+
+impl ValueEnvFacts {
+    pub(crate) fn build(test: &TestSummary, file_scan: &FileValueScan) -> Self {
+        let body_clean = strip_comments_and_strings(&test.body);
+        let let_bindings = extract_let_bindings(&body_clean);
+        let (rstest_cases, case_param_names) = extract_rstest_cases(test);
+        let test_param_names = extract_fn_param_names(&body_clean);
+        let table_bindings = extract_table_bindings(&body_clean);
+        let module_constants = file_scan.module_constants.clone();
+        let path_constructor_imports = file_scan.path_constructor_imports;
+        let (struct_field_bindings, struct_field_invalidations) =
+            extract_struct_field_bindings(&body_clean, test.start_line, &test_param_names);
+        let local_binding_positions = extract_local_binding_positions(&body_clean, test.start_line);
+        let field_assignments =
+            extract_field_assignments(&body_clean, test.start_line, &module_constants);
+        let field_assignment_invalidations = field_assignment_invalidations(
+            &body_clean,
+            test.start_line,
+            &test_param_names,
+            &local_binding_positions,
+        );
+        Self {
+            body_clean,
+            let_bindings,
+            rstest_cases,
+            case_param_names,
+            table_bindings,
+            module_constants,
+            struct_field_bindings,
+            struct_field_invalidations,
+            field_assignments,
+            local_binding_positions,
+            field_assignment_invalidations,
+            bare_std_path_imported: path_constructor_imports.path,
+            bare_std_path_buf_imported: path_constructor_imports.path_buf,
+        }
+    }
+}
+
+/// Per-test, per-seam resolution environment. The expensive
+/// seam-independent scans live in [`ValueEnvFacts`]; each call-arg
+/// lookup is a `BTreeMap` lookup plus a small list scan.
+pub(crate) struct ValueEnv<'a> {
+    seam: &'a RepoSeam,
+    facts: &'a ValueEnvFacts,
+}
+
+impl<'a> ValueEnv<'a> {
+    pub(crate) fn new(seam: &'a RepoSeam, facts: &'a ValueEnvFacts) -> Self {
+        Self { seam, facts }
+    }
+
+    /// Resolve a single owner-call argument to one or more
+    /// `(value, ValueContext)` records. Empty vec means "could not
+    /// resolve" - caller leaves the arg as opaque (preserves the
+    /// existing `activation_unknown` classification semantics).
+    #[cfg(test)]
+    pub(crate) fn resolve(&self, arg: &str) -> Vec<(String, ValueContext)> {
+        let trimmed = arg.trim().trim_end_matches([',', ';']);
+        self.resolve_expr_at_position(
+            trimmed,
+            SourcePosition {
+                line: usize::MAX,
+                column: usize::MAX,
+            },
+            true,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn resolve_at(&self, arg: &str, call_line: usize) -> Vec<(String, ValueContext)> {
+        self.resolve_at_position(
+            arg,
+            SourcePosition {
+                line: call_line,
+                column: usize::MAX,
+            },
+        )
+    }
+
+    pub(crate) fn resolve_at_call(
+        &self,
+        arg: &str,
+        call_line: usize,
+        call_name: &str,
+        call_text: &str,
+    ) -> Vec<(String, ValueContext)> {
+        self.resolve_at_position(arg, call_position(call_line, call_name, call_text))
+    }
+
+    pub(crate) fn field_assignment_value_unresolved_at_call(
+        &self,
+        arg: &str,
+        call_line: usize,
+        call_name: &str,
+        call_text: &str,
+    ) -> bool {
+        let call_position = call_position(call_line, call_name, call_text);
+        let arg = arg.trim().trim_end_matches([',', ';']);
+        let arg = unwrap_shared_borrow(arg).unwrap_or(arg);
+        let Some((object, field)) = field_projection(arg) else {
+            return false;
+        };
+        let Some(assignment) = self.field_assignment_candidate_at(object, field, call_position)
+        else {
+            return false;
+        };
+        assignment.values.is_empty()
+            || self.field_assignment_is_invalidated(object, assignment.position, call_position)
+    }
+
+    fn resolve_at_position(
+        &self,
+        arg: &str,
+        call_position: SourcePosition,
+    ) -> Vec<(String, ValueContext)> {
+        let trimmed = arg.trim().trim_end_matches([',', ';']);
+        self.resolve_expr_at_position(trimmed, call_position, true)
+    }
+
+    fn resolve_expr_at_position(
+        &self,
+        trimmed: &str,
+        call_position: SourcePosition,
+        allow_shared_borrow: bool,
+    ) -> Vec<(String, ValueContext)> {
+        if trimmed.is_empty() {
+            return Vec::new();
+        }
+        if allow_shared_borrow && let Some(inner) = unwrap_shared_borrow(trimmed) {
+            return self.resolve_expr_at_position(inner, call_position, false);
+        }
+        if let Some(inner) = unwrap_option_or_result(trimmed) {
+            return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
+        }
+        if let Some(inner) = unwrap_path_literal_constructor(trimmed, self.facts) {
+            return self.resolve_identifier_or_literal_at(inner.as_str(), call_position);
+        }
+        self.resolve_identifier_or_literal_at(trimmed, call_position)
+    }
+
+    fn resolve_identifier_or_literal_at(
+        &self,
+        expr: &str,
+        call_position: SourcePosition,
+    ) -> Vec<(String, ValueContext)> {
+        // If it parses as a literal, just emit it. Re-uses the upstream
+        // scalar_values shape implicitly: integers, floats, strings,
+        // chars, simple paths.
+        if looks_like_literal(expr) {
+            return vec![(expr.to_string(), ValueContext::FunctionArgument)];
+        }
+        if let Some((object, field)) = field_projection(expr)
+            && let Some(assignment) =
+                self.field_assignment_candidate_at(object, field, call_position)
+        {
+            if self.field_assignment_is_invalidated(object, assignment.position, call_position) {
+                return Vec::new();
+            }
+            return assignment
+                .values
+                .iter()
+                .cloned()
+                .map(|value| (value, ValueContext::FunctionArgument))
+                .collect();
+        }
+        if let Some((object, field)) = field_projection(expr)
+            && let Some(binding) = self.facts.struct_field_bindings.get(object)
+            && binding.position.at_or_before(call_position)
+            && !self
+                .facts
+                .struct_field_invalidations
+                .get(object)
+                .is_some_and(|positions| {
+                    positions
+                        .iter()
+                        .any(|position| position.at_or_before(call_position))
+                })
+            && let Some(value) = binding.fields.get(field)
+        {
+            return vec![(value.clone(), ValueContext::FunctionArgument)];
+        }
+        if !is_simple_identifier(expr) {
+            return Vec::new();
+        }
+
+        // 2. Let binding.
+        if let Some(value) = self.facts.let_bindings.get(expr) {
+            return vec![(value.clone(), ValueContext::FunctionArgument)];
+        }
+        // 3. Rstest case (positional).
+        if let Some(idx) = self.facts.case_param_names.iter().position(|n| n == expr) {
+            let mut out = Vec::new();
+            for case in &self.facts.rstest_cases {
+                if let Some(value) = case.get(idx) {
+                    out.push((value.clone(), ValueContext::TableRow));
+                }
+            }
+            if !out.is_empty() {
+                return out;
+            }
+        }
+        // 4. Table-row binding.
+        if let Some(values) = self.facts.table_bindings.get(expr) {
+            return values
+                .iter()
+                .map(|v| (v.clone(), ValueContext::TableRow))
+                .collect();
+        }
+        // 5. Same-file const/static.
+        if let Some(value) = self.facts.module_constants.get(expr) {
+            return vec![(value.clone(), ValueContext::FunctionArgument)];
+        }
+        Vec::new()
+    }
+
+    fn field_assignment_candidate_at(
+        &self,
+        object: &str,
+        field: &str,
+        call_position: SourcePosition,
+    ) -> Option<&FieldAssignmentBinding> {
+        let local_binding = self
+            .facts
+            .local_binding_positions
+            .get(object)?
+            .iter()
+            .copied()
+            .filter(|position| position.at_or_before(call_position))
+            .max_by_key(|position| (position.line, position.column))?;
+        let assignment = self
+            .facts
+            .field_assignments
+            .get(&(object.to_string(), field.to_string()))?
+            .iter()
+            .filter(|assignment| {
+                local_binding.at_or_before(assignment.position)
+                    && assignment.position.at_or_before(call_position)
+            })
+            .max_by_key(|assignment| (assignment.position.line, assignment.position.column))?;
+        Some(assignment)
+    }
+
+    fn field_assignment_is_invalidated(
+        &self,
+        object: &str,
+        assignment_position: SourcePosition,
+        call_position: SourcePosition,
+    ) -> bool {
+        self.facts
+            .field_assignment_invalidations
+            .get(object)
+            .is_some_and(|positions| {
+                positions.iter().any(|position| {
+                    assignment_position.at_or_before(*position)
+                        && position.at_or_before(call_position)
+                })
+            })
+    }
+
+    /// Builder-method facts for the test body. The method name must
+    /// align with one of the seam's interesting tokens
+    /// (required-discriminator token, expected-sink token, or wrapped
+    /// fixture override like `with_amount`) before the value counts.
+    /// Without that guard, every `.with_seed(42)` would inflate
+    /// observed values for unrelated seams.
+    pub(crate) fn builder_facts(&self) -> Vec<ValueFact> {
+        let allowed = self.allowed_builder_method_names();
+        if allowed.is_empty() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for cap in scan_builder_calls(&self.facts.body_clean) {
+            if !builder_method_matches_allowed(&cap.method, &allowed) {
+                continue;
+            }
+            for value in extract_inner_literals(&cap.arg) {
+                out.push(ValueFact {
+                    line: cap.line,
+                    text: format!(".{}({})", cap.method, cap.arg),
+                    value,
+                    context: ValueContext::BuilderMethod,
+                });
+            }
+        }
+        out
+    }
+
+    fn allowed_builder_method_names(&self) -> std::collections::BTreeSet<String> {
+        use std::collections::BTreeSet;
+        let mut allowed: BTreeSet<String> = BTreeSet::new();
+        // Required-discriminator tokens.
+        let rd_text = match self.seam.required_discriminator() {
+            RequiredDiscriminator::BoundaryValue { description }
+            | RequiredDiscriminator::ReturnValue { description } => description.as_str(),
+            RequiredDiscriminator::ErrorVariant { variant } => variant.as_str(),
+            RequiredDiscriminator::FieldValue { field } => field.as_str(),
+            RequiredDiscriminator::Effect { sink } => sink.as_str(),
+            RequiredDiscriminator::MatchArmTaken { arm } => arm.as_str(),
+            RequiredDiscriminator::CallSite { target } => target.as_str(),
+        };
+        for token in identifier_tokens(rd_text) {
+            allowed.insert(token);
+        }
+        // Expected-sink tag (e.g., `return_value`, `error_channel`).
+        for token in identifier_tokens(self.seam.expected_sink().as_str()) {
+            allowed.insert(token);
+        }
+        allowed
+    }
+}
+
+/// Look up the test's home-file facts in the index. The test fact
+/// stores the original file path; we use it to find the matching
+/// FileFacts entry.
+fn file_facts_for<'a>(test: &TestSummary, index: &'a RustIndex) -> Option<&'a FileFacts> {
+    index.files.get(&test.file)
+}
+
+#[derive(Clone, Copy, Default)]
+struct PathConstructorImports {
+    path: bool,
+    path_buf: bool,
+}
+
+/// Same-file syntactic import/shadow scan for bare path
+/// constructors. This intentionally does not resolve modules; it only
+/// lets `Path::new(...)` / `PathBuf::from(...)` count when the file
+/// text imports `std::path::Path` / `std::path::PathBuf` by that
+/// exact bare name and does not define a same-file item with that
+/// name.
+fn extract_path_constructor_imports(file_source: &str) -> PathConstructorImports {
+    let cleaned = strip_comments_and_strings(file_source);
+    let mut imports = PathConstructorImports::default();
+    for line in cleaned.lines() {
+        let trimmed = line.trim();
+        let Some(import) = trimmed.strip_prefix("use ") else {
+            continue;
+        };
+        collect_std_path_constructor_imports(import.trim(), &mut imports);
+    }
+    let shadows = path_constructor_shadows(&cleaned);
+    PathConstructorImports {
+        path: imports.path && !shadows.path,
+        path_buf: imports.path_buf && !shadows.path_buf,
+    }
+}
+
+fn collect_std_path_constructor_imports(import: &str, imports: &mut PathConstructorImports) {
+    let import = import.trim_end_matches(';').trim();
+    match import {
+        "std::path::Path" | "::std::path::Path" => {
+            imports.path = true;
+            return;
+        }
+        "std::path::PathBuf" | "::std::path::PathBuf" => {
+            imports.path_buf = true;
+            return;
+        }
+        _ => {}
+    }
+
+    let Some(rest) = import
+        .strip_prefix("std::path::{")
+        .or_else(|| import.strip_prefix("::std::path::{"))
+    else {
+        return;
+    };
+    let Some(body) = rest.strip_suffix('}') else {
+        return;
+    };
+    for item in body.split(',').map(str::trim) {
+        match item {
+            "Path" => imports.path = true,
+            "PathBuf" => imports.path_buf = true,
+            _ => {}
+        }
+    }
+}
+
+fn path_constructor_shadows(cleaned_source: &str) -> PathConstructorImports {
+    let mut shadows = PathConstructorImports::default();
+    for line in cleaned_source.lines() {
+        let trimmed = line.trim();
+        if item_defines_name(trimmed, "Path") {
+            shadows.path = true;
+        }
+        if item_defines_name(trimmed, "PathBuf") {
+            shadows.path_buf = true;
+        }
+    }
+    shadows
+}
+
+fn item_defines_name(line: &str, name: &str) -> bool {
+    let line = strip_visibility_prefix(line);
+    for prefix in ["struct ", "enum ", "type ", "trait ", "mod ", "union "] {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            let ident = rest
+                .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                .next()
+                .unwrap_or_default();
+            if ident == name {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Drop leading `#[...]` attribute groups written on the same line as an
+/// item (`#[cfg(test)] const LIMIT: u32 = 5;`), so the item keyword is seen.
+fn strip_leading_attributes(mut line: &str) -> &str {
+    while let Some(rest) = line.strip_prefix("#[") {
+        let mut depth = 1usize;
+        let mut end = None;
+        for (i, ch) in rest.char_indices() {
+            match ch {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(end) = end else {
+            return line;
+        };
+        line = rest[end + 1..].trim_start();
+    }
+    line
+}
+
+fn strip_visibility_prefix(line: &str) -> &str {
+    let Some(rest) = line.strip_prefix("pub") else {
+        return line;
+    };
+    let rest = rest.trim_start();
+    if let Some(rest) = rest.strip_prefix('(')
+        && let Some((_, after_visibility)) = rest.split_once(')')
+    {
+        return after_visibility.trim_start();
+    }
+    rest
+}
+
+/// `let IDENT = LITERAL;` and `let IDENT: T = LITERAL;` scan. Walks
+/// every `let ` token in the cleaned body (comments and string
+/// contents already stripped) and parses the binding statement up to
+/// the next top-level `;`. Handles multi-statement-per-line bodies
+/// (`fn t() { let a = 1; let b = 2; ... }`). Non-literal RHS yields
+/// no binding (stays syntactic).
+fn extract_let_bindings(body: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let cleaned = strip_comments_and_strings(body);
+    for start in find_all(&cleaned, "let ") {
+        let after_let = &cleaned[start + 4..];
+        // Find the end of this binding statement: the next top-level
+        // `;` (depth 0 of paren/bracket/brace).
+        let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
+        let stmt = &after_let[..stmt_end];
+        // Split into LHS / RHS at the first top-level `=` (avoiding
+        // `==` and similar).
+        let Some(eq_idx) = first_single_eq(stmt) else {
+            continue;
+        };
+        let (lhs, rhs) = stmt.split_at(eq_idx);
+        let rhs = rhs[1..].trim();
+        // LHS may have type ascription `IDENT: T`. Take everything
+        // before the first `:`.
+        let ident_part = lhs.split(':').next().unwrap_or(lhs).trim();
+        // Strip optional `mut` keyword.
+        let ident = ident_part.strip_prefix("mut ").unwrap_or(ident_part).trim();
+        if !is_simple_identifier(ident) {
+            continue;
+        }
+        if !looks_like_literal(rhs) {
+            continue;
+        }
+        out.insert(ident.to_string(), rhs.to_string());
+    }
+    out
+}
+
+/// The literal a test body binds to `ident` through `let IDENT = LITERAL;`
+/// (the same scan [`ValueEnvFacts`] uses), for consumers that resolve one
+/// owner-call argument without a repo seam (the check-path activation
+/// stage). That consumer can promote a finding to `exposed`, so it fails
+/// closed where the seam scan is permissive: `None` when the identifier
+/// has no literal `let` binding, is declared `mut`, or is declared by more
+/// than one `let` in the body (a shadow may rebind it to a computed value).
+pub(crate) fn test_let_bound_literal(body: &str, ident: &str) -> Option<String> {
+    let cleaned = strip_comments_and_strings(body);
+    let mut declarations = find_all(&cleaned, "let ").into_iter().filter_map(|start| {
+        let after_let = &cleaned[start + 4..];
+        let stmt = &after_let[..top_level_semicolon(after_let).unwrap_or(after_let.len())];
+        let lhs = &stmt[..first_single_eq(stmt).unwrap_or(stmt.len())];
+        let_binding_ident(lhs).filter(|(name, _)| *name == ident)
+    });
+    let (_, is_mut) = declarations.next()?;
+    if is_mut || declarations.next().is_some() {
+        return None;
+    }
+    extract_let_bindings(body).remove(ident)
+}
+
+/// What one source file says about a named constant, for consumers that
+/// compare a changed boundary against a `const` operand
+/// (`amount >= DISCOUNT_THRESHOLD`). Reuses the same-file declaration scan
+/// behind [`ValueEnvFacts`]'s module constants, and fails closed where that
+/// scan is permissive: a name declared more than once in the file (for
+/// example in two inline modules) is ambiguous, and only an integer literal
+/// counts as a visible value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum NamedConstant {
+    /// Declared exactly once as `[pub[(..)]] const NAME: T = <integer>;`.
+    Value(String),
+    /// Declared exactly once, but its value is not a plain integer literal
+    /// (a computed initializer, a typed suffix, a string, or a `static mut`).
+    Opaque,
+    /// Declared more than once in the file.
+    Ambiguous,
+    /// Not declared in the file.
+    Undeclared,
+}
+
+/// Look up `name` among the file's `const`/`static` declarations.
+pub(crate) fn named_constant(file_source: &str, name: &str) -> NamedConstant {
+    if !is_simple_identifier(name) {
+        return NamedConstant::Undeclared;
+    }
+    let cleaned = strip_comments_and_strings(file_source);
+    let mut declarations = 0usize;
+    let mut mutable = false;
+    for line in cleaned.lines() {
+        let item = strip_visibility_prefix(strip_leading_attributes(line.trim()));
+        let (rest, is_mut) = if let Some(rest) = item.strip_prefix("const ") {
+            (rest, false)
+        } else if let Some(rest) = item.strip_prefix("static mut ") {
+            (rest, true)
+        } else if let Some(rest) = item.strip_prefix("static ") {
+            (rest, false)
+        } else {
+            continue;
+        };
+        let declared = rest.split([':', '=']).next().unwrap_or(rest).trim();
+        if declared == name {
+            declarations += 1;
+            mutable |= is_mut;
+        }
+    }
+    match declarations {
+        0 => NamedConstant::Undeclared,
+        1 if !mutable => extract_module_constants(file_source)
+            .remove(name)
+            .filter(|value| is_integer_literal(value))
+            .map_or(NamedConstant::Opaque, NamedConstant::Value),
+        1 => NamedConstant::Opaque,
+        _ => NamedConstant::Ambiguous,
+    }
+}
+
+impl NamedConstant {
+    /// The constant's visible integer value.
+    pub(crate) fn value(&self) -> Option<&str> {
+        match self {
+            NamedConstant::Value(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// A test argument that names the constant is the boundary value by
+    /// identity only when the file declares that constant exactly once.
+    pub(crate) fn is_declared_once(&self) -> bool {
+        matches!(self, NamedConstant::Value(_) | NamedConstant::Opaque)
+    }
+
+    /// Why the value is not statically visible, for honest evidence text.
+    pub(crate) fn limitation(&self) -> &'static str {
+        match self {
+            NamedConstant::Value(_) => "its literal value is visible",
+            NamedConstant::Opaque => "its initializer is not a plain integer literal",
+            NamedConstant::Ambiguous => "the owner's file declares it more than once",
+            NamedConstant::Undeclared => "it is not declared in the owner's file",
+        }
+    }
+}
+
+/// True when a test outside the owner's file may name its own constant
+/// rather than the owner's: its file declares the same name, or its source
+/// is not available to check. A test in the owner's own file needs no check
+/// here, because a second declaration there already makes the owner lookup
+/// [`NamedConstant::Ambiguous`].
+pub(crate) fn test_file_may_shadow_constant(
+    owner_file: &std::path::Path,
+    test_file: &std::path::Path,
+    test_file_source: Option<&str>,
+    name: &str,
+) -> bool {
+    test_file != owner_file
+        && test_file_source
+            .is_none_or(|source| named_constant(source, name) != NamedConstant::Undeclared)
+}
+
+/// The constant a comparison operand names, when the operand is
+/// constant-shaped: an upper-case identifier (`DISCOUNT_THRESHOLD`),
+/// optionally `Self::` qualified. Anything else is not a named constant.
+pub(crate) fn constant_operand_name(operand: &str) -> Option<&str> {
+    let operand = operand.trim();
+    let name = operand.strip_prefix("Self::").unwrap_or(operand);
+    (name.starts_with(|ch: char| ch.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'))
+    .then_some(name)
+}
+
+/// True when one call argument names the constant `name` itself, bare or
+/// through a plain path (`DISCOUNT_THRESHOLD`, `&DISCOUNT_THRESHOLD`,
+/// `pricing::DISCOUNT_THRESHOLD`).
+pub(crate) fn argument_names_constant(argument: &str, name: &str) -> bool {
+    let argument = argument.trim().trim_start_matches('&').trim();
+    if argument == name {
+        return true;
+    }
+    argument
+        .strip_suffix(name)
+        .and_then(|path| path.strip_suffix("::"))
+        .is_some_and(|path| !path.is_empty() && path.split("::").all(is_simple_identifier))
+}
+
+fn is_integer_literal(value: &str) -> bool {
+    let digits = value.strip_prefix('-').unwrap_or(value);
+    digits.starts_with(|ch: char| ch.is_ascii_digit())
+        && digits.chars().all(|ch| ch.is_ascii_digit() || ch == '_')
+}
+
+/// Position of the first top-level `;` in `text`, or `None` if no
+/// such terminator exists. Top-level = depth 0 of `()`/`[]`/`{}`.
+fn top_level_semicolon(text: &str) -> Option<usize> {
+    let mut depth: i32 = 0;
+    for (i, b) in text.bytes().enumerate() {
+        match b {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            b';' if depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Position of the first top-level `=` that is NOT part of `==`,
+/// `!=`, `<=`, `>=`. Used to split `IDENT[: T] = RHS` cleanly.
+fn first_single_eq(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut depth: i32 = 0;
+    for i in 0..bytes.len() {
+        match bytes[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            b'=' if depth == 0 => {
+                let next = bytes.get(i + 1).copied();
+                let prev = if i > 0 { Some(bytes[i - 1]) } else { None };
+                if next == Some(b'=') {
+                    continue;
+                }
+                if matches!(prev, Some(b'!') | Some(b'<') | Some(b'>')) {
+                    continue;
+                }
+                return Some(i);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Find `const NAME: T = LITERAL;` and `static NAME: T = LITERAL;`
+/// at the file's top level. Naive line scan; stays inside the
+/// "same source file" scope.
+fn extract_module_constants(file_source: &str) -> BTreeMap<String, String> {
+    let cleaned = strip_comments_and_strings(file_source);
+    let mut out = BTreeMap::new();
+    for line in cleaned.lines() {
+        let trimmed = line.trim();
+        let rest = trimmed
+            .strip_prefix("pub const ")
+            .or_else(|| trimmed.strip_prefix("const "))
+            .or_else(|| trimmed.strip_prefix("pub static "))
+            .or_else(|| trimmed.strip_prefix("static "))
+            .or_else(|| trimmed.strip_prefix("pub(crate) const "))
+            .or_else(|| trimmed.strip_prefix("pub(crate) static "));
+        let Some(rest) = rest else { continue };
+        let rest = rest.trim_end_matches(';').trim();
+        let Some(eq_idx) = rest.find('=') else {
+            continue;
+        };
+        if rest.as_bytes().get(eq_idx + 1) == Some(&b'=') {
+            continue;
+        }
+        let (lhs, rhs) = rest.split_at(eq_idx);
+        let rhs = rhs[1..].trim();
+        let ident = lhs.split(':').next().unwrap_or(lhs).trim();
+        let ident = ident.strip_prefix("mut ").unwrap_or(ident);
+        if !is_simple_identifier(ident) {
+            continue;
+        }
+        if !looks_like_literal(rhs) {
+            continue;
+        }
+        out.insert(ident.to_string(), rhs.to_string());
+    }
+    out
+}
+
+fn extract_struct_field_bindings(
+    body: &str,
+    start_line: usize,
+    invalid_idents: &[String],
+) -> (
+    BTreeMap<String, StructFieldBinding>,
+    BTreeMap<String, Vec<SourcePosition>>,
+) {
+    let mut out = BTreeMap::new();
+    let mut invalidations: BTreeMap<String, Vec<SourcePosition>> = invalid_idents
+        .iter()
+        .map(|ident| {
+            (
+                ident.clone(),
+                vec![SourcePosition {
+                    line: start_line,
+                    column: 0,
+                }],
+            )
+        })
+        .collect();
+    let cleaned = strip_comments_and_strings(body);
+    for start in find_all(&cleaned, "let ") {
+        let position = position_at_offset(&cleaned, start, start_line);
+        let after_let = &cleaned[start + 4..];
+        let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
+        let stmt = &after_let[..stmt_end];
+        let Some(eq_idx) = first_single_eq(stmt) else {
+            continue;
+        };
+        let (lhs, rhs) = stmt.split_at(eq_idx);
+        let rhs = rhs[1..].trim();
+        let Some((ident, is_mut)) = let_binding_ident(lhs) else {
+            continue;
+        };
+        if out.contains_key(ident) {
+            push_invalidation(&mut invalidations, ident, position);
+            continue;
+        }
+        if is_mut {
+            push_invalidation(&mut invalidations, ident, position);
+            continue;
+        }
+        let fields = extract_struct_literal_fields(rhs);
+        if !fields.is_empty() {
+            out.insert(ident.to_string(), StructFieldBinding { position, fields });
+        } else {
+            push_invalidation(&mut invalidations, ident, position);
+        }
+    }
+    for ident in out.keys() {
+        let mut lines = Vec::new();
+        lines.extend(non_simple_let_shadowing_lines(&cleaned, ident, start_line));
+        lines.extend(field_assignment_lines(&cleaned, ident, start_line));
+        lines.extend(non_let_shadowing_lines(&cleaned, ident, start_line));
+        for position in lines {
+            push_invalidation(&mut invalidations, ident, position);
+        }
+    }
+    (out, invalidations)
+}
+
+fn extract_local_binding_positions(
+    body: &str,
+    start_line: usize,
+) -> BTreeMap<String, Vec<SourcePosition>> {
+    let mut bindings: BTreeMap<String, Vec<SourcePosition>> = BTreeMap::new();
+    for start in find_all(body, "let ") {
+        let after_let = &body[start + 4..];
+        let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
+        let stmt = &after_let[..stmt_end];
+        let Some(eq_idx) = first_single_eq(stmt) else {
+            continue;
+        };
+        let (lhs, _) = stmt.split_at(eq_idx);
+        let Some((ident, _is_mut)) = let_binding_ident(lhs) else {
+            continue;
+        };
+        bindings
+            .entry(ident.to_string())
+            .or_default()
+            .push(position_at_offset(body, start, start_line));
+    }
+    bindings
+}
+
+fn extract_field_assignments(
+    body: &str,
+    start_line: usize,
+    module_constants: &BTreeMap<String, String>,
+) -> BTreeMap<(String, String), Vec<FieldAssignmentBinding>> {
+    let mut assignments: BTreeMap<(String, String), Vec<FieldAssignmentBinding>> = BTreeMap::new();
+    let mut line_offset = 0;
+    for line in body.lines() {
+        let mut segment_offset = 0;
+        for segment in line.split(';') {
+            let leading = segment.len().saturating_sub(segment.trim_start().len());
+            let statement = segment.trim().trim_start_matches('{').trim();
+            let Some(eq_idx) = first_single_eq(statement) else {
+                segment_offset += segment.len() + 1;
+                continue;
+            };
+            let (lhs, rhs) = statement.split_at(eq_idx);
+            let Some((object, field)) = field_projection(lhs.trim()) else {
+                segment_offset += segment.len() + 1;
+                continue;
+            };
+            let rhs = rhs[1..].trim();
+            let assignment_offset = line_offset + segment_offset + leading;
+            let values = if is_unconditional_test_statement(body, assignment_offset) {
+                resolve_field_assignment_values(rhs, module_constants)
+            } else {
+                Vec::new()
+            };
+            assignments
+                .entry((object.to_string(), field.to_string()))
+                .or_default()
+                .push(FieldAssignmentBinding {
+                    position: position_at_offset(body, assignment_offset, start_line),
+                    values,
+                });
+            segment_offset += segment.len() + 1;
+        }
+        line_offset += line.len() + 1;
+    }
+    assignments
+}
+
+fn resolve_field_assignment_values(
+    rhs: &str,
+    module_constants: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let rhs = rhs.trim();
+    if looks_like_literal(rhs) {
+        return vec![rhs.to_string()];
+    }
+    if module_constants.contains_key(rhs) {
+        return vec![rhs.to_string()];
+    }
+    let Some((constant, operator, offset)) = split_constant_offset(rhs) else {
+        return Vec::new();
+    };
+    let Some(base) = module_constants
+        .get(constant)
+        .and_then(|value| parse_integer_literal(value))
+    else {
+        return Vec::new();
+    };
+    let Some(offset) = parse_integer_literal(offset) else {
+        return Vec::new();
+    };
+    let value = match operator {
+        '+' => base.checked_add(offset),
+        '-' => base.checked_sub(offset),
+        _ => None,
+    };
+    value
+        .map(|value| vec![value.to_string()])
+        .unwrap_or_default()
+}
+
+fn split_constant_offset(rhs: &str) -> Option<(&str, char, &str)> {
+    for operator in ['+', '-'] {
+        let Some(index) = rhs
+            .char_indices()
+            .find_map(|(index, ch)| (ch == operator && index > 0).then_some(index))
+        else {
+            continue;
+        };
+        let (constant, offset) = rhs.split_at(index);
+        let constant = constant.trim();
+        let offset = offset[operator.len_utf8()..].trim();
+        if is_simple_identifier(constant) && !offset.is_empty() {
+            return Some((constant, operator, offset));
+        }
+    }
+    None
+}
+
+fn parse_integer_literal(value: &str) -> Option<i128> {
+    let normalized: String = value.trim().chars().filter(|ch| *ch != '_').collect();
+    normalized.parse::<i128>().ok()
+}
+
+fn is_unconditional_test_statement(body: &str, offset: usize) -> bool {
+    let mut depth = 0usize;
+    for ch in body[..offset.min(body.len())].chars() {
+        match ch {
+            '{' => depth = depth.saturating_add(1),
+            '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    depth == 1
+}
+
+fn field_assignment_invalidations(
+    body: &str,
+    start_line: usize,
+    invalid_idents: &[String],
+    local_bindings: &BTreeMap<String, Vec<SourcePosition>>,
+) -> BTreeMap<String, Vec<SourcePosition>> {
+    let mutable_borrows = mutable_borrow_positions(body, start_line);
+    let mut invalidations: BTreeMap<String, Vec<SourcePosition>> = invalid_idents
+        .iter()
+        .map(|ident| {
+            (
+                ident.clone(),
+                vec![SourcePosition {
+                    line: start_line,
+                    column: 0,
+                }],
+            )
+        })
+        .collect();
+    for ident in local_bindings.keys() {
+        for position in non_simple_let_shadowing_lines(body, ident, start_line)
+            .into_iter()
+            .chain(non_let_shadowing_lines(body, ident, start_line))
+            .chain(
+                mutable_borrows
+                    .get(ident)
+                    .into_iter()
+                    .flat_map(|positions| positions.iter().copied()),
+            )
+        {
+            push_invalidation(&mut invalidations, ident, position);
+        }
+    }
+    invalidations
+}
+
+fn mutable_borrow_positions(
+    body: &str,
+    start_line: usize,
+) -> BTreeMap<String, Vec<SourcePosition>> {
+    let bytes = body.as_bytes();
+    let mut positions: BTreeMap<String, Vec<SourcePosition>> = BTreeMap::new();
+    for (offset, ch) in body.char_indices() {
+        if ch != '&' {
+            continue;
+        }
+        let mut cursor = offset + 1;
+        while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+            cursor += 1;
+        }
+        let Some(after_mut) = body.get(cursor..).and_then(|rest| rest.strip_prefix("mut")) else {
+            continue;
+        };
+        let after_mut_offset = body.len().saturating_sub(after_mut.len());
+        if !bytes
+            .get(after_mut_offset)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            continue;
+        }
+        cursor = after_mut_offset;
+        while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+            cursor += 1;
+        }
+        let ident_len = body[cursor..]
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let Some(ident) = body.get(cursor..cursor + ident_len) else {
+            continue;
+        };
+        if !is_simple_identifier(ident) {
+            continue;
+        }
+        positions
+            .entry(ident.to_string())
+            .or_default()
+            .push(position_at_offset(body, offset, start_line));
+    }
+    positions
+}
+
+fn push_invalidation(
+    invalidations: &mut BTreeMap<String, Vec<SourcePosition>>,
+    ident: &str,
+    position: SourcePosition,
+) {
+    invalidations
+        .entry(ident.to_string())
+        .or_default()
+        .push(position);
+}
+
+fn position_at_offset(text: &str, offset: usize, start_line: usize) -> SourcePosition {
+    let offset = offset.min(text.len());
+    let prefix = &text[..offset];
+    let line = start_line + prefix.bytes().filter(|b| *b == b'\n').count();
+    let line_start = prefix.rfind('\n').map(|idx| idx + 1).unwrap_or(0);
+    let line_end = text[offset..]
+        .find('\n')
+        .map(|idx| offset + idx)
+        .unwrap_or(text.len());
+    let raw_column = offset.saturating_sub(line_start);
+    let leading = text[line_start..line_end]
+        .bytes()
+        .take_while(|b| b.is_ascii_whitespace())
+        .count();
+    SourcePosition {
+        line,
+        column: raw_column.saturating_sub(leading),
+    }
+}
+
+fn call_position(call_line: usize, call_name: &str, call_text: &str) -> SourcePosition {
+    let needle = format!("{call_name}(");
+    let column = call_text
+        .find(&needle)
+        .or_else(|| call_text.find('('))
+        .unwrap_or(0);
+    SourcePosition {
+        line: call_line,
+        column,
+    }
+}
+
+fn let_binding_ident(lhs: &str) -> Option<(&str, bool)> {
+    let ident_part = lhs.split(':').next().unwrap_or(lhs).trim();
+    let (ident, is_mut) = if let Some(rest) = ident_part.strip_prefix("mut ") {
+        (rest.trim(), true)
+    } else {
+        (ident_part, false)
+    };
+    is_simple_identifier(ident).then_some((ident, is_mut))
+}
+
+fn non_simple_let_shadowing_lines(
+    body: &str,
+    ident: &str,
+    start_line: usize,
+) -> Vec<SourcePosition> {
+    let mut positions = Vec::new();
+    for start in find_all(body, "let ") {
+        let after_let = &body[start + 4..];
+        let stmt_end = top_level_semicolon(after_let).unwrap_or(after_let.len());
+        let stmt = &after_let[..stmt_end];
+        let Some(eq_idx) = first_single_eq(stmt) else {
+            continue;
+        };
+        let (lhs, _) = stmt.split_at(eq_idx);
+        if let_binding_ident(lhs).is_none() && contains_identifier_token(lhs, ident) {
+            positions.push(position_at_offset(body, start, start_line));
+        }
+    }
+    positions
+}
+
+fn extract_struct_literal_fields(rhs: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let rhs = rhs.trim();
+    let Some(open) = rhs.find('{') else {
+        return out;
+    };
+    if !rhs.ends_with('}') {
+        return out;
+    }
+    let type_part = rhs[..open].trim();
+    if type_part.is_empty()
+        || !type_part
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == ':' || ch.is_whitespace())
+    {
+        return out;
+    }
+    let Some(inner) = rhs[open..]
+        .strip_prefix('{')
+        .and_then(|text| text.strip_suffix('}'))
+    else {
+        return out;
+    };
+    for field in split_top_level(inner) {
+        let Some((name, value)) = split_field_literal(&field) else {
+            continue;
+        };
+        out.insert(name.to_string(), value.to_string());
+    }
+    out
+}
+
+fn split_field_literal(field: &str) -> Option<(&str, &str)> {
+    let (name, value) = field.split_once(':')?;
+    let name = name.trim();
+    let value = value.trim();
+    if !is_simple_identifier(name) || !looks_like_literal(value) {
+        return None;
+    }
+    Some((name, value))
+}
+
+fn field_assignment_lines(body: &str, ident: &str, start_line: usize) -> Vec<SourcePosition> {
+    let mut positions = Vec::new();
+    let needle = format!("{ident}.");
+    let mut search_from = 0;
+    while let Some(rel) = body[search_from..].find(&needle) {
+        let abs = search_from + rel;
+        let boundary_ok = abs == 0
+            || body
+                .as_bytes()
+                .get(abs - 1)
+                .is_some_and(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+        let after_start = abs + needle.len();
+        if !boundary_ok {
+            search_from = after_start;
+            continue;
+        }
+        let after = &body[after_start..];
+        let field_len = after
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+            .map(char::len_utf8)
+            .sum::<usize>();
+        if field_len > 0 && is_assignment_operator(after[field_len..].trim_start()) {
+            positions.push(position_at_offset(body, abs, start_line));
+        }
+        search_from = after_start;
+    }
+    positions
+}
+
+fn non_let_shadowing_lines(body: &str, ident: &str, start_line: usize) -> Vec<SourcePosition> {
+    let mut positions = Vec::new();
+    for (idx, line) in body.lines().enumerate() {
+        if has_for_binding(line, ident)
+            || has_let_pattern_binding(line, "if let ", ident)
+            || has_let_pattern_binding(line, "while let ", ident)
+            || has_closure_param_binding(line, ident)
+            || has_match_arm_binding(line, ident)
+        {
+            positions.push(SourcePosition {
+                line: start_line + idx,
+                column: 0,
+            });
+        }
+    }
+    positions
+}
+
+fn has_for_binding(line: &str, ident: &str) -> bool {
+    let mut rest = line;
+    while let Some(idx) = rest.find("for ") {
+        let after = &rest[idx + 4..];
+        let pattern_end = after.find(" in ").unwrap_or(after.len());
+        if contains_identifier_token(&after[..pattern_end], ident) {
+            return true;
+        }
+        rest = &after[pattern_end..];
+    }
+    false
+}
+
+fn has_let_pattern_binding(line: &str, prefix: &str, ident: &str) -> bool {
+    let mut rest = line;
+    while let Some(idx) = rest.find(prefix) {
+        let after = &rest[idx + prefix.len()..];
+        let pattern_end = first_single_eq(after).unwrap_or(after.len());
+        if contains_identifier_token(&after[..pattern_end], ident) {
+            return true;
+        }
+        rest = &after[pattern_end..];
+    }
+    false
+}
+
+fn has_closure_param_binding(line: &str, ident: &str) -> bool {
+    let mut rest = line;
+    while let Some(start) = rest.find('|') {
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('|') else {
+            return false;
+        };
+        if contains_identifier_token(&after_start[..end], ident) {
+            return true;
+        }
+        rest = &after_start[end + 1..];
+    }
+    false
+}
+
+fn has_match_arm_binding(line: &str, ident: &str) -> bool {
+    let Some(arm) = line.find("=>") else {
+        return false;
+    };
+    contains_identifier_token(&line[..arm], ident)
+}
+
+fn contains_identifier_token(text: &str, ident: &str) -> bool {
+    if ident.is_empty() {
+        return false;
+    }
+    let bytes = text.as_bytes();
+    let ident_bytes = ident.as_bytes();
+    let mut start = 0;
+    while let Some(rel) = text[start..].find(ident) {
+        let abs = start + rel;
+        let before_ok = abs == 0
+            || bytes
+                .get(abs - 1)
+                .is_some_and(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+        let after_idx = abs + ident_bytes.len();
+        let after_ok = after_idx >= bytes.len()
+            || bytes
+                .get(after_idx)
+                .is_some_and(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+        if before_ok && after_ok {
+            return true;
+        }
+        start = after_idx;
+    }
+    false
+}
+
+fn is_assignment_operator(text: &str) -> bool {
+    if text.starts_with("==")
+        || text.starts_with("=>")
+        || text.starts_with(">=")
+        || text.starts_with("<=")
+    {
+        return false;
+    }
+    text.starts_with('=')
+        || ["+=", "-=", "*=", "/=", "%=", "&=", "|=", "^="]
+            .iter()
+            .any(|op| text.starts_with(op))
+}
+
+/// Parse `#[case(L, L, ...)]` attributes captured on the test fn,
+/// plus the test fn's parameter names so a positional case literal
+/// can be mapped to an identifier. Returns `(cases, param_names)`.
+/// Read attrs from `TestFact.attrs` (populated by the parser-backed
+/// index path); no filesystem reads.
+fn extract_rstest_cases(test: &TestSummary) -> (Vec<Vec<String>>, Vec<String>) {
+    let mut cases: Vec<Vec<String>> = Vec::new();
+    let mut is_rstest = false;
+    for attr in &test.attrs {
+        if attr_matches_name_or_call(attr, "rstest") {
+            is_rstest = true;
+            continue;
+        }
+        if let Some(args) = attr_call_args(attr, "case") {
+            // `#[case]` without args - no scalar values to capture.
+            if args.is_empty() {
+                continue;
+            }
+            // Split on top-level commas.
+            cases.push(split_top_level(args));
+        }
+    }
+    if !is_rstest && cases.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let params = extract_fn_param_names(&test.body);
+    (cases, params)
+}
+
+fn attr_matches_name_or_call(attr: &str, name: &str) -> bool {
+    let Some(inner) = attr_inner(attr) else {
+        return false;
+    };
+    if inner == name {
+        return true;
+    }
+    attr_call_args(attr, name).is_some()
+}
+
+fn attr_call_args<'a>(attr: &'a str, name: &str) -> Option<&'a str> {
+    let inner = attr_inner(attr)?;
+    let rest = inner.strip_prefix(name)?.trim_start();
+    let args = rest.strip_prefix('(')?.strip_suffix(')')?.trim();
+    Some(args)
+}
+
+fn attr_inner(attr: &str) -> Option<&str> {
+    let inner = attr.trim().strip_prefix("#[")?.strip_suffix(']')?.trim();
+    Some(inner)
+}
+
+/// Pull parameter names out of a `fn name(p1: T, p2: T, ...)` header.
+/// Test bodies start at the `fn` keyword, so the parameter list is
+/// always present on the first non-attr line. Best-effort: skip
+/// `&self` / `self` and reject anything not identifier-shaped.
+fn extract_fn_param_names(body: &str) -> Vec<String> {
+    let Some(open) = body.find('(') else {
+        return Vec::new();
+    };
+    let after = &body[open + 1..];
+    let Some(close) = after.find(')') else {
+        return Vec::new();
+    };
+    let raw = &after[..close];
+    let mut out = Vec::new();
+    for part in split_top_level(raw) {
+        let part = part.trim();
+        if part.is_empty() || part == "self" || part.starts_with('&') {
+            continue;
+        }
+        let ident = part.split(':').next().unwrap_or(part).trim();
+        let ident = ident.strip_prefix("mut ").unwrap_or(ident).trim();
+        if is_simple_identifier(ident) {
+            out.push(ident.to_string());
+        }
+    }
+    out
+}
+
+/// `for (a, b) in [(L, L), ...] { ... }` and
+/// `for &(a, b) in &[(L, L), ...] { ... }` shapes. Each named
+/// destructure component maps to the column of literals across the
+/// table rows (literal tuple tables only, no macros, no runtime-built
+/// vectors).
+fn extract_table_bindings(body: &str) -> BTreeMap<String, Vec<String>> {
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for cap in scan_for_table_loops(body) {
+        for (col, idents) in cap.idents.iter().enumerate() {
+            for row in &cap.rows {
+                if let Some(value) = row.get(col)
+                    && let Some(ident) = idents
+                    && is_simple_identifier(ident)
+                {
+                    out.entry(ident.clone()).or_default().push(value.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+struct TableLoopCapture {
+    /// Names per column. `None` when the destructure component is
+    /// `_` or otherwise not a simple identifier.
+    idents: Vec<Option<String>>,
+    /// Each row's column values.
+    rows: Vec<Vec<String>>,
+}
+
+/// Find every `for PATTERN in [...]` shape with literal-tuple rows.
+/// Best-effort syntactic scan - does not handle macro tables, fn
+/// calls returning Vec, or anything beyond inline literal arrays.
+fn scan_for_table_loops(body: &str) -> Vec<TableLoopCapture> {
+    let mut out = Vec::new();
+    for line_start in find_all(body, "for ") {
+        let after_for = &body[line_start + 4..];
+        let Some(in_idx) = after_for.find(" in ") else {
+            continue;
+        };
+        let pattern = after_for[..in_idx].trim();
+        let after_in = after_for[in_idx + 4..].trim_start();
+        // Allow optional leading `&` or `&[`.
+        let after_in = after_in.strip_prefix('&').unwrap_or(after_in);
+        let after_in = after_in.trim_start();
+        // Pattern must be a tuple destructure: `(a, b, c)` or
+        // `&(a, b, c)`.
+        let pattern = pattern.strip_prefix('&').unwrap_or(pattern).trim();
+        let Some(pattern_inner) = pattern.strip_prefix('(').and_then(|s| s.strip_suffix(')'))
+        else {
+            continue;
+        };
+        let idents: Vec<Option<String>> = split_top_level(pattern_inner)
+            .into_iter()
+            .map(|p| {
+                let p = p.trim();
+                if p == "_" || p.is_empty() {
+                    None
+                } else if is_simple_identifier(p) {
+                    Some(p.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if idents.is_empty() || idents.iter().all(|i| i.is_none()) {
+            continue;
+        }
+        // RHS must start with `[` (array of tuples).
+        let Some(arr_inner) = balanced_bracket_contents(after_in, '[', ']') else {
+            continue;
+        };
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        for row_text in split_top_level_at_brackets(arr_inner) {
+            let row_text = row_text.trim();
+            // Each row should be `(L, L, ...)`.
+            let Some(row_inner) = row_text.strip_prefix('(').and_then(|s| s.strip_suffix(')'))
+            else {
+                continue;
+            };
+            let parts = split_top_level(row_inner);
+            if parts.len() != idents.len() {
+                continue;
+            }
+            if !parts.iter().all(|p| looks_like_literal(p.trim())) {
+                continue;
+            }
+            rows.push(parts.into_iter().map(|p| p.trim().to_string()).collect());
+        }
+        if !rows.is_empty() {
+            out.push(TableLoopCapture { idents, rows });
+        }
+    }
+    out
+}
+
+struct BuilderCallCapture {
+    method: String,
+    arg: String,
+    line: usize,
+}
+
+/// Find every `.method_name(LITERAL_OR_EXPR)` segment in the test
+/// body. The caller filters by name alignment before counting the
+/// value as observed.
+fn scan_builder_calls(body: &str) -> Vec<BuilderCallCapture> {
+    let mut out = Vec::new();
+    let bytes = body.as_bytes();
+    let mut line: usize = 1;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\n' {
+            line += 1;
+            i += 1;
+            continue;
+        }
+        if bytes[i] != b'.' {
+            i += 1;
+            continue;
+        }
+        // After `.`: identifier, then `(`.
+        let name_start = i + 1;
+        let mut name_end = name_start;
+        while name_end < bytes.len()
+            && (bytes[name_end].is_ascii_alphanumeric() || bytes[name_end] == b'_')
+        {
+            name_end += 1;
+        }
+        if name_end == name_start || name_end >= bytes.len() || bytes[name_end] != b'(' {
+            i += 1;
+            continue;
+        }
+        let method = &body[name_start..name_end];
+        // Find matching `)`.
+        let arg_start = name_end + 1;
+        let mut depth: i32 = 1;
+        let mut j = arg_start;
+        while j < bytes.len() && depth > 0 {
+            match bytes[j] {
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                break;
+            }
+            j += 1;
+        }
+        if depth != 0 {
+            break;
+        }
+        let arg = &body[arg_start..j];
+        out.push(BuilderCallCapture {
+            method: method.to_string(),
+            arg: arg.to_string(),
+            line,
+        });
+        i = j + 1;
+    }
+    out
+}
+
+/// Pull literals out of a builder arg expression. A bare literal
+/// returns `[itself]`; nested expressions yield empty.
+fn extract_inner_literals(arg: &str) -> Vec<String> {
+    let trimmed = arg.trim().trim_end_matches([',', ';']);
+    if looks_like_literal(trimmed) {
+        return vec![trimmed.to_string()];
+    }
+    Vec::new()
+}
+
+/// Strip `Some(x)` / `Ok(x)` / `Err(x)` to the inner expression.
+/// Returns the inner text (trimmed). One level only.
+fn unwrap_option_or_result(text: &str) -> Option<String> {
+    for ctor in ["Some(", "Ok(", "Err("] {
+        if let Some(rest) = text.strip_prefix(ctor)
+            && let Some(inner) = rest.strip_suffix(')')
+        {
+            return Some(inner.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Strip simple path literal constructors to the inner expression.
+/// Returns the inner text (trimmed). One level only.
+fn unwrap_path_literal_constructor(text: &str, facts: &ValueEnvFacts) -> Option<String> {
+    let trimmed = text.trim();
+    for (ctor, allowed) in [
+        ("Path::new(", facts.bare_std_path_imported),
+        ("std::path::Path::new(", true),
+        ("::std::path::Path::new(", true),
+        ("PathBuf::from(", facts.bare_std_path_buf_imported),
+        ("std::path::PathBuf::from(", true),
+        ("::std::path::PathBuf::from(", true),
+    ] {
+        if !allowed {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix(ctor)
+            && let Some(inner) = rest.strip_suffix(')')
+        {
+            let inner = inner.trim();
+            if looks_like_literal(inner) {
+                return Some(inner.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn unwrap_shared_borrow(text: &str) -> Option<&str> {
+    let rest = text.trim().strip_prefix('&')?.trim_start();
+    if rest.starts_with("mut ") {
+        return None;
+    }
+    (!rest.is_empty()).then_some(rest)
+}
+
+fn looks_like_literal(expr: &str) -> bool {
+    let trimmed = expr.trim().trim_end_matches([',', ';']);
+    if trimmed.is_empty() {
+        return false;
+    }
+    // String / char literal.
+    if trimmed.starts_with('"') || trimmed.starts_with('\'') {
+        return true;
+    }
+    // Numeric literal (with optional negative sign and `_`).
+    let body = trimmed.strip_prefix('-').unwrap_or(trimmed);
+    if !body.is_empty()
+        && body.chars().next().is_some_and(|c| c.is_ascii_digit())
+        && body
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '_' || c == '.')
+    {
+        return true;
+    }
+    // bool, None - emit as their token text.
+    if matches!(trimmed, "true" | "false" | "None") {
+        return true;
+    }
+    // Path-shaped enum literal, e.g. `Color::Red` or
+    // `MyError::ParseError`. Same shape `scalar_values` already accepts.
+    if trimmed.contains("::")
+        && trimmed
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+    {
+        return true;
+    }
+    false
+}
+
+fn field_projection(expr: &str) -> Option<(&str, &str)> {
+    let (object, field) = expr.trim().split_once('.')?;
+    if field.contains('.') {
+        return None;
+    }
+    let object = object.trim();
+    let field = field.trim();
+    if is_simple_identifier(object) && is_simple_identifier(field) {
+        Some((object, field))
+    } else {
+        None
+    }
+}
+
+fn is_simple_identifier(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Split text on top-level commas (depth 0 of `()`/`[]`/`{}`).
+fn split_top_level(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth: i32 = 0;
+    let mut start = 0;
+    let bytes = text.as_bytes();
+    for i in 0..bytes.len() {
+        match bytes[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            b',' if depth == 0 => {
+                out.push(text[start..i].to_string());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if start <= text.len() {
+        let tail = text[start..].trim();
+        if !tail.is_empty() {
+            out.push(tail.to_string());
+        }
+    }
+    out
+}
+
+/// Split a bracket-delimited table on top-level row commas (depth 0
+/// outside the surrounding `[`/`]`). Tuples nest brackets so we count
+/// `(`/`)` as depth too.
+fn split_top_level_at_brackets(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut depth: i32 = 0;
+    let mut start = 0;
+    let bytes = text.as_bytes();
+    for i in 0..bytes.len() {
+        match bytes[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth -= 1,
+            b',' if depth == 0 => {
+                out.push(&text[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if start <= text.len() {
+        out.push(&text[start..]);
+    }
+    out
+}
+
+/// Find the contents inside the next balanced `open`...`close` pair
+/// in `text`, starting from offset 0. Returns `None` if no balanced
+/// pair exists.
+fn balanced_bracket_contents(text: &str, open: char, close: char) -> Option<&str> {
+    let bytes = text.as_bytes();
+    let open_b = open as u8;
+    let close_b = close as u8;
+    let start = bytes.iter().position(|&b| b == open_b)?;
+    let mut depth: i32 = 0;
+    for i in start..bytes.len() {
+        if bytes[i] == open_b {
+            depth += 1;
+        } else if bytes[i] == close_b {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&text[start + 1..i]);
+            }
+        }
+    }
+    None
+}
+
+fn find_all(haystack: &str, needle: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    while let Some(idx) = haystack[start..].find(needle) {
+        let abs = start + idx;
+        // Word-boundary check: previous char must not be alpha/_
+        // (avoids `before_for` matching `for `).
+        let ok = abs == 0
+            || haystack
+                .as_bytes()
+                .get(abs - 1)
+                .is_some_and(|b| !(b.is_ascii_alphanumeric() || *b == b'_'));
+        if ok {
+            out.push(abs);
+        }
+        start = abs + 1;
+    }
+    out
+}
+
+fn identifier_tokens(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            current.push(ch);
+        } else {
+            if !current.is_empty() && current.len() > 2 {
+                out.push(current.clone());
+            }
+            current.clear();
+        }
+    }
+    if !current.is_empty() && current.len() > 2 {
+        out.push(current);
+    }
+    out
+}
+
+fn builder_method_matches_allowed(
+    method: &str,
+    allowed: &std::collections::BTreeSet<String>,
+) -> bool {
+    allowed.iter().any(|token| {
+        method == token
+            || method.strip_prefix("with_") == Some(token.as_str())
+            || method.strip_prefix("set_") == Some(token.as_str())
+            || method
+                .strip_suffix(token.as_str())
+                .is_some_and(|prefix| prefix.ends_with('_'))
+            || method
+                .strip_prefix(token.as_str())
+                .is_some_and(|suffix| suffix.starts_with('_'))
+    })
+}
+
+/// Drop `//` line-comment tails and replace string-literal contents
+/// with empty text, so binding scans don't pick up `// let x = 1;`
+/// or string-embedded names. Mirrors the helper added in
+/// `analysis/related-test-precision-v1` for `import_path_affinity`.
+fn strip_comments_and_strings(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    for raw_line in source.lines() {
+        let without_comment = match raw_line.find("//") {
+            Some(idx) => &raw_line[..idx],
+            None => raw_line,
+        };
+        let mut in_string = false;
+        let mut escaped = false;
+        for ch in without_comment.chars() {
+            if in_string {
+                if escaped {
+                    escaped = false;
+                    continue;
+                }
+                match ch {
+                    '\\' => escaped = true,
+                    '"' => {
+                        in_string = false;
+                        out.push('"');
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+            if ch == '"' {
+                in_string = true;
+                out.push('"');
+                continue;
+            }
+            out.push(ch);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,304 @@
+{
+  "changes": [
+    {
+      "behavior_hint": "return_value",
+      "change_id": "change:file:lib/App/Discount.pm:8:8",
+      "changed_observable": "5  if $amount < 25",
+      "changed_text_digest": "fnv64:a042c04bd6f47f35",
+      "file_id": "file:lib/App/Discount.pm",
+      "missing_discriminator": null,
+      "owner_id": "owner:lib/App/Discount.pm:sub:App::Discount::discount:51-174",
+      "provenance_refs": [],
+      "range": {
+        "end_column": 30,
+        "end_line": 8,
+        "start_column": 0,
+        "start_line": 8
+      }
+    }
+  ],
+  "dynamic_boundaries": [],
+  "files": [
+    {
+      "digest": "sha256:99b62d8b10ffc97fc967e48f9193391cd3304cb5d282c9aac61dd0bfa57a13e3",
+      "file_id": "file:lib/App/Discount.pm",
+      "package_names": [
+        "App::Discount"
+      ],
+      "path": "lib/App/Discount.pm",
+      "provenance_refs": [
+        "prov:syntax:file:lib/App/Discount.pm"
+      ],
+      "role": [
+        "source"
+      ]
+    },
+    {
+      "digest": "sha256:1f1c3fc50082267d19e8975325cfd3b258e329dd6b38278018bb22c5108f0ea6",
+      "file_id": "file:t/discount.t",
+      "package_names": [],
+      "path": "t/discount.t",
+      "provenance_refs": [
+        "prov:syntax:file:t/discount.t"
+      ],
+      "role": [
+        "test"
+      ]
+    }
+  ],
+  "input": {
+    "base": "origin/main",
+    "diff_id": null,
+    "head": "HEAD",
+    "requested_fact_classes": [
+      "files",
+      "owners",
+      "changes",
+      "tests",
+      "oracles",
+      "relations",
+      "dynamic_boundaries",
+      "verify_commands",
+      "limitations",
+      "provenance"
+    ]
+  },
+  "limitations": [
+    {
+      "evidence_refs": [],
+      "kind": "partial_emitter",
+      "limitation_id": "emitter-partial",
+      "message": "Parser-backed tests/oracles, relations/discriminators (incl. a parser-backed direct_owner_call), boundaries/commands, files/owners, (when a diff is supplied) diff-owned changes, and a deterministic packet_fingerprint are emitted. Export-aware relation reachability and the managed-producer diff source land in later slices."
+    },
+    {
+      "evidence_refs": [],
+      "kind": "narrowed_representation",
+      "limitation_id": "oracle-representation",
+      "message": "oracle facts locate the whole assertion call range; the ripr-perl-facts-v1 schema has no observed/expected expression sub-range fields, so those are conveyed as string expressions only."
+    },
+    {
+      "evidence_refs": [],
+      "kind": "unverified_provenance",
+      "limitation_id": "diff-provenance-unverified",
+      "message": "base/head/diff are caller-asserted and not verified against a repository; this packet does not confirm the supplied diff is the actual base->head diff."
+    },
+    {
+      "evidence_refs": [],
+      "kind": "range_precision",
+      "limitation_id": "change-range-imprecise",
+      "message": "change ranges are line-granular with best-effort column data derived from the diff, not the byte-accurate LineIndex ranges used for owners."
+    },
+    {
+      "evidence_refs": [],
+      "kind": "partial_inference",
+      "limitation_id": "change-behavior-hint-partial",
+      "message": "only predicate_boundary / return_value / exception_path behavior_hints are inferred from added-line text; every other change resolves to \"unknown\", and missing_discriminator is always null in this slice. Whole-line comments are skipped, but a die/return/comparison token inside a string literal can still be misclassified (a robust fix needs tokenization)."
+    }
+  ],
+  "oracles": [
+    {
+      "confidence": "medium",
+      "expected_expression": null,
+      "expression": "is(App::Discount::discount(undef, 5),  0,  'no discount below first threshold')",
+      "kind": "exact_return_assertion",
+      "observed_sink": "5  if $amount < 25",
+      "oracle_id": "oracle:t/discount.t:is:64-143",
+      "provenance_refs": [
+        "prov:oracle_extraction:file:t/discount.t"
+      ],
+      "range": {
+        "end_column": 79,
+        "end_line": 7,
+        "start_column": 0,
+        "start_line": 7
+      },
+      "strength": "strong_exact",
+      "target_owner_id": "owner:lib/App/Discount.pm:sub:App::Discount::discount:51-174",
+      "test_id": "test:t/discount.t"
+    },
+    {
+      "confidence": "medium",
+      "expected_expression": null,
+      "expression": "is(App::Discount::discount(undef, 25), 5,  'mid tier discount')",
+      "kind": "exact_return_assertion",
+      "observed_sink": null,
+      "oracle_id": "oracle:t/discount.t:is:145-208",
+      "provenance_refs": [
+        "prov:oracle_extraction:file:t/discount.t"
+      ],
+      "range": {
+        "end_column": 63,
+        "end_line": 8,
+        "start_column": 0,
+        "start_line": 8
+      },
+      "strength": "strong_exact",
+      "target_owner_id": null,
+      "test_id": "test:t/discount.t"
+    },
+    {
+      "confidence": "medium",
+      "expected_expression": null,
+      "expression": "is(App::Discount::discount(undef, 80), 10, 'top tier discount')",
+      "kind": "exact_return_assertion",
+      "observed_sink": null,
+      "oracle_id": "oracle:t/discount.t:is:210-273",
+      "provenance_refs": [
+        "prov:oracle_extraction:file:t/discount.t"
+      ],
+      "range": {
+        "end_column": 63,
+        "end_line": 9,
+        "start_column": 0,
+        "start_line": 9
+      },
+      "strength": "strong_exact",
+      "target_owner_id": null,
+      "test_id": "test:t/discount.t"
+    }
+  ],
+  "owners": [
+    {
+      "confidence": "high",
+      "file_id": "file:lib/App/Discount.pm",
+      "kind": "package",
+      "name": "App::Discount",
+      "owner_id": "owner:lib/App/Discount.pm:package:App::Discount:0-21",
+      "package": "main",
+      "provenance_refs": [
+        "prov:syntax:file:lib/App/Discount.pm"
+      ],
+      "range": {
+        "end_column": 21,
+        "end_line": 0,
+        "start_column": 0,
+        "start_line": 0
+      }
+    },
+    {
+      "confidence": "high",
+      "file_id": "file:lib/App/Discount.pm",
+      "kind": "sub",
+      "name": "discount",
+      "owner_id": "owner:lib/App/Discount.pm:sub:App::Discount::discount:51-174",
+      "package": "App::Discount",
+      "provenance_refs": [
+        "prov:syntax:file:lib/App/Discount.pm"
+      ],
+      "range": {
+        "end_column": 1,
+        "end_line": 11,
+        "start_column": 0,
+        "start_line": 5
+      }
+    }
+  ],
+  "packet_fingerprint": "sha256:addedb4d76350568d2917258ed74578b3fcaf8941767bbbfb34499bb6d704bd1",
+  "packet_id": "perl-lsp-ripr-facts-ripr-perl-facts-v1-fixtures/perl_packet_contract_migration/producer-inputs/ordinary_discount-files,owners,changes,tests,oracles,relations,dynamic_boundaries,verify_commands,limitations,provenance",
+  "packet_status": "partial",
+  "producer": {
+    "capabilities": [
+      "files",
+      "owners",
+      "changes",
+      "tests",
+      "oracles",
+      "relations",
+      "dynamic_boundaries",
+      "verify_commands",
+      "limitations",
+      "provenance",
+      "test_facts"
+    ],
+    "name": "perl-lsp",
+    "version": "0.17.0"
+  },
+  "provenance": [
+    {
+      "confidence": "high",
+      "provenance_id": "cli-surface",
+      "source": "operator_config"
+    },
+    {
+      "confidence": "high",
+      "file_id": "file:t/discount.t",
+      "provenance_id": "prov:test_discovery:file:t/discount.t",
+      "range": "3:0-3:14",
+      "source": "test_discovery"
+    },
+    {
+      "confidence": "medium",
+      "file_id": "file:t/discount.t",
+      "provenance_id": "prov:oracle_extraction:file:t/discount.t",
+      "range": null,
+      "source": "oracle_extraction"
+    },
+    {
+      "confidence": "high",
+      "file_id": "file:lib/App/Discount.pm",
+      "provenance_id": "prov:syntax:file:lib/App/Discount.pm",
+      "source": "syntax"
+    },
+    {
+      "confidence": "high",
+      "file_id": "file:t/discount.t",
+      "provenance_id": "prov:syntax:file:t/discount.t",
+      "source": "syntax"
+    }
+  ],
+  "relations": [
+    {
+      "change_id": "change:file:lib/App/Discount.pm:8:8",
+      "confidence": "medium",
+      "oracle_id": "oracle:t/discount.t:is:64-143",
+      "owner_id": "owner:lib/App/Discount.pm:sub:App::Discount::discount:51-174",
+      "provenance_refs": [],
+      "reachability_hint": "reachable",
+      "relation_id": "relation:file:t/discount.t:lib/App/Discount.pm:owner_lib/App/Discount.pm_sub_App__Discount__discount_51-174:change:file:lib/App/Discount.pm:8:8",
+      "relation_kind": "direct_owner_call",
+      "test_id": "test:t/discount.t"
+    }
+  ],
+  "root": {
+    "path_style": "posix",
+    "repo_relative": "fixtures/perl_packet_contract_migration/producer-inputs/ordinary_discount",
+    "vcs_head": "HEAD"
+  },
+  "schema_version": "ripr-perl-facts-v1",
+  "tests": [
+    {
+      "confidence": "high",
+      "file_id": "file:t/discount.t",
+      "framework": "Test::More",
+      "name": "t/discount.t",
+      "provenance_refs": [
+        "prov:test_discovery:file:t/discount.t"
+      ],
+      "range": {
+        "end_column": 0,
+        "end_line": 12,
+        "start_column": 0,
+        "start_line": 0
+      },
+      "runner_hints": [
+        "prove"
+      ],
+      "test_id": "test:t/discount.t"
+    }
+  ],
+  "verify_commands": [
+    {
+      "argv": [
+        "prove",
+        "t/discount.t"
+      ],
+      "command_id": "verify_cmd:t/discount.t:1",
+      "confidence": "high",
+      "preconditions": [],
+      "provenance_refs": [],
+      "runner": "prove",
+      "scope": "test",
+      "test_id": "test:t/discount.t"
+    }
+  ]
+}

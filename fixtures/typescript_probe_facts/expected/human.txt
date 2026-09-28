@@ -1,0 +1,39 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_probe_facts/input
+
+Summary: 10 probe(s), 0 exposed, 10 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: javascript: 2, typescript: 5.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 7 changed file(s), 20 changed line(s), 10 candidate line(s), 10 probe(s), 10 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: this TypeScript preview finding's repair packet is not ready (TypeScript preview found related test evidence but cannot name a safe target discriminator or observer shape); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.
+  File: src/ambiguous.ts:4
+  Language: typescript
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: const total = applyDiscount(amount, threshold);
+  Missing discriminator: Only heuristic TypeScript test links were found for `summarize`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Related test: tests/ambiguous.test.ts:1 summarize smoke
+  Next step: TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
+  Evidence:
+    - reach weak: 1 related test(s) found for owner `summarize`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/typescript_probe_facts/input --diff fixtures/typescript_probe_facts/diff.patch --mode fast probe:src_ambiguous.ts:typescript_preview:ba5968cd
+  ripr context --root fixtures/typescript_probe_facts/input --diff fixtures/typescript_probe_facts/diff.patch --mode fast --at probe:src_ambiguous.ts:typescript_preview:ba5968cd
+
+Hidden:
+  9 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 7 TypeScript files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

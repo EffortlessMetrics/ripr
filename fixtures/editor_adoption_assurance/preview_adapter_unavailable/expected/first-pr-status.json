@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/preview_adapter_unavailable",
+  "packet_state": "not_projected",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false,
+  "next_safe_action": "Resolve or disable the preview adapter before inspecting first-pr packets."
+}

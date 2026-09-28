@@ -1,0 +1,198 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_behavior_panel_manifest",
+  "authority": "EffortlessMetrics/ripr-swarm#3164",
+  "tier": "seed",
+  "description": "Selected but unjudged Rust behavior cases spanning visible gaps, quiet exposed classifications, and named static limitations. This seed fixes the denominator shape; it is not an accuracy result.",
+  "selection_status": "complete",
+  "limits": [
+    "schema and selected seed only; no accuracy rate",
+    "all judgment labels remain null until independent adjudication",
+    "no automated judging engine in this PR",
+    "no analyzer or actionability change",
+    "no mutation execution",
+    "no provider calls or generated tests",
+    "advisory only; never a default gate, badge, RIPR Zero, or support-tier input",
+    "selected difficult cases remain in the denominator even when inconclusive"
+  ],
+  "required_directions": [
+    "should_gap",
+    "should_stay_quiet",
+    "should_limit"
+  ],
+  "items": [
+    {
+      "id": "rust-boundary-missing-equality-should-gap",
+      "repository": "synthetic-rust-pricing",
+      "base": null,
+      "head": null,
+      "tree_identity": null,
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/boundary_missing_equality.diff",
+      "expected_direction": "should_gap",
+      "behavior_family": "predicate_boundary",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 2,
+        "owner": "discounted_total",
+        "changed_behavior": "amount >= threshold",
+        "required_discriminator": "amount == threshold"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [
+          "discounted_total(50, 100)",
+          "discounted_total(10000, 100)"
+        ],
+        "aligned_observer": "exact returned value",
+        "missing": "no equality-boundary input"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "repair_candidate",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "direct_return",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": null,
+        "false_actionable": null,
+        "false_exposed": null,
+        "static_under_credit": null,
+        "wrong_target": null,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": null,
+      "judged_at": null,
+      "judged_by": [],
+      "disposition": "unjudged",
+      "must_not_claim": [
+        "Do not treat exact assertions below and above the threshold as equality-boundary discrimination.",
+        "Do not derive a false-actionable or false-exposed rate from a null judgment."
+      ],
+      "reason": "The tests reach the owner and observe its return value, but neither input distinguishes >= from > at equality."
+    },
+    {
+      "id": "rust-boundary-exact-equality-should-stay-quiet",
+      "repository": "synthetic-rust-pricing",
+      "base": null,
+      "head": null,
+      "tree_identity": null,
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/boundary_exact_equality.diff",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "predicate_boundary",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 2,
+        "owner": "discounted_total",
+        "changed_behavior": "amount >= threshold",
+        "required_discriminator": "amount == threshold"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [
+          "discounted_total(100, 100)"
+        ],
+        "aligned_observer": "assert_eq!(discounted_total(100, 100), 90)",
+        "missing": null
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "direct_return",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": null,
+        "false_actionable": null,
+        "false_exposed": null,
+        "static_under_credit": null,
+        "wrong_target": null,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": null,
+      "judged_at": null,
+      "judged_by": [],
+      "disposition": "unjudged",
+      "must_not_claim": [
+        "Do not route another equality-boundary repair when the exact aligned test is established.",
+        "Do not infer runtime mutant death until a bound mutation receipt exists."
+      ],
+      "reason": "The direct owner test supplies the exact equality input and exact returned-value assertion; a routed repair would be false-actionable."
+    },
+    {
+      "id": "rust-macro-wrapped-reach-should-limit",
+      "repository": "synthetic-rust-macro-tests",
+      "base": null,
+      "head": null,
+      "tree_identity": null,
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/macro_wrapped_reach_limit.diff",
+      "expected_direction": "should_limit",
+      "behavior_family": "return_value",
+      "anchor": {
+        "file": "src/lib.rs",
+        "line": 2,
+        "owner": "normalize_score",
+        "changed_behavior": "value.max(1)",
+        "required_discriminator": "exact normalized return value"
+      },
+      "test_evidence": {
+        "relation_basis": "macro_wrapped_test_call_candidate",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "the macro-expanded owner call and observer path are unresolved"
+      },
+      "expected_classification": "no_static_path",
+      "expected_static_limit_kind": "rust_macro_wrapped_test_call_unresolved",
+      "expected_actionability": "inspect_static_limitation",
+      "selection_dimensions": {
+        "relation_basis": "macro_witness",
+        "oracle_family": "exact_value_candidate",
+        "propagation_witness": "unresolved",
+        "target_kind": "none"
+      },
+      "labels": {
+        "structural_judgment": null,
+        "false_actionable": null,
+        "false_exposed": null,
+        "static_under_credit": null,
+        "wrong_target": null,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": null,
+      "judged_at": null,
+      "judged_by": [],
+      "disposition": "unjudged",
+      "must_not_claim": [
+        "Do not credit exposed from an assertion shape when macro-expanded reach is unresolved.",
+        "Do not emit a targeted repair from a candidate relation with no producer-owned target."
+      ],
+      "reason": "A macro witness suggests reach, but static analysis cannot establish the expanded owner-to-observer path; the correct result is a named limitation, not quiet exposure or repair actionability."
+    }
+  ]
+}

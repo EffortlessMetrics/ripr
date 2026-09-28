@@ -1,0 +1,296 @@
+# Contributing
+
+`ripr` is built PR by PR. Each PR should have a narrow production delta and a
+complete evidence package, so reviewers can evaluate behavior, risk, and
+traceability without reconstructing intent from chat history.
+
+## Local Setup
+
+1. Install [`rustup`](https://rustup.rs/) if you don't already have it.
+   `rust-toolchain.toml` pins the exact toolchain version and its
+   `rustfmt` and `clippy` components; `rustup` picks it up automatically
+   the first time you run a `cargo` command in this repo.
+2. Clone the repo and build the workspace:
+
+   ```bash
+   git clone <repo-url>
+   cd ripr-swarm
+   cargo build --workspace
+   ```
+
+3. Run a cheap sanity check before paying for the full test suite:
+
+   ```bash
+   cargo check --workspace --all-targets
+   ```
+
+   Once that passes, run the full test suite — it is slower and compiles
+   more of the workspace, including test-only code:
+
+   ```bash
+   cargo test --workspace
+   ```
+
+4. Try the binary against the in-repo sample:
+
+   ```bash
+   cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
+   ```
+
+The first `cargo xtask ...` invocation compiles the `xtask` crate itself, so
+it is slower than later runs. Once the workspace builds, `cargo xtask
+worktree doctor` checks your working tree for common local hygiene issues
+(dirty `main`, stale branches, generated-artifact residue) before you start
+shaping a PR.
+
+Run automation from the repository root. The `cargo xtask` alias places its
+running executable in `target/xtask-driver`, separate from the workspace
+executables that `check-pr` and other gates rebuild. This avoids replacing a
+running executable on Windows. Reserve that directory for the launcher: do not
+set `CARGO_TARGET_DIR` to `target/xtask-driver`, which defeats the separation.
+Other custom workspace target directories remain supported.
+
+The launcher uses `target` for intermediate build artifacts, sharing the normal
+workspace cache. A custom workspace intermediate directory is still honored by
+the child Cargo commands, but does not share the launcher's cache. Invocation
+from a subdirectory resolves the launcher's relative output and cache paths
+there; prefer the repository root to avoid duplicate caches. Gate commands and
+their exit statuses are unchanged.
+
+The native lifecycle regression can be run independently:
+
+```bash
+cargo test -p xtask cargo_alias_keeps_live_driver_outside_workspace_rebuild
+```
+
+## Product Contract
+
+Before changing code, check the product question:
+
+```text
+For the behavior changed in this diff, do the current tests appear to contain
+a discriminator that would notice if that behavior were wrong?
+```
+
+Changes that do not improve the precision, speed, usability, calibration, or
+maintainability of that answer should be deferred.
+
+## PR Shape
+
+Prefer one PR per capability step from [Implementation plan](docs/IMPLEMENTATION_PLAN.md).
+
+Each PR should include:
+
+- scoped implementation or documentation changes
+- tests or documented verification
+- relevant docs updates
+- changelog entry when behavior, workflow, or public docs change
+- traceability from spec to tests to code for behavior changes
+
+## Scoped Evidence-Heavy PRs
+
+PR size is measured by production risk, not line count.
+
+A scoped PR changes one production behavior, public contract, or architectural
+seam, then includes the complete evidence package needed to make that change
+reviewable: specs, fixtures, tests, golden outputs, docs, metrics, ADRs,
+learnings, and traceability.
+
+A large PR can be scoped when the production delta is narrow and most of the
+diff is supporting evidence. A small PR can still be too large when it mixes
+unrelated behaviors, changes multiple public contracts, or touches multiple
+architectural seams without one shared acceptance criterion.
+
+Every PR should make three things visible:
+
+- production delta: what behavior, contract, or seam changed
+- evidence delta: what specs, tests, fixtures, goldens, docs, metrics, ADRs, or
+  learnings support it
+- acceptance criterion: what single reviewable claim the PR proves
+
+Prefer:
+
+- narrow production delta
+- large evidence delta when needed
+- clear spec -> test -> code mapping
+- deterministic golden output
+- explicit metrics movement
+- documented non-goals
+
+Avoid:
+
+- unrelated production behavior changes
+- schema changes bundled with analyzer rewrites unless one acceptance criterion
+  requires both
+- LSP or UI changes bundled with classifier changes unless they share one
+  finding contract
+- cleanup mixed with behavior changes
+
+## Review Checklist
+
+Before requesting review:
+
+- [ ] Scope matches one roadmap or implementation-plan item.
+- [ ] Production delta and evidence delta are both explicit.
+- [ ] New behavior has a spec entry or updates an existing spec.
+- [ ] Tests use BDD-shaped names or fixture names that explain the behavior.
+- [ ] Output changes update golden expectations and schema docs.
+- [ ] Static output avoids mutation-runtime outcome language.
+- [ ] Unknowns include stop reasons where applicable.
+- [ ] No new `panic`, `unwrap`, `expect`, `todo`, or `unimplemented` in
+      production or test code.
+- [ ] CI-relevant docs or workflows were updated when gates changed.
+- [ ] New non-Rust programming files are covered by the file policy allowlist.
+- [ ] New generated files, dependency surfaces, process spawning, and network
+      behavior are covered by policy allowlists.
+- [ ] Generated evidence is not hand-authored: ordinary PRs do not carry
+      `badges/*.json`, `target/ripr/**`, or
+      `crates/ripr/examples/sample/target/**` residue.
+- [ ] `cargo xtask shape` or `cargo xtask fix-pr` was run before final checks.
+
+## PR Shaping Commands
+
+The shape/check/guide model is documented in
+[PR automation](docs/PR_AUTOMATION.md).
+Generated artifact ownership is documented in
+[Generated evidence discipline](docs/GENERATED_EVIDENCE.md).
+
+Use `shape` when the tree needs safe normalization:
+
+```bash
+cargo xtask shape
+```
+
+It can run `cargo fmt`, sort policy allowlists, create
+`target/ripr/reports`, and write `target/ripr/reports/shape.md`.
+
+Use `fix-pr` as the current safe repair entrypoint:
+
+```bash
+cargo xtask fix-pr
+```
+
+It runs `shape`, refreshes `target/ripr/reports/pr-summary.md`, and writes
+`target/ripr/reports/fix-pr.md`. Future automation also expands the repair
+brief for judgment-required issues.
+
+Generate the reviewer packet directly with:
+
+```bash
+cargo xtask pr-summary
+```
+
+The summary classifies changed paths into production, evidence, policy,
+workflow, extension, and public-contract surfaces.
+
+Run the cheap local guardrail with:
+
+```bash
+cargo xtask precommit
+```
+
+Run the review-ready non-release gate with:
+
+```bash
+cargo xtask check-pr
+```
+
+Validate fixture and golden scaffolding with:
+
+```bash
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask test-oracle-report
+cargo xtask dogfood
+```
+
+Long-running Codex Goals campaigns should follow
+[Codex Goals](docs/CODEX_GOALS.md), [Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md),
+and the [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md).
+
+## Required Rust Gates
+
+For one complete local review and package pass, run `cargo xtask ci-full`. It
+runs the review-ready `check-pr` lane, the evidence gates (`fixtures`,
+`goldens check`, `test-oracle-report`, `dogfood`, and `metrics`), then the
+package listing and publish dry-run. The explicit commands below remain the
+inventory for targeted reruns.
+
+The following report commands are advisory and do not independently block a
+merge: `cargo xtask pr-triage-report`, `cargo xtask metrics`,
+`cargo xtask check-pr-shape`, and `cargo xtask module-health`.
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask pr-summary
+cargo xtask precommit
+cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask test-oracle-report
+cargo xtask dogfood
+cargo xtask metrics # advisory
+cargo fmt --check
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo doc --workspace --no-deps
+cargo package -p ripr --list
+cargo publish -p ripr --dry-run
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
+cargo xtask check-file-policy
+cargo xtask check-covered-by
+cargo xtask check-executable-files
+cargo xtask check-workflows
+cargo xtask check-spec-format
+cargo xtask check-fixture-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-workspace-shape
+cargo xtask check-architecture
+cargo xtask check-public-api
+cargo xtask check-output-contracts
+cargo xtask check-doc-index
+cargo xtask check-pr-shape # advisory
+cargo xtask check-generated
+cargo xtask check-dependencies
+cargo xtask check-process-policy
+cargo xtask check-network-policy
+```
+
+When the worktree is intentionally dirty during local review, Cargo packaging
+commands may require `--allow-dirty`. A branch is not ready to merge until the
+plain commands pass on a committed tree.
+
+## Required Extension Gates
+
+For changes under `editors/vscode`:
+
+```bash
+cd editors/vscode
+npm ci
+npm run compile
+npm run package
+```
+
+## Documentation
+
+Use the documentation map in [Documentation system](docs/DOCUMENTATION.md).
+
+For behavior changes, update:
+
+- [Specs](docs/specs/README.md)
+- [Spec-test-code traceability](docs/SPEC_TEST_CODE.md)
+- [Testing](docs/TESTING.md)
+- output or config reference docs when public shapes change
+
+For decisions, add or update an ADR.
+
+For repo knowledge, update [Learnings](docs/LEARNINGS.md).
+## Optional Linux LLD builds
+
+The normal workspace build uses the platform default linker and does not
+require LLVM. In a controlled Linux environment with `clang` and `ld.lld`
+installed, use `cargo build-lld --release` to opt into the faster linker path.

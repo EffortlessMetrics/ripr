@@ -1,0 +1,358 @@
+# Static Exposure Model
+
+`ripr` is **static mutation-exposure analysis**. It catches the same class
+of signal mutation testing catches — weak test/oracle exposure on changed
+behavior — but earlier and cheaper, by reading the diff at draft time
+instead of running mutants. It does not find or run actual mutants;
+mutation testing remains the slower runtime backstop for what static
+analysis cannot predict.
+
+It creates mutation-shaped probes from changed code and asks whether existing
+tests appear to provide the RIPR chain needed to expose the changed behavior:
+
+```text
+Reach -> Infect -> Propagate -> Observe -> Discriminate
+```
+
+## Probe
+
+A probe is an unexecuted, mutation-shaped hypothesis attached to changed code.
+
+Examples:
+
+| Change shape | Probe family | Expected discriminator |
+| --- | --- | --- |
+| `>` changed to `>=` | `predicate` | boundary test at equality |
+| error variant changed | `error_path` | exact error variant assertion |
+| returned field changed | `field_construction` or `return_value` | field, whole-object, or snapshot assertion |
+| side effect added | `side_effect` | mock, event, state, persistence, or metric oracle |
+| bounded allowlisted subprocess adapter changed | `side_effect` | receipt, output, or process-effect oracle; only after the adapter boundary contract is satisfied |
+| match arm changed | `match_arm` | input selecting arm plus exact assertion |
+
+The current MVP probe families are:
+
+- `predicate`
+- `return_value`
+- `error_path`
+- `call_deletion`
+- `field_construction`
+- `side_effect`
+- `match_arm`
+- `static_unknown`
+
+## RIPR Stages
+
+`Reach` asks whether a related test appears to reach the changed owner.
+
+`Infect` asks whether test inputs appear capable of activating the changed
+behavior, such as a boundary value for a predicate.
+
+`Propagate` asks whether the changed state appears able to flow to an observable
+value, error, field, side effect, event, state change, or persistence boundary.
+
+`Observe` asks whether a related test has an oracle near the propagated effect.
+
+`Discriminate` asks whether that oracle is strong enough to distinguish intended
+behavior from a plausible wrong behavior.
+
+## Stage States
+
+Stage states are intentionally conservative:
+
+- `yes`
+- `weak`
+- `no`
+- `unknown`
+- `opaque`
+- `not_applicable`
+
+`unknown` and `opaque` are not failures of the tool. They are honest signals that
+static analysis should stop or escalate.
+
+## Exposure Classes
+
+| Class | Meaning |
+| --- | --- |
+| `exposed` | Static evidence suggests a complete RIPR path to a strong oracle that observes the changed sink (see Discrimination vs Coverage). |
+| `weakly_exposed` | A path exists, but infection or discrimination appears weak. |
+| `reachable_unrevealed` | Related tests appear reachable, but no meaningful oracle was found. |
+| `no_static_path` | No static test path was found for the changed owner. |
+| `infection_unknown` | Reachability exists, but input or fixture evidence is opaque. |
+| `propagation_unknown` | The changed behavior crosses an opaque propagation boundary. |
+| `static_unknown` | Syntax-first analysis cannot make a credible judgment. |
+
+## Public Badge Projection
+
+Public `ripr` badges are not raw exposure-class totals, seam-native inventory,
+coverage, mutation adequacy, all behavior seams, or all untested code. They
+project unresolved actionable static repair gaps: canonical gaps with a repair
+route, verification path, receipt path, and public projection eligibility.
+`ripr+` adds only actionable test-efficiency repairs lifted into the same
+repair / verify / receipt model. Detailed seam-native inventory remains an
+internal pressure report for evidence quality and static limitations.
+
+## Analysis Modes
+
+Modes define how much static evidence `ripr` is allowed to gather before it
+classifies probes. They change scope and cost; they do not change the meaning of
+the exposure classes.
+
+| Mode | Scope in the current alpha | Intended use |
+| --- | --- | --- |
+| `instant` | Changed Rust files plus their module-parent context files. | Editor-safe, cheapest feedback. |
+| `draft` | Rust files in packages touched by the diff, plus packages that depend on them through path dependencies. | Default local scan. |
+| `fast` | Same package-local scope as `draft` for now. | Draft PR scan; future bounded graph work lands here. |
+| `deep` | All Rust files in the workspace. | Manual or CI scan when wider static evidence is acceptable. |
+| `ready` | All Rust files in the workspace. | Static preflight before real mutation confirmation. |
+
+`ready` mode still does not run mutants or report mutation outcomes. It remains
+static exposure analysis unless a future calibration or mutation adapter is
+explicitly invoked.
+
+## Oracle Strength
+
+Strong oracle examples:
+
+- `assert_eq!`
+- `assert_ne!`
+- `assert_matches!`
+- exact enum or error variant assertion
+- whole-object equality
+- configured snapshot or mock oracle
+
+Weak or smoke oracle examples:
+
+- `assert!(result.is_ok())`
+- `assert!(result.is_err())`
+- `unwrap()`
+- `expect()`
+- `assert!(x > 0)`
+- `assert!(!items.is_empty())`
+
+The MVP favors high-signal distinctions over completeness. A weak oracle is not
+bad by itself; it is weak when the changed behavior needs a stronger
+discriminator.
+
+## Discrimination vs Coverage
+
+`ripr` is not a coverage tool, and the difference is the entire point. Coverage
+asks whether a line *executed*. `ripr` asks whether a test would *notice* the
+changed behavior being wrong — whether some oracle actually observes the value
+the change moves.
+
+A test can execute every branch of a function and assert almost nothing
+(`assert result is not None`, a smoke check, or a mock that never inspects the
+changed value). Execution alone does not establish a discriminator. A strong,
+aligned discriminator asks more of the test than line coverage does.
+
+That distinction between evidence types is not a guarantee about analyzer
+output. Under the [badge projection](#public-badge-projection), `ripr 0` means
+zero unresolved actionable gaps in the eligible projection. Limited, excluded,
+unresolved, or non-routable behavior does not become positively credited merely
+because it contributes no actionable gap. `ripr+ 0` additionally has no projected
+actionable test-efficiency repairs; it does not establish that every changed
+behavior has a strong oracle.
+
+Read the signals separately:
+
+```text
+coverage         execution evidence for the measured test run
+RIPR evidence    static relation, activation, propagation, and oracle evidence
+runtime mutation an observed outcome for a concrete executed counterfactual
+```
+
+The useful question remains whether a test discriminates the changed behavior.
+How reliably RIPR answers it, and how much downstream verification its evidence
+can justify displacing, require independent evaluation rather than a zero-badge
+count. See [Two error rates](#two-error-rates) and the historical panel boundary
+below.
+
+### The alignment invariant
+
+The standing danger for a static analyzer is to drift back into coverage by
+crediting proximity as discrimination: "a strong oracle reaches the owner,
+therefore the behavior is checked." That is false. A strong oracle that observes
+a *different* value than the changed sink does not discriminate the change — a
+test asserting a wrapped function's return value does not pin a boundary deep
+inside the wrapper, even though the assertion is strong and exact.
+
+So `exposed` requires **sink alignment**: the strong oracle must observe the
+changed behavior's output — its assertion references the changed owner (by name
+or import alias) or the changed sink (the attribute, field, or value the change
+touches). A strong-but-orthogonal oracle downgrades to `weakly_exposed` with a
+typed reason and routes a repair, rather than being silently called covered.
+
+### Identity beats token overlap
+
+A changed owner or sink may share *words* with unrelated tests; that overlap is
+not proof. A test for `PaymentProcessor.validate` does not discriminate
+`TokenValidator.validate` just because both contain the token `validate`, and a
+`buffered_output` variable does not observe a changed `buffer` just because one
+string contains the other. Sink alignment matches *tokens*; tokens are not
+*identity*.
+
+So for method, classmethod, attribute, and other receiver-dependent owners, a
+bare method-name match is **not** sufficient to credit `exposed`. It requires
+owner-class identity: the test imports or constructs the owner's class, calls a
+known alias, binds a simple local receiver from the owner, or the oracle observes
+the owner's class token or the changed sink directly. Bare method-name or
+bare-`.method(` overlap is weaker evidence and must downgrade to `weakly_exposed`,
+never silently credit `exposed`. Token matching may *support* a relation; it must
+not *be* the identity. (Whole-word matching alone is not enough either — the word
+can belong to the wrong owner; see `docs/LEARNINGS.md` § Token coincidence is a
+false-`exposed` family.)
+
+### Two error rates
+
+Trust in `ripr` rests on two error rates, not one:
+
+- **false-actionable** — it routed a repair for a behavior that is actually
+  discriminated. Visible: inspect the emitted finding.
+- **false-`exposed` / over-credit** — it called a behavior covered when no oracle
+  discriminates it. *Silent*: `ripr` emits nothing, so it cannot be found by
+  inspecting output, only against ground truth on the cases where `ripr` stayed
+  quiet.
+
+The second is the more dangerous: it is the failure that makes a discriminator
+indistinguishable from coverage, and the one a cheap robustness sweep
+structurally cannot see.
+
+### The static/runtime boundary
+
+`exposed` is a **static** claim: *a strong oracle observes the changed sink's
+output*. It is **not** the runtime claim *the mutant is killed under this test's
+inputs*. Those differ whenever a test observes the changed output but its concrete
+input makes the old and new behavior coincide. Adversarial sweeps surface many such
+cases; they split into two kinds, and only one is a `ripr` bug.
+
+- **Runtime-equivalence floor (out of contract).** The oracle genuinely observes the
+  changed output, but only *evaluation* reveals old ≡ new for the chosen input:
+  an operator identity (`total += amount` vs `-=` tested with `amount == 0`), a
+  coincident result (`s[::2]` and `s[::3]` both yield `"aa"` for `"aaaa"`), a
+  boolean short-circuit, or an ASCII-only `lower()`/`casefold()`. Detecting these
+  requires running the (mutated) expression under the test's arguments — i.e.
+  mutation testing — which `ripr` does not do. `ripr` cannot distinguish a
+  discriminating `compute(10, 3) == 7` from a non-discriminating
+  `apply_discount(5, 100) == 5` without evaluation, so it must not over-tighten here:
+  a conservative downgrade would also drop the genuine discriminators. This is the
+  honest floor of static exposure analysis, not a defect.
+
+- **Static missing-discriminator (in contract).** A predicate/boundary change has a
+  discriminator `ripr` *can name syntactically*: `if total >= threshold` → `>` is
+  discriminated only by an input where `total == threshold`. A test that exercises a
+  value far from the boundary does not discriminate the change — and `ripr` should
+  not call it `exposed` — but the gap is nameable (`missing discriminator: total ==
+  threshold`) and therefore a valid static **repair-routing candidate**, not floor.
+
+The line to hold: *input-specific old/new equivalence is a runtime floor; a
+syntactically nameable missing discriminator stays in scope as a gap.* `exposed`
+should never silently mean "the mutant survives for this input."
+
+## Repository-local Rust includes
+
+Rust analysis treats a parser-recognized, file-level repository-local literal
+`include!("path.rs")` as part of its parent file's compilation unit. Functions
+from the included fragment therefore use the parent's semantic owner identity,
+while findings retain the fragment's real path and line for review. This keeps
+private parent state and nearby parent tests visible without rewriting the
+source into synthetic modules.
+
+Resolution is deliberately bounded and fail-closed. Nested module contexts,
+dynamic expressions, missing or ambiguous targets, repository or symlink
+escapes, cycles, excessive depth, more than 512 include edges, and included
+files over 4 MiB remain unsupported. Human-facing analysis routes disclose
+these boundaries with stable `rust_include_*` reason codes; parser fallback
+retains the analyzer's existing lexical-fallback disclosure. Included files
+must also be present in the selected analysis scope, so `instant` mode can
+disclose an unindexed target while `ready` mode supplies workspace-wide
+evidence.
+
+This support does not expand macros or claim compiler-equivalent name
+resolution. It preserves the analyzer's syntax-first boundary while avoiding
+the previous false standalone-module identity for the bounded literal form.
+
+## Finding Shape
+
+A useful finding should include:
+
+- changed behavior
+- probe family
+- RIPR stage evidence
+- related tests
+- observed oracle strength
+- missing discriminator
+- recommended next step
+
+The recommended next step should be specific enough for a human or coding agent
+to write the targeted test.
+
+## Escalation
+
+Escalate to real mutation testing when:
+
+- propagation stops at an opaque fixture or macro
+- dynamic dispatch hides the call path
+- async causality is unclear
+- external state is involved
+- static evidence and human intuition disagree
+- the finding would block a release decision
+
+## The discriminator test, turned inward
+
+`ripr` exists to catch one failure shape: a test that *reaches* the changed
+behavior but does not *discriminate* it — a green signal that says nothing about
+whether the behavior is actually checked. Building `ripr` against real external
+code surfaced that same shape at every other layer of the system, which is the
+sharpest thing the project has learned about itself:
+
+- A CI gate that *runs* but is not *required* reaches the regression without
+  blocking the merge — a green-looking gate that discriminates nothing.
+- A consumer that reads the wrong output key (a parser keyed on `class` when the
+  artifact emits `classification`) stays green against its own fixture while
+  blind to the live output.
+- A sweep that analyzed zero repositories reports a vacuous pass — a success
+  state with no denominator.
+- A validated implementation plan can *assume* a strong oracle that running the
+  binary shows does not exist — a plan that reaches the right files and
+  discriminates nothing.
+- And `ripr` itself under-credits a discriminating test when the oracle reaches
+  the owner only through an indirect call (a local binding, an inline
+  construct-call, framework dispatch) that syntax-first analysis cannot trace.
+
+These are one failure: **a pass without both a denominator and a discriminator.**
+The discipline that counters it is identical everywhere — verify the *artifact*,
+not the proxy for it. Run the binary; do not trust the code-reading. Read the
+required check's result; do not trust the merge button. Diff the golden; do not
+trust "it passed." The report, the plan, the gate, and the green check are all
+proxies; the artifact is ground truth.
+
+### Two error rates, measured on real code
+
+The retained June 13–14, 2026 Python artifacts contain **seven historical manual
+judgments**: three in the
+[starter panel](../fixtures/python-judged-pr-panel/starter-judged.json) and four
+in the [scaled panel](../fixtures/python-judged-pr-panel/scaled-judged.json).
+The separate Tier A manifest selected eight repositories; its timeout row does
+not create an eighth structural judgment.
+
+The stored post-repair labels record zero false-`exposed` cases and three
+false-actionable cases across those seven judgments. These are observations of
+the selected historical cases, not current or representative error rates. The
+remaining over-suggestions include indirect-call and framework-observation
+relations the analyzer did not resolve.
+
+The distinction between denominators matters. In those retained post-repair
+rows, only one actual classification is `exposed`. Seven total judgments is
+therefore not the denominator for estimating error **conditional on static
+credit**. An expected `should_stay_quiet` label is independent judgment, not
+proof that the analyzer actually granted credit. A timeout or absent output is
+not an `exposed` result either.
+
+The pilot identified useful failure families and informed targeted repairs. It
+does not establish that RIPR is generally safe, that silent over-credit is
+absent, or that a zero-gap result can replace runtime verification.
+[The current Python panel work](https://github.com/EffortlessMetrics/ripr-swarm/issues/3555)
+requires exact replay identities, independent judgments and derived denominators.
+[The Rust quiet-set audit](https://github.com/EffortlessMetrics/ripr-swarm/issues/3164)
+separately samples credited and emitted behavior. Neither programme may inherit
+a stronger safety or support claim from the historical seven-case result.

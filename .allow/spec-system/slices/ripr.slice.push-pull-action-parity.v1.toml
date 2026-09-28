@@ -1,0 +1,68 @@
+schema_version = "2.0"
+id = "ripr.slice.push-pull-action-parity.v1"
+generation = 1
+
+source_issue = "issue:1628"
+design_reference = "RIPR-SPEC-0129"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Extends the editor integration contract (RIPR-SPEC-0129) with the push/pull
+action-availability parity statement (#1628 residual): for the same
+negotiated client capabilities, a client holding the pulled
+`textDocument/diagnostic` set and a client holding the pushed
+`textDocument/publishDiagnostics` set must receive identical
+`textDocument/codeAction` availability, because both transports serve
+clones of the same committed `Diagnostic` values through the stored
+delivery selection (#1973). Adds one evidence-only regression test
+(`tests.rs::push_and_pull_delivery_yield_identical_code_action_availability`)
+that runs two in-process sessions per negotiated profile (generic, VS Code,
+disabled-support), pins the delivered sets non-empty and identical, and
+compares the ordered availability signature (title, kind, command,
+disabled state, `data.action_id`, `data.disabled_reason`) with
+anti-vacuity guards against a withheld snapshot. It changes no production
+code, no transport behavior, no output schema, and no golden.
+"""
+
+non_goals = [
+  "production lsp code changes (test-only evidence)",
+  "diagnostic delivery or selection changes (#1973 owns membership parity)",
+  "client-command negotiation or omit-vs-disabled policy changes (#1776/#1892)",
+  "VS Code extension changes",
+  "output schema or golden changes",
+]
+
+return_conditions = [
+  "Return to root if push and pull action availability diverge for one negotiated profile.",
+  "Return to root if a delivered set is empty or the health/root gate withholds the snapshot (vacuous parity).",
+  "Return to root if production code appears to need a change to satisfy parity.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:push-pull-action-availability-parity",
+]
+
+shared_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+  "seam:ripr:lsp:code-action-client-command-filter",
+  "seam:ripr:lsp:code-action-disabled-policy",
+]
+
+forbidden_seams = [
+  "seam:ripr:lsp:capabilities-advertisement",
+  "seam:ripr:editors:vscode-extension",
+  "seam:ripr:fixtures:goldens",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_existing_comments",
+  "comments": [
+    {"comment_id": 101, "dedupe_key": "ripr:u:src/pricing.rs:50", "path": "src/pricing.rs", "line": 50, "side": "RIGHT", "body_hash": "sha256:old", "outdated": false},
+    {"comment_id": 102, "dedupe_key": "ripr:k:src/pricing.rs:60", "path": "src/pricing.rs", "line": 60, "side": "RIGHT", "body_hash": "sha256:same", "outdated": false}
+  ]
+}

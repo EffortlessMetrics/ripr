@@ -1,0 +1,7 @@
+--- a/lib/App/Discount.pm
++++ b/lib/App/Discount.pm
+@@ -8,3 +8,3 @@ sub discount {
+     return 0 if $amount < 10;
+-    return 5  if $amount < 50;
++    return 5  if $amount < 25;
+     return 10;

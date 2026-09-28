@@ -1,0 +1,18 @@
+diff --git a/pricing.py b/pricing.py
+index 0000000..1111111 100644
+--- a/pricing.py
++++ b/pricing.py
+@@ -2,6 +2,12 @@ DISCOUNT_THRESHOLD = 10000
+
+
+ def discounted_total(amount):
+-    if amount > DISCOUNT_THRESHOLD:
++    if amount >= DISCOUNT_THRESHOLD:
+         return amount * 9 // 10
+     return amount
++
++
++def loyalty_price(amount, years):
++    if years >= 5:
++        return amount * 95 // 100
++    return amount

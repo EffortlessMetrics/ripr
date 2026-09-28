@@ -1,0 +1,11 @@
+{
+  "name": "ky-like-pkg",
+  "version": "1.0.0",
+  "devDependencies": {
+    "xo": "^0.60.0",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "test": "xo && npm run build && ava"
+  }
+}

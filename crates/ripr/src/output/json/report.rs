@@ -1,0 +1,1742 @@
+use crate::app::CheckOutput;
+use crate::config::RiprConfig;
+use crate::domain::{
+    Finding, FindingCanonicalGap, FlowSinkFact, MissingDiscriminatorFact, RelatedTest,
+    StageEvidence, ValueFact,
+};
+use crate::output::agent_seam_packets::{
+    AGENT_SEAM_PACKET_SCHEMA_VERSION, allowed_edit_surface_for_gap_route,
+    gap_record_packet_do_not_do,
+};
+use crate::output::next_step::reconcile_next_step;
+use crate::output::perl_preview_card::perl_preview_card_json;
+use crate::output::preview_actionability::{
+    preview_actionability_for, preview_actionability_json_value,
+    projected_preview_actionability_evidence, projected_preview_actionability_missing,
+};
+use crate::output::python_repair_card::{PythonRepairCard, python_repair_card};
+use crate::output::typescript_packet_projection::typescript_gap_record_for;
+use crate::output::typescript_preview_card::{
+    typescript_preview_card, typescript_preview_card_json_value,
+};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
+
+use super::finding_alignment;
+use super::{array_field, escape, field, float_field, number_field};
+
+/// Cap on `related_tests` serialized per finding in the diff-check JSON output.
+/// The heuristic is permissive (any test that reaches the changed owner counts),
+/// so a high-traffic function can fan out to hundreds of related tests per probe.
+/// The cap keeps the artifact review-sized. The pre-cap count is always disclosed
+/// in `related_tests_total` so consumers see what was elided.
+/// Mirrors `MAX_RELATED_TESTS_PER_SEAM_JSON` in `output/repo_exposure.rs`.
+const MAX_RELATED_TESTS_PER_FINDING_JSON: usize = 8;
+
+pub fn render(output: &CheckOutput) -> String {
+    render_with_config(output, &RiprConfig::default())
+}
+
+pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
+    let finding_alignment = finding_alignment::report_for_findings(&output.findings);
+    let mut out = String::new();
+    out.push_str("{\n");
+    field(&mut out, 1, "schema_version", &output.schema_version, true);
+    field(&mut out, 1, "tool", &output.tool, true);
+    field(&mut out, 1, "mode", output.mode.as_str(), true);
+    field(
+        &mut out,
+        1,
+        "root",
+        &crate::output::path::display_path(&output.root),
+        true,
+    );
+    if let Some(base) = &output.base {
+        field(&mut out, 1, "base", base, true);
+    }
+    out.push_str("  \"summary\": ");
+    summary_json(&mut out, output);
+    out.push_str(",\n");
+    if let Some(outcome) = &output.analysis_outcome {
+        let serialized = serde_json::to_string(outcome).unwrap_or_else(|error| {
+            format!(
+                "{{\"serialization_error\":{}}}",
+                serde_json::Value::String(error.to_string())
+            )
+        });
+        out.push_str("  \"analysis_outcome\": {\n");
+        out.push_str(if outcome.kind.is_complete() {
+            "    \"analysis_complete\": true,\n"
+        } else {
+            "    \"analysis_complete\": false,\n"
+        });
+        out.push_str("    \"outcome\": ");
+        out.push_str(&serialized);
+        out.push_str("\n  },\n");
+    }
+    out.push_str("  \"findings\": [\n");
+    let canonical_gap_counts = canonical_gap_counts(&output.findings);
+    let suppressed_selectors: BTreeMap<&str, &str> = output
+        .suppression
+        .iter()
+        .flat_map(|outcome| {
+            outcome
+                .suppressed
+                .iter()
+                .map(|entry| (entry.finding_id.as_str(), entry.selector.as_str()))
+        })
+        .collect();
+    for (idx, finding) in output.findings.iter().enumerate() {
+        finding_json_with_config_and_counts(
+            &mut out,
+            finding,
+            2,
+            config,
+            &canonical_gap_counts,
+            suppressed_selectors.get(finding.id.as_str()).copied(),
+        );
+        if idx + 1 != output.findings.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str("  ]");
+    // Additive advisory field — emitted only when the caller passed
+    // `--suppression-policy` (#1441). Absent otherwise, so existing goldens
+    // and consumers without a policy see identical output.
+    if let Some(suppression) = &output.suppression {
+        out.push_str(",\n  \"suppression_policy\": {\n");
+        field(&mut out, 2, "path", &suppression.policy_path, true);
+        number_field(
+            &mut out,
+            2,
+            "suppressed",
+            suppression.suppressed.len(),
+            true,
+        );
+        array_field(&mut out, 2, "warnings", &suppression.warnings, false);
+        out.push_str("  }");
+    }
+    // Additive advisory field — emitted only when at least one enabled language
+    // did not complete successfully (non-abort contract, Campaign 31 PR 10,
+    // #1403). Absent when every enabled language ran to completion (the common
+    // single-language-success case), so this stays out of the goldens for
+    // pure-success runs.
+    if !output.language_runs.is_empty() {
+        out.push_str(",\n  \"language_runs\": [\n");
+        for (idx, run) in output.language_runs.iter().enumerate() {
+            out.push_str("    {\n");
+            field(&mut out, 3, "language", &run.language, true);
+            field(&mut out, 3, "status", run.status.as_str(), true);
+            match &run.reason {
+                Some(reason) => field(&mut out, 3, "reason", reason, false),
+                None => out.push_str("      \"reason\": null\n"),
+            }
+            out.push_str("    }");
+            if idx + 1 != output.language_runs.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ]");
+    }
+    // Additive run-state block — emitted only when the diff exceeded the
+    // partial-selection budget and the run analyzed a deterministic bounded
+    // partition (RIPR-PROP-0019, #1999). Absent for full-scope runs, so
+    // existing goldens and consumers see identical output. Uses the same
+    // limitation/run-status vocabulary as the limited-check artifact
+    // (`run_status`, `downstream_consumable`, `repair_route`); the partial
+    // result is never downstream-consumable and marks
+    // `gate_eligibility: ineligible` so a gate, baseline, badge, or RIPR Zero
+    // consumer fails closed instead of treating a partial denominator as
+    // complete.
+    if let Some(scope) = &output.partial_scope {
+        out.push_str(",\n  \"analysis_scope\": {\n");
+        field(&mut out, 2, "scope", "diff", true);
+        field(&mut out, 2, "run_status", &scope.run_status, true);
+        field(&mut out, 2, "basis", "rust_partial_diff_budget", true);
+        out.push_str("    \"downstream_consumable\": false,\n");
+        field(
+            &mut out,
+            2,
+            "gate_eligibility",
+            crate::analysis::PartialDiffScope::GATE_ELIGIBILITY,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "limitation",
+            crate::analysis::PartialDiffScope::RUN_STATUS,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "repair_route",
+            "analysis/diff-scope-budget",
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "selection_version",
+            crate::analysis::PARTIAL_DIFF_SELECTION_VERSION,
+            true,
+        );
+        field(
+            &mut out,
+            2,
+            "language_tier_version",
+            crate::analysis::PARTIAL_DIFF_LANGUAGE_TIER_VERSION,
+            true,
+        );
+        field(&mut out, 2, "diff_identity", &scope.diff_identity, true);
+        field(
+            &mut out,
+            2,
+            "partition_identity",
+            &scope.partition_identity,
+            true,
+        );
+        number_field(&mut out, 2, "file_budget", scope.file_budget, true);
+        number_field(&mut out, 2, "line_budget", scope.line_budget, true);
+        array_field(
+            &mut out,
+            2,
+            "budget_disclosures",
+            &scope.budget_disclosures,
+            true,
+        );
+        array_field(&mut out, 2, "selected_files", &scope.selected_files, true);
+        number_field(
+            &mut out,
+            2,
+            "selected_changed_lines",
+            scope.selected_changed_lines,
+            true,
+        );
+        number_field(
+            &mut out,
+            2,
+            "uninspected_files_lower_bound",
+            scope.uninspected_files_lower_bound,
+            true,
+        );
+        number_field(
+            &mut out,
+            2,
+            "uninspected_changed_lines_lower_bound",
+            scope.uninspected_changed_lines_lower_bound,
+            true,
+        );
+        field(&mut out, 2, "stop_reason", scope.stop_reason.as_str(), true);
+        field(
+            &mut out,
+            2,
+            "continuation",
+            crate::analysis::PartialDiffScope::CONTINUATION_DISCLOSURE,
+            false,
+        );
+        out.push_str("  }");
+    }
+    // Additive advisory field — emitted only when no analysis scope was
+    // provided and the result is empty. Absent when scope was given (real
+    // analyzed-empty is honest) or when findings are non-empty.
+    // See RIPR-SPEC-0083.
+    if output.no_scope_provided {
+        out.push_str(",\n  \"scope_disclosures\": [\n");
+        out.push_str("    {\n");
+        field(&mut out, 3, "scope_status", "no_scope_provided", true);
+        field(&mut out, 3, "category", "no_scope_disclosure", true);
+        // #4012: on an established-but-empty range the why names the
+        // compared base instead of claiming no scope was provided.
+        if let Some(base) = output.base.as_deref() {
+            field(
+                &mut out,
+                3,
+                "why",
+                &format!(
+                    "empty range: {base}...HEAD contains no changed files; nothing was analyzed because nothing changed"
+                ),
+                false,
+            );
+        } else {
+            field(
+                &mut out,
+                3,
+                "why",
+                "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base BASE with BASE set to an existing ref or ripr check --root . --format repo-exposure-md",
+                false,
+            );
+        }
+        out.push_str("    }\n");
+        out.push_str("  ]");
+    }
+    // Additive advisory field — emitted when --base was used and the working tree
+    // has uncommitted changes to tracked source that were NOT analyzed.
+    // Absent when --diff was used (file diff mode) or the worktree is clean.
+    // See RIPR-SPEC-0112.
+    if output.unanalyzed_working_tree {
+        out.push_str(",\n  \"unanalyzed_working_tree\": true");
+    }
+    // Additive advisory field — emitted only when preview-language files were
+    // in scope. Absent for pure-Rust diffs (RIPR-SPEC-0082).
+    if !output.preview_language_advisories.is_empty() {
+        out.push_str(",\n  \"preview_languages\": [\n");
+        let advisories = &output.preview_language_advisories;
+        for (idx, adv) in advisories.iter().enumerate() {
+            let analyzed = adv.analyzed(&output.language_runs);
+            let failed_run = adv.non_success_run(&output.language_runs);
+            out.push_str("    {\n");
+            field(&mut out, 3, "language", &adv.language, true);
+            number_field(&mut out, 3, "file_count", adv.file_count, true);
+            array_field(&mut out, 3, "sample_paths", &adv.sample_paths, true);
+            out.push_str(&format!(
+                "      \"enabled\": {},\n      \"analyzed\": {},\n",
+                adv.enabled, analyzed
+            ));
+            field(&mut out, 3, "category", "preview_language_advisory", true);
+            let why_owned;
+            let why: &str = if analyzed {
+                "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+            } else if !adv.enabled {
+                why_owned = adv.not_enabled_why();
+                &why_owned
+            } else if let Some(run) = failed_run {
+                why_owned = format!(
+                    "preview adapter did not complete successfully ({}); files detected but not analyzed; empty result is not Rust-grade clean",
+                    run.status.as_str()
+                );
+                &why_owned
+            } else {
+                "preview adapter enabled but no files were routed; files not analyzed; empty result is not Rust-grade clean"
+            };
+            field(&mut out, 3, "why", why, false);
+            out.push_str("    }");
+            if idx + 1 != advisories.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ]");
+    }
+    if let Some(report) = finding_alignment.as_ref() {
+        out.push_str(",\n");
+        out.push_str("  \"finding_alignment\": ");
+        finding_alignment::report_json(&mut out, report, 1);
+        out.push('\n');
+    } else {
+        out.push('\n');
+    }
+    // Additive advisory field — emitted only when the repository registered
+    // test harnesses (#3532, `[analysis.test_harnesses]`) and the run
+    // carried harness facts. Absent otherwise, so repositories without
+    // registrations keep byte-identical output. Every entry exposes the
+    // harness kind, adapter generation, provenance, subject identity, and
+    // selector capability (always unexecuted — passive analysis never runs
+    // a harness), plus typed limitations, without reconstruction.
+    if !output.harness_projections.is_empty() {
+        out.push_str(",\n  \"test_harnesses\": [\n");
+        for (idx, projection) in output.harness_projections.iter().enumerate() {
+            out.push_str("    {\n");
+            field(
+                &mut out,
+                3,
+                "registration_id",
+                &projection.registration_id,
+                true,
+            );
+            field(&mut out, 3, "harness_kind", &projection.harness_kind, true);
+            field(&mut out, 3, "adapter", &projection.adapter, true);
+            field(&mut out, 3, "marker", &projection.marker, true);
+            field(
+                &mut out,
+                3,
+                "target",
+                &projection.target.to_string_lossy().replace('\\', "/"),
+                true,
+            );
+            field(&mut out, 3, "provenance", &projection.provenance, true);
+            if projection.subjects.is_empty() {
+                out.push_str("      \"subjects\": []");
+            } else {
+                out.push_str("      \"subjects\": [\n");
+                for (sidx, subject) in projection.subjects.iter().enumerate() {
+                    out.push_str("        {\n");
+                    field(&mut out, 5, "name", &subject.name, true);
+                    field(
+                        &mut out,
+                        5,
+                        "file",
+                        &subject.file.to_string_lossy().replace('\\', "/"),
+                        true,
+                    );
+                    number_field(&mut out, 5, "start_line", subject.start_line, true);
+                    number_field(&mut out, 5, "end_line", subject.end_line, true);
+                    field(&mut out, 5, "selector", subject.selector.as_str(), true);
+                    field(&mut out, 5, "claim", subject.claim.as_str(), false);
+                    out.push_str("        }");
+                    if sidx + 1 != projection.subjects.len() {
+                        out.push(',');
+                    }
+                    out.push('\n');
+                }
+                out.push_str("      ]");
+            }
+            out.push_str(",\n");
+            if projection.limitations.is_empty() {
+                out.push_str("      \"limitations\": []\n");
+            } else {
+                out.push_str("      \"limitations\": [\n");
+                for (lidx, limitation) in projection.limitations.iter().enumerate() {
+                    out.push_str("        {\n");
+                    field(&mut out, 5, "code", &limitation.code, true);
+                    field(
+                        &mut out,
+                        5,
+                        "file",
+                        &limitation.file.to_string_lossy().replace('\\', "/"),
+                        true,
+                    );
+                    number_field(&mut out, 5, "line", limitation.line, true);
+                    field(&mut out, 5, "detail", &limitation.detail, false);
+                    out.push_str("        }");
+                    if lidx + 1 != projection.limitations.len() {
+                        out.push(',');
+                    }
+                    out.push('\n');
+                }
+                out.push_str("      ]\n");
+            }
+            out.push_str("    }");
+            if idx + 1 != output.harness_projections.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("  ]");
+    }
+    out.push_str("}\n");
+    out
+}
+
+fn summary_json(out: &mut String, output: &CheckOutput) {
+    let s = &output.summary;
+    out.push_str(&format!(
+        "{{\"changed_rust_files\":{},\"probes\":{},\"findings\":{},\"exposed\":{},\"weakly_exposed\":{},\"reachable_unrevealed\":{},\"no_static_path\":{},\"infection_unknown\":{},\"propagation_unknown\":{},\"static_unknown\":{}",
+        s.changed_rust_files,
+        s.probes,
+        s.findings,
+        s.exposed,
+        s.weakly_exposed,
+        s.reachable_unrevealed,
+        s.no_static_path,
+        s.infection_unknown,
+        s.propagation_unknown,
+        s.static_unknown
+    ));
+    // Additive (#2103): per-language changed-file counts, one entry per
+    // adapter that ran, sorted by language wire string. `changed_rust_files`
+    // above carries the Rust adapter's count only.
+    out.push_str(",\"changed_files_by_language\":[");
+    for (idx, count) in s.changed_files_by_language.iter().enumerate() {
+        if idx > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"language\":\"{}\",\"files\":{}}}",
+            escape(&count.language),
+            count.files
+        ));
+    }
+    out.push(']');
+    // Additive: present only when a suppression policy was applied (#1441).
+    // The per-class buckets above count unsuppressed findings only; buckets
+    // plus `suppressed_by_policy` add back up to `findings`.
+    if let Some(suppression) = &output.suppression {
+        out.push_str(&format!(
+            ",\"suppressed_by_policy\":{}",
+            suppression.suppressed.len()
+        ));
+    }
+    out.push('}');
+}
+
+#[cfg(test)]
+pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
+    finding_json_with_config_and_counts(
+        out,
+        finding,
+        indent,
+        &RiprConfig::default(),
+        &BTreeMap::new(),
+        None,
+    );
+}
+
+fn finding_json_with_config_and_counts(
+    out: &mut String,
+    finding: &Finding,
+    indent: usize,
+    config: &RiprConfig,
+    canonical_gap_counts: &BTreeMap<&str, usize>,
+    suppressed_selector: Option<&str>,
+) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}{{\n"));
+    field(out, indent + 1, "id", &finding.id, true);
+    // Additive: present only on findings suppressed by an explicit
+    // `--suppression-policy` (#1441). The finding stays fully rendered so
+    // suppression is visible, not hidden.
+    if let Some(selector) = suppressed_selector {
+        out.push_str(&format!(
+            "{}\"suppressed\": true,\n",
+            "  ".repeat(indent + 1)
+        ));
+        field(out, indent + 1, "suppressed_by", selector, true);
+    }
+    if let Some(gap) = &finding.canonical_gap {
+        field(out, indent + 1, "canonical_gap_id", &gap.id, true);
+        number_field(
+            out,
+            indent + 1,
+            "canonical_gap_group_size",
+            canonical_gap_counts
+                .get(gap.id.as_str())
+                .copied()
+                .unwrap_or(1),
+            true,
+        );
+        canonical_gap_json(out, gap, indent + 1, true);
+    }
+    field(
+        out,
+        indent + 1,
+        "classification",
+        finding.class.as_str(),
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "severity",
+        config.severity().for_exposure(&finding.class).as_str(),
+        true,
+    );
+    float_field(out, indent + 1, "confidence", finding.confidence, true);
+    out.push_str(&format!("{}\"probe\": {{\n", "  ".repeat(indent + 1)));
+    field(out, indent + 2, "id", &finding.probe.id.0, true);
+    field(
+        out,
+        indent + 2,
+        "family",
+        finding.probe.family.as_str(),
+        true,
+    );
+    field(out, indent + 2, "delta", finding.probe.delta.as_str(), true);
+    field(
+        out,
+        indent + 2,
+        "file",
+        &crate::output::path::display_path(&finding.probe.location.file),
+        true,
+    );
+    number_field(out, indent + 2, "line", finding.probe.location.line, true);
+    let render_probe_owner = finding.probe.owner.is_some() && finding.language_status.is_some();
+    field(
+        out,
+        indent + 2,
+        "expression",
+        &finding.probe.expression,
+        render_probe_owner,
+    );
+    if render_probe_owner && let Some(owner) = &finding.probe.owner {
+        field(out, indent + 2, "owner", &owner.0, false);
+    }
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"ripr\": {{\n", "  ".repeat(indent + 1)));
+    stage_json(out, indent + 2, "reach", &finding.ripr.reach, true);
+    stage_json(out, indent + 2, "infect", &finding.ripr.infect, true);
+    stage_json(out, indent + 2, "propagate", &finding.ripr.propagate, true);
+    stage_json(
+        out,
+        indent + 2,
+        "observe",
+        &finding.ripr.reveal.observe,
+        true,
+    );
+    stage_json(
+        out,
+        indent + 2,
+        "discriminate",
+        &finding.ripr.reveal.discriminate,
+        false,
+    );
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    let evidence_path = evidence_path_values(finding);
+    array_field(out, indent + 1, "evidence_path", &evidence_path, true);
+    flow_sinks_json(out, finding, indent + 1);
+    out.push_str(",\n");
+    let evidence = projected_preview_actionability_evidence(finding);
+    array_field(out, indent + 1, "evidence", &evidence, true);
+    let missing = projected_preview_actionability_missing(finding);
+    array_field(out, indent + 1, "missing", &missing, true);
+    // One bounded projection feeds `assertion_texts` and both observed-value
+    // arrays, so the map never names a line the arrays dropped.
+    let rendered_values = rendered_observed_values(finding);
+    assertion_texts_json(out, &rendered_values, indent + 1);
+    out.push_str(",\n");
+    activation_json(out, finding, &rendered_values, indent + 1);
+    out.push_str(",\n");
+    let shared_text = shared_assertion_text_map(&rendered_values);
+    value_facts_array_json(
+        out,
+        "observed_values",
+        &rendered_values,
+        indent + 1,
+        &shared_text,
+    );
+    out.push_str(",\n");
+    if let Some(total) = crate::output::observed_values::elided_observed_values_total(
+        &finding.activation.observed_values,
+    ) {
+        number_field(out, indent + 1, "observed_values_total", total, true);
+    }
+    missing_discriminators_array_json(
+        out,
+        "missing_discriminators",
+        &finding.activation.missing_discriminators,
+        indent + 1,
+    );
+    out.push_str(",\n");
+    let related_total = finding.related_tests.len();
+    let related_rendered = related_total.min(MAX_RELATED_TESTS_PER_FINDING_JSON);
+    number_field(out, indent + 1, "related_tests_total", related_total, true);
+    out.push_str(&format!(
+        "{}\"related_tests\": [\n",
+        "  ".repeat(indent + 1)
+    ));
+    for (idx, test) in finding
+        .related_tests
+        .iter()
+        .take(related_rendered)
+        .enumerate()
+    {
+        related_test_json(out, test, indent + 2);
+        if idx + 1 != related_rendered {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}],\n", "  ".repeat(indent + 1)));
+    if let Some(placement) = repair_placement_from_evidence(finding) {
+        repair_placement_json(out, &placement, indent + 1);
+        out.push_str(",\n");
+    }
+    if let Some(card) = python_repair_card(finding) {
+        python_repair_card_json(out, &card, indent + 1);
+        out.push_str(",\n");
+    }
+    if let Some(card) = typescript_preview_card(finding) {
+        json_value_field(
+            out,
+            indent + 1,
+            "typescript_preview_card",
+            &typescript_preview_card_json_value(&card),
+        );
+        out.push_str(",\n");
+    }
+    // §PR8 (RIPR-SPEC-0088): emit the full work-packet JSON when
+    // repair_packet_ready: true. Absent when not actionable (invariant: never
+    // emit a partial or implied packet).
+    if let Some(record) = typescript_gap_record_for(finding) {
+        use crate::output::agent_seam_packets::validate_agent_gap_record_packet;
+        if validate_agent_gap_record_packet(&record).is_ok() {
+            json_value_field(
+                out,
+                indent + 1,
+                "typescript_repair_packet",
+                &typescript_repair_packet_json(&record),
+            );
+            out.push_str(",\n");
+        }
+    }
+    if let Some(card) = perl_preview_card_json(finding) {
+        json_value_field(out, indent + 1, "perl_preview_card", &card);
+        out.push_str(",\n");
+    }
+    if let Some(actionability) = preview_actionability_for(finding) {
+        json_value_field(
+            out,
+            indent + 1,
+            "preview_actionability",
+            &preview_actionability_json_value(&actionability),
+        );
+        out.push_str(",\n");
+    }
+    let stop_reasons = stop_reason_values(finding);
+    array_field(out, indent + 1, "stop_reasons", &stop_reasons, true);
+    let strongest = strongest_related_test(finding);
+    field(
+        out,
+        indent + 1,
+        "oracle_kind",
+        strongest
+            .map(|test| test.oracle_kind.as_str())
+            .unwrap_or("unknown"),
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "oracle_strength",
+        strongest
+            .map(|test| test.oracle_strength.as_str())
+            .unwrap_or("none"),
+        true,
+    );
+    // RIPR-SPEC-0088 §PR8: use the shared reconciliation fn so the JSON
+    // surface agrees with the human surface — no raw-field serialization.
+    let reconciled_step = reconcile_next_step(finding);
+    field(
+        out,
+        indent + 1,
+        "recommended_next_step",
+        &reconciled_step,
+        true,
+    );
+    // `source_currentness` is always emitted as the final finding field
+    // (#3280), so every preceding optional field unconditionally carries a
+    // trailing comma.
+    field(
+        out,
+        indent + 1,
+        "suggested_next_action",
+        &reconciled_step,
+        true,
+    );
+    if let Some(language) = finding.language {
+        field(out, indent + 1, "language", language.as_str(), true);
+    }
+    if let Some(status) = finding.language_status {
+        field(out, indent + 1, "language_status", status.as_str(), true);
+    }
+    if let Some(kind) = finding.owner_kind {
+        field(out, indent + 1, "owner_kind", kind.as_str(), true);
+    }
+    if let Some(kind) = finding.static_limit_kind {
+        field(out, indent + 1, "static_limit_kind", kind.as_str(), true);
+    }
+    if let Some(static_limitation) = &static_limitation_json_value(finding) {
+        json_value_field(out, indent + 1, "static_limitation", static_limitation);
+        out.push_str(",\n");
+    }
+    // Python oracle sink-alignment (additive optional, RIPR-SPEC-0028): why a
+    // strong oracle did or did not credit `exposed`. Present only on Python
+    // findings; absent on Rust/TypeScript. `oracle_alignment` is a controlled
+    // enum (`ORACLE_ALIGNMENT_VALUES`).
+    if let Some(changed_sink) = &finding.changed_sink {
+        field(out, indent + 1, "changed_sink", changed_sink, true);
+    }
+    if let Some(observed_sink) = &finding.observed_sink {
+        field(out, indent + 1, "observed_sink", observed_sink, true);
+    }
+    if let Some(oracle_alignment) = &finding.oracle_alignment {
+        field(out, indent + 1, "oracle_alignment", oracle_alignment, true);
+    }
+    if let Some(alignment_reason) = &finding.alignment_reason {
+        field(out, indent + 1, "alignment_reason", alignment_reason, true);
+    }
+    // Producer-owned source-currentness disposition (#3280): always
+    // emitted, with `unresolved_subject` as the explicit unknown for
+    // producers that do not resolve it.
+    field(
+        out,
+        indent + 1,
+        "source_currentness",
+        finding.source_currentness.as_str(),
+        false,
+    );
+    out.push_str(&format!("{sp}}}"));
+}
+
+struct StaticLimitationDetail<'a> {
+    last_established_edge: &'a str,
+    first_unresolved_edge: &'a str,
+    analyzer_route: &'a str,
+    non_claim: &'a str,
+}
+
+fn static_limitation_json_value(finding: &Finding) -> Option<Value> {
+    let kind = finding.static_limit_kind?;
+    let detail = static_limitation_detail_from_evidence(finding)?;
+    Some(json!({
+        "kind": kind.as_str(),
+        "last_established_edge": detail.last_established_edge,
+        "first_unresolved_edge": detail.first_unresolved_edge,
+        "analyzer_route": detail.analyzer_route,
+        "non_claim": detail.non_claim
+    }))
+}
+
+fn static_limitation_detail_from_evidence(finding: &Finding) -> Option<StaticLimitationDetail<'_>> {
+    Some(StaticLimitationDetail {
+        last_established_edge: evidence_suffix(
+            finding,
+            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
+        )?,
+        first_unresolved_edge: evidence_suffix(
+            finding,
+            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
+        )?,
+        analyzer_route: evidence_suffix(finding, crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX)?,
+        non_claim: evidence_suffix(finding, crate::domain::LIMITATION_NON_CLAIM_PREFIX)?,
+    })
+}
+
+fn evidence_suffix<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .find_map(|line| line.trim().strip_prefix(prefix).map(str::trim))
+}
+
+fn canonical_gap_counts(findings: &[Finding]) -> BTreeMap<&str, usize> {
+    let mut counts = BTreeMap::new();
+    for finding in findings {
+        if let Some(gap) = &finding.canonical_gap {
+            *counts.entry(gap.id.as_str()).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn canonical_gap_json(out: &mut String, gap: &FindingCanonicalGap, indent: usize, trailing: bool) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"canonical_gap\": {{\n"));
+    field(out, indent + 1, "id", &gap.id, true);
+    field(out, indent + 1, "language", &gap.language, true);
+    field(out, indent + 1, "file", &gap.file, true);
+    field(out, indent + 1, "owner", &gap.owner, true);
+    field(out, indent + 1, "behavior_kind", &gap.behavior_kind, true);
+    field(out, indent + 1, "probe_kind", &gap.probe_kind, true);
+    field(
+        out,
+        indent + 1,
+        "normalized_discriminator",
+        &gap.normalized_discriminator,
+        false,
+    );
+    out.push('\n');
+    out.push_str(&format!("{sp}}}"));
+    if trailing {
+        out.push(',');
+    }
+    out.push('\n');
+}
+
+fn evidence_path_values(finding: &Finding) -> Vec<String> {
+    let mut values = vec![
+        format!(
+            "reach {}: {}",
+            finding.ripr.reach.state.as_str(),
+            finding.ripr.reach.summary
+        ),
+        format!(
+            "infection {}: {}",
+            finding.ripr.infect.state.as_str(),
+            finding.ripr.infect.summary
+        ),
+        format!(
+            "propagation {}: {}",
+            finding.ripr.propagate.state.as_str(),
+            finding.ripr.propagate.summary
+        ),
+        format!(
+            "observation {}: {}",
+            finding.ripr.reveal.observe.state.as_str(),
+            finding.ripr.reveal.observe.summary
+        ),
+        format!(
+            "discriminator {}: {}",
+            finding.ripr.reveal.discriminate.state.as_str(),
+            finding.ripr.reveal.discriminate.summary
+        ),
+    ];
+
+    values.extend(finding.flow_sinks.iter().map(|sink| {
+        format!(
+            "local flow reaches {}: {} (line {})",
+            sink.kind.label(),
+            sink.text,
+            sink.line
+        )
+    }));
+
+    values.extend(finding.related_tests.iter().take(5).map(|test| {
+        let oracle_kind = display_label(test.oracle_kind.as_str());
+        let mut value = format!(
+            "related test {}:{} {} uses {} {} oracle",
+            crate::output::path::display_path(&test.file),
+            test.line,
+            test.name,
+            test.oracle_strength.as_str(),
+            oracle_kind
+        );
+        if let Some(oracle) = &test.oracle {
+            value.push_str(&format!(": {oracle}"));
+        }
+        value
+    }));
+
+    // Name only values the capped `observed_values` array also carries.
+    values.extend(
+        crate::output::observed_values::bounded_observed_values(
+            &finding.activation.observed_values,
+        )
+        .into_iter()
+        .take(8)
+        .map(|fact| {
+            let context = display_label(fact.context.as_str());
+            format!(
+                "observed {} value {} at line {}",
+                context, fact.value, fact.line
+            )
+        }),
+    );
+
+    values.extend(
+        finding
+            .activation
+            .missing_discriminators
+            .iter()
+            .map(|fact| format!("missing discriminator {}: {}", fact.value, fact.reason)),
+    );
+
+    values
+}
+
+fn display_label(value: &str) -> String {
+    value.replace('_', " ")
+}
+
+fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
+    finding
+        .related_tests
+        .iter()
+        .max_by_key(|test| test.oracle_strength.rank())
+}
+
+/// The observed values the check JSON renders for a finding: every value up
+/// to `MAX_OBSERVED_VALUES_PER_FINDING`, otherwise the bounded projection.
+fn rendered_observed_values(finding: &Finding) -> Vec<ValueFact> {
+    crate::output::observed_values::bounded_observed_values(&finding.activation.observed_values)
+        .into_iter()
+        .cloned()
+        .collect()
+}
+
+fn activation_json(
+    out: &mut String,
+    finding: &Finding,
+    rendered_values: &[ValueFact],
+    indent: usize,
+) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"activation\": {{\n"));
+    let shared_text = shared_assertion_text_map(rendered_values);
+    value_facts_array_json(
+        out,
+        "observed_values",
+        rendered_values,
+        indent + 1,
+        &shared_text,
+    );
+    out.push_str(",\n");
+    missing_discriminators_array_json(
+        out,
+        "missing_discriminators",
+        &finding.activation.missing_discriminators,
+        indent + 1,
+    );
+    out.push('\n');
+    out.push_str(&format!("{sp}}}"));
+}
+
+fn flow_sinks_json(out: &mut String, finding: &Finding, indent: usize) {
+    out.push_str(&format!("{}\"flow_sinks\": [\n", "  ".repeat(indent)));
+    for (idx, sink) in finding.flow_sinks.iter().enumerate() {
+        out.push_str(&"  ".repeat(indent + 1));
+        flow_sink_json(out, sink);
+        if idx + 1 != finding.flow_sinks.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
+}
+
+fn value_facts_array_json(
+    out: &mut String,
+    name: &str,
+    facts: &[ValueFact],
+    indent: usize,
+    shared_text: &BTreeMap<usize, String>,
+) {
+    out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
+    for (idx, value) in facts.iter().enumerate() {
+        value_fact_json(out, value, indent + 1, shared_text);
+        if idx + 1 != facts.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
+}
+
+fn missing_discriminators_array_json(
+    out: &mut String,
+    name: &str,
+    facts: &[MissingDiscriminatorFact],
+    indent: usize,
+) {
+    out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
+    for (idx, discriminator) in facts.iter().enumerate() {
+        missing_discriminator_json(out, discriminator, indent + 1);
+        if idx + 1 != facts.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
+}
+
+fn value_fact_json(
+    out: &mut String,
+    fact: &ValueFact,
+    indent: usize,
+    shared_text: &BTreeMap<usize, String>,
+) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}{{\n"));
+    number_field(out, indent + 1, "line", fact.line, true);
+    field(out, indent + 1, "value", &fact.value, true);
+    // Additive (#3295 deferred follow-up): when this fact's retained
+    // text is NOT the shared assertion source for its line, it carries
+    // computed-value provenance (operation chain, source inputs, chain
+    // depth) that the line-keyed `assertion_texts` map cannot express.
+    // Surface it per-value; plain assertion-source facts stay deduped.
+    let provenance_differs = shared_text
+        .get(&fact.line)
+        .is_none_or(|shared| *shared != fact.text);
+    field(
+        out,
+        indent + 1,
+        "context",
+        fact.context.as_str(),
+        provenance_differs,
+    );
+    if provenance_differs {
+        field(out, indent + 1, "provenance", &fact.text, false);
+    }
+    out.push_str(&format!("{sp}}}"));
+}
+
+/// Collect the unique (line -> assertion source text) map for a slice of
+/// [`ValueFact`]s and emit it as a JSON object keyed by line number string.
+///
+/// **Schema 0.2 dedup**: per-value objects no longer carry a redundant `text`
+/// field; downstream recovers the full assertion source via
+/// `assertion_texts[line.to_string()]`.
+///
+/// **Known limitation**: the map is keyed by line number only, so if two
+/// assertions in different source files share the same line number within one
+/// finding, only one text is retained.  This is a low-probability edge case; a
+/// future schema could use `"file:line"` composite keys.
+fn assertion_texts_json(out: &mut String, facts: &[ValueFact], indent: usize) {
+    let map = shared_assertion_text_map(facts);
+    let sp = "  ".repeat(indent);
+    let isp = "  ".repeat(indent + 1);
+    // BTreeMap gives deterministic (ascending) key order.
+    out.push_str(&format!("{sp}\"assertion_texts\": {{\n"));
+    let entries: Vec<_> = map.into_iter().collect();
+    for (idx, (line, text)) in entries.iter().enumerate() {
+        let trailing = if idx + 1 != entries.len() { "," } else { "" };
+        out.push_str(&format!(
+            "{isp}\"{line}\": \"{}\"{trailing}\n",
+            escape(text)
+        ));
+    }
+    out.push_str(&format!("{sp}}}"));
+}
+
+/// The line -> first-retained-text map behind `assertion_texts`. The
+/// per-value `provenance` field uses the same map to decide whether a
+/// fact's text is the shared assertion source or a distinct
+/// provenance-bearing string.
+fn shared_assertion_text_map(facts: &[ValueFact]) -> BTreeMap<usize, String> {
+    let mut map: BTreeMap<usize, String> = BTreeMap::new();
+    for fact in facts {
+        map.entry(fact.line).or_insert_with(|| fact.text.clone());
+    }
+    map
+}
+
+fn missing_discriminator_json(out: &mut String, fact: &MissingDiscriminatorFact, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}{{\n"));
+    field(out, indent + 1, "value", &fact.value, true);
+    field(out, indent + 1, "reason", &fact.reason, true);
+    out.push_str(&format!("{}\"flow_sink\": ", "  ".repeat(indent + 1)));
+    if let Some(sink) = &fact.flow_sink {
+        flow_sink_json(out, sink);
+    } else {
+        out.push_str("null");
+    }
+    out.push('\n');
+    out.push_str(&format!("{sp}}}"));
+}
+
+fn flow_sink_json(out: &mut String, sink: &FlowSinkFact) {
+    out.push_str(&format!(
+        "{{\"kind\":\"{}\",\"text\":\"{}\",\"line\":{}}}",
+        sink.kind.as_str(),
+        escape(&sink.text),
+        sink.line
+    ));
+}
+
+struct RepairPlacement {
+    suggested_test_file: String,
+    suggested_test_name: String,
+    suggested_test_node_id: Option<String>,
+    verify_command: String,
+    verify_command_confidence: String,
+}
+
+fn repair_placement_from_evidence(finding: &Finding) -> Option<RepairPlacement> {
+    Some(RepairPlacement {
+        suggested_test_file: evidence_value(finding, "suggested_test_file: ")?.to_string(),
+        suggested_test_name: evidence_value(finding, "suggested_test_name: ")?.to_string(),
+        suggested_test_node_id: evidence_value(finding, "suggested_test_node_id: ")
+            .map(ToString::to_string),
+        verify_command: evidence_value(finding, "suggested_verify_command: ")?.to_string(),
+        verify_command_confidence: evidence_value(
+            finding,
+            "suggested_verify_command_confidence: ",
+        )?
+        .to_string(),
+    })
+}
+
+fn evidence_value<'a>(finding: &'a Finding, prefix: &str) -> Option<&'a str> {
+    finding
+        .evidence
+        .iter()
+        .find_map(|entry| entry.strip_prefix(prefix))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn repair_placement_json(out: &mut String, placement: &RepairPlacement, indent: usize) {
+    out.push_str(&format!(
+        "{}\"repair_placement\": {{\n",
+        "  ".repeat(indent)
+    ));
+    field(
+        out,
+        indent + 1,
+        "suggested_test_file",
+        &placement.suggested_test_file,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_test_name",
+        &placement.suggested_test_name,
+        true,
+    );
+    if let Some(node_id) = &placement.suggested_test_node_id {
+        field(out, indent + 1, "suggested_test_node_id", node_id, true);
+    }
+    field(
+        out,
+        indent + 1,
+        "verify_command",
+        &placement.verify_command,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "verify_command_confidence",
+        &placement.verify_command_confidence,
+        false,
+    );
+    out.push_str(&format!("{} }}", "  ".repeat(indent)));
+}
+
+fn json_value_field(out: &mut String, indent: usize, name: &str, value: &Value) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"{name}\": "));
+    match serde_json::to_string_pretty(value) {
+        Ok(rendered) => {
+            for (idx, line) in rendered.lines().enumerate() {
+                if idx > 0 {
+                    out.push('\n');
+                    out.push_str(&sp);
+                }
+                out.push_str(line);
+            }
+        }
+        Err(_) => out.push_str("null"),
+    }
+}
+
+fn python_repair_card_json(out: &mut String, card: &PythonRepairCard, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"python_repair_card\": {{\n"));
+    field(out, indent + 1, "card_version", &card.card_version, true);
+    field(out, indent + 1, "source", &card.source, true);
+    field(
+        out,
+        indent + 1,
+        "canonical_gap_id",
+        &card.canonical_gap_id,
+        true,
+    );
+    field(out, indent + 1, "language", &card.language, true);
+    field(
+        out,
+        indent + 1,
+        "language_status",
+        &card.language_status,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "authority_boundary",
+        &card.authority_boundary,
+        true,
+    );
+    field(out, indent + 1, "repair_action", &card.repair_action, true);
+    field(out, indent + 1, "changed_owner", &card.changed_owner, true);
+    field(
+        out,
+        indent + 1,
+        "changed_behavior",
+        &card.changed_behavior,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "current_test_evidence",
+        &card.current_test_evidence,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "missing_discriminator",
+        &card.missing_discriminator,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "recommended_test_shape",
+        &card.recommended_test_shape,
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_assertion",
+        &card.suggested_assertion,
+        true,
+    );
+    out.push_str(&format!(
+        "{}\"suggested_location\": {{\n",
+        "  ".repeat(indent + 1)
+    ));
+    field(
+        out,
+        indent + 2,
+        "test_file",
+        &card.suggested_test_file,
+        true,
+    );
+    field(
+        out,
+        indent + 2,
+        "test_name",
+        &card.suggested_test_name,
+        card.suggested_test_node_id.is_some(),
+    );
+    if let Some(node_id) = &card.suggested_test_node_id {
+        field(out, indent + 2, "pytest_node_id", node_id, false);
+    }
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"verify\": {{\n", "  ".repeat(indent + 1)));
+    field(out, indent + 2, "command", &card.verify_command, true);
+    field(
+        out,
+        indent + 2,
+        "confidence",
+        &card.verify_command_confidence,
+        false,
+    );
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{}\"receipt\": {{\n", "  ".repeat(indent + 1)));
+    if let Some(command) = &card.receipt_command {
+        field(out, indent + 2, "command", command, true);
+    } else {
+        out.push_str(&format!("{}\"command\": null,\n", "  ".repeat(indent + 2)));
+    }
+    field(out, indent + 2, "status", &card.receipt_status, true);
+    field(out, indent + 2, "guidance", &card.receipt_guidance, false);
+    out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    array_field(
+        out,
+        indent + 1,
+        "stop_conditions",
+        &card.stop_conditions,
+        true,
+    );
+    array_field(out, indent + 1, "limits", &card.limits, false);
+    out.push_str(&format!("{sp} }}"));
+}
+
+pub(super) fn stop_reason_values(finding: &Finding) -> Vec<String> {
+    finding
+        .effective_stop_reasons()
+        .iter()
+        .map(|reason| reason.as_str().to_string())
+        .collect()
+}
+
+fn stage_json(out: &mut String, indent: usize, name: &str, stage: &StageEvidence, trailing: bool) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!(
+        "{sp}\"{name}\": {{\"state\":\"{}\",\"confidence\":\"{}\",\"summary\":\"{}\"}}{}\n",
+        stage.state.as_str(),
+        stage.confidence.as_str(),
+        escape(&stage.summary),
+        if trailing { "," } else { "" }
+    ));
+}
+
+/// Build the `typescript_repair_packet` JSON value for an actionable TypeScript
+/// finding (RIPR-SPEC-0088 §PR8).
+///
+/// Uses shared helper functions from `agent_seam_packets` — no parallel TS
+/// renderer is introduced. The `GapRecord` is projected by
+/// `typescript_gap_record_for` and validated before this function is called.
+fn typescript_repair_packet_json(record: &crate::output::gap_decision_ledger::GapRecord) -> Value {
+    let route = record.repair_route.as_ref();
+    let edit_surface = route
+        .map(allowed_edit_surface_for_gap_route)
+        .unwrap_or_default();
+    // Compute forbidden files: anchor file unless it's the same as the edit surface.
+    let allowed_first = edit_surface.first().map(String::as_str);
+    let forbidden: Vec<String> = record
+        .anchor
+        .as_ref()
+        .and_then(|anchor| anchor.file.as_deref())
+        .filter(|f| allowed_first != Some(f))
+        .map(|f| f.to_string())
+        .into_iter()
+        .collect();
+    let must_not_change = gap_record_packet_do_not_do(record);
+    let verify_command = record.verification_commands.first().cloned();
+    let receipt_command = record.receipt_command.as_deref();
+    let canonical_gap_id = if record.canonical_gap_id.trim().is_empty() {
+        None
+    } else {
+        Some(record.canonical_gap_id.as_str())
+    };
+    let anchor = record.anchor.as_ref();
+    let target_test = route.and_then(|r| r.related_test.as_deref());
+    let assertion_shape = route.and_then(|r| r.assertion_shape.as_deref());
+    let repair_kind = route.map(|r| r.route_kind.as_str());
+    let missing_discriminator = route.and_then(|r| r.missing_discriminator.as_deref());
+    serde_json::json!({
+        "schema_version": AGENT_SEAM_PACKET_SCHEMA_VERSION,
+        "source": "typescript_preview_projection",
+        "gap_id": record.gap_id.as_str(),
+        "canonical_gap_id": canonical_gap_id,
+        "language": record.language.as_str(),
+        "language_status": record.language_status.as_str(),
+        "authority_boundary": record.authority_boundary.as_str(),
+        "file": anchor.and_then(|a| a.file.as_deref()),
+        "line": anchor.and_then(|a| a.line),
+        "owner": anchor.and_then(|a| a.owner.as_deref()),
+        "verify_command": verify_command,
+        "receipt_command": receipt_command,
+        "allowed_edit_surface": edit_surface,
+        "forbidden_files": forbidden,
+        "must_not_change": must_not_change,
+        "assertion_shape": assertion_shape,
+        "repair_kind": repair_kind,
+        "target_test": target_test,
+        "missing_discriminator": missing_discriminator,
+    })
+}
+
+pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}{{\n"));
+    field(out, indent + 1, "name", &test.name, true);
+    field(
+        out,
+        indent + 1,
+        "file",
+        &crate::output::path::display_path(&test.file),
+        true,
+    );
+    number_field(out, indent + 1, "line", test.line, true);
+    field(
+        out,
+        indent + 1,
+        "oracle_strength",
+        test.oracle_strength.as_str(),
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "oracle_kind",
+        test.oracle_kind.as_str(),
+        true,
+    );
+    // Additive optional fields: relation_reason and relation_confidence.
+    // Present only on Rust diff-check findings; absent (omitted) on Python /
+    // TypeScript preview findings and on legacy callers that set None.
+    let has_reason = test.relation_reason.is_some();
+    let has_confidence = test.relation_confidence.is_some();
+    field(
+        out,
+        indent + 1,
+        "oracle",
+        test.oracle.as_deref().unwrap_or(""),
+        has_reason || has_confidence,
+    );
+    if let Some(reason) = test.relation_reason {
+        field(
+            out,
+            indent + 1,
+            "relation_reason",
+            reason.as_str(),
+            has_confidence,
+        );
+    }
+    if let Some(confidence) = test.relation_confidence {
+        field(
+            out,
+            indent + 1,
+            "relation_confidence",
+            confidence.as_str(),
+            false,
+        );
+    }
+    out.push_str(&format!("{sp}}}"));
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    use crate::domain::{ValueContext, ValueFact};
+
+    fn fact(line: usize, value: &str, text: &str) -> ValueFact {
+        ValueFact {
+            line,
+            text: text.to_string(),
+            value: value.to_string(),
+            context: ValueContext::FunctionArgument,
+        }
+    }
+
+    fn render(facts: &[ValueFact]) -> Vec<serde_json::Value> {
+        let shared = shared_assertion_text_map(facts);
+        let mut out = String::new();
+        value_facts_array_json(&mut out, "observed_values", facts, 0, &shared);
+        serde_json::from_str::<serde_json::Value>(&format!("{{{out}}}"))
+            .map_err(|error| error.to_string())
+            .and_then(|value| {
+                value
+                    .get("observed_values")
+                    .cloned()
+                    .ok_or_else(|| "missing observed_values key".to_string())
+            })
+            .and_then(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
+            .unwrap_or_default()
+    }
+
+    // The deferred #3295 follow-up: a computed fact whose text differs
+    // from the line's shared assertion source carries per-value
+    // provenance; a plain assertion-source fact stays deduped.
+    #[test]
+    fn provenance_appears_only_for_non_shared_fact_text() -> Result<(), String> {
+        let facts = [
+            fact(
+                5,
+                "\"matched\"",
+                "assert_eq!(body_of(\"pre-fix\"), \"matched\");",
+            ),
+            fact(
+                5,
+                "body == \"fix\"",
+                "assert_eq!(body_of(\"pre-fix\"), \"matched\"); | body = \"fix\" via strip_prefix -> map_or",
+            ),
+        ];
+        let parsed = render(&facts);
+        if parsed.len() != 2 {
+            let shared = shared_assertion_text_map(&facts);
+            let mut raw = String::new();
+            value_facts_array_json(&mut raw, "observed_values", &facts, 0, &shared);
+            return Err(format!("expected 2 facts, got {}: {raw}", parsed.len()));
+        }
+        assert!(
+            parsed[0].get("provenance").is_none(),
+            "shared-source fact must stay deduped: {parsed:?}"
+        );
+        let provenance = parsed[1]
+            .get("provenance")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| format!("computed fact must carry provenance: {parsed:?}"))?;
+        assert!(
+            provenance.contains("via strip_prefix"),
+            "provenance must carry the evaluation chain: {provenance}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn all_shared_facts_omit_provenance() -> Result<(), String> {
+        let facts = [fact(9, "50", "assert_eq!(score(50), 50);")];
+        let parsed = render(&facts);
+        assert_eq!(
+            parsed.len(),
+            1,
+            "one fact in, one fact out (and the render must parse)"
+        );
+        assert!(
+            parsed[0].get("provenance").is_none(),
+            "deduped fact must not carry provenance: {parsed:?}"
+        );
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod harness_projection_tests {
+    use super::*;
+    use crate::analysis::harness_projection::{
+        HarnessLimitationFact, HarnessSelectorCapability, HarnessSubjectClaim, HarnessSubjectFact,
+        TestHarnessProjection,
+    };
+    use crate::app::Mode;
+    use crate::domain::Summary;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    fn output_with(projections: Vec<TestHarnessProjection>) -> CheckOutput {
+        CheckOutput {
+            harness_projections: projections,
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: std::path::PathBuf::from("repo"),
+            base: Some("origin/main".to_string()),
+            analysis_outcome: None,
+            summary: Summary::default(),
+            findings: Vec::new(),
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            partial_scope: None,
+        }
+    }
+
+    fn subject(name: &str) -> HarnessSubjectFact {
+        HarnessSubjectFact {
+            registration_id: "mimic-suite".to_string(),
+            harness_kind: "custom_harness".to_string(),
+            adapter: "libtest_mimic_v1".to_string(),
+            marker: "libtest_mimic".to_string(),
+            name: name.to_string(),
+            file: std::path::PathBuf::from("tests/price_mimic.rs"),
+            start_line: 9,
+            end_line: 9,
+            body: "Trial::test(...)".to_string(),
+            calls: Vec::new(),
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            selector: HarnessSelectorCapability::NamedUnexecuted,
+            claim: HarnessSubjectClaim::NamedInvocation,
+            provenance: "ripr.toml [analysis.test_harnesses]".to_string(),
+        }
+    }
+
+    fn parse(rendered: &str) -> Result<serde_json::Value, serde_json::Error> {
+        serde_json::from_str(rendered)
+    }
+
+    #[test]
+    fn absent_without_registrations() -> TestResult {
+        let rendered = render_with_config(&output_with(Vec::new()), &RiprConfig::default());
+        let value = parse(&rendered)?;
+        assert!(value.get("test_harnesses").is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn present_with_kind_provenance_subject_and_selector() -> TestResult {
+        let projection = TestHarnessProjection {
+            registration_id: "mimic-suite".to_string(),
+            harness_kind: "custom_harness".to_string(),
+            adapter: "libtest_mimic_v1".to_string(),
+            marker: "libtest_mimic".to_string(),
+            target: std::path::PathBuf::from("tests/price_mimic.rs"),
+            provenance: "ripr.toml [analysis.test_harnesses]".to_string(),
+            subjects: vec![subject("alpha_parses")],
+            limitations: vec![HarnessLimitationFact {
+                registration_id: "mimic-suite".to_string(),
+                code: "dynamic_trial_name".to_string(),
+                file: std::path::PathBuf::from("tests/price_mimic.rs"),
+                line: 17,
+                detail: "trial name is not a simple string literal".to_string(),
+            }],
+        };
+        let rendered = render_with_config(&output_with(vec![projection]), &RiprConfig::default());
+        let value = parse(&rendered)?;
+        let harness = value
+            .get("test_harnesses")
+            .and_then(|entry| entry.as_array())
+            .ok_or("test_harnesses array missing")?;
+        assert_eq!(harness.len(), 1);
+        let entry = &harness[0];
+        assert_eq!(entry["registration_id"], "mimic-suite");
+        assert_eq!(entry["harness_kind"], "custom_harness");
+        assert_eq!(entry["adapter"], "libtest_mimic_v1");
+        assert_eq!(entry["marker"], "libtest_mimic");
+        assert_eq!(entry["target"], "tests/price_mimic.rs");
+        assert_eq!(entry["provenance"], "ripr.toml [analysis.test_harnesses]");
+        let subjects = entry["subjects"]
+            .as_array()
+            .ok_or("subjects array missing")?;
+        assert_eq!(subjects.len(), 1);
+        assert_eq!(subjects[0]["name"], "alpha_parses");
+        assert_eq!(subjects[0]["selector"], "named_unexecuted");
+        assert_eq!(subjects[0]["claim"], "named_invocation");
+        let limitations = entry["limitations"]
+            .as_array()
+            .ok_or("limitations array missing")?;
+        assert_eq!(limitations[0]["code"], "dynamic_trial_name");
+        assert_eq!(limitations[0]["line"], 17);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod evidence_path_separator_tests {
+    use super::evidence_path_values;
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
+        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
+        SourceLocation, StageEvidence, StageState, SymbolId,
+    };
+    use std::path::PathBuf;
+
+    fn finding_with_related(file: &str) -> Finding {
+        Finding {
+            id: "probe:src_lib_rs:9:error_path".to_string(),
+            canonical_gap: None,
+            probe: Probe {
+                id: ProbeId("probe:src_lib_rs:9:error_path".to_string()),
+                location: SourceLocation::new("src/lib.rs", 9, 1),
+                owner: Some(SymbolId("crate::sample".to_string())),
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Control,
+                before: None,
+                after: None,
+                expression: "x >= 0".to_string(),
+                expected_sinks: vec![],
+                required_oracles: vec![],
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::Medium, "reach"),
+                infect: StageEvidence::new(StageState::Yes, Confidence::Medium, "infect"),
+                propagate: StageEvidence::new(StageState::Yes, Confidence::Medium, "propagate"),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(StageState::Yes, Confidence::Medium, "observe"),
+                    discriminate: StageEvidence::new(
+                        StageState::Yes,
+                        Confidence::Medium,
+                        "discriminate",
+                    ),
+                },
+            },
+            confidence: 0.5,
+            evidence: vec![],
+            missing: vec![],
+            flow_sinks: vec![],
+            activation: ActivationEvidence::default(),
+            stop_reasons: vec![],
+            related_tests: vec![RelatedTest {
+                name: "applies the discount".to_string(),
+                file: PathBuf::from(file),
+                line: 4,
+                oracle: None,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
+            }],
+            recommended_next_step: None,
+            language: None,
+            language_status: None,
+            owner_kind: None,
+            static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
+        }
+    }
+
+    fn related_line(file: &str) -> Result<String, String> {
+        evidence_path_values(&finding_with_related(file))
+            .into_iter()
+            .find(|line| line.starts_with("related test "))
+            .ok_or_else(|| format!("missing related-test evidence for {file}"))
+    }
+
+    #[test]
+    fn related_test_paths_use_stable_slashes() -> Result<(), String> {
+        let windows = related_line("tests\\discount.test.ts")?;
+        if windows.contains('\\') {
+            return Err(format!("evidence_path kept a backslash: {windows}"));
+        }
+        if windows
+            != "related test tests/discount.test.ts:4 applies the discount uses strong exact value oracle"
+        {
+            return Err(format!("unexpected evidence_path line: {windows}"));
+        }
+        let posix = related_line("tests/discount.test.ts")?;
+        if posix
+            != "related test tests/discount.test.ts:4 applies the discount uses strong exact value oracle"
+        {
+            return Err(format!("posix path must stay slash-separated: {posix}"));
+        }
+        Ok(())
+    }
+}

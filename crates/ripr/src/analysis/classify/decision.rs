@@ -1,0 +1,762 @@
+use super::super::rust_index::{FunctionSummary, TestSummary};
+use super::reveal::wrapper_error_seam_expression;
+use crate::domain::*;
+
+pub(in crate::analysis) fn ensure_unknown_stop_reason(
+    class: &ExposureClass,
+    stop_reasons: &mut Vec<StopReason>,
+) {
+    if class.requires_stop_reason()
+        && stop_reasons.is_empty()
+        && let Some(reason) = StopReason::for_unknown_class(class)
+    {
+        stop_reasons.push(reason);
+    }
+}
+
+pub(in crate::analysis) fn classify(
+    reach: &StageEvidence,
+    infect: &StageEvidence,
+    propagate: &StageEvidence,
+    observe: &StageEvidence,
+    discriminate: &StageEvidence,
+    probe: &Probe,
+) -> ExposureClass {
+    if matches!(probe.family, ProbeFamily::StaticUnknown) {
+        return ExposureClass::StaticUnknown;
+    }
+    if reach.state == StageState::No {
+        return ExposureClass::NoStaticPath;
+    }
+    if infect.state == StageState::Unknown || infect.state == StageState::Opaque {
+        return ExposureClass::InfectionUnknown;
+    }
+    if propagate.state == StageState::Unknown || propagate.state == StageState::Opaque {
+        return ExposureClass::PropagationUnknown;
+    }
+    if observe.state == StageState::No {
+        return ExposureClass::ReachableUnrevealed;
+    }
+    if reach.state == StageState::Yes
+        && discriminate.state == StageState::Yes
+        && infect.state == StageState::Yes
+        && propagate.state == StageState::Yes
+    {
+        ExposureClass::Exposed
+    } else {
+        ExposureClass::WeaklyExposed
+    }
+}
+
+/// Maximum headline confidence permitted for a given per-stage `Confidence`
+/// marker.  `High` and `Medium` return `1.0` so genuine all-Yes/Medium
+/// exposures are never suppressed.  Only `Low` and `Unknown` stages produce a
+/// real ceiling, capping an over-stated aggregate score without affecting the
+/// classification at all.
+fn confidence_ceiling(c: &Confidence) -> f32 {
+    match c {
+        Confidence::High | Confidence::Medium => 1.0,
+        Confidence::Low => 0.66,
+        Confidence::Unknown => 0.50,
+    }
+}
+
+pub(in crate::analysis) fn confidence_score(
+    reach: &StageEvidence,
+    infect: &StageEvidence,
+    propagate: &StageEvidence,
+    observe: &StageEvidence,
+    discriminate: &StageEvidence,
+    class: &ExposureClass,
+) -> f32 {
+    let stages = [reach, infect, propagate, observe, discriminate];
+    let mut score = 0.0;
+    for stage in &stages {
+        score += match stage.state {
+            StageState::Yes => 0.2,
+            StageState::Weak => 0.12,
+            StageState::Unknown => 0.07,
+            StageState::Opaque => 0.05,
+            StageState::No => 0.02,
+            StageState::NotApplicable => 0.1,
+        };
+    }
+    if matches!(
+        class,
+        ExposureClass::NoStaticPath | ExposureClass::ReachableUnrevealed
+    ) {
+        score = (score + 0.15_f32).min(0.95_f32);
+    }
+    // Cap the headline score by the weakest contributing stage's per-stage
+    // Confidence ceiling (RIPR-SPEC-0109).  Applied AFTER the +0.15 bump so
+    // it can only lower, never raise.  High/Medium stages → cap = 1.0 (no
+    // effect); Low → cap = 0.66; Unknown → cap = 0.50.
+    let cap = stages
+        .iter()
+        .map(|s| confidence_ceiling(&s.confidence))
+        .fold(1.0_f32, f32::min);
+    (score.min(cap) * 100.0).round() / 100.0
+}
+
+pub(in crate::analysis) fn missing_evidence(
+    probe: &Probe,
+    class: &ExposureClass,
+    infect: &StageEvidence,
+    observe: &StageEvidence,
+    discriminate: &StageEvidence,
+    activation: &ActivationEvidence,
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    match class {
+        ExposureClass::Exposed => {}
+        ExposureClass::NoStaticPath => {
+            missing.push("No static test path reaches the changed owner".to_string())
+        }
+        ExposureClass::ReachableUnrevealed => missing.push(
+            "No detected assertion observes the changed value, error, field, or effect".to_string(),
+        ),
+        ExposureClass::InfectionUnknown => missing.push(infect.summary.clone()),
+        ExposureClass::PropagationUnknown => missing.push(
+            "No clear propagation path from changed behavior to an observable sink".to_string(),
+        ),
+        ExposureClass::StaticUnknown => missing.push(
+            "Syntax-first analysis cannot classify this change; use deep mode or real mutation"
+                .to_string(),
+        ),
+        ExposureClass::WeaklyExposed => {}
+    }
+    if matches!(probe.family, ProbeFamily::Predicate)
+        && infect.state != StageState::Yes
+        && !activation
+            .missing_discriminators
+            .iter()
+            .any(|fact| fact.value.contains("=="))
+    {
+        missing.push("No detected boundary input for the changed predicate".to_string());
+    }
+    if observe.state != StageState::Yes {
+        missing.push("No relevant oracle was detected".to_string());
+    }
+    if discriminate.state != StageState::Yes {
+        if matches!(
+            probe.family,
+            ProbeFamily::ErrorPath | ProbeFamily::ReturnValue
+        ) && wrapper_error_seam_expression(&[probe.expression.as_str()])
+        {
+            // #3700 (final consolidation): for a wrapper error seam the
+            // typed static limitation — not an exact-variant prescription —
+            // is the honest outcome. The witnesses may already
+            // downcast-and-pin the variant; what ripr cannot statically
+            // establish is whether the boxed conversion carries that variant.
+            missing.push(
+                "Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established"
+                    .to_string(),
+            );
+        } else if matches!(probe.family, ProbeFamily::ErrorPath) {
+            missing.push("No exact error variant discriminator was detected".to_string());
+        } else {
+            missing.push("No strong discriminator was detected".to_string());
+        }
+    }
+    missing.extend(
+        activation
+            .missing_discriminators
+            .iter()
+            .map(|fact| format!("{MISSING_DISCRIMINATOR_VALUE_PREFIX}{}", fact.value)),
+    );
+    missing.sort();
+    missing.dedup();
+    missing
+}
+
+pub(in crate::analysis) fn stop_reasons(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+) -> Vec<StopReason> {
+    let mut reasons = Vec::new();
+    if owner_fn.is_none() {
+        reasons.push(StopReason::NoChangedRustLine);
+    }
+    if related_tests.iter().any(|test| {
+        test.body.contains("fixture") || test.body.contains("builder") || test.body.contains("arb_")
+    }) {
+        reasons.push(StopReason::FixtureOpaque);
+    }
+    if probe.expression.contains("async")
+        || probe.expression.contains("spawn")
+        || probe.expression.contains("await")
+    {
+        reasons.push(StopReason::AsyncBoundaryOpaque);
+    }
+    if contains_macro_invocation(&probe.expression) {
+        reasons.push(StopReason::ProcMacroOpaque);
+    }
+    reasons.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    reasons.dedup_by(|a, b| a.as_str() == b.as_str());
+    reasons
+}
+
+fn contains_macro_invocation(expression: &str) -> bool {
+    for (idx, ch) in expression.char_indices() {
+        if ch != '!' || expression[idx + 1..].starts_with('=') {
+            continue;
+        }
+        let before_bang = expression[..idx].trim_end();
+        if before_bang
+            .chars()
+            .last()
+            .is_some_and(|ch| ch == '_' || ch == ')' || ch.is_ascii_alphanumeric())
+        {
+            return true;
+        }
+    }
+    false
+}
+
+pub(in crate::analysis) fn recommended_next_step(
+    probe: &Probe,
+    class: &ExposureClass,
+    owner_assertion_shaped: bool,
+) -> Option<String> {
+    // RIPR-SPEC-0133: an assertion-shaped owner is the oracle, not the code
+    // under test, so the standard code-under-test advice is incoherent for it.
+    // The exposure class is unchanged; only the guidance is reframed.
+    if owner_assertion_shaped {
+        return assertion_shaped_next_step(class);
+    }
+    match class {
+        ExposureClass::Exposed => None,
+        ExposureClass::WeaklyExposed => Some(
+            if matches!(probe.family, ProbeFamily::ErrorPath | ProbeFamily::ReturnValue)
+                && wrapper_error_seam_expression(&[probe.expression.as_str()])
+            {
+                // #3700 (final consolidation): do not prescribe an assertion
+                // the suite may already contain. The typed limitation names
+                // what static analysis cannot establish; discriminating this
+                // seam needs real mutation testing or deeper conversion
+                // modeling (Into/From through Box).
+                "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling."
+            } else if matches!(probe.family, ProbeFamily::ReturnValue)
+                && super::exact_error_variant(&probe.expression).is_some()
+            {
+                // A changed `Err(...)` construction is not a "broad assertion"
+                // gap: the related test may already assert an exact (sibling)
+                // variant. The missing discriminator is an input that reaches
+                // the changed error path plus an assertion pinning this exact
+                // variant (RIPR-SPEC-0106).
+                "Add a test input that reaches the changed error path and assert the exact error variant it returns."
+            } else {
+                weakly_exposed_guidance_for_family(&probe.family)
+            }
+            .to_string(),
+        ),
+        ExposureClass::ReachableUnrevealed => {
+            if matches!(probe.family, ProbeFamily::ErrorPath | ProbeFamily::ReturnValue)
+                && super::exact_error_variant(&probe.expression).is_some()
+            {
+                // A changed `Err(...)` construction with no observing
+                // assertion: the actionable missing discriminator is the
+                // exact variant (RIPR-SPEC-0106), not generic assertion
+                // advice.
+                Some("Add a test input that reaches the changed error path and assert the exact error variant it returns.".to_string())
+            } else {
+                Some("Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.".to_string())
+            }
+        }
+        ExposureClass::NoStaticPath => Some(crate::domain::NO_STATIC_PATH_NEXT_STEP.to_string()),
+        ExposureClass::InfectionUnknown => Some("Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.".to_string()),
+        ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some("Escalate to real mutation testing or deep static analysis for this probe.".to_string()),
+    }
+}
+
+/// Guidance for an assertion-shaped owner, phrased for oracles rather than for
+/// code under test. `PropagationUnknown`/`StaticUnknown` keep the escalation
+/// text: "escalate to real mutation testing" is coherent for an oracle (the
+/// helper and the code it checks can both be mutation-tested). `Exposed`
+/// stays `None` — a finding that does not need a next step does not get one.
+fn assertion_shaped_next_step(class: &ExposureClass) -> Option<String> {
+    match class {
+        ExposureClass::Exposed => None,
+        ExposureClass::WeaklyExposed => {
+            Some(crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP.to_string())
+        }
+        ExposureClass::ReachableUnrevealed => {
+            Some(crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP.to_string())
+        }
+        ExposureClass::NoStaticPath => {
+            Some(crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP.to_string())
+        }
+        ExposureClass::InfectionUnknown => {
+            Some(crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP.to_string())
+        }
+        ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some(
+            "Escalate to real mutation testing or deep static analysis for this probe.".to_string(),
+        ),
+    }
+}
+
+fn weakly_exposed_guidance_for_family(family: &ProbeFamily) -> &'static str {
+    match family {
+        ProbeFamily::Predicate => {
+            "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+        }
+        ProbeFamily::ErrorPath => {
+            "Assert the exact error variant or payload instead of only is_err()."
+        }
+        ProbeFamily::SideEffect => {
+            "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect."
+        }
+        ProbeFamily::ReturnValue => {
+            "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+        }
+        _ => "Strengthen the related assertion so it discriminates the changed behavior.",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_maps_reachable_but_unobserved_probe_to_reachable_unrevealed() {
+        let class = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::ReturnValue, "value + 1"),
+        );
+
+        assert_eq!(class, ExposureClass::ReachableUnrevealed);
+    }
+
+    #[test]
+    fn confidence_score_handles_opaque_no_and_not_applicable_stage_states() {
+        let score = confidence_score(
+            &stage(StageState::Opaque),
+            &stage(StageState::No),
+            &stage(StageState::NotApplicable),
+            &stage(StageState::Yes),
+            &stage(StageState::Weak),
+            &ExposureClass::NoStaticPath,
+        );
+
+        assert!(
+            (score - 0.64).abs() < f32::EPSILON,
+            "confidence score should equal 0.64 (got {score})"
+        );
+    }
+
+    #[test]
+    fn missing_evidence_reports_reachable_unrevealed_gap() {
+        let probe = probe(ProbeFamily::ReturnValue, "value + 1");
+        let missing = missing_evidence(
+            &probe,
+            &ExposureClass::ReachableUnrevealed,
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &stage(StageState::Yes),
+            &ActivationEvidence::default(),
+        );
+
+        assert!(
+            missing.contains(
+                &"No detected assertion observes the changed value, error, field, or effect"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn recommended_next_step_covers_side_effect_and_default_weak_guidance() {
+        let side_effect = recommended_next_step(
+            &probe(ProbeFamily::SideEffect, "client.send(value)"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            side_effect.as_deref(),
+            Some(
+                "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect."
+            )
+        );
+
+        let match_arm = recommended_next_step(
+            &probe(ProbeFamily::MatchArm, "None => 0"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            match_arm.as_deref(),
+            Some("Strengthen the related assertion so it discriminates the changed behavior.")
+        );
+    }
+
+    #[test]
+    fn recommended_next_step_covers_targeted_weak_guidance_families() {
+        let predicate = recommended_next_step(
+            &probe(ProbeFamily::Predicate, "value >= threshold"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            predicate.as_deref(),
+            Some(
+                "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+            )
+        );
+
+        let error_path = recommended_next_step(
+            &probe(ProbeFamily::ErrorPath, "Err(AppError::Denied)"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            error_path.as_deref(),
+            Some("Assert the exact error variant or payload instead of only is_err().")
+        );
+
+        let return_value = recommended_next_step(
+            &probe(ProbeFamily::ReturnValue, "count + 1"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            return_value.as_deref(),
+            Some(
+                "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+            )
+        );
+    }
+
+    // XQFi: a return-value probe on an `Err(...)` construction is weakly
+    // exposed because the changed error path is not discriminated — not
+    // because the oracle is "broad". The sibling-variant fixture asserts an
+    // exact `CalcError::Negative` while the change constructs `TooLarge`, so
+    // the guidance must ask for a reaching input and the exact constructed
+    // variant instead of repeating the broad-assertion advice.
+    #[test]
+    fn return_value_error_construction_guidance_names_the_missing_discriminator() {
+        let error_construction = recommended_next_step(
+            &probe(ProbeFamily::ReturnValue, "return Err(CalcError::TooLarge);"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            error_construction.as_deref(),
+            Some(
+                "Add a test input that reaches the changed error path and assert the exact error variant it returns."
+            )
+        );
+        // A plain (non-Err) return value keeps the exact-equality guidance.
+        let plain_value = recommended_next_step(
+            &probe(ProbeFamily::ReturnValue, "Ok(amount)"),
+            &ExposureClass::WeaklyExposed,
+            false,
+        );
+        assert_eq!(
+            plain_value.as_deref(),
+            Some(
+                "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+            )
+        );
+    }
+
+    // RIPR-SPEC-0133: an assertion-shaped owner is the oracle. Guidance is
+    // reframed for every class; the class itself is untouched (classification
+    // happens in `classify`, upstream of this fn).
+    #[test]
+    fn recommended_next_step_reframes_guidance_for_assertion_shaped_owners() {
+        let return_value = probe(ProbeFamily::ReturnValue, "count + 1");
+
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::Exposed, true),
+            None
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::WeaklyExposed, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::ReachableUnrevealed, true)
+                .as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::NoStaticPath, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP)
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::InfectionUnknown, true).as_deref(),
+            Some(crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP)
+        );
+        // Escalation text is coherent for an oracle and stays unchanged.
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::PropagationUnknown, true)
+                .as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+        assert_eq!(
+            recommended_next_step(&return_value, &ExposureClass::StaticUnknown, true).as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+    }
+
+    // RIPR-SPEC-0133: the reframed guidance must state the detection rule in
+    // one sentence and must not ask for a test of the oracle itself.
+    #[test]
+    fn assertion_shaped_guidance_states_the_rule_and_avoids_test_of_test_advice() {
+        let reason = crate::domain::ASSERTION_SHAPED_OWNER_REASON;
+        for guidance in [
+            crate::domain::ASSERTION_SHAPED_WEAKLY_EXPOSED_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_REACHABLE_UNREVEALED_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_NO_STATIC_PATH_NEXT_STEP,
+            crate::domain::ASSERTION_SHAPED_INFECTION_UNKNOWN_NEXT_STEP,
+        ] {
+            assert!(
+                guidance.contains(reason),
+                "guidance must embed the one-sentence rule `{reason}`; got: {guidance}"
+            );
+            assert!(
+                !guidance.contains("co-located test"),
+                "guidance must not ask for a test that observes the oracle; got: {guidance}"
+            );
+        }
+    }
+
+    // RIPR-SPEC-0109 control (a): genuine all-Yes/Medium exposure must not be
+    // suppressed — the cap is 1.0 for Medium stages.
+    #[test]
+    fn confidence_score_genuine_exposure_all_yes_medium_is_not_capped() {
+        let score = confidence_score(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &ExposureClass::Exposed,
+        );
+        // 5 × Yes = 5 × 0.20 = 1.00; cap = 1.0 (all Medium) → unchanged.
+        assert!(
+            (score - 1.0).abs() < f32::EPSILON,
+            "genuine exposure must report confidence 1.0, got {score}"
+        );
+    }
+
+    // RIPR-SPEC-0109 control (b): a propagation_unknown finding with
+    // propagate.confidence = Low must be capped to ≤ 0.66, and its class
+    // must NOT change (class is determined by `classify`, not here).
+    #[test]
+    fn confidence_score_low_propagate_confidence_caps_score_to_0_66() {
+        let low_propagate =
+            StageEvidence::new(StageState::Unknown, Confidence::Low, "propagation unknown");
+        let score = confidence_score(
+            &stage(StageState::Yes),  // reach
+            &stage(StageState::Yes),  // infect
+            &low_propagate,           // propagate — Low confidence
+            &stage(StageState::Yes),  // observe
+            &stage(StageState::Weak), // discriminate
+            &ExposureClass::PropagationUnknown,
+        );
+        // Raw: 0.20+0.20+0.07+0.20+0.12 = 0.79; Low cap = 0.66 → score = 0.66.
+        assert!(
+            score <= 0.66,
+            "propagation_unknown with Low confidence must be capped to ≤ 0.66, got {score}"
+        );
+        // Confirm class is determined independently — classification is
+        // asserted via the `classify` fn contract, not here.  The score must
+        // be strictly below the uncapped value of 0.79.
+        assert!(
+            score < 0.79,
+            "score must be below uncapped 0.79, got {score}"
+        );
+    }
+
+    // RIPR-SPEC-0109 control (c): #1232 no-regression — infection_unknown and
+    // propagation_unknown classifications must remain unchanged; only the
+    // numeric confidence may drop.
+    #[test]
+    fn confidence_score_cap_does_not_change_classification() {
+        // infection_unknown: `let _ = expr` pattern — infect.confidence = Low
+        let low_infect =
+            StageEvidence::new(StageState::Unknown, Confidence::Low, "infection unknown");
+        let infect_class = classify(
+            &stage(StageState::Yes),
+            &low_infect,
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::ReturnValue, "compute()"),
+        );
+        assert_eq!(
+            infect_class,
+            ExposureClass::InfectionUnknown,
+            "infection_unknown class must be unchanged after RIPR-SPEC-0109"
+        );
+
+        // propagation_unknown: `.ok()` swallow — propagate.confidence = Low
+        let low_propagate =
+            StageEvidence::new(StageState::Unknown, Confidence::Low, "propagation unknown");
+        let prop_class = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &low_propagate,
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::ReturnValue, "self.persist(amount).ok();"),
+        );
+        assert_eq!(
+            prop_class,
+            ExposureClass::PropagationUnknown,
+            "propagation_unknown class must be unchanged after RIPR-SPEC-0109"
+        );
+    }
+
+    // #2450: the Exposed branch is the single over-credit guard. These tests
+    // pin the contract that Exposed requires all of discriminate+infect+
+    // propagate == Yes, and that any stage not-Yes downgrades to WeaklyExposed
+    // (never Exposed). A regression here is the cardinal sin per AGENTS.md.
+
+    // Reach through file or name proximity alone is `Weak`; a neighbour's
+    // strong assertion must not make the changed owner `Exposed`.
+    #[test]
+    fn classify_does_not_emit_exposed_when_reach_is_weak() {
+        let class = classify(
+            &stage(StageState::Weak),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::ReturnValue, "(cents + 49) / 100"),
+        );
+        assert_eq!(class, ExposureClass::WeaklyExposed);
+    }
+
+    #[test]
+    fn classify_emits_exposed_only_when_all_discriminate_infect_propagate_are_yes() {
+        // All stages Yes → Exposed (the only path to Exposed).
+        let all_yes = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(all_yes, ExposureClass::Exposed);
+
+        // discriminate=Weak with infect=Yes + propagate=Yes at the FINAL guard
+        // → WeaklyExposed, NOT Exposed. This is the cardinal-sin guard: all
+        // stages Yes except discrimination → must not credit as Exposed.
+        let weak_discrim = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Weak),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(
+            weak_discrim,
+            ExposureClass::WeaklyExposed,
+            "Weak discrimination must not credit as Exposed (over-credit guard)"
+        );
+
+        // infect=No (not Unknown) at the final guard → WeaklyExposed.
+        // infect=No means infection is resolved as "not happening", so the
+        // all-Yes Exposed check fails on the infect arm specifically.
+        let no_infect = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(
+            no_infect,
+            ExposureClass::WeaklyExposed,
+            "infect=No at the final guard must yield WeaklyExposed, not Exposed"
+        );
+
+        // propagate=No (not Unknown) at the final guard → WeaklyExposed.
+        let no_propagate = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(
+            no_propagate,
+            ExposureClass::WeaklyExposed,
+            "propagate=No at the final guard must yield WeaklyExposed, not Exposed"
+        );
+
+        // infect=Unknown → InfectionUnknown (never reaches the Exposed check).
+        let unknown_infect = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Unknown),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(unknown_infect, ExposureClass::InfectionUnknown);
+
+        // propagate=Unknown → PropagationUnknown (never reaches the Exposed check).
+        let unknown_prop = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Unknown),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &probe(ProbeFamily::Predicate, "amount >= threshold"),
+        );
+        assert_eq!(unknown_prop, ExposureClass::PropagationUnknown);
+    }
+
+    #[test]
+    fn classify_strong_oracle_on_wrong_sink_does_not_credit_as_exposed() {
+        // A "strong" oracle that observes a DIFFERENT sink than the changed one
+        // should produce observe/discriminate stages that are not both Yes.
+        // The classifier never sees "wrong sink" directly — it sees the stage
+        // states the callers produce. This test pins that observe=Yes but
+        // discriminate=No (the wrong-sink case) yields WeaklyExposed, not Exposed.
+        let wrong_sink = classify(
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::Yes),
+            &stage(StageState::No),
+            &probe(ProbeFamily::ErrorPath, "Err(InvalidCurrency)"),
+        );
+        assert_eq!(
+            wrong_sink,
+            ExposureClass::WeaklyExposed,
+            "observe=Yes but discriminate=No (wrong sink) must not credit as Exposed"
+        );
+    }
+
+    fn stage(state: StageState) -> StageEvidence {
+        StageEvidence::new(state, Confidence::Medium, "stage")
+    }
+
+    fn probe(family: ProbeFamily, expression: &str) -> Probe {
+        Probe {
+            id: ProbeId("probe:test".to_string()),
+            location: SourceLocation::new("src/lib.rs", 1, 1),
+            owner: None,
+            family,
+            delta: DeltaKind::Value,
+            before: None,
+            after: None,
+            expression: expression.to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        }
+    }
+}

@@ -1,0 +1,10 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -5,5 +5,6 @@ pub fn classify(s: Status) -> i32 {
+     match s {
+         Status::Active => 1,
++        Status::Idle => 0,
+     }
+ }

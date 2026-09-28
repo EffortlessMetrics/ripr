@@ -1,0 +1,10 @@
+diff --git a/src/tax.py b/src/tax.py
+index 0000000..1111111 100644
+--- a/src/tax.py
++++ b/src/tax.py
+@@ -1,4 +1,4 @@
+ def tax_band(amount):
+-    if amount > 100:
++    if amount >= 100:
+         return "high"
+     return "standard"

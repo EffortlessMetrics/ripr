@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "analyzer",
+  "sequence": 3,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2352",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {
+    "needs_operator_decision": 1
+  },
+  "records": [
+    {
+      "commit_sha": "00fe93a45050780181013321ca3a623788d08f9e",
+      "pr": "EffortlessMetrics/ripr-swarm#2208",
+      "title": "docs(proposals): define the check-artifact reuse contract",
+      "primary_category": "analyzer",
+      "change_class": "normative_design",
+      "candidate_disposition": "needs_operator_decision",
+      "review_status": "provisional_category_review",
+      "release_claim": "explicit reusable analysis artifacts preserve full fidelity and fail closed on stale input identity",
+      "reason": "This contract is the prerequisite for #2250. It ships only if the implementation is selected; otherwise both may defer together without leaving a public half-contract.",
+      "non_claim": "Ordinary check JSON is not a reusable analysis artifact, and no implicit cross-invocation cache is introduced.",
+      "secondary_impacts": ["proposal_0020", "future_schema", "cli_help", "config_identity"],
+      "source_conflict_risk": "medium"
+    }
+  ]
+}

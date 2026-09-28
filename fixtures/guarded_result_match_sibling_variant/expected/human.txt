@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/guarded_result_match_sibling_variant/input
+
+Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/guarded_result_match_sibling_variant/input/src/lib.rs:9
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: return Err(ParseError::InvalidData)
+  Missing discriminator: ParseError::InvalidData
+  Related test: tests/protocol.rs:4 pins_the_sibling_variant_of_the_changed_owner
+  Next step: Assert the exact error variant or payload instead of only is_err().
+  Evidence:
+    - reach yes: Related tests appear to reach expect_ready: pins_the_sibling_variant_of_the_changed_owner
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 9 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/guarded_result_match_sibling_variant/input --diff fixtures/guarded_result_match_sibling_variant/diff.patch --mode fast probe:src_lib.rs:error_path:94d13aee
+  ripr context --root fixtures/guarded_result_match_sibling_variant/input --diff fixtures/guarded_result_match_sibling_variant/diff.patch --mode fast --at probe:src_lib.rs:error_path:94d13aee
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

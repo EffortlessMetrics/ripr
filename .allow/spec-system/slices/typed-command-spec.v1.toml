@@ -1,0 +1,58 @@
+schema_version = "2.0"
+id = "ripr.slice.typed-command-spec.v1"
+generation = 1
+
+source_issue = "issue:1754"
+design_reference = "RIPR-SPEC-0135#command-spec"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Adds the producer-owned typed CommandSpec domain shape and empty additive
+projection storage while retaining legacy display strings. It does not
+populate routes, project commands into machine-facing responses, execute
+processes, issue receipts, or grant gate authority.
+"""
+
+non_goals = [
+  "route population",
+  "machine-facing command projection",
+  "command execution",
+  "receipt issuance",
+  "automatic verification",
+  "gate authority",
+  "legacy string removal",
+]
+
+return_conditions = [
+  "Return to root if the typed shape cannot preserve semantic argv boundaries.",
+  "Return to root if adding empty typed projection storage changes existing output.",
+]
+
+owned_seams = [
+  "seam:ripr:domain:command-spec",
+  "seam:ripr:lsp:typed-command-storage",
+]
+
+shared_seams = [
+  "seam:ripr:contract:repair-assurance-v1",
+  "seam:ripr:output:legacy-command-compatibility",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+  "seam:ripr:output:gate-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0135#command-spec"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

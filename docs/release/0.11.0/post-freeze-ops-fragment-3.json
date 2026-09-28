@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "ops",
+  "sequence": 3,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2353",
+  "review_status": "provisional",
+  "record_count": 2,
+  "disposition_counts": {
+    "release_infrastructure_only": 2
+  },
+  "records": [
+    {
+      "commit_sha": "27c71f966ff0c3175a5ecd9bc658350ca0291a03",
+      "pr": "EffortlessMetrics/ripr-swarm#2194",
+      "title": "test(xtask): serialize recommendation fixture cwd access",
+      "primary_category": "ops",
+      "change_class": "ci_reliability",
+      "candidate_disposition": "release_infrastructure_only",
+      "review_status": "provisional_category_review",
+      "release_claim": "required recommendation-calibration tests do not pass or fail according to process-CWD scheduling luck",
+      "reason": "A flaky required discriminator undermines exact-candidate qualification even though no product output changes.",
+      "non_claim": "The lock does not strengthen recommendation calibration semantics.",
+      "secondary_impacts": ["xtask_tests", "parallelism", "release_proof"],
+      "source_conflict_risk": "low"
+    },
+    {
+      "commit_sha": "526ec6cd92b8a30a509a1a91b8b2f2f5068ae28f",
+      "pr": "EffortlessMetrics/ripr-swarm#2201",
+      "title": "fix(xtask): hold the cwd write guard in the dispatch report test",
+      "primary_category": "ops",
+      "change_class": "ci_reliability",
+      "candidate_disposition": "release_infrastructure_only",
+      "review_status": "provisional_category_review",
+      "release_claim": "the dispatch-level trust report test uses the same exclusive CWD authority as the rest of the parallel suite",
+      "reason": "This closes the remaining race exposed by #2186 and prevents unrelated candidate runs from failing nondeterministically.",
+      "non_claim": "No report schema or runtime behavior changes.",
+      "secondary_impacts": ["xtask_tests", "parallelism", "release_proof"],
+      "source_conflict_risk": "low"
+    }
+  ]
+}

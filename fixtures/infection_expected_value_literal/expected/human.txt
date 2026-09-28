@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/infection_expected_value_literal/input
+
+Summary: 2 probe(s), 1 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/infection_expected_value_literal/input/src/lib.rs:19
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
+  Changed behavior: weight_grams >= 2_000
+  Missing discriminator: No detected boundary input for the changed predicate
+  Related test: tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax
+  Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
+  Evidence:
+    - reach yes: Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax
+    - infection weak: Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed…
+    - 9 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/infection_expected_value_literal/input --diff fixtures/infection_expected_value_literal/diff.patch --mode fast probe:src_lib.rs:predicate:14f80bce
+  ripr context --root fixtures/infection_expected_value_literal/input --diff fixtures/infection_expected_value_literal/diff.patch --mode fast --at probe:src_lib.rs:predicate:14f80bce
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

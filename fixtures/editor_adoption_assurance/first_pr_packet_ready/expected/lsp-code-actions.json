@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/first_pr_packet_ready",
+  "actions": [
+    {
+      "title": "First PR: open packet",
+      "command": "ripr.openFirstPrPacket"
+    },
+    {
+      "title": "First PR: copy repair packet",
+      "command": "ripr.copyFirstPrRepairPacket"
+    },
+    {
+      "title": "First PR: copy verify command",
+      "command": "ripr.copyFirstPrVerifyCommand"
+    },
+    {
+      "title": "First PR: copy receipt command",
+      "command": "ripr.copyFirstPrReceiptCommand"
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh"
+    }
+  ]
+}

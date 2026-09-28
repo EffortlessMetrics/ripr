@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_owner_file_match/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.
+  File: src/catalog.py:2
+  Language: python
+  Language status: preview
+  Static exposure: exposed (warning, confidence 0.60)
+  Canonical gap: gap:python:src/catalog.py:calculate_total:return_value:return_value:amount+7
+  Changed behavior: return amount + 7
+  Discriminator (observed, advisory): Related Python test reaches `calculate_total` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
+  Related test: tests/test_checkout.py:4 test_checkout_total_includes_fee
+  Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
+  Evidence:
+    - reach yes: 1 related Python test(s) found for owner `calculate_total`
+    - infection yes: Changed Python return expression can alter the owner return value: `return amount + 7`
+    - 5 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_owner_file_match/input --diff fixtures/python_owner_file_match/diff.patch --mode fast probe:src_catalog.py:python_preview:b6dc0fa5
+  ripr context --root fixtures/python_owner_file_match/input --diff fixtures/python_owner_file_match/diff.patch --mode fast --at probe:src_catalog.py:python_preview:b6dc0fa5
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_gap_cockpit/wrong_root",
+  "states": [
+    {
+      "name": "wrong_root",
+      "status_bar": "ripr: wrong-root artifact ignored",
+      "show_status_contains": [
+        "State: wrong-root artifact ignored",
+        "Diagnostics: 0",
+        "Next safe action: refresh analysis in the current workspace"
+      ],
+      "must_not": [
+        "diagnostic",
+        "repair packet",
+        "path outside workspace"
+      ]
+    }
+  ]
+}

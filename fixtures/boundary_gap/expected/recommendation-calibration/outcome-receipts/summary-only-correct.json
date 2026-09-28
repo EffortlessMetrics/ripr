@@ -1,0 +1,57 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "review_guidance_outcome_receipt",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0013",
+  "receipt_id": "review-outcome-summary-only-boundary",
+  "case_id": "summary_only_expected_boundary",
+  "root": ".",
+  "guidance": {
+    "artifact": "fixtures/boundary_gap/expected/pr-guidance/summary-only/comments.json",
+    "collection": "summary_only",
+    "id": "ripr-review-8f7fa8644fd12280",
+    "seam_id": "8f7fa8644fd12280",
+    "dedupe_key": "ripr:8f7fa8644fd12280:summary-only"
+  },
+  "outcome": {
+    "label": "summary_only_correct",
+    "source": "fixture",
+    "reason": "The recommendation correctly stays out of inline comments when no safe changed-line placement exists."
+  },
+  "placement": {
+    "path": null,
+    "line": null,
+    "mode": "summary_only",
+    "quality": "summary_only_expected"
+  },
+  "suggested_test": {
+    "target_quality": "correct",
+    "expected_file": "tests/pricing.rs",
+    "actual_file": "tests/pricing.rs",
+    "near_test": "applies_discount_above_threshold"
+  },
+  "suppression": {
+    "reason": "none",
+    "quality": "not_applicable"
+  },
+  "static_movement": {
+    "state": "unknown",
+    "source": "fixture_expectation",
+    "artifact": "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json"
+  },
+  "latency": {
+    "guidance_generated_unix_ms": null,
+    "outcome_recorded_unix_ms": null,
+    "outcome_latency_ms": null
+  },
+  "limits": {
+    "telemetry": false,
+    "external_service": false,
+    "source_edits": false,
+    "generated_tests": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking": false
+  },
+  "limits_note": "Advisory review-guidance outcome receipt only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+}

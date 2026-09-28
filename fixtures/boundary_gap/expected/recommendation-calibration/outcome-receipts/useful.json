@@ -1,0 +1,57 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "review_guidance_outcome_receipt",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0013",
+  "receipt_id": "review-outcome-useful-exact-line-boundary",
+  "case_id": "useful_exact_line_boundary",
+  "root": ".",
+  "guidance": {
+    "artifact": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+    "collection": "comments",
+    "id": "ripr-review-8f7fa8644fd12280",
+    "seam_id": "8f7fa8644fd12280",
+    "dedupe_key": "ripr:8f7fa8644fd12280:src/pricing.rs:88"
+  },
+  "outcome": {
+    "label": "useful",
+    "source": "fixture",
+    "reason": "The recommendation points at the changed seam line and names the expected boundary discriminator and test target."
+  },
+  "placement": {
+    "path": "src/pricing.rs",
+    "line": 88,
+    "mode": "exact_seam_line",
+    "quality": "correct"
+  },
+  "suggested_test": {
+    "target_quality": "correct",
+    "expected_file": "tests/pricing.rs",
+    "actual_file": "tests/pricing.rs",
+    "near_test": "applies_discount_above_threshold"
+  },
+  "suppression": {
+    "reason": "none",
+    "quality": "not_applicable"
+  },
+  "static_movement": {
+    "state": "improved",
+    "source": "targeted_test_outcome",
+    "artifact": "fixtures/boundary_gap/calibration/targeted-test-outcome.json"
+  },
+  "latency": {
+    "guidance_generated_unix_ms": null,
+    "outcome_recorded_unix_ms": null,
+    "outcome_latency_ms": null
+  },
+  "limits": {
+    "telemetry": false,
+    "external_service": false,
+    "source_edits": false,
+    "generated_tests": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking": false
+  },
+  "limits_note": "Advisory review-guidance outcome receipt only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+}

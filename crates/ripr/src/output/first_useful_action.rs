@@ -1,0 +1,1931 @@
+use crate::agent::command_specs;
+use crate::agent::loop_commands;
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::path::Path;
+
+mod json;
+mod markdown;
+mod model;
+mod parsing;
+mod selection;
+#[cfg(test)]
+mod tests;
+
+pub(crate) use json::render_first_useful_action_json;
+pub(crate) use markdown::render_first_useful_action_markdown;
+use model::{
+    ActionCommandSpecs, ActionCommands, ActionEvidence, ActionFallback, ActionInputs,
+    ActionSelected, ActionTarget,
+};
+pub(crate) use model::{FirstUsefulActionInput, FirstUsefulActionReport};
+use parsing::{ASSISTANT_PROOF_LABEL, ParsedSources, RECEIPT_LABEL, parse_sources};
+use selection::select_report;
+
+const SCHEMA_VERSION: &str = "0.1";
+const REPORT_KIND: &str = "first_useful_action";
+const DEFAULT_GENERATED_AT: &str = "unknown";
+
+pub(crate) const DEFAULT_FIRST_USEFUL_ACTION_OUT: &str =
+    "target/ripr/reports/first-useful-action.json";
+pub(crate) const DEFAULT_FIRST_USEFUL_ACTION_MD_OUT: &str =
+    "target/ripr/reports/first-useful-action.md";
+pub(crate) const DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT: &str =
+    "target/ripr/reports/test-oracle-assistant-proof.json";
+pub(crate) const DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_MD_OUT: &str =
+    "target/ripr/reports/test-oracle-assistant-proof.md";
+
+pub(crate) fn build_first_useful_action_report(
+    input: FirstUsefulActionInput,
+) -> FirstUsefulActionReport {
+    let parsed = parse_sources(&input);
+    let inputs = ActionInputs {
+        pr_guidance: input.pr_guidance_path.clone(),
+        assistant_proof: input.assistant_proof_path.clone(),
+        gap_ledger: input.gap_ledger_path.clone(),
+        ledger: input.ledger_path.clone(),
+        baseline_delta: input.baseline_delta_path.clone(),
+        receipt: input.receipt_path.clone(),
+        gate_decision: input.gate_decision_path.clone(),
+        coverage_frontier: input.coverage_frontier_path.clone(),
+        editor_context: input.editor_context_path.clone(),
+    };
+    let generated_at = if input.generated_at.trim().is_empty() {
+        DEFAULT_GENERATED_AT.to_string()
+    } else {
+        input.generated_at.clone()
+    };
+
+    let mut report = select_report(&input, &parsed, &inputs, &generated_at);
+
+    report.warnings.extend(parsed.warnings);
+    report
+}
+
+pub(crate) use crate::output::path::display_path;
+
+fn stale_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let editor_context = parsed.editor_context.as_ref()?;
+    if !is_stale(editor_context) {
+        return None;
+    }
+    let selected = selected_from_editor_context(input, editor_context);
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "stale",
+        "developer",
+        "refresh_evidence",
+        selected,
+        "Refresh RIPR evidence before acting",
+        "The best available seam evidence is stale.",
+        vec![
+            "Stale evidence blocks first-action routing.",
+            "The report must not present stale seam evidence as current.",
+        ],
+        None,
+        ActionCommands {
+            status: Some(loop_commands::agent_status_command(
+                &command_root(input),
+                None,
+            )),
+            ..ActionCommands::default()
+        },
+        evidence(input, "unknown"),
+        Some(ActionFallback {
+            kind: "refresh_evidence".to_string(),
+            summary: Some(
+                "Refresh RIPR evidence before selecting a focused-test action.".to_string(),
+            ),
+            missing: None,
+        }),
+        stale_warnings(editor_context),
+        vec![
+            "Static evidence only.",
+            "Does not rerun hidden analysis.",
+            "Does not edit source or generate tests.",
+        ],
+    ))
+}
+
+fn read_error_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let (label, path) = parsed.read_errors.first()?;
+    let mut warnings = Vec::new();
+    warnings.push(format!("missing required artifact: {path}"));
+    Some(missing_required_report(
+        input,
+        inputs,
+        generated_at,
+        MissingRequired::for_input_label(label),
+        path,
+        warnings,
+    ))
+}
+
+fn receipt_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let receipt = parsed.receipt.as_ref()?;
+    let movement = receipt_movement(receipt)?;
+    if let Err(reason) = validate_receipt_projection(input, receipt, &movement) {
+        return Some(missing_required_report(
+            input,
+            inputs,
+            generated_at,
+            MissingRequired::CompleteReceipt,
+            "receipt verify/artifact evidence",
+            vec![format!(
+                "receipt movement `{movement}` is not promotable: {reason}"
+            )],
+        ));
+    }
+    match movement.as_str() {
+        "improved" | "resolved" => Some(base_report(
+            input,
+            inputs,
+            generated_at,
+            "already_improved",
+            "reviewer",
+            "no_action",
+            selected_from_receipt_or_sources(input, parsed, receipt),
+            "Static evidence already improved",
+            "The supplied receipt records improved or resolved static movement.",
+            vec![
+                "The supplied receipt records improved or resolved static movement.",
+                "No additional focused-test action should outrank the receipt.",
+            ],
+            target_from_sources(parsed),
+            ActionCommands {
+                receipt: receipt_command(input, parsed),
+                ..ActionCommands::default()
+            },
+            evidence(input, &movement),
+            Some(ActionFallback {
+                kind: "already_improved".to_string(),
+                summary: Some("Include the receipt in review instead of requesting another test.".to_string()),
+                missing: None,
+            }),
+            Vec::new(),
+            vec![
+                "Static evidence only.",
+                "Does not prove runtime adequacy.",
+                "Does not run mutation testing.",
+            ],
+        )),
+        "unchanged" => Some(base_report(
+            input,
+            inputs,
+            generated_at,
+            "unchanged_after_attempt",
+            "agent",
+            "revise_focused_test",
+            selected_from_receipt_or_sources(input, parsed, receipt),
+            "Revise the focused test for unchanged static movement",
+            "The supplied receipt records unchanged static movement after a focused-test attempt.",
+            vec![
+                "The supplied receipt records unchanged static movement after a focused-test attempt.",
+                "The next safe action is to revise the test rather than request a new unrelated seam.",
+            ],
+            target_from_sources(parsed),
+            seam_commands(input, parsed),
+            evidence(input, &movement),
+            Some(ActionFallback {
+                kind: "unchanged_after_attempt".to_string(),
+                summary: Some(
+                    "Revise the focused test using the missing discriminator before moving to another seam."
+                        .to_string(),
+                ),
+                missing: None,
+            }),
+            Vec::new(),
+            vec![
+                "Static evidence only.",
+                "Does not edit source or generate tests.",
+                "Does not run mutation testing.",
+            ],
+        )),
+        _ => None,
+    }
+}
+
+/// A movement token is only a projection of a completed, identity-bound verify
+/// transaction.  Keep this gate local to first-action routing: it does not
+/// redesign receipt production or broaden the receipt schema.
+fn validate_receipt_projection(
+    input: &FirstUsefulActionInput,
+    receipt: &Value,
+    movement: &str,
+) -> Result<(), String> {
+    if !matches!(movement, "improved" | "resolved" | "unchanged") {
+        return Ok(());
+    }
+    let provenance = receipt
+        .get("provenance")
+        .ok_or_else(|| "missing typed provenance".to_string())?;
+    if receipt.get("schema_version").and_then(Value::as_str)
+        != Some(crate::output::agent_receipt::AGENT_RECEIPT_SCHEMA_VERSION)
+    {
+        return Err("receipt has unsupported schema_version".to_string());
+    }
+    if receipt.get("status").and_then(Value::as_str) != Some("advisory")
+        || receipt
+            .get("analysis_outcome_status")
+            .and_then(Value::as_str)
+            != Some("complete")
+        || receipt.get("analysis_outcome").is_none_or(Value::is_null)
+    {
+        return Err("receipt does not contain a complete analysis outcome".to_string());
+    }
+    let root = Path::new(&input.root);
+    let declared_root = provenance
+        .get("repo_root")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing provenance.repo_root".to_string())?;
+    let expected_root =
+        std::fs::canonicalize(root).map_err(|err| format!("cannot resolve report root: {err}"))?;
+    let receipt_root = std::fs::canonicalize(if Path::new(declared_root).is_absolute() {
+        Path::new(declared_root).to_path_buf()
+    } else if declared_root == "." || declared_root == input.root {
+        // The producer records the exact --root argument.  When the command
+        // was invoked from a parent directory (`--root repo`), joining that
+        // argument to the already-selected root would incorrectly produce
+        // `repo/repo`.
+        root.to_path_buf()
+    } else {
+        root.join(declared_root)
+    })
+    .map_err(|err| format!("cannot resolve receipt repo_root: {err}"))?;
+    if receipt_root != expected_root {
+        return Err("receipt repo_root does not match first-action root".to_string());
+    }
+    let seam_id = provenance
+        .get("seam_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "missing provenance.seam_id".to_string())?;
+
+    let inputs = receipt
+        .get("inputs")
+        .ok_or_else(|| "missing typed inputs".to_string())?;
+    let verify_path = inputs
+        .get("agent_verify_json")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing inputs.agent_verify_json".to_string())?;
+    let verify_file = canonical_first_action_path(root, verify_path, "verify artifact")?;
+    let verify_raw = std::fs::read_to_string(&verify_file)
+        .map_err(|err| format!("cannot read verify artifact `{verify_path}`: {err}"))?;
+    let verify_sha = provenance
+        .get("verify_artifact")
+        .and_then(|value| value.get("sha256"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing provenance.verify_artifact.sha256".to_string())?;
+    if sha256_bytes(verify_raw.as_bytes()) != verify_sha {
+        return Err("verify artifact commitment does not match receipt".to_string());
+    }
+    let validated =
+        crate::app::agent_receipt::validate_agent_receipt_verify_json(root, &verify_raw)?;
+    let analysis_path =
+        crate::app::analysis_outcome_artifact::analysis_outcome_artifact_path_for_verify(
+            &verify_file,
+        )?;
+    let root_display = crate::output::outcome::display_path(root);
+    let analysis_outcome =
+        crate::app::analysis_outcome_artifact::read_analysis_outcome_artifact_at(
+            root,
+            &root_display,
+            &analysis_path,
+        )
+        .map_err(|error| format!("analysis outcome artifact is unavailable: {error}"))?;
+    let receipt_analysis_digest = receipt
+        .pointer("/analysis_outcome/semantic_digest")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "receipt is missing analysis outcome semantic digest".to_string())?;
+    let analysis_digest = analysis_outcome.semantic_digest()?;
+    if receipt_analysis_digest != analysis_digest {
+        return Err(
+            "analysis outcome semantic digest commitment does not match receipt".to_string(),
+        );
+    }
+    if !analysis_outcome.kind.is_complete()
+        || receipt
+            .pointer("/analysis_outcome/analysis_complete")
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err("receipt analysis outcome is incomplete".to_string());
+    }
+    let verify = &validated.verify;
+    for (label, value) in [
+        ("provenance.movement", provenance.get("movement")),
+        ("seam.change", receipt.pointer("/seam/change")),
+        (
+            "summary.next_action.kind",
+            receipt.pointer("/summary/next_action/kind"),
+        ),
+    ] {
+        if let Some(value) = value.and_then(Value::as_str)
+            && value != movement
+        {
+            return Err(format!(
+                "{label} disagrees with receipt movement `{movement}`"
+            ));
+        }
+    }
+    let before_path =
+        canonical_first_action_path(root, &validated.input_paths.before, "before artifact")?;
+    let after_path =
+        canonical_first_action_path(root, &validated.input_paths.after, "after artifact")?;
+    let receipt_before = receipt_artifact_path(root, provenance, "before_artifact")?;
+    let receipt_after = receipt_artifact_path(root, provenance, "after_artifact")?;
+    if receipt_before != before_path || receipt_after != after_path {
+        return Err("receipt artifact paths do not match canonical verify inputs".to_string());
+    }
+    let receipt_verify = receipt_artifact_path(root, provenance, "verify_artifact")?;
+    if receipt_verify != verify_file {
+        return Err("receipt verify path does not match inputs.agent_verify_json".to_string());
+    }
+    for (name, path) in [
+        ("before_artifact", &before_path),
+        ("after_artifact", &after_path),
+    ] {
+        let declared = provenance
+            .get(name)
+            .and_then(|value| value.get("sha256"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("missing provenance.{name}.sha256"))?;
+        let raw = std::fs::read(path).map_err(|err| format!("cannot read {name}: {err}"))?;
+        if sha256_bytes(&raw) != declared {
+            return Err(format!("{name} commitment does not match receipt"));
+        }
+    }
+    let currentness = verify
+        .get("artifact_currentness")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "verify artifact is missing currentness".to_string())?;
+    if !matches!(
+        currentness,
+        "current" | "dirty_both" | "dirty_before" | "dirty_after"
+    ) {
+        return Err(format!(
+            "verify artifact is stale or unsupported ({currentness})"
+        ));
+    }
+    let verify_seam = |array: &str| {
+        verify
+            .get(array)
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                items.iter().any(|item| {
+                    item.get("seam_id").and_then(Value::as_str) == Some(seam_id)
+                        && item.get("change").and_then(Value::as_str) == Some(movement)
+                        && receipt.pointer("/seam/before").and_then(Value::as_str)
+                            == item.get("before").and_then(Value::as_str)
+                        && receipt.pointer("/seam/after").and_then(Value::as_str)
+                            == item.get("after").and_then(Value::as_str)
+                        && (movement != "resolved"
+                            || (provenance.get("before_class").and_then(Value::as_str)
+                                == item.get("grip_class").and_then(Value::as_str)
+                                && item.get("after").is_none()))
+                        && (movement == "resolved"
+                            || (provenance.get("before_class").and_then(Value::as_str)
+                                == item.get("before").and_then(Value::as_str)
+                                && provenance.get("after_class").and_then(Value::as_str)
+                                    == item.get("after").and_then(Value::as_str)))
+                        && receipt
+                            .pointer("/seam/grip_class")
+                            .and_then(Value::as_str)
+                            .is_none_or(|value| {
+                                Some(value)
+                                    == if movement == "resolved" {
+                                        item.get("grip_class").and_then(Value::as_str)
+                                    } else {
+                                        item.get("after").and_then(Value::as_str)
+                                    }
+                            })
+                        && receipt
+                            .get("current_evidence_strength")
+                            .and_then(Value::as_str)
+                            .is_none_or(|value| {
+                                current_evidence_strength_for_selection(
+                                    None,
+                                    item.get("after").and_then(Value::as_str),
+                                    item.get("seam_kind").and_then(Value::as_str),
+                                )
+                                .as_deref()
+                                    == Some(value)
+                            })
+                        && receipt
+                            .pointer("/seam/current_evidence_strength")
+                            .and_then(Value::as_str)
+                            .is_none_or(|value| {
+                                current_evidence_strength_for_selection(
+                                    None,
+                                    item.get("after").and_then(Value::as_str),
+                                    item.get("seam_kind").and_then(Value::as_str),
+                                )
+                                .as_deref()
+                                    == Some(value)
+                            })
+                })
+            })
+    };
+    let array = match movement {
+        "unchanged" => "unchanged_seams",
+        "resolved" => "resolved_gaps",
+        _ => "changed_seams",
+    };
+    if !verify_seam(array) {
+        return Err(format!(
+            "verify artifact has no `{movement}` record for seam {seam_id}"
+        ));
+    }
+    if movement == "unchanged"
+        && verify
+            .pointer("/summary/unchanged")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            == 0
+    {
+        return Err("verify artifact summary does not confirm unchanged movement".to_string());
+    }
+    if matches!(movement, "improved" | "resolved")
+        && verify
+            .pointer("/summary/improved")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            + verify
+                .pointer("/summary/resolved")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+            == 0
+    {
+        return Err("verify artifact summary does not confirm improved movement".to_string());
+    }
+    Ok(())
+}
+
+fn canonical_first_action_path(
+    root: &Path,
+    path: &str,
+    label: &str,
+) -> Result<std::path::PathBuf, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|err| format!("cannot resolve first-action root: {err}"))?;
+    let candidate = if Path::new(path).is_absolute() {
+        Path::new(path).to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let canonical = candidate
+        .canonicalize()
+        .map_err(|err| format!("cannot resolve {label} `{path}`: {err}"))?;
+    if !canonical.starts_with(&root) {
+        return Err(format!("{label} `{path}` is outside first-action root"));
+    }
+    Ok(canonical)
+}
+
+fn receipt_artifact_path(
+    root: &Path,
+    provenance: &Value,
+    name: &str,
+) -> Result<std::path::PathBuf, String> {
+    let path = provenance
+        .get(name)
+        .and_then(|value| value.get("path"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("missing provenance.{name}.path"))?;
+    canonical_first_action_path(root, path, name)
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    format!("sha256:{digest:x}")
+}
+
+fn suppressed_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    if !has_suppressed_guidance(parsed.pr_guidance.as_ref()) {
+        return None;
+    }
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "suppressed",
+        "developer",
+        "no_action",
+        selected_from_guidance(input, parsed, "pr_guidance"),
+        "No first action for suppressed seam",
+        "The seam is suppressed or configured off.",
+        vec![
+            "The seam is suppressed or configured off.",
+            "Suppression state must not be treated as improvement.",
+        ],
+        None,
+        ActionCommands::default(),
+        evidence(input, "unknown"),
+        Some(ActionFallback {
+            kind: "suppressed".to_string(),
+            summary: Some(
+                "Suppressed evidence remains visible for audit, but no focused-test action is emitted."
+                    .to_string(),
+            ),
+            missing: None,
+        }),
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Does not edit source or generate tests.",
+            "Does not change policy.",
+        ],
+    ))
+}
+
+fn acknowledged_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let selected = selected_acknowledged(input, parsed)?;
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "acknowledged",
+        "reviewer",
+        "inspect_proof_report",
+        Some(selected),
+        "Review acknowledged RIPR item",
+        "The item has explicit acknowledgement.",
+        vec![
+            "The item has explicit acknowledgement.",
+            "Acknowledged evidence remains visible but should not outrank unsuppressed PR-local work.",
+        ],
+        None,
+        ActionCommands::default(),
+        evidence(input, "unknown"),
+        Some(ActionFallback {
+            kind: "acknowledged".to_string(),
+            summary: Some(
+                "Inspect the proof report or acknowledgement context instead of requesting a new focused test."
+                    .to_string(),
+            ),
+            missing: None,
+        }),
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Does not invent policy.",
+            "Does not edit source or generate tests.",
+        ],
+    ))
+}
+
+fn waived_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let selected = selected_waived(input, parsed)?;
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "waived",
+        "reviewer",
+        "no_action",
+        Some(selected),
+        "No first action for waived RIPR item",
+        "The item has an explicit waiver.",
+        vec![
+            "The item has an explicit waiver.",
+            "Waived evidence stays visible but does not create a focused-test action.",
+        ],
+        None,
+        ActionCommands::default(),
+        evidence(input, "unknown"),
+        Some(ActionFallback {
+            kind: "waived".to_string(),
+            summary: Some("No first action while the waiver is in force.".to_string()),
+            missing: None,
+        }),
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Does not invent policy.",
+            "Does not change CI blocking.",
+        ],
+    ))
+}
+
+fn gap_record_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let record = first_actionable_gap_record(parsed.gap_ledger.as_ref()?)?;
+    let repair_route = record.get("repair_route");
+    let route_kind = string_from_sources(&[(repair_route, &["route_kind"])])
+        .unwrap_or_else(|| "RepairGap".to_string());
+    let gap_kind = string_path(record, &["kind"]).unwrap_or_else(|| "Gap".to_string());
+    let gap_id = string_path(record, &["gap_id"]).unwrap_or_else(|| "unknown".to_string());
+    let verify_command = first_string_array_item(record, &["verification_commands"]);
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "actionable",
+        "developer",
+        action_kind_for_gap_route(&route_kind),
+        Some(selected_from_gap_record(input, record)?),
+        &format!("Repair {gap_kind} via {route_kind}"),
+        &format!(
+            "Gap decision {gap_id} is a new PR-local Rust gap with repair route {route_kind}."
+        ),
+        vec![
+            "The gap decision is PR-local stable Rust evidence.",
+            "It is unresolved, repairable, and policy-targeted.",
+            "The repair route and verification command are supplied by the gap ledger.",
+        ],
+        target_from_gap_record(record),
+        ActionCommands {
+            verify: verify_command,
+            ..ActionCommands::default()
+        },
+        evidence(input, "unknown"),
+        None,
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Uses explicit gap decision input.",
+            "Does not run mutation testing.",
+            "Does not edit source or generate tests.",
+            "Does not make CI blocking by default.",
+        ],
+    ))
+}
+
+fn missing_assistant_proof_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    if parsed.assistant_proof.is_some() || !has_actionable_guidance(parsed.pr_guidance.as_ref()) {
+        return None;
+    }
+    let mut warnings = Vec::new();
+    warnings.push(format!(
+        "missing required artifact: {}",
+        DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT
+    ));
+    Some(missing_required_report(
+        input,
+        inputs,
+        generated_at,
+        MissingRequired::AssistantProof,
+        DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT,
+        warnings,
+    ))
+}
+
+/// A fresh PR whose review card already carries the repair start (#3906).
+///
+/// Before any repair has run there is no assistant proof, and asking for one
+/// would request post-repair artifacts first. When the first review card
+/// (inline comments, then summary-only) that names
+/// `llm_guidance.repair_command` exists, lead with that command. The card
+/// emits it only past `repair_packet_eligibility(..).eligible()`; this report
+/// carries the string and every selected field from that same card, and never
+/// builds a repair command from a bare seam id. Without a carried command the
+/// existing missing-proof route stands.
+fn repair_start_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    if parsed.assistant_proof.is_some() {
+        return None;
+    }
+    let (card, repair) = first_card_with_repair_command(parsed.pr_guidance.as_ref())?;
+    let selected = selected_from_guidance_item(input, Some(card), "pr_guidance")?;
+    let why = match (
+        string_path(card, &["seam", "expression"]),
+        selected.missing_discriminator.as_deref(),
+    ) {
+        (Some(expression), Some(missing)) => format!(
+            "Changed behavior `{expression}` lacks a discriminator for `{missing}`; the review card names its repair start."
+        ),
+        _ => {
+            "The review card names a repair start for this seam; no repair has run yet.".to_string()
+        }
+    };
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "actionable",
+        "developer",
+        "write_focused_test",
+        Some(selected),
+        "Start the focused-test repair for this seam",
+        &why,
+        vec![
+            "The review card carries a repair start, so the seam passed the repair-packet check where the card was produced.",
+            "No assistant proof exists yet, so the repair has not started.",
+            "No waiver, acknowledgement, or suppression applies.",
+        ],
+        target_from_guidance_item(card),
+        ActionCommands {
+            repair: Some(repair),
+            verify: string_path(card, &["llm_guidance", "verify_command"]),
+            receipt: string_path(card, &["receipt_command"])
+                .or_else(|| string_path(card, &["llm_guidance", "receipt_command"])),
+            ..ActionCommands::default()
+        },
+        evidence(input, "unknown"),
+        None,
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Carries the repair start from the review card; does not re-derive eligibility.",
+            "Does not run mutation testing.",
+            "Does not edit source or generate tests.",
+            "Does not make CI blocking by default.",
+        ],
+    ))
+}
+
+/// The first review card, inline comments before summary-only, that carries a
+/// non-empty `llm_guidance.repair_command`, with that command.
+fn first_card_with_repair_command(pr_guidance: Option<&Value>) -> Option<(&Value, String)> {
+    let guidance = pr_guidance?;
+    ["comments", "summary_only"]
+        .into_iter()
+        .filter_map(|bucket| guidance.get(bucket).and_then(Value::as_array))
+        .flatten()
+        .find_map(|card| {
+            string_path(card, &["llm_guidance", "repair_command"])
+                .filter(|command| !command.trim().is_empty())
+                .map(|command| (card, command))
+        })
+}
+
+fn actionable_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let selected = selected_from_assistant_proof(input, parsed)?;
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "actionable",
+        "developer",
+        "write_focused_test",
+        Some(selected),
+        "Add equality-boundary discriminator test",
+        "Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.",
+        vec![
+            "The seam is PR-local.",
+            "The assistant proof report links guidance, handoff, before/after evidence, and receipt inputs.",
+            "No waiver, acknowledgement, or suppression applies.",
+        ],
+        target_from_sources(parsed),
+        seam_commands(input, parsed),
+        evidence(input, "unknown"),
+        None,
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Does not run mutation testing.",
+            "Does not edit source or generate tests.",
+            "Does not make CI blocking by default.",
+        ],
+    ))
+}
+
+fn baseline_only_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    let selected = selected_baseline_only(input, parsed)?;
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "baseline_only",
+        "reviewer",
+        "acknowledge_baseline",
+        Some(selected),
+        "Leave existing baseline debt outside this PR action",
+        "The visible debt is baseline-only and not PR-local first-action work.",
+        vec![
+            "The visible debt is baseline-only.",
+            "No new PR-local actionable seam outranks it.",
+        ],
+        None,
+        ActionCommands::default(),
+        evidence(input, "unknown"),
+        Some(ActionFallback {
+            kind: "baseline_only".to_string(),
+            summary: Some(
+                "Track or acknowledge baseline debt separately from PR-local first action."
+                    .to_string(),
+            ),
+            missing: None,
+        }),
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Does not invent policy.",
+            "Does not make CI blocking by default.",
+        ],
+    ))
+}
+
+fn no_actionable_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> FirstUsefulActionReport {
+    let warnings = if has_any_input(input) || has_any_parsed(parsed) {
+        Vec::new()
+    } else {
+        vec!["no explicit first-action artifact input was supplied".to_string()]
+    };
+    base_report(
+        input,
+        inputs,
+        generated_at,
+        "no_actionable_seam",
+        "developer",
+        "no_action",
+        None,
+        "No actionable RIPR seam found",
+        "Fresh inputs do not contain a PR-local actionable seam.",
+        vec![
+            "Fresh inputs do not contain a PR-local actionable seam.",
+            "The report should return an explicit clean state instead of silence.",
+        ],
+        None,
+        ActionCommands::default(),
+        evidence(input, "unknown"),
+        Some(ActionFallback {
+            kind: "no_actionable_seam".to_string(),
+            summary: Some(
+                "No first useful test action is available from the supplied artifacts.".to_string(),
+            ),
+            missing: None,
+        }),
+        warnings,
+        vec![
+            "Static evidence only.",
+            "Does not prove runtime adequacy.",
+            "Does not run mutation testing.",
+        ],
+    )
+}
+
+/// The artifact a fail-closed report asks for. The title, the reason and the
+/// offered command all come from this, so an agent is sent to regenerate the
+/// artifact that is actually missing rather than one it already has (#4268).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MissingRequired<'a> {
+    /// No joined assistant proof exists yet.
+    AssistantProof,
+    /// A receipt was supplied but carries no promotable verify evidence.
+    CompleteReceipt,
+    /// A supplied input could not be read or parsed.
+    UnreadableInput(&'a str),
+}
+
+impl<'a> MissingRequired<'a> {
+    /// Maps a `read_errors` label to the artifact the agent must regenerate.
+    /// The proof and receipt have producing commands; any other input is named
+    /// so it can be supplied again, with no command guessed for it.
+    fn for_input_label(label: &'a str) -> Self {
+        match label {
+            ASSISTANT_PROOF_LABEL => Self::AssistantProof,
+            RECEIPT_LABEL => Self::CompleteReceipt,
+            other => Self::UnreadableInput(other),
+        }
+    }
+}
+
+fn missing_required_report(
+    input: &FirstUsefulActionInput,
+    inputs: &ActionInputs,
+    generated_at: &str,
+    required: MissingRequired<'_>,
+    missing: &str,
+    warnings: Vec<String>,
+) -> FirstUsefulActionReport {
+    let (title, why, why_first, commands) = match required {
+        MissingRequired::AssistantProof => (
+            "Generate assistant proof before routing".to_string(),
+            "Required joined proof input is missing.",
+            vec![
+                "Required joined proof input is missing.",
+                "The report must not infer proof state from a raw artifact chain.",
+            ],
+            ActionCommands {
+                assistant_proof: Some(assistant_proof_command()),
+                ..ActionCommands::default()
+            },
+        ),
+        MissingRequired::CompleteReceipt => (
+            "Regenerate a complete agent receipt before routing".to_string(),
+            "The supplied receipt carries no promotable verify evidence.",
+            vec![
+                "Receipt movement routes only from a complete analysis outcome.",
+                "The report must not promote receipt movement it cannot validate.",
+            ],
+            // A complete receipt needs a persisted verify file and its sibling
+            // analysis outcome, and the seam may be unknown when the receipt
+            // is unreadable. `agent status` owns that sequence and names the
+            // command for each missing workflow artifact, so route there
+            // rather than offer a partial chain.
+            ActionCommands {
+                status: Some(loop_commands::agent_status_command(
+                    &command_root(input),
+                    None,
+                )),
+                ..ActionCommands::default()
+            },
+        ),
+        MissingRequired::UnreadableInput(label) => (
+            format!("Supply a readable {label} before routing"),
+            "A supplied input could not be read.",
+            vec![
+                "A supplied input could not be read.",
+                "The report must not route from a partial artifact set.",
+            ],
+            ActionCommands::default(),
+        ),
+    };
+    base_report(
+        input,
+        inputs,
+        generated_at,
+        "missing_required_artifact",
+        "agent",
+        "generate_missing_artifact",
+        None,
+        &title,
+        why,
+        why_first,
+        None,
+        commands,
+        evidence(input, "unknown"),
+        Some(ActionFallback {
+            kind: "missing_required_artifact".to_string(),
+            summary: None,
+            missing: Some(missing.to_string()),
+        }),
+        warnings,
+        vec![
+            "Static evidence only.",
+            "Does not search hidden state.",
+            "Does not change CI blocking.",
+        ],
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "shared report constructor keeps fixture-routing branches explicit"
+)]
+fn base_report(
+    input: &FirstUsefulActionInput,
+    inputs: &ActionInputs,
+    generated_at: &str,
+    status: &str,
+    audience: &str,
+    action_kind: &str,
+    selected: Option<ActionSelected>,
+    title: &str,
+    why: &str,
+    why_first: Vec<&str>,
+    target: Option<ActionTarget>,
+    commands: ActionCommands,
+    evidence: ActionEvidence,
+    fallback: Option<ActionFallback>,
+    warnings: Vec<String>,
+    limits: Vec<&str>,
+) -> FirstUsefulActionReport {
+    FirstUsefulActionReport {
+        status: status.to_string(),
+        audience: audience.to_string(),
+        action_kind: action_kind.to_string(),
+        root: input.root.clone(),
+        generated_at: generated_at.to_string(),
+        inputs: inputs.clone(),
+        selected,
+        title: title.to_string(),
+        why: why.to_string(),
+        why_first: why_first.into_iter().map(ToOwned::to_owned).collect(),
+        target,
+        commands,
+        evidence,
+        fallback,
+        warnings,
+        limits: limits.into_iter().map(ToOwned::to_owned).collect(),
+    }
+}
+
+fn evidence(input: &FirstUsefulActionInput, static_movement: &str) -> ActionEvidence {
+    ActionEvidence {
+        pr_guidance: input.pr_guidance_path.clone(),
+        assistant_proof: input.assistant_proof_path.clone(),
+        gap_ledger: input.gap_ledger_path.clone(),
+        receipt: input.receipt_path.clone(),
+        ledger: input.ledger_path.clone(),
+        baseline_delta: input.baseline_delta_path.clone(),
+        static_movement: static_movement.to_string(),
+    }
+}
+
+fn is_stale(value: &Value) -> bool {
+    string_from_sources(&[
+        (Some(value), &["freshness"]),
+        (Some(value), &["status"]),
+        (Some(value), &["state"]),
+        (Some(value), &["evidence_state"]),
+    ])
+    .is_some_and(|text| text == "stale" || text == "analysis_stale")
+        || matches!(bool_path(value, &["stale"]), Some(true))
+}
+
+fn stale_warnings(value: &Value) -> Vec<String> {
+    string_from_sources(&[
+        (Some(value), &["reason"]),
+        (Some(value), &["stale_reason"]),
+        (Some(value), &["freshness_reason"]),
+    ])
+    .map_or_else(Vec::new, |warning| vec![warning])
+}
+
+fn first_actionable_gap_record(gap_ledger: &Value) -> Option<&Value> {
+    gap_records(gap_ledger).into_iter().find(|record| {
+        string_path(record, &["language"]).is_some_and(|value| value == "rust")
+            && string_path(record, &["language_status"]).is_some_and(|value| value == "stable")
+            && string_path(record, &["scope"]).is_some_and(|value| value == "pr_local")
+            && string_path(record, &["gap_state"]).is_some_and(|value| value == "actionable")
+            && string_path(record, &["repairability"]).is_some_and(|value| value == "repairable")
+            && string_path(record, &["policy_state"])
+                .is_some_and(|value| value == "new" || value == "reintroduced")
+            && record.get("repair_route").is_some()
+            && record
+                .get("verification_commands")
+                .and_then(Value::as_array)
+                .is_some_and(|commands| {
+                    commands
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|command| !command.trim().is_empty())
+                })
+    })
+}
+
+fn gap_records(value: &Value) -> Vec<&Value> {
+    if let Some(records) = value.as_array() {
+        return records.iter().collect();
+    }
+    if let Some(records) = value.get("records").and_then(Value::as_array) {
+        return records.iter().collect();
+    }
+    if let Some(records) = value.get("gap_records").and_then(Value::as_array) {
+        return records.iter().collect();
+    }
+    value
+        .get("cases")
+        .and_then(Value::as_array)
+        .map(|cases| {
+            cases
+                .iter()
+                .filter_map(|case| case.get("expected_gap_record"))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn selected_from_gap_record(
+    input: &FirstUsefulActionInput,
+    record: &Value,
+) -> Option<ActionSelected> {
+    let repair_route = record.get("repair_route");
+    let anchor = record.get("anchor");
+    Some(
+        ActionSelected {
+            source: "gap_ledger".to_string(),
+            source_artifact: input.gap_ledger_path.clone()?,
+            seam_id: None,
+            seam_kind: string_path(record, &["evidence_class"]),
+            path: string_from_sources(&[(anchor, &["file"]), (repair_route, &["target_file"])]),
+            line: u64_from_sources(&[(anchor, &["line"]), (repair_route, &["target_line"])]),
+            classification: string_path(record, &["gap_state"]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[
+                Some(record),
+                repair_route,
+            ]),
+            missing_discriminator: string_path(repair_route?, &["assertion_shape"]),
+            gap_id: string_path(record, &["gap_id"]),
+            canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+            repair_route: string_path(repair_route?, &["route_kind"]),
+        }
+        .with_inferred_current_evidence_strength(),
+    )
+}
+
+fn target_from_gap_record(record: &Value) -> Option<ActionTarget> {
+    let repair_route = record.get("repair_route")?;
+    Some(ActionTarget {
+        file: string_path(repair_route, &["target_file"]),
+        related_test: string_path(repair_route, &["related_test"]),
+        suggested_test_name: None,
+        suggested_assertion: string_path(repair_route, &["assertion_shape"]),
+    })
+    .filter(|target| {
+        target.file.is_some()
+            || target.related_test.is_some()
+            || target.suggested_assertion.is_some()
+    })
+}
+
+fn action_kind_for_gap_route(route_kind: &str) -> &'static str {
+    if route_kind == "AddOutputGolden" || route_kind == "RegenerateArtifact" {
+        "generate_missing_artifact"
+    } else {
+        "write_focused_test"
+    }
+}
+
+fn first_string_array_item(value: &Value, path: &[&str]) -> Option<String> {
+    path_value(value, path)
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(Value::as_str)
+        .find(|item| !item.trim().is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn selected_from_editor_context(
+    input: &FirstUsefulActionInput,
+    editor_context: &Value,
+) -> Option<ActionSelected> {
+    Some(
+        ActionSelected {
+            source: "editor_context".to_string(),
+            source_artifact: input.editor_context_path.clone()?,
+            seam_id: string_from_sources(&[
+                (Some(editor_context), &["seam_id"]),
+                (Some(editor_context), &["selected", "seam_id"]),
+            ]),
+            seam_kind: string_from_sources(&[
+                (Some(editor_context), &["class"]),
+                (Some(editor_context), &["seam_kind"]),
+                (Some(editor_context), &["selected", "seam_kind"]),
+            ]),
+            path: string_from_sources(&[
+                (Some(editor_context), &["file"]),
+                (Some(editor_context), &["path"]),
+                (Some(editor_context), &["selected", "path"]),
+            ]),
+            line: u64_from_sources(&[
+                (Some(editor_context), &["line"]),
+                (Some(editor_context), &["range", "start", "line"]),
+                (Some(editor_context), &["selected", "line"]),
+            ]),
+            classification: classification_from_sources(&[
+                (Some(editor_context), &["classification"]),
+                (Some(editor_context), &["class"]),
+                (Some(editor_context), &["grip_class"]),
+                (Some(editor_context), &["selected", "classification"]),
+            ]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[
+                Some(editor_context),
+                editor_context.get("selected"),
+            ]),
+            missing_discriminator: string_from_sources(&[
+                (Some(editor_context), &["missing_discriminator"]),
+                (Some(editor_context), &["missing_observation"]),
+                (Some(editor_context), &["selected", "missing_discriminator"]),
+            ]),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
+}
+
+fn selected_from_assistant_proof(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+) -> Option<ActionSelected> {
+    let proof = parsed.assistant_proof.as_ref()?;
+    let seam = proof.get("seam");
+    Some(
+        ActionSelected {
+            source: "assistant_proof".to_string(),
+            source_artifact: input.assistant_proof_path.clone()?,
+            seam_id: string_from_sources(&[(seam, &["seam_id"])]),
+            seam_kind: string_from_sources(&[(seam, &["seam_kind"])]),
+            path: string_from_sources(&[(seam, &["path"])]),
+            line: u64_from_sources(&[(seam, &["line"])]),
+            classification: classification_from_sources(&[(seam, &["grip_class"])]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[seam]),
+            missing_discriminator: string_from_sources(&[(seam, &["missing_discriminator"])]),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
+}
+
+fn selected_from_receipt_or_sources(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    receipt: &Value,
+) -> Option<ActionSelected> {
+    let proof_selected = selected_from_assistant_proof(input, parsed);
+    let source_artifact = input.receipt_path.clone()?;
+    let proof = parsed
+        .assistant_proof
+        .as_ref()
+        .and_then(|value| value.get("seam"));
+    let receipt_seam = receipt.get("seam");
+    let provenance = receipt.get("provenance");
+    Some(
+        ActionSelected {
+            source: "receipt".to_string(),
+            source_artifact,
+            seam_id: string_from_sources(&[
+                (provenance, &["seam_id"]),
+                (receipt_seam, &["seam_id"]),
+            ])
+            .or_else(|| {
+                proof_selected
+                    .as_ref()
+                    .and_then(|selected| selected.seam_id.clone())
+            }),
+            seam_kind: string_from_sources(&[
+                (receipt_seam, &["seam_kind"]),
+                (proof, &["seam_kind"]),
+            ])
+            .or_else(|| {
+                proof_selected
+                    .as_ref()
+                    .and_then(|selected| selected.seam_kind.clone())
+            }),
+            path: string_from_sources(&[(receipt_seam, &["file"]), (proof, &["path"])]).or_else(
+                || {
+                    proof_selected
+                        .as_ref()
+                        .and_then(|selected| selected.path.clone())
+                },
+            ),
+            line: u64_from_sources(&[(receipt_seam, &["line"]), (proof, &["line"])])
+                .or_else(|| proof_selected.as_ref().and_then(|selected| selected.line)),
+            classification: classification_from_sources(&[
+                (receipt_seam, &["grip_class"]),
+                (proof, &["grip_class"]),
+            ])
+            .or_else(|| {
+                proof_selected
+                    .as_ref()
+                    .and_then(|selected| selected.classification.clone())
+            }),
+            current_evidence_strength: current_evidence_strength_from_sources(&[
+                Some(receipt),
+                receipt_seam,
+                proof,
+            ])
+            .or_else(|| {
+                proof_selected
+                    .as_ref()
+                    .and_then(|selected| selected.current_evidence_strength.clone())
+            }),
+            missing_discriminator: string_from_sources(&[(proof, &["missing_discriminator"])])
+                .or_else(|| {
+                    proof_selected
+                        .as_ref()
+                        .and_then(|selected| selected.missing_discriminator.clone())
+                }),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
+}
+
+fn selected_from_guidance(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    source: &str,
+) -> Option<ActionSelected> {
+    let guidance = parsed.pr_guidance.as_ref()?;
+    let item = first_guidance_item(Some(guidance))
+        .or_else(|| first_summary_only_item(Some(guidance)))
+        .or_else(|| first_suppressed_item(Some(guidance)));
+    selected_from_guidance_item(input, item, source)
+}
+
+fn selected_from_guidance_item(
+    input: &FirstUsefulActionInput,
+    item: Option<&Value>,
+    source: &str,
+) -> Option<ActionSelected> {
+    Some(
+        ActionSelected {
+            source: source.to_string(),
+            source_artifact: input.pr_guidance_path.clone()?,
+            seam_id: string_from_sources(&[
+                (item, &["seam_id"]),
+                (item, &["seam", "seam_id"]),
+                (item, &["id"]),
+            ]),
+            seam_kind: string_from_sources(&[(item, &["kind"]), (item, &["seam", "kind"])]),
+            path: string_from_sources(&[
+                (item, &["placement", "path"]),
+                (item, &["seam", "file"]),
+                (item, &["path"]),
+            ]),
+            line: u64_from_sources(&[
+                (item, &["placement", "line"]),
+                (item, &["seam", "line"]),
+                (item, &["line"]),
+            ]),
+            classification: classification_from_sources(&[
+                (item, &["grip_class"]),
+                (item, &["classification"]),
+            ]),
+            current_evidence_strength: current_evidence_strength_from_sources(&[item]),
+            missing_discriminator: string_from_sources(&[(item, &["missing_discriminator"])]),
+            gap_id: None,
+            canonical_gap_id: None,
+            repair_route: None,
+        }
+        .with_inferred_current_evidence_strength(),
+    )
+}
+
+fn selected_baseline_only(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+) -> Option<ActionSelected> {
+    let delta = parsed.baseline_delta.as_ref()?;
+    let item = first_item_with_bucket(delta, &["still_present", "baseline_only"])?;
+    Some(selected_from_delta_item(
+        "baseline_delta",
+        input.baseline_delta_path.clone()?,
+        item,
+    ))
+}
+
+fn selected_acknowledged(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+) -> Option<ActionSelected> {
+    if let Some(delta) = parsed.baseline_delta.as_ref()
+        && let Some(item) = first_item_with_bucket(delta, &["acknowledged"])
+    {
+        return Some(selected_from_delta_item(
+            "baseline_delta",
+            input.baseline_delta_path.clone()?,
+            item,
+        ));
+    }
+    let ledger = parsed.ledger.as_ref()?;
+    if !matches!(u64_path(ledger, &["movement", "acknowledged"]), Some(count) if count > 0) {
+        return None;
+    }
+    Some(weakly_exposed_boundary_selected(
+        "ledger",
+        input.ledger_path.clone()?,
+        string_path(ledger, &["top_repair_route", "seam_id"])
+            .or_else(|| Some("acknowledged-boundary-0001".to_string())),
+        string_path(ledger, &["top_repair_route", "path"]),
+        u64_path(ledger, &["top_repair_route", "line"]),
+        string_path(ledger, &["top_repair_route", "missing_discriminator"]),
+    ))
+}
+
+fn selected_waived(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+) -> Option<ActionSelected> {
+    let gate = parsed.gate_decision.as_ref()?;
+    if !gate_has_waiver(gate) {
+        return None;
+    }
+    Some(weakly_exposed_boundary_selected(
+        "gate_decision",
+        input.gate_decision_path.clone()?,
+        first_gate_seam(gate).or_else(|| Some("waived-boundary-0001".to_string())),
+        first_gate_path(gate),
+        first_gate_line(gate),
+        first_gate_missing_discriminator(gate),
+    ))
+}
+
+fn selected_from_delta_item(source: &str, source_artifact: String, item: &Value) -> ActionSelected {
+    ActionSelected {
+        source: source.to_string(),
+        source_artifact,
+        seam_id: string_path(item, &["identity", "seam_id"]),
+        seam_kind: string_path(item, &["kind"]).or_else(|| Some("predicate_boundary".to_string())),
+        path: string_path(item, &["path"]),
+        line: u64_path(item, &["line"]),
+        classification: classification_from_sources(&[
+            (Some(item), &["classification"]),
+            (Some(item), &["static_class"]),
+        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)]),
+        missing_discriminator: string_path(item, &["missing_discriminator"]),
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
+    }
+    .with_inferred_current_evidence_strength()
+}
+
+fn weakly_exposed_boundary_selected(
+    source: &str,
+    source_artifact: String,
+    seam_id: Option<String>,
+    path: Option<String>,
+    line: Option<u64>,
+    missing_discriminator: Option<String>,
+) -> ActionSelected {
+    ActionSelected {
+        source: source.to_string(),
+        source_artifact,
+        seam_id,
+        seam_kind: Some("predicate_boundary".to_string()),
+        path,
+        line,
+        classification: Some("weakly_exposed".to_string()),
+        current_evidence_strength: None,
+        missing_discriminator,
+        gap_id: None,
+        canonical_gap_id: None,
+        repair_route: None,
+    }
+    .with_inferred_current_evidence_strength()
+}
+
+fn target_from_sources(parsed: &ParsedSources) -> Option<ActionTarget> {
+    let proof = parsed.assistant_proof.as_ref();
+    let guidance_item = first_guidance_item(parsed.pr_guidance.as_ref())
+        .or_else(|| first_summary_only_item(parsed.pr_guidance.as_ref()));
+    let related = string_from_sources(&[
+        (proof, &["recommendation", "related_test"]),
+        (guidance_item, &["suggested_test", "near_test"]),
+    ]);
+    let file = string_from_sources(&[
+        (guidance_item, &["suggested_test", "recommended_file"]),
+        (proof, &["recommendation", "related_test"]),
+    ])
+    .and_then(|text| text.split("::").next().map(ToOwned::to_owned));
+    let suggested_test_name = string_from_sources(&[
+        (guidance_item, &["suggested_test", "recommended_name"]),
+        (proof, &["recommendation", "suggested_test_name"]),
+    ]);
+    let suggested_assertion = string_from_sources(&[
+        (proof, &["recommendation", "suggested_test"]),
+        (guidance_item, &["suggested_test", "assertion_shape"]),
+        (guidance_item, &["suggested_test", "intent"]),
+    ])
+    .map(|text| normalize_suggested_assertion(&text));
+    if file.is_none()
+        && related.is_none()
+        && suggested_test_name.is_none()
+        && suggested_assertion.is_none()
+    {
+        return None;
+    }
+    Some(ActionTarget {
+        file,
+        related_test: related,
+        suggested_test_name,
+        suggested_assertion,
+    })
+}
+
+fn target_from_guidance_item(card: &Value) -> Option<ActionTarget> {
+    let file = string_path(card, &["suggested_test", "recommended_file"])
+        .and_then(|text| text.split("::").next().map(ToOwned::to_owned));
+    let related_test = string_path(card, &["suggested_test", "near_test"]);
+    let suggested_test_name = string_path(card, &["suggested_test", "recommended_name"]);
+    let suggested_assertion = string_from_sources(&[
+        (Some(card), &["suggested_test", "assertion_shape"]),
+        (Some(card), &["suggested_test", "intent"]),
+    ])
+    .map(|text| normalize_suggested_assertion(&text));
+    if file.is_none()
+        && related_test.is_none()
+        && suggested_test_name.is_none()
+        && suggested_assertion.is_none()
+    {
+        return None;
+    }
+    Some(ActionTarget {
+        file,
+        related_test,
+        suggested_test_name,
+        suggested_assertion,
+    })
+}
+
+fn seam_commands(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> ActionCommands {
+    let seam_id = selected_seam_id(parsed);
+    let Some(seam_id) = seam_id else {
+        return ActionCommands::default();
+    };
+    ActionCommands {
+        context_packet: Some(format!(
+            "ripr agent packet --root {} --seam-id {} --json",
+            loop_commands::shell_arg(&command_root(input)),
+            loop_commands::shell_arg(&seam_id)
+        )),
+        after_snapshot: Some(loop_commands::check_repo_exposure_command(
+            &command_root(input),
+            "draft",
+            loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        )),
+        // #4304: every file the receipt reads is written by a command listed
+        // here. The verify output lands at the path `receipt --verify-json`
+        // names, and the analysis outcome lands beside it, where the receipt
+        // looks for it.
+        analysis_outcome: Some(loop_commands::check_analysis_outcome_command(
+            &command_root(input),
+            "draft",
+            loop_commands::WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+        )),
+        verify: Some(loop_commands::agent_verify_command(
+            &command_root(input),
+            loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            Some(loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
+        )),
+        receipt: Some(loop_commands::agent_receipt_command(
+            &command_root(input),
+            loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            &seam_id,
+            None,
+        )),
+        command_specs: Some(ActionCommandSpecs {
+            verify: Some(command_specs::agent_verify_command_spec(
+                &command_root(input),
+                loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+                loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                Some(loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            )),
+            receipt: Some(command_specs::agent_receipt_command_spec(
+                &command_root(input),
+                loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                &seam_id,
+                None,
+            )),
+        }),
+        repair: None,
+        assistant_proof: None,
+        status: None,
+    }
+}
+
+/// The selected root bound once for product-generated commands (#4000): a
+/// relative `--root` resolves against the invocation working directory, the
+/// same directory the report inputs were resolved against.
+fn command_root(input: &FirstUsefulActionInput) -> String {
+    loop_commands::bound_root(&input.root)
+}
+
+fn receipt_command(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> Option<String> {
+    let seam_id = selected_seam_id(parsed)?;
+    Some(loop_commands::agent_receipt_command(
+        &command_root(input),
+        loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+        &seam_id,
+        None,
+    ))
+}
+
+fn assistant_proof_command() -> String {
+    format!(
+        "ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before {} --after {} --receipt {} --ledger target/ripr/reports/pr-evidence-ledger.json --out {} --out-md {}",
+        loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+        loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+        DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT,
+        DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_MD_OUT
+    )
+}
+
+fn selected_seam_id(parsed: &ParsedSources) -> Option<String> {
+    string_from_sources(&[
+        (parsed.assistant_proof.as_ref(), &["seam", "seam_id"]),
+        (parsed.receipt.as_ref(), &["provenance", "seam_id"]),
+        (parsed.receipt.as_ref(), &["seam", "seam_id"]),
+        (
+            first_guidance_item(parsed.pr_guidance.as_ref()),
+            &["seam_id"],
+        ),
+        (parsed.ledger.as_ref(), &["top_repair_route", "seam_id"]),
+    ])
+}
+
+fn receipt_movement(receipt: &Value) -> Option<String> {
+    string_from_sources(&[
+        (Some(receipt), &["provenance", "movement"]),
+        (Some(receipt), &["seam", "change"]),
+        (Some(receipt), &["summary", "next_action", "kind"]),
+    ])
+}
+
+fn has_actionable_guidance(pr_guidance: Option<&Value>) -> bool {
+    first_guidance_item(pr_guidance).is_some() || first_summary_only_item(pr_guidance).is_some()
+}
+
+fn has_suppressed_guidance(pr_guidance: Option<&Value>) -> bool {
+    let Some(value) = pr_guidance else {
+        return false;
+    };
+    first_suppressed_item(Some(value)).is_some()
+        || value
+            .get("warnings")
+            .and_then(Value::as_array)
+            .is_some_and(|warnings| {
+                // review-comments warnings are objects `{ kind, message }`; match
+                // against the message text, not a bare string.
+                warnings
+                    .iter()
+                    .filter_map(|warning| warning.get("message").and_then(Value::as_str))
+                    .any(|warning| {
+                        warning.contains("configured off") || warning.contains("suppressed")
+                    })
+            })
+}
+
+fn first_guidance_item(pr_guidance: Option<&Value>) -> Option<&Value> {
+    pr_guidance
+        .and_then(|value| value.get("comments"))
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+}
+
+fn first_summary_only_item(pr_guidance: Option<&Value>) -> Option<&Value> {
+    pr_guidance
+        .and_then(|value| value.get("summary_only"))
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+}
+
+fn first_suppressed_item(pr_guidance: Option<&Value>) -> Option<&Value> {
+    pr_guidance
+        .and_then(|value| value.get("suppressed"))
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())
+}
+
+fn first_item_with_bucket<'a>(report: &'a Value, buckets: &[&str]) -> Option<&'a Value> {
+    report
+        .get("items")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|item| {
+            string_path(item, &["bucket"]).is_some_and(|bucket| buckets.contains(&bucket.as_str()))
+        })
+}
+
+fn gate_has_waiver(gate: &Value) -> bool {
+    string_from_sources(&[
+        (Some(gate), &["waiver", "state"]),
+        (Some(gate), &["waiver"]),
+    ])
+    .is_some_and(|value| value == "waived" || value == "visible")
+        || string_from_sources(&[(Some(gate), &["status"]), (Some(gate), &["decision"])])
+            .is_some_and(|value| value == "waived")
+        || gate
+            .get("waivers")
+            .and_then(Value::as_array)
+            .is_some_and(|items| !items.is_empty())
+}
+
+fn first_gate_seam(gate: &Value) -> Option<String> {
+    string_from_sources(&[
+        (Some(gate), &["seam_id"]),
+        (Some(gate), &["items", "0", "seam_id"]),
+    ])
+}
+
+fn first_gate_path(gate: &Value) -> Option<String> {
+    string_from_sources(&[
+        (Some(gate), &["path"]),
+        (Some(gate), &["items", "0", "path"]),
+    ])
+}
+
+fn first_gate_line(gate: &Value) -> Option<u64> {
+    u64_from_sources(&[
+        (Some(gate), &["line"]),
+        (Some(gate), &["items", "0", "line"]),
+    ])
+}
+
+fn first_gate_missing_discriminator(gate: &Value) -> Option<String> {
+    string_from_sources(&[
+        (Some(gate), &["missing_discriminator"]),
+        (Some(gate), &["items", "0", "missing_discriminator"]),
+    ])
+}
+
+fn trim_period(value: &str) -> &str {
+    value.trim_end_matches('.')
+}
+
+fn normalize_suggested_assertion(value: &str) -> String {
+    let prefix = "Add a focused test where ";
+    let middle = " and assert the exact ";
+    if let Some(rest) = value.strip_prefix(prefix)
+        && let Some((condition, target)) = rest.split_once(middle)
+    {
+        return format!(
+            "Assert the exact {} at {}.",
+            trim_period(target),
+            trim_period(condition)
+        );
+    }
+    value.to_string()
+}
+
+fn classification_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {
+    string_from_sources(sources).map(|value| match value.as_str() {
+        "weakly_gripped" => "weakly_exposed".to_string(),
+        "strongly_gripped" => "exposed".to_string(),
+        other => other.to_string(),
+    })
+}
+
+fn current_evidence_strength_from_sources(sources: &[Option<&Value>]) -> Option<String> {
+    sources.iter().find_map(|source| {
+        let source = (*source)?;
+        string_from_sources(&[
+            (Some(source), &["current_evidence_strength"]),
+            (Some(source), &["evidence", "current_evidence_strength"]),
+            (Some(source), &["selected", "current_evidence_strength"]),
+        ])
+    })
+}
+
+fn current_evidence_strength_for_selection(
+    repair_route: Option<&str>,
+    classification: Option<&str>,
+    seam_kind: Option<&str>,
+) -> Option<String> {
+    match repair_route.or(seam_kind) {
+        Some("MissingOutputContract" | "AddOutputGolden" | "RegenerateArtifact") => Some(
+            "Static evidence found changed user-facing output, but no checked output or golden proof is attached."
+                .to_string(),
+        ),
+        Some(
+            "MissingBoundaryAssertion" | "MissingValueAssertion" | "MissingErrorDiscriminator"
+            | "AddBoundaryAssertion" | "AddTargetedAssertion" | "predicate_boundary",
+        ) => Some(
+            "Static evidence found related test context, but the current check is weak because the discriminator is missing."
+                .to_string(),
+        ),
+        _ => match classification {
+            Some("weakly_exposed") => Some(
+                "Static evidence found related test context, but the current check is weak because the discriminator is missing."
+                    .to_string(),
+            ),
+            Some("reachable_unrevealed") => Some(
+                "Static evidence found reachable changed behavior, but no current check observes the changed result."
+                    .to_string(),
+            ),
+            Some("no_static_path") => Some(
+                "Static analysis did not find a current test path to the changed behavior."
+                    .to_string(),
+            ),
+            Some("exposed") => Some(
+                "Static evidence found a current check that appears to observe the changed behavior."
+                    .to_string(),
+            ),
+            Some(kind @ ("static_unknown" | "infection_unknown" | "propagation_unknown")) => {
+                Some(format!(
+                    "Static evidence is `{kind}`; no runtime proof is claimed."
+                ))
+            }
+            Some(other) => Some(format!(
+                "Static evidence reported `{other}`; no runtime proof is claimed."
+            )),
+            None => None,
+        },
+    }
+}
+
+fn string_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| string_path(value, path)))
+}
+
+fn u64_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<u64> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| u64_path(value, path)))
+}
+
+fn bool_path(value: &Value, path: &[&str]) -> Option<bool> {
+    path_value(value, path).and_then(Value::as_bool)
+}
+
+fn string_path(value: &Value, path: &[&str]) -> Option<String> {
+    path_value(value, path).and_then(value_as_string)
+}
+
+fn u64_path(value: &Value, path: &[&str]) -> Option<u64> {
+    path_value(value, path).and_then(Value::as_u64)
+}
+
+fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for key in path {
+        if let Ok(index) = key.parse::<usize>() {
+            current = current.get(index)?;
+        } else {
+            current = current.get(*key)?;
+        }
+    }
+    Some(current)
+}
+
+fn value_as_string(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_string());
+    }
+    if let Some(number) = value.as_i64() {
+        return Some(number.to_string());
+    }
+    value.as_u64().map(|number| number.to_string())
+}
+
+fn has_any_input(input: &FirstUsefulActionInput) -> bool {
+    input.pr_guidance_path.is_some()
+        || input.assistant_proof_path.is_some()
+        || input.gap_ledger_path.is_some()
+        || input.ledger_path.is_some()
+        || input.baseline_delta_path.is_some()
+        || input.receipt_path.is_some()
+        || input.gate_decision_path.is_some()
+        || input.coverage_frontier_path.is_some()
+        || input.editor_context_path.is_some()
+}
+
+fn has_any_parsed(parsed: &ParsedSources) -> bool {
+    parsed.pr_guidance.is_some()
+        || parsed.assistant_proof.is_some()
+        || parsed.gap_ledger.is_some()
+        || parsed.ledger.is_some()
+        || parsed.baseline_delta.is_some()
+        || parsed.receipt.is_some()
+        || parsed.gate_decision.is_some()
+        || parsed.coverage_frontier.is_some()
+        || parsed.editor_context.is_some()
+}

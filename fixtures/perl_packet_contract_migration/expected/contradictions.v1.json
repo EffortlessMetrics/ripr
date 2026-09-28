@@ -1,0 +1,172 @@
+{
+  "kind": "perl_packet_contract_contradictions",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0064",
+  "case_id": "ordinary_discount",
+  "producer": {
+    "repository": "EffortlessMetrics/perl-lsp-swarm",
+    "commit": "a9664af790888333efbe50a042fa060f3cc2d171",
+    "version": "0.17.0"
+  },
+  "packet": "fixtures/perl_packet_contract_migration/producer-packets/v1/ordinary_discount.json",
+  "packet_sha256": "sha256:0cc8f4bb089aebc99313e143dee9dd2479c34e99b51a8d404063c3d9a370f658",
+  "observed_at": {
+    "ripr_repository": "EffortlessMetrics/ripr-swarm",
+    "ripr_commit": "f608dfd7868843c19087646aded2acfdecdef539"
+  },
+  "row_schema": {
+    "impact": ["decode", "validation", "identity", "classification", "output"],
+    "v2_disposition": ["preserve", "rename", "split", "remove", "make_explicit"],
+    "class": [
+      "implementation_defect",
+      "contract_change",
+      "fixture_correction",
+      "unsupported_behavior"
+    ]
+  },
+  "contradictions": [
+    {
+      "id": "path_style_vocab_drift",
+      "json_pointer": "/root/path_style",
+      "producer_shape": "\"posix\"",
+      "consumer_behavior": "decodes into an untyped String and never validates the value",
+      "written_spec": "RIPR-SPEC-0064 top-level shape declares `path_style: \"repo_relative\"`",
+      "impact": "identity",
+      "class": "contract_change",
+      "v2_disposition": "rename",
+      "owner_issue": "#3218"
+    },
+    {
+      "id": "symbolic_head_not_resolved",
+      "json_pointer": "/root/vcs_head",
+      "producer_shape": "\"HEAD\" (symbolic ref, caller-asserted; producer limitation `diff-provenance-unverified` states base/head/diff are not verified against a repository)",
+      "consumer_behavior": "accepts any non-coherent value; only `input.head` non-emptiness is enforced",
+      "written_spec": "SPEC-0064 example carries a resolved commit (`\"vcs_head\": \"abc123\"`)",
+      "impact": "identity",
+      "class": "unsupported_behavior",
+      "v2_disposition": "make_explicit",
+      "owner_issue": "#3219"
+    },
+    {
+      "id": "owner_id_scheme_drift",
+      "json_pointer": "/owners/1/owner_id",
+      "producer_shape": "\"owner:lib/App/Discount.pm:sub:App::Discount::discount:51-174\" (colon-separated, byte-range suffix)",
+      "consumer_behavior": "`canonical_owner_identity` requires a `perl:` prefix and returns None for every real producer owner, so real packets can never derive a canonical Perl gap identity",
+      "written_spec": "SPEC-0064 owner IDs must be `perl:<normalized/path>::<package-or-script>::<owner-name>`",
+      "impact": "classification",
+      "class": "contract_change",
+      "v2_disposition": "rename",
+      "owner_issue": "#3218"
+    },
+    {
+      "id": "changed_text_digest_recipe_drift",
+      "json_pointer": "/changes/0/changed_text_digest",
+      "producer_shape": "\"fnv64:a042c04bd6f47f35\"",
+      "consumer_behavior": "honors only a `discriminator:` prefix when deriving the missing discriminator from this field; the fnv64 value falls back to the generic enum label",
+      "written_spec": "SPEC-0064 file digests are `sha256:...` content hashes; the change digest follows the same digest vocabulary",
+      "impact": "classification",
+      "class": "contract_change",
+      "v2_disposition": "rename",
+      "owner_issue": "#3218"
+    },
+    {
+      "id": "missing_discriminator_always_null",
+      "json_pointer": "/changes/0/missing_discriminator",
+      "producer_shape": "null (producer limitation `change-behavior-hint-partial`: \"missing_discriminator is always null in this slice\")",
+      "consumer_behavior": "Campaign 31 PR 12 expects a concrete discriminator from the change fact and falls back to the generic `return_value` label when absent, weakening gap identity",
+      "written_spec": "SPEC-0064 gap identity key includes `missing_discriminator`; a concrete discriminator is the strict-actionability expectation",
+      "impact": "classification",
+      "class": "unsupported_behavior",
+      "v2_disposition": "make_explicit",
+      "owner_issue": "#3221"
+    },
+    {
+      "id": "change_and_relation_provenance_empty",
+      "json_pointer": "/changes/0/provenance_refs",
+      "producer_shape": "[] (same for /relations/0/provenance_refs)",
+      "consumer_behavior": "missing provenance downgrades the fact to weak context; strict actionability fails closed without it (conservative, but the evidence is unusable for strict routes)",
+      "written_spec": "SPEC-0064: \"Every fact that affects actionability must carry at least one provenance ref\"",
+      "impact": "classification",
+      "class": "implementation_defect",
+      "v2_disposition": "make_explicit",
+      "owner_issue": "#3221"
+    },
+    {
+      "id": "limitation_kinds_outside_enumeration",
+      "json_pointer": "/limitations/2/kind",
+      "producer_shape": "\"unverified_provenance\" (also /limitations/3/kind = \"range_precision\", /limitations/4/kind = \"partial_inference\")",
+      "consumer_behavior": "`LimitationFact.kind` is an untyped String; these kinds are absent from `limitation_kind_blocks_strict_actionability`, so they never block strict actionability and are not recognized vocabulary",
+      "written_spec": "SPEC-0064 limitation/dynamic-boundary `kind` values are a closed enumeration not containing these three kinds",
+      "impact": "validation",
+      "class": "contract_change",
+      "v2_disposition": "make_explicit",
+      "owner_issue": "#3218"
+    },
+    {
+      "id": "provenance_range_string_shape",
+      "json_pointer": "/provenance/1/range",
+      "producer_shape": "\"3:0-3:14\" (string) or null (/provenance/2/range)",
+      "consumer_behavior": "`ProvenanceFact.range` is `Option<serde_json::Value>` and accepts any shape, so the drift is silently tolerated instead of typed",
+      "written_spec": "SPEC-0064 provenance facts carry a structured range object (`start_line`/`start_column`/`end_line`/`end_column`)",
+      "impact": "decode",
+      "class": "contract_change",
+      "v2_disposition": "split",
+      "owner_issue": "#3218"
+    },
+    {
+      "id": "zero_based_coordinates",
+      "json_pointer": "/owners/1/range/start_line",
+      "producer_shape": "5 (zero-based; the `sub discount` declaration is on one-based line 6; same basis across owner/change/oracle/test ranges)",
+      "consumer_behavior": "stores `usize` ranges as-is and projects them into findings evidence without rebasing",
+      "written_spec": "SPEC-0064 determinism rules: \"Ranges use one-based line and column coordinates\"",
+      "impact": "output",
+      "class": "contract_change",
+      "v2_disposition": "make_explicit",
+      "owner_issue": "#3221"
+    },
+    {
+      "id": "diff_id_null_with_diff_supplied",
+      "json_pointer": "/input/diff_id",
+      "producer_shape": "null although a diff file was supplied to the producer",
+      "consumer_behavior": "`InputFact.diff_id` is Option<String>; the null passes, so the packet cannot prove which diff bytes it was built from",
+      "written_spec": "SPEC-0064 input example carries `\"diff_id\": \"sha256:...\"`",
+      "impact": "identity",
+      "class": "unsupported_behavior",
+      "v2_disposition": "split",
+      "owner_issue": "#3219"
+    },
+    {
+      "id": "packet_id_shape_drift",
+      "json_pointer": "/packet_id",
+      "producer_shape": "\"perl-lsp-ripr-facts-ripr-perl-facts-v1-<root>-<fact-classes>\" (concatenated labels)",
+      "consumer_behavior": "passes `validate_stable_id` (host-free, non-empty) but the shape is not the spec's content-derived form",
+      "written_spec": "SPEC-0064 top-level example: `\"packet_id\": \"perl-facts:repo:7f8c...\"`",
+      "impact": "identity",
+      "class": "contract_change",
+      "v2_disposition": "rename",
+      "owner_issue": "#3218"
+    },
+    {
+      "id": "capability_vocab_drift",
+      "json_pointer": "/producer/capabilities",
+      "producer_shape": "[\"files\", \"owners\", \"changes\", \"tests\", \"oracles\", \"relations\", \"dynamic_boundaries\", \"verify_commands\", \"limitations\", \"provenance\", \"test_facts\"]",
+      "consumer_behavior": "only the literal `test_facts` capability is checked; every other advertised name is unvalidated",
+      "written_spec": "SPEC-0064 producer example advertises `[\"syntax\", \"workspace\", \"test_facts\"]`",
+      "impact": "validation",
+      "class": "contract_change",
+      "v2_disposition": "make_explicit",
+      "owner_issue": "#3220"
+    },
+    {
+      "id": "observed_sink_line_granular_alignment",
+      "json_pointer": "/oracles/0/observed_sink",
+      "producer_shape": "\"5  if $amount < 25\" (the whole changed source line; `expected_expression` is null on every oracle; producer limitation `oracle-representation` states the v1 schema has no observed/expected sub-range fields)",
+      "consumer_behavior": "`sink_aligned_observation` established the Exposed flip via exact whole-line equality between `observed_sink` and `changed_observable` — line-granular text equality, not a sub-range observation of the changed sink",
+      "written_spec": "SPEC-0064 has no observed_sink/expected_expression fields at all (consumer extension); the strong-oracle-must-observe-the-changed-sink invariant is only as strong as this line-granular equality",
+      "impact": "classification",
+      "class": "unsupported_behavior",
+      "v2_disposition": "split",
+      "owner_issue": "#3223"
+    }
+  ]
+}

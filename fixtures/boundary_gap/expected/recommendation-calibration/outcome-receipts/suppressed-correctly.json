@@ -1,0 +1,57 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "review_guidance_outcome_receipt",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0013",
+  "receipt_id": "review-outcome-suppressed-configured-off",
+  "case_id": "suppression_configured_off",
+  "root": ".",
+  "guidance": {
+    "artifact": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+    "collection": "warnings",
+    "id": null,
+    "seam_id": "8f7fa8644fd12280",
+    "dedupe_key": "ripr:8f7fa8644fd12280:severity-off"
+  },
+  "outcome": {
+    "label": "suppressed_correctly",
+    "source": "fixture",
+    "reason": "Configured-off weakly gripped seams should stay hidden while preserving auditable warning text."
+  },
+  "placement": {
+    "path": null,
+    "line": null,
+    "mode": "not_placeable",
+    "quality": "not_placeable"
+  },
+  "suggested_test": {
+    "target_quality": "not_applicable",
+    "expected_file": null,
+    "actual_file": null,
+    "near_test": null
+  },
+  "suppression": {
+    "reason": "severity_off",
+    "quality": "suppressed_correctly"
+  },
+  "static_movement": {
+    "state": "unknown",
+    "source": "fixture_expectation",
+    "artifact": "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json"
+  },
+  "latency": {
+    "guidance_generated_unix_ms": null,
+    "outcome_recorded_unix_ms": null,
+    "outcome_latency_ms": null
+  },
+  "limits": {
+    "telemetry": false,
+    "external_service": false,
+    "source_edits": false,
+    "generated_tests": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking": false
+  },
+  "limits_note": "Advisory review-guidance outcome receipt only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+}

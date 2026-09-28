@@ -1,0 +1,8 @@
+diff --git a/src/loading.py b/src/loading.py
+index 0000000..1111111 100644
+--- a/src/loading.py
++++ b/src/loading.py
+@@ -1,2 +1,2 @@
+ async def load_total(client):
+-    return await client.total()
++    return await client.total() + 2

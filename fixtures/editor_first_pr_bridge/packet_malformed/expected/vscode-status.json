@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_malformed",
+  "status": "packet_malformed",
+  "projection": "fail_closed",
+  "first_pr_packet": {
+    "state": "malformed",
+    "path": "target/ripr/first-pr/start-here.json"
+  },
+  "next_safe_action": "Regenerate the first-pr packet before carrying evidence into PR review."
+}

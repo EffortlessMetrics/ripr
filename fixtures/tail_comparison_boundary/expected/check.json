@@ -1,0 +1,615 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/tail_comparison_boundary/input",
+  "summary": {"changed_rust_files":1,"probes":4,"findings":4,"exposed":1,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:cb19e900dfceb1b528d2ce1068f18b699afe382d314d27797d2106ef2efdfb1c","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":2,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:ca3e18b4",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:ca3e18b4",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/tail_comparison_boundary/input/src/lib.rs",
+        "line": 3,
+        "expression": "items >= 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach ships_free: big_order_ships_free, five_items_earn_a_gift, small_order_pays_shipping"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: items >= 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach ships_free: big_order_ships_free, five_items_earn_a_gift, small_order_pays_shipping", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: items >= 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: items >= 10 (line 3)", "related test tests/orders.rs:4 big_order_ships_free uses strong exact value oracle: assert_eq!(shipping(20), 0);", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(5), true);", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(4), false);", "related test tests/orders.rs:9 small_order_pays_shipping uses strong exact value oracle: assert_eq!(shipping(2), 800);", "observed assertion argument value 0 at line 5", "observed assertion argument value 20 at line 5", "observed assertion argument value 2 at line 10", "observed assertion argument value 800 at line 10", "observed assertion argument value 5 at line 15", "observed assertion argument value true at line 15", "observed assertion argument value 4 at line 16", "observed assertion argument value false at line 16", "missing discriminator items == 10: No related test call uses items equal to 10; observed items values: 2, 20; target 10 value: 10"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"items >= 10","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: items >= 10", "Related tests appear to reach ships_free: big_order_ships_free, five_items_earn_a_gift, small_order_pays_shipping", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: items == 10"],
+      "assertion_texts": {
+        "5": "assert_eq!(shipping(20), 0);",
+        "10": "assert_eq!(shipping(2), 800);",
+        "15": "assert_eq!(earns_gift(5), true);",
+        "16": "assert_eq!(earns_gift(4), false);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "20",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "2",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "800",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "5",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "true",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "4",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "false",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "items == 10",
+            "reason": "No related test call uses items equal to 10; observed items values: 2, 20; target 10 value: 10",
+            "flow_sink": {"kind":"return_value","text":"items >= 10","line":3}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "20",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "2",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "800",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "5",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "true",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "4",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "false",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "items == 10",
+          "reason": "No related test call uses items equal to 10; observed items values: 2, 20; target 10 value: 10",
+          "flow_sink": {"kind":"return_value","text":"items >= 10","line":3}
+        }
+      ],
+      "related_tests_total": 4,
+      "related_tests": [
+        {
+          "name": "big_order_ships_free",
+          "file": "tests/orders.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(shipping(20), 0);",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(5), true);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(4), false);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "small_order_pays_shipping",
+          "file": "tests/orders.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(shipping(2), 800);",
+          "relation_reason": "helper_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:b8337f94",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:b8337f94",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/tail_comparison_boundary/input/src/lib.rs",
+        "line": 3,
+        "expression": "items >= 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach ships_free: big_order_ships_free, five_items_earn_a_gift, small_order_pays_shipping"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: items >= 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach ships_free: big_order_ships_free, five_items_earn_a_gift, small_order_pays_shipping", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: items >= 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: items >= 10 (line 3)", "related test tests/orders.rs:4 big_order_ships_free uses strong exact value oracle: assert_eq!(shipping(20), 0);", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(5), true);", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(4), false);", "related test tests/orders.rs:9 small_order_pays_shipping uses strong exact value oracle: assert_eq!(shipping(2), 800);", "observed assertion argument value 0 at line 5", "observed assertion argument value 20 at line 5", "observed assertion argument value 2 at line 10", "observed assertion argument value 800 at line 10", "observed assertion argument value 5 at line 15", "observed assertion argument value true at line 15", "observed assertion argument value 4 at line 16", "observed assertion argument value false at line 16"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"items >= 10","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: items >= 10", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach ships_free: big_order_ships_free, five_items_earn_a_gift, small_order_pays_shipping"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert_eq!(shipping(20), 0);",
+        "10": "assert_eq!(shipping(2), 800);",
+        "15": "assert_eq!(earns_gift(5), true);",
+        "16": "assert_eq!(earns_gift(4), false);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "20",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "2",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "800",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "5",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "true",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "4",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "false",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "20",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "2",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "800",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "5",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "true",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "4",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "false",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 4,
+      "related_tests": [
+        {
+          "name": "big_order_ships_free",
+          "file": "tests/orders.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(shipping(20), 0);",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(5), true);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(4), false);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "small_order_pays_shipping",
+          "file": "tests/orders.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(shipping(2), 800);",
+          "relation_reason": "helper_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:17db21a1",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:17db21a1",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/tail_comparison_boundary/input/src/lib.rs",
+        "line": 17,
+        "expression": "items >= 5"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach earns_gift: five_items_earn_a_gift"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: items >= 5"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach earns_gift: five_items_earn_a_gift", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: items >= 5", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: items >= 5 (line 17)", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(5), true);", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(4), false);", "observed assertion argument value true at line 15", "observed function argument value items = 5 at line 15", "observed function argument value items == 5 at line 15", "observed assertion argument value false at line 16", "observed function argument value items = 4 at line 16"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"items >= 5","line":17}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: items >= 5", "Detected related test input at the changed boundary", "Related tests appear to reach earns_gift: five_items_earn_a_gift", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "15": "assert_eq!(earns_gift(5), true);",
+        "16": "assert_eq!(earns_gift(4), false);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 15,
+            "value": "true",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "items = 5",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "items == 5",
+            "context": "function_argument",
+            "provenance": "assert_eq!(earns_gift(5), true); | exact input items = 5; literal operand 5 = 5"
+          },
+          {
+            "line": 16,
+            "value": "false",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "items = 4",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 15,
+          "value": "true",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "items = 5",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "items == 5",
+          "context": "function_argument",
+          "provenance": "assert_eq!(earns_gift(5), true); | exact input items = 5; literal operand 5 = 5"
+        },
+        {
+          "line": 16,
+          "value": "false",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "items = 4",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(5), true);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(4), false);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:04f99ee4",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:04f99ee4",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/tail_comparison_boundary/input/src/lib.rs",
+        "line": 17,
+        "expression": "items >= 5"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach earns_gift: five_items_earn_a_gift"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: items >= 5"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach earns_gift: five_items_earn_a_gift", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: items >= 5", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: items >= 5 (line 17)", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(5), true);", "related test tests/orders.rs:14 five_items_earn_a_gift uses strong exact value oracle: assert_eq!(earns_gift(4), false);", "observed assertion argument value true at line 15", "observed function argument value items = 5 at line 15", "observed function argument value items == 5 at line 15", "observed assertion argument value false at line 16", "observed function argument value items = 4 at line 16"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"items >= 5","line":17}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: items >= 5", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach earns_gift: five_items_earn_a_gift"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "15": "assert_eq!(earns_gift(5), true);",
+        "16": "assert_eq!(earns_gift(4), false);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 15,
+            "value": "true",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 15,
+            "value": "items = 5",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "items == 5",
+            "context": "function_argument",
+            "provenance": "assert_eq!(earns_gift(5), true); | exact input items = 5; literal operand 5 = 5"
+          },
+          {
+            "line": 16,
+            "value": "false",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "items = 4",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 15,
+          "value": "true",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 15,
+          "value": "items = 5",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "items == 5",
+          "context": "function_argument",
+          "provenance": "assert_eq!(earns_gift(5), true); | exact input items = 5; literal operand 5 = 5"
+        },
+        {
+          "line": 16,
+          "value": "false",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "items = 4",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(5), true);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "five_items_earn_a_gift",
+          "file": "tests/orders.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(earns_gift(4), false);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

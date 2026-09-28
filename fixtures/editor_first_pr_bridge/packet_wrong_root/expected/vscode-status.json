@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_wrong_root",
+  "status": "packet_wrong_root",
+  "projection": "fail_closed",
+  "first_pr_packet": {
+    "state": "wrong_root",
+    "path": "target/ripr/first-pr/start-here.json",
+    "repo_root": "../other-workspace"
+  },
+  "next_safe_action": "Regenerate first-pr artifacts for the current workspace."
+}

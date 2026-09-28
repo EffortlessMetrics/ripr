@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/wrong_root_artifact",
+  "packet_state": "wrong_root",
+  "packet_path": "target/ripr/first-pr/start-here.json",
+  "expected_root": "fixtures/editor_adoption_assurance/wrong_root_artifact/workspace",
+  "observed_root": "fixtures/other-repo",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false,
+  "next_safe_action": "Regenerate first-pr artifacts for the active workspace root."
+}

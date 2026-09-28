@@ -1,0 +1,206 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/infection_expected_value_literal/input",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:3cffaa4239db8c1ad7509252b59845f883e92ac9264408755e7377d19c1344e2","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:14f80bce",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:14f80bce",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/infection_expected_value_literal/input/src/lib.rs",
+        "line": 19,
+        "expression": "weight_grams >= 2_000"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: 400"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax", "infection weak: Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "propagation yes: Changed behavior appears to influence returned value: 400", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 400 (line 20)", "related test tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax uses strong exact value oracle: assert_eq!(fragile_fee(weight), 400);", "related test tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax uses strong exact value oracle: assert_eq!(tax_bps(\"EU\"), 2000);", "observed assertion argument value 400 at line 6", "observed assertion argument value \"EU\" at line 7", "observed assertion argument value 2000 at line 7"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"400","line":20}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: 400", "Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax", "Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No detected boundary input for the changed predicate"],
+      "assertion_texts": {
+        "6": "assert_eq!(fragile_fee(weight), 400);",
+        "7": "assert_eq!(tax_bps(\"EU\"), 2000);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "400",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"EU\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 7,
+            "value": "2000",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "400",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"EU\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 7,
+          "value": "2000",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "heavy_crate_pays_fragile_fee_and_eu_tax",
+          "file": "tests/fees.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(fragile_fee(weight), 400);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "heavy_crate_pays_fragile_fee_and_eu_tax",
+          "file": "tests/fees.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(tax_bps(\"EU\"), 2000);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:a97c7c7c",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:a97c7c7c",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/infection_expected_value_literal/input/src/lib.rs",
+        "line": 28,
+        "expression": "volume_litres >= 50"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach bulky_fee: bulky_fee_starts_at_fifty_litres"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: 900"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach bulky_fee: bulky_fee_starts_at_fifty_litres", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: 900", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 900 (line 29)", "related test tests/fees.rs:11 bulky_fee_starts_at_fifty_litres uses strong exact value oracle: assert_eq!(bulky_fee(volume), 900);", "observed assertion argument value 900 at line 13", "observed function argument value volume_litres = 50 at line 13", "observed function argument value volume_litres == 50 at line 13"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"900","line":29}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: 900", "Detected related test input at the changed boundary", "Related tests appear to reach bulky_fee: bulky_fee_starts_at_fifty_litres", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "13": "assert_eq!(bulky_fee(volume), 900);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 13,
+            "value": "900",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 13,
+            "value": "volume_litres = 50",
+            "context": "function_argument"
+          },
+          {
+            "line": 13,
+            "value": "volume_litres == 50",
+            "context": "function_argument",
+            "provenance": "assert_eq!(bulky_fee(volume), 900); | exact input volume_litres = 50; literal operand 50 = 50"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 13,
+          "value": "900",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 13,
+          "value": "volume_litres = 50",
+          "context": "function_argument"
+        },
+        {
+          "line": 13,
+          "value": "volume_litres == 50",
+          "context": "function_argument",
+          "provenance": "assert_eq!(bulky_fee(volume), 900); | exact input volume_litres = 50; literal operand 50 = 50"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "bulky_fee_starts_at_fifty_litres",
+          "file": "tests/fees.rs",
+          "line": 11,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(bulky_fee(volume), 900);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

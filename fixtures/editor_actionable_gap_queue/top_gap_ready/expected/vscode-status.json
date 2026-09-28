@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/top_gap_ready",
+  "queue_status": "top_actionable_gap",
+  "projection": "active",
+  "actionable_gaps": 1,
+  "report_only_gaps": 0,
+  "static_limit_only_gaps": 0,
+  "top_gap": {
+    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+    "repair_kind": "strengthen_assertion",
+    "language": "rust",
+    "language_status": "stable",
+    "related_test": "tests/pricing.rs::premium_customer_gets_discount",
+    "verify_command": "cargo xtask evidence-quality-audit"
+  },
+  "receipt": {
+    "state": "missing"
+  },
+  "next_safe_action": "Copy Current Repair Packet, open the related test, verify movement, and emit a receipt.",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "merge_readiness_claim": false
+}

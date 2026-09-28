@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/language_disabled",
+  "receipt_state": "receipt_suppressed_disabled_language",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Enable a language before acting on receipts."
+}

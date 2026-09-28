@@ -1,0 +1,148 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "mode": "baseline-check",
+  "root": ".",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "baseline": ".ripr/gate-baseline.json",
+    "labels": []
+  },
+  "decisions": [
+    {
+      "decision": "advisory",
+      "id": "ripr-gate-same",
+      "seam_id": "same",
+      "source_id": "ripr-review-same",
+      "static_class": "weakly_gripped",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "gate_reason": "candidate identity is already present in the explicit baseline",
+      "placement": {
+        "path": "src/same.rs",
+        "line": 1
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "same",
+        "mode": "baseline-check",
+        "threshold": "high_confidence_new_gap"
+      },
+      "evidence": {
+        "missing_discriminator": "same == 1",
+        "assertion_shape": "assert_eq!(same(), 1)",
+        "recommended_test": "tests/same.rs::boundary",
+        "candidate_values": [
+          "same == 1"
+        ],
+        "nearby_test_changed": false,
+        "suppressed": false,
+        "configured_off": false
+      }
+    },
+    {
+      "decision": "blocking",
+      "id": "ripr-gate-new",
+      "seam_id": "new",
+      "source_id": "ripr-review-new",
+      "static_class": "weakly_gripped",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "gate_reason": "calibrated high-confidence new gap",
+      "placement": {
+        "path": "src/new.rs",
+        "line": 4
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "new",
+        "mode": "baseline-check",
+        "threshold": "high_confidence_new_gap"
+      },
+      "evidence": {
+        "missing_discriminator": "new == 4",
+        "assertion_shape": "assert_eq!(new(), 4)",
+        "recommended_test": "tests/new.rs::boundary",
+        "candidate_values": [
+          "new == 4"
+        ],
+        "nearby_test_changed": false,
+        "suppressed": false,
+        "configured_off": false
+      }
+    },
+    {
+      "decision": "acknowledged",
+      "id": "ripr-gate-ack",
+      "seam_id": "ack",
+      "source_id": "ripr-review-ack",
+      "static_class": "weakly_gripped",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
+      "placement": {
+        "path": "src/ack.rs",
+        "line": 5
+      },
+      "policy": {
+        "acknowledgement_label": "ripr-waive",
+        "baseline_identity": "ack",
+        "mode": "acknowledgeable",
+        "threshold": "high_confidence_new_gap"
+      },
+      "evidence": {
+        "missing_discriminator": "ack == 5",
+        "assertion_shape": "assert_eq!(ack(), 5)",
+        "recommended_test": "tests/ack.rs::boundary",
+        "candidate_values": [
+          "ack == 5"
+        ],
+        "nearby_test_changed": false,
+        "suppressed": false,
+        "configured_off": false
+      }
+    },
+    {
+      "decision": "suppressed",
+      "id": "ripr-gate-suppressed",
+      "seam_id": "suppressed",
+      "source_id": "ripr-review-suppressed",
+      "static_class": "weakly_gripped",
+      "severity": "off",
+      "source": "pr_guidance",
+      "gate_reason": "configured-hidden or suppressed candidate preserved as `severity_off`",
+      "placement": {
+        "path": "src/suppressed.rs",
+        "line": 6
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "suppressed",
+        "mode": "acknowledgeable",
+        "threshold": "high_confidence_new_gap"
+      },
+      "evidence": {
+        "missing_discriminator": "suppressed == 6",
+        "assertion_shape": null,
+        "recommended_test": null,
+        "candidate_values": [],
+        "nearby_test_changed": false,
+        "suppressed": true,
+        "configured_off": true
+      }
+    }
+  ],
+  "summary": {
+    "evaluated": 4,
+    "blocking": 1,
+    "acknowledged": 1,
+    "advisory": 1,
+    "suppressed": 1,
+    "not_applicable": 0,
+    "unknown_confidence": 0
+  },
+  "warnings": [],
+  "config_errors": [],
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied."
+}

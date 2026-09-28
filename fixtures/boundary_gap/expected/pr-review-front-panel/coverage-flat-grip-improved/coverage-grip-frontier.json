@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "coverage_grip_frontier",
+  "status": "advisory",
+  "coverage_grip": {
+    "state": "flat_coverage_grip_improved",
+    "coverage_delta": 0.0,
+    "grip_delta": -3
+  }
+}

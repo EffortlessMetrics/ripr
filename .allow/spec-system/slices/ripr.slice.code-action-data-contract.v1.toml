@@ -1,0 +1,75 @@
+schema_version = "2.0"
+id = "ripr.slice.code-action-data-contract.v1"
+generation = 1
+
+source_issue = "issue:1892"
+design_reference = "RIPR-SPEC-0129"
+change_class = "behavior_change"
+
+claim_boundary = """
+Gives every ripr LSP code action a bounded, versioned `CodeAction.data`
+payload (`ripr-code-action-data-v1`: deterministic fingerprinted action_id,
+action class/kind, addressed identity fields, snapshot input identity,
+required client capability, disabled_reason only when disabled), attaches
+the addressed diagnostic to diagnostic-addressing actions, and converts the
+#1776 client-command omit-filter into the omit-vs-disabled policy:
+`CodeAction.disabled`-capable clients receive suppressed client-command
+actions inert (command and edit stripped, kind retained,
+client_capability_missing named) while other clients keep the fail-closed
+omission. The same disabled form names the previously silent suppression
+sites: stale_snapshot (stale gap diagnostic), verification_route_unavailable
+and receipt_route_unavailable (gap record without a safe verify/receipt
+command), and preview_or_static_limitation (cross-language unresolved
+target). Disabled reasons are a closed vocabulary with a fail-closed emit
+guard; reserved reasons name their future producers and stay unemittable.
+It does not change the advertised capability set (resolve_provider stays
+false), the command-negotiation rules themselves, quickfix.ripr emissions
+(#1904), the VS Code extension, or any output schema or golden.
+"""
+
+non_goals = [
+  "capabilities advertisement changes (codeAction resolve_provider stays false)",
+  "codeAction/resolve handlers (#1751)",
+  "quickfix.ripr repair actions (#1904)",
+  "VS Code extension changes",
+  "backend health/root gate changes (stays omit-only)",
+  "diagnostic, hover, or codeLens surface changes",
+  "output schema or golden changes",
+]
+
+return_conditions = [
+  "Return to root if a disabled action can still execute (command or edit attached).",
+  "Return to root if a client without CodeAction.disabled support loses the fail-closed omission.",
+  "Return to root if a disabled action loses its kind under CodeActionContext.only.",
+  "Return to root if LSP goldens or check output contracts drift.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:code-action-data-contract",
+  "seam:ripr:lsp:code-action-disabled-policy",
+]
+
+shared_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+  "seam:ripr:lsp:code-action-client-command-filter",
+]
+
+forbidden_seams = [
+  "seam:ripr:lsp:capabilities-advertisement",
+  "seam:ripr:editors:vscode-extension",
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:lsp:ripr-agent-protocol",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"
