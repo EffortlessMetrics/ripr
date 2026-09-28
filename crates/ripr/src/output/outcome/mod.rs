@@ -14,7 +14,6 @@ mod path;
 mod render_json;
 mod review;
 
-use markdown::md_escape;
 pub(crate) use markdown::render_targeted_test_outcome_md;
 pub(crate) use path::display_path;
 use path::normalize_report_path;
@@ -730,24 +729,18 @@ fn targeted_outcome_evidence_delta(
     for value in delta.missing_discriminators_resolved {
         deltas.push(format!(
             "missing discriminator no longer reported: {}",
-            md_escape(value)
+            value
         ));
     }
     for value in delta.missing_discriminators_reopened {
-        deltas.push(format!(
-            "new missing discriminator reported: {}",
-            md_escape(value)
-        ));
+        deltas.push(format!("new missing discriminator reported: {}", value));
     }
 
     for value in delta.observed_values_added {
-        deltas.push(format!("new observed value: {}", md_escape(value)));
+        deltas.push(format!("new observed value: {}", value));
     }
     for value in delta.observed_values_removed {
-        deltas.push(format!(
-            "previous observed value absent: {}",
-            md_escape(value)
-        ));
+        deltas.push(format!("previous observed value absent: {}", value));
     }
 
     if let Some(oracle_delta) = delta.oracle_strength_delta {

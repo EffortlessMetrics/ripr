@@ -3,7 +3,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::markdown::{code_span, code_span_content};
+use super::markdown::{code_span, code_span_content, inline_prose, prose};
 use super::review_comments::SUMMARY_REASON_INLINE_CAP_REACHED;
 
 const SCHEMA_VERSION: &str = "0.1";
@@ -441,24 +441,26 @@ pub(crate) fn render_comment_publish_plan_markdown(report: &CommentPublishPlanRe
                 continue;
             }
             out.push_str(&format!(
-                "- {} {}:{} {}\n",
+                "- {} {} {}\n",
                 operation.operation,
-                operation.placement.path,
-                operation.placement.line,
+                inline_prose(&format!(
+                    "{}:{}",
+                    operation.placement.path, operation.placement.line
+                )),
                 code_span(&operation.dedupe_key)
             ));
             if let Some(body) = operation.body.as_deref() {
                 if let Some(gap) = gap_title_from_comment_body(body) {
-                    out.push_str(&format!("  - gap: {gap}\n"));
+                    out.push_str(&format!("  - gap: {}\n", inline_prose(&gap)));
                 }
                 if let Some(changed) = changed_behavior_from_body(Some(body)) {
                     out.push_str(&format!("  - changed behavior: {}\n", code_span(&changed)));
                 }
                 if let Some(route) = repair_route_from_body(Some(body)) {
-                    out.push_str(&format!("  - repair route: {route}\n"));
+                    out.push_str(&format!("  - repair route: {}\n", inline_prose(&route)));
                 }
                 if let Some(repair) = repair_from_body(Some(body)) {
-                    out.push_str(&format!("  - repair: {repair}\n"));
+                    out.push_str(&format!("  - repair: {}\n", inline_prose(&repair)));
                 }
                 if let Some(start) = start_repair_from_body(Some(body)) {
                     out.push_str(&format!("  - start the repair: {}\n", code_span(&start)));
@@ -942,10 +944,11 @@ fn repair_card_body(
     next: NextStep<'_>,
 ) -> String {
     // Every field may carry text from user source; each is bounded before it
-    // is rendered (#4446).
+    // is rendered (#4446), and prose outside ripr's code spans cannot mention
+    // a user or render raw HTML (#4468).
     let mut body = format!(
         "### ripr gap: {}\n\n",
-        bounded_field(gap_title, TITLE_FIELD_CHAR_BUDGET)
+        inline_prose(&bounded_field(gap_title, TITLE_FIELD_CHAR_BUDGET))
     );
     if let Some(changed) = changed_behavior {
         body.push_str("Changed behavior:\n");
@@ -953,13 +956,19 @@ fn repair_card_body(
         body.push_str("\n\n");
     }
     body.push_str("Why this matters:\n");
-    body.push_str(&bounded_field(why.trim(), PROSE_FIELD_CHAR_BUDGET));
+    body.push_str(&prose(&bounded_field(why.trim(), PROSE_FIELD_CHAR_BUDGET)));
     if let Some(route) = repair_route {
         body.push_str("\n\nRepair route:\n");
-        body.push_str(&bounded_field(route.trim(), TITLE_FIELD_CHAR_BUDGET));
+        body.push_str(&inline_prose(&bounded_field(
+            route.trim(),
+            TITLE_FIELD_CHAR_BUDGET,
+        )));
     }
     body.push_str("\n\nRepair:\n");
-    body.push_str(&bounded_field(repair.trim(), PROSE_FIELD_CHAR_BUDGET));
+    body.push_str(&prose(&bounded_field(
+        repair.trim(),
+        PROSE_FIELD_CHAR_BUDGET,
+    )));
     match next {
         NextStep::Verify(verify) => {
             body.push_str("\n\nVerify:\n");
@@ -1262,6 +1271,91 @@ mod tests {
             rendered.contains("  - verify: `` ripr agent verify `x` ``\n"),
             "{rendered}"
         );
+    }
+
+    /// #4468: prose outside ripr's code spans (Why, Repair, route, gap title
+    /// and the plan's path) cannot mention a user or render raw HTML, while
+    /// ripr's own span over the hostile expression stays byte-for-byte.
+    #[test]
+    fn inline_comment_prose_neutralises_mentions_and_raw_html() {
+        let span = code_span("a` @octocat | <img>");
+        let repair = format!("Assert {span} for @octocat <script>alert(1)</script>.");
+        let guidance = serde_json::json!({
+            "comments": [{
+                "id": "c",
+                "dedupe_key": "ripr:c",
+                "placement": {"path": "src/`@octocat|<b>.rs", "line": 7, "side": "RIGHT", "mode": "exact_seam_line"},
+                "reason": "safe",
+                "repair_card": {
+                    "gap_kind": "Custom@octocat<i>",
+                    "changed_behavior": "a` @octocat | <img>",
+                    "why_this_matters": "Ask @octocat\n<img src=x onerror=alert(1)>",
+                    "repair": repair,
+                    "repair_route": {"route_kind": "Route@octocat<u>"}
+                }
+            }],
+            "summary_only": [],
+            "suppressed": []
+        });
+        let report = build_comment_publish_plan_report(CommentPublishPlanInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-10T12:00:00Z".to_string(),
+            mode: CommentMode::Plan,
+            max_inline_comments: 3,
+            pr_guidance_path: Some("comments.json".to_string()),
+            pr_guidance_json: Some(Ok(guidance.to_string())),
+            existing_comments_path: None,
+            existing_comments_json: None,
+            permission: CommentPermissionContext::default(),
+        });
+        let body = report
+            .operations
+            .first()
+            .and_then(|operation| operation.body.clone())
+            .unwrap_or_default();
+        let joiner = '\u{2060}';
+        assert!(
+            body.contains(&format!("### ripr gap: custom@{joiner}octocat&lt;i>\n\n")),
+            "{body}"
+        );
+        assert!(
+            body.contains(&format!("Changed behavior:\n{span}\n\n")),
+            "{body}"
+        );
+        assert!(
+            body.contains(&format!(
+                "Why this matters:\nAsk @{joiner}octocat\n&lt;img src=x onerror=alert(1)>\n\n"
+            )),
+            "{body}"
+        );
+        assert!(
+            body.contains(&format!("Repair route:\nroute@{joiner}octocat&lt;u>\n\n")),
+            "{body}"
+        );
+        assert!(
+            body.contains(&format!(
+                "Repair:\nAssert {span} for @{joiner}octocat &lt;script>alert(1)&lt;/script>."
+            )),
+            "{body}"
+        );
+
+        let rendered = render_comment_publish_plan_markdown(&report);
+        assert!(
+            rendered.contains(&format!(
+                "- create src/`@{joiner}octocat|&lt;b>.rs:7 `ripr:c`\n"
+            )),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(&format!(
+                "  - repair: Assert {span} for @{joiner}octocat &lt;script>alert(1)&lt;/script>.\n"
+            )),
+            "{rendered}"
+        );
+        for line in rendered.lines().chain(body.lines()) {
+            assert!(!line.contains("@octocat") || line.contains(&span), "{line}");
+            assert!(!line.contains("<script>"), "{line}");
+        }
     }
 
     /// #4446: an oversized expression from user source is bounded per field,

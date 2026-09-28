@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::cli::unknown_argument;
+use crate::output::markdown::{code_span, inline_prose, table_cell_text, table_code_span};
 
 const DEFAULT_PR_EVIDENCE_JSON: &str = "target/ripr/pr/repo-exposure.json";
 const IMPACTED_JSON: &str = "target/xtask/impacted-evidence/latest.json";
@@ -316,8 +317,8 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
     out.push_str("# Impacted Evidence\n\n");
     out.push_str("## Routing\n\n");
     out.push_str(&format!(
-        "- mutation_mode: `{}`\n",
-        summary_string(summary, "mutation_mode", "unknown")
+        "- mutation_mode: {}\n",
+        code_span(&summary_string(summary, "mutation_mode", "unknown"))
     ));
     out.push_str(&format!(
         "- requires_targeted_mutation: {}\n",
@@ -332,19 +333,21 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
         summary_bool(summary, "ripr_severe_gap")
     ));
     out.push_str(&format!(
-        "- routing_reason: `{}`\n\n",
-        summary_string_or_null(summary, "routing_reason")
+        "- routing_reason: {}\n\n",
+        code_span(&summary_string_or_null(summary, "routing_reason"))
     ));
     if let Some(route) = summary
         .and_then(|summary| summary.get("targeted_mutation_route"))
         .and_then(Value::as_object)
     {
         out.push_str(&format!(
-            "- targeted_mutation_route: `{}`\n",
-            route
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown")
+            "- targeted_mutation_route: {}\n",
+            code_span(
+                route
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+            )
         ));
         if let Some(candidate) = route
             .get("candidates")
@@ -353,17 +356,17 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
             .and_then(Value::as_object)
         {
             out.push_str(&format!(
-                "- candidate: `{}`:{} {} -> {}\n- command: `{}`\n",
-                md_escape(
+                "- candidate: {}:{} {} -> {}\n- command: {}\n",
+                code_span(
                     candidate
                         .get("file")
                         .and_then(Value::as_str)
                         .unwrap_or("unknown")
                 ),
                 candidate.get("line").and_then(Value::as_u64).unwrap_or(0),
-                candidate.get("from").and_then(Value::as_str).unwrap_or("?"),
-                candidate.get("to").and_then(Value::as_str).unwrap_or("?"),
-                md_escape(
+                inline_prose(candidate.get("from").and_then(Value::as_str).unwrap_or("?")),
+                inline_prose(candidate.get("to").and_then(Value::as_str).unwrap_or("?")),
+                code_span(
                     candidate
                         .get("command")
                         .and_then(Value::as_str)
@@ -378,8 +381,8 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
             .and_then(Value::as_object)
         {
             out.push_str(&format!(
-                "- limitation: `{}`\n",
-                md_escape(
+                "- limitation: {}\n",
+                code_span(
                     limitation
                         .get("message")
                         .and_then(Value::as_str)
@@ -392,14 +395,15 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
 
     out.push_str("## Inputs\n\n");
     out.push_str(&format!(
-        "- PR evidence: `{}`\n",
-        inputs
-            .and_then(|inputs| inputs.get("pr_evidence"))
-            .and_then(Value::as_str)
-            .map(md_escape)
-            .unwrap_or_else(|| "not_available".to_string())
+        "- PR evidence: {}\n",
+        code_span(
+            inputs
+                .and_then(|inputs| inputs.get("pr_evidence"))
+                .and_then(Value::as_str)
+                .unwrap_or("not_available")
+        )
     ));
-    out.push_str(&format!("- labels: `{}`\n\n", md_escape(&labels)));
+    out.push_str(&format!("- labels: {}\n\n", code_span(&labels)));
 
     out.push_str("## Artifacts\n\n");
     out.push_str("| Artifact | Path | Available |\n");
@@ -407,9 +411,9 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
     if let Some(artifacts) = packet.get("artifacts").and_then(Value::as_array) {
         for artifact in artifacts {
             out.push_str(&format!(
-                "| {} | `{}` | {} |\n",
-                md_escape(string_field(artifact, "label", "artifact")),
-                md_escape(string_field(artifact, "path", "unknown")),
+                "| {} | {} | {} |\n",
+                table_cell_text(string_field(artifact, "label", "artifact")),
+                table_code_span(string_field(artifact, "path", "unknown")),
                 artifact
                     .get("available")
                     .and_then(Value::as_bool)
@@ -425,8 +429,8 @@ fn render_impacted_evidence_markdown(packet: &Value) -> String {
         for warning in warnings {
             out.push_str(&format!(
                 "- {}: {}\n",
-                md_escape(string_field(warning, "kind", "warning")),
-                md_escape(string_field(warning, "message", "unknown warning"))
+                inline_prose(string_field(warning, "kind", "warning")),
+                inline_prose(string_field(warning, "message", "unknown warning"))
             ));
         }
     }
@@ -443,8 +447,8 @@ fn summary_string(
     summary
         .and_then(|summary| summary.get(key))
         .and_then(Value::as_str)
-        .map(md_escape)
-        .unwrap_or_else(|| fallback.to_string())
+        .unwrap_or(fallback)
+        .to_string()
 }
 
 fn summary_bool(summary: Option<&serde_json::Map<String, Value>>, key: &str) -> String {
@@ -462,10 +466,7 @@ fn summary_string_or_null(summary: Option<&serde_json::Map<String, Value>>, key:
     if value.is_null() {
         "none".to_string()
     } else {
-        value
-            .as_str()
-            .map(md_escape)
-            .unwrap_or_else(|| "invalid".to_string())
+        value.as_str().unwrap_or("invalid").to_string()
     }
 }
 
@@ -526,10 +527,6 @@ fn normalize_labels(labels: &[String]) -> Vec<String> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
-}
-
-fn md_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ")
 }
 
 fn first_line(value: &str) -> String {

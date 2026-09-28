@@ -1,8 +1,11 @@
 use super::io::file_state;
 use super::model::JsonInput;
-use super::util::{md_escape, string_field, summary_bool, summary_string_or_null, summary_u64};
+use super::util::{string_field, summary_bool, summary_string_or_null, summary_u64};
 use crate::output::first_pr::{ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
-use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, PowershellForm, powershell_form};
+use crate::output::markdown::{
+    COMMAND_SHELL_DISCLOSURE, PowershellForm, code_span, inline_prose, powershell_form,
+    table_code_span,
+};
 use serde_json::Value;
 use std::path::Path;
 
@@ -48,15 +51,15 @@ fn render_start_here(out: &mut String, start_here_value: Option<&Value>, start_h
     out.push_str("## Start Here\n\n");
     out.push_str(&format!("- start-here JSON: {}\n", start_here.state));
     out.push_str(&format!(
-        "- status: `{}`\n",
-        value_string(start_here_value, &["status"])
+        "- status: {}\n",
+        value_code(start_here_value, &["status"])
     ));
     out.push_str(&format!(
-        "- selected state: `{}`\n",
-        value_string(start_here_value, &["selected", "state"])
+        "- selected state: {}\n",
+        value_code(start_here_value, &["selected", "state"])
     ));
 
-    match value_string(start_here_value, &["selected", "state"]).as_str() {
+    match value_raw(start_here_value, &["selected", "state"]).as_str() {
         "top_gap" => render_start_here_top_gap(out, start_here_value),
         "missing_artifact" => render_start_here_missing(out, start_here_value),
         "no_action" | "empty_diff" => render_start_here_no_action(out, start_here_value),
@@ -76,55 +79,58 @@ fn render_start_here(out: &mut String, start_here_value: Option<&Value>, start_h
 
 fn render_start_here_top_gap(out: &mut String, start_here_value: Option<&Value>) {
     out.push_str(&format!(
-        "- canonical gap: `{}`\n",
-        first_available_string(
+        "- canonical gap: {}\n",
+        code_span(&first_available_string(
             start_here_value,
             &[&["selected", "canonical_gap_id"], &["selected", "gap_id"]]
-        )
+        ))
     ));
     out.push_str(&format!(
-        "- language: `{}` ({})\n",
-        value_string(start_here_value, &["selected", "language"]),
-        value_string(start_here_value, &["selected", "language_status"])
+        "- language: {} ({})\n",
+        value_code(start_here_value, &["selected", "language"]),
+        inline_prose(&value_raw(
+            start_here_value,
+            &["selected", "language_status"]
+        ))
     ));
     out.push_str(&format!(
-        "- top gap: `{}`\n",
-        value_string(start_here_value, &["selected", "kind"])
+        "- top gap: {}\n",
+        value_code(start_here_value, &["selected", "kind"])
     ));
     out.push_str(&format!(
-        "- changed behavior: `{}`\n",
-        value_string(start_here_value, &["selected", "changed_behavior"])
+        "- changed behavior: {}\n",
+        value_code(start_here_value, &["selected", "changed_behavior"])
     ));
     out.push_str(&format!(
-        "- missing discriminator: `{}`\n",
-        value_string(start_here_value, &["selected", "missing_discriminator"])
+        "- missing discriminator: {}\n",
+        value_code(start_here_value, &["selected", "missing_discriminator"])
     ));
     out.push_str(&format!(
-        "- focused proof intent: `{}`\n",
-        value_string(start_here_value, &["selected", "focused_proof_intent"])
+        "- focused proof intent: {}\n",
+        value_code(start_here_value, &["selected", "focused_proof_intent"])
     ));
     out.push_str(&format!(
-        "- repair route: `{}`\n",
-        value_string(start_here_value, &["selected", "repair", "route"])
+        "- repair route: {}\n",
+        value_code(start_here_value, &["selected", "repair", "route"])
     ));
     out.push_str(&format!(
-        "- repair target: `{}`\n",
-        value_string(start_here_value, &["selected", "repair", "target_file"])
+        "- repair target: {}\n",
+        value_code(start_here_value, &["selected", "repair", "target_file"])
     ));
     out.push_str(&format!(
-        "- related test: `{}`\n",
-        value_string(start_here_value, &["selected", "repair", "related_test"])
+        "- related test: {}\n",
+        value_code(start_here_value, &["selected", "repair", "related_test"])
     ));
     out.push_str(&format!(
-        "- static limit: `{}`\n",
-        first_available_string_or(
+        "- static limit: {}\n",
+        code_span(&first_available_string_or(
             start_here_value,
             &[
                 &["selected", "static_limit_kind"],
                 &["selected", "static_limit_detail"]
             ],
             "none"
-        )
+        ))
     ));
     let repair_command = start_here_value
         .and_then(|value| value.pointer("/selected/repair_command"))
@@ -132,18 +138,18 @@ fn render_start_here_top_gap(out: &mut String, start_here_value: Option<&Value>)
         .filter(|command| !command.trim().is_empty());
     let labels = push_repair_transaction(out, repair_command);
     out.push_str(&format!(
-        "- {}: `{}`\n",
+        "- {}: {}\n",
         labels.verify,
-        value_string(start_here_value, &["selected", "verify_command"])
+        value_code(start_here_value, &["selected", "verify_command"])
     ));
     out.push_str(&format!(
-        "- {}: `{}`\n",
+        "- {}: {}\n",
         labels.receipt,
-        value_string(start_here_value, &["selected", "receipt_command"])
+        value_code(start_here_value, &["selected", "receipt_command"])
     ));
     out.push_str(&format!(
-        "- receipt state: `{}`\n",
-        value_string(start_here_value, &["selected", "receipt_state"])
+        "- receipt state: {}\n",
+        value_code(start_here_value, &["selected", "receipt_state"])
     ));
 }
 
@@ -160,7 +166,7 @@ struct SummaryProofLabels {
 /// after the test edit. JSON fields are unchanged.
 fn push_repair_transaction(out: &mut String, repair_command: Option<&str>) -> SummaryProofLabels {
     if let Some(command) = repair_command {
-        out.push_str(&format!("- start repair: `{command}`\n"));
+        out.push_str(&format!("- start repair: {}\n", code_span(command)));
         out.push_str(&format!(
             "- {}: {REPAIR_AFTER_PHASE_STEP}\n",
             REPAIR_AFTER_PHASE_LABEL.to_lowercase()
@@ -175,31 +181,31 @@ fn push_repair_transaction(out: &mut String, repair_command: Option<&str>) -> Su
 
 fn render_start_here_missing(out: &mut String, start_here_value: Option<&Value>) {
     out.push_str(&format!(
-        "- missing artifact: `{}`\n",
-        value_string(start_here_value, &["selected", "artifact", "path"])
+        "- missing artifact: {}\n",
+        value_code(start_here_value, &["selected", "artifact", "path"])
     ));
     out.push_str(&format!(
-        "- next command: `{}`\n",
-        value_string(start_here_value, &["selected", "regeneration_command"])
+        "- next command: {}\n",
+        value_code(start_here_value, &["selected", "regeneration_command"])
     ));
 }
 
 fn render_start_here_no_action(out: &mut String, start_here_value: Option<&Value>) {
     out.push_str(&format!(
-        "- reason: `{}`\n",
-        value_string(start_here_value, &["selected", "reason"])
+        "- reason: {}\n",
+        value_code(start_here_value, &["selected", "reason"])
     ));
     out.push_str("- no-action is not runtime, coverage, mutation, gate, or merge adequacy.\n");
 }
 
 fn render_start_here_blocked(out: &mut String, start_here_value: Option<&Value>) {
     out.push_str(&format!(
-        "- blocked reason: `{}`\n",
-        value_string(start_here_value, &["selected", "message"])
+        "- blocked reason: {}\n",
+        value_code(start_here_value, &["selected", "message"])
     ));
     out.push_str(&format!(
-        "- next command: `{}`\n",
-        value_string(start_here_value, &["selected", "next_command"])
+        "- next command: {}\n",
+        value_code(start_here_value, &["selected", "next_command"])
     ));
 }
 
@@ -217,7 +223,7 @@ fn render_start_here_limits(out: &mut String, start_here_value: Option<&Value>) 
     let rendered = limits
         .iter()
         .filter_map(Value::as_str)
-        .map(md_escape)
+        .map(inline_prose)
         .collect::<Vec<_>>()
         .join("; ");
     out.push_str(&rendered);
@@ -238,15 +244,15 @@ fn render_fast_gate(
         review_comments.state
     ));
     out.push_str(&format!(
-        "- PR evidence status: `{}`\n",
+        "- PR evidence status: {}\n",
         string_field(pr_value, "status")
     ));
     out.push_str(&format!(
-        "- review guidance status: `{}`\n",
+        "- review guidance status: {}\n",
         string_field(review_value, "status")
     ));
-    out.push_str(&format!("- base: `{}`\n", string_field(pr_value, "base")));
-    out.push_str(&format!("- head: `{}`\n", string_field(pr_value, "head")));
+    out.push_str(&format!("- base: {}\n", string_field(pr_value, "base")));
+    out.push_str(&format!("- head: {}\n", string_field(pr_value, "head")));
     out.push_str(&format!(
         "- changed files: {}\n\n",
         summary_u64(pr_value, "changed_files")
@@ -296,7 +302,7 @@ fn render_targeted_mutation(out: &mut String, pr_value: Option<&Value>) {
         summary_bool(pr_value, "ripr_severe_gap")
     ));
     out.push_str(&format!(
-        "- routing_reason: `{}`\n\n",
+        "- routing_reason: {}\n\n",
         summary_string_or_null(pr_value, "routing_reason")
     ));
 }
@@ -306,35 +312,38 @@ fn render_artifacts(out: &mut String, input: &SummaryRenderInput<'_>) {
     out.push_str("| Artifact | Path | State |\n");
     out.push_str("| --- | --- | --- |\n");
     out.push_str(&format!(
-        "| PR evidence JSON | `{}` | {} |\n",
-        input.pr_evidence_json, input.pr_evidence.state
+        "| PR evidence JSON | {} | {} |\n",
+        table_code_span(input.pr_evidence_json),
+        input.pr_evidence.state
     ));
     out.push_str(&format!(
-        "| PR evidence Markdown | `{}` | {} |\n",
-        input.pr_evidence_md,
+        "| PR evidence Markdown | {} | {} |\n",
+        table_code_span(input.pr_evidence_md),
         file_state(input.repo, input.pr_evidence_md)
     ));
     out.push_str(&format!(
-        "| Review guidance JSON | `{}` | {} |\n",
-        input.review_comments_json, input.review_comments.state
+        "| Review guidance JSON | {} | {} |\n",
+        table_code_span(input.review_comments_json),
+        input.review_comments.state
     ));
     out.push_str(&format!(
-        "| Review guidance Markdown | `{}` | {} |\n",
-        input.review_comments_md,
+        "| Review guidance Markdown | {} | {} |\n",
+        table_code_span(input.review_comments_md),
         file_state(input.repo, input.review_comments_md)
     ));
     out.push_str(&format!(
-        "| Start-here JSON | `{}` | {} |\n",
-        input.start_here_json, input.start_here.state
+        "| Start-here JSON | {} | {} |\n",
+        table_code_span(input.start_here_json),
+        input.start_here.state
     ));
     out.push_str(&format!(
-        "| Start-here Markdown | `{}` | {} |\n",
-        input.start_here_md,
+        "| Start-here Markdown | {} | {} |\n",
+        table_code_span(input.start_here_md),
         file_state(input.repo, input.start_here_md)
     ));
     out.push_str(&format!(
-        "| PR evidence summary Markdown | `{}` | generated |\n",
-        input.pr_summary_md
+        "| PR evidence summary Markdown | {} | generated |\n",
+        table_code_span(input.pr_summary_md)
     ));
 }
 
@@ -350,12 +359,18 @@ fn first_available_string_or(value: Option<&Value>, paths: &[&[&str]], fallback:
             if value.is_null() {
                 return None;
             }
-            value.as_str().map(md_escape)
+            value.as_str().map(str::to_string)
         })
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn value_string(value: Option<&Value>, path: &[&str]) -> String {
+/// The string at `path` as one code span; see [`value_raw`].
+fn value_code(value: Option<&Value>, path: &[&str]) -> String {
+    code_span(&value_raw(value, path))
+}
+
+/// The string at `path`, `not_available` when absent or null, or `invalid`.
+fn value_raw(value: Option<&Value>, path: &[&str]) -> String {
     let Some(value) = value_at_path(value, path) else {
         return "not_available".to_string();
     };
@@ -364,7 +379,7 @@ fn value_string(value: Option<&Value>, path: &[&str]) -> String {
     } else {
         value
             .as_str()
-            .map(md_escape)
+            .map(str::to_string)
             .unwrap_or_else(|| "invalid".to_string())
     }
 }
@@ -382,18 +397,20 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
     use super::model::{NullableU64, U64OrNotAvailable};
     let mut out = String::new();
     out.push_str("# PR Evidence Summary v1\n\n");
-    out.push_str(&format!("**Run Status**: `{}`\n\n", s.run_status));
+    out.push_str(&format!("**Run Status**: {}\n\n", code_span(&s.run_status)));
     out.push_str(&format!(
-        "**Analysis Complete**: `{}`\n\n",
-        s.analysis_complete
-            .map_or_else(|| "not_available".to_string(), |value| value.to_string())
+        "**Analysis Complete**: {}\n\n",
+        code_span(
+            &s.analysis_complete
+                .map_or_else(|| "not_available".to_string(), |value| value.to_string())
+        )
     ));
     if let Some(outcome) = &s.analysis_outcome {
         let kind = outcome
             .pointer("/outcome/kind")
             .and_then(Value::as_str)
             .unwrap_or("not_available");
-        out.push_str(&format!("**Analysis Outcome**: `{kind}`\n\n"));
+        out.push_str(&format!("**Analysis Outcome**: {}\n\n", code_span(kind)));
         if let Some(limitations) = outcome
             .pointer("/outcome/limitations")
             .and_then(Value::as_array)
@@ -408,7 +425,11 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
                     .pointer("/recovery/kind")
                     .and_then(Value::as_str)
                     .unwrap_or("not_available");
-                out.push_str(&format!("- `{limitation_kind}`; recovery: `{recovery}`\n"));
+                out.push_str(&format!(
+                    "- {}; recovery: {}\n",
+                    code_span(limitation_kind),
+                    code_span(recovery)
+                ));
             }
             out.push('\n');
         }
@@ -451,7 +472,7 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
         fmt_nullable(&s.gaps.regressed)
     ));
     if let Some(note) = &s.gaps.gap_delta_note {
-        out.push_str(&format!("- delta note: {note}\n"));
+        out.push_str(&format!("- delta note: {}\n", inline_prose(note)));
     }
     out.push('\n');
 
@@ -464,7 +485,11 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
         out.push_str(s.limitations.empty_state_line());
     } else {
         for lim in limitations {
-            out.push_str(&format!("- `{}`: {}\n", lim.category, lim.repair_route));
+            out.push_str(&format!(
+                "- {}: {}\n",
+                code_span(&lim.category),
+                inline_prose(&lim.repair_route)
+            ));
         }
     }
     out.push('\n');
@@ -501,33 +526,47 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
 
     out.push_str("## Top Repair\n\n");
     if let Some(repair) = &s.top_repair {
-        out.push_str(&format!("- canonical gap: `{}`\n", repair.canonical_gap_id));
-        out.push_str(&format!("- language: `{}`\n", repair.language));
-        out.push_str(&format!("- repair kind: `{}`\n", repair.repair_kind));
-        out.push_str(&format!("- target: `{}`\n", repair.target));
+        out.push_str(&format!(
+            "- canonical gap: {}\n",
+            code_span(&repair.canonical_gap_id)
+        ));
+        out.push_str(&format!("- language: {}\n", code_span(&repair.language)));
+        out.push_str(&format!(
+            "- repair kind: {}\n",
+            code_span(&repair.repair_kind)
+        ));
+        out.push_str(&format!("- target: {}\n", code_span(&repair.target)));
         let labels = push_repair_transaction(&mut out, repair.repair_command.as_deref());
         out.push_str(&format!(
-            "- {}: `{}`\n",
-            labels.verify, repair.verify_command
+            "- {}: {}\n",
+            labels.verify,
+            code_span(&repair.verify_command)
         ));
         out.push_str(&format!(
-            "- {}: `{}`\n",
-            labels.receipt, repair.receipt_command
+            "- {}: {}\n",
+            labels.receipt,
+            code_span(&repair.receipt_command)
         ));
-        out.push_str(&format!("- receipt state: `{}`\n", repair.receipt_state));
+        out.push_str(&format!(
+            "- receipt state: {}\n",
+            code_span(&repair.receipt_state)
+        ));
     } else {
         let state = s.top_repair_state.as_deref().unwrap_or("missing_artifact");
-        out.push_str(&format!("- state: `{state}`\n"));
+        out.push_str(&format!("- state: {}\n", code_span(state)));
     }
     out.push('\n');
 
     out.push_str("## Top Limitation\n\n");
     if let Some(lim) = &s.top_limitation {
-        out.push_str(&format!("- category: `{}`\n", lim.category));
-        out.push_str(&format!("- repair route: `{}`\n", lim.repair_route));
+        out.push_str(&format!("- category: {}\n", code_span(&lim.category)));
+        out.push_str(&format!(
+            "- repair route: {}\n",
+            code_span(&lim.repair_route)
+        ));
         out.push_str(&format!(
             "- why not actionable: {}\n",
-            lim.why_not_actionable
+            inline_prose(&lim.why_not_actionable)
         ));
     } else {
         // Derived from `limitations`, so it inherits that field's state and
@@ -547,8 +586,9 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
             }
             PowershellForm::SameAsBash => {}
             PowershellForm::Unavailable => out.push_str(&format!(
-                "{}: `{cmd}`\n\n",
-                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+                "{}: {}\n\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+                code_span(cmd)
             )),
         }
     }

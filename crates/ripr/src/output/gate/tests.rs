@@ -958,7 +958,7 @@ fn gate_optional_inputs_emit_warnings_and_markdown_sections() -> Result<(), Stri
     let mut warning_report = report.clone();
     warning_report
         .warnings
-        .push("manual | warning\nwith newline".to_string());
+        .push("manual | warning\nwith newline @octocat <img>".to_string());
     let markdown = render_gate_decision_markdown(&warning_report);
 
     assert_eq!(report.status, "advisory");
@@ -975,7 +975,9 @@ fn gate_optional_inputs_emit_warnings_and_markdown_sections() -> Result<(), Stri
             .any(|warning| warning.contains("optional labels_json"))
     );
     assert!(markdown.contains("## Warnings"));
-    assert!(markdown.contains("manual \\| warning with newline"));
+    // A list item is not a table cell: `|` stays literal, the line ending
+    // becomes a space, and prose cannot mention or render raw HTML (#4468).
+    assert!(markdown.contains("- manual | warning with newline @\u{2060}octocat &lt;img>\n"));
     ignore_remove_dir_all(dir);
     Ok(())
 }

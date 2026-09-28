@@ -7,6 +7,7 @@
 
 use crate::analysis::{RepoSeam, RequiredDiscriminator};
 use crate::output::json::escape as json_escape;
+use crate::output::markdown::table_code_span;
 
 pub(crate) const REPO_SEAMS_SCHEMA_VERSION: &str = "0.1";
 
@@ -109,14 +110,14 @@ pub(crate) fn render_repo_seams_md(seams: &[RepoSeam]) -> String {
     out.push_str("| --- | --- | --- | --- | --- | --- | --- |\n");
     for seam in seams {
         out.push_str(&format!(
-            "| `{}` | `{}` | {} | `{}` | {} | {} | `{}` |\n",
-            seam.id().as_str(),
-            md_escape(&seam.file().to_string_lossy()),
+            "| {} | {} | {} | {} | {} | {} | {} |\n",
+            table_code_span(seam.id().as_str()),
+            table_code_span(&seam.file().to_string_lossy()),
             seam.display_line(),
-            md_escape(seam.owner()),
+            table_code_span(seam.owner()),
             seam.kind().as_str(),
             seam.expected_sink().as_str(),
-            md_escape_inline_code(seam.expression()),
+            table_code_span(seam.expression()),
         ));
     }
 
@@ -126,19 +127,6 @@ pub(crate) fn render_repo_seams_md(seams: &[RepoSeam]) -> String {
         Static-language constraints from RIPR-SPEC-0005 still apply.\n",
     );
     out
-}
-
-fn md_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ")
-}
-
-fn md_escape_inline_code(value: &str) -> String {
-    // Replace backticks (would close the inline code span) and pipe
-    // characters (would split the table cell) with safe equivalents.
-    value
-        .replace('`', "\u{2018}")
-        .replace('|', "\\|")
-        .replace('\n', " ")
 }
 
 #[cfg(test)]

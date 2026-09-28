@@ -18,7 +18,12 @@ impl std::fmt::Display for InputState {
         match self {
             Self::Present => f.write_str("present"),
             Self::Missing => f.write_str("missing"),
-            Self::Invalid(err) => write!(f, "invalid: {}", super::util::md_escape(err)),
+            // Rendered in a list item and in a table cell (#4468).
+            Self::Invalid(err) => write!(
+                f,
+                "invalid: {}",
+                crate::output::markdown::table_cell_text(err)
+            ),
         }
     }
 }

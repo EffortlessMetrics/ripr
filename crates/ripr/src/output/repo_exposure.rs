@@ -18,6 +18,7 @@ use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identit
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::json::escape as json_escape;
+use crate::output::markdown::{code_span, inline_prose, inline_prose_literal, table_cell_text};
 use crate::output::path::display_path;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -882,12 +883,12 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
     let evidence = &entry.evidence;
     out.push_str(&format!(
         "### {}:{} {}\n\n",
-        md_escape(&display_path(seam.file())),
+        inline_prose(&display_path(seam.file())),
         seam.display_line(),
         seam.kind().as_str()
     ));
-    out.push_str(&format!("- seam: `{}`\n", md_escape(seam.expression())));
-    out.push_str(&format!("- owner: `{}`\n", md_escape(seam.owner())));
+    out.push_str(&format!("- seam: {}\n", code_span(seam.expression())));
+    out.push_str(&format!("- owner: {}\n", code_span(seam.owner())));
     out.push_str(&format!("- grip: {}\n", entry.class.as_str()));
     out.push_str("- evidence:\n");
     out.push_str(&format!("  - reach: {}\n", evidence.reach.state.as_str()));
@@ -912,8 +913,8 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
         out.push_str("- related tests:\n");
         for grip in evidence.related_tests.iter().take(5) {
             out.push_str(&format!(
-                "  - `{}` ({}, {}) · {} / {}\n",
-                md_escape(grip.test_name.as_str()),
+                "  - {} ({}, {}) · {} / {}\n",
+                code_span(grip.test_name.as_str()),
                 grip.oracle_kind.as_str(),
                 grip.oracle_strength.as_str(),
                 grip.relation_reason.as_str(),
@@ -924,16 +925,16 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
     if !evidence.observed_values.is_empty() {
         out.push_str("- observed values:\n");
         for value in evidence.observed_values.iter().take(5) {
-            out.push_str(&format!("  - `{}`\n", md_escape(value.value.as_str())));
+            out.push_str(&format!("  - {}\n", code_span(value.value.as_str())));
         }
     }
     if !evidence.missing_discriminators.is_empty() {
         out.push_str("- missing discriminators:\n");
         for missing in &evidence.missing_discriminators {
             out.push_str(&format!(
-                "  - `{}` — {}\n",
-                md_escape(missing.value.as_str()),
-                md_escape_paragraph(missing.reason.as_str())
+                "  - {} — {}\n",
+                code_span(missing.value.as_str()),
+                inline_prose_literal(missing.reason.as_str())
             ));
         }
     }
@@ -954,11 +955,11 @@ fn push_typescript_readiness_md(out: &mut String, readiness: &TypeScriptRepoRead
     ));
     out.push_str(&format!(
         "| package confidence | {} |\n",
-        md_escape_table_cell(&readiness.package_confidence)
+        table_cell_text(&readiness.package_confidence)
     ));
     out.push_str(&format!(
         "| runner status | {} |\n",
-        md_escape_table_cell(&readiness.runner_status)
+        table_cell_text(&readiness.runner_status)
     ));
     out.push_str(&format!(
         "| verify commands | {} |\n",
@@ -969,7 +970,7 @@ fn push_typescript_readiness_md(out: &mut String, readiness: &TypeScriptRepoRead
         readiness
             .top_blocker
             .as_deref()
-            .map(md_escape_table_cell)
+            .map(table_cell_text)
             .unwrap_or_else(|| "none".to_string())
     ));
     out.push_str(
@@ -977,35 +978,6 @@ fn push_typescript_readiness_md(out: &mut String, readiness: &TypeScriptRepoRead
          It does not emit full-repo TypeScript seams, run TypeScript tests, or \
          create gate or badge authority.\n",
     );
-}
-
-fn md_escape_table_cell(text: &str) -> String {
-    text.replace('|', "\\|").replace('\n', " ")
-}
-
-/// Escape values that get wrapped in inline-code spans. Inside
-/// backticks every character is literal except the closing backtick
-/// and the table-cell pipe, so we only swap those plus newlines.
-/// Backslash-escaping `*`/`_`/`[`/`]` here would render as literal
-/// `\*` in the inline-code span — see `md_escape_paragraph` for the
-/// non-code variant.
-fn md_escape(value: &str) -> String {
-    value
-        .replace('`', "\u{2018}")
-        .replace('|', "\\|")
-        .replace('\n', " ")
-}
-
-/// Escape values that appear in paragraph text (no surrounding
-/// backticks). Adds backslash escapes for emphasis and link tokens so
-/// a future analyzer-emitted reason string containing snake_case or
-/// `*` does not silently trigger italic/bold/link rendering.
-fn md_escape_paragraph(value: &str) -> String {
-    md_escape(value)
-        .replace('*', "\\*")
-        .replace('_', "\\_")
-        .replace('[', "\\[")
-        .replace(']', "\\]")
 }
 
 /// Per-class metric bucket for the repo exposure report.

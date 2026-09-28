@@ -6,7 +6,7 @@ use super::model::{
 use super::{LIMITS_NOTE, SCHEMA_VERSION};
 use crate::app::causal_projection::insert_canonical_delta_fields;
 use crate::output::first_pr::{ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
-use crate::output::markdown::code_span;
+use crate::output::markdown::{code_span, inline_prose};
 use crate::output::review_comments::LLM_PROMPT_VERIFY_SENTENCE;
 use serde_json::{Value, json};
 use std::fmt::Write as _;
@@ -97,8 +97,8 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
         out.push_str("## Exception Policy\n\n");
         out.push_str(&format!(
             "Ledger: {} (status: {}, due_review: {})\n",
-            md_escape(&exception_policy.path),
-            md_escape(&exception_policy.ledger_status),
+            inline_prose(&exception_policy.path),
+            inline_prose(&exception_policy.ledger_status),
             exception_policy.due_review.as_str()
         ));
         out.push_str(&format!(
@@ -107,11 +107,11 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
         ));
         for entry in &exception_policy.active {
             out.push_str(&format!(
-                "- active `{}` ({}) review_after {} expires {}\n",
-                md_escape(&entry.id),
-                md_escape(&entry.kind),
-                md_escape(&entry.review_after),
-                md_escape(&entry.expires)
+                "- active {} ({}) review_after {} expires {}\n",
+                code_span(&entry.id),
+                inline_prose(&entry.kind),
+                inline_prose(&entry.review_after),
+                inline_prose(&entry.expires)
             ));
         }
         for violation in &exception_policy.violations {
@@ -122,8 +122,8 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
             };
             out.push_str(&format!(
                 "- {severity} {}: {}\n",
-                md_escape(&violation.kind),
-                md_escape(&violation.detail)
+                inline_prose(&violation.kind),
+                inline_prose(&violation.detail)
             ));
         }
         out.push('\n');
@@ -131,14 +131,14 @@ pub(crate) fn render_gate_decision_markdown(report: &GateDecisionReport) -> Stri
     if !report.config_errors.is_empty() {
         out.push_str("## Config Errors\n\n");
         for error in &report.config_errors {
-            out.push_str(&format!("- {}\n", md_escape(error)));
+            out.push_str(&format!("- {}\n", inline_prose(error)));
         }
         out.push('\n');
     }
     if !report.warnings.is_empty() {
         out.push_str("## Warnings\n\n");
         for warning in &report.warnings {
-            out.push_str(&format!("- {}\n", md_escape(warning)));
+            out.push_str(&format!("- {}\n", inline_prose(warning)));
         }
         out.push('\n');
     }
@@ -467,8 +467,8 @@ fn push_decision_section(
         out.push_str(&format!(
             "- {} {} — {}\n",
             decision_location(&decision.placement),
-            md_escape(decision.static_class.as_deref().unwrap_or("unknown")),
-            md_escape(&decision.gate_reason)
+            inline_prose(decision.static_class.as_deref().unwrap_or("unknown")),
+            inline_prose(&decision.gate_reason)
         ));
         if matches!(
             decision.decision.as_str(),
@@ -543,7 +543,7 @@ fn push_repair_route(out: &mut String, route: &GateRepairRoute, changed_line_anc
         ));
         out.push_str(&format!(
             "  - Limitation detail: {}\n",
-            md_escape(limitation.detail)
+            inline_prose(limitation.detail)
         ));
     }
 }
@@ -597,7 +597,7 @@ fn push_optional_code(out: &mut String, label: &str, value: Option<&str>) {
 
 fn push_optional_text(out: &mut String, label: &str, value: Option<&str>) {
     if let Some(value) = value {
-        out.push_str(&format!("  - {label}: {}\n", md_escape(value)));
+        out.push_str(&format!("  - {label}: {}\n", inline_prose(value)));
     }
 }
 
@@ -615,15 +615,11 @@ fn push_optional_text(out: &mut String, label: &str, value: Option<&str>) {
 /// guesswork. The per-decision `gate_reason` already carries that explanation.
 fn decision_location(placement: &GatePlacement) -> String {
     match (placement.path.as_deref(), placement.line) {
-        (Some(path), Some(line)) => format!("{}:{}", md_escape(path), line),
-        (Some(path), None) => format!("{} (no line anchor)", md_escape(path)),
+        (Some(path), Some(line)) => format!("{}:{}", inline_prose(path), line),
+        (Some(path), None) => format!("{} (no line anchor)", inline_prose(path)),
         (None, Some(line)) => format!("(no file anchor):{line}"),
         (None, None) => "(no changed-line anchor)".to_string(),
     }
-}
-
-fn md_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ")
 }
 
 #[cfg(test)]
