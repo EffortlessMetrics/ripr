@@ -9624,7 +9624,7 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
             "cargo build --locked -p ripr --release",
             "os: ubuntu-22.04\n",
             "os: ubuntu-22.04-arm\n",
-            "GLIBC_FLOOR: \"2.35\"",
+            "GLIBC_FLOOR: \"2.34\"",
             "sed -n '/^Version needs section/,/^Version .* section/p'",
             "if [ \"${highest}\" != \"${GLIBC_FLOOR}\" ]; then",
             "requires glibc ${required}, above the ${GLIBC_FLOOR} floor\"\n            exit 1\n          fi",
@@ -9773,7 +9773,7 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
         ),
         (
             "raised glibc floor",
-            workflow.replacen("GLIBC_FLOOR: \"2.35\"", "GLIBC_FLOOR: \"2.39\"", 1),
+            workflow.replacen("GLIBC_FLOOR: \"2.34\"", "GLIBC_FLOOR: \"2.39\"", 1),
         ),
         (
             "token credential",

@@ -160,10 +160,12 @@ aarch64-unknown-linux-gnu
 
 The Linux archives link against glibc. Server qualification builds them on
 Ubuntu 22.04 runners and fails a Linux archive whose binary needs a glibc newer
-than 2.35 (Ubuntu 22.04, Debian 12, and later). It also fails any non-numeric
-glibc need, such as `GLIBC_ABI_DT_RELR` or `GLIBC_PRIVATE`. The published 0.10.0 Linux archives were built on
-Ubuntu 24.04 and need glibc 2.39. When GitHub retires the 22.04 images, raising
-the floor is a support decision, not a runner update.
+than 2.34. The 0.11.0 release sync adds the same 2.34 check to `cargo xtask
+release-server-archive`, which packages the published archives. RHEL 9 (2.34),
+Ubuntu 22.04 (2.35) and Debian 12 (2.36) meet it. It also fails any non-numeric glibc need,
+such as `GLIBC_ABI_DT_RELR` or `GLIBC_PRIVATE`. The published 0.10.0 Linux
+archives were built on Ubuntu 24.04 and need glibc 2.39. When GitHub retires
+the 22.04 images, raising the floor is a support decision, not a runner update.
 
 Alpine and musl targets are intentionally separate. If no compatible prebuilt
 server exists, users can set `ripr.server.path` or install `ripr` manually.
