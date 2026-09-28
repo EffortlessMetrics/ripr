@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   publisher-contract:
-    name: Validate ripr-rs publisher tuple (no publish)
+    name: Record ripr-rs publisher tuple (no publish)
     if: ${{ github.repository == 'EffortlessMetrics/ripr' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     environment:
