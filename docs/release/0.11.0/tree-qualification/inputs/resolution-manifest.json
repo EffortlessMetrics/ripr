@@ -3,8 +3,8 @@
   "source_parent": "6989700f64936a6b9829e5ed06c731f0e1bed0e1",
   "swarm_parent": "112a834e4397784d4bbb1feeffbea55e00dda427",
   "merge_base": "45b56c0957ad7e7360114edceca4b844c85f846e",
-  "reviewed_join_tree": "5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c",
-  "preflight_sha256": "298b7239aca51f91432565b923bd0063d8898f4f7254815982d676206c1ed10f",
+  "reviewed_join_tree": "3e27eb6e07ce58546a6544877237c39beca2fa2e",
+  "preflight_sha256": "2f3ad0f0243765fed6aa52e4d4119337406ba18c3b85848e4dfb6b188cf17222",
   "dispositions": [
     {
       "kind": "conflict",
@@ -14,7 +14,7 @@
       "evidence": "Source blob plus swarm's two attribute blocks (fixture diff.patch and metrics/rust-judged-behavior-panel/diffs), with no line removed from either parent.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .gitattributes",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .gitattributes",
         "sha256": "16e84c00e2ff6cff7220af21078a5f88e5370dcdf64867a5613d187695026e88"
       }
     },
@@ -26,7 +26,7 @@
       "evidence": "Source blob with the three `push: tags` lines removed and the two Linux `os:` values changed from `ubuntu-latest`/`ubuntu-24.04-arm` to `ubuntu-22.04`/`ubuntu-22.04-arm`; swarm's rehearsal body, header comment and `permissions` block are absent.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .github/workflows/release-server-binaries.yml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .github/workflows/release-server-binaries.yml",
         "sha256": "f155e6b485604e6a3add99c5dd213f39cd302b9f602de1938e51dccfdc0372dc"
       }
     },
@@ -45,7 +45,7 @@
       "evidence": "Clean merge of both parents' hunks with one resolved line: the receipt `jq` template is swarm's schema_version 2 form carrying source's limitation text \"Manifest carries relative subjects only; retrieval composes from catalog placement and was not fetched\".",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .github/workflows/server-archive-qualification.yml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .github/workflows/server-archive-qualification.yml",
         "sha256": "2e74d301b345d2e828121128b2f16bfa791f63bb74834f94be66c95b45da1ee4"
       }
     },
@@ -64,7 +64,7 @@
       "evidence": "Swarm blob plus source's two `if: always()` lines, the #1729 comment block and issue references, and the `--nofeatures-*` arguments on swarm's `| tee target/windows-verdict.md | tee -a \"$GITHUB_STEP_SUMMARY\"` pipeline.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .github/workflows/windows-advisory.yml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .github/workflows/windows-advisory.yml",
         "sha256": "3c842f63a6c0bb0919e6643462d576937b027cf92080e583bb05fe62d664b044"
       }
     },
@@ -90,7 +90,7 @@
       "evidence": "Chain order boundary_operand_unresolved -> error_guard_unresolved -> static_unknown unreached -> default; ripr and swarm finding tests pass on the J tree.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classifier/finding.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classifier/finding.rs",
         "sha256": "7e0777e3abb832c3c1419d34fb5289ec6b3689aff7c33186c794e0d14d1678df"
       }
     },
@@ -102,7 +102,7 @@
       "evidence": "Clean merge plus a resolution edit: the #4228 `LocalBoundary::Unresolved` return moved below `right_literal` and gated on `unresolved_notes.is_empty()`, `right_literal` taken from swarm's `visible_operand(&right, right_constant.as_ref())`, source's `let mut reason` kept, and swarm's NoRepair test oracle relaxed to accept facts carrying `BOUNDARY_OPERAND_UNRESOLVED_MARKER`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/activation.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/activation.rs",
         "sha256": "f99ba94bd62e4f3e338466a28dbd5389ecbb004700f1d0f07f17ae88a4374c13"
       }
     },
@@ -114,7 +114,7 @@
       "evidence": "Clean merge with the one conflicting `use activation::{...}` list replaced by the union of both parents' names.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/mod.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/mod.rs",
         "sha256": "27137601d3ac2509f0e61efa3b42789b95e69a5d4f0ff13553fef64f209c27dd"
       }
     },
@@ -126,7 +126,7 @@
       "evidence": "Both parents' reveal tests pass; oracle_confirmation_mixed golden bytes equal swarm's #4426 bless at the cutoff.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/reveal.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/reveal.rs",
         "sha256": "c53248061a31135fa0f93b936420ecd72b726e27ee721d9e44fcdb0f57944f0f"
       }
     },
@@ -138,7 +138,7 @@
       "evidence": "Clean merge with the one conflicting diff-loop guard taken from swarm (`if !workspace::seeds_diff_probes(&changed.path, &source_role_context)`); source's `classify_with` plus `is_repo_automation_path` condition is absent.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/language/rust.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/language/rust.rs",
         "sha256": "e4409d476a24eb5c9e871d784c3e5b7350caf2b466e922ad79ac161564070127"
       }
     },
@@ -150,7 +150,7 @@
       "evidence": "Clean merge with source's early `unique_findings` dedup removed and swarm's `dedup_typescript_probe_ids(&mut findings)` replaced by `probes::dedup_finding_probe_ids(&mut findings)` with an expanded comment; `findings` is returned directly.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/language/typescript/mod.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/language/typescript/mod.rs",
         "sha256": "a55c3e0733a471b7728f70bd6687f6e4f506974a88d31837dba611296ca9b880"
       }
     },
@@ -162,7 +162,7 @@
       "evidence": "Clean merge with each conflicting history comment rewritten to name both parents' transitions, and the three constants and their test assertions set to `1.15`, `0.21` and `0.22`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/seam_cache.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/seam_cache.rs",
         "sha256": "541a5a00e597a2c79867b95858e0c15184c65978e3e17eaf8bf2d90783b147ce"
       }
     },
@@ -174,7 +174,7 @@
       "evidence": "Clean merge plus a new `inventory_diff_scoped_classified_seams_at_with_config_and_lines` wrapper delegating to swarm's `_inner` with a `changed_lines` argument, `None` added to swarm's three `_inner` test calls, and `no_impact_production_edit_keeps_full_computation_active` rewritten to check `file_fact_cache` activity and the admitted `src/lib.rs`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/seam_inventory.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/seam_inventory.rs",
         "sha256": "8721f3a23ebdab409ee9bd2eaf83a03109839e4ee1773aabc224073682fab735"
       }
     },
@@ -193,7 +193,7 @@
       "evidence": "Clean merge with source's `is_repo_automation_path` function and its test removed, swarm's functions kept, and one assertion `subject(\"xtask/src/reports/source_promotion_verify.rs\")` added to swarm's `repo_automation_subjects_are_root_xtask_sources_only`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/workspace/source_role.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/workspace/source_role.rs",
         "sha256": "b0a3cfc566134cb824a55d1a4e2f9e0606e0c42c645111b4597d48f18f230d1e"
       }
     },
@@ -205,7 +205,7 @@
       "evidence": "Clean merge with imports unioned, `PR_CHECK_SUBJECT_SCHEMA_VERSION` added, a new `load_canonical_analysis_diff` feeding both `run_ripr_check` (via a temp diff file) and `canonical_diff_sha256`, `review-input.json` reusing the subject digest, and `pr.diff` help text changed to \"PR diff packet (three context lines)\".",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/app/pr_evidence.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/app/pr_evidence.rs",
         "sha256": "d16b1e62b4f3db26eee1953b5f2549ef3fccd27f9d19893c74a195fa1119ea09"
       }
     },
@@ -224,7 +224,7 @@
       "evidence": "Clean merge plus: `admitted_review_input` and the 50-line producer-projection render branch removed, `load_review_comments_diff` body replaced by `crate::analysis::load_diff_range`, test `review_comments_renders_from_bounded_producer_input` renamed and retargeted to assert admission and a non-projection basis, the init guidance test switched to `ripr pr-evidence`, and swarm's module-level `sha2` import dropped.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/cli/commands.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/cli/commands.rs",
         "sha256": "e65f499f478f88a5170ce107fb0b41aa98701bc5c225b116085394f0e6555c9c"
       }
     },
@@ -243,7 +243,7 @@
       "evidence": "Clean merge with `repo_root` added to the test import, and `gate_command_writes_blocked_report_before_error` taking swarm's `Result<(), CommandError>` signature with source's owned `gate-blocked-owned` dir and `--root` argument.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/cli/commands/gate.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/cli/commands/gate.rs",
         "sha256": "bca064f0cfb333979a9a5821dfe3016cbf97a3f7f4b3e38d7d3ee8efd4fe0189"
       }
     },
@@ -283,7 +283,7 @@
       "evidence": "Clean merge plus `assert_anchored_stdout_matches_fixture_at(output, fixture, anchor)` replacing swarm's workspace-root helper, source's `run_command` packet/brief calls using it, `.git` marker added to the relocated `doctor_reports_missing_config_defaults`, and source's `isolated_fixture_workspace` roots applied to the relocated pilot and Python tests.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/tests/cli_smoke.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/tests/cli_smoke.rs",
         "sha256": "71a140332d8cbff01329bf6f0cadc8a4e6f61e81f64756382002f42ffa204644"
       }
     },
@@ -302,7 +302,7 @@
       "evidence": "Clean merge with the one conflict resolved to swarm's `suppressed[]` text followed by source's `warnings[]` text.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/OUTPUT_SCHEMA.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/OUTPUT_SCHEMA.md",
         "sha256": "ee97f87ace4ff8704d6fc31db646a887f6b5e6d7774970b38659154de990621c"
       }
     },
@@ -321,7 +321,7 @@
       "evidence": "Clean merge with the three conflicts resolved to source's side (empty) for swarm's raw-merge block, PR template and \"Post-Publication Back-Sync To Swarm\" section; the \"Resolving the join\" subsection is present.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/swarm-development.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/swarm-development.md",
         "sha256": "df85755e44d8a227f731717c9fc0959e587ab08f1f73cee41ded6dad90ebdb6a"
       }
     },
@@ -333,7 +333,7 @@
       "evidence": "Source blob plus swarm's two-line comment and `target/**` rule.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path editors/vscode/.vscodeignore",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path editors/vscode/.vscodeignore",
         "sha256": "d213ee1e5b22a88c09c370b1135212eac569593d24421d76b7a03d506f7ca99c"
       }
     },
@@ -359,7 +359,7 @@
       "evidence": "Both parents' test cases present; TypeScript compile passes (npm test runs on hosted CI).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path editors/vscode/test/suite/server_resolver_compatibility.test.ts",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path editors/vscode/test/suite/server_resolver_compatibility.test.ts",
         "sha256": "f98d8f4eebb78d9baad8bf107bfe9b54dd949d82b164820e8556afae3f6010d9"
       }
     },
@@ -371,7 +371,7 @@
       "evidence": "Source ledger plus swarm's RIPR-SPEC-0084 entry appended as Pending entry (3).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/binding_value_fail_closed/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/binding_value_fail_closed/expected/CHANGELOG.md",
         "sha256": "e5381c8769b1d4b9e4b56d8824eaa19bbbc30069048c34c96cefb306000757d7"
       }
     },
@@ -383,7 +383,7 @@
       "evidence": "94 cases with no duplicate id; every SP and SW case id is present, the 11 base cases that differ take the SW object, and the envelope fields equal both parents.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/evidence-promotion-honesty-corpus/corpus.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/evidence-promotion-honesty-corpus/corpus.json",
         "sha256": "a55d7affecb5694935fa4c8113c3af0dadf0a0e7718f6ea1d4259d407fd3fc1b"
       }
     },
@@ -395,7 +395,7 @@
       "evidence": "SP's three findings and `input_identity` (sha256:4075aa30...) with the top-level `base` line removed and `base_revision` null.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/infect_wildcard_discard/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/infect_wildcard_discard/expected/check.json",
         "sha256": "af33908bb0910f806f389256cbe221a9aad1da8d3cada804085472a9b008b3d0"
       }
     },
@@ -407,7 +407,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's paragraph followed by source's paragraph.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_comment_literal_no_promotion/SPEC.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_comment_literal_no_promotion/SPEC.md",
         "sha256": "37cd6c87dc62b09ec6e328614dbb5e934e5202c7a4e8643d9a14d16445b85930"
       }
     },
@@ -419,7 +419,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's RIPR-SPEC-0084 base entry as Pending (3) (the source side of the hunk was empty) plus one appended J entry Pending (4) (RIPR-SPEC-0108).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_comment_literal_no_promotion/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_comment_literal_no_promotion/expected/CHANGELOG.md",
         "sha256": "d7d4182347617c64cfe28763464b810a5eeeae679d61d33b9f121f64aae56c2f"
       }
     },
@@ -445,7 +445,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's RIPR-SPEC-0084 base entry as Pending (3) (the source side of the hunk was empty) plus one appended J entry Pending (4) (RIPR-SPEC-0108).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_diagnostic_literal_no_promotion/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_diagnostic_literal_no_promotion/expected/CHANGELOG.md",
         "sha256": "fbc6815817de3ec39d2a081415718fbe067db9239376c163d07f24e38fee1a61"
       }
     },
@@ -471,7 +471,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's RIPR-SPEC-0084 base entry as Pending (3) (the source side of the hunk was empty) plus one appended J entry Pending (4) (RIPR-SPEC-0108).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_shared_result_no_promotion/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_shared_result_no_promotion/expected/CHANGELOG.md",
         "sha256": "45e11461e9134b269eb8313e280466c77aa34d89dcb9ad24fbbd0f366894e0e0"
       }
     },
@@ -497,7 +497,7 @@
       "evidence": "Source ledger plus swarm's RIPR-SPEC-0084 entry appended as Pending entry (20).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/observation_verified_field_construction/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/observation_verified_field_construction/expected/CHANGELOG.md",
         "sha256": "f3273026fbe9c4d3c7d2a8b96b48fa4282d29361ea13be636ee0866464b67a7b"
       }
     },
@@ -509,7 +509,7 @@
       "evidence": "Source ledger through (4), then swarm's RIPR-SPEC-0084 entry as (5), swarm's RIPR-SPEC-0001 weak-token reach entry as (6), and the J entry as (7).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_constructor_field_observation/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_constructor_field_observation/expected/CHANGELOG.md",
         "sha256": "c3d77750bda565318c58602d409daf7b9ec44bc048368050a5db7e0eaa33923a"
       }
     },
@@ -521,7 +521,7 @@
       "evidence": "Finding with swarm's `reach weak` evidence_path and source's \"Discriminator unconfirmed ... (observation_unverified)\" evidence and two `missing` items; `base` omitted.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_constructor_field_observation/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_constructor_field_observation/expected/check.json",
         "sha256": "6c9a1b452b93021e15ed7fe8242ecdeed1403fc7c6d83223028fb2183aa75ff3"
       }
     },
@@ -540,7 +540,7 @@
       "evidence": "Swarm's `routed-rust-small` commands line in the only conflict hunk; the `rust` lane pointing at `.github/workflows/rust-gates.yml` job `rust-gates` arrives by clean merge from swarm, and source's removal of the `windows-advisory` lane is kept.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/ci-lane-whitelist.toml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/ci-lane-whitelist.toml",
         "sha256": "3989ce2fa02362855fb19e8e2f128e49c6b8b590fab870fa012112559717aefe"
       }
     },
@@ -552,7 +552,7 @@
       "evidence": "Source's RIPR-SPEC-0176 entry plus swarm's parse-depth artifact with `id` and `path` renumbered to RIPR-SPEC-0180; no other row differs from the clean merge.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/doc-artifacts.toml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/doc-artifacts.toml",
         "sha256": "f7542f5ef658b6e4e8dd3f5fab4d50b8982267c0bd6174af866f6661d3d1c50b"
       }
     },
@@ -564,7 +564,7 @@
       "evidence": "Union of source's `pr_inline_comment_publish_plan.rs|\"push\"|1` row and swarm's `typescript_packet_projection.rs|curl|2` row; source's count-4 curl row is dropped.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/network_allowlist.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/network_allowlist.txt",
         "sha256": "375e4f9cfe76dee143f1cea77a2e731a34481942245bd157be94ef6fe70a3dc0"
       }
     },
@@ -576,7 +576,7 @@
       "evidence": "Union of both parents' rows with `crates/ripr/src/cli/commands.rs|Command::new` at 1, `xtask/src/run.rs|Command::new` at 16 (SP 17, SW 14), source's `downloader.ts|cp.execFile|1`, two new `crates/ripr/tests/pr_evidence_review_comments.rs` rows, and no `downloader_manifest_fallback.test.ts` row.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/process_allowlist.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/process_allowlist.txt",
         "sha256": "6e933ba0381eead7a4f0b8807907c59caccdba38b78886db9c559849c59fc605"
       }
     },
@@ -588,7 +588,7 @@
       "evidence": "Source blob plus one crate-root line `pub mod process_owner;` for swarm's #3803 owned-subprocess module; swarm's inline 300-line list is absent here and every swarm entry appears in the pair of ledgers.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/public_api.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/public_api.txt",
         "sha256": "1e1af5793295b9f88ae7d361e116891d5d9dd2e6ba1b205ecd2cd106ba97c1c5"
       }
     },
@@ -600,7 +600,7 @@
       "evidence": "Union: both `$defs` entries (`review_input` from source and `inputs` from swarm), with the closing braces between them restored.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path schemas/ripr/review-comments.schema.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path schemas/ripr/review-comments.schema.json",
         "sha256": "135c7a1404b4363091aa9bd686211504f6fdff881c631727ec6c40348588dad1"
       }
     },
@@ -612,7 +612,7 @@
       "evidence": "Clean merge with swarm's `CheckReleaseChallengeJudgments` variant, parse arm, usage and catalog entry added, and the `release-upload-assets` entry at `ci_enforced` true with source's description.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/command.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/command.rs",
         "sha256": "b01187de2f76944251b571437f2c1da33fe9b4caf1b28cdc9e62bf7095461eb6"
       }
     },
@@ -624,7 +624,7 @@
       "evidence": "Clean merge plus swarm's `XtaskCommand::CheckReleaseChallengeJudgments` arm.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/dispatch.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/dispatch.rs",
         "sha256": "d9db2d1861541bdf7be59ba7f6aaf6802d819bbd1386ed1e07dccc06b09b893f"
       }
     },
@@ -636,7 +636,7 @@
       "evidence": "Clean merge plus: swarm's judgments check wired into precommit, swarm's precommit report string, source's `read_vsix_catalog` and swarm's `read_vsix_inventory` both present with `verify_packaged_vsix_inventory` called after catalog admission, and source's source-promotion contract arms next to swarm's `kind` arm.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/main.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/main.rs",
         "sha256": "e5f2688582c22e1ca59dd24289c2f1797ea552e24cdd27e49c6a402510b826e4"
       }
     },
@@ -648,7 +648,7 @@
       "evidence": "Clean merge with source's 12-line inline binary copy replaced by `staged_ripr_binary(&root, &built_ripr_binary()?)?` under source's comment.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/eval_sweep_refresh.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/eval_sweep_refresh.rs",
         "sha256": "865de6209b2a700d092a4b4fc5ebc4544ad0c66a1a71408514ae2e3e7e6a9cb4"
       }
     },
@@ -660,7 +660,7 @@
       "evidence": "Clean merge plus: imports unioned, `PR_CHECK_SUBJECT_SCHEMA_VERSION` constant, `write_diff` calling `ripr::analysis::load_diff_range`, the context-line test inverted to reject ` line 2`/` line 8`, the authority test using `load_diff_range`, and two `producer_check_projection` checks changed to `is_none_or(|basis| basis == \"producer_check_projection\")`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/pr_evidence.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/pr_evidence.rs",
         "sha256": "f3cab88b3e04afb03576269fd9b894af4441251dc3bdfeefe3e5b167c44c9b58"
       }
     },
@@ -672,7 +672,7 @@
       "evidence": "Clean merge minus swarm's descriptor writer and `editor_distribution_descriptor_*` functions, with `release_upload_assets` returning an error when the Release is missing, a new pure `release_upload_args`, and new `verify_glibc_floor`, `glibc_needs_within_floor` and `elf_glibc_version_needs` called for `*-linux-gnu` targets.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/release_server.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/release_server.rs",
         "sha256": "00f66caf767f1f7a799fdacecbf2c1c7dd1225bd6ad399de9272177925df2bce"
       }
     },
@@ -691,7 +691,7 @@
       "evidence": "Clean merge plus three glibc tests and `release_upload_args_never_replace_an_attached_asset`, source's `routed_rust_step_run_blocks` helper and inline-gate assertions, both parents' network and NUL-record tests; minus `swarm_server_binary_rehearsal_cannot_publish`, two descriptor tests, and one `write_packaging_test_vsix` copy.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/tests.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/tests.rs",
         "sha256": "42f391be72f79aebe4086f829a3a1565fed2830781b16937f1b0f970f427e878"
       }
     },
@@ -710,7 +710,7 @@
       "evidence": "Source blob plus swarm's two attribute blocks (fixture diff.patch and metrics/rust-judged-behavior-panel/diffs), with no line removed from either parent.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .gitattributes",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .gitattributes",
         "sha256": "16e84c00e2ff6cff7220af21078a5f88e5370dcdf64867a5613d187695026e88"
       }
     },
@@ -750,7 +750,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source blob plus swarm's `Unlocked install resolution (release surface)` step and `rust-only-features` job; jobs are rust, release-proof, rust-only-features, msrv, vscode.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .github/workflows/ci.yml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .github/workflows/ci.yml",
         "sha256": "77947b9cd80a0f4e57c7a7361a4a1ef01d146a3fc337951bd9c5de6e7455f716"
       }
     },
@@ -797,7 +797,7 @@
       "evidence": "Source blob with the three `push: tags` lines removed and the two Linux `os:` values changed from `ubuntu-latest`/`ubuntu-24.04-arm` to `ubuntu-22.04`/`ubuntu-22.04-arm`; swarm's rehearsal body, header comment and `permissions` block are absent.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .github/workflows/release-server-binaries.yml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .github/workflows/release-server-binaries.yml",
         "sha256": "f155e6b485604e6a3add99c5dd213f39cd302b9f602de1938e51dccfdc0372dc"
       }
     },
@@ -823,7 +823,7 @@
       "evidence": "Clean merge of both parents' hunks with one resolved line: the receipt `jq` template is swarm's schema_version 2 form carrying source's limitation text \"Manifest carries relative subjects only; retrieval composes from catalog placement and was not fetched\".",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .github/workflows/server-archive-qualification.yml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .github/workflows/server-archive-qualification.yml",
         "sha256": "2e74d301b345d2e828121128b2f16bfa791f63bb74834f94be66c95b45da1ee4"
       }
     },
@@ -856,7 +856,7 @@
       "evidence": "Swarm blob plus source's two `if: always()` lines, the #1729 comment block and issue references, and the `--nofeatures-*` arguments on swarm's `| tee target/windows-verdict.md | tee -a \"$GITHUB_STEP_SUMMARY\"` pipeline.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .github/workflows/windows-advisory.yml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .github/workflows/windows-advisory.yml",
         "sha256": "3c842f63a6c0bb0919e6643462d576937b027cf92080e583bb05fe62d664b044"
       }
     },
@@ -1057,7 +1057,7 @@
       "evidence": "Clean merge of both parents' rows with one resolution edit renaming swarm's `RIPR-SPEC-0177` TypeScript parse-depth behavior id and spec path to `RIPR-SPEC-0180`; 180 behaviors (source's 179 plus the renumbered swarm spec).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path .ripr/traceability.toml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path .ripr/traceability.toml",
         "sha256": "b72fe082ea9388c01b22a9c9da1d5927106ca97d2f08b54e0c1c02ce2bdfd2df"
       }
     },
@@ -1090,7 +1090,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's #1429 lines plus swarm's tuple-arm discrimination block.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classifier/evidence.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classifier/evidence.rs",
         "sha256": "bc04222d9db11c31a2144c3db294afecfb2e6c3ce186704d81889670d651c6e5"
       }
     },
@@ -1102,7 +1102,7 @@
       "evidence": "Chain order boundary_operand_unresolved -> error_guard_unresolved -> static_unknown unreached -> default; ripr and swarm finding tests pass on the J tree.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classifier/finding.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classifier/finding.rs",
         "sha256": "7e0777e3abb832c3c1419d34fb5289ec6b3689aff7c33186c794e0d14d1678df"
       }
     },
@@ -1114,7 +1114,7 @@
       "evidence": "Clean merge plus a resolution edit: the #4228 `LocalBoundary::Unresolved` return moved below `right_literal` and gated on `unresolved_notes.is_empty()`, `right_literal` taken from swarm's `visible_operand(&right, right_constant.as_ref())`, source's `let mut reason` kept, and swarm's NoRepair test oracle relaxed to accept facts carrying `BOUNDARY_OPERAND_UNRESOLVED_MARKER`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/activation.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/activation.rs",
         "sha256": "f99ba94bd62e4f3e338466a28dbd5389ecbb004700f1d0f07f17ae88a4374c13"
       }
     },
@@ -1126,7 +1126,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's #1664/#1666 hunks plus swarm's #3985 hunk.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/flow.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/flow.rs",
         "sha256": "d908ffd3da87972e8bd9790b1ae3670550a35b0fa67e78a19184e34cc1c400c0"
       }
     },
@@ -1138,7 +1138,7 @@
       "evidence": "Clean merge with the one conflicting `use activation::{...}` list replaced by the union of both parents' names.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/mod.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/mod.rs",
         "sha256": "27137601d3ac2509f0e61efa3b42789b95e69a5d4f0ff13553fef64f209c27dd"
       }
     },
@@ -1150,7 +1150,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): swarm's #3851 index plus source's #1748 pin test.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/related_tests.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/related_tests.rs",
         "sha256": "7328a9f272f41f6cdefef485ad1858a187361b900155a5627f751dabe6465e57"
       }
     },
@@ -1162,7 +1162,7 @@
       "evidence": "Both parents' reveal tests pass; oracle_confirmation_mixed golden bytes equal swarm's #4426 bless at the cutoff.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/classify/reveal.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/classify/reveal.rs",
         "sha256": "c53248061a31135fa0f93b936420ecd72b726e27ee721d9e44fcdb0f57944f0f"
       }
     },
@@ -1188,7 +1188,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's probe-id dedup call plus swarm's Python adapter hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/language/python.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/language/python.rs",
         "sha256": "ccbb4e0354745d9f47203ebebeb15927f41b9ec66852fe2f6d154317e000270e"
       }
     },
@@ -1200,7 +1200,7 @@
       "evidence": "Clean merge with the one conflicting diff-loop guard taken from swarm (`if !workspace::seeds_diff_probes(&changed.path, &source_role_context)`); source's `classify_with` plus `is_repo_automation_path` condition is absent.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/language/rust.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/language/rust.rs",
         "sha256": "e4409d476a24eb5c9e871d784c3e5b7350caf2b466e922ad79ac161564070127"
       }
     },
@@ -1212,7 +1212,7 @@
       "evidence": "Clean merge with source's early `unique_findings` dedup removed and swarm's `dedup_typescript_probe_ids(&mut findings)` replaced by `probes::dedup_finding_probe_ids(&mut findings)` with an expanded comment; `findings` is returned directly.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/language/typescript/mod.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/language/typescript/mod.rs",
         "sha256": "a55c3e0733a471b7728f70bd6687f6e4f506974a88d31837dba611296ca9b880"
       }
     },
@@ -1224,7 +1224,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' re-export and module additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/mod.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/mod.rs",
         "sha256": "c9971199a72fd07fc176ec0ff418eda37152889398fdfa882db8640b2a863f5a"
       }
     },
@@ -1236,7 +1236,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's hunks plus swarm's brace-only-line seeding change.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/probes/diff.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/probes/diff.rs",
         "sha256": "d111d4402e9e543e7762e5eb104fdb638931a6d0cf359b4e2adcfb096e07c0c9"
       }
     },
@@ -1255,7 +1255,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's `mod subprocess` and dedup export plus swarm's `parameter_boundary_tests` and `record_field_boundary_tests` modules.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/probes/mod.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/probes/mod.rs",
         "sha256": "5f078ff09f6272fb5623c791b74c604d484d2aee8fcbe64fd2324c1f59f09a54"
       }
     },
@@ -1274,7 +1274,7 @@
       "evidence": "Clean merge with each conflicting history comment rewritten to name both parents' transitions, and the three constants and their test assertions set to `1.15`, `0.21` and `0.22`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/seam_cache.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/seam_cache.rs",
         "sha256": "541a5a00e597a2c79867b95858e0c15184c65978e3e17eaf8bf2d90783b147ce"
       }
     },
@@ -1286,7 +1286,7 @@
       "evidence": "Clean merge plus a new `inventory_diff_scoped_classified_seams_at_with_config_and_lines` wrapper delegating to swarm's `_inner` with a `changed_lines` argument, `None` added to swarm's three `_inner` test calls, and `no_impact_production_edit_keeps_full_computation_active` rewritten to check `file_fact_cache` activity and the admitted `src/lib.rs`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/seam_inventory.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/seam_inventory.rs",
         "sha256": "8721f3a23ebdab409ee9bd2eaf83a03109839e4ee1773aabc224073682fab735"
       }
     },
@@ -1305,7 +1305,7 @@
       "evidence": "Clean merge with source's `is_repo_automation_path` function and its test removed, swarm's functions kept, and one assertion `subject(\"xtask/src/reports/source_promotion_verify.rs\")` added to swarm's `repo_automation_subjects_are_root_xtask_sources_only`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/analysis/workspace/source_role.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/analysis/workspace/source_role.rs",
         "sha256": "b0a3cfc566134cb824a55d1a4e2f9e0606e0c42c645111b4597d48f18f230d1e"
       }
     },
@@ -1317,7 +1317,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's `pub(crate) mod review_comments;` plus swarm's `base: None` default and doc comment.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/app.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/app.rs",
         "sha256": "b9928d9249b7464c57a4ab524aeee49bebcba8ef63d496aabebfdb3485083be4"
       }
     },
@@ -1329,7 +1329,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/app/agent_review_summary.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/app/agent_review_summary.rs",
         "sha256": "78ac29e269c907c0aece9e2e42f85dd46907bf9073959e09adf1181b04353e21"
       }
     },
@@ -1341,7 +1341,7 @@
       "evidence": "Clean merge with imports unioned, `PR_CHECK_SUBJECT_SCHEMA_VERSION` added, a new `load_canonical_analysis_diff` feeding both `run_ripr_check` (via a temp diff file) and `canonical_diff_sha256`, `review-input.json` reusing the subject digest, and `pr.diff` help text changed to \"PR diff packet (three context lines)\".",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/app/pr_evidence.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/app/pr_evidence.rs",
         "sha256": "d16b1e62b4f3db26eee1953b5f2549ef3fccd27f9d19893c74a195fa1119ea09"
       }
     },
@@ -1360,7 +1360,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/app/python_repair_binding.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/app/python_repair_binding.rs",
         "sha256": "3acb5d0ad84f81d49d2d4fe264222eb87c7ed8427871ca30646fd392572ad864"
       }
     },
@@ -1372,7 +1372,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/app/python_repair_verification.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/app/python_repair_verification.rs",
         "sha256": "6fc19d685f3080e120c328c1c9dfb4d5136bc12607426a4d6e56a0d64bea0844"
       }
     },
@@ -1398,7 +1398,7 @@
       "evidence": "Clean merge plus: `admitted_review_input` and the 50-line producer-projection render branch removed, `load_review_comments_diff` body replaced by `crate::analysis::load_diff_range`, test `review_comments_renders_from_bounded_producer_input` renamed and retargeted to assert admission and a non-projection basis, the init guidance test switched to `ripr pr-evidence`, and swarm's module-level `sha2` import dropped.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/cli/commands.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/cli/commands.rs",
         "sha256": "e65f499f478f88a5170ce107fb0b41aa98701bc5c225b116085394f0e6555c9c"
       }
     },
@@ -1417,7 +1417,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/cli/commands/doctor.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/cli/commands/doctor.rs",
         "sha256": "cc81aa072bd26de1de968d3251c3f4c55c621e7b31920d62d8f20b3c3257accc"
       }
     },
@@ -1429,7 +1429,7 @@
       "evidence": "Clean merge with `repo_root` added to the test import, and `gate_command_writes_blocked_report_before_error` taking swarm's `Result<(), CommandError>` signature with source's owned `gate-blocked-owned` dir and `--root` argument.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/cli/commands/gate.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/cli/commands/gate.rs",
         "sha256": "bca064f0cfb333979a9a5821dfe3016cbf97a3f7f4b3e38d7d3ee8efd4fe0189"
       }
     },
@@ -1441,7 +1441,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/config.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/config.rs",
         "sha256": "ad5f75f0e3e46922da798cf098372a3b2cf2cf93857ad6594fe15cda39a966aa"
       }
     },
@@ -1453,7 +1453,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' test additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/config/tests.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/config/tests.rs",
         "sha256": "999b6fd7d3b1f3a257eba47dbfdf3f3e29d656ee7c5bca8e40e53ef97b6bf245"
       }
     },
@@ -1479,7 +1479,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' module declarations.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/lib.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/lib.rs",
         "sha256": "955c45aab75b3d01b62efd589b409553d770ac26a094fc7c784751fbab81a42f"
       }
     },
@@ -1491,7 +1491,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' test hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/lsp/tests.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/lsp/tests.rs",
         "sha256": "caecdac6cc20e2fe2f133994947d99515f74c5135567c1b4885b8fe6073a986f"
       }
     },
@@ -1510,7 +1510,7 @@
       "evidence": "Clean merge plus five lines in the `doctor_scope_root` helper creating `root.join(\".git\")` with a comment.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/output/doctor.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/output/doctor.rs",
         "sha256": "0ff021243ffe8c7d80755d2264c28ba9708845d2e2e8b6ba2bfce913a6313d2b"
       }
     },
@@ -1529,7 +1529,7 @@
       "evidence": "Clean merge minus source's `render_review_comments_json_from_projection`, `projection_string`, `render_review_comments_markdown_from_json` and test `producer_projection_renderer_preserves_placements_and_summary_cap` (165 lines removed, none added).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/output/review_comments.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/output/review_comments.rs",
         "sha256": "b2de8c83b219f8a28b66e67572aba2e7b896ee2a8eb2938fef5f610c915d6e6d"
       }
     },
@@ -1548,7 +1548,7 @@
       "evidence": "Differs from the source blob only in the #4401 write path; the review-comments receipt tests pass on the J tree.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/src/output/review_comments_receipt.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/src/output/review_comments_receipt.rs",
         "sha256": "8df3eaae6e5a9c2677ddd59eb3dc6c5f40ad931af335ef07a849fcfea7d8b210"
       }
     },
@@ -1567,7 +1567,7 @@
       "evidence": "Clean merge plus `assert_anchored_stdout_matches_fixture_at(output, fixture, anchor)` replacing swarm's workspace-root helper, source's `run_command` packet/brief calls using it, `.git` marker added to the relocated `doctor_reports_missing_config_defaults`, and source's `isolated_fixture_workspace` roots applied to the relocated pilot and Python tests.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path crates/ripr/tests/cli_smoke.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path crates/ripr/tests/cli_smoke.rs",
         "sha256": "71a140332d8cbff01329bf6f0cadc8a4e6f61e81f64756382002f42ffa204644"
       }
     },
@@ -1586,7 +1586,7 @@
       "evidence": "Clean merge with source's legacy-workflow paragraph and command list restored in place of swarm's, the runner paragraph naming four jobs, and the out-of-scope sentence using source's wording without the rehearsal reference.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/CI.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/CI.md",
         "sha256": "95c9d10dddd9ef73dc113b3d8cc5c3e44b1ddd5cd6502b07b425a158c61811df"
       }
     },
@@ -1598,7 +1598,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' index lines.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/DOCUMENTATION.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/DOCUMENTATION.md",
         "sha256": "2b1f84c62053e3e2f1cbfa38186d72681cb5e2ec619dab2c74043000000c12ed"
       }
     },
@@ -1610,7 +1610,7 @@
       "evidence": "Clean merge with the one conflict resolved to swarm's `suppressed[]` text followed by source's `warnings[]` text.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/OUTPUT_SCHEMA.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/OUTPUT_SCHEMA.md",
         "sha256": "ee97f87ace4ff8704d6fc31db646a887f6b5e6d7774970b38659154de990621c"
       }
     },
@@ -1622,7 +1622,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' paragraphs.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/PR_AUTOMATION.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/PR_AUTOMATION.md",
         "sha256": "5269566d14d4d5e820fb828afc3093b67a614c5aad11375d8004eab0d8374592"
       }
     },
@@ -1634,7 +1634,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/PR_REVIEW_GUIDANCE.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/PR_REVIEW_GUIDANCE.md",
         "sha256": "44c9c6508012049625dff54b08bf21ab39c0e8e9352192d0b9c788e752d36f96"
       }
     },
@@ -1646,7 +1646,7 @@
       "evidence": "Source blob plus a six-line glibc 2.35 floor paragraph, the clause \"and that the binary names the candidate commit\", and three lines stating the Release must already exist and `release-upload-assets` never passes `--clobber`; swarm's rehearsal title, dispatch text and RC placement section are absent.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/RELEASE_BINARIES.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/RELEASE_BINARIES.md",
         "sha256": "36ef77f4ecaf7575822c915bcec7a3c627827b7014a199790f7003b826f6718b"
       }
     },
@@ -1658,7 +1658,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/RELEASE_TRANSACTION.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/RELEASE_TRANSACTION.md",
         "sha256": "a9567c1bd8fac1722b51063e265a4619845c4116785f55f029f88b47e995676f"
       }
     },
@@ -1684,7 +1684,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/STATIC_EXPOSURE_MODEL.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/STATIC_EXPOSURE_MODEL.md",
         "sha256": "3667864d05226b43c86b7a3cc78ec68b83756852690c870db15396cd9cc7011f"
       }
     },
@@ -2060,7 +2060,7 @@
       "evidence": "Clean merge with one row changed: swarm's parse-depth link and id renamed from RIPR-SPEC-0177 to RIPR-SPEC-0180.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/specs/README.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/specs/README.md",
         "sha256": "b415eee84c59dd2334ec5cc7cc9420cf49e617c490c5e5a39129fb7a1de47862"
       }
     },
@@ -2072,7 +2072,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/specs/RIPR-SPEC-0012-pr-test-guidance.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/specs/RIPR-SPEC-0012-pr-test-guidance.md",
         "sha256": "cb042d01f97c2444eb249b046ea10d78d17a3b0ebf23f77921e884ca12cdf611"
       }
     },
@@ -2126,7 +2126,7 @@
       "evidence": "Clean merge with the three conflicts resolved to source's side (empty) for swarm's raw-merge block, PR template and \"Post-Publication Back-Sync To Swarm\" section; the \"Resolving the join\" subsection is present.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path docs/swarm-development.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path docs/swarm-development.md",
         "sha256": "df85755e44d8a227f731717c9fc0959e587ab08f1f73cee41ded6dad90ebdb6a"
       }
     },
@@ -2138,7 +2138,7 @@
       "evidence": "Source blob plus swarm's two-line comment and `target/**` rule.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path editors/vscode/.vscodeignore",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path editors/vscode/.vscodeignore",
         "sha256": "d213ee1e5b22a88c09c370b1135212eac569593d24421d76b7a03d506f7ca99c"
       }
     },
@@ -2199,7 +2199,7 @@
       "evidence": "Differs from the source blob only by missingServerRemedy and its call site; TypeScript compile passes.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path editors/vscode/src/serverResolver.ts",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path editors/vscode/src/serverResolver.ts",
         "sha256": "b6b4e4d8e7cce5d40a30a9d570eef688ab6f488e6a0505303fe6f71829400c53"
       }
     },
@@ -2253,7 +2253,7 @@
       "evidence": "Both parents' test cases present; TypeScript compile passes (npm test runs on hosted CI).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path editors/vscode/test/suite/server_resolver_compatibility.test.ts",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path editors/vscode/test/suite/server_resolver_compatibility.test.ts",
         "sha256": "f98d8f4eebb78d9baad8bf107bfe9b54dd949d82b164820e8556afae3f6010d9"
       }
     },
@@ -2272,7 +2272,7 @@
       "evidence": "Source ledger plus swarm's RIPR-SPEC-0084 entry appended as Pending entry (3).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/binding_value_fail_closed/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/binding_value_fail_closed/expected/CHANGELOG.md",
         "sha256": "e5381c8769b1d4b9e4b56d8824eaa19bbbc30069048c34c96cefb306000757d7"
       }
     },
@@ -2284,7 +2284,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): no `base` key and `base_revision` null from swarm with source's finding content.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/binding_value_fail_closed/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/binding_value_fail_closed/expected/check.json",
         "sha256": "9ca8c1e67235ee8f157689ca4d9694c926efd643a9fde641087f1a0bfe44b093"
       }
     },
@@ -2303,7 +2303,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' field additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap/expected/pr-guidance/capped/comments.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap/expected/pr-guidance/capped/comments.json",
         "sha256": "b8044b44a17b6910d835679d58d857227eff44979821e388fa990dd55963a292"
       }
     },
@@ -2315,7 +2315,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' field additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap/expected/pr-guidance/changed-test-skip/comments.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap/expected/pr-guidance/changed-test-skip/comments.json",
         "sha256": "23ad1a73f2e27a46cf3b2352a838d5add637033aa929bb82b3de4ab7cc663636"
       }
     },
@@ -2334,7 +2334,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' field additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
         "sha256": "588f67cf708ea16c3927c6c7db648380d8ac8972d64b05ea902e62214cfc4bdb"
       }
     },
@@ -2346,7 +2346,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' field additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap/expected/pr-guidance/owner-function-line/comments.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap/expected/pr-guidance/owner-function-line/comments.json",
         "sha256": "0c66695ac5758fe34b9fffffecd81c8b4ecdd46c65aea1a152c54dddd92dd279"
       }
     },
@@ -2358,7 +2358,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' field additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap/expected/pr-guidance/same-file-line/comments.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap/expected/pr-guidance/same-file-line/comments.json",
         "sha256": "f7cf8a986316adb2854d66e84c08248489ab31816091bb7286f7e8fec5c4df9c"
       }
     },
@@ -2370,7 +2370,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' field additions.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap/expected/pr-guidance/summary-only/comments.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap/expected/pr-guidance/summary-only/comments.json",
         "sha256": "9c2a2679403570eb00a85063f6b1b1bdbbb6c37e570a80120734b957880fb016"
       }
     },
@@ -2403,7 +2403,7 @@
       "evidence": "Source ledger plus one appended J `goldens bless` entry citing the fixture's spec and the #4002 base change.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap_equality_closed/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap_equality_closed/expected/CHANGELOG.md",
         "sha256": "d0bb364d14d021edee0b6bea3e3946b341695a9231fa997c1f29271807409a9c"
       }
     },
@@ -2415,7 +2415,7 @@
       "evidence": "Source blob with the top-level `\"base\": \"origin/main\"` line removed and outcome `base_revision` changed to null; findings and `input_identity` equal SP.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_gap_equality_closed/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_gap_equality_closed/expected/check.json",
         "sha256": "d3878f19dded7810724df250e02b1cbf430f5ad3573ae86c8ee9a18d5f6223c4"
       }
     },
@@ -2469,7 +2469,7 @@
       "evidence": "Source ledger plus one appended J `goldens bless` entry citing the fixture's spec and the #4002 base change.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_operand_unresolved/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_operand_unresolved/expected/CHANGELOG.md",
         "sha256": "3c22c6d8036642d0d4463856a1918baa8d52b938724eeee9b3ff50647c53fb65"
       }
     },
@@ -2481,7 +2481,7 @@
       "evidence": "Source blob with the top-level `\"base\": \"origin/main\"` line removed and outcome `base_revision` changed to null; findings and `input_identity` equal SP.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_operand_unresolved/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_operand_unresolved/expected/check.json",
         "sha256": "e0feb51d02bfe03490010f5023a99b1a305b8b67aea26bc9a790543cf6dfedf6"
       }
     },
@@ -2493,7 +2493,7 @@
       "evidence": "Blessed with reason RIPR-SPEC-0122 J cutoff join regeneration; check.json differs from the source blob only in suggested_next_action; goldens check passes.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_operand_unresolved/expected/human-full.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_operand_unresolved/expected/human-full.txt",
         "sha256": "75cc3ec73bbac41b14dd4562bce93c33c702c1f5d984f3592497809bfbd9b44c"
       }
     },
@@ -2505,7 +2505,7 @@
       "evidence": "Blessed with reason RIPR-SPEC-0122 J cutoff join regeneration; check.json differs from the source blob only in suggested_next_action; goldens check passes.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/boundary_operand_unresolved/expected/human.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/boundary_operand_unresolved/expected/human.txt",
         "sha256": "61dd91b5c6a17cd6304574e8f5e2b88fb2284573c395da457d3798ee8a59a253"
       }
     },
@@ -2545,7 +2545,7 @@
       "evidence": "Source ledger plus one appended J `goldens bless` entry citing the fixture's spec and the #4002 base change.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/error_return_unresolved_guard/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/error_return_unresolved_guard/expected/CHANGELOG.md",
         "sha256": "2ab6570250ac3bc472c2adf5ccd9e372bd704bfdc9803c8804ae416943b63baf"
       }
     },
@@ -2557,7 +2557,7 @@
       "evidence": "Source blob with the top-level `\"base\": \"origin/main\"` line removed and outcome `base_revision` changed to null; findings and `input_identity` equal SP.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/error_return_unresolved_guard/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/error_return_unresolved_guard/expected/check.json",
         "sha256": "b6bbc14d0406146c8570ac7964e80b478139ba5468d0f4e20f009fd77939bbc4"
       }
     },
@@ -2569,7 +2569,7 @@
       "evidence": "Blessed with reason RIPR-SPEC-0122 J cutoff join regeneration; check.json differs from the source blob only in suggested_next_action; goldens check passes.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/error_return_unresolved_guard/expected/human.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/error_return_unresolved_guard/expected/human.txt",
         "sha256": "b5b7649fc15bdc07df6dd5ef2be4bc506c7125c7cb816b87e8e6b410a151b9dc"
       }
     },
@@ -2602,7 +2602,7 @@
       "evidence": "94 cases with no duplicate id; every SP and SW case id is present, the 11 base cases that differ take the SW object, and the envelope fields equal both parents.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/evidence-promotion-honesty-corpus/corpus.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/evidence-promotion-honesty-corpus/corpus.json",
         "sha256": "a55d7affecb5694935fa4c8113c3af0dadf0a0e7718f6ea1d4259d407fd3fc1b"
       }
     },
@@ -2628,7 +2628,7 @@
       "evidence": "Clean merge plus one appended J entry, Pending (3) (RIPR-SPEC-0096).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/infect_wildcard_discard/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/infect_wildcard_discard/expected/CHANGELOG.md",
         "sha256": "0113123890c256b5d353c99e56c0148b612777aaa139d9e29f25d80d242a568b"
       }
     },
@@ -2640,7 +2640,7 @@
       "evidence": "SP's three findings and `input_identity` (sha256:4075aa30...) with the top-level `base` line removed and `base_revision` null.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/infect_wildcard_discard/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/infect_wildcard_discard/expected/check.json",
         "sha256": "af33908bb0910f806f389256cbe221a9aad1da8d3cada804085472a9b008b3d0"
       }
     },
@@ -2666,7 +2666,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's paragraph followed by source's paragraph.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_comment_literal_no_promotion/SPEC.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_comment_literal_no_promotion/SPEC.md",
         "sha256": "37cd6c87dc62b09ec6e328614dbb5e934e5202c7a4e8643d9a14d16445b85930"
       }
     },
@@ -2685,7 +2685,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's RIPR-SPEC-0084 base entry as Pending (3) (the source side of the hunk was empty) plus one appended J entry Pending (4) (RIPR-SPEC-0108).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_comment_literal_no_promotion/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_comment_literal_no_promotion/expected/CHANGELOG.md",
         "sha256": "d7d4182347617c64cfe28763464b810a5eeeae679d61d33b9f121f64aae56c2f"
       }
     },
@@ -2753,7 +2753,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's RIPR-SPEC-0084 base entry as Pending (3) (the source side of the hunk was empty) plus one appended J entry Pending (4) (RIPR-SPEC-0108).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_diagnostic_literal_no_promotion/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_diagnostic_literal_no_promotion/expected/CHANGELOG.md",
         "sha256": "fbc6815817de3ec39d2a081415718fbe067db9239376c163d07f24e38fee1a61"
       }
     },
@@ -2821,7 +2821,7 @@
       "evidence": "Clean merge with the conflict resolved to swarm's RIPR-SPEC-0084 base entry as Pending (3) (the source side of the hunk was empty) plus one appended J entry Pending (4) (RIPR-SPEC-0108).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/match_arm_shared_result_no_promotion/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/match_arm_shared_result_no_promotion/expected/CHANGELOG.md",
         "sha256": "45e11461e9134b269eb8313e280466c77aa34d89dcb9ad24fbbd0f366894e0e0"
       }
     },
@@ -2875,7 +2875,7 @@
       "evidence": "Source ledger plus swarm's RIPR-SPEC-0084 entry appended as Pending entry (20).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/observation_verified_field_construction/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/observation_verified_field_construction/expected/CHANGELOG.md",
         "sha256": "f3273026fbe9c4d3c7d2a8b96b48fa4282d29361ea13be636ee0866464b67a7b"
       }
     },
@@ -2887,7 +2887,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's finding text plus swarm's base omission.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/observation_verified_field_construction/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/observation_verified_field_construction/expected/check.json",
         "sha256": "f25889efc820c53a885a2e8405501371b70e1b7bfc288ca9f6bf780c9158c86d"
       }
     },
@@ -2913,7 +2913,7 @@
       "evidence": "Source ledger plus one appended J entry (RIPR-SPEC-0108).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_binding_status_wrong_owner_observer/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_binding_status_wrong_owner_observer/expected/CHANGELOG.md",
         "sha256": "238aff73eb4b6f45603a6fb23c25d064b6e8b43cbbae3338380966bde04b6470"
       }
     },
@@ -2925,7 +2925,7 @@
       "evidence": "Source blob with the top-level `\"base\": \"origin/main\"` line removed and outcome `base_revision` changed to null; findings and `input_identity` equal SP.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_binding_status_wrong_owner_observer/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_binding_status_wrong_owner_observer/expected/check.json",
         "sha256": "d139f9fd755e441092d26c2023415094c88a2f02bd931eccb709f52248d7b167"
       }
     },
@@ -2986,7 +2986,7 @@
       "evidence": "Source ledger plus one appended J `goldens bless` entry citing the fixture's spec and the #4002 base change.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_catalog_description_structural_oracle/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_catalog_description_structural_oracle/expected/CHANGELOG.md",
         "sha256": "40100d0c84f4f1c7e1bc8e3264ca8040295fc2cd4f82950fb157c91316817332"
       }
     },
@@ -2998,7 +2998,7 @@
       "evidence": "Source blob with the top-level `\"base\": \"origin/main\"` line removed and outcome `base_revision` changed to null; findings and `input_identity` equal SP.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_catalog_description_structural_oracle/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_catalog_description_structural_oracle/expected/check.json",
         "sha256": "aac9409c3bf59651853252dde6b5a3c15ec4c4cade72027dc6434faea82265a7"
       }
     },
@@ -3010,7 +3010,7 @@
       "evidence": "Blessed with reason RIPR-SPEC-0122 J cutoff join regeneration; check.json differs from the source blob only in suggested_next_action; goldens check passes.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_catalog_description_structural_oracle/expected/human-full.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_catalog_description_structural_oracle/expected/human-full.txt",
         "sha256": "20bb1697f910335c2b0de5764be1db078e68ae38e4b9f29694d759c40adbae06"
       }
     },
@@ -3050,7 +3050,7 @@
       "evidence": "Source ledger through (4), then swarm's RIPR-SPEC-0084 entry as (5), swarm's RIPR-SPEC-0001 weak-token reach entry as (6), and the J entry as (7).",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_constructor_field_observation/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_constructor_field_observation/expected/CHANGELOG.md",
         "sha256": "c3d77750bda565318c58602d409daf7b9ec44bc048368050a5db7e0eaa33923a"
       }
     },
@@ -3062,7 +3062,7 @@
       "evidence": "Finding with swarm's `reach weak` evidence_path and source's \"Discriminator unconfirmed ... (observation_unverified)\" evidence and two `missing` items; `base` omitted.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_constructor_field_observation/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_constructor_field_observation/expected/check.json",
         "sha256": "6c9a1b452b93021e15ed7fe8242ecdeed1403fc7c6d83223028fb2183aa75ff3"
       }
     },
@@ -3074,7 +3074,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' line changes.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/rust_constructor_field_observation/expected/human-full.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/rust_constructor_field_observation/expected/human-full.txt",
         "sha256": "6db1199fc8447c2ef0ae32cc7f1af71e354f79b21d018e4c131aa92d4be290c5"
       }
     },
@@ -3135,7 +3135,7 @@
       "evidence": "Source ledger plus two appended J entries, (2) the base regeneration and (3) the RIPR-SPEC-0001 brace-only line change.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/source_promotion_verification/expected/CHANGELOG.md",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/source_promotion_verification/expected/CHANGELOG.md",
         "sha256": "4ae1529f6a37b6e90c84534a78399a8bcaad8a20c7512f6c5b259683163f6ee4"
       }
     },
@@ -3147,7 +3147,7 @@
       "evidence": "Source blob with `base` removed, `base_revision` null, summary 3 to 2 probes and findings, and the line-10 `}` static_unknown finding deleted.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/source_promotion_verification/expected/check.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/source_promotion_verification/expected/check.json",
         "sha256": "35d8b7848d779e6688f85d179c8734ba22212341dba09414a672c63ad185861a"
       }
     },
@@ -3159,7 +3159,7 @@
       "evidence": "Source blob with counts 3 to 2, one fewer hidden finding, and the why-text \"no related test was found that reaches this change\".",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path fixtures/source_promotion_verification/expected/human.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path fixtures/source_promotion_verification/expected/human.txt",
         "sha256": "364d90e175e287a1ad5ec4c7b24e75f0ba59c6d2fa68ac5e51d7623b5c98c985"
       }
     },
@@ -3269,7 +3269,7 @@
       "evidence": "Swarm's `routed-rust-small` commands line in the only conflict hunk; the `rust` lane pointing at `.github/workflows/rust-gates.yml` job `rust-gates` arrives by clean merge from swarm, and source's removal of the `windows-advisory` lane is kept.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/ci-lane-whitelist.toml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/ci-lane-whitelist.toml",
         "sha256": "3989ce2fa02362855fb19e8e2f128e49c6b8b590fab870fa012112559717aefe"
       }
     },
@@ -3288,7 +3288,7 @@
       "evidence": "Source's RIPR-SPEC-0176 entry plus swarm's parse-depth artifact with `id` and `path` renumbered to RIPR-SPEC-0180; no other row differs from the clean merge.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/doc-artifacts.toml",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/doc-artifacts.toml",
         "sha256": "f7542f5ef658b6e4e8dd3f5fab4d50b8982267c0bd6174af866f6661d3d1c50b"
       }
     },
@@ -3307,7 +3307,7 @@
       "evidence": "Union of source's `pr_inline_comment_publish_plan.rs|\"push\"|1` row and swarm's `typescript_packet_projection.rs|curl|2` row; source's count-4 curl row is dropped.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/network_allowlist.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/network_allowlist.txt",
         "sha256": "375e4f9cfe76dee143f1cea77a2e731a34481942245bd157be94ef6fe70a3dc0"
       }
     },
@@ -3326,7 +3326,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's source-promotion rows plus swarm's `python_repair_driver_binding`, `python_repair_verification_check_report` and `python_repair_verification_receipt` kind rows.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/output_contracts.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/output_contracts.txt",
         "sha256": "0c3b25d2f1f30753195e483b2b66a4b8185dad356549cad5fe3389ab1ffc42f4"
       }
     },
@@ -3338,7 +3338,7 @@
       "evidence": "Union of both parents' rows with `crates/ripr/src/cli/commands.rs|Command::new` at 1, `xtask/src/run.rs|Command::new` at 16 (SP 17, SW 14), source's `downloader.ts|cp.execFile|1`, two new `crates/ripr/tests/pr_evidence_review_comments.rs` rows, and no `downloader_manifest_fallback.test.ts` row.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/process_allowlist.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/process_allowlist.txt",
         "sha256": "6e933ba0381eead7a4f0b8807907c59caccdba38b78886db9c559849c59fc605"
       }
     },
@@ -3350,7 +3350,7 @@
       "evidence": "Source blob plus one crate-root line `pub mod process_owner;` for swarm's #3803 owned-subprocess module; swarm's inline 300-line list is absent here and every swarm entry appears in the pair of ledgers.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/public_api.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/public_api.txt",
         "sha256": "1e1af5793295b9f88ae7d361e116891d5d9dd2e6ba1b205ecd2cd106ba97c1c5"
       }
     },
@@ -3362,7 +3362,7 @@
       "evidence": "Source blob plus 20 appended lines: `CommandError`, `process_owner`, `OwnedProcess`, six `ripr::analysis` diff/path-record/default-base exports, and `pub use ripr::analysis::cache_layer_names`, under two comment headers.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/public_api_surface.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/public_api_surface.txt",
         "sha256": "20bcc62387011039e2f69163b71f3394921113511f806fe0625b27e95f8f98ba"
       }
     },
@@ -3381,7 +3381,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): source's routed-rust.yml (44 run lines), source-promotion-admission and source-promotion-contract rows plus swarm's ci-scratch-lease, ripr-check action and scratch-gc rows.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path policy/workflow_allowlist.txt",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path policy/workflow_allowlist.txt",
         "sha256": "67dda123eadc865a49ce60a12a3f7920741f77ace3f4838d43e7a0a6bde1c10f"
       }
     },
@@ -3400,7 +3400,7 @@
       "evidence": "Union: both `$defs` entries (`review_input` from source and `inputs` from swarm), with the closing braces between them restored.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path schemas/ripr/review-comments.schema.json",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path schemas/ripr/review-comments.schema.json",
         "sha256": "135c7a1404b4363091aa9bd686211504f6fdff881c631727ec6c40348588dad1"
       }
     },
@@ -3468,7 +3468,7 @@
       "evidence": "Clean merge with swarm's `CheckReleaseChallengeJudgments` variant, parse arm, usage and catalog entry added, and the `release-upload-assets` entry at `ci_enforced` true with source's description.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/command.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/command.rs",
         "sha256": "b01187de2f76944251b571437f2c1da33fe9b4caf1b28cdc9e62bf7095461eb6"
       }
     },
@@ -3480,7 +3480,7 @@
       "evidence": "Clean merge plus swarm's `XtaskCommand::CheckReleaseChallengeJudgments` arm.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/dispatch.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/dispatch.rs",
         "sha256": "d9db2d1861541bdf7be59ba7f6aaf6802d819bbd1386ed1e07dccc06b09b893f"
       }
     },
@@ -3499,7 +3499,7 @@
       "evidence": "Clean merge plus: swarm's judgments check wired into precommit, swarm's precommit report string, source's `read_vsix_catalog` and swarm's `read_vsix_inventory` both present with `verify_packaged_vsix_inventory` called after catalog admission, and source's source-promotion contract arms next to swarm's `kind` arm.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/main.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/main.rs",
         "sha256": "e5f2688582c22e1ca59dd24289c2f1797ea552e24cdd27e49c6a402510b826e4"
       }
     },
@@ -3539,7 +3539,7 @@
       "evidence": "Clean merge with source's 12-line inline binary copy replaced by `staged_ripr_binary(&root, &built_ripr_binary()?)?` under source's comment.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/eval_sweep_refresh.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/eval_sweep_refresh.rs",
         "sha256": "865de6209b2a700d092a4b4fc5ebc4544ad0c66a1a71408514ae2e3e7e6a9cb4"
       }
     },
@@ -3572,7 +3572,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' module declarations.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/mod.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/mod.rs",
         "sha256": "abd6ba9c1f6ca3d5519e5a9455b5a53dc104c9beb5d84ce5dbde3404bb315afa"
       }
     },
@@ -3584,7 +3584,7 @@
       "evidence": "Clean merge plus: imports unioned, `PR_CHECK_SUBJECT_SCHEMA_VERSION` constant, `write_diff` calling `ripr::analysis::load_diff_range`, the context-line test inverted to reject ` line 2`/` line 8`, the authority test using `load_diff_range`, and two `producer_check_projection` checks changed to `is_none_or(|basis| basis == \"producer_check_projection\")`.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/pr_evidence.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/pr_evidence.rs",
         "sha256": "f3cab88b3e04afb03576269fd9b894af4441251dc3bdfeefe3e5b167c44c9b58"
       }
     },
@@ -3596,7 +3596,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/release.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/release.rs",
         "sha256": "df437668e4e6ee972315512b59344b86d6680f369c2c7a33050ecb5cb271ec71"
       }
     },
@@ -3615,7 +3615,7 @@
       "evidence": "Clean merge minus swarm's descriptor writer and `editor_distribution_descriptor_*` functions, with `release_upload_assets` returning an error when the Release is missing, a new pure `release_upload_args`, and new `verify_glibc_floor`, `glibc_needs_within_floor` and `elf_glibc_version_needs` called for `*-linux-gnu` targets.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/release_server.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/release_server.rs",
         "sha256": "00f66caf767f1f7a799fdacecbf2c1c7dd1225bd6ad399de9272177925df2bce"
       }
     },
@@ -3627,7 +3627,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/review_comments.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/review_comments.rs",
         "sha256": "fbbeeca74d24a8babd42abaea3bda162b3d3b91aa1409df25f76ca19c29a5e10"
       }
     },
@@ -3639,16 +3639,21 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/reports/source_promotion.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/source_promotion.rs",
         "sha256": "443f5c813e03fab41206eb5215767a5b963f2ffd17b44a72c2dc6b1749c177fb"
       }
     },
     {
       "kind": "source_survivor",
       "key": "xtask/src/reports/source_promotion_admission_fixture.rs",
-      "disposition": "source_blob",
-      "rationale": "Source blob retained: the reviewed tree's bytes equal the exact source parent's.",
-      "evidence": "Reviewed-tree blob is byte-identical to source parent 6989700f64936a6b9829e5ed06c731f0e1bed0e1 at this path."
+      "disposition": "integrated",
+      "rationale": "Source's J5 admission fixture checks out the whole resolved tree under a temporary root. Swarm's judged-panel generation paths (metrics/rust-judged-behavior-panel/portable/generations/<sha256>/attestations) push that checkout past Windows MAX_PATH, so the fixture repository now sets core.longpaths=true alongside its existing config. This is a no-op on other hosts. It surfaced on the hosted windows-latest J qualification lane (run 36449483089, production_j5_rejection_is_a_self_verifying_workflow_packet).",
+      "evidence": "One added config row in configure_fixture_repository; xtask source_promotion_workflow_contract passes 10/10 on Linux, and the Windows lane of the J qualification control proves the Windows path.",
+      "integration_evidence": {
+        "type": "digest_bound_artifact",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/reports/source_promotion_admission_fixture.rs",
+        "sha256": "49823ef8d635243665f7d9552147714ed176c91097ae1580284f45fbdbc5a545"
+      }
     },
     {
       "kind": "source_survivor",
@@ -3791,7 +3796,7 @@
       "evidence": "Clean merge with three lines changed in the source function: `OwnedProcess::spawn(command)` instead of `command.spawn()`, and `stdout_pipe()`/`stderr_pipe()` instead of the `stdout`/`stderr` fields.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/run.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/run.rs",
         "sha256": "067c970b61b012de01ba6de4c023513f34c5e398c5008d8c101e84116b1af6ed"
       }
     },
@@ -3810,7 +3815,7 @@
       "evidence": "Clean merge plus three glibc tests and `release_upload_args_never_replace_an_attached_asset`, source's `routed_rust_step_run_blocks` helper and inline-gate assertions, both parents' network and NUL-record tests; minus `swarm_server_binary_rehearsal_cannot_publish`, two descriptor tests, and one `write_packaging_test_vsix` copy.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/tests.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/tests.rs",
         "sha256": "42f391be72f79aebe4086f829a3a1565fed2830781b16937f1b0f970f427e878"
       }
     },
@@ -3829,7 +3834,7 @@
       "evidence": "Byte-identical to Git's clean three-way merge of MB, SP and SW (no resolution edit): both parents' hunks.",
       "integration_evidence": {
         "type": "digest_bound_artifact",
-        "ref": "accepted JOIN_TREE 5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c path xtask/src/windows_advisory.rs",
+        "ref": "accepted JOIN_TREE 3e27eb6e07ce58546a6544877237c39beca2fa2e path xtask/src/windows_advisory.rs",
         "sha256": "dd2512a5d20d646801a144f289e941a2e54250828ca5b797bc7bbf6941e7702e"
       }
     },

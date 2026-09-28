@@ -18,18 +18,18 @@ permissions:
 
 concurrency:
   group: join-tree-qualification-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 # The exact identities are pinned on this control branch only.
 env:
   SOURCE_PARENT: "6989700f64936a6b9829e5ed06c731f0e1bed0e1"
   SWARM_PARENT: "112a834e4397784d4bbb1feeffbea55e00dda427"
-  REVIEWED_TREE: "5c5a7e966d1b2f4b201e2932ff64ed24ea5ca72c"
-  REVIEWED_TREE_REF: "refs/heads/control/tree-5c5a7e96"
+  REVIEWED_TREE: "3e27eb6e07ce58546a6544877237c39beca2fa2e"
+  REVIEWED_TREE_REF: "refs/heads/control/tree-3e27eb6e"
   CHECKER_REF: "refs/heads/control/checker-0f118b24"
   CHECKER_SHA256: "0f118b24e3f5d67fd6a2396bc680cffbbc8f7d48ec317281cc839e36ee78c238"
-  PREFLIGHT_SHA256: "298b7239aca51f91432565b923bd0063d8898f4f7254815982d676206c1ed10f"
-  RESOLUTION_MANIFEST_SHA256: "8a198684dbe27b286537704262aa69d322c208d49fbf4f85cd9eef03b582a62f"
+  PREFLIGHT_SHA256: "2f3ad0f0243765fed6aa52e4d4119337406ba18c3b85848e4dfb6b188cf17222"
+  RESOLUTION_MANIFEST_SHA256: "c492ed3aad404e381f081881a6ae58d9a024cbe28e1c6e7b788e927826f93e56"
   CONTROL_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   CARGO_TERM_COLOR: never
 
