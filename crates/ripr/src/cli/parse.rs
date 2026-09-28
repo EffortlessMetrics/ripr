@@ -3,10 +3,73 @@ mod mode;
 mod value;
 
 use crate::cli::command::CliCommand;
+use std::io::IsTerminal;
 
 pub(crate) use format::parse_format;
 pub(crate) use mode::parse_mode;
 pub(crate) use value::expect_value;
+
+/// The parse-time conflict error for a command whose synopsis offers
+/// `[--base REV|--diff PATH]` when both flags are given explicitly (#4319).
+///
+/// The diff loader gives `--diff` precedence and never validates `--base`
+/// beside it, so both flags on one command line analyzed one input while
+/// appearing to assert the other. The phrasing follows `check`'s existing
+/// conflict errors (`commands/check.rs`): name the command and both flags,
+/// then say to pass one. Only the fresh-run path raises this; beside
+/// `--from`, both flags are assertions verified against the recording
+/// (RIPR-SPEC-0140), not alternative diff sources.
+pub(crate) fn base_with_diff_conflict_error(command: &str) -> String {
+    format!(
+        "{command} --base cannot be combined with --diff: --base and --diff are alternative diff sources; pass one"
+    )
+}
+
+/// One-line stderr disclosure printed by the CLI adapters before ripr blocks
+/// reading a diff from an attached terminal (`--diff -` typed at a prompt
+/// rather than piped) (#4319). The documented example is `git diff
+/// origin/main | ripr check --diff -`; running the right half alone used to
+/// look like a silent hang.
+///
+/// This lives at the cli boundary on purpose: the analysis loader
+/// (`analysis::diff::load`) must stay silent so a library caller of
+/// `check_workspace` with `diff_file: Some("-")` never receives CLI-branded
+/// text on the host's stderr. The piped or captured path must also stay
+/// silent and byte-identical, hence the `IsTerminal` gate at the one
+/// emission site below.
+pub(crate) const ATTACHED_TERMINAL_STDIN_NOTE: &str = "ripr: reading the diff from the attached terminal; paste the diff and press Ctrl+Z then Enter on Windows, or Ctrl+D on Unix, to end input";
+
+/// The pure disclosure decision for `--diff -` (#4319): the note is emitted
+/// only when the process's stdin is an attached terminal. Keeping the
+/// predicate pure lets the exact phrasing and both arms be pinned without a
+/// tty; the piped arm additionally carries an end-to-end subprocess
+/// guarantee in `tests/cli_smoke.rs`.
+pub(crate) fn attached_terminal_stdin_note(stdin_is_terminal: bool) -> Option<&'static str> {
+    stdin_is_terminal.then_some(ATTACHED_TERMINAL_STDIN_NOTE)
+}
+
+/// The one thin emission site shared by `check`, `explain`, and `context`:
+/// each calls this right before dispatching a run that accepted `--diff -`.
+/// Silent unless stdin is an attached terminal, so piped, redirected, and
+/// captured stdin keep byte-identical output.
+pub(crate) fn disclose_attached_terminal_stdin_read(diff_file: Option<&std::path::Path>) {
+    emit_attached_terminal_stdin_note(diff_file, std::io::stdin().is_terminal(), |note| {
+        eprintln!("{note}");
+    });
+}
+
+fn emit_attached_terminal_stdin_note(
+    diff_file: Option<&std::path::Path>,
+    stdin_is_terminal: bool,
+    mut emit: impl FnMut(&str),
+) {
+    if diff_file != Some(std::path::Path::new("-")) {
+        return;
+    }
+    if let Some(note) = attached_terminal_stdin_note(stdin_is_terminal) {
+        emit(note);
+    }
+}
 
 /// Whether argv requests the package version before a top-level command.
 ///
@@ -269,6 +332,64 @@ mod tests {
         assert_eq!(
             when_value_is_missing,
             Err("missing value for --diff".to_string())
+        );
+    }
+
+    /// #4319: the conflict error names the command, both flags, and the
+    /// pass-one repair, matching `check`'s conflict style. Pinned verbatim
+    /// for both consumers so a wording change is a visible contract change.
+    #[test]
+    fn base_and_diff_conflict_error_names_the_command_and_both_flags() {
+        assert_eq!(
+            base_with_diff_conflict_error("explain"),
+            "explain --base cannot be combined with --diff: --base and --diff are alternative diff sources; pass one"
+        );
+        assert_eq!(
+            base_with_diff_conflict_error("context"),
+            "context --base cannot be combined with --diff: --base and --diff are alternative diff sources; pass one"
+        );
+    }
+
+    /// #4319: the note is a constant behind a pure predicate at the cli
+    /// boundary, so the exact phrasing is pinned without a tty. The `false`
+    /// arm is the piped or captured-stdin path, which must stay silent; its
+    /// end-to-end guarantee lives in the cli_smoke subprocess test. The
+    /// shared emitter's positive callback is tested below with an injected
+    /// terminal state; actual terminal detection and stderr remain a runtime
+    /// terminal spot-check.
+    #[test]
+    fn attached_terminal_stdin_note_fires_only_for_a_terminal() {
+        // Pinned as a literal, not via the const, so a wording change is a
+        // visible contract change.
+        assert_eq!(
+            attached_terminal_stdin_note(true),
+            Some(
+                "ripr: reading the diff from the attached terminal; paste the diff and press Ctrl+Z then Enter on Windows, or Ctrl+D on Unix, to end input"
+            )
+        );
+        assert_eq!(attached_terminal_stdin_note(false), None);
+    }
+
+    #[test]
+    fn terminal_stdin_disclosure_emits_once_only_for_a_terminal_diff_source() {
+        let mut emitted = Vec::new();
+        for (path, terminal) in [(None, true), (Some("file.diff"), true), (Some("-"), false)] {
+            emit_attached_terminal_stdin_note(path.map(std::path::Path::new), terminal, |note| {
+                emitted.push(note.to_owned());
+            });
+        }
+        assert!(
+            emitted.is_empty(),
+            "non-terminal or file sources emitted {emitted:?}"
+        );
+        emit_attached_terminal_stdin_note(Some(std::path::Path::new("-")), true, |note| {
+            emitted.push(note.to_owned());
+        });
+        assert_eq!(
+            emitted,
+            [
+                "ripr: reading the diff from the attached terminal; paste the diff and press Ctrl+Z then Enter on Windows, or Ctrl+D on Unix, to end input"
+            ]
         );
     }
 }

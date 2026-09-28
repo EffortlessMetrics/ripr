@@ -6,7 +6,9 @@
 
 use crate::app::{self, CheckInput, OutputFormat};
 use crate::cli::help;
-use crate::cli::parse::{expect_value, parse_mode};
+use crate::cli::parse::{
+    base_with_diff_conflict_error, disclose_attached_terminal_stdin_read, expect_value, parse_mode,
+};
 use crate::config::{CheckInputExplicit, apply_to_check_input, load_for_root};
 use std::path::PathBuf;
 
@@ -92,6 +94,13 @@ pub(in crate::cli) fn context(args: &[String]) -> Result<(), String> {
         }
         i += 1;
     }
+    // #4319: same parse-time `--base`+`--diff` conflict as `explain`. Only
+    // the fresh path conflicts: beside `--from`, both flags are assertions
+    // verified against the recording (RIPR-SPEC-0140), so that verification
+    // path is intentionally left alone.
+    if from_artifact.is_none() && base_explicitly_provided && input.diff_file.is_some() {
+        return Err(base_with_diff_conflict_error("context"));
+    }
     let selector = selector.ok_or_else(|| {
         "missing --at or --finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string()
     })?;
@@ -105,6 +114,10 @@ pub(in crate::cli) fn context(args: &[String]) -> Result<(), String> {
     } else {
         None
     };
+    // #4319: `--diff -` reads the diff from stdin. On an attached terminal
+    // that blocks until EOF with no visible sign of why, so the cli adapter
+    // discloses the read before dispatching; the analysis loader itself
+    // stays silent for library callers.
     let rendered = match from_artifact.as_deref() {
         Some(artifact_path) => app::collect_context_from_artifact(
             input,
@@ -114,7 +127,10 @@ pub(in crate::cli) fn context(args: &[String]) -> Result<(), String> {
             artifact_path,
             asserted_base.as_deref(),
         )?,
-        None => app::collect_context_with_config(input, &selector, max_tests, &config)?,
+        None => {
+            disclose_attached_terminal_stdin_read(input.diff_file.as_deref());
+            app::collect_context_with_config(input, &selector, max_tests, &config)?
+        }
     };
     println!("{rendered}");
     Ok(())
@@ -191,6 +207,63 @@ mod tests {
         assert_eq!(
             context(&args(&["--suppression-policy"])),
             Err("missing value for --suppression-policy".to_string())
+        );
+    }
+
+    /// #4319: same parse-time `--base`+`--diff` conflict as `explain`. The
+    /// loader gives `--diff` precedence and never validates `--base` beside
+    /// it, so both flags on one command line silently analyzed the diff while
+    /// appearing to assert the base. The conflict fails before any pipeline
+    /// run and before the selector requirement. Message pinned verbatim.
+    #[test]
+    fn context_rejects_base_and_diff_together_at_parse_time() {
+        let expected = Err(
+            "context --base cannot be combined with --diff: --base and --diff are alternative diff sources; pass one"
+                .to_string(),
+        );
+        assert_eq!(
+            context(&args(&[
+                "--diff",
+                "sample.diff",
+                "--base",
+                "refs/heads/nope",
+                "--at",
+                "probe:src_lib.rs:error_path:abcd",
+            ])),
+            expected
+        );
+        assert_eq!(
+            context(&args(&[
+                "--base",
+                "refs/heads/nope",
+                "--diff",
+                "sample.diff"
+            ])),
+            expected,
+            "the conflict must not depend on flag order or selector presence"
+        );
+    }
+
+    /// `--from` scope flags are assertions verified against the recording
+    /// (RIPR-SPEC-0140, `app/check_artifact.rs::verify_scope_assertions`),
+    /// not alternative diff sources, so the fresh-run conflict must not fire
+    /// on the reuse path. The parse proceeds past the gate and fails later,
+    /// on the missing artifact — never with the conflict message.
+    #[test]
+    fn context_keeps_base_and_diff_as_from_artifact_assertions() {
+        let result = context(&args(&[
+            "--from",
+            "does-not-exist.json",
+            "--diff",
+            "sample.diff",
+            "--base",
+            "refs/heads/nope",
+            "--at",
+            "probe:src_lib.rs:error_path:abcd",
+        ]));
+        assert!(
+            !matches!(&result, Err(message) if message.contains("cannot be combined with --diff")),
+            "`--from` + `--base` + `--diff` is the reuse-verification path, not a diff-source conflict: {result:?}"
         );
     }
 }

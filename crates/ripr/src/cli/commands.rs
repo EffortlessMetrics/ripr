@@ -5,7 +5,9 @@ use crate::app::agent_brief::{
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::commands_numeric::parse_positive_u64;
 use crate::cli::help;
-use crate::cli::parse::{expect_value, parse_mode};
+use crate::cli::parse::{
+    base_with_diff_conflict_error, disclose_attached_terminal_stdin_read, expect_value, parse_mode,
+};
 use crate::cli::suggest::unknown_argument;
 #[cfg(test)]
 use crate::config::CONFIG_FILE_NAME;
@@ -3545,6 +3547,16 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
         }
         i += 1;
     }
+    // #4319: the synopsis reads `[--base REV|--diff PATH]` — alternatives —
+    // but the loader gives `--diff` precedence and never validates `--base`
+    // beside it, so both flags on one command line silently analyzed the
+    // diff while appearing to assert the base. Fail at parse time, before
+    // any pipeline run. Only the fresh path conflicts: beside `--from`, both
+    // flags are assertions verified against the recording (RIPR-SPEC-0140),
+    // so that verification path is intentionally left alone.
+    if from_artifact.is_none() && base_explicitly_provided && input.diff_file.is_some() {
+        return Err(base_with_diff_conflict_error("explain"));
+    }
     let selector = selector.ok_or_else(|| {
         "missing finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string()
     })?;
@@ -3555,6 +3567,10 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
     } else {
         None
     };
+    // #4319: `--diff -` reads the diff from stdin. On an attached terminal
+    // that blocks until EOF with no visible sign of why, so the cli adapter
+    // discloses the read before dispatching; the analysis loader itself
+    // stays silent for library callers.
     let rendered = match from_artifact.as_deref() {
         Some(artifact_path) => app::explain_finding_from_artifact_with_navigation_mode(
             input,
@@ -3564,12 +3580,15 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
             asserted_base.as_deref(),
             explicit.mode,
         )?,
-        None => app::explain_finding_with_config_and_navigation_mode(
-            input,
-            &selector,
-            &config,
-            explicit.mode,
-        )?,
+        None => {
+            disclose_attached_terminal_stdin_read(input.diff_file.as_deref());
+            app::explain_finding_with_config_and_navigation_mode(
+                input,
+                &selector,
+                &config,
+                explicit.mode,
+            )?
+        }
     };
     println!("{rendered}");
     Ok(())
@@ -9090,6 +9109,62 @@ language = "rust"
         assert_eq!(
             explain(&args(&["--suppression-policy"])),
             Err("missing value for --suppression-policy".to_string())
+        );
+    }
+
+    /// #4319: the synopsis reads `[--base REV|--diff PATH]` — alternatives —
+    /// but the loader gives `--diff` precedence and never validates `--base`
+    /// beside it, so both flags on one command line silently analyzed the
+    /// diff while appearing to assert the base. The conflict must fail at
+    /// parse time (before any pipeline run), in either flag order, and before
+    /// the selector requirement. Message pinned verbatim.
+    #[test]
+    fn explain_rejects_base_and_diff_together_at_parse_time() {
+        let expected = Err(
+            "explain --base cannot be combined with --diff: --base and --diff are alternative diff sources; pass one"
+                .to_string(),
+        );
+        assert_eq!(
+            explain(&args(&[
+                "--diff",
+                "sample.diff",
+                "--base",
+                "refs/heads/nope",
+                "probe:src_lib.rs:error_path:abcd",
+            ])),
+            expected
+        );
+        assert_eq!(
+            explain(&args(&[
+                "--base",
+                "refs/heads/nope",
+                "--diff",
+                "sample.diff"
+            ])),
+            expected,
+            "the conflict must not depend on flag order or selector presence"
+        );
+    }
+
+    /// `--from` scope flags are assertions verified against the recording
+    /// (RIPR-SPEC-0140, `app/check_artifact.rs::verify_scope_assertions`),
+    /// not alternative diff sources, so the fresh-run conflict must not fire
+    /// on the reuse path. The parse proceeds past the gate and fails later,
+    /// on the missing artifact — never with the conflict message.
+    #[test]
+    fn explain_keeps_base_and_diff_as_from_artifact_assertions() {
+        let result = explain(&args(&[
+            "--from",
+            "does-not-exist.json",
+            "--diff",
+            "sample.diff",
+            "--base",
+            "refs/heads/nope",
+            "probe:src_lib.rs:error_path:abcd",
+        ]));
+        assert!(
+            !matches!(&result, Err(message) if message.contains("cannot be combined with --diff")),
+            "`--from` + `--base` + `--diff` is the reuse-verification path, not a diff-source conflict: {result:?}"
         );
     }
 

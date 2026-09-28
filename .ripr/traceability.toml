@@ -5630,12 +5630,24 @@ tests = [
   "crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_returns_named_error_when_nothing_resolves",
   "crates/ripr/src/analysis/diff/load.rs::tests::explicit_base_is_used_as_is_without_resolution",
   "crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_recovers_without_a_resolvable_base",
-  "crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base"
+  "crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base",
+  "crates/ripr/src/cli/parse.rs::tests::base_and_diff_conflict_error_names_the_command_and_both_flags",
+  "crates/ripr/src/cli/parse.rs::tests::attached_terminal_stdin_note_fires_only_for_a_terminal",
+  "crates/ripr/src/cli/parse.rs::tests::terminal_stdin_disclosure_emits_once_only_for_a_terminal_diff_source",
+  "crates/ripr/src/cli/commands.rs::tests::explain_rejects_base_and_diff_together_at_parse_time",
+  "crates/ripr/src/cli/commands.rs::tests::explain_keeps_base_and_diff_as_from_artifact_assertions",
+  "crates/ripr/src/cli/commands/context.rs::tests::context_rejects_base_and_diff_together_at_parse_time",
+  "crates/ripr/src/cli/commands/context.rs::tests::context_keeps_base_and_diff_as_from_artifact_assertions",
+  "crates/ripr/tests/cli_smoke.rs::check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure"
 ]
 fixtures = []
 code = [
   "crates/ripr/src/analysis/diff/load.rs",
   "crates/ripr/src/output/first_pr.rs",
+  "crates/ripr/src/cli/parse.rs",
+  "crates/ripr/src/cli/commands/check.rs",
+  "crates/ripr/src/cli/commands/context.rs",
+  "crates/ripr/src/cli/commands.rs",
   "policy/process_allowlist.txt"
 ]
 outputs = [

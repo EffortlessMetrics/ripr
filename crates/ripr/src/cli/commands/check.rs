@@ -9,7 +9,9 @@ use crate::analysis;
 use crate::app::{self, CheckInput, OutputFormat};
 use crate::cli::commands_context::ensure_command_root;
 use crate::cli::help;
-use crate::cli::parse::{expect_value, parse_format, parse_mode};
+use crate::cli::parse::{
+    disclose_attached_terminal_stdin_read, expect_value, parse_format, parse_mode,
+};
 use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
@@ -478,6 +480,16 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     let input_root = input.root.clone();
     let input_diff_file_is_some = input.diff_file.is_some();
     let limited_check_input = input.clone();
+    // #4319: `--diff -` reads the diff from stdin. On an attached terminal
+    // that blocks until EOF with no visible sign of why, so the cli adapter
+    // discloses the read before dispatching; the analysis loader itself
+    // stays silent for library callers. Only the diff-scoped pipeline path
+    // consumes the stdin read — repo-scoped and seam-inventory formats
+    // ignore `--diff` entirely (see the zero-findings warning below), so
+    // they must not claim to be reading it.
+    if !format.is_repo_scope() && !format.is_repo_seam_inventory() {
+        disclose_attached_terminal_stdin_read(input.diff_file.as_deref());
+    }
     let output_result = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the

@@ -21,6 +21,8 @@ Linked plan:
 Linked issues:
 
 - #1144 — bare `ripr check` errors raw when origin/main is absent
+- #4319 — `--base` beside `--diff` silently asserted on explain/context, and
+  `--diff -` at an attached prompt looked like a silent hang
 
 Linked PRs:
 
@@ -129,6 +131,30 @@ problem and the two remediation paths.
 - An explicit bad `--base X` keeps a clear git error (user chose that ref).
   Auto-resolution does NOT fire for explicit inputs.
 
+### Diff-input contracts (#4319)
+
+- On the fresh-run path, `ripr explain` and `ripr context` reject an
+  explicit `--base` combined with `--diff` at parse time, in either flag
+  order and before any pipeline run: the loader gives `--diff` precedence
+  and never validated `--base` beside it, so both flags silently analyzed
+  one input while appearing to assert the other. Beside `--from`, both
+  flags remain scope assertions verified against the recording
+  (RIPR-SPEC-0140) and do NOT conflict.
+- A `--diff -` command run with an attached terminal prints a one-line
+  stderr disclosure before the loader blocks on stdin, so the documented
+  `git diff origin/main | ripr check --diff -` right half alone no longer
+  looks like a silent hang. The disclosure is owned by the cli adapter
+  (`check`, `explain`, `context`), gated on `IsTerminal`; the analysis
+  loader stays silent so library callers of the public API never receive
+  CLI-branded stderr text, and piped, redirected, or captured stdin stays
+  byte-identical. A shared emitter test injects the terminal state and
+  captures the actual emission callback, pinning exactly one note for
+  terminal stdin and none for piped stdin or file sources. This observes
+  the production decision and emission path without assuming a PTY is
+  available. The real terminal-detection/stderr adapter still requires a
+  terminal spot-check; piped silence and successful JSON analysis are
+  pinned end-to-end by a subprocess test.
+
 ### Non-claims
 
 - This spec does NOT auto-run the suggested scope or pick an arbitrary ref.
@@ -196,6 +222,14 @@ problem and the two remediation paths.
 - `crates/ripr/tests/cli_smoke.rs::history_commands_without_a_resolvable_default_base_fail_named`
 - `crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_recovers_without_a_resolvable_base`
 - `crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base`
+- `crates/ripr/src/cli/parse.rs::tests::base_and_diff_conflict_error_names_the_command_and_both_flags`
+- `crates/ripr/src/cli/parse.rs::tests::attached_terminal_stdin_note_fires_only_for_a_terminal`
+- `crates/ripr/src/cli/parse.rs::tests::terminal_stdin_disclosure_emits_once_only_for_a_terminal_diff_source`
+- `crates/ripr/src/cli/commands.rs::tests::explain_rejects_base_and_diff_together_at_parse_time`
+- `crates/ripr/src/cli/commands.rs::tests::explain_keeps_base_and_diff_as_from_artifact_assertions`
+- `crates/ripr/src/cli/commands/context.rs::tests::context_rejects_base_and_diff_together_at_parse_time`
+- `crates/ripr/src/cli/commands/context.rs::tests::context_keeps_base_and_diff_as_from_artifact_assertions`
+- `crates/ripr/tests/cli_smoke.rs::check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure`
 
 ## Implementation Mapping
 
@@ -204,6 +238,14 @@ problem and the two remediation paths.
   to call `resolve_default_base` when `base` is `None`.
 - `policy/process_allowlist.txt` — updated `Command::new` count for
   `load.rs` to cover the three production helpers plus test-module setup.
+- `crates/ripr/src/cli/parse.rs` (#4319) —
+  `attached_terminal_stdin_note` pure decision, the verbatim note const,
+  and the single `disclose_attached_terminal_stdin_read` emission site;
+  `base_with_diff_conflict_error` parse-time conflict phrasing.
+- `crates/ripr/src/cli/commands/check.rs`, `crates/ripr/src/cli/commands.rs`
+  (`explain`), `crates/ripr/src/cli/commands/context.rs` (#4319) — one thin
+  disclosure call each before dispatching a run that accepted `--diff -`,
+  and the parse-time `--base`+`--diff` conflict gate on the fresh path.
 
 ## CI Proof
 

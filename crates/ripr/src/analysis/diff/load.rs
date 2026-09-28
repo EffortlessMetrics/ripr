@@ -38,6 +38,10 @@ pub fn load_diff_with_effective_base(
 ) -> Result<LoadedDiff, String> {
     if let Some(diff_file) = diff_file {
         if diff_file == std::path::Path::new("-") {
+            // #4319: this read blocks until EOF. On an attached terminal that
+            // looks like a silent hang, so the CLI adapters disclose the read
+            // before dispatching here; the loader itself stays silent so
+            // library callers never receive CLI-branded stderr text.
             let mut buffer = String::new();
             std::io::stdin()
                 .read_to_string(&mut buffer)

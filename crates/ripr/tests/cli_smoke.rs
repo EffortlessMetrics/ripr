@@ -4,8 +4,9 @@
 )]
 
 use sha2::{Digest, Sha256};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[path = "../src/build_commit_record.rs"]
@@ -32,12 +33,19 @@ fn run_ripr_in_workspace(args: &[&str]) -> Result<Output, std::io::Error> {
     run_command(bin, Some(&root), args)
 }
 
+/// Run `ripr` with the given bytes piped to its stdin, the way a shell
+/// `git diff origin/main | ripr check --diff -` feeds the process (#4319).
+fn run_ripr_with_stdin(args: &[&str], stdin: &[u8]) -> Result<Output, std::io::Error> {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    spawn_command(bin, None, args, &[], None, Some(stdin))
+}
+
 fn run_command(
     program: &str,
     current_dir: Option<&Path>,
     args: &[&str],
 ) -> Result<Output, std::io::Error> {
-    spawn_command(program, current_dir, args, &[], None)
+    spawn_command(program, current_dir, args, &[], None, None)
 }
 
 /// The single process spawn point for this harness. Both `run_command` and
@@ -45,13 +53,17 @@ fn run_command(
 /// spawn site rather than one per calling convention. With `redirect`, the
 /// child's stdout and stderr go to those files the way a shell `> out 2> err`
 /// sends them (each file is created before the child starts), and the
-/// returned `Output` carries empty captured streams.
+/// returned `Output` carries empty captured streams. With `stdin`, the bytes
+/// are piped to the child the way a shell `printf … | command` does: the
+/// write end is closed after writing so the child sees EOF, and the child's
+/// stdout/stderr are captured unless `redirect` sends them to files.
 fn spawn_command(
     program: &str,
     current_dir: Option<&Path>,
     args: &[&str],
     env: &[(&str, &str)],
     redirect: Option<(&Path, &Path)>,
+    stdin: Option<&[u8]>,
 ) -> Result<Output, std::io::Error> {
     let mut command = Command::new(program);
     if let Some(current_dir) = current_dir {
@@ -61,9 +73,9 @@ fn spawn_command(
         command.env(name, value);
     }
     command.args(args);
-    match redirect {
-        None => command.output(),
-        Some((stdout, stderr)) => {
+    match (stdin, redirect) {
+        (None, None) => command.output(),
+        (None, Some((stdout, stderr))) => {
             command
                 .stdout(std::fs::File::create(stdout)?)
                 .stderr(std::fs::File::create(stderr)?);
@@ -72,6 +84,29 @@ fn spawn_command(
                 stdout: Vec::new(),
                 stderr: Vec::new(),
             })
+        }
+        (Some(input), redirect) => {
+            command.stdin(Stdio::piped());
+            match redirect {
+                None => {
+                    command.stdout(Stdio::piped());
+                    command.stderr(Stdio::piped());
+                }
+                Some((stdout, stderr)) => {
+                    command
+                        .stdout(std::fs::File::create(stdout)?)
+                        .stderr(std::fs::File::create(stderr)?);
+                }
+            }
+            let mut child = command.spawn()?;
+            let mut pipe = child
+                .stdin
+                .take()
+                .ok_or_else(|| std::io::Error::other("child stdin was not captured"))?;
+            pipe.write_all(input)?;
+            // Close our write end so the child sees EOF instead of blocking.
+            drop(pipe);
+            child.wait_with_output()
         }
     }
 }
@@ -85,7 +120,7 @@ fn run_command_with_env(
     args: &[&str],
     env: &[(&str, &str)],
 ) -> Result<Output, std::io::Error> {
-    spawn_command(program, Some(current_dir), args, env, None)
+    spawn_command(program, Some(current_dir), args, env, None, None)
 }
 
 /// Retry only `ETXTBSY` (`ExecutableFileBusy`). Copying `ripr` and executing
@@ -4761,6 +4796,7 @@ fn run_repair_phase_redirected(
         &args,
         &[],
         Some((stdout, stderr)),
+        None,
     )
 }
 
@@ -16400,6 +16436,58 @@ fn plus_unknown_arg_fails_clearly() {
         stderr.contains("unknown plus argument") || stderr.contains("--bogus"),
         "error must name the unknown arg:\n{stderr}"
     );
+}
+
+/// A minimal unified diff piped through stdin, the documented
+/// `git diff origin/main | ripr check --diff -` shape (#4319).
+const UNIFIED_DIFF_FOR_STDIN_PROBE: &str = "diff --git a/src/lib.rs b/src/lib.rs\n\
+index 1111111..2222222 100644\n\
+--- a/src/lib.rs\n\
++++ b/src/lib.rs\n\
+@@ -1,1 +1,2 @@\n\
++fn changed() {}\n\
+ fn existing() {}\n";
+
+/// #4319 end-to-end silence guarantee for the attached-terminal stdin
+/// disclosure at the cli boundary (`cli::parse::disclose_attached_terminal_stdin_read`):
+/// the note may be emitted only when the child's stdin is an attached
+/// terminal, so a piped run must keep the note text off stderr entirely.
+/// This challenges accidental emission on non-terminal stdin. The shared
+/// emitter's positive callback is challenged separately in cli/parse.rs;
+/// deleting the disclosure cannot be detected by a silence assertion.
+///
+/// The terminal-positive arm cannot be produced under cargo's captured
+/// stdio (no PTY/winpty in this environment), so the on-terminal emission
+/// itself remains a manual `check --diff -` spot-check; the pure
+/// terminal/non-terminal decision is pinned in `cli/parse.rs`'s unit test.
+#[test]
+fn check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure()
+-> Result<(), Box<dyn std::error::Error>> {
+    let note = "ripr: reading the diff from the attached terminal; paste the diff and press Ctrl+Z then Enter on Windows, or Ctrl+D on Unix, to end input";
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
+    let output = run_ripr_with_stdin(
+        &[
+            "check",
+            "--root",
+            &root.display().to_string(),
+            "--diff",
+            "-",
+            "--json",
+        ],
+        UNIFIED_DIFF_FOR_STDIN_PROBE.as_bytes(),
+    )?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "piped diff analysis failed: {stderr}"
+    );
+    let _: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(
+        stderr.matches(note).count(),
+        0,
+        "piped `check --diff -` must stay silent about the attached-terminal stdin disclosure:\n{stderr}"
+    );
+    Ok(())
 }
 
 /// A repository with no `origin` remote whose default branch is `master`, on a
