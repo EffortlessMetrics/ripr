@@ -3110,7 +3110,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
         vec![
             (
                 "Inspect finding: copy context packet",
-                "source.ripr.inspect",
+                "quickfix.ripr.inspect",
                 "Inspect finding: copy context",
                 COPY_CONTEXT_COMMAND,
             ),
@@ -4579,30 +4579,46 @@ fn code_action_response_emitted_commands_stay_within_server_or_advertised_sets()
 }
 
 #[test]
-fn code_action_response_honors_only_quickfix_when_no_repair_actions_exist() -> Result<(), String> {
-    // `only: [quickfix]` (#1750, RIPR-SPEC-0129): `quickfix.ripr` is
-    // advertised-but-unemitted (no repair actions exist yet), so no emitted
-    // kind equals or sits under `quickfix` and the response is empty.
+fn code_action_response_only_quickfix_keeps_finding_actions_and_drops_refresh() -> Result<(), String>
+{
+    // `only: [quickfix]` (#1750, RIPR-SPEC-0129): the per-diagnostic
+    // inspect/navigate actions carry `quickfix.ripr.*` kinds so VS Code's
+    // lightbulb / Quick Fix menu (which never lists `source.*` actions)
+    // shows them. Every emitted action except the workspace-level
+    // `source.ripr.refresh` survives the filter.
     let vscode = vscode_client_features()?;
     let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
     seam_params.context.only = Some(vec![CodeActionKind::QUICKFIX]);
-    let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+    let quickfix_only = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
+
+    let mut unfiltered_params = seam_params.clone();
+    unfiltered_params.context.only = None;
+    let unfiltered = code_action_response(&unfiltered_params, Some(&seam_snapshot), &vscode);
+    let expected = code_action_kinds(&unfiltered)?
+        .into_iter()
+        .filter(|kind| kind != "source.ripr.refresh")
+        .collect::<Vec<_>>();
+    if expected.len() < 2 {
+        return Err(format!(
+            "seam scenario should emit several finding actions, got {expected:?}"
+        ));
+    }
     assert_eq!(
-        actions.len(),
-        0,
-        "only: [quickfix] must filter out every source.ripr.* action"
+        code_action_kinds(&quickfix_only)?,
+        expected,
+        "only: [quickfix] must keep every per-diagnostic action and drop refresh"
     );
     Ok(())
 }
 
 #[test]
-fn code_action_response_only_source_ripr_navigate_keeps_only_navigation() -> Result<(), String> {
-    // `only: [source.ripr.navigate]` (#1750, RIPR-SPEC-0129) keeps exactly
+fn code_action_response_only_quickfix_ripr_navigate_keeps_only_navigation() -> Result<(), String> {
+    // `only: [quickfix.ripr.navigate]` (#1750, RIPR-SPEC-0129) keeps exactly
     // the related-test navigation action; every inspect/refresh action is
     // outside the requested subtree.
     let vscode = vscode_client_features()?;
     let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
-    seam_params.context.only = Some(vec![CodeActionKind::new("source.ripr.navigate")]);
+    seam_params.context.only = Some(vec![CodeActionKind::new("quickfix.ripr.navigate")]);
     let actions = code_action_response(&seam_params, Some(&seam_snapshot), &vscode);
     let commands = code_action_commands(&actions)?;
     assert_eq!(
@@ -4611,35 +4627,83 @@ fn code_action_response_only_source_ripr_navigate_keeps_only_navigation() -> Res
             .map(|(_, command, _)| command.as_str())
             .collect::<Vec<_>>(),
         vec![OPEN_RELATED_TEST_COMMAND],
-        "only: [source.ripr.navigate] must keep only the navigation action"
+        "only: [quickfix.ripr.navigate] must keep only the navigation action"
     );
     Ok(())
 }
 
 #[test]
-fn code_action_response_only_source_or_absent_only_keeps_every_action() -> Result<(), String> {
-    // `only: [source]` (#1750, RIPR-SPEC-0129) dot-segment-prefixes every
-    // kind emitted today, so the response matches the unfiltered one; an
-    // absent `only` leaves the response unfiltered by kind.
+fn code_action_response_only_source_keeps_only_refresh_and_absent_only_keeps_every_action()
+-> Result<(), String> {
+    // `only: [source]` (#1750, RIPR-SPEC-0129) matches only the
+    // workspace-level `source.ripr.refresh` action; the per-diagnostic
+    // actions live under `quickfix`. An absent `only` leaves the response
+    // unfiltered by kind.
     let vscode = vscode_client_features()?;
     let (mut source_params, seam_snapshot) = seam_code_action_request()?;
     source_params.context.only = Some(vec![CodeActionKind::SOURCE]);
     let source_only = code_action_response(&source_params, Some(&seam_snapshot), &vscode);
+    assert_eq!(
+        code_action_kinds(&source_only)?,
+        vec!["source.ripr.refresh".to_string()],
+        "only: [source] must keep only the refresh action"
+    );
 
     let mut unfiltered_params = source_params.clone();
     unfiltered_params.context.only = None;
     let unfiltered = code_action_response(&unfiltered_params, Some(&seam_snapshot), &vscode);
-
     if unfiltered.len() < 2 {
         return Err(format!(
             "seam scenario should emit several actions, got {}",
             unfiltered.len()
         ));
     }
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "lang-python")]
+fn code_action_response_gap_inspect_action_is_a_quickfix_not_a_source_action() -> Result<(), String>
+{
+    // VS Code's lightbulb / Ctrl+. Quick Fix menu never lists `source.*`
+    // actions (RIPR-SPEC-0129). A gap diagnostic's "Inspect gap: copy repair
+    // packet" action must survive `only: [quickfix]` and must not survive
+    // `only: [source]`, which keeps only the workspace refresh action.
+    let vscode = vscode_client_features()?;
+    let (_gap_root, mut gap_params, gap_snapshot) = gap_kind_parity_request()?;
+
+    gap_params.context.only = Some(vec![CodeActionKind::QUICKFIX]);
+    let quickfix_only = code_action_response(&gap_params, Some(&gap_snapshot), &vscode);
+    let quickfix_literals = code_action_literals(&quickfix_only)?;
+    let inspect = quickfix_literals
+        .iter()
+        .find(|action| action.title == "Inspect gap: copy repair packet")
+        .ok_or_else(|| {
+            format!(
+                "only: [quickfix] must return the gap inspect action, got {:?}",
+                quickfix_literals
+                    .iter()
+                    .map(|action| action.title.as_str())
+                    .collect::<Vec<_>>()
+            )
+        })?;
     assert_eq!(
-        source_only.len(),
-        unfiltered.len(),
-        "only: [source] must keep every action emitted without an only filter"
+        inspect.kind.as_ref().map(CodeActionKind::as_str),
+        Some("quickfix.ripr.inspect")
+    );
+    if code_action_kinds(&quickfix_only)?
+        .iter()
+        .any(|kind| !kind.starts_with("quickfix."))
+    {
+        return Err("only: [quickfix] must not return source actions".to_string());
+    }
+
+    gap_params.context.only = Some(vec![CodeActionKind::SOURCE]);
+    let source_only = code_action_response(&gap_params, Some(&gap_snapshot), &vscode);
+    assert_eq!(
+        code_action_kinds(&source_only)?,
+        vec!["source.ripr.refresh".to_string()],
+        "only: [source] must return only the workspace refresh action"
     );
     Ok(())
 }
@@ -4647,13 +4711,13 @@ fn code_action_response_only_source_or_absent_only_keeps_every_action() -> Resul
 #[test]
 fn code_action_response_only_filter_compounds_with_client_command_filter() -> Result<(), String> {
     // Both filters apply (#1750 + #1776, RIPR-SPEC-0129): with
-    // `only: [source.ripr.inspect]` and an unenhanced client profile, the
+    // `only: [quickfix.ripr.inspect]` and an unenhanced client profile, the
     // kind filter drops the navigate and refresh actions while the
     // client-command filter strips every surviving inspect action (all are
     // client-executed) — nothing remains.
     let unenhanced = ClientFeatureProfile::unsupported();
     let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
-    seam_params.context.only = Some(vec![CodeActionKind::new("source.ripr.inspect")]);
+    seam_params.context.only = Some(vec![CodeActionKind::new("quickfix.ripr.inspect")]);
     let actions = code_action_response(&seam_params, Some(&seam_snapshot), &unenhanced);
     assert_eq!(
         actions.len(),
@@ -5515,10 +5579,10 @@ fn code_action_response_disabled_actions_never_execute_across_scenarios() -> Res
 fn code_action_response_disabled_policy_keeps_only_filter_parity() -> Result<(), String> {
     // Disabled actions retain their kind (#1892): the `CodeActionContext.only`
     // filter (#1750) fail-closes on kind-less actions, so a disabled navigate
-    // action must still survive `only: [source.ripr.navigate]`.
+    // action must still survive `only: [quickfix.ripr.navigate]`.
     let disabled_capable = client_features_with_disabled_support(&[])?;
     let (mut seam_params, seam_snapshot) = seam_code_action_request()?;
-    seam_params.context.only = Some(vec![CodeActionKind::new("source.ripr.navigate")]);
+    seam_params.context.only = Some(vec![CodeActionKind::new("quickfix.ripr.navigate")]);
     let actions = code_action_response(&seam_params, Some(&seam_snapshot), &disabled_capable);
     let literals = code_action_literals(&actions)?;
     assert_eq!(
@@ -5527,7 +5591,7 @@ fn code_action_response_disabled_policy_keeps_only_filter_parity() -> Result<(),
             .map(|action| action.title.as_str())
             .collect::<Vec<_>>(),
         vec!["Write targeted test: open best related test"],
-        "only: [source.ripr.navigate] must keep the (disabled) navigation action"
+        "only: [quickfix.ripr.navigate] must keep the (disabled) navigation action"
     );
     let action = literals
         .first()
@@ -7743,7 +7807,7 @@ fn code_action_resolve_rejects_missing_data_with_stable_invalid_params() -> Resu
 
         let payloadless = CodeAction {
             title: "Inspect gap: copy repair packet".to_string(),
-            kind: Some(CodeActionKind::new("source.ripr.inspect")),
+            kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
             ..CodeAction::default()
         };
         match backend.code_action_resolve(payloadless).await {
@@ -7757,12 +7821,12 @@ fn code_action_resolve_rejects_missing_data_with_stable_invalid_params() -> Resu
 
         let foreign = CodeAction {
             title: "Inspect gap: copy repair packet".to_string(),
-            kind: Some(CodeActionKind::new("source.ripr.inspect")),
+            kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
             data: Some(serde_json::json!({
                 "schema_version": "foreign-schema-v0",
                 "action_id": "fnv1a64:0000000000000000",
                 "action_class": "inspect",
-                "action_kind": "source.ripr.inspect",
+                "action_kind": "quickfix.ripr.inspect",
                 "action_name": "copy_gap_repair_packet",
                 "required_client_capability": "ripr.copyContext"
             })),
@@ -18302,5 +18366,322 @@ fn registered_harness_projection_reaches_the_lsp_snapshot() -> Result<(), Box<dy
             .collect::<Vec<_>>(),
         vec!["mimic_case", "mimic_case_two"]
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Cold-agent LSP walk (2026-09-28): surface agreement for one finding.
+// ---------------------------------------------------------------------------
+
+/// A Rust finding the actionable profile publishes: a producer-owned missing
+/// discriminator plus a related test (the fix site). Rust producers do not set
+/// `canonical_gap`, so the diagnostic carries no `canonical_gap_id`.
+fn fix_route_rust_finding() -> Finding {
+    let mut finding = sample_finding();
+    finding.ripr.infect = StageEvidence::new(
+        StageState::Weak,
+        Confidence::Medium,
+        "Related tests contain input values, but the equality-boundary discriminator is missing",
+    );
+    finding.ripr.reveal.discriminate = StageEvidence::new(
+        StageState::Yes,
+        Confidence::Medium,
+        "Strong oracle found: exact value or pattern assertion",
+    );
+    finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+        value: "amount == threshold".to_string(),
+        reason: "No related test call uses amount equal to threshold".to_string(),
+        flow_sink: None,
+    }];
+    finding.related_tests.push(RelatedTest {
+        name: "small_order_pays_full".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 4,
+        oracle: Some("assert_eq!(price(50, 100), 50);".to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+        relation_reason: None,
+        relation_confidence: None,
+    });
+    finding
+}
+
+/// Commit an actionable-profile snapshot whose published diagnostics come
+/// from the production profile projection, then read top limitation and
+/// workspace status through `workspace/executeCommand`.
+fn actionable_profile_status(
+    findings: Vec<Finding>,
+) -> Result<(serde_json::Value, serde_json::Value, usize), String> {
+    profile_status(findings, crate::config::LspDiagnosticProfile::Actionable)
+}
+
+/// Same as [`actionable_profile_status`] for an explicit diagnostic profile.
+fn profile_status(
+    findings: Vec<Finding>,
+    profile: crate::config::LspDiagnosticProfile,
+) -> Result<(serde_json::Value, serde_json::Value, usize), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = PathBuf::from("/workspace");
+        let (service, _socket) = LspService::new(|client| Backend::new(client, root.clone()));
+        let backend = service.inner();
+        backend.initialize_test_workspace_root();
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let grouped = super::diagnostics::finding_diagnostics_by_uri_with_profile(
+            &root,
+            &findings,
+            &crate::config::SeverityConfig::default(),
+            true,
+            profile,
+            None,
+            &PositionEncodingKind::UTF16,
+        )?;
+        let published = grouped.get(&uri).cloned().unwrap_or_default();
+        let published_count = published.len();
+        let mut diagnostics = sample_workspace_diagnostics(root, uri, published, findings);
+        diagnostics.snapshot.diagnostic_profile = profile;
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+        let command = |name: &str| ExecuteCommandParams {
+            command: name.to_string(),
+            arguments: vec![],
+            work_done_progress_params: Default::default(),
+        };
+        let limitation = backend
+            .execute_command(command(COLLECT_TOP_LIMITATION_COMMAND))
+            .await
+            .map_err(|err| format!("collectTopLimitation failed: {err}"))?
+            .ok_or_else(|| "expected top limitation".to_string())?;
+        let status = backend
+            .execute_command(command(COLLECT_WORKSPACE_STATUS_COMMAND))
+            .await
+            .map_err(|err| format!("collectWorkspaceStatus failed: {err}"))?
+            .ok_or_else(|| "expected workspace status".to_string())?;
+        Ok((limitation, status, published_count))
+    })
+}
+
+#[test]
+fn top_limitation_does_not_deny_a_published_fix_route_diagnostic() -> Result<(), String> {
+    let (limitation, status, published) =
+        actionable_profile_status(vec![fix_route_rust_finding()])?;
+    if published != 1 {
+        return Err(format!(
+            "fixture must publish one diagnostic, got {published}"
+        ));
+    }
+    if limitation["status"] == "no_actionable_item" {
+        return Err(format!(
+            "top limitation denied the live fix-site-ready diagnostic: {limitation}"
+        ));
+    }
+    assert_eq!(
+        limitation["status"], "no_active_limitation_in_current_scope",
+        "{limitation}"
+    );
+    assert_eq!(
+        status["diagnostics"]["actionable_diagnostics"].as_u64(),
+        Some(1),
+        "workspace status must count the published fix route: {status}"
+    );
+    Ok(())
+}
+
+#[test]
+fn top_limitation_still_reports_route_less_findings_as_not_actionable() -> Result<(), String> {
+    // Negative control: a weakly_exposed finding without a producer-owned
+    // missing discriminator or fix site is filtered by the actionable
+    // profile, so "no actionable item" remains the honest answer.
+    let (limitation, status, published) = actionable_profile_status(vec![sample_finding()])?;
+    assert_eq!(published, 0, "route-less finding must not be published");
+    assert_eq!(limitation["status"], "no_actionable_item", "{limitation}");
+    assert_eq!(
+        status["diagnostics"]["actionable_diagnostics"].as_u64(),
+        Some(0),
+        "{status}"
+    );
+    Ok(())
+}
+
+#[test]
+fn full_profile_published_route_less_finding_is_not_counted_actionable() -> Result<(), String> {
+    // Negative control for the widened count: the full profile publishes a
+    // route-less finding, but a published diagnostic alone is not a bounded
+    // next action.
+    let (limitation, status, published) = profile_status(
+        vec![sample_finding()],
+        crate::config::LspDiagnosticProfile::Full,
+    )?;
+    if published == 0 {
+        return Err(
+            "fixture must publish the route-less finding under the full profile".to_string(),
+        );
+    }
+    assert_eq!(
+        status["diagnostics"]["actionable_diagnostics"].as_u64(),
+        Some(0),
+        "{status}"
+    );
+    // "no_actionable_item" is an actionable-profile explanation only; the
+    // full profile reports no active limitation for a published finding.
+    assert_eq!(
+        limitation["status"], "no_active_limitation_in_current_scope",
+        "{limitation}"
+    );
+    Ok(())
+}
+
+fn finding_hover_markdown_for(finding: &Finding) -> Result<String, String> {
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), finding);
+    match super::hover::finding_hover_response(finding, &diagnostic).contents {
+        HoverContents::Markup(markup) => Ok(markup.value),
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn hover_discriminator_row_agrees_with_weakly_exposed_lens() -> Result<(), String> {
+    let finding = fix_route_rust_finding();
+    let markdown = finding_hover_markdown_for(&finding)?;
+    let lens = super::lens::related_test_lens_title(&finding, None);
+    assert!(
+        lens.contains("no static discriminator (weakly_exposed)"),
+        "{lens}"
+    );
+    if markdown.contains("* discriminator yes") {
+        return Err(format!(
+            "hover claims a discriminator while the lens says none:\n{markdown}"
+        ));
+    }
+    assert!(
+        markdown.contains(
+            "* discriminator missing: `amount == threshold`; related oracle: Strong oracle found: exact value or pattern assertion"
+        ),
+        "{markdown}"
+    );
+    Ok(())
+}
+
+#[test]
+fn hover_discriminator_row_keeps_yes_for_exposed_findings() -> Result<(), String> {
+    // Negative control: an exposed finding keeps the producer's stage line.
+    let mut finding = fix_route_rust_finding();
+    finding.class = ExposureClass::Exposed;
+    finding.activation.missing_discriminators.clear();
+    let markdown = finding_hover_markdown_for(&finding)?;
+    assert!(
+        markdown
+            .contains("* discriminator yes: Strong oracle found: exact value or pattern assertion"),
+        "{markdown}"
+    );
+    Ok(())
+}
+
+#[test]
+fn hover_describes_unpublished_snapshot_findings_on_the_line() -> Result<(), String> {
+    // A new function no test calls: no related test, no missing discriminator, so
+    // the actionable profile publishes no diagnostic, yet the code lens shows
+    // the finding. The hover must describe it instead of pointing at the CLI.
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let mut finding = sample_finding();
+    finding.id = "probe:pricing:14:predicate".to_string();
+    finding.probe.location.line = 14;
+    finding.probe.expression = "weight_grams > 2_000".to_string();
+    finding.class = ExposureClass::NoStaticPath;
+    finding.ripr.reach = StageEvidence::new(
+        StageState::No,
+        Confidence::Medium,
+        "No static test path found for the changed owner",
+    );
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![],
+        vec![finding],
+    );
+    diagnostics.snapshot.diagnostic_profile = crate::config::LspDiagnosticProfile::Actionable;
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+
+    let Some(hover) = backend.hover_for_position(&hover_params(uri.clone(), 13, 8)) else {
+        return Err("expected a hover for the finding's line".to_string());
+    };
+    let HoverContents::Markup(markup) = hover.contents else {
+        return Err("expected markup hover".to_string());
+    };
+    if markup.value.contains("ripr check --format json") {
+        return Err(format!(
+            "hover sent the editor user to the CLI:\n{}",
+            markup.value
+        ));
+    }
+    for expected in [
+        "`no_static_path` predicate `weight_grams > 2_000`",
+        "* reach no: No static test path found for the changed owner",
+        "`probe:pricing:14:predicate`",
+        "Set `ripr.diagnosticProfile` to `full`",
+    ] {
+        assert!(
+            markup.value.contains(expected),
+            "missing {expected:?}:\n{}",
+            markup.value
+        );
+    }
+    // Editor users cannot run a server executeCommand with JSON arguments.
+    for unexpected in ["ripr.collectContext", "finding_id"] {
+        assert!(
+            !markup.value.contains(unexpected),
+            "hover names an unrunnable command {unexpected:?}:\n{}",
+            markup.value
+        );
+    }
+    assert!(
+        lens_title_is_static_language_clean(&markup.value),
+        "{}",
+        markup.value
+    );
+
+    // Negative control: a line without any snapshot finding keeps the
+    // generic hover (no fabricated finding text).
+    let generic = backend.hover_for_position(&hover_params(uri, 30, 0));
+    assert!(generic.is_none(), "unexpected hover: {generic:?}");
+    Ok(())
+}
+
+#[test]
+fn line_hover_does_not_relist_a_finding_with_a_published_diagnostic() -> Result<(), String> {
+    // Negative control: the only finding on the line is published; a cursor
+    // outside its diagnostic range must not render it as "not published".
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic],
+        vec![finding],
+    );
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+    let hover = backend.hover_for_position(&hover_params(uri, 87, 500));
+    if let Some(hover) = hover
+        && let HoverContents::Markup(markup) = &hover.contents
+        && markup.value.contains("no published diagnostic")
+    {
+        return Err(format!(
+            "published finding relisted as unpublished:\n{}",
+            markup.value
+        ));
+    }
     Ok(())
 }

@@ -194,6 +194,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       controller?.markWorkspaceClosed(document);
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+      if (controller?.sessionRootRemoved(event.removed)) {
+        output.appendLine('ripr workspace folder for the running session was removed; restarting to re-resolve the root.');
+        try {
+          await restartServerOnce(controller);
+        } catch (error) {
+          output.appendLine(`ripr server restart after workspace folder removal failed: ${String(error)}`);
+        }
+        return;
+      }
       if (event.added.length === 0) {
         return;
       }
@@ -236,6 +245,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         } catch (error) {
           output.appendLine(`ripr server start after workspace folder added failed: ${String(error)}`);
         }
+      }
+    }),
+    // A multi-root window with no active file starts in workspaceAmbiguous.
+    // Opening a file from one folder selects that folder (#2077).
+    vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+      if (
+        !editor
+        || !controller?.awaitingWorkspaceRoot()
+        || !vscode.workspace.getWorkspaceFolder(editor.document.uri)
+      ) {
+        return;
+      }
+      try {
+        await startServerOnce(controller);
+      } catch (error) {
+        output.appendLine(`ripr server start after selecting a workspace file failed: ${String(error)}`);
       }
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {

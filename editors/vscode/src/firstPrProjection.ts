@@ -106,7 +106,7 @@ export function firstPrHasRepairPacket(packet: RiprFirstPrPacketStatus): boolean
 export function firstPrSuppressedMessage(packet: RiprFirstPrPacketStatus): string {
   switch (packet.state) {
     case 'missing':
-      return 'ripr first-pr packet is missing; run cargo xtask first-pr after verify/receipt artifacts exist.';
+      return 'ripr first-pr packet is missing; run ripr first-pr --root . after verify/receipt artifacts exist.';
     case 'unreadable':
       return 'ripr first-pr packet is unreadable; bounded first-pr actions are suppressed.';
     case 'malformed':
@@ -262,7 +262,7 @@ export function firstPrRegenerationGuidance(packet: RiprFirstPrPacketStatus): st
   }
   lines.push('');
   lines.push('Next safe action:');
-  lines.push('cargo xtask first-pr');
+  lines.push('ripr first-pr --root .');
   lines.push('');
   lines.push('Limits and non-claims:');
   lines.push('- This is copied guidance only; the editor does not run the command.');
@@ -345,13 +345,13 @@ export function firstPrBlockedPacketLines(packet: RiprFirstPrPacketStatus): stri
     case 'missing_artifact':
       return [
         `First PR packet: missing; ${packet.relativePath} reports a missing upstream artifact.`,
-        'Regenerate the named artifact, then rerun cargo xtask first-pr.',
+        'Regenerate the named artifact, then rerun ripr first-pr --root .',
         'First PR packet repair claims are suppressed.'
       ];
     case 'stale_artifact':
       return [
         `First PR packet: stale; ${packet.relativePath} reports stale upstream evidence.`,
-        'Refresh saved-workspace evidence and rerun cargo xtask first-pr before acting.',
+        'Refresh saved-workspace evidence and rerun ripr first-pr --root . before acting.',
         'First PR packet repair claims are suppressed.'
       ];
     case 'wrong_root':
@@ -363,13 +363,13 @@ export function firstPrBlockedPacketLines(packet: RiprFirstPrPacketStatus): stri
     case 'malformed_artifact':
       return [
         `First PR packet: malformed; ${packet.relativePath} reports a malformed upstream artifact.`,
-        'Regenerate the malformed artifact, then rerun cargo xtask first-pr.',
+        'Regenerate the malformed artifact, then rerun ripr first-pr --root .',
         'First PR packet repair claims are suppressed.'
       ];
     case 'timeout':
       return [
         `First PR packet: blocked; ${packet.relativePath} reports a timeout while composing first-pr evidence.`,
-        'Rerun cargo xtask first-pr or inspect the blocked artifact before acting.',
+        'Rerun ripr first-pr --root . or inspect the blocked artifact before acting.',
         'First PR packet repair claims are suppressed.'
       ];
     case 'blocked_artifact':

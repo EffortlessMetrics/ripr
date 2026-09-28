@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from '../../src/config';
 import { currentRiprPlatform } from '../../src/platform';
-import { resolveServer, ServerResolverRuntime } from '../../src/serverResolver';
+import { missingServerRemedy, resolveServer, ServerResolverRuntime } from '../../src/serverResolver';
 import { compatibleLspEvidence } from './testCompatibility';
 
 suite('Server resolver compatibility fallback', () => {
@@ -54,6 +54,12 @@ suite('Server resolver compatibility fallback', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test('missing-server remedy only suggests enabling download when it is off', () => {
+    assert.ok(!missingServerRemedy(true).includes('autoDownload'), missingServerRemedy(true));
+    assert.ok(missingServerRemedy(true).includes('cargo install ripr'));
+    assert.ok(missingServerRemedy(false).includes('Enable ripr.server.autoDownload'));
   });
 });
 

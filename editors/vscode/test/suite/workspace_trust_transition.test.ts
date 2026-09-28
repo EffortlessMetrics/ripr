@@ -137,6 +137,27 @@ suite('Workspace Trust Transition', () => {
     assert.strictEqual(startCalls, 2, 'failure resets the in-flight slot; concurrent retries coalesce');
   });
 
+  test('trust grant starts the server after an untrusted activation start', async () => {
+    let trusted = false;
+    let running = false;
+    let startCalls = 0;
+    const controller = {
+      start: async () => {
+        startCalls += 1;
+        running = trusted;
+      },
+      isRunning: () => running
+    } as Pick<RiprClientController, 'start' | 'isRunning'>;
+
+    await startServerOnce(controller);
+    assert.strictEqual(running, false, 'activation in an untrusted workspace starts no server');
+    trusted = true;
+    await startAfterWorkspaceTrust(controller);
+
+    assert.strictEqual(startCalls, 2);
+    assert.strictEqual(running, true, 'the trust grant starts a server without a manual restart');
+  });
+
   test('a failed trust-grant start can be retried', async () => {
     let startCalls = 0;
     const controller = {

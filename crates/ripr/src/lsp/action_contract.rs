@@ -150,13 +150,13 @@ pub(super) fn disabled_reason_emittable(reason: ActionDisabledReason) -> bool {
 }
 
 /// Bounded action classes mirroring the advertised kind hierarchy
-/// (`quickfix.ripr` / `source.ripr.*`). `verify` is reserved for the
-/// advertised-but-unemitted `source.ripr.verify` kind.
+/// (`quickfix.ripr.*` / `source.ripr.refresh`). `verify` is reserved for the
+/// advertised-but-unemitted `quickfix.ripr.verify` kind.
 pub(super) fn action_class_for_kind(kind: &str) -> &'static str {
     match kind {
-        "source.ripr.navigate" => "navigate",
+        "quickfix.ripr.navigate" => "navigate",
         "source.ripr.refresh" => "refresh",
-        "source.ripr.verify" => "verify",
+        "quickfix.ripr.verify" => "verify",
         _ => "inspect",
     }
 }
@@ -165,7 +165,7 @@ pub(super) fn action_class_for_kind(kind: &str) -> &'static str {
 /// addressed diagnostic's producer-owned `data` block and diagnostic code;
 /// nothing is re-derived from title text.
 pub(super) struct ActionDataInputs<'a> {
-    /// The action's `CodeActionKind` string (e.g. `source.ripr.inspect`).
+    /// The action's `CodeActionKind` string (e.g. `quickfix.ripr.inspect`).
     pub(super) action_kind: &'a str,
     /// The action's stable snake_case machine name (e.g.
     /// `copy_gap_repair_packet`) — never title text. Several constructors
@@ -458,7 +458,7 @@ mod tests {
 
     fn inputs_for<'a>(diagnostic: Option<&'a Diagnostic>) -> ActionDataInputs<'a> {
         ActionDataInputs {
-            action_kind: "source.ripr.inspect",
+            action_kind: "quickfix.ripr.inspect",
             action_name: "copy_gap_repair_packet",
             command_id: "ripr.copyContext",
             required_client_capability: "ripr.copyContext",
@@ -545,7 +545,7 @@ mod tests {
         if payload["action_class"] != "inspect" {
             return Err(format!("action class drifted: {payload}"));
         }
-        if payload["action_kind"] != "source.ripr.inspect" {
+        if payload["action_kind"] != "quickfix.ripr.inspect" {
             return Err(format!("action kind drifted: {payload}"));
         }
         if payload["action_name"] != "copy_gap_repair_packet" {
@@ -604,7 +604,7 @@ mod tests {
             return Err("action_id must differ across commands".to_string());
         }
         let mut other_kind = inputs_for(Some(&diagnostic));
-        other_kind.action_kind = "source.ripr.navigate";
+        other_kind.action_kind = "quickfix.ripr.navigate";
         let other_kind = action_data(&other_kind);
         if first["action_id"] == other_kind["action_id"] {
             return Err("action_id must differ across action classes".to_string());

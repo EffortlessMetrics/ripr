@@ -121,6 +121,16 @@ pub(super) fn code_lens_response(uri: &Uri, snapshot: Option<&AnalysisSnapshot>)
         return Vec::new();
     };
     let age = snapshot.refresh.age();
+    lens_findings(uri, snapshot)
+        .map(|finding| finding_to_code_lens(finding, age))
+        .collect()
+}
+
+/// The findings the code lens shows for `uri`, in snapshot order.
+fn lens_findings<'a>(
+    uri: &'a Uri,
+    snapshot: &'a AnalysisSnapshot,
+) -> impl Iterator<Item = &'a Finding> + 'a {
     snapshot
         .findings
         .iter()
@@ -130,8 +140,22 @@ pub(super) fn code_lens_response(uri: &Uri, snapshot: Option<&AnalysisSnapshot>)
         // new-side coordinate — not a candidate position to pin.
         .filter(|finding| finding.is_candidate_actionable())
         .filter(|finding| finding_matches_uri(finding, uri, &snapshot.root))
-        .map(|finding| finding_to_code_lens(finding, age))
+}
+
+/// The findings whose code lens sits on the zero-based `line` of `uri`, so
+/// hover can describe exactly what the lens on that line shows.
+pub(super) fn lens_findings_at_line<'a>(
+    uri: &'a Uri,
+    snapshot: &'a AnalysisSnapshot,
+    line: u32,
+) -> Vec<&'a Finding> {
+    lens_findings(uri, snapshot)
+        .filter(|finding| lens_line(finding) == line)
         .collect()
+}
+
+fn lens_line(finding: &Finding) -> u32 {
+    finding.probe.location.line.saturating_sub(1) as u32
 }
 
 /// Build one `CodeLens` for a single finding.
@@ -143,7 +167,7 @@ pub(super) fn code_lens_response(uri: &Uri, snapshot: Option<&AnalysisSnapshot>)
 /// is displayed without triggering any action. `data` is `None` (no resolve
 /// round-trip needed; `resolve_provider` is `false`).
 fn finding_to_code_lens(finding: &Finding, age: Option<Duration>) -> CodeLens {
-    let line = finding.probe.location.line.saturating_sub(1) as u32;
+    let line = lens_line(finding);
     let range = Range {
         start: Position { line, character: 0 },
         end: Position { line, character: 0 },

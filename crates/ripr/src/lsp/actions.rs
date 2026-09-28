@@ -51,7 +51,7 @@ pub(super) fn code_action_response(
         && let Some((diagnostic, current)) = stale_gap_diagnostic(params, snapshot)
         && let Some(action) = disabled_action(
             INSPECT_GAP_PACKET_TITLE,
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             "copy_gap_repair_packet",
             COPY_CONTEXT_COMMAND,
             diagnostic,
@@ -125,9 +125,10 @@ pub(super) fn code_action_response(
 
 /// LSP 3.17 `CodeActionContext.only` matching (#1750, RIPR-SPEC-0129): an
 /// action survives when any requested kind equals the action's kind or is a
-/// dot-segment prefix of it (`source` matches `source.ripr.inspect` and
-/// `source.ripr.refresh`; `source.ripr.navigate` matches only that
-/// subtree). An action with no kind fails closed when `only` is present.
+/// dot-segment prefix of it (`quickfix` matches `quickfix.ripr.inspect` and
+/// `quickfix.ripr.navigate`; `source` matches only `source.ripr.refresh`;
+/// `quickfix.ripr.navigate` matches only that subtree). An action with no
+/// kind fails closed when `only` is present.
 fn kind_matches_only(action: &CodeActionOrCommand, only: &[CodeActionKind]) -> bool {
     let kind = match action {
         CodeActionOrCommand::CodeAction(action) => action.kind.as_ref(),
@@ -603,7 +604,7 @@ fn push_seam_actions(
         if client_features.code_action_disabled
             && let Some(action) = disabled_action(
                 TARGETED_TEST_BRIEF_TITLE,
-                "source.ripr.inspect",
+                "quickfix.ripr.inspect",
                 "copy_targeted_test_brief",
                 COPY_TARGETED_TEST_BRIEF_COMMAND,
                 context.diagnostic,
@@ -880,7 +881,7 @@ fn push_gap_actions(
                 if client_features.code_action_disabled
                     && let Some(action) = disabled_action(
                         AGENT_VERIFY_COMMAND_TITLE,
-                        "source.ripr.inspect",
+                        "quickfix.ripr.inspect",
                         "copy_agent_verify_command",
                         COPY_AGENT_VERIFY_COMMAND,
                         context.diagnostic,
@@ -909,7 +910,7 @@ fn push_gap_actions(
                     if client_features.code_action_disabled
                         && let Some(action) = disabled_action(
                             AGENT_RECEIPT_COMMAND_TITLE,
-                            "source.ripr.inspect",
+                            "quickfix.ripr.inspect",
                             "copy_agent_receipt_command",
                             COPY_AGENT_RECEIPT_COMMAND,
                             context.diagnostic,
@@ -925,7 +926,7 @@ fn push_gap_actions(
     } else if client_features.code_action_disabled
         && let Some(action) = disabled_action(
             INSPECT_GAP_PACKET_TITLE,
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             "copy_gap_repair_packet",
             COPY_CONTEXT_COMMAND,
             context.diagnostic,
@@ -960,7 +961,7 @@ fn copy_context_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
         diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: command_title.to_string(),
@@ -968,7 +969,7 @@ fn copy_context_action(
             arguments: Some(vec![target]),
         }),
         data: Some(action_data_payload(
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             action_name,
             COPY_CONTEXT_COMMAND,
             Some(diagnostic),
@@ -1012,7 +1013,7 @@ fn copy_agent_loop_command_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_string(),
-        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
         diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: title.to_string(),
@@ -1020,7 +1021,7 @@ fn copy_agent_loop_command_action(
             arguments: Some(vec![target]),
         }),
         data: Some(action_data_payload(
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             action_name,
             command,
             Some(diagnostic),
@@ -2040,7 +2041,7 @@ fn copy_targeted_test_brief_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: TARGETED_TEST_BRIEF_TITLE.to_string(),
-        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
         diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: TARGETED_TEST_BRIEF_TITLE.to_string(),
@@ -2051,7 +2052,7 @@ fn copy_targeted_test_brief_action(
             })]),
         }),
         data: Some(action_data_payload(
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             "copy_targeted_test_brief",
             COPY_TARGETED_TEST_BRIEF_COMMAND,
             Some(diagnostic),
@@ -2068,7 +2069,7 @@ fn copy_python_pytest_skeleton_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
-        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
         diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: COPY_PYTHON_PYTEST_SKELETON_TITLE.to_string(),
@@ -2076,7 +2077,7 @@ fn copy_python_pytest_skeleton_action(
             arguments: Some(vec![target]),
         }),
         data: Some(action_data_payload(
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             "copy_python_pytest_skeleton",
             COPY_TARGETED_TEST_BRIEF_COMMAND,
             Some(diagnostic),
@@ -2093,7 +2094,7 @@ fn copy_python_repair_card_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
-        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
         diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: COPY_PYTHON_REPAIR_CARD_TITLE.to_string(),
@@ -2101,7 +2102,7 @@ fn copy_python_repair_card_action(
             arguments: Some(vec![target]),
         }),
         data: Some(action_data_payload(
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             "copy_python_repair_card",
             COPY_TARGETED_TEST_BRIEF_COMMAND,
             Some(diagnostic),
@@ -2119,7 +2120,7 @@ fn copy_suggested_assertion_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: SUGGESTED_ASSERTION_TITLE.to_string(),
-        kind: Some(CodeActionKind::new("source.ripr.inspect")),
+        kind: Some(CodeActionKind::new("quickfix.ripr.inspect")),
         diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: SUGGESTED_ASSERTION_TITLE.to_string(),
@@ -2130,7 +2131,7 @@ fn copy_suggested_assertion_action(
             })]),
         }),
         data: Some(action_data_payload(
-            "source.ripr.inspect",
+            "quickfix.ripr.inspect",
             "copy_suggested_assertion",
             COPY_SUGGESTED_ASSERTION_COMMAND,
             Some(diagnostic),
@@ -2147,7 +2148,7 @@ fn open_related_test_action(
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
         title: OPEN_RELATED_TEST_TITLE.to_string(),
-        kind: Some(CodeActionKind::new("source.ripr.navigate")),
+        kind: Some(CodeActionKind::new("quickfix.ripr.navigate")),
         diagnostics: Some(vec![diagnostic.clone()]),
         command: Some(Command {
             title: OPEN_RELATED_TEST_TITLE.to_string(),
@@ -2155,7 +2156,7 @@ fn open_related_test_action(
             arguments: Some(vec![target]),
         }),
         data: Some(action_data_payload(
-            "source.ripr.navigate",
+            "quickfix.ripr.navigate",
             "open_related_test",
             OPEN_RELATED_TEST_COMMAND,
             Some(diagnostic),
@@ -2387,7 +2388,7 @@ mod tests {
         for reason in crate::lsp::action_contract::RESERVED_DISABLED_REASONS {
             if disabled_action(
                 TARGETED_TEST_BRIEF_TITLE,
-                "source.ripr.inspect",
+                "quickfix.ripr.inspect",
                 "copy_targeted_test_brief",
                 COPY_TARGETED_TEST_BRIEF_COMMAND,
                 &diagnostic,
@@ -2405,7 +2406,7 @@ mod tests {
         for reason in crate::lsp::action_contract::EMITTED_DISABLED_REASONS {
             let action = disabled_action(
                 TARGETED_TEST_BRIEF_TITLE,
-                "source.ripr.inspect",
+                "quickfix.ripr.inspect",
                 "copy_targeted_test_brief",
                 COPY_TARGETED_TEST_BRIEF_COMMAND,
                 &diagnostic,

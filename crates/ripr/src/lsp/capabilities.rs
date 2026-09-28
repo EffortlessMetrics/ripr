@@ -27,14 +27,18 @@ pub(super) enum WorkspaceRootResolution {
 /// set: the code-action parity tests in `lsp/tests.rs` assert every emitted
 /// kind against these constants so the advertisement and the emitters
 /// cannot drift in the same direction. `quickfix.ripr` and
-/// `source.ripr.verify` are advertised-but-unemitted (reserved); the emitters
-/// in `lsp/actions.rs` use the `source.ripr.*` inspect/navigate/refresh
-/// kinds.
+/// `quickfix.ripr.verify` are advertised-but-unemitted (reserved); the emitters
+/// in `lsp/actions.rs` use `quickfix.ripr.inspect` / `quickfix.ripr.navigate`
+/// for per-diagnostic actions and `source.ripr.refresh` for the
+/// workspace-level refresh. Per-diagnostic actions sit under `quickfix`
+/// because VS Code's lightbulb / Quick Fix menu never lists `source.*`
+/// actions (they appear only under "Source Action..."); refresh is not a fix
+/// for one diagnostic, so it stays a source action.
 pub(super) const ADVERTISED_CODE_ACTION_KINDS: [&str; 5] = [
     "quickfix.ripr",
-    "source.ripr.inspect",
-    "source.ripr.navigate",
-    "source.ripr.verify",
+    "quickfix.ripr.inspect",
+    "quickfix.ripr.navigate",
+    "quickfix.ripr.verify",
     "source.ripr.refresh",
 ];
 

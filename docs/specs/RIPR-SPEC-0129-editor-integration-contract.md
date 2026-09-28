@@ -38,8 +38,9 @@ Consumes:
 - `textDocument/publishDiagnostics` (push) or `textDocument/diagnostic` (pull)
 - `textDocument/hover`
 - `textDocument/codeAction` (kind strings are metadata visible to every
-  layer: the advertised `quickfix.ripr` / `source.ripr.*` hierarchy; the
-  negotiated surface is the command IDs inside the actions, not the kinds)
+  layer: the advertised `quickfix.ripr.*` / `source.ripr.refresh`
+  hierarchy; the negotiated surface is the command IDs inside the actions,
+  not the kinds)
 - `workspace/status` via custom notification
 
 Does NOT consume:
@@ -100,8 +101,8 @@ Consumes everything in Layer 1, plus:
 - `experimental.riprEditor` client-command actions (`ripr.copyContext`,
   `ripr.copyAgentPacket`, `ripr.openRelatedTest`, etc.)
 - `ripr.collectWorkspaceStatus` / `collectRepairPacket` (legacy execute-command surface)
-- `codeAction` kinds: `source.ripr.inspect`, `source.ripr.navigate`,
-  `source.ripr.verify`, `source.ripr.refresh`
+- `codeAction` kinds: `quickfix.ripr.inspect`, `quickfix.ripr.navigate`,
+  `quickfix.ripr.verify`, `source.ripr.refresh`
 - Managed server provisioning (#1624)
 - Workspace Trust enforcement (#1623)
 
@@ -193,8 +194,9 @@ qualified as static analysis results; diagnostic codes and data remain stable.
 - A standard LSP client (e.g. Neovim) that does NOT advertise
   `experimental.riprEditor` receives zero `ripr.copyContext` or
   `ripr.openRelatedTest` command IDs in code actions — only server-executed
-  commands. The `source.ripr.*` kind strings still appear as kind metadata
-  for every client; they carry no negotiation requirement.
+  commands. The `quickfix.ripr.*` / `source.ripr.refresh` kind strings
+  still appear as kind metadata for every client; they carry no negotiation
+  requirement.
 - A client that forwards a command the server does not execute — an unknown
   command ID, or a client-registered command such as `ripr.copyContext` —
   receives a stable `InvalidParams` rejection naming the command
@@ -209,7 +211,7 @@ qualified as static analysis results; diagnostic codes and data remain stable.
   Analysis) stay active; only the client-command actions that the omission
   path would have stripped are disabled.
 - A VS Code client that advertises `experimental.riprEditor` with
-  `client_commands: ["ripr.copyContext"]` receives `source.ripr.inspect`
+  `client_commands: ["ripr.copyContext"]` receives `quickfix.ripr.inspect`
   code actions containing `ripr.copyContext` commands.
 - Push and pull diagnostic delivery produce the same code-action
   availability for the same negotiated client capabilities (#1628
@@ -349,15 +351,26 @@ client supports:
   `supported_requests: []`) so a Layer 3 client can detect the server.
 - `experimental.riprEditor` negotiation (#1628, delivered in #1776) filters
   client-command code actions to clients that advertise support.
-- Code action kinds are advertised as `quickfix.ripr` and
-  `source.ripr.*` (#1750, landed). Every kind the server emits stays within
+- Code action kinds are advertised as `quickfix.ripr`,
+  `quickfix.ripr.inspect`, `quickfix.ripr.navigate`, `quickfix.ripr.verify`
+  and `source.ripr.refresh` (#1750, landed). Per-diagnostic actions that act
+  on one finding (inspect, navigate, and the reserved verify family) use
+  `quickfix.ripr.*` kinds because VS Code's lightbulb / Ctrl+. Quick Fix
+  menu never lists `source.*` actions — they appear only under "Source
+  Action...", so a `source.ripr.inspect` action on a gap diagnostic left
+  Quick Fix reporting "No code actions available". The workspace-level
+  Refresh Analysis action is not a fix for one diagnostic, so it stays the
+  `source.ripr.refresh` source action. `quickfix.ripr` itself and
+  `quickfix.ripr.verify` are advertised-but-unemitted (reserved). Every
+  kind the server emits stays within
   the advertised set (parity-pinned by
   `tests.rs::code_action_response_emitted_kinds_stay_within_the_advertised_set`
   against the shared `ADVERTISED_CODE_ACTION_KINDS` constant).
 - `textDocument/codeAction` honors `CodeActionContext.only` (#1750): with
   LSP 3.17 hierarchical kind semantics, an action survives when any
   requested kind equals the action's kind or is a dot-segment prefix of it
-  (`source` keeps every `source.ripr.*` action; `source.ripr.navigate`
+  (`quickfix` keeps every per-diagnostic `quickfix.ripr.*` action;
+  `source` keeps only `source.ripr.refresh`; `quickfix.ripr.navigate`
   keeps only that subtree). An absent `only` leaves the response
   unfiltered, and an action with no kind fails closed. The kind filter
   compounds with the negotiated client-command filter.

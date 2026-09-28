@@ -3,7 +3,8 @@ use super::state::{AnalysisSnapshot, format_duration};
 use super::uri::{CappedArtifactRead, read_artifact_capped};
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
-use crate::domain::{DiagnosticWitness, Finding, StageEvidence, StageState};
+use crate::config::LspDiagnosticProfile;
+use crate::domain::{DiagnosticWitness, ExposureClass, Finding, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     allowed_edit_surface_for_gap_route, gap_record_packet_do_not_do,
     suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
@@ -45,6 +46,70 @@ pub(super) fn finding_hover_response(finding: &Finding, diagnostic: &Diagnostic)
             value: finding_hover_markdown(diagnostic, finding),
         }),
         range: Some(diagnostic.range),
+    }
+}
+
+/// Bound on findings rendered in one line hover; the rest are counted.
+const MAX_LINE_HOVER_FINDINGS: usize = 5;
+
+/// Hover for a position with no published diagnostic but with snapshot
+/// findings on its line — the findings the code lens on that line shows.
+/// Under the `actionable` profile these are route-less or exposed findings
+/// the profile does not publish; describing them here keeps the editor
+/// surfaces consistent instead of sending the reader to the CLI.
+pub(super) fn line_findings_hover_response(
+    findings: &[&Finding],
+    profile: LspDiagnosticProfile,
+) -> Hover {
+    let mut lines = vec![
+        "**ripr** no published diagnostic at this position".to_string(),
+        String::new(),
+        format!(
+            "The current analysis snapshot has {} finding(s) on this line; the code lens shows the same findings.",
+            findings.len()
+        ),
+    ];
+    if profile == LspDiagnosticProfile::Actionable {
+        lines.push(
+            "The `actionable` diagnostic profile publishes only current `weakly_exposed`, `reachable_unrevealed` or `no_static_path` findings with a producer-backed repair route (a named missing discriminator and a fix site), so these are not diagnostics. Set `ripr.diagnosticProfile` to `full` to publish them with their Inspect finding quick fix."
+                .to_string(),
+        );
+    } else {
+        lines.push(
+            "They have no published diagnostic under the current severity configuration."
+                .to_string(),
+        );
+    }
+    for finding in findings.iter().take(MAX_LINE_HOVER_FINDINGS) {
+        lines.push(String::new());
+        lines.push(format!(
+            "### `{}` {} `{}`",
+            finding.class.as_str(),
+            finding.probe.family.as_str(),
+            finding.probe.expression
+        ));
+        lines.push(format!("Finding: `{}`", finding.id));
+        lines.extend([
+            stage_line("reach", &finding.ripr.reach),
+            stage_line("infection", &finding.ripr.infect),
+            stage_line("propagation", &finding.ripr.propagate),
+            stage_line("observation", &finding.ripr.reveal.observe),
+            discriminator_stage_line(finding),
+        ]);
+    }
+    if findings.len() > MAX_LINE_HOVER_FINDINGS {
+        lines.push(String::new());
+        lines.push(format!(
+            "{} more finding(s) on this line are not shown.",
+            findings.len() - MAX_LINE_HOVER_FINDINGS
+        ));
+    }
+    Hover {
+        contents: HoverContents::Markup(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: lines.join("\n"),
+        }),
+        range: None,
     }
 }
 
@@ -383,7 +448,7 @@ fn finding_hover_markdown(diagnostic: &Diagnostic, finding: &Finding) -> String 
         stage_line("infection", &finding.ripr.infect),
         stage_line("propagation", &finding.ripr.propagate),
         stage_line("observation", &finding.ripr.reveal.observe),
-        stage_line("discriminator", &finding.ripr.reveal.discriminate),
+        discriminator_stage_line(finding),
     ]);
     if let Some(gap) = &finding.canonical_gap {
         lines.push(String::new());
@@ -634,6 +699,38 @@ fn push_missing_actionability_fields(
 
 fn stage_line(name: &str, stage: &StageEvidence) -> String {
     format!("* {name} {}: {}", stage.state.as_str(), stage.summary)
+}
+
+/// The producer's `discriminate` stage grades the strongest related oracle.
+/// For a finding that is not `exposed`, a `yes` there reads as "a
+/// discriminator exists" and contradicts the code lens ("no static
+/// discriminator"). Keep the oracle grade, but lead with the missing
+/// discriminating input the producer named (or say the discriminator is not
+/// established) so hover and lens agree.
+fn discriminator_stage_line(finding: &Finding) -> String {
+    let stage = &finding.ripr.reveal.discriminate;
+    if finding.class == ExposureClass::Exposed || stage.state != StageState::Yes {
+        return stage_line("discriminator", stage);
+    }
+    let missing = finding
+        .activation
+        .missing_discriminators
+        .iter()
+        .map(|fact| format!("`{}`", fact.value))
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        format!(
+            "* discriminator not established ({}); related oracle: {}",
+            finding.class.as_str(),
+            stage.summary
+        )
+    } else {
+        format!(
+            "* discriminator missing: {}; related oracle: {}",
+            missing.join(", "),
+            stage.summary
+        )
+    }
 }
 
 fn number_or_string_label(value: &NumberOrString) -> String {

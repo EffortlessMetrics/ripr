@@ -155,11 +155,22 @@ export async function resolveServer(
     detail: [
       downloadFailure,
       pathResult.detail,
-      `${autoDownloadHint} Set ripr.server.path, enable ripr.server.autoDownload, or install with cargo install ripr.`
+      `${autoDownloadHint} ${missingServerRemedy(config.autoDownload)}`
     ]
       .filter((line): line is string => Boolean(line))
       .join('\n')
   };
+}
+
+/**
+ * The recovery sentence for an unavailable server. It only suggests enabling
+ * automatic download when that setting is off; telling a user to enable a
+ * setting that is already on sends them in a circle.
+ */
+export function missingServerRemedy(autoDownload: boolean): string {
+  return autoDownload
+    ? 'Install with cargo install ripr or set ripr.server.path (ripr.server.downloadBaseUrl for a mirror).'
+    : 'Enable ripr.server.autoDownload, install with cargo install ripr, or set ripr.server.path.';
 }
 
 export function requestedServerVersion(context: vscode.ExtensionContext, config: RiprConfig): string {

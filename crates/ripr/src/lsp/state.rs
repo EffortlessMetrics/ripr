@@ -834,11 +834,27 @@ impl AnalysisSnapshot {
         super::diagnostics::canonical_finding_groups(&self.findings).len()
     }
 
+    /// Count published diagnostics that carry a bounded next action: a
+    /// canonical gap diagnostic, or an ordinary finding diagnostic whose
+    /// finding passes the actionable-profile authority
+    /// (`finding_is_visible_in_profile`). Rust producers do not set
+    /// `canonical_gap`, so counting only `canonical_gap_id` reported zero
+    /// actionable items while a fix-site-ready diagnostic was live.
     pub(super) fn actionable_diagnostic_count(&self) -> usize {
         self.diagnostics_by_uri
             .values()
             .flatten()
-            .filter(|diagnostic| diagnostic_has_string_data(diagnostic, "canonical_gap_id"))
+            .filter(|diagnostic| {
+                diagnostic_has_string_data(diagnostic, "canonical_gap_id")
+                    || self
+                        .finding_for_diagnostic(diagnostic)
+                        .is_some_and(|finding| {
+                            super::diagnostics::finding_is_visible_in_profile(
+                                LspDiagnosticProfile::Actionable,
+                                finding,
+                            )
+                        })
+            })
             .count()
     }
 

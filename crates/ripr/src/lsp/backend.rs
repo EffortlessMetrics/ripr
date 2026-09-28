@@ -2615,6 +2615,36 @@ impl Backend {
                 ));
             }
         }
+        // No published diagnostic covers the cursor, but the code lens on
+        // this line may still show snapshot findings (route-less or exposed
+        // findings the actionable profile does not publish). Describe those
+        // instead of falling back to the generic CLI pointer.
+        if let Ok(snapshot) = self.latest_analysis.lock()
+            && let Some(snapshot) = snapshot.as_ref()
+        {
+            // A finding that already has a published diagnostic is described
+            // by that diagnostic's hover; list only the unpublished ones.
+            let published = snapshot
+                .diagnostics_for_uri(uri)
+                .into_iter()
+                .flatten()
+                .filter_map(|diagnostic| snapshot.finding_for_diagnostic(diagnostic))
+                .map(|finding| finding.id.as_str())
+                .collect::<BTreeSet<_>>();
+            let findings = super::lens::lens_findings_at_line(uri, snapshot, position.line)
+                .into_iter()
+                .filter(|finding| !published.contains(finding.id.as_str()))
+                .collect::<Vec<_>>();
+            if !findings.is_empty() {
+                return Some(hover_with_snapshot_status(
+                    super::hover::line_findings_hover_response(
+                        &findings,
+                        snapshot.diagnostic_profile,
+                    ),
+                    snapshot,
+                ));
+            }
+        }
 
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
             return None;

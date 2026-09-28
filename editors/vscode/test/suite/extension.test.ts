@@ -2225,7 +2225,7 @@ suite('Extension Smoke', () => {
       await context.controller.start();
       const statusOutput = await showStatusReport(context);
       assert.ok(statusOutput.includes('First PR packet: missing; target/ripr/reports/start-here.json was not found.'));
-      assert.ok(statusOutput.includes('Next safe first-pr action: run cargo xtask first-pr'));
+      assert.ok(statusOutput.includes('Next safe first-pr action: run ripr first-pr --root .'));
       const diagnosis = await diagnoseSetupReport(context);
       assert.ok(diagnosis.includes('First PR packet: missing; target/ripr/reports/start-here.json was not found.'));
       assert.strictEqual(context.runRiprCalls.length, 0);
@@ -2308,7 +2308,7 @@ suite('Extension Smoke', () => {
       context.controller.markWorkspaceStale(document);
       const statusOutput = await showStatusReport(context);
       assert.ok(statusOutput.includes('First PR packet: stale; target/ripr/reports/start-here.json exists, but editor evidence is stale.'));
-      assert.ok(statusOutput.includes('Refresh saved-workspace evidence and rerun cargo xtask first-pr before inspecting or copying first-pr packet content.'));
+      assert.ok(statusOutput.includes('Refresh saved-workspace evidence and rerun ripr first-pr --root . before inspecting or copying first-pr packet content.'));
       assert.ok(!statusOutput.includes('top repairable gap available'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
@@ -2890,7 +2890,7 @@ suite('Extension Smoke', () => {
       assert.ok(context.infoMessages.at(-1)?.includes('current saved-workspace evidence'));
 
       await context.controller.copyFirstPrRegenerationGuidance();
-      assert.ok(context.clipboardWrites.at(-1)?.includes('cargo xtask first-pr'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('ripr first-pr --root .'));
       assert.ok(context.clipboardWrites.at(-1)?.includes('editor does not run the command'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
@@ -2904,7 +2904,7 @@ suite('Extension Smoke', () => {
       assert.ok(context.infoMessages.at(-1)?.includes('first-pr packet is missing'));
 
       await context.controller.copyFirstPrRegenerationGuidance();
-      assert.ok(context.clipboardWrites.at(-1)?.includes('cargo xtask first-pr'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('ripr first-pr --root .'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
 
@@ -3007,7 +3007,7 @@ suite('Extension Smoke', () => {
         'Missing configured ripr server path for this test.',
         'Server: not resolved',
         'Server started: no; server unavailable',
-        'Next safe action: Set ripr.server.path'
+        'Next safe action: Enable ripr.server.autoDownload, install with cargo install ripr, or set ripr.server.path. Then run ripr: Restart Server.'
       ]);
       assert.strictEqual(context.client.startCalls, 0);
     });
@@ -3374,7 +3374,7 @@ suite('Extension Smoke', () => {
         'Status: Select one workspace folder before using ripr repair actions.',
         'Workspace root state: workspace_multi_root_ambiguous',
         'Root-scoped repair actions are suppressed until one workspace folder is selected.',
-        'Next safe action: Run ripr: Select Workspace Root, or open a Rust or enabled preview-language file from one workspace folder'
+        'Next safe action: Run ripr: Select Workspace Root, or open a file from one workspace folder.'
       ]);
     } finally {
       await context.dispose();
@@ -3449,7 +3449,7 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
       assert.ok(String(context.status.tooltip).includes('Server started: no; server unavailable'));
       assert.ok(String(context.status.tooltip).includes('Config: ripr.toml'));
-      assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.server.path'));
+      assert.ok(String(context.status.tooltip).includes('Next safe action: Enable ripr.server.autoDownload, install with cargo install ripr, or set ripr.server.path. Then run ripr: Restart Server.'));
       assert.strictEqual(context.errorMessages.length, 1);
       assert.strictEqual(context.client.startCalls, 0);
     } finally {

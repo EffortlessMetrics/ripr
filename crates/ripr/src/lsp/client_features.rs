@@ -653,7 +653,7 @@ mod tests {
                     "hover": {"contentFormat": ["markdown", "plaintext"]},
                     "codeAction": {
                         "codeActionLiteralSupport": {
-                            "codeActionKind": {"valueSet": ["quickfix.ripr", "source.ripr.inspect"]}
+                            "codeActionKind": {"valueSet": ["quickfix.ripr", "quickfix.ripr.inspect"]}
                         },
                         "isPreferredSupport": true,
                         "disabledSupport": true,

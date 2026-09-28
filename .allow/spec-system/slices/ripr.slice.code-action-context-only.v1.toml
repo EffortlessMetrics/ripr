@@ -21,7 +21,7 @@ the one client-visible contract delta; it restores emitted ⊆ advertised.
 """
 
 non_goals = [
-  "advertised code_action_kinds set changes (source.ripr.verify stays advertised-but-unemitted)",
+  "advertised code_action_kinds set changes (quickfix.ripr.verify, formerly source.ripr.verify, stays advertised-but-unemitted)",
   "client-command negotiation filter changes (#1776)",
   "quickfix repair actions (quickfix.ripr stays advertised-but-unemitted)",
   "diagnostic, hover, or codeLens surface changes",
