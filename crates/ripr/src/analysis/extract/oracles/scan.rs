@@ -1442,7 +1442,9 @@ fn references_whole_word(text: &str, token: &str) -> bool {
         if whole_word {
             return true;
         }
-        from = at + 1;
+        // Step by the first char's width so a non-ASCII token never leaves
+        // `from` inside a multibyte char.
+        from = at + token.chars().next().map_or(1, char::len_utf8);
     }
     false
 }
@@ -4006,7 +4008,7 @@ mod err_guard_parity_tests {
 
 #[cfg(test)]
 mod multibyte_guard_tests {
-    use super::extract_assertions;
+    use super::{extract_assertions, references_whole_word};
     use crate::domain::OracleKind;
 
     #[test]
@@ -4024,5 +4026,13 @@ mod multibyte_guard_tests {
                 .any(|fact| fact.kind == OracleKind::RelationalCheck),
             "multibyte guard must credit: {guard:?}"
         );
+    }
+
+    #[test]
+    fn whole_word_reference_steps_past_non_ascii_token_without_panicking() {
+        // A rejected first occurrence of a binding that starts with a
+        // multibyte char must advance by that char's width, not one byte.
+        assert!(!references_whole_word("return new_заказ;", "заказ"));
+        assert!(references_whole_word("return new_заказ + заказ;", "заказ"));
     }
 }

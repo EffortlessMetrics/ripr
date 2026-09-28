@@ -1649,7 +1649,9 @@ pub(in crate::analysis) fn contains_as_whole_word(text: &str, token: &str) -> bo
         if before_ok && after_ok {
             return true;
         }
-        start = abs_pos + 1;
+        // Step past the match's first char, not one byte: a token that starts
+        // with a multibyte char would otherwise leave `start` inside it.
+        start = abs_pos + token.chars().next().map_or(1, char::len_utf8);
     }
     false
 }
@@ -4595,5 +4597,17 @@ return Err(\"typed pin\".into());
     #[test]
     fn whole_word_match_rejects_empty_token() {
         assert!(!contains_as_whole_word("anything", ""));
+    }
+
+    #[test]
+    fn whole_word_match_steps_past_non_ascii_token_without_panicking() {
+        // A rejected first occurrence of a token that starts with a
+        // multibyte char (`new_заказ`) must advance by that char's width,
+        // not one byte, or the next `find` slices inside the char.
+        assert!(!contains_as_whole_word(
+            "assert_eq!(total(new_заказ), 3);",
+            "заказ"
+        ));
+        assert!(contains_as_whole_word("new_заказ + заказ", "заказ"));
     }
 }
