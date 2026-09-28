@@ -1170,9 +1170,13 @@ fn inventory_diff_scoped_classified_seams_inner(
     changed_owner_names: &[String],
     fast_path_enabled: bool,
 ) -> Result<ScopedClassifiedSeamInventory, String> {
+    cancellation::checkpoint()?;
     if fast_path_enabled {
         match try_no_impact_fast_path(root, config, changed_files, changed_owner_names) {
-            Ok(NoImpactOutcome::Fast(inventory)) => return Ok(*inventory),
+            Ok(NoImpactOutcome::Fast(inventory)) => {
+                cancellation::checkpoint()?;
+                return Ok(*inventory);
+            }
             Ok(NoImpactOutcome::Declined(reason)) => {
                 trace_latency_phase(
                     "diff_scoped_inventory",
@@ -1190,6 +1194,7 @@ fn inventory_diff_scoped_classified_seams_inner(
         );
     }
     let state = collect_workspace_state(root, config)?;
+    cancellation::checkpoint()?;
     let workspace_cache_key = state.cache_key();
     let total_rust_files = state.files.len();
     let production_files = production_files_from_state_with_role(&state, config);
@@ -1224,8 +1229,10 @@ fn inventory_diff_scoped_classified_seams_inner(
         &cached.file_fact_cache.status_label(),
         build_started.elapsed(),
     );
+    cancellation::checkpoint()?;
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
 
+    cancellation::checkpoint()?;
     let caller_file_set = immediate_caller_file_set(
         &cached.index,
         &production_file_set,
@@ -1251,6 +1258,7 @@ fn inventory_diff_scoped_classified_seams_inner(
         .cloned()
         .collect::<Vec<_>>();
 
+    cancellation::checkpoint()?;
     let seams_started = Instant::now();
     let seams = inventory_seams_from_index(&scoped_production_files, &cached.index);
     trace_latency_phase(
@@ -1258,6 +1266,7 @@ fn inventory_diff_scoped_classified_seams_inner(
         "review_scope_ok",
         seams_started.elapsed(),
     );
+    cancellation::checkpoint()?;
     let evidence_started = Instant::now();
     trace_latency_phase(
         "evidence_for_seams",
@@ -1270,8 +1279,9 @@ fn inventory_diff_scoped_classified_seams_inner(
         "review_scope_ok",
         evidence_started.elapsed(),
     );
-    let classified = seam_classification::classify_seams_owned(seams, evidence);
+    let classified = classify_complete_scoped_evidence(seams, evidence)?;
 
+    cancellation::checkpoint()?;
     Ok(ScopedClassifiedSeamInventory {
         classified,
         file_fact_cache: cached.file_fact_cache,
@@ -1282,6 +1292,16 @@ fn inventory_diff_scoped_classified_seams_inner(
         changed_production_files,
         immediate_caller_files,
     })
+}
+
+/// Non-fallible evidence construction can stop with a partial vector. This
+/// admission boundary rejects cancellation before classifying that vector.
+fn classify_complete_scoped_evidence(
+    seams: Vec<RepoSeam>,
+    evidence: Vec<test_grip_evidence::TestGripEvidence>,
+) -> Result<Vec<ClassifiedSeam>, String> {
+    cancellation::checkpoint()?;
+    Ok(seam_classification::classify_seams_owned(seams, evidence))
 }
 
 fn immediate_caller_file_set(
@@ -1970,6 +1990,95 @@ marker = "libtest_mimic::Trial"
                 .extend(index.files[path].functions.iter().cloned());
         }
         Ok(index)
+    }
+
+    #[test]
+    fn scoped_evidence_rejects_deadline_after_the_final_seam() -> Result<(), String> {
+        use crate::analysis::cancellation::{AnalysisCancellationToken, AnalysisClock, with_token};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let path = PathBuf::from("src/lib.rs");
+        let mut index = index_from_files(&[(
+            path.clone(),
+            r#"
+pub fn eligible(value: i32) -> bool { if value >= 10 { true } else { false } }
+#[cfg(test)] mod tests {
+    #[test] fn equality() { assert_eq!(super::eligible(10), true); }
+}
+"#,
+        )])?;
+        index.tests = index
+            .files
+            .values()
+            .flat_map(|facts| facts.tests.iter().cloned())
+            .collect();
+        let seams = inventory_seams_from_index(&[path], &index);
+        if seams.is_empty() || index.tests.is_empty() {
+            return Err(
+                "late deadline fixture must contain production seams and a test".to_string(),
+            );
+        }
+        let started = Instant::now();
+        let observations = Arc::new(AtomicUsize::new(0));
+        let clock_observations = Arc::clone(&observations);
+        let clock: AnalysisClock = Arc::new(move || {
+            clock_observations.fetch_add(1, Ordering::SeqCst);
+            started
+        });
+        let token = AnalysisCancellationToken::with_budget(started, Duration::from_secs(1), clock);
+        let complete = with_token(&token, || {
+            test_grip_evidence::evidence_for_seams(&seams, &index)
+        });
+        if complete.len() != seams.len() {
+            return Err("unexpired evidence must cover every selected seam".to_string());
+        }
+        let last_evidence_observation = observations.load(Ordering::SeqCst);
+        if last_evidence_observation <= seams.len() {
+            return Err("fixture did not enter evidence context construction".to_string());
+        }
+        let expected = serde_json::to_value(classify_complete_scoped_evidence(
+            seams.clone(),
+            complete.clone(),
+        )?)
+        .map_err(|error| format!("serialize complete baseline: {error}"))?;
+        let clock_calls = Arc::new(AtomicUsize::new(0));
+        let owned_calls = Arc::clone(&clock_calls);
+        let deadline = AnalysisCancellationToken::with_budget(
+            started,
+            Duration::from_secs(1),
+            Arc::new(move || {
+                let call = owned_calls.fetch_add(1, Ordering::SeqCst);
+                if call >= last_evidence_observation {
+                    started + Duration::from_secs(1)
+                } else {
+                    started
+                }
+            }),
+        );
+        let result = with_token(&deadline, || {
+            let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
+            if clock_calls.load(Ordering::SeqCst) != last_evidence_observation
+                || serde_json::to_value(&evidence).map_err(|error| error.to_string())?
+                    != serde_json::to_value(&complete).map_err(|error| error.to_string())?
+            {
+                return Err("deadline fixture expired before the final evidence result".to_string());
+            }
+            classify_complete_scoped_evidence(seams.clone(), evidence)
+        });
+        if !result.is_err_and(|error| error.contains("DeadlineExceeded"))
+            || deadline.abort_kind() != Some(cancellation::AnalysisAbortKind::DeadlineExceeded)
+        {
+            return Err("final evidence deadline was classified as complete".to_string());
+        }
+        // Deadline-free consumers retain identical seam identities/evidence.
+        let actual = serde_json::to_value(classify_complete_scoped_evidence(seams, complete)?)
+            .map_err(|error| format!("serialize deadline-free evidence: {error}"))?;
+        if actual != expected {
+            return Err("deadline-free classification changed canonical evidence".to_string());
+        }
+        Ok(())
     }
 
     #[test]

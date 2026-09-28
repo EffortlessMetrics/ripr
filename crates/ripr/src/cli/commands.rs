@@ -51,13 +51,22 @@ fn enforce_review_comments_deadline(
     if now.saturating_duration_since(started) < Duration::from_millis(timeout_ms) {
         return Ok(());
     }
+    Err(record_review_comments_timeout(receipt, receipt_path, phase))
+}
+
+fn record_review_comments_timeout(
+    receipt: &mut output::review_comments_receipt::ReviewCommentsRunReceipt,
+    receipt_path: &Path,
+    phase: &str,
+) -> String {
     receipt.limited_timeout(phase);
-    receipt.write_atomic(receipt_path).map_err(|error| {
-        format!(
-            "review-comments timed out during {phase}; failed to persist terminal receipt: {error}"
-        )
-    })?;
-    Err(format!("review-comments timed out during {phase}"))
+    let error = format!("review-comments timed out during {phase}");
+    match receipt.write_atomic(receipt_path) {
+        Ok(()) => error,
+        Err(receipt_error) => {
+            format!("{error}; failed to persist terminal receipt: {receipt_error}")
+        }
+    }
 }
 
 fn load_review_comments_analysis_outcome(
@@ -1288,7 +1297,7 @@ fn review_comments_with_diff_loader(
 fn review_comments_with_diff_loader_at(
     args: &[String],
     load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
-    now: impl Fn() -> Instant,
+    now: impl Fn() -> Instant + Send + Sync + 'static,
 ) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_review_comments_help();
@@ -1316,7 +1325,13 @@ fn review_comments_with_diff_loader_at(
         output::outcome::display_path(&options.out),
         output::outcome::display_path(&markdown_path),
     ];
+    let now: analysis::cancellation::AnalysisClock = std::sync::Arc::new(now);
     let started = now();
+    let cancellation = analysis::cancellation::AnalysisCancellationToken::with_budget(
+        started,
+        Duration::from_millis(options.timeout_ms),
+        std::sync::Arc::clone(&now),
+    );
     let mut receipt = output::review_comments_receipt::ReviewCommentsRunReceipt::new(
         &input.root,
         &options.base,
@@ -1425,8 +1440,19 @@ fn review_comments_with_diff_loader_at(
 
     receipt.phase("configuration", "diff_discovery");
     receipt.write_atomic(&receipt_path)?;
-    let diff_text = load_diff(&input.root, &options.base, &options.head).map_err(|error| {
-        record_review_comments_error(&mut receipt, &receipt_path, "diff_discovery", error)
+    let diff_text = analysis::cancellation::with_token(&cancellation, || {
+        load_diff(&input.root, &options.base, &options.head)
+    })
+    .map_err(|error| {
+        if crate::git::is_git_invocation_timeout(&error)
+            || (analysis::cancellation::is_cancellation_error(&error)
+                && cancellation.abort_kind()
+                    == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded))
+        {
+            record_review_comments_timeout(&mut receipt, &receipt_path, "diff_discovery")
+        } else {
+            record_review_comments_error(&mut receipt, &receipt_path, "diff_discovery", error)
+        }
     })?;
     if analysis::working_tree_has_tracked_changes(&input.root) {
         eprintln!(
@@ -1466,14 +1492,23 @@ fn review_comments_with_diff_loader_at(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
-    let scoped_inventory = analysis::inventory_diff_scoped_classified_seams_at_with_config(
-        &input.root,
-        &config,
-        &working_set.files,
-        &changed_owner_names,
-    )
+    let scoped_inventory = analysis::cancellation::with_token(&cancellation, || {
+        analysis::inventory_diff_scoped_classified_seams_at_with_config(
+            &input.root,
+            &config,
+            &working_set.files,
+            &changed_owner_names,
+        )
+    })
     .map_err(|error| {
-        record_review_comments_error(&mut receipt, &receipt_path, "canonical_analysis", error)
+        if analysis::cancellation::is_cancellation_error(&error)
+            && cancellation.abort_kind()
+                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+        {
+            record_review_comments_timeout(&mut receipt, &receipt_path, "canonical_analysis")
+        } else {
+            record_review_comments_error(&mut receipt, &receipt_path, "canonical_analysis", error)
+        }
     })?;
     enforce_review_comments_deadline(
         &mut receipt,
@@ -3191,15 +3226,11 @@ fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
 
 fn load_review_comments_diff(root: &Path, base: &str, head: &str) -> Result<String, String> {
     let range = format!("{base}...{head}");
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .arg("diff")
-        .arg("--unified=0")
-        .arg("--no-ext-diff")
-        .arg(&range)
-        .output()
-        .map_err(|err| format!("failed to run git diff for review-comments: {err}"))?;
+    let output = crate::git::run_git_output_with_deadline(
+        root,
+        &["diff", "--unified=0", "--no-ext-diff", &range],
+        analysis::cancellation::remaining_budget(),
+    )?;
     if !output.status.success() {
         return Err(format!(
             "git diff for review-comments failed: {}",
@@ -3619,6 +3650,12 @@ pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct OwnedDeadlineFixture(PathBuf);
+    impl Drop for OwnedDeadlineFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
     use crate::app::agent_review_summary::NO_RECEIPT_BEFORE_REPAIR;
     use crate::output::first_pr::{
         MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL,
@@ -9145,6 +9182,159 @@ language = "rust"
     }
 
     #[test]
+    fn review_comments_canonical_deadline_cancellation_records_timeout() -> Result<(), String> {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        // The owned CLI clock expires after canonical admission, so the
+        // installed token must interrupt real inventory work before its
+        // ordinary posthoc phase clock is consulted.
+        let fixture_path = unique_command_test_dir("review-canonical-cancellation");
+        std::fs::create_dir(&fixture_path)
+            .map_err(|error| format!("claim canonical fixture root: {error}"))?;
+        let fixture = OwnedDeadlineFixture(fixture_path);
+        let root = &fixture.0;
+        std::fs::create_dir_all(root.join("src"))
+            .map_err(|error| format!("create canonical fixture: {error}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"review_canonical_cancellation\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[workspace]\n",
+        )
+        .map_err(|error| format!("write canonical fixture manifest: {error}"))?;
+        std::fs::write(root.join("src/lib.rs"), "pub fn value() -> i32 { 1 }\n")
+            .map_err(|error| format!("write canonical fixture source: {error}"))?;
+
+        let out = root.join("target/ripr/review/comments.json");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let clock_calls = Arc::clone(&calls);
+        let start = Instant::now();
+        let result = review_comments_with_diff_loader_at(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--timeout-ms",
+                "1000",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| {
+                Ok("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub fn value() -> i32 { 0 }\n+pub fn value() -> i32 { 1 }\n".to_string())
+            },
+            move || {
+                let call = clock_calls.fetch_add(1, Ordering::SeqCst);
+                // start, diff, language facts, canonical admission remain
+                // unexpired; the next interior observation expires.
+                if call >= 4 {
+                    start + Duration::from_secs(1)
+                } else {
+                    start
+                }
+            },
+        );
+        if calls.load(Ordering::SeqCst) != 5 {
+            return Err(
+                "canonical work did not stop at its first expired interior checkpoint".to_string(),
+            );
+        }
+
+        let receipt_path = out.with_file_name("run-receipt.json");
+        let receipt: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&receipt_path)
+                .map_err(|error| format!("read canonical cancellation receipt: {error}"))?,
+        )
+        .map_err(|error| format!("parse canonical cancellation receipt: {error}"))?;
+        if receipt
+            .get("active_phase")
+            .and_then(serde_json::Value::as_str)
+            != Some("canonical_analysis")
+        {
+            return Err(format!(
+                "cancellation did not reach canonical inventory: {receipt}"
+            ));
+        }
+        if receipt.get("status").and_then(serde_json::Value::as_str) != Some("limited_timeout") {
+            return Err(format!(
+                "deadline cancellation must be a typed timeout: {receipt}"
+            ));
+        }
+        if result != Err("review-comments timed out during canonical_analysis".to_string()) {
+            return Err(format!("unexpected canonical timeout result: {result:?}"));
+        }
+        if out.exists() || out.with_extension("md").exists() {
+            return Err("cancelled inventory published review artifacts".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_source_error_wins_over_later_clock_expiry() -> Result<(), String> {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let path = unique_command_test_dir("review-error-before-expiry");
+        std::fs::create_dir(&path).map_err(|error| format!("claim error fixture: {error}"))?;
+        let fixture = OwnedDeadlineFixture(path);
+        let out = fixture.0.join("comments.json");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let owned_calls = Arc::clone(&calls);
+        let started = Instant::now();
+        let result = review_comments_with_diff_loader_at(
+            &args(&[
+                "--root",
+                &fixture.0.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--timeout-ms",
+                "1000",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_, _, _| Err("source failure before the next deadline observation".to_string()),
+            move || {
+                if owned_calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    started
+                } else {
+                    started + Duration::from_secs(1)
+                }
+            },
+        );
+        if result != Err("source failure before the next deadline observation".to_string())
+            || calls.load(Ordering::SeqCst) != 1
+        {
+            return Err(
+                "ordinary source failure was replaced by a later deadline observation".to_string(),
+            );
+        }
+        let receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(out.with_file_name("run-receipt.json"))
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if receipt.get("status").and_then(serde_json::Value::as_str) != Some("failed")
+            || receipt
+                .get("active_phase")
+                .and_then(serde_json::Value::as_str)
+                != Some("diff_discovery")
+            || out.exists()
+            || out.with_extension("md").exists()
+        {
+            return Err(format!(
+                "ordinary failure changed its receipt/output contract: {receipt}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_diff_route_records_timeout_at_injected_deadline() -> Result<(), String> {
         let root = unique_command_test_dir("review-comments-clock-diff");
         std::fs::create_dir_all(root.join("src"))
@@ -9159,7 +9349,7 @@ language = "rust"
 
         let out = root.join("target/ripr/review/comments.json");
         let start = Instant::now();
-        let calls = std::cell::Cell::new(0);
+        let calls = std::sync::atomic::AtomicUsize::new(0);
         let result = review_comments_with_diff_loader_at(
             &args(&[
                 "--root",
@@ -9174,9 +9364,8 @@ language = "rust"
                 &out.display().to_string(),
             ]),
             |_root, _base, _head| Ok(String::new()),
-            || {
-                let call = calls.get();
-                calls.set(call + 1);
+            move || {
+                let call = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if call == 0 {
                     start
                 } else {
@@ -9213,7 +9402,7 @@ language = "rust"
             .map_err(|err| format!("write gap ledger: {err}"))?;
 
         let start = Instant::now();
-        let calls = std::cell::Cell::new(0);
+        let calls = std::sync::atomic::AtomicUsize::new(0);
         let result = review_comments_with_diff_loader_at(
             &args(&[
                 "--root",
@@ -9230,9 +9419,8 @@ language = "rust"
                 &out.display().to_string(),
             ]),
             |_root, _base, _head| Err("diff loader must not run".to_string()),
-            || {
-                let call = calls.get();
-                calls.set(call + 1);
+            move || {
+                let call = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 if call == 0 {
                     start
                 } else {

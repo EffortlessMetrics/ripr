@@ -57,6 +57,26 @@ Generated CI should publish that report through the least intrusive useful
 surfaces first: job summary and check annotations by default, optional inline PR
 review comments only when explicitly enabled.
 
+### Cooperative analysis budget
+
+`--timeout-ms` defaults to 120000ms. The default diff route consumes one
+monotonic budget: Git diff discovery uses the remaining duration, and canonical
+inventory observes the existing analysis cancellation token at safe boundaries.
+Evidence context construction checks between helper-map stages and in its test
+loops. Cancellation after evidence construction must be rejected before the
+vector is classified; a partial vector is not a complete inventory.
+
+A propagated `DeadlineExceeded` finalizes the run receipt as `limited_timeout`
+with the active phase. An ordinary source error remains `failed`, even if a
+later clock observation would expire. Default LSP tokens remain deadline-free,
+and scoped command contexts restore the caller's token.
+
+This is cooperative cancellation, not preemption. Individual parser, helper-map,
+filesystem, syscall, and classification operations may overrun the budget;
+Rayon workers do not inherit the caller's thread-local token. An outer wrapper
+is required for a hard process bound. The wider phase/shutdown contract remains
+under #1778/#1699/#1604; this canonical slice does not complete those issues.
+
 ## Surfaces
 
 The default GitHub surface is:

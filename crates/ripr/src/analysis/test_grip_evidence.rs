@@ -190,7 +190,10 @@ pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<T
         &format!("start_seams_{}", seams.len()),
         Duration::ZERO,
     );
-    let context = CompactGripContext::new(index);
+    let context = match CompactGripContext::try_new(index) {
+        Ok(context) => context,
+        Err(_) => return Vec::new(),
+    };
     trace_latency_phase(
         "evidence_context",
         &format!("tests_{}_seams_{}", context.tests.len(), seams.len()),

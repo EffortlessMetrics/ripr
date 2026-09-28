@@ -335,6 +335,21 @@ pub(super) fn print_rerun_help() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn review_comments_help_discloses_cooperative_budget_boundary() -> Result<(), String> {
+        let text = super::help_text_for("review-comments").ok_or("missing review-comments help")?;
+        for required in [
+            "default 120000ms",
+            "safe boundaries",
+            "Non-preemptible operations can overrun",
+            "outer orchestration wrapper for a hard process bound",
+        ] {
+            if !text.contains(required) {
+                return Err(format!("review-comments help omitted {required:?}"));
+            }
+        }
+        Ok(())
+    }
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,

@@ -32,8 +32,9 @@ Options:
                  producer; incomplete input remains incomplete guidance.
   --out PATH     JSON output path. Defaults to target/ripr/review/comments.json.
   --timeout-ms MS
-                 Configured operator bound recorded in the run receipt. The
-                 outer orchestration wrapper enforces the process bound.
+                 Cooperative analysis budget (default 120000ms), checked at
+                 safe boundaries. Non-preemptible operations can overrun it.
+                 Use an outer orchestration wrapper for a hard process bound.
 
 The review-comments command writes a bounded advisory PR guidance report as
 JSON plus a sibling Markdown file. It joins existing static seam evidence with

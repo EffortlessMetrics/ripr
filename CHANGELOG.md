@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `review-comments` observes its cooperative analysis budget during canonical
+  inventory and rejects cancelled evidence before classification. Git diff
+  discovery consumes the remaining budget; deadline cancellation records a
+  typed timeout while ordinary source failures retain their failure status.
+  Individual operations can still overrun a checkpoint interval (#1778).
+
 - Cold LLM-agent walks of 0.11 no longer dead-end on four routes. Passing a
   `ripr check` finding ID (`probe:...`) to `ripr agent repair --seam-id` now
   says it is not a seam ID and names `ripr pilot --root .`. The

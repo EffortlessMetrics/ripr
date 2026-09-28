@@ -12,14 +12,38 @@ use std::sync::{
     Arc,
     atomic::{AtomicU8, Ordering},
 };
+use std::time::{Duration, Instant};
 
 const ACTIVE: u8 = 0;
 const SUPERSEDED: u8 = 1;
 const CANCELLED: u8 = 2;
 const DEADLINE_EXCEEDED: u8 = 3;
 
-#[derive(Clone, Debug)]
-pub(crate) struct AnalysisCancellationToken(Arc<AtomicU8>);
+pub(crate) type AnalysisClock = Arc<dyn Fn() -> Instant + Send + Sync>;
+
+struct AnalysisBudget {
+    started: Instant,
+    limit: Duration,
+    now: AnalysisClock,
+}
+
+struct CancellationState {
+    reason: AtomicU8,
+    budget: Option<AnalysisBudget>,
+}
+
+#[derive(Clone)]
+pub(crate) struct AnalysisCancellationToken(Arc<CancellationState>);
+
+impl fmt::Debug for AnalysisCancellationToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AnalysisCancellationToken")
+            .field("reason", &self.abort_kind())
+            .field("has_budget", &self.0.budget.is_some())
+            .finish()
+    }
+}
 
 impl PartialEq for AnalysisCancellationToken {
     fn eq(&self, other: &Self) -> bool {
@@ -49,7 +73,42 @@ impl fmt::Display for AnalysisCancellation {
 
 impl AnalysisCancellationToken {
     pub(crate) fn new() -> Self {
-        Self(Arc::new(AtomicU8::new(ACTIVE)))
+        Self(Arc::new(CancellationState {
+            reason: AtomicU8::new(ACTIVE),
+            budget: None,
+        }))
+    }
+
+    /// One owned monotonic clock and origin; no ambient test clock or worker
+    /// preemption. A budget is observed only at cooperative checkpoints.
+    pub(crate) fn with_budget(started: Instant, limit: Duration, now: AnalysisClock) -> Self {
+        Self(Arc::new(CancellationState {
+            reason: AtomicU8::new(ACTIVE),
+            budget: Some(AnalysisBudget {
+                started,
+                limit,
+                now,
+            }),
+        }))
+    }
+
+    pub(crate) fn remaining_budget(&self) -> Option<Duration> {
+        self.0.budget.as_ref().map(|budget| {
+            budget
+                .limit
+                .saturating_sub((budget.now)().saturating_duration_since(budget.started))
+        })
+    }
+
+    /// Pure query: classifying an ordinary source failure must not advance
+    /// the clock and replace it with a later deadline failure.
+    pub(crate) fn abort_kind(&self) -> Option<AnalysisAbortKind> {
+        match self.0.reason.load(Ordering::Acquire) {
+            SUPERSEDED => Some(AnalysisAbortKind::Superseded),
+            CANCELLED => Some(AnalysisAbortKind::Cancelled),
+            DEADLINE_EXCEEDED => Some(AnalysisAbortKind::DeadlineExceeded),
+            _ => None,
+        }
     }
 
     pub(crate) fn cancel(&self, kind: AnalysisAbortKind) -> bool {
@@ -59,23 +118,19 @@ impl AnalysisCancellationToken {
             AnalysisAbortKind::DeadlineExceeded => DEADLINE_EXCEEDED,
         };
         self.0
+            .reason
             .compare_exchange(ACTIVE, value, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
     }
 
     pub(crate) fn checkpoint(&self) -> Result<(), AnalysisCancellation> {
-        match self.0.load(Ordering::Acquire) {
-            SUPERSEDED => Err(AnalysisCancellation {
-                kind: AnalysisAbortKind::Superseded,
-            }),
-            CANCELLED => Err(AnalysisCancellation {
-                kind: AnalysisAbortKind::Cancelled,
-            }),
-            DEADLINE_EXCEEDED => Err(AnalysisCancellation {
-                kind: AnalysisAbortKind::DeadlineExceeded,
-            }),
-            _ => Ok(()),
+        if self.abort_kind().is_none() && self.remaining_budget().is_some_and(|left| left.is_zero())
+        {
+            self.cancel(AnalysisAbortKind::DeadlineExceeded);
         }
+        // Re-read the winner after CAS, including a concurrent earlier reason.
+        self.abort_kind()
+            .map_or(Ok(()), |kind| Err(AnalysisCancellation { kind }))
     }
 }
 
@@ -108,6 +163,14 @@ pub(crate) fn checkpoint() -> Result<(), String> {
     })
 }
 
+pub(crate) fn remaining_budget() -> Option<Duration> {
+    CURRENT_TOKEN.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|token| token.remaining_budget())
+    })
+}
+
 pub(crate) fn is_cancellation_error(error: &str) -> bool {
     error.starts_with("analysis cancelled:")
 }
@@ -115,6 +178,58 @@ pub(crate) fn is_cancellation_error(error: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn owned_budget_expires_and_default_token_has_no_deadline() -> Result<(), String> {
+        let elapsed = Arc::new(AtomicUsize::new(0));
+        let clock_elapsed = Arc::clone(&elapsed);
+        let started = Instant::now();
+        let clock: AnalysisClock = Arc::new(move || {
+            started + Duration::from_millis(clock_elapsed.load(Ordering::SeqCst) as u64)
+        });
+        let token =
+            AnalysisCancellationToken::with_budget(started, Duration::from_millis(10), clock);
+        token.checkpoint().map_err(|error| error.to_string())?;
+        elapsed.store(10, Ordering::SeqCst);
+        if token.checkpoint().err().map(|error| error.kind)
+            != Some(AnalysisAbortKind::DeadlineExceeded)
+        {
+            return Err("owned budget did not expire at equality".to_string());
+        }
+        let default = AnalysisCancellationToken::new();
+        if default.remaining_budget().is_some() || default.abort_kind().is_some() {
+            return Err("default LSP token acquired an automatic deadline".to_string());
+        }
+        default.checkpoint().map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn expired_clock_preserves_first_reason_and_pure_error_query() -> Result<(), String> {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let clock_calls = Arc::clone(&calls);
+        let started = Instant::now();
+        let token = AnalysisCancellationToken::with_budget(
+            started,
+            Duration::ZERO,
+            Arc::new(move || {
+                clock_calls.fetch_add(1, Ordering::SeqCst);
+                started
+            }),
+        );
+        if token.abort_kind().is_some() || calls.load(Ordering::SeqCst) != 0 {
+            return Err("error classification advanced the deadline clock".to_string());
+        }
+        if !token.cancel(AnalysisAbortKind::Superseded)
+            || token.checkpoint().err().map(|error| error.kind)
+                != Some(AnalysisAbortKind::Superseded)
+            || calls.load(Ordering::SeqCst) != 0
+        {
+            return Err("expired deadline replaced or polled an earlier cancellation".to_string());
+        }
+        Ok(())
+    }
 
     #[test]
     fn cancellation_is_visible_inside_scoped_context() -> Result<(), String> {
@@ -130,6 +245,31 @@ mod tests {
         {
             return Err(format!("expected superseded cancellation, got {result:?}"));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn nested_active_token_restores_cancelled_outer_context() -> Result<(), String> {
+        let outer = AnalysisCancellationToken::new();
+        let inner = AnalysisCancellationToken::new();
+        if outer != outer.clone() || outer == inner {
+            return Err("token identity must follow its owned shared state".to_string());
+        }
+        if !outer.cancel(AnalysisAbortKind::Superseded) {
+            return Err("fixture could not cancel its outer token".to_string());
+        }
+
+        with_token(&outer, || {
+            with_token(&inner, checkpoint)?;
+            if !checkpoint().is_err_and(|error| error.contains("Superseded")) {
+                return Err("nested token did not restore the cancelled outer context".to_string());
+            }
+            Ok(())
+        })?;
+        // The active token's constructor must remain deadline-free for LSP
+        // callers, and an outer cancellation must not leak beyond its scope.
+        inner.checkpoint().map_err(|error| error.to_string())?;
+        checkpoint()?;
         Ok(())
     }
 

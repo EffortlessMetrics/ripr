@@ -143,6 +143,21 @@ impl CompactTest<'_> {
 
 impl<'a> CompactGripContext<'a> {
     pub(crate) fn new(index: &'a RustIndex) -> Self {
+        match Self::build(index, || Ok::<(), std::convert::Infallible>(())) {
+            Ok(context) => context,
+            Err(never) => match never {},
+        }
+    }
+
+    pub(crate) fn try_new(index: &'a RustIndex) -> Result<Self, String> {
+        Self::build(index, crate::analysis::cancellation::checkpoint)
+    }
+
+    fn build<E>(
+        index: &'a RustIndex,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        checkpoint()?;
         let mut tests_by_call_name: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_helper_owner_call_name: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_target_affinity_owner_call_name: BTreeMap<String, Vec<usize>> =
@@ -151,26 +166,39 @@ impl<'a> CompactGripContext<'a> {
         let mut tests_by_file_stem: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let mut tests_by_import_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let same_file_helper_owner_calls_by_file = helper_owner_calls_by_file(index);
+        checkpoint()?;
         let helper_owner_calls_by_file = strict_helper_owner_calls_by_file(index);
+        checkpoint()?;
         let unambiguous_test_helper_owner_calls_by_name =
             unambiguous_test_helper_owner_calls_by_name(&helper_owner_calls_by_file);
+        checkpoint()?;
         let helper_owner_calls_by_module_path =
             helper_owner_calls_by_module_path(index, &helper_owner_calls_by_file);
+        checkpoint()?;
         let direct_helper_import_aliases_by_file =
             direct_helper_import_aliases_by_file(index, &helper_owner_calls_by_module_path);
+        checkpoint()?;
         let production_helper_owner_calls_by_package =
             production_helper_owner_calls_by_package(&helper_owner_calls_by_file);
+        checkpoint()?;
         let target_affinity_production_owner_calls_by_package =
             target_affinity_production_owner_calls_by_package(index);
+        checkpoint()?;
         let ambiguous_target_affinity_owner_calls_by_package =
             ambiguous_target_affinity_owner_calls_by_package(index);
+        checkpoint()?;
         let target_affinity_production_owner_calls_by_module_path =
             target_affinity_production_owner_calls_by_module_path(index);
+        checkpoint()?;
         let unambiguous_production_owner_names_by_package =
             unambiguous_production_owner_names_by_package(index);
+        checkpoint()?;
         let module_import_aliases_by_file = module_import_aliases_by_file(index);
+        checkpoint()?;
         let function_names_by_file = local_function_names_by_file(index);
+        checkpoint()?;
         let test_scoped_function_names_by_file = test_scoped_function_names_by_file(index);
+        checkpoint()?;
         let helper_owner_lookup = HelperOwnerCallLookup {
             helpers: &helper_owner_calls_by_file,
             unique_helpers: &unambiguous_test_helper_owner_calls_by_name,
@@ -185,6 +213,7 @@ impl<'a> CompactGripContext<'a> {
             .iter()
             .enumerate()
             .map(|(test_index, test)| {
+                checkpoint()?;
                 let test_scoped_function_names = test_scoped_function_names_by_file.get(&test.file);
                 let production_owner_names = package_scope(&test.file).and_then(|package| {
                     unambiguous_production_owner_names_by_package.get(&package)
@@ -285,7 +314,7 @@ impl<'a> CompactGripContext<'a> {
                         .or_default()
                         .push(test_index);
                 }
-                CompactTest {
+                Ok(CompactTest {
                     test,
                     path_normalized: normalize_path(&test.file),
                     module_path: module_path_for_index(index, &test.file),
@@ -300,18 +329,20 @@ impl<'a> CompactGripContext<'a> {
                     file_value_scan: Arc::clone(
                         file_value_scans.entry(test.file.as_path()).or_default(),
                     ),
-                }
+                })
             })
-            .collect();
+            .collect::<Result<_, E>>()?;
         let mut name_module_candidates = NameModuleCandidateIndex::default();
         for (test_index, test) in tests.iter().enumerate() {
+            checkpoint()?;
             name_module_candidates.insert(
                 test_index,
                 &test.name_lower,
                 test.module_path.as_deref(),
             );
         }
-        Self {
+        checkpoint()?;
+        Ok(Self {
             index,
             tests,
             tests_by_call_name,
@@ -325,7 +356,7 @@ impl<'a> CompactGripContext<'a> {
             same_module_cache: RefCell::new(BTreeMap::new()),
             source_digest_cache: RefCell::new(BTreeMap::new()),
             evidence_functions_by_line_cache: RefCell::new(BTreeMap::new()),
-        }
+        })
     }
 
     /// The single evidence-role function in `path` named `name` that starts
@@ -433,6 +464,83 @@ impl<'a> CompactGripContext<'a> {
 #[cfg(test)]
 mod candidate_index_tests {
     use super::*;
+
+    #[test]
+    fn owned_deadline_stops_context_test_loops_without_completing_context() -> Result<(), String> {
+        use crate::analysis::cancellation::{AnalysisCancellationToken, with_token};
+        use crate::analysis::rust_index::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::{Duration, Instant};
+
+        let started = Instant::now();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let owned_calls = Arc::clone(&calls);
+        let token = AnalysisCancellationToken::with_budget(
+            started,
+            Duration::from_secs(1),
+            Arc::new(move || {
+                owned_calls.fetch_add(1, Ordering::SeqCst);
+                started
+            }),
+        );
+        let empty = RustIndex::default();
+        with_token(&token, || CompactGripContext::try_new(&empty))?;
+        let helper_stage_observations = calls.load(Ordering::SeqCst);
+        if helper_stage_observations < 2 {
+            return Err("context fixture did not observe helper-map stages".to_string());
+        }
+        let path = PathBuf::from("src/lib.rs");
+        let facts = RaRustSyntaxAdapter.summarize_file(
+            &path,
+            r#"
+fn value() -> i32 { 1 }
+#[test] fn first() { assert_eq!(value(), 1); }
+#[test] fn second() { assert_eq!(value(), 1); }
+"#,
+        )?;
+        let mut index = RustIndex {
+            tests: facts.tests.clone(),
+            functions: facts.functions.clone(),
+            ..RustIndex::default()
+        };
+        index.files.insert(path, facts);
+        if index.tests.len() != 2 {
+            return Err("context fixture must admit exactly two parsed tests".to_string());
+        }
+        let ordinary = CompactGripContext::new(&index);
+        let complete = with_token(&token, || CompactGripContext::try_new(&index))?;
+        if complete.tests.len() != 2
+            || complete.tests_by_call_name != ordinary.tests_by_call_name
+            || complete.tests_by_assertion_token != ordinary.tests_by_assertion_token
+        {
+            return Err("unexpired context changed its complete indexes".to_string());
+        }
+        let observations = Arc::new(AtomicUsize::new(0));
+        let owned_observations = Arc::clone(&observations);
+        let deadline = AnalysisCancellationToken::with_budget(
+            started,
+            Duration::from_secs(1),
+            Arc::new(move || {
+                if owned_observations.fetch_add(1, Ordering::SeqCst) >= helper_stage_observations {
+                    started + Duration::from_secs(1)
+                } else {
+                    started
+                }
+            }),
+        );
+        let result = with_token(&deadline, || CompactGripContext::try_new(&index));
+        if !result.is_err_and(|error| error.contains("DeadlineExceeded"))
+            || deadline.abort_kind()
+                != Some(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+            || observations.load(Ordering::SeqCst) != helper_stage_observations + 1
+        {
+            return Err(
+                "context test loops completed instead of observing their first expired budget"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn name_and_module_candidates_match_independent_full_scans() {
