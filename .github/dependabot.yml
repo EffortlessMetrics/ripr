@@ -20,6 +20,14 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+      # unicode-ident 1.0.25+ moves ahead of unicode-properties 0.1.4 on the
+      # Unicode version, and ra-ap-rustc_lexer (via ra_ap_syntax) const-asserts
+      # the two match, so any bump past the manifest pin fails `cargo check`
+      # with E0080. #3787 pinned 1.0.24 in crates/ripr/Cargo.toml so
+      # `cargo install` without --locked still resolves. Ignore until a
+      # unicode-properties release matches; then remove the pin and this
+      # ignore together in one deliberate PR (#4420 documents the failure).
+      - dependency-name: "unicode-ident"
     groups:
       cargo-minor-patch:
         patterns:
