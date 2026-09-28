@@ -195,10 +195,16 @@ that needs the tuning.
 | `RIPR_PARTIAL_DIFF_LINE_BUDGET` | `1000` | Added plus removed changed lines a diff-scoped analysis inspects before returning `limited_partial_scope`. A later whole file that would exceed the remaining budget is excluded (never an overshoot); the first selected file is always analyzed even when it alone exceeds the budget (stop reason `line_budget_exceeded_on_first_file`). Values above the effective `RIPR_MAX_DIFF_CHANGED_RUST_LINES` limit (its env override when set, otherwise the `2000` default) are clamped to that effective limit with a disclosure — so a runner that raises the max limit accepts a line budget up to the same ceiling instead of silently truncating it back to the default. Must be a positive integer; invalid values fail closed as `partial_budget_invalid`. |
 | `RIPR_REPO_SEAM_CACHE_LIMIT` | `20000` | Maximum classified seam count per shard in the full repo seam cache for a completed repo-exposure run. Larger cache entries are written as bounded shard files under the cache base directory. Raise this to reduce shard count only when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
 | `RIPR_COMPACT_REPO_SEAM_CACHE_MAX_SEAMS` | `100000` | Maximum seam count per shard in the compact repo seam cache. Larger compact cache entries are written as bounded shard files under the cache base directory. Raise this for large repos when the machine has enough disk and time budget for larger shard writes. Must be a positive integer. Invalid values fail with a diagnostic naming the variable. |
-| `RIPR_GIT_TIMEOUT` | `300` | Cooperative deadline in seconds for each git invocation in the diff-load path. A git command that exceeds the deadline is terminated and the error names `git_invocation_timeout`. `0` disables the deadline. `ripr check --git-timeout SECS` sets the same value for one command. |
+| `RIPR_GIT_TIMEOUT` | `300` | Cooperative deadline in seconds for each git invocation in the diff-load path. A git command that exceeds the deadline is terminated and the error names `git_invocation_timeout`. `0` disables the deadline. An explicit `ripr check --git-timeout SECS` overrides the environment value. |
 | `RIPR_MAX_REPO_INDEX_FILES` | `800` | Maximum Rust files a repo-scoped analysis will load into the index before failing closed as `repo_scope_oversized`. The analysis is not run when the limit is exceeded, so the result is never a silently partial one. Scope the run with `ripr check --diff` or raise the limit. Must be a positive integer. |
 | `RIPR_REPO_EXPOSURE_SEAM_LIMIT` | `10000` | Maximum seams a full-repo `repo-exposure` analysis classifies before capping. When the cap fires, the run reports `run_status = "seam_limit_applied"` with a `limitations[]` entry naming the analyzed and total seam counts, this variable, and a repair route. Set to `0` to analyze all seams. `ripr doctor` reports this cap under its known limitations. |
 | `RIPR_PILOT_SEAM_BUDGET` | `2000` | Maximum seams written to `ripr pilot` artifacts (`repo-exposure.json`, `agent-seam-packets.json`). Set to `0` to disable the budget and write all seams, which may produce very large files. When the budget applies, both artifacts carry a `limitations[]` disclosure naming the variable and a repair route. |
+| `RIPR_TS_MAX_WORKSPACE_FILES` | `20000` | Maximum directory entries visited during TypeScript/JavaScript workspace discovery, including entries that are not accepted source files. Exceeding the bound stops discovery and discloses a truncated workspace; it does not establish a complete analysis. Invalid or zero values use the default bound. |
+| `RIPR_TS_MAX_FILE_READ_BYTES` | `16777216` (16 MiB) | Maximum bytes accepted from one TypeScript/JavaScript source file. An oversized file produces the named `file_read_capped` limitation. Invalid or zero values use the default bound. |
+| `RIPR_TS_MAX_WORKSPACE_READ_BYTES` | `67108864` (64 MiB) | Aggregate TypeScript/JavaScript source-read budget per analysis run. Exhaustion produces the named `workspace_read_budget_exhausted` limitation. Invalid or zero values use the default bound. |
+| `RIPR_NO_IMPACT_FAST_PATH` | eligible when unset | Set exactly `0` to disable the warm no-impact fast path and force the conservative scoped path. Other values leave the fast path eligible; eligibility still depends on current input and cache identity. |
+| `RIPR_REPO_EXPOSURE_LATENCY_TRACE` | off when unset | When present, emits diagnostic phase/cache trace lines for repo-exposure analysis. Presence enables tracing even if the value is empty or `0`; it does not change the analysis verdict. |
+| `GITHUB_PR_LABELS`, `PR_LABELS` | empty | Labels for `ripr impacted-evidence` and its xtask counterpart. `GITHUB_PR_LABELS` takes precedence when readable (even if empty); `PR_LABELS` is the fallback. Comma, newline, and semicolon separators are accepted. CLI `--label`/`--labels` add to these labels; the combined set is trimmed, lowercased, deduplicated, and sorted. |
 
 Repo seam cache entries larger than the active limit are stored as a manifest
 plus shard files, with cache-store trace status such as
@@ -359,7 +365,7 @@ reads seven keys; everything else is ignored. The schema lives in
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `baseRef` | string | `"origin/main"` | Git base ref for editor-triggered diffs. Empty string disables base-ref diffing. |
+| `baseRef` | string | automatic loader base resolution | Git base ref for editor-triggered diffs. An omitted or empty value requests the loader's default-base resolution rather than a hardcoded branch. The VS Code extension separately defaults `ripr.baseRef` to `"origin/main"` and sends that configured value. |
 | `checkMode` | string | `ripr.toml` `analysis.mode`, otherwise `"draft"` | One of `instant`, `draft`, `fast`, `deep`, `ready`. Unknown values fall back to the repo config/default. |
 | `includeUnchangedTests` | boolean | `ripr.toml` `analysis.include_unchanged_tests`, otherwise `true` | Mirror of the CLI's `--no-unchanged-tests` (inverted). |
 | `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `true` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
@@ -461,26 +467,52 @@ The editor default matches the CLI and direct LSP missing-config default:
 
 ### Commands
 
-The extension contributes:
+The extension contributes these command IDs and palette titles:
 
-- `ripr.restartServer`
-- `ripr.selectWorkspaceRoot`
-- `ripr.showOutput`
-- `ripr.copyContext`
-- `ripr.copySuggestedAssertion`
-- `ripr.copyTargetedTestBrief`
-- `ripr.copyAgentRepairCommand` (offered only for a repair-eligible seam)
-- `ripr.copyAgentPacketCommand`
-- `ripr.copyAgentBriefCommand`
-- `ripr.copyAfterSnapshotCommand`
-- `ripr.copyAgentVerifyCommand`
-- `ripr.copyAgentReceiptCommand`
-- `ripr.openRelatedTest`
-- `ripr.openSettings`
+| Command ID | Palette title |
+| --- | --- |
+| `ripr.restartServer` | ripr: Restart Server |
+| `ripr.refreshDiagnostics` | ripr: Refresh Diagnostics |
+| `ripr.selectWorkspaceRoot` | ripr: Select Workspace Root |
+| `ripr.showOutput` | ripr: Show Output |
+| `ripr.showStatus` | ripr: Show Status |
+| `ripr.diagnoseSetup` | ripr: Diagnose Setup |
+| `ripr.startCurrentRepair` | ripr: Start Current Repair |
+| `ripr.copyCurrentRepairPacket` | ripr: Copy Current Repair Packet |
+| `ripr.copyRepoGapMap` | ripr: Copy Repo Gap Map |
+| `ripr.openFirstPrPacket` | ripr: First PR - Open Packet |
+| `ripr.copyFirstPrSummary` | ripr: First PR - Copy Summary |
+| `ripr.copyFirstPrRepairPacket` | ripr: First PR - Copy Repair Packet |
+| `ripr.copyRepairPacketAtCursor` | ripr: Copy Repair Packet at Cursor |
+| `ripr.copyFirstPrVerifyCommand` | ripr: First PR - Copy Verify Command |
+| `ripr.copyFirstPrReceiptCommand` | ripr: First PR - Copy Receipt Command |
+| `ripr.copyFirstPrRegenerationGuidance` | ripr: First PR - Copy Regeneration Guidance |
+| `ripr.copyContext` | ripr: Inspect Test Gap - Copy Context |
+| `ripr.copySuggestedAssertion` | ripr: Write Targeted Test - Copy Suggested Assertion |
+| `ripr.copyTargetedTestBrief` | ripr: Write Targeted Test - Copy Brief |
+| `ripr.copyAgentRepairCommand` | ripr: Start Repair - Copy Repair Command |
+| `ripr.copyAgentPacketCommand` | ripr: Agent Handoff - Copy Packet Command |
+| `ripr.copyAgentBriefCommand` | ripr: Agent Handoff - Copy Brief Command |
+| `ripr.copyAfterSnapshotCommand` | ripr: Verify After Test - Copy After Snapshot Command |
+| `ripr.copyAgentVerifyCommand` | ripr: Verify After Test - Copy Verify Command |
+| `ripr.copyAgentReceiptCommand` | ripr: Review Result - Copy Receipt Command |
+| `ripr.openRelatedTest` | ripr: Write Targeted Test - Open Best Related Test |
+| `ripr.openSettings` | ripr: Open Settings |
+| `ripr.copyTopRepairPacket` | ripr: Copy Top Repair Packet |
+| `ripr.copyTopVerifyCommand` | ripr: Copy Verify Command |
+| `ripr.copyTopReceiptCommand` | ripr: Copy Receipt Command (Top Repair Packet) |
+| `ripr.openReport` | ripr: Open Report |
+| `ripr.showTopLimitation` | ripr: Show Top Limitation |
+| `ripr.showReceiptStatus` | ripr: Show Receipt Status |
+| `ripr.copyReceiptCommand` | ripr: Copy Receipt Command |
+| `ripr.openAttemptLedger` | ripr: Open Attempt Ledger |
+| `ripr.showRouteQuality` | ripr: Show Route Quality |
 
 These are not configured directly. They are surfaced through the command
 palette and from LSP code actions when diagnostics carry the required
-finding or seam data.
+finding or seam data. Repair actions such as `ripr.copyAgentRepairCommand`
+require a repair-eligible seam; listing a command does not make an advisory
+finding repair eligible.
 
 ## Repo policy files
 
@@ -623,19 +655,34 @@ reason = "The CLI help smoke test is intentionally broad and covered by CLI cont
 owner = "devtools"
 ```
 
+An exposure-gap suppression may instead select a bounded family by path glob:
+
+```toml
+[[suppressions]]
+kind = "exposure_gap"
+path = "src/generated/**"
+static_class = "no_static_path"
+reason = "Generated sources are checked by the generator contract."
+owner = "code-generation"
+```
+
+`static_class` is optional narrowing for a path-glob selector and must name a
+known exposure class. See [the complete example](suppressions.example.toml)
+for expiry and policy-health metadata.
+
 Supported `kind` values (closed set): `exposure_gap`, `test_efficiency`.
 
 | Rule | Behavior |
 | --- | --- |
 | `schema_version = 1` required | Missing or other values fail. |
 | `kind`, `owner`, `reason` required and non-blank | Missing or whitespace-only values fail. |
-| `kind = "exposure_gap"` requires `finding_id` | And rejects `test`. |
+| `kind = "exposure_gap"` requires `finding_id` or a `path` glob | Rejects `test`; a path-glob selector may narrow by a known `static_class`. |
 | `kind = "test_efficiency"` requires `test` | And rejects `finding_id`; `path` is optional for disambiguation. |
 | `path` repo-relative, slash-separated | Absolute paths and backslash paths fail at parse time. |
 | `expires` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
 | `created_at`, `last_seen`, `review_by` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
 | Unknown fields rejected | Catches typos. |
-| Duplicate selectors rejected | Same `finding_id` (or `(test, path)`) twice fails. |
+| Duplicate exact selectors rejected | Same `finding_id` (or `(test, path)`) twice fails. This check does not reject duplicate path-glob selectors. |
 | Unmatched selectors surface as warnings | Selector that matches no current finding is reported but does not fail the badge. |
 | Expired suppressions do **not** apply | They surface as warnings on the badge so silent green-forever debt is impossible. |
 
@@ -935,9 +982,9 @@ languages continue. The accepted managed producer values are
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `producer` | string | none | Selects managed producer mode. Accepted values are `perl-ripr-facts`, `perllsp`, and `perl-lsp`. |
-| `executable` | path | none | Overrides the Perl facts exporter executable path. |
-| `timeout_ms` | integer | `30000` | Maximum time in milliseconds for the managed producer invocation. |
-| `cache_dir` | path | none | Directory for generated Perl fact packets. |
+| `executable` | path | `perl-ripr-facts` on PATH for the canonical producer; `perllsp` on PATH for `perllsp`/`perl-lsp` | Overrides the Perl facts exporter executable path in managed mode. No producer is invoked merely because a default executable exists. |
+| `timeout_ms` | integer | `30000` | Maximum time in milliseconds for the managed producer invocation. `0` also resolves to `30000`; it does not disable the timeout. |
+| `cache_dir` | path | `target/ripr/perl-facts` | Directory for generated Perl fact packets in managed mode. |
 
 To evaluate preview languages, keep Rust enabled and add only the preview
 adapters the repo wants to inspect:
@@ -1020,11 +1067,22 @@ enabled = ["rust"]
 
 ## Precedence
 
-For CLI commands:
+For CLI options that expose an environment fallback:
 
 ```
-CLI flag  >  ripr.toml  >  CheckInput::default()
+CLI flag  >  environment fallback  >  ripr.toml  >  command default
 ```
+
+Apply only the layers an option actually supports: most `ripr.toml` keys have
+no environment counterpart, and process-only tuning variables in the table
+above do not have a CLI/config equivalent. For example, an explicit
+`ripr check --git-timeout` overrides `RIPR_GIT_TIMEOUT`; there is no
+`ripr.toml` key for that deadline. Options without an environment fallback
+retain `CLI flag > ripr.toml > CheckInput::default()`.
+
+Labels are an additive exception: `impacted-evidence --label`/`--labels`
+union with labels read from `GITHUB_PR_LABELS` or its `PR_LABELS` fallback.
+An explicitly empty `GITHUB_PR_LABELS` does not fall through to `PR_LABELS`.
 
 For LSP, the negotiated configuration transport decides (see "LSP
 configuration pull" above):
