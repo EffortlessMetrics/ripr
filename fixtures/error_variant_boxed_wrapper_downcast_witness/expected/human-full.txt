@@ -35,6 +35,9 @@ return Err("malformed source should produce ParseSummaryError::MalformedSource".
   - observed function argument value raw = "@bad;" at line 10
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
 
@@ -64,6 +67,9 @@ return Err("malformed source should produce ParseSummaryError::MalformedSource".
   - observed function argument value raw = "@bad;" at line 10
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:f573bd5d
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
 
@@ -93,6 +99,9 @@ return Err("malformed source should produce ParseSummaryError::MalformedSource".
   - observed function argument value raw = "@bad;" at line 10
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117.2
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117.2
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
 
@@ -122,6 +131,9 @@ return Err("malformed source should produce ParseSummaryError::MalformedSource".
   - observed function argument value raw = "@bad;" at line 10
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
   - observed enum variant value ParseSummaryError::MalformedSource at line 11
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:f573bd5d.2
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d.2
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:56
 
@@ -178,6 +190,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:edac60ec
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:edac60ec
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:56
 
@@ -233,6 +248,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:b87fa5c0
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:b87fa5c0
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:67
 
@@ -283,6 +301,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:51fc5156
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:51fc5156
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:67
 
@@ -333,6 +354,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:588b0f56
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:588b0f56
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:81
 
@@ -383,6 +407,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:ad27ed37
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:ad27ed37
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:81
 
@@ -433,6 +460,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:1224f837
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:1224f837
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:95
 
@@ -472,6 +502,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:e47d26a4
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:e47d26a4
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:95
 
@@ -511,6 +544,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:b7c26672
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:b7c26672
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:109
 
@@ -561,6 +597,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:53c169fe
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:53c169fe
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:109
 
@@ -611,6 +650,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:262ac815
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:262ac815
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:123
 
@@ -654,6 +696,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:c82815a4
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:c82815a4
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:123
 
@@ -697,3 +742,6 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:4ccb1836
+  ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:4ccb1836

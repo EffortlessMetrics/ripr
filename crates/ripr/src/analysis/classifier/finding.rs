@@ -6,6 +6,8 @@ use crate::analysis::classify::{
 use crate::analysis::rust_index::TestSummary;
 use crate::domain::*;
 
+const STATIC_UNKNOWN_UNREACHED_NEXT_STEP: &str = "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.";
+
 pub(in crate::analysis) fn build_finding(
     context: &ProbeContext<'_>,
     class: ExposureClass,
@@ -36,6 +38,14 @@ pub(in crate::analysis) fn build_finding(
     let recommended_next_step =
         if class == ExposureClass::WeaklyExposed && exact_oracle_covers_direct_sink {
             None
+        } else if class == ExposureClass::StaticUnknown
+            && evidence.reach.state == StageState::No
+            && !context.owner_assertion_shaped
+        {
+            // A new function no test calls yields several unclassifiable lines;
+            // "escalate to real mutation" is useless while no test reaches
+            // the owner at all. The class stays static_unknown.
+            Some(STATIC_UNKNOWN_UNREACHED_NEXT_STEP.to_string())
         } else {
             recommended_next_step(context.probe, &class, context.owner_assertion_shaped)
         };

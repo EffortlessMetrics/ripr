@@ -822,11 +822,15 @@ pub fn check(x: i32) -> bool {
             .next()
             .ok_or("missing seeded cache entry")??
             .path();
-        fs::write(entry, b"not a valid cache envelope")?;
-        assert!(matches!(
-            fixture.cache.load_file_facts(&key),
-            CacheLoad::CorruptIgnored { .. }
-        ));
+        fs::write(&entry, b"not a valid cache envelope")?;
+        let CacheLoad::CorruptIgnored { reason } = fixture.cache.load_file_facts(&key) else {
+            return Err("corrupt entry must load as CorruptIgnored".into());
+        };
+        // The warning names the entry so it can be found and removed (#4383).
+        assert!(
+            reason.starts_with(&format!("{}: ", entry.display())),
+            "corrupt-entry reason must name the cache file: {reason}"
+        );
         let inventory_reads = Cell::new(0);
         let recovered = build_index_with_file_fact_cache(
             &fixture.root,

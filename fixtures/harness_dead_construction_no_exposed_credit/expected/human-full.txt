@@ -36,6 +36,9 @@ Weakness
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+Drill in:
+  ripr explain --root fixtures/harness_dead_construction_no_exposed_credit/input --diff fixtures/harness_dead_construction_no_exposed_credit/diff.patch --mode fast probe:src_lib.rs:call_deletion:289dd551
+  ripr context --root fixtures/harness_dead_construction_no_exposed_credit/input --diff fixtures/harness_dead_construction_no_exposed_credit/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:289dd551
 
 WARNING fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs:8
 
@@ -66,6 +69,9 @@ Weakness
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+Drill in:
+  ripr explain --root fixtures/harness_dead_construction_no_exposed_credit/input --diff fixtures/harness_dead_construction_no_exposed_credit/diff.patch --mode fast probe:src_lib.rs:call_deletion:3cb7de3e
+  ripr context --root fixtures/harness_dead_construction_no_exposed_credit/input --diff fixtures/harness_dead_construction_no_exposed_credit/diff.patch --mode fast --at probe:src_lib.rs:call_deletion:3cb7de3e
 
 WARNING fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs:8
 
@@ -101,6 +107,9 @@ Weakness
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+Drill in:
+  ripr explain --root fixtures/harness_dead_construction_no_exposed_credit/input --diff fixtures/harness_dead_construction_no_exposed_credit/diff.patch --mode fast probe:src_lib.rs:predicate:f16a58e4
+  ripr context --root fixtures/harness_dead_construction_no_exposed_credit/input --diff fixtures/harness_dead_construction_no_exposed_credit/diff.patch --mode fast --at probe:src_lib.rs:predicate:f16a58e4
 
 
 Note: ripr found no static test path for any of the 3 changed expression(s) in this diff. Scope

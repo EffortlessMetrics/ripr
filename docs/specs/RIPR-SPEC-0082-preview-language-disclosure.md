@@ -270,7 +270,9 @@ enabled adapter with a matching non-success `language_runs` entry carries
   `detect_preview_advisories()` (diff), `detect_repo_preview_advisories()`
   (repo); detection runs after the language loop, independent of enablement.
   Also `non_source_disclosure_message()` (#2304): the pure docs-only stderr
-  disclosure decision (count + extension summary), emitted only when the
+  disclosure decision (count + extension summary; extensionless and
+  `.`-ending paths are named, and a `.`-ending path drops the "correct"
+  non-claim as a likely truncated header, #4376), emitted only when the
   pipeline produced zero findings and no changed file routes to a source
   adapter.
 - `crates/ripr/src/analysis/workspace/discover.rs` —

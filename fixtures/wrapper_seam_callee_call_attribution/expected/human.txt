@@ -16,7 +16,7 @@ Start here:
   Changed behavior: try_parse_summary(raw).map_err(|error| error.to_string().into())
   Missing discriminator: Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
   Related test: tests/attribution.rs:4 observes_callee_outcome
-  Next step: Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing e…
+  Next step: Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing…
   Evidence:
     - reach yes: Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome
     - infection yes: Reachable tests can plausibly activate this changed behavior

@@ -33,14 +33,18 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 .map(|entry| entry.finding_id.as_str())
         })
         .collect();
+    let mut suppressed = 0usize;
+    let mut not_current = 0usize;
     for finding in &output.findings {
         if suppressed_ids.contains(finding.id.as_str()) {
+            suppressed += 1;
             continue;
         }
         // Candidate-actionable eligibility (#3281): annotations are current
         // PR obligations; base-side evidence and unresolved subjects remain
         // visible on the check JSON and human surfaces.
         if !finding.is_candidate_actionable() {
+            not_current += 1;
             continue;
         }
         let Some(annotation_level) = config
@@ -168,8 +172,47 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     }
     if output.findings.is_empty() {
         out.push_str("::notice title=ripr::No static exposure findings found\n");
+    } else if suppressed > 0 || not_current > 0 {
+        out.push_str(&unannotated_denominator_notice(
+            output,
+            suppressed,
+            not_current,
+        ));
     }
     out
+}
+
+/// Denominator for findings the annotation stream deliberately omits (#4393).
+///
+/// Without it, a run whose findings are all policy-suppressed or all
+/// base-side prints nothing, which a reader cannot tell apart from a clean
+/// run. The omitted findings stay unannotated; this line only counts them.
+fn unannotated_denominator_notice(
+    output: &CheckOutput,
+    suppressed: usize,
+    not_current: usize,
+) -> String {
+    let total = output.findings.len();
+    let annotated = total - suppressed - not_current;
+    let mut parts = Vec::new();
+    if suppressed > 0 {
+        let policy = output
+            .suppression
+            .as_ref()
+            .map(|outcome| outcome.policy_path.as_str())
+            .unwrap_or_default();
+        parts.push(format!("{suppressed} suppressed by policy {policy}"));
+    }
+    if not_current > 0 {
+        parts.push(format!(
+            "{not_current} not current in this change (base-side or unresolved evidence)"
+        ));
+    }
+    let message = format!(
+        "Annotated {annotated} of {total} static exposure finding(s); {}. Run `ripr check --format json` to list every finding.",
+        parts.join("; ")
+    );
+    format!("::notice title=ripr::{}\n", escape_data(&message))
 }
 
 fn annotation_path(root: &Path, file: &Path) -> String {
@@ -754,9 +797,23 @@ mod tests {
 
         let rendered = render(&output);
 
+        // The suppressed finding is never annotated, but the run still
+        // carries a denominator so all-suppressed is not silent (#4393).
+        assert_eq!(
+            rendered,
+            "::notice title=ripr::Annotated 0 of 1 static exposure finding(s); 1 suppressed by policy policy/ripr-suppressions.toml. Run `ripr check --format json` to list every finding.\n",
+        );
+        assert!(!rendered.contains("file=src/lib.rs"));
+    }
+
+    #[test]
+    fn render_without_suppression_policy_emits_no_denominator_notice() {
+        let rendered = render(&output_with_unknown_finding());
+
+        assert!(rendered.contains("file=src/lib.rs"));
         assert!(
-            rendered.is_empty(),
-            "policy-suppressed findings must not be annotated: {rendered}"
+            !rendered.contains("Annotated "),
+            "a fully annotated run needs no denominator: {rendered}"
         );
     }
 
@@ -1131,6 +1188,12 @@ mod tests {
             !annotations.contains("::notice file=src/lib.rs")
                 && !annotations.contains("::warning file=src/lib.rs"),
             "base-deleted finding must not annotate: {annotations}"
+        );
+        assert!(
+            annotations.contains(
+                "::notice title=ripr::Annotated 0 of 1 static exposure finding(s); 1 not current in this change"
+            ),
+            "an all-base-side run still carries a denominator (#4393): {annotations}"
         );
 
         let mut current = output_with_unknown_finding();

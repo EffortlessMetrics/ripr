@@ -4,7 +4,7 @@ root: fixtures/python_adversarial_changed_sink_non_delta_operand/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -39,4 +39,4 @@ Note: ripr found no static test path for any of the 1 changed expression(s) in t
   integration tests that ripr's static model does not yet trace; if none does, add co-located tests
   that observe the changed behavior.
 
-Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

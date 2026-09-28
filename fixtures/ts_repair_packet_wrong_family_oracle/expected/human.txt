@@ -4,7 +4,7 @@ root: fixtures/ts_repair_packet_wrong_family_oracle/input
 
 Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 3 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
@@ -18,9 +18,9 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (Number.isNaN(n)) {
-  Missing discriminator: Related tests reach `parseLimit` with a strong oracle, but the changed line has no statically comparable predicate boundary; static evidence cannot tie an assertion to the changed …
+  Missing discriminator: Related tests reach `parseLimit` with a strong oracle, but the changed line has no statically comparable predicate boundary; static evidence cannot tie an assertion to the changed…
   Related test: tests/limiter.test.ts:3 parseLimit parses a numeric limit
-  Next step: TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emi…
+  Next step: TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is…
   Evidence:
     - reach yes: 1 related test(s) found for owner `parseLimit`
     - infection unknown: TypeScript preview adapter does not yet model infection.
@@ -36,4 +36,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

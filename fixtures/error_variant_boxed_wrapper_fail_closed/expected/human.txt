@@ -16,7 +16,7 @@ Start here:
   Changed behavior: try_checksum_summary(payload).map_err(Into::into)
   Missing discriminator: Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
   Related test: tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant
-  Next step: Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing e…
+  Next step: Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing…
   Evidence:
     - reach yes: Related tests appear to reach checksum_summary: checksum_summary_pins_wrong_sibling_variant
     - infection yes: Reachable tests can plausibly activate this changed behavior

@@ -4,7 +4,7 @@ root: fixtures/typescript_tsx_preview/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -20,7 +20,7 @@ Start here:
   Changed behavior: if (amount >= threshold) {
   Missing discriminator: Only heuristic TypeScript test links were found for `PriceTag`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/card.test.tsx:1 renders discounted price
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, an…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt,…
   Evidence:
     - reach weak: 1 related test(s) found for owner `PriceTag`
     - infection unknown: TypeScript preview adapter does not yet model infection.
@@ -35,4 +35,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

@@ -4,7 +4,7 @@ root: fixtures/typescript_witness_nested_expression/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -18,9 +18,9 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (total >= 100) {
-  Missing discriminator: Related tests reach `applyDiscount` with a strong oracle, but no strong assertion observes a `applyDiscount(...)` call at the changed predicate boundary `total == 100`; inputs on o…
+  Missing discriminator: Related tests reach `applyDiscount` with a strong oracle, but no strong assertion observes a `applyDiscount(...)` call at the changed predicate boundary `total == 100`; inputs on…
   Related test: tests/discount.test.ts:3 input is price + 100 with price = 60, i.e. 160, NOT the boundary
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `total == 100`; no actionable repair packet is emitted until verify, receipt, and edit-…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `total == 100`; no actionable repair packet is emitted until verify, receipt, and…
   Evidence:
     - reach yes: 1 related test(s) found for owner `applyDiscount`
     - infection unknown: TypeScript preview adapter does not yet model infection.
@@ -35,4 +35,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

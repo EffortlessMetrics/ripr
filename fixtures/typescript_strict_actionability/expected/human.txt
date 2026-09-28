@@ -4,7 +4,7 @@ root: fixtures/typescript_strict_actionability/input
 
 Summary: 3 probe(s), 0 exposed, 2 weak, 0 unrevealed, 1 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 3.
+Changed file(s) by language: typescript: 3.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 3 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
@@ -20,7 +20,7 @@ Start here:
   Changed behavior: return count + 1;
   Missing discriminator: Only heuristic TypeScript test links were found for `normalizeCount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/observed.test.ts:1 normalizeCount exact value
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == count + 1`; no actionable repair packet is emitted until verify, recei…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == count + 1`; no actionable repair packet is emitted until verify,…
   Evidence:
     - reach weak: 1 related test(s) found for owner `normalizeCount`
     - infection unknown: TypeScript preview adapter does not yet model infection.
@@ -36,4 +36,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 3 TypeScript files analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 3 TypeScript files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

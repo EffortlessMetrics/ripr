@@ -19,7 +19,7 @@ Start here:
   Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
   Evidence:
     - reach yes: Related tests appear to reach shipping: shipping_boundary
-    - infection unknown: Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a matchin…
+    - infection unknown: Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a…
     - 10 more evidence line(s) hidden
 
 Next: drill into the top finding:

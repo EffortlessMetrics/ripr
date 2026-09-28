@@ -154,6 +154,9 @@ pub(crate) fn render_check_with_config_and_navigation(
         OutputFormat::Human => Ok(human::render_bounded_with_config_and_navigation(
             output, config, navigation,
         )),
+        OutputFormat::HumanFull => Ok(human::render_full_with_config_and_navigation(
+            output, config, navigation,
+        )),
         _ => render_check_with_config(output, format, config),
     }
 }

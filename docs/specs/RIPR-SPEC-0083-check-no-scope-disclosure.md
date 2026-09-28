@@ -118,7 +118,8 @@ Note: `<base>...HEAD` contains no changed files, so there was nothing to analyze
 ```
 
   The triage "Safe next action" likewise reads `no changed files were
-  compared against `<base>`; make a change and re-run` — the honest action
+  compared against `<base>`; commit a change and re-run, or add `--worktree` to
+  include uncommitted edits` — the honest action
   is to change something, not to provide a scope.
 
 - No established base at all: guidance names a placeholder for an existing

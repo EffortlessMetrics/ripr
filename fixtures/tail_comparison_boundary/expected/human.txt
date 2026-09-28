@@ -12,7 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/tail_comparison_boundary/input/src/lib.rs:3
   Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: items >= 10
   Missing discriminator: items == 10
   Related test: tests/orders.rs:4 big_order_ships_free

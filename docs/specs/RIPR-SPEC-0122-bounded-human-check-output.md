@@ -202,6 +202,13 @@ completeness, with the shared repair-packet validator as the only authority:
 full per-finding evidence report. This format is diff-scoped like `human` and
 is not a repo-scoped format.
 
+When `ripr check` renders `human-full` itself, each rendered finding ends with
+a `Drill in:` block holding the same `ripr explain` / `ripr context --at`
+commands the bounded digest prints for its top finding (#4379). The digest
+sends readers to `human-full` for full evidence, so that rerun must not lose
+the only runnable next commands. Library renders without CLI navigation omit
+the block.
+
 ### Repo-scope warnings
 
 When a repo-scoped check format is combined with `--base` or `--diff`, the CLI

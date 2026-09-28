@@ -357,6 +357,54 @@ mod tests {
     }
 
     #[test]
+    fn given_static_unknown_probe_in_unreached_owner_then_next_step_asks_for_a_test_first() {
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:static_unknown".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::StaticUnknown,
+            delta: DeltaKind::Unknown,
+            before: None,
+            after: Some("score!(1)".to_string()),
+            expression: "score".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+        let unreached = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            ..RustIndex::default()
+        };
+        let finding = classify_probe(&probe, &unreached, true, None);
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
+        assert_eq!(finding.ripr.reach.state, StageState::No);
+        assert!(
+            finding
+                .recommended_next_step
+                .as_deref()
+                .is_some_and(|step| step.starts_with("No static test path reaches this change")),
+            "unreached unknown must ask for a test first: {:?}",
+            finding.recommended_next_step
+        );
+
+        // Control: a reached owner keeps the escalation guidance.
+        let reached = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_test",
+                "score(1)",
+                "assert_eq!(score(1), 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let finding = classify_probe(&probe, &reached, true, None);
+        assert_eq!(
+            finding.recommended_next_step.as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+    }
+
+    #[test]
     fn given_exact_error_variant_assertion_when_error_path_probe_changes_then_oracle_is_strong() {
         let index = RustIndex {
             functions: vec![function("src/lib.rs", "score")],

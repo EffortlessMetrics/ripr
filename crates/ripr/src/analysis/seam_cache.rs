@@ -722,6 +722,14 @@ pub(crate) enum CacheLoad<T> {
     CorruptIgnored { reason: String },
 }
 
+/// Names the entry file in a corrupt-load reason so a burst of
+/// "cache entry ignored" warnings is attributable (#4383).
+fn corrupt_entry<T>(path: &Path, reason: impl std::fmt::Display) -> CacheLoad<T> {
+    CacheLoad::CorruptIgnored {
+        reason: format!("{}: {reason}", path.display()),
+    }
+}
+
 /// Inputs the analysis pipeline collects to derive the cache key. Held
 /// separately so the test pyramid can construct a known state without
 /// touching the filesystem.
@@ -1165,9 +1173,7 @@ impl RepoSeamFactCache {
             Ok(b) => b,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return CacheLoad::Miss,
             Err(err) => {
-                return CacheLoad::CorruptIgnored {
-                    reason: format!("read failed: {err}"),
-                };
+                return corrupt_entry(&path, format!("read failed: {err}"));
             }
         };
         match codec::decode(&bytes) {
@@ -1185,7 +1191,7 @@ impl RepoSeamFactCache {
                     CacheLoad::Miss
                 }
             }
-            Err(reason) => CacheLoad::CorruptIgnored { reason },
+            Err(reason) => corrupt_entry(&path, reason),
         }
     }
 
@@ -1582,9 +1588,7 @@ impl RepoFileFactCache {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return CacheLoad::Miss,
             Err(err) => {
-                return CacheLoad::CorruptIgnored {
-                    reason: format!("read failed: {err}"),
-                };
+                return corrupt_entry(&path, format!("read failed: {err}"));
             }
         };
         match codec::decode_file_facts(&bytes) {
@@ -1595,7 +1599,7 @@ impl RepoFileFactCache {
                     CacheLoad::Miss
                 }
             }
-            Err(reason) => CacheLoad::CorruptIgnored { reason },
+            Err(reason) => corrupt_entry(&path, reason),
         }
     }
 
@@ -1673,9 +1677,7 @@ impl RepoSeamCountCache {
             Ok(b) => b,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return CacheLoad::Miss,
             Err(err) => {
-                return CacheLoad::CorruptIgnored {
-                    reason: format!("read failed: {err}"),
-                };
+                return corrupt_entry(&path, format!("read failed: {err}"));
             }
         };
         match codec::decode_counts(&bytes) {
@@ -1686,7 +1688,7 @@ impl RepoSeamCountCache {
                     CacheLoad::Miss
                 }
             }
-            Err(reason) => CacheLoad::CorruptIgnored { reason },
+            Err(reason) => corrupt_entry(&path, reason),
         }
     }
 

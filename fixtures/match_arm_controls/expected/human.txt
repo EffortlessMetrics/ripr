@@ -12,7 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/match_arm_controls/input/src/lib.rs:14
   Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: if final_label == "beta" {
   Missing discriminator: final_label == "beta"
   Related test: tests/classify.rs:4 computed_label_is_word

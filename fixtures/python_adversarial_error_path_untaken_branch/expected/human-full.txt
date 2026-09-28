@@ -4,7 +4,7 @@ root: fixtures/python_adversarial_error_path_untaken_branch/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -69,6 +69,9 @@ Python repair card (preview/advisory)
 
 Next step
   Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises KeyError matching "empty"`.
+Drill in:
+  ripr explain --root fixtures/python_adversarial_error_path_untaken_branch/input --diff fixtures/python_adversarial_error_path_untaken_branch/diff.patch --mode fast probe:src_parseint.py:python_preview:0f645328
+  ripr context --root fixtures/python_adversarial_error_path_untaken_branch/input --diff fixtures/python_adversarial_error_path_untaken_branch/diff.patch --mode fast --at probe:src_parseint.py:python_preview:0f645328
 
 
-Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

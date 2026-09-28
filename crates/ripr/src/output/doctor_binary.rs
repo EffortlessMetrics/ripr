@@ -7,6 +7,7 @@
 //! legitimate development setup, so it never fails the report.
 
 use crate::build_identity;
+use crate::output::path::human_path;
 use serde::Serialize;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -38,14 +39,26 @@ pub(crate) struct DoctorBinaryIdentity {
 impl DoctorBinaryIdentity {
     /// Human doctor lines: identity first, then any warnings.
     pub(crate) fn human_lines(&self) -> Vec<String> {
+        self.human_lines_for_host(cfg!(windows))
+    }
+
+    /// [`Self::human_lines`] for an explicit host separator rule (#4378): a
+    /// canonical Windows executable with a verbatim `\\?\` drive prefix renders
+    /// as the plain slash path, matching every other doctor path line.
+    fn human_lines_for_host(&self, windows: bool) -> Vec<String> {
+        let show = |path: &str| crate::output::path::human_path_text(path, windows);
         let mut lines = vec![match &self.executable {
-            Some(executable) => format!("- ripr binary: {} at {executable}", self.version),
+            Some(executable) => {
+                format!("- ripr binary: {} at {}", self.version, show(executable))
+            }
             None => format!("- ripr binary: {}", self.version),
         }];
         lines.push(
             match (&self.path_ripr, self.path_ripr_is_running_executable) {
-                (Some(path), Some(true)) => format!("- ripr on PATH: {path} (this binary)"),
-                (Some(path), _) => format!("- ripr on PATH: {path}"),
+                (Some(path), Some(true)) => {
+                    format!("- ripr on PATH: {} (this binary)", show(path))
+                }
+                (Some(path), _) => format!("- ripr on PATH: {}", show(path)),
                 (None, _) => "- ripr on PATH: none found".to_string(),
             },
         );
@@ -101,8 +114,8 @@ fn evaluate_binary_identity(
             "`ripr` on PATH is Cargo build output at {}, not an installed binary; commands, CI \
              steps, and editors that run `ripr` get that workspace build. Put an installed ripr \
              earlier on PATH or remove {} from PATH",
-            path.display(),
-            dir.display()
+            human_path(path),
+            human_path(dir)
         ));
     }
     if let (Some(executable), Some(path), Some(false)) = (
@@ -114,8 +127,8 @@ fn evaluate_binary_identity(
             "`ripr` on PATH is {}, not the running binary {}; this report describes the running \
              binary, and unless that PATH entry is a shim that launches it, commands that run \
              `ripr` get a different binary",
-            path.display(),
-            executable.display()
+            human_path(path),
+            human_path(executable)
         ));
     }
     DoctorBinaryIdentity {
@@ -198,6 +211,38 @@ fn is_executable_file(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #4378: doctor printed the canonical executable with its verbatim
+    /// `\\?\` prefix beside `.\\`-relative lines on Windows.
+    #[test]
+    fn human_lines_render_windows_paths_without_verbatim_prefix() {
+        // `check-local-context` forbids drive-letter path literals, so the
+        // Windows shapes are assembled from parts.
+        let drive = "F:";
+        let canonical = format!(r"\\?\{drive}\code\ripr\target\debug\ripr.exe");
+        let plain = format!("{drive}/code/ripr/target/debug/ripr.exe");
+        let identity = DoctorBinaryIdentity {
+            version: "ripr 0.0.0".to_string(),
+            commit: None,
+            commit_dirty: false,
+            executable: Some(canonical.clone()),
+            executable_is_cargo_build_output: true,
+            path_ripr: Some(canonical.clone()),
+            path_ripr_is_cargo_build_output: true,
+            path_ripr_is_running_executable: Some(true),
+            warnings: Vec::new(),
+        };
+        assert_eq!(
+            identity.human_lines_for_host(true),
+            vec![
+                format!("- ripr binary: ripr 0.0.0 at {plain}"),
+                format!("- ripr on PATH: {plain} (this binary)"),
+            ]
+        );
+        // Unix keeps the text as the filesystem spells it.
+        let unix = identity.human_lines_for_host(false);
+        assert!(unix[0].ends_with(&format!("at {canonical}")), "{unix:?}");
+    }
 
     fn temp_dir(name: &str) -> Result<PathBuf, String> {
         let dir = std::env::temp_dir().join(format!(

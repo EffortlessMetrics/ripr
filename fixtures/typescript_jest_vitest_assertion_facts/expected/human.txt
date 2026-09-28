@@ -4,7 +4,7 @@ root: fixtures/typescript_jest_vitest_assertion_facts/input
 
 Summary: 6 probe(s), 2 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 13 changed line(s), 6 candidate line(s), 6 probe(s), 6 finding(s).
@@ -18,9 +18,9 @@ Start here:
   Static exposure: weakly_exposed (warning, confidence 0.40)
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return `summary:${status.trim()}`;
-  Missing discriminator: Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before routin…
+  Missing discriminator: Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before…
   Related test: tests/signals.test.ts:25 renders summary snapshot
-  Next step: TypeScript preview advisory: add an exact-value assertion alongside the snapshot for missing discriminator `return value == `summary:${status.trim()}``; no actionable repair packet…
+  Next step: TypeScript preview advisory: add an exact-value assertion alongside the snapshot for missing discriminator `return value == `summary:${status.trim()}``; no actionable repair…
   Evidence:
     - reach yes: 1 related test(s) found for owner `renderSummary`
     - infection unknown: TypeScript preview adapter does not yet model infection.
@@ -36,4 +36,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

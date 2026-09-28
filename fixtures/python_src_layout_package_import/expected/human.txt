@@ -4,7 +4,7 @@ root: fixtures/python_src_layout_package_import/input
 
 Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: python: 2, rust: 0.
+Changed file(s) by language: python: 2.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 2 changed file(s), 4 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
@@ -19,7 +19,7 @@ Start here:
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pricing/discounts.py:bulk_discount:predicate_boundary:predicate:quantity>100
   Changed behavior: if quantity > 100:
-  Missing discriminator: A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test …
+  Missing discriminator: A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test…
   Related test: tests/test_discounts.py:4 test_bulk_discount_large_order
   Suggested test file: tests/test_discounts.py
   Suggested test: test_bulk_discount_large_order
@@ -41,4 +41,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 2 Python files analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 2 Python files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

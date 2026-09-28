@@ -172,7 +172,7 @@ pub(crate) fn render_human_triage(
         HumanTriageState::MissingScope => {
             if let Some(base) = output.base.as_deref() {
                 out.push_str(&format!(
-                    "  Safe next action: no changed files were compared against `{base}`; make a change and re-run.\n"
+                    "  Safe next action: no changed files were compared against `{base}`; commit a change and re-run, or add `--worktree` to include uncommitted edits.\n"
                 ));
             } else {
                 out.push_str(

@@ -18,7 +18,12 @@ pub(in crate::cli) const CACHE_STATUS_HELP: &str = r#"Usage: ripr cache status [
 Report the resolved analysis cache directory (RIPR_CACHE_DIR when set,
 otherwise target/ripr/cache under the Cargo workspace root).
 
-  --json    Print machine-readable status JSON.
+  --json    Print machine-readable status JSON. Its `schema_version` is the
+            version of this status report, not of the on-disk cache layers
+            (those carry their own version in their directory names).
+
+The cache is disposable: deleting it only costs a slower next run. Use
+`ripr cache clear` to remove it.
 "#;
 /// Help body for `ripr cache clear`. Also the flag source for unknown-argument
 /// suggestions; keep accepted flags on option-list lines.
@@ -406,18 +411,17 @@ fn run_status(args: &[String]) -> Result<(), String> {
     let status = inspect_cache_dir(&cache_dir);
     println!("{}", render_status(&cache_dir, &status, is_json)?);
     if !is_json {
-        eprintln!("{}", cleanup_hint(&cache_dir));
+        eprintln!("{CLEANUP_HINT}");
     }
 
     Ok(())
 }
 
-fn cleanup_hint(cache_dir: &Path) -> String {
-    let path = cache_dir.display();
-    format!(
-        "To clean up {path}, run: {CACHE_DIR_ENV}={path} cargo xtask cache gc [--dry-run] [--max-size-gb N] [--ttl-days N]"
-    )
-}
+/// Names the published cleanup command (#4383). `ripr cache clear` resolves
+/// the same directory from the same working directory and `RIPR_CACHE_DIR`,
+/// so the hint needs no path to retype; `cargo xtask cache gc` is repository
+/// automation that users of the published crate do not have.
+const CLEANUP_HINT: &str = "The cache is disposable; ripr rebuilds it on the next run. To clear it, run `ripr cache clear --dry-run` to preview, then `ripr cache clear --force`.";
 
 fn run_clear(args: &[String]) -> Result<(), String> {
     if matches!(args, [arg] if arg == "--help" || arg == "-h") {

@@ -201,27 +201,99 @@ fn non_source_disclosure_message(changed_files: &[diff::ChangedFile]) -> Option<
     if changed_files.is_empty() || changed_files.iter().any(|file| route(&file.path).is_some()) {
         return None;
     }
+    const MAX_NAMED_PATHS: usize = 3;
     let non_source_count = changed_files.len();
-    let extensions: Vec<String> = changed_files
-        .iter()
-        .filter_map(|file| {
-            file.path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| format!(".{ext}"))
-        })
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let ext_summary = if extensions.is_empty() {
-        "extensionless files".to_string()
+    let mut extensions = std::collections::BTreeSet::new();
+    let mut named_paths = std::collections::BTreeSet::new();
+    // #4376(b): a path ending in `.` (for example `src/lib.` from a
+    // truncated `+++ b/src/lib.rs` header) has an empty extension. Rendering
+    // it as `.` hid the parsed value; name the path instead, and never call
+    // the empty result correct for it — it is a malformed header, not a
+    // genuinely non-source file.
+    let mut truncated_paths = std::collections::BTreeSet::new();
+    for file in changed_files {
+        let display = file.path.to_string_lossy().replace('\\', "/");
+        match file.path.extension().and_then(|ext| ext.to_str()) {
+            Some("") => {
+                truncated_paths.insert(display.clone());
+                named_paths.insert(display);
+            }
+            Some(ext) => {
+                extensions.insert(format!(".{ext}"));
+            }
+            None => {
+                named_paths.insert(display);
+            }
+        }
+    }
+    let mut summary: Vec<String> = extensions.into_iter().collect();
+    let named_count = named_paths.len();
+    summary.extend(named_paths.into_iter().take(MAX_NAMED_PATHS));
+    if named_count > MAX_NAMED_PATHS {
+        summary.push(format!(
+            "{} more extensionless path(s)",
+            named_count - MAX_NAMED_PATHS
+        ));
+    }
+    let summary = summary.join(", ");
+    let verdict = if truncated_paths.is_empty() {
+        "The empty result is correct — ripr cannot analyze non-source files.".to_string()
     } else {
-        extensions.join(", ")
+        let listed = truncated_paths
+            .iter()
+            .take(MAX_NAMED_PATHS)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "Path(s) ending in `.` with no extension ({listed}) usually mean a truncated \
+             `+++` header, so this empty result is not a clean pass — verify the diff input."
+        )
     };
     Some(format!(
-        "ripr: diff contained {non_source_count} non-source file(s) ({ext_summary}); \
-         no analyzable Rust, TypeScript, Python, or Perl files found. \
-         The empty result is correct — ripr cannot analyze non-source files."
+        "ripr: diff contained {non_source_count} non-source file(s) ({summary}); \
+         no analyzable Rust, TypeScript, Python, or Perl files found. {verdict}"
+    ))
+}
+
+/// #4376(a): the typed limitation for Rust changed files that the effective
+/// `[languages].enabled` set excluded. `None` when Rust is enabled or the diff
+/// has no Rust-routed file. The detail and recovery name the effective set so
+/// the user sees the configuration cause rather than a diff-validity guess.
+fn rust_excluded_by_config_limitation(
+    languages: &[LanguageId],
+    changed_files: &[diff::ChangedFile],
+) -> Result<Option<AnalysisLimitation>, String> {
+    if languages.contains(&LanguageId::Rust) {
+        return Ok(None);
+    }
+    let excluded = changed_files
+        .iter()
+        .filter(|file| route(&file.path) == Some(LanguageId::Rust))
+        .count();
+    if excluded == 0 {
+        return Ok(None);
+    }
+    let enabled = languages
+        .iter()
+        .map(|language| format!("\"{}\"", language.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Ok(Some(
+        AnalysisLimitation::new(
+            AnalysisLimitationKind::LanguageAdapterUnavailable,
+            AnalysisStage::LanguageAdapter,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::EnableLanguage,
+                format!(
+                    "The effective [languages].enabled set is [{enabled}], which excludes rust; add \"rust\" to [languages].enabled in ripr.toml and re-run the analysis."
+                ),
+            )?,
+        )
+        .with_affected_items(excluded as u64)?
+        .with_detail(format!(
+            "rust changed {excluded} file(s), but rust is not in the effective [languages].enabled set [{enabled}], so these files were not analyzed"
+        ))?,
     ))
 }
 
@@ -352,6 +424,14 @@ fn run_pipeline_for_diff_text(
         rust_changed_files += result.changed_files;
         candidate_line_count += result.candidate_line_count;
         changed_files_by_language.push((LanguageId::Rust, result.changed_files));
+    } else if let Some(limitation) =
+        rust_excluded_by_config_limitation(languages, &analysis_changed_files)?
+    {
+        // #4376(a): a config that leaves `rust` out of `[languages].enabled`
+        // must not present a Rust diff as a complete analysis. The preview
+        // advisory below covers only preview languages, so the reference
+        // adapter's exclusion is recorded here as a typed limitation.
+        limitations.push(limitation);
     }
     // When the Rust adapter returned a partial partition, preview adapters
     // analyze only the selected files; uninspected accounting lives on the
@@ -1170,6 +1250,163 @@ mod tests {
         if non_source_disclosure_message(&empty).is_some() {
             return Err("an empty diff must not disclose".to_string());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn non_source_disclosure_names_truncated_path_and_drops_correct_claim() -> Result<(), String> {
+        // #4376(b): `+++ b/src/lib.` parses to `src/lib.`, whose extension is
+        // empty. The disclosure must name the parsed path (not a bare `.`)
+        // and must not call the empty result correct.
+        let parsed = diff::parse_unified_diff(
+            "diff --git a/src/lib.rs b/src/lib.rs\nindex 0000000..1111111 100644\n--- a/src/lib.rs\n+++ b/src/lib.\n",
+        );
+        assert_eq!(
+            parsed
+                .iter()
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
+            vec![PathBuf::from("src/lib.")],
+            "fixture precondition: the truncated header parses to `src/lib.`"
+        );
+        let message = non_source_disclosure_message(&parsed)
+            .ok_or_else(|| "a non-routed truncated path must still disclose".to_string())?;
+        if !message.contains("(src/lib.)") {
+            return Err(format!("disclosure must name the parsed path: {message}"));
+        }
+        if message.contains("(.)") {
+            return Err(format!("disclosure must not render a bare `.`: {message}"));
+        }
+        if message.contains("empty result is correct") {
+            return Err(format!(
+                "a truncated source header must not be called correct: {message}"
+            ));
+        }
+        if !message.contains("truncated") {
+            return Err(format!("disclosure must name the likely cause: {message}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn non_source_disclosure_names_extensionless_paths_and_keeps_correct_claim()
+    -> Result<(), String> {
+        // #4376(b) boundary: genuinely extensionless non-source files
+        // (LICENSE, Makefile) are named and keep the #2304 non-claim.
+        let files = vec![changed_file("LICENSE"), changed_file("docs/README.md")];
+        let message = non_source_disclosure_message(&files)
+            .ok_or_else(|| "a docs-only diff must disclose".to_string())?;
+        if !message.contains("LICENSE") || !message.contains(".md") {
+            return Err(format!(
+                "disclosure must name path and extension: {message}"
+            ));
+        }
+        if !message.contains("empty result is correct") {
+            return Err(format!("genuine non-source keeps the non-claim: {message}"));
+        }
+        Ok(())
+    }
+
+    fn sample_rust_diff_options(root: PathBuf) -> AnalysisOptions {
+        AnalysisOptions {
+            root,
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            resolved_subject_identity: None,
+            include_unchanged_tests: false,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        }
+    }
+
+    const SAMPLE_RUST_DIFF: &str = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n-pub fn f(x: i32) -> bool { x > 1 }\n+pub fn f(x: i32) -> bool { x >= 1 }\n";
+
+    #[test]
+    fn config_excluded_rust_projects_a_typed_language_limitation() -> Result<(), String> {
+        // #4376(a): a valid Rust diff under `[languages] enabled = [...]`
+        // without rust must not project a complete analysis.
+        for (label, languages) in [
+            ("outcome-rust-excluded-ts", vec![LanguageId::TypeScript]),
+            ("outcome-rust-excluded-empty", Vec::new()),
+        ] {
+            let root = temp_root(label)?;
+            let result = run_pipeline_for_diff_text(
+                &sample_rust_diff_options(root),
+                &OraclePolicy::default(),
+                &languages,
+                &[],
+                SAMPLE_RUST_DIFF,
+            )?;
+            let outcome = result
+                .analysis_outcome
+                .ok_or_else(|| format!("{label}: outcome must be projected"))?;
+            assert_eq!(
+                outcome.counts.changed_file_count, 1,
+                "{label}: diff must parse"
+            );
+            assert_eq!(
+                outcome.kind,
+                AnalysisOutcomeKind::PartialWithLimitations,
+                "{label}"
+            );
+            let limitation = outcome
+                .limitations
+                .iter()
+                // A build without the typescript feature also reports that
+                // adapter as unavailable; select the rust exclusion itself.
+                .find(|limitation| {
+                    limitation.kind == AnalysisLimitationKind::LanguageAdapterUnavailable
+                        && limitation
+                            .bounded_detail
+                            .as_deref()
+                            .is_some_and(|detail| detail.starts_with("rust changed"))
+                })
+                .ok_or_else(|| format!("{label}: exclusion limitation missing"))?;
+            assert_eq!(limitation.affected_items, Some(1), "{label}");
+            let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+            assert!(
+                detail.contains("rust is not in the effective [languages].enabled set"),
+                "{label}: {detail}"
+            );
+            assert!(
+                limitation
+                    .recovery
+                    .detail
+                    .contains("add \"rust\" to [languages].enabled"),
+                "{label}: {}",
+                limitation.recovery.detail
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn enabled_rust_does_not_project_a_config_exclusion() -> Result<(), String> {
+        // #4376(a) negative control: with rust enabled, no exclusion.
+        let root = temp_root("outcome-rust-enabled")?;
+        let result = run_pipeline_for_diff_text(
+            &sample_rust_diff_options(root),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            SAMPLE_RUST_DIFF,
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "outcome must be projected".to_string())?;
+        assert!(
+            !outcome
+                .limitations
+                .iter()
+                .any(|limitation| limitation.kind
+                    == AnalysisLimitationKind::LanguageAdapterUnavailable),
+            "rust enabled must not record an adapter exclusion"
+        );
         Ok(())
     }
 

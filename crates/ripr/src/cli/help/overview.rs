@@ -24,7 +24,7 @@ Usage:
 
 Try this first:
   ripr doctor                     Check this workspace can produce evidence.
-  ripr check                     Analyze the current diff, name the top gap.
+  ripr check                      Analyze the current diff, name the top gap.
 
 The loop is: ripr names one gap -> you add one focused test -> ripr records
 whether the gap closed. `ripr.toml` is optional; the zero-config run is the

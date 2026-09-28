@@ -162,6 +162,12 @@ a promise that every surface is available from the published package.
 | TypeScript / JavaScript | Opt-in `preview` analysis. |
 | Perl | `preview` / advisory development only. It needs a `lang-perl` build and the unpublished `perl-ripr-facts` exporter; no released build/exporter combination is usable yet. |
 
+With no `ripr.toml`, ripr analyzes Rust and also enables Python preview when
+it detects Python project markers or Python source under `src/` or `tests/`;
+TypeScript/JavaScript is enabled only through `[languages] enabled` in
+`ripr.toml`, and a `ripr.toml` that sets `enabled = ["rust"]` keeps Python off
+(see [Configuration](docs/CONFIGURATION.md#languages)).
+
 Findings are static and advisory. An empty result does not establish test
 adequacy, and a before/after receipt is not runtime mutation confirmation.
 Generated CI is non-blocking by default. The editor analyzes saved files, not

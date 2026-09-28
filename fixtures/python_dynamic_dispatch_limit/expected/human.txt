@@ -4,7 +4,7 @@ root: fixtures/python_dynamic_dispatch_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -18,7 +18,7 @@ Start here:
   Static exposure: static_unknown (note, confidence 0.20)
   Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: return getattr(client, method_name)()
-  Analyzer limit: Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior…
+  Analyzer limit: Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called…
   Related test: tests/test_dispatch.py:4 test_call_named_dispatches_total
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `call_named`
@@ -34,4 +34,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

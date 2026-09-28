@@ -45,6 +45,9 @@ Weakness
 
 Next step
   Assert the exact error variant or payload instead of only is_err().
+Drill in:
+  ripr explain --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast probe:src_lib.rs:error_path:09b3885a
+  ripr context --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:error_path:09b3885a
 
 WARNING fixtures/guarded_result_match_fail_closed/input/src/lib.rs:62
 
@@ -86,3 +89,6 @@ Weakness
 
 Next step
   Replace broad assertions with exact equality or a property that constrains the changed returned value.
+Drill in:
+  ripr explain --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast probe:src_lib.rs:return_value:4a5bf6b6
+  ripr context --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:return_value:4a5bf6b6

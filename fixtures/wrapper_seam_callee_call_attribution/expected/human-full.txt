@@ -47,6 +47,9 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/wrapper_seam_callee_call_attribution/input --diff fixtures/wrapper_seam_callee_call_attribution/diff.patch --mode fast probe:src_lib.rs:error_path:463e8297
+  ripr context --root fixtures/wrapper_seam_callee_call_attribution/input --diff fixtures/wrapper_seam_callee_call_attribution/diff.patch --mode fast --at probe:src_lib.rs:error_path:463e8297
 
 WARNING fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs:14
 
@@ -90,3 +93,6 @@ Limitation detail
 
 Next step
   Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+Drill in:
+  ripr explain --root fixtures/wrapper_seam_callee_call_attribution/input --diff fixtures/wrapper_seam_callee_call_attribution/diff.patch --mode fast probe:src_lib.rs:return_value:7ef92e0f
+  ripr context --root fixtures/wrapper_seam_callee_call_attribution/input --diff fixtures/wrapper_seam_callee_call_attribution/diff.patch --mode fast --at probe:src_lib.rs:return_value:7ef92e0f

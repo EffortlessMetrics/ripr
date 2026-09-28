@@ -13,6 +13,7 @@
 
 use crate::config::{CONFIG_FILE_NAME, RiprConfig, load_for_root};
 use crate::domain::LanguageId;
+use crate::output::path::human_path;
 use serde::Serialize;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -166,6 +167,11 @@ enum RustcVersionVerdict {
     Unreadable(String),
 }
 
+/// The below-minimum rustc note already states what that means for the
+/// running binary's analysis; the analysis-profile advisory must not say it a
+/// second time (clean-install walk, 0.11).
+const RUSTC_ANALYSIS_SCOPE: &str = "The already-running ripr binary's built-in static analysis does not directly run rustc; configured external producers have their own prerequisites.";
+
 fn validate_rustc_version(output: &str) -> RustcVersionVerdict {
     let Some(minimum) = minimum_rustc_version() else {
         return RustcVersionVerdict::Unreadable(format!(
@@ -180,7 +186,7 @@ fn validate_rustc_version(output: &str) -> RustcVersionVerdict {
     };
     if version < minimum {
         return RustcVersionVerdict::BelowBuildMinimum(format!(
-            "{}; below ripr's build minimum {minimum}. That minimum is what building or installing ripr from source requires. The already-running ripr binary's built-in static analysis does not directly run rustc; configured external producers have their own prerequisites. Run `rustup update stable` before building ripr from source.",
+            "{}; below ripr's build minimum {minimum}. That minimum is what building or installing ripr from source requires. {RUSTC_ANALYSIS_SCOPE} Run `rustup update stable` before building ripr from source.",
             output.trim()
         ));
     }
@@ -590,7 +596,7 @@ fn evaluate_doctor_core_with_probe_for_profile(
         report.add_check(
             "root_directory",
             DoctorStatus::Pass,
-            Some(format!("root directory exists at {}", root.display())),
+            Some(format!("root directory exists at {}", human_path(root))),
         );
     } else {
         report.add_check(
@@ -598,7 +604,7 @@ fn evaluate_doctor_core_with_probe_for_profile(
             DoctorStatus::Fail,
             Some(format!(
                 "root directory does not exist at {}",
-                root.display()
+                human_path(root)
             )),
         );
     }
@@ -610,21 +616,21 @@ fn evaluate_doctor_core_with_probe_for_profile(
             DoctorStatus::Pass,
             Some(format!(
                 "Cargo.toml found at {}",
-                root.join("Cargo.toml").display()
+                human_path(&root.join("Cargo.toml"))
             )),
         );
     } else {
         report.add_check(
             "cargo_toml",
             DoctorStatus::Fail,
-            Some(format!("no Cargo.toml found at {}", root.display())),
+            Some(format!("no Cargo.toml found at {}", human_path(root))),
         );
     }
     match is_inside_work_tree(root) {
         Some(true) => report.add_check(
             "git_repository",
             DoctorStatus::Pass,
-            Some(format!("inside a Git work tree at {}", root.display())),
+            Some(format!("inside a Git work tree at {}", human_path(root))),
         ),
         Some(false) => report.add_check(
             "git_repository",
@@ -633,7 +639,7 @@ fn evaluate_doctor_core_with_probe_for_profile(
                 "not inside a Git work tree at {}; the diff-scoped commands read committed \
                  history and cannot run here. For a repository-free scan, run `ripr check --root \
                  {} --format repo-exposure-md`",
-                root.display(),
+                human_path(root),
                 root.display()
             )),
         ),
@@ -643,7 +649,7 @@ fn evaluate_doctor_core_with_probe_for_profile(
             Some(format!(
                 "could not determine whether {} is inside a Git work tree; the git tool check \
                  below carries the reason",
-                root.display()
+                human_path(root)
             )),
         ),
     }
@@ -652,7 +658,7 @@ fn evaluate_doctor_core_with_probe_for_profile(
             "config",
             DoctorStatus::Pass,
             Some(match config.source_path() {
-                Some(path) => format!("loaded {} at {}", CONFIG_FILE_NAME, path.display()),
+                Some(path) => format!("loaded {} at {}", CONFIG_FILE_NAME, human_path(path)),
                 None => format!("{CONFIG_FILE_NAME} not found; using built-in defaults"),
             }),
         ),
@@ -746,6 +752,9 @@ fn doctor_tool_probe_dir<'a>(tool: &str, root: &'a Path) -> Option<&'a Path> {
 /// harness verdict fails closed as `manifest_unavailable`). Doctor names that
 /// degradation instead of implying analysis is unaffected.
 fn analysis_advisory_toolchain_evidence(tool: &str, evidence: &str) -> String {
+    if evidence.contains(RUSTC_ANALYSIS_SCOPE) {
+        return evidence.to_string();
+    }
     let analysis_effect = if tool == "cargo" {
         "static analysis continues, but evidence that reads `cargo metadata` in the selected root (custom test-harness target inventory) is withheld"
     } else {
@@ -1195,6 +1204,25 @@ mod tests {
                     result.evidence
                 ));
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn analysis_advisory_states_the_rustc_analysis_scope_once() -> Result<(), String> {
+        let below = below_minimum_rustc_output()?;
+        let rustc = doctor_tool_check_success("rustc", below.as_bytes());
+        let advisory = analysis_advisory_toolchain_evidence("rustc", &rustc.evidence);
+        if advisory.matches("run rustc").count() != 1 {
+            return Err(format!(
+                "the rustc analysis scope must appear once: {advisory:?}"
+            ));
+        }
+        let missing = analysis_advisory_toolchain_evidence("rustc", "rustc not found on PATH");
+        if !missing.contains("the installed binary's static analysis does not run rustc") {
+            return Err(format!(
+                "a missing rustc still needs the analysis scope: {missing:?}"
+            ));
         }
         Ok(())
     }

@@ -14,7 +14,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/mixed_rust_typescript_preview/input/src/lib.rs:2
   Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: amount >= discount_threshold
   Missing discriminator: amount == discount_threshold
   Related test: tests/pricing.rs:4 below_threshold_has_no_discount
@@ -34,4 +34,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

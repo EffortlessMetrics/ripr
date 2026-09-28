@@ -4,7 +4,7 @@ root: fixtures/ts_runner_detect_ava_devdep/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -74,6 +74,9 @@ TypeScript repair packet (advisory)
 
 Next step
   TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+Drill in:
+  ripr explain --root fixtures/ts_runner_detect_ava_devdep/input --diff fixtures/ts_runner_detect_ava_devdep/diff.patch --mode fast probe:src_math.ts:typescript_preview:025f98d6
+  ripr context --root fixtures/ts_runner_detect_ava_devdep/input --diff fixtures/ts_runner_detect_ava_devdep/diff.patch --mode fast --at probe:src_math.ts:typescript_preview:025f98d6
 
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

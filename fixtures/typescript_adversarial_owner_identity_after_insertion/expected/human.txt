@@ -4,7 +4,7 @@ root: fixtures/typescript_adversarial_owner_identity_after_insertion/input
 
 Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 2 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 9 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
@@ -18,8 +18,8 @@ Start here:
   Static exposure: no_static_path (warning, confidence 0.40)
   Why no_static_path: no related test was found that reaches this change
   Changed behavior: export const DEFAULT_FEE_RULE: FeeRule = { bps: 300, cap: 50 };
-  Missing discriminator: No trusted TypeScript module-initializer observer for `DEFAULT_FEE_RULE`. Direct `expect(IMPORTED_CONST)...` and `expect(namespace.EXPORT)...` observers are supported, but helper-d…
-  Next step: TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer whe…
+  Missing discriminator: No trusted TypeScript module-initializer observer for `DEFAULT_FEE_RULE`. Direct `expect(IMPORTED_CONST)...` and `expect(namespace.EXPORT)...` observers are supported, but…
+  Next step: TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer…
   Evidence:
     - reach no: 0 related test(s) found for owner `DEFAULT_FEE_RULE`
     - infection unknown: TypeScript preview adapter does not yet model infection.
@@ -41,4 +41,4 @@ Note: ripr found no static test path for any of the 2 changed expression(s) in t
   integration tests that ripr's static model does not yet trace; if none does, add co-located tests
   that observe the changed behavior.
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

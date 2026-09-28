@@ -40,6 +40,9 @@ Weakness
 
 Next step
   Assert the exact error variant or payload instead of only is_err().
+Drill in:
+  ripr explain --root fixtures/guarded_result_match_sibling_variant/input --diff fixtures/guarded_result_match_sibling_variant/diff.patch --mode fast probe:src_lib.rs:error_path:94d13aee
+  ripr context --root fixtures/guarded_result_match_sibling_variant/input --diff fixtures/guarded_result_match_sibling_variant/diff.patch --mode fast --at probe:src_lib.rs:error_path:94d13aee
 
 WARNING fixtures/guarded_result_match_sibling_variant/input/src/lib.rs:9
 
@@ -75,3 +78,6 @@ Weakness
 
 Next step
   Add a test input that reaches the changed error path and assert the exact error variant it returns.
+Drill in:
+  ripr explain --root fixtures/guarded_result_match_sibling_variant/input --diff fixtures/guarded_result_match_sibling_variant/diff.patch --mode fast probe:src_lib.rs:return_value:1f4cb0e7
+  ripr context --root fixtures/guarded_result_match_sibling_variant/input --diff fixtures/guarded_result_match_sibling_variant/diff.patch --mode fast --at probe:src_lib.rs:return_value:1f4cb0e7

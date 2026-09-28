@@ -4,7 +4,7 @@ root: fixtures/python_adversarial_method_owner_imported_unbound_receiver/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -19,7 +19,7 @@ Start here:
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/auth.py:TokenValidator.validate:return_value:return_value:token.strip_in_self._valid
   Changed behavior: return token.strip() in self._valid
-  Missing discriminator: A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add …
+  Missing discriminator: A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add…
   Related test: tests/test_billing.py:5 test_billing_validate
   Suggested test file: tests/test_billing.py
   Suggested test: test_billing_validate
@@ -40,4 +40,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

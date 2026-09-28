@@ -4,7 +4,7 @@ root: fixtures/typescript_awaited_promise_reject/input
 
 Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
@@ -20,7 +20,7 @@ Start here:
   Changed behavior: return await Promise.reject(new Error("missing id"));
   Missing discriminator: Only heuristic TypeScript test links were found for `loadProfile`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/profile.test.ts:1 rejects missing profile id broadly
-  Next step: TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; add an exact payload to `toThrow` (string, object,…
+  Next step: TypeScript preview advisory: broad error evidence does not establish missing discriminator `rejects Error matching "missing id"`; add an exact payload to `toThrow` (string,…
   Evidence:
     - reach weak: 1 related test(s) found for owner `loadProfile`
     - infection unknown: TypeScript preview adapter does not yet model infection.
@@ -36,4 +36,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

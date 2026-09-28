@@ -4,7 +4,7 @@ root: fixtures/python_same_stem_sibling_owner_not_related/input
 
 Summary: 5 probe(s), 0 exposed, 1 weak, 0 unrevealed, 4 no path, 0 unknown
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 8 changed line(s), 5 candidate line(s), 5 probe(s), 5 finding(s).
@@ -19,7 +19,7 @@ Start here:
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:pricing.py:discounted_total:predicate_boundary:predicate:amount>=discount_threshold
   Changed behavior: if amount >= DISCOUNT_THRESHOLD:
-  Missing discriminator: A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary. No strong related test call places amo…
+  Missing discriminator: A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary. No strong related test call places…
   Related test: tests/test_pricing.py:8 test_discounts_far_above_threshold
   Suggested test file: tests/test_pricing.py
   Suggested test: test_discounts_far_above_threshold
@@ -40,4 +40,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

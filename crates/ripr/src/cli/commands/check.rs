@@ -548,17 +548,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         output.no_scope_provided = true;
     }
     // #2425: when --diff was explicitly provided but produced zero findings
-    // on a diff-scoped format, warn on stderr that the diff may be malformed.
-    // A non-diff file (log, source, random text) produces zero parsed files
-    // silently, which can be mistaken for a clean bill of health. This does
-    // NOT change the exit code or the JSON contract — stderr advisory only.
-    // Repo-scoped formats (repo-exposure-json, etc.) intentionally ignore
-    // --diff for their analysis scope, so the warning is gated to diff-scoped
-    // formats only.
-    if input_diff_file_is_some && output.findings.is_empty() && !format.is_repo_scope() {
-        eprintln!(
-            "ripr: --diff produced zero findings. If the diff file is not a valid unified diff, this result is empty because nothing was parsed — not because all behavior is covered."
-        );
+    // on a diff-scoped format, disclose on stderr why the result is empty.
+    // This does NOT change the exit code or the JSON contract — stderr
+    // advisory only. Repo-scoped formats (repo-exposure-json, etc.)
+    // intentionally ignore --diff for their analysis scope, so the hedge is
+    // gated to diff-scoped formats only. #4376(a)/#4395(c): the hedge runs
+    // before stdout is rendered, so it must name the typed cause when one
+    // exists instead of guessing at diff validity.
+    if input_diff_file_is_some
+        && output.findings.is_empty()
+        && !format.is_repo_scope()
+        && let Some(hedge) = zero_findings_diff_hedge(output.analysis_outcome.as_ref())
+    {
+        eprintln!("{hedge}");
     }
     // #2642: surface expired suppression entries as a stderr warning so they
     // are visible even in --json mode (the human output already shows them as
@@ -606,6 +608,49 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         navigation.as_ref(),
     )?)?;
     Ok(())
+}
+
+/// The stderr hedge for an explicit `--diff` run that produced zero findings
+/// (#2425, #2491). The first stderr line a user reads must be the true cause
+/// of the empty result (#4376(a), #4395(c)):
+///
+/// - when the producer outcome records a language adapter that was disabled
+///   by config or unavailable in this binary, name that typed cause;
+/// - when the diff parsed to at least one changed file, the diff was valid
+///   and the analysis outcome on stdout already explains the empty result,
+///   so no diff-validity guess is printed;
+/// - only when nothing parsed (or no outcome exists) print the generic
+///   "may not be a valid unified diff" hint.
+fn zero_findings_diff_hedge(
+    outcome: Option<&crate::analysis_outcome::AnalysisOutcome>,
+) -> Option<String> {
+    use crate::analysis_outcome::AnalysisLimitationKind;
+    let generic = "ripr: --diff produced zero findings. If the diff file is not a valid unified diff, this result is empty because nothing was parsed — not because all behavior is covered.";
+    let Some(outcome) = outcome else {
+        return Some(generic.to_string());
+    };
+    let causes = outcome
+        .limitations
+        .iter()
+        .filter(|limitation| limitation.kind == AnalysisLimitationKind::LanguageAdapterUnavailable)
+        .map(|limitation| {
+            limitation
+                .bounded_detail
+                .clone()
+                .unwrap_or_else(|| limitation.recovery.detail.trim_end_matches('.').to_string())
+        })
+        .collect::<Vec<_>>();
+    if !causes.is_empty() {
+        return Some(format!(
+            "ripr: --diff produced zero findings because changed files were not analyzed: {}. \
+             This empty result is not a clean pass; see the analysis outcome for the recovery.",
+            causes.join("; ")
+        ));
+    }
+    if outcome.counts.changed_file_count > 0 {
+        return None;
+    }
+    Some(generic.to_string())
 }
 
 /// Write `text` to stdout in bounded chunks.
@@ -849,6 +894,135 @@ mod tests {
         unique_repo_relative_test_dir,
     };
     use super::*;
+
+    /// Run the real diff pipeline over the sample workspace's valid Rust diff
+    /// with the given effective language set, returning the producer outcome
+    /// the zero-findings hedge consumes.
+    fn sample_diff_outcome(
+        label: &str,
+        enabled: Vec<crate::domain::LanguageId>,
+    ) -> Result<(usize, crate::analysis_outcome::AnalysisOutcome), String> {
+        let root = copy_sample_workspace_to_temp(label)?;
+        let mut config = RiprConfig::default();
+        config.languages.enabled = enabled;
+        let input = CheckInput {
+            root: root.clone(),
+            diff_file: Some(root.join("example.diff")),
+            ..CheckInput::default()
+        };
+        let result = app::check_workspace_with_config(input, &config);
+        if let Ok(()) = std::fs::remove_dir_all(&root) {}
+        let output = result?;
+        let outcome = output
+            .analysis_outcome
+            .ok_or_else(|| "diff pipeline must project an analysis outcome".to_string())?;
+        Ok((output.findings.len(), outcome))
+    }
+
+    #[test]
+    fn zero_findings_hedge_names_config_excluded_rust_instead_of_diff_validity()
+    -> Result<(), String> {
+        // #4376(a): `[languages] enabled = ["typescript"]` over a valid Rust
+        // diff. The hedge must name the configuration cause, never the
+        // "may not be a valid unified diff" guess.
+        use crate::domain::LanguageId;
+        for (label, enabled) in [
+            ("hedge-rust-excluded-ts", vec![LanguageId::TypeScript]),
+            ("hedge-rust-excluded-empty", Vec::new()),
+        ] {
+            let (findings, outcome) = sample_diff_outcome(label, enabled)?;
+            assert_eq!(
+                findings, 0,
+                "fixture precondition: {label} must analyze nothing"
+            );
+            assert!(
+                outcome.counts.changed_file_count > 0,
+                "fixture precondition: the valid sample diff must parse"
+            );
+            assert_eq!(
+                outcome.kind,
+                crate::analysis_outcome::AnalysisOutcomeKind::PartialWithLimitations,
+                "an excluded Rust adapter must not claim a complete analysis ({label})"
+            );
+            let hedge = zero_findings_diff_hedge(Some(&outcome))
+                .ok_or_else(|| format!("{label}: a typed exclusion must be named on stderr"))?;
+            assert!(
+                hedge.contains("rust is not in the effective [languages].enabled set"),
+                "{label}: {hedge}"
+            );
+            assert!(
+                !hedge.contains("not a valid unified diff"),
+                "{label}: {hedge}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn zero_findings_hedge_names_unavailable_adapter_before_diff_validity() -> Result<(), String> {
+        // #4395(c): a valid diff whose only changed file needs an adapter
+        // that is not available (Perl in a default build) must lead with
+        // the availability cause.
+        use crate::analysis_outcome::{
+            AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+            AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+            AnalysisStage,
+        };
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisIdentity::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 1,
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageAdapterUnavailable,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::EnableLanguage,
+                        "Use a ripr binary built with Cargo feature `lang-perl`.",
+                    )?,
+                )
+                .with_detail(
+                    "perl changed 1 file(s), but the preview adapter was not enabled or available",
+                )?,
+            ],
+        )?;
+        let hedge = zero_findings_diff_hedge(Some(&outcome))
+            .ok_or_else(|| "an unavailable adapter must be named on stderr".to_string())?;
+        assert!(hedge.contains("perl changed 1 file(s)"), "{hedge}");
+        assert!(!hedge.contains("not a valid unified diff"), "{hedge}");
+        Ok(())
+    }
+
+    #[test]
+    fn zero_findings_hedge_is_silent_for_a_parsed_diff_and_generic_when_nothing_parsed()
+    -> Result<(), String> {
+        // A parsed Rust diff with Rust enabled: the diff was valid, so no
+        // diff-validity guess is printed (the outcome on stdout explains).
+        let (_, outcome) =
+            sample_diff_outcome("hedge-rust-enabled", vec![crate::domain::LanguageId::Rust])?;
+        assert!(outcome.counts.changed_file_count > 0);
+        assert!(
+            zero_findings_diff_hedge(Some(&outcome)).is_none(),
+            "a parsed diff must not be blamed for diff validity"
+        );
+        // Nothing parsed (or no outcome): the generic hint remains.
+        let empty = crate::analysis_outcome::AnalysisOutcome::new(
+            crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
+            crate::analysis_outcome::AnalysisIdentity::default(),
+            crate::analysis_outcome::AnalysisOutcomeCounts::default(),
+            Vec::new(),
+        )?;
+        for outcome in [Some(&empty), None] {
+            let hedge = zero_findings_diff_hedge(outcome)
+                .ok_or_else(|| "an unparsed diff must keep the generic hint".to_string())?;
+            assert!(hedge.contains("not a valid unified diff"), "{hedge}");
+        }
+        Ok(())
+    }
 
     #[test]
     fn repo_scope_format_with_base_emits_scope_warning() -> Result<(), String> {

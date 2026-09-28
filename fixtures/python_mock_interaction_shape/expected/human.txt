@@ -4,7 +4,7 @@ root: fixtures/python_mock_interaction_shape/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -19,7 +19,7 @@ Start here:
   Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
   Changed behavior: callback = MagicMock(name="receipt.sent")
-  Missing discriminator: Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call eff…
+  Missing discriminator: Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call…
   Related test: tests/test_callbacks.py:4 test_recording_callback_starts_idle
   Suggested test file: tests/test_callbacks.py
   Suggested test: test_recording_callback_starts_idle
@@ -40,4 +40,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

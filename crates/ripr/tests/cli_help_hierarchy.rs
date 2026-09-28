@@ -17,11 +17,15 @@ const ROOT_README: &str = include_str!("../../../README.md");
 const QUICKSTART_DOC: &str = include_str!("../../../docs/QUICKSTART.md");
 const EXIT_CODES_DOC: &str = include_str!("../../../docs/EXIT_CODES.md");
 
-fn rendered_help(args: &[&str]) -> Result<String, String> {
-    let output = Command::new(env!("CARGO_BIN_EXE_ripr"))
+fn run_ripr(args: &[&str]) -> Result<std::process::Output, String> {
+    Command::new(env!("CARGO_BIN_EXE_ripr"))
         .args(args)
         .output()
-        .map_err(|error| format!("failed to run ripr {args:?}: {error}"))?;
+        .map_err(|error| format!("failed to run ripr {args:?}: {error}"))
+}
+
+fn rendered_help(args: &[&str]) -> Result<String, String> {
+    let output = run_ripr(args)?;
     if !output.status.success() {
         return Err(format!(
             "ripr {args:?} failed\nstdout:\n{}\nstderr:\n{}",
@@ -245,6 +249,51 @@ fn agent_repair_help_names_the_primary_transaction_and_its_limits() -> Result<()
             &stdout,
             needle,
         )?;
+    }
+    Ok(())
+}
+
+/// The `help` index must route a subcommand to that subcommand's own help
+/// (#4378): `ripr help agent repair` printed the parent `agent` overview
+/// because the injected `--help` preceded `repair`. An unknown subcommand
+/// errors instead of printing unrelated help.
+#[test]
+fn help_index_routes_agent_repair_to_repair_help() -> Result<(), String> {
+    let via_index = rendered_help(&["help", "agent", "repair"])?;
+    let direct = rendered_help(&["agent", "repair", "--help"])?;
+    if via_index != direct {
+        return Err(format!(
+            "`ripr help agent repair` must print the same help as `ripr agent repair --help`\n\
+             help index:\n{via_index}\ndirect:\n{direct}"
+        ));
+    }
+    let unknown = run_ripr(&["help", "agent", "no-such-subcommand"])?;
+    if unknown.status.success() {
+        return Err(format!(
+            "`ripr help agent no-such-subcommand` must fail, got stdout:\n{}",
+            String::from_utf8_lossy(&unknown.stdout)
+        ));
+    }
+    assert_contains(
+        "unknown agent subcommand via help index",
+        &String::from_utf8_lossy(&unknown.stderr),
+        "unknown agent subcommand",
+    )
+}
+
+/// `check` and `context` must say what each `--mode` value means and where
+/// the full table lives (#4378), not only list the bare names.
+#[test]
+fn mode_help_names_index_scope_and_points_at_the_mode_table() -> Result<(), String> {
+    for command in ["check", "context"] {
+        let help = normalized(&rendered_help(&[command, "--help"])?);
+        for needle in [
+            "instant (changed files only, cheapest)",
+            "deep and ready (whole workspace, slowest)",
+            "See docs/CONFIGURATION.md \"Analysis modes\"",
+        ] {
+            assert_contains(&format!("{command} --help --mode line"), &help, needle)?;
+        }
     }
     Ok(())
 }

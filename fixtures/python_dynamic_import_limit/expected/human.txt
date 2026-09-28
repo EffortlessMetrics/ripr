@@ -4,7 +4,7 @@ root: fixtures/python_dynamic_import_limit/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
@@ -18,7 +18,7 @@ Start here:
   Static exposure: static_unknown (note, confidence 0.20)
   Why static_unknown: the analysis could not determine a static exposure state
   Changed behavior: return importlib.import_module(module_name).handle(payload, strict=True)
-  Analyzer limit: Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not bu…
+  Analyzer limit: Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not…
   Related test: tests/test_plugin_loader.py:4 test_run_plugin_returns_payload_status
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `run_plugin`
@@ -34,4 +34,4 @@ More:
   Machine data: rerun with --format json
 
 
-Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

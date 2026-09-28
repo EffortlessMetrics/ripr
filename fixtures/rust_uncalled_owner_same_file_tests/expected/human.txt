@@ -12,7 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/rust_uncalled_owner_same_file_tests/input/src/lib.rs:6
   Static exposure: weakly_exposed (warning, confidence 0.66)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Why weakly_exposed: a related test reaches this change, but the static evidence path is partially complete — see full form for details
   Changed behavior: (cents + 49) / 100
   Related test: src/lib.rs:14 discount_applies_at_100
   Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.

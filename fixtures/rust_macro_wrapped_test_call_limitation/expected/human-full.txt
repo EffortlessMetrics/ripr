@@ -52,6 +52,9 @@ Limitation detail
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+Drill in:
+  ripr explain --root fixtures/rust_macro_wrapped_test_call_limitation/input --diff fixtures/rust_macro_wrapped_test_call_limitation/diff.patch --mode fast probe:src_internal.rs:predicate:114f2322
+  ripr context --root fixtures/rust_macro_wrapped_test_call_limitation/input --diff fixtures/rust_macro_wrapped_test_call_limitation/diff.patch --mode fast --at probe:src_internal.rs:predicate:114f2322
 
 WARNING fixtures/rust_macro_wrapped_test_call_limitation/input/src/internal.rs:2
 
@@ -99,6 +102,9 @@ Limitation detail
 
 Next step
   ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.
+Drill in:
+  ripr explain --root fixtures/rust_macro_wrapped_test_call_limitation/input --diff fixtures/rust_macro_wrapped_test_call_limitation/diff.patch --mode fast probe:src_internal.rs:predicate:10b08bc9
+  ripr context --root fixtures/rust_macro_wrapped_test_call_limitation/input --diff fixtures/rust_macro_wrapped_test_call_limitation/diff.patch --mode fast --at probe:src_internal.rs:predicate:10b08bc9
 
 
 Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. Scope

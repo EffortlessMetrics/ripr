@@ -106,6 +106,9 @@ pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String>
     ))
 }
 
+/// Closing sentence of [`module_composition_disclosure`] (#4378).
+const MODULE_COMPOSITION_ORIENTATION: &str = "This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing.";
+
 /// Returns a stable disclosure when Rust module composition failed closed
 /// (#3533): a file whose composed context chain could not be resolved
 /// (ambiguous ownership, cycle or depth bound, context conflict), or a
@@ -113,6 +116,10 @@ pub(crate) fn include_resolution_disclosure(index: &RustIndex) -> Option<String>
 /// conditionally introduced `#[path]`). Without this, module-side stop
 /// reasons were invisible outside the per-file provenance while include-side
 /// limitations were disclosed.
+///
+/// The index can span the whole workspace (`--mode deep|ready`), so the named
+/// files are often ones the analyzed diff never touched. The closing sentence
+/// orients a first-time reader without narrowing what is disclosed (#4378).
 pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String> {
     let mut details = BTreeSet::new();
     let mut count = 0usize;
@@ -140,7 +147,7 @@ pub(crate) fn module_composition_disclosure(index: &RustIndex) -> Option<String>
         return None;
     }
     Some(format!(
-        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed.",
+        "ripr: {count} Rust module composition limitation(s): {}; affected module contexts remain fail-closed. {MODULE_COMPOSITION_ORIENTATION}",
         details.into_iter().collect::<Vec<_>>().join(", ")
     ))
 }
@@ -1033,6 +1040,14 @@ fn feature_gated_test() {}
             "composed-chain stop reasons are named: {disclosure}"
         );
         assert!(!disclosure.contains("src/plain.rs"));
+        // #4378: a whole-workspace index names files outside the diff, so the
+        // line tells a first-time reader it is not a finding to act on.
+        assert!(
+            disclosure.ends_with(
+                "affected module contexts remain fail-closed. This is an analysis-limit note about indexed context, not a finding: no action is needed unless evidence you expected from a listed file is missing."
+            ),
+            "the disclosure closes with one orienting sentence: {disclosure}"
+        );
 
         // No limitations: no disclosure.
         let clean = RustIndex::default();

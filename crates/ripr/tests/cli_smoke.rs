@@ -8423,6 +8423,48 @@ fn init_dry_run_prints_config_without_writing() -> Result<(), String> {
     Ok(())
 }
 
+/// #4378: on Windows the init preview mixed a forward-slash argv prefix with the
+/// joined `\ripr.toml` suffix, and doctor mixed `.\`-relative lines with a
+/// verbatim `\\?\` executable. Both surfaces render one slash convention.
+#[cfg(windows)]
+#[test]
+fn windows_init_preview_and_doctor_use_one_separator_convention() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace
+        .canonicalize()
+        .map_err(|e| format!("canonicalize workspace: {e}"))?
+        .display()
+        .to_string();
+    // Canonical Windows paths carry the verbatim prefix; spell the root the
+    // way a user types it, with forward slashes.
+    let root = root.trim_start_matches(r"\\?\").replace('\\', "/");
+    let dry = run_ripr(&["init", "--root", &root, "--dry-run"]);
+    assert_success(&dry);
+    let dry_stdout = String::from_utf8_lossy(&dry.stdout);
+    let expected = format!("{root}/ripr.toml");
+    assert!(
+        dry_stdout.contains(&format!("# {expected}")),
+        "{dry_stdout}"
+    );
+    assert!(!dry_stdout.contains('\\'), "{dry_stdout}");
+
+    let doctor = run_ripr(&["doctor", "--root", &root]);
+    let doctor_stdout = String::from_utf8_lossy(&doctor.stdout);
+    for line in doctor_stdout.lines().filter(|line| {
+        line.starts_with("- root:")
+            || line.starts_with("- ripr binary:")
+            || line.starts_with("- Cache location:")
+            || line.contains("Cargo.toml found at")
+            || line.contains("root directory exists at")
+    }) {
+        assert!(!line.contains(r"\\?\"), "verbatim prefix in `{line}`");
+        assert!(!line.contains('\\'), "backslash separator in `{line}`");
+    }
+
+    ignore_remove_dir_all(&workspace);
+    Ok(())
+}
+
 /// #2572: `--dry-run` must predict the run it previews. An existing
 /// `ripr.toml` without `--force` makes the real run fail, so the dry run
 /// fails the same way instead of printing a config it could not write.
@@ -13880,6 +13922,13 @@ fn check_default_base_with_clean_worktree_keeps_no_scope_note_only() -> Result<(
     if !stdout.contains("contains no changed files") {
         return Err(format!(
             "empty default-base run must keep the no-scope disclosure (base-naming form per #4012); got:\n{stdout}"
+        ));
+    }
+    // Clean-install walk (0.11): Start-here must name the flag that analyzes
+    // uncommitted edits, not only "make a change".
+    if !stdout.contains("add `--worktree` to include uncommitted edits") {
+        return Err(format!(
+            "empty-range Start-here must name `--worktree`; got:\n{stdout}"
         ));
     }
     if !stdout.contains("compared base was `main`") || stdout.contains("--base origin/main") {

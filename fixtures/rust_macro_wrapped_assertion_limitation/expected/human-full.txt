@@ -55,6 +55,9 @@ Limitation detail
 
 Next step
   Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+Drill in:
+  ripr explain --root fixtures/rust_macro_wrapped_assertion_limitation/input --diff fixtures/rust_macro_wrapped_assertion_limitation/diff.patch --mode fast probe:src_internal.rs:predicate:114f2322
+  ripr context --root fixtures/rust_macro_wrapped_assertion_limitation/input --diff fixtures/rust_macro_wrapped_assertion_limitation/diff.patch --mode fast --at probe:src_internal.rs:predicate:114f2322
 
 WARNING fixtures/rust_macro_wrapped_assertion_limitation/input/src/internal.rs:2
 
@@ -105,3 +108,6 @@ Limitation detail
 
 Next step
   Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
+Drill in:
+  ripr explain --root fixtures/rust_macro_wrapped_assertion_limitation/input --diff fixtures/rust_macro_wrapped_assertion_limitation/diff.patch --mode fast probe:src_internal.rs:predicate:10b08bc9
+  ripr context --root fixtures/rust_macro_wrapped_assertion_limitation/input --diff fixtures/rust_macro_wrapped_assertion_limitation/diff.patch --mode fast --at probe:src_internal.rs:predicate:10b08bc9

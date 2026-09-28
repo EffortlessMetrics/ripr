@@ -128,7 +128,12 @@ Options:
   --worktree               Diff the base revision against the live working tree
                            instead of HEAD, including staged and unstaged
                            tracked edits. Cannot be combined with --diff.
-  --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
+  --mode MODE              How much of the workspace is indexed: instant
+                           (changed files only, cheapest), draft (packages the
+                           diff touches; the default), fast (same as draft for
+                           now), deep and ready (whole workspace, slowest).
+                           Modes never change what an exposure class means.
+                           See docs/CONFIGURATION.md "Analysis modes".
   --format FORMAT          Output format. Defaults to human. Groups:
                              Analysis (diff-scoped):
                                human, human-full, json, github, sarif
@@ -288,6 +293,10 @@ Performance:
 "#;
 pub(super) const CONTEXT_HELP: &str = r#"Print the per-change context packet for one finding or location.
 
+The packet is always JSON, for an agent or tool to consume; `--json` is
+accepted and changes nothing. To read the same finding as prose, run
+`ripr explain` with the same selector.
+
 Usage: ripr context [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
 
 Options:
@@ -298,9 +307,12 @@ Options:
                analysis (same fail-closed identity gate as explain --from).
                --max-related-tests is a render-time knob honored fresh,
                including beyond the check --json render cap.
-  --mode MODE  instant, draft, fast, deep, or ready. Defaults to draft.
-               With --from, this feeds the identity recomputation (see
-               `ripr explain --help`).
+  --mode MODE  How much of the workspace is indexed: instant (changed
+               files only, cheapest), draft (packages the diff touches; the
+               default), fast (same as draft for now), deep and ready (whole
+               workspace, slowest). See docs/CONFIGURATION.md "Analysis
+               modes". With --from, this feeds the identity recomputation
+               (see `ripr explain --help`).
   --no-unchanged-tests
                Limit the index to changed Rust files. With --from, feeds
                the identity recomputation (see `ripr explain --help`).

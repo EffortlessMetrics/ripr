@@ -5,6 +5,7 @@ use crate::cli::help;
 use crate::cli::parse::expect_value;
 use crate::cli::suggest::unknown_argument;
 use crate::config::{CONFIG_FILE_NAME, generated_init_config};
+use crate::output;
 use crate::output::first_pr::{
     MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL,
     REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP, VERIFY_AFTER_EDIT_LABEL,
@@ -200,14 +201,20 @@ fn apply_init_plan(plan: &[InitTarget]) -> Result<(), String> {
     for target in plan {
         match target.action {
             InitAction::LeaveUnchanged => {
-                println!("Left existing {} unchanged", target.path.display());
+                println!(
+                    "Left existing {} unchanged",
+                    output::path::human_path(&target.path)
+                );
             }
             InitAction::Create => {
                 write_init_target(target)?;
                 wrote_any = true;
             }
             InitAction::Overwrite => {
-                println!("Overwrote existing {}", target.path.display());
+                println!(
+                    "Overwrote existing {}",
+                    output::path::human_path(&target.path)
+                );
                 write_init_target(target)?;
                 wrote_any = true;
             }
@@ -263,7 +270,7 @@ fn write_init_target(target: &InitTarget) -> Result<(), String> {
     use std::io::Write;
     file.write_all(target.body.as_bytes())
         .map_err(|err| format!("write {} failed: {err}", target.path.display()))?;
-    println!("Wrote {}", target.path.display());
+    println!("Wrote {}", output::path::human_path(&target.path));
     Ok(())
 }
 
@@ -308,20 +315,29 @@ fn parse_init_ci(value: &str) -> Result<InitCi, String> {
 /// generated workflow. Previously this printed bodies only, so `--dry-run`
 /// never named its targets or said that nothing had been written.
 fn print_init_dry_run(plan: &[InitTarget]) {
-    println!("ripr init plan (dry run — nothing was written)");
+    print!("{}", render_init_dry_run(plan, cfg!(windows)));
+}
+
+/// The dry-run text, pure over the host separator rule so the Windows
+/// rendering is testable anywhere (#4378): a forward-slash `--root` argv
+/// prefix and the joined `\ripr.toml` suffix render as one slash path.
+fn render_init_dry_run(plan: &[InitTarget], windows: bool) -> String {
+    let path = |target: &InitTarget| {
+        output::path::human_path_text(&target.path.to_string_lossy(), windows)
+    };
+    let mut text = String::from("ripr init plan (dry run — nothing was written)\n");
     for target in plan {
-        println!("  {} {}", target.action.label(), target.path.display());
+        text.push_str(&format!("  {} {}\n", target.action.label(), path(target)));
     }
     for target in plan {
         if target.action == InitAction::LeaveUnchanged {
             continue;
         }
-        println!();
-        println!("# {}", target.path.display());
-        print!("{}", target.body);
+        text.push_str(&format!("\n# {}\n", path(target)));
+        text.push_str(&target.body);
     }
-    println!();
-    println!("Rerun without --dry-run to apply.");
+    text.push_str("\nRerun without --dry-run to apply.\n");
+    text
 }
 
 fn init_ci_workflow_path(root: &Path, ci: &InitCi) -> PathBuf {
@@ -2694,6 +2710,35 @@ mod tests {
     use super::*;
     use crate::cli::commands_options::InitCi;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// #4378: on Windows `ripr init --dry-run --root <drive>:/Temp/demo`
+    /// printed `<drive>:/Temp/demo\ripr.toml`, two separator styles in one
+    /// path. The preview uses one convention per host and never rewrites a
+    /// Unix filename's backslash.
+    #[test]
+    fn dry_run_preview_uses_one_separator_convention_per_host() {
+        // `check-local-context` forbids drive-letter path literals, so the
+        // Windows shape is assembled from parts.
+        let root = format!("{}/Temp/demo", "F:");
+        let plan = vec![InitTarget {
+            path: PathBuf::from(format!(r"{root}\ripr.toml")),
+            action: InitAction::Create,
+            body: "[analysis]\n".to_string(),
+        }];
+        let windows = render_init_dry_run(&plan, true);
+        assert!(
+            windows.contains(&format!("  create         {root}/ripr.toml\n"))
+                && windows.contains(&format!("# {root}/ripr.toml\n")),
+            "{windows}"
+        );
+        assert!(!windows.contains('\\'), "{windows}");
+        let unix = render_init_dry_run(&plan, false);
+        assert!(unix.contains(&format!(r"# {root}\ripr.toml")), "{unix}");
+        assert!(
+            unix.ends_with("\nRerun without --dry-run to apply.\n"),
+            "{unix}"
+        );
+    }
 
     /// The workflow carries the shared proof-path labels (#3906) inside
     /// single-quoted shell strings, so none may hold a single quote, and

@@ -83,7 +83,24 @@ pub(crate) fn render_bounded_with_config_and_navigation(
     out
 }
 
+/// Full human form without the per-finding `Drill in:` block: the drill-in
+/// commands need the CLI's root and scope, which only
+/// [`render_full_with_config_and_navigation`] receives. Library callers of
+/// `ripr::render_check` keep this legacy all-findings form byte-for-byte
+/// (`human_full_preserves_legacy_all_findings_output`).
 pub(crate) fn render_full_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
+    render_full_with_config_and_navigation(output, config, None)
+}
+
+/// Full human form. With `navigation`, every rendered finding carries its own
+/// `ripr explain` / `ripr context` drill-in pair, so rerunning with
+/// `--format human-full` as the digest suggests never loses the commands the
+/// digest printed (#4379).
+pub(crate) fn render_full_with_config_and_navigation(
+    output: &CheckOutput,
+    config: &RiprConfig,
+    navigation: Option<&FindingNavigation>,
+) -> String {
     let mut out = render_header_summary(output);
 
     render_analysis_outcome_disclosure(&mut out, output);
@@ -126,6 +143,11 @@ pub(crate) fn render_full_with_config(output: &CheckOutput, config: &RiprConfig)
             continue;
         }
         out.push_str(&render_finding_with_config(finding, config));
+        if let Some(navigation) = navigation {
+            out.push_str("Drill in:\n");
+            out.push_str(&format!("  {}\n", navigation.explain_command(&finding.id)));
+            out.push_str(&format!("  {}\n", navigation.context_command(&finding.id)));
+        }
         out.push('\n');
     }
     render_all_no_path_disclosure(&mut out, output);
@@ -227,8 +249,11 @@ fn render_language_file_breakdown(out: &mut String, output: &CheckOutput) {
     if !has_non_rust {
         return;
     }
+    // Zero-count languages add nothing and read as noise ("rust: 0" on a
+    // pure-Python change).
     let parts = counts
         .iter()
+        .filter(|count| count.files > 0)
         .map(|count| format!("{}: {}", count.language, count.files))
         .collect::<Vec<_>>()
         .join(", ");
@@ -461,8 +486,14 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
             format!("{language} files")
         };
         if advisory.analyzed(&output.language_runs) {
+            // The empty-result caveat only applies when there is no finding.
+            let caveat = if output.findings.is_empty() {
+                "An empty result here is NOT a clean Rust-grade result."
+            } else {
+                "Treat its findings as advisory, not Rust-grade."
+            };
             out.push_str(&format!(
-                "\nNote: {} {} analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.\n",
+                "\nNote: {} {} analyzed under preview support — preview evidence is advisory and may be incomplete. {caveat}\n",
                 advisory.file_count, file_label,
             ));
         } else if let Some(recovery) = advisory.unavailable_adapter_recovery() {
@@ -812,6 +843,15 @@ mod tests {
         assert!(
             rendered.contains("Changed file(s) by language: python: 5, rust: 1."),
             "expected per-language breakdown line; got:\n{rendered}"
+        );
+
+        let mut python_only = output;
+        python_only.summary.changed_rust_files = 0;
+        python_only.summary.changed_files_by_language[1].files = 0;
+        let rendered = render(&python_only);
+        assert!(
+            rendered.contains("Changed file(s) by language: python: 5.\n"),
+            "zero-count languages are omitted; got:\n{rendered}"
         );
     }
 
@@ -1560,6 +1600,24 @@ mod tests {
         assert_eq!(rendered.matches("Changed\n").count(), 2);
         assert_eq!(rendered.matches("Probe\n").count(), 2);
         assert!(!rendered.contains("lower-priority finding(s) omitted"));
+        assert!(!rendered.contains("Drill in:"));
+
+        // #4379: the digest sends readers to human-full, so human-full must
+        // carry every finding's drill-in pair, not lose them.
+        let navigation = crate::app::FindingNavigation::legacy();
+        let navigated = super::render_full_with_config_and_navigation(
+            &output,
+            &crate::config::RiprConfig::default(),
+            Some(&navigation),
+        );
+        for id in ["first", "second"] {
+            assert!(
+                navigated.contains(&format!(
+                    "Drill in:\n  ripr explain {id}\n  ripr context --at {id}\n"
+                )),
+                "human-full must carry the drill-in pair for {id}: {navigated}"
+            );
+        }
     }
 
     #[test]
@@ -2542,6 +2600,20 @@ mod tests {
         assert!(
             rendered.contains("NOT a clean Rust-grade result"),
             "expected honesty note; got:\n{rendered}"
+        );
+
+        // With a finding the result is not empty, so the empty-result caveat
+        // would be false; the note keeps the advisory framing instead.
+        let with_finding = CheckOutput {
+            findings: vec![sample_finding()],
+            ..output
+        };
+        let rendered = render(&with_finding);
+        assert!(
+            rendered.contains("3 Python files analyzed under preview support")
+                && rendered.contains("Treat its findings as advisory, not Rust-grade.")
+                && !rendered.contains("An empty result here"),
+            "non-empty run must not carry the empty-result caveat; got:\n{rendered}"
         );
     }
 

@@ -12,14 +12,14 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/infection_expected_value_literal/input/src/lib.rs:19
   Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: weight_grams >= 2_000
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence:
     - reach yes: Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax
-    - infection weak: Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed b…
+    - infection weak: Related tests contain the changed boundary literal [2000] only outside the changed owner's inputs (for example as an expected value); no test input at the changed…
     - 9 more evidence line(s) hidden
 
 Next: drill into the top finding:

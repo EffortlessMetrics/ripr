@@ -15,7 +15,7 @@ Start here:
   Why no_static_path: no related test was found that reaches this change
   Changed behavior: return Err(ParseError::InvalidData);
   Missing discriminator: ParseError::InvalidData
-  Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr…
+  Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that…
   Evidence:
     - reach no: No static test path found for the changed owner
     - infection unknown: No reachable tests were found, so infection cannot be established

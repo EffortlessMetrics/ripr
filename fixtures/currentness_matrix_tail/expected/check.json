@@ -102,8 +102,8 @@
       "stop_reasons": ["static_probe_unknown"],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
-      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "recommended_next_step": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
+      "suggested_next_action": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
       "language": "rust",
       "source_currentness": "base_deleted"
     },
@@ -151,8 +151,8 @@
       "stop_reasons": ["static_probe_unknown"],
       "oracle_kind": "unknown",
       "oracle_strength": "none",
-      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
-      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "recommended_next_step": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
+      "suggested_next_action": "No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.",
       "language": "rust",
       "source_currentness": "base_deleted"
     }

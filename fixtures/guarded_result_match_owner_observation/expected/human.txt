@@ -12,7 +12,7 @@ Start here:
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/guarded_result_match_owner_observation/input/src/lib.rs:46
   Static exposure: weakly_exposed (warning, confidence 0.66)
-  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Why weakly_exposed: a related test reaches this change, but the path from it to what the test checks is only partly traced
   Changed behavior: Ok(build_response(expected_id, trimmed.trim())?)
   Related test: tests/protocol.rs:4 validates_ready_response
   Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.

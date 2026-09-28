@@ -4,7 +4,7 @@ root: fixtures/typescript_adversarial_owner_identity_after_insertion/input
 
 Summary: 2 probe(s), 0 exposed, 0 weak, 0 unrevealed, 2 no path, 0 unknown
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 1 changed file(s), 9 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
@@ -76,6 +76,9 @@ TypeScript repair packet (advisory)
 
 Next step
   TypeScript preview advisory: module initializer observer is missing context; add a direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer when safe, and keep helper-derived or dynamic initialization evidence advisory.
+Drill in:
+  ripr explain --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:fff3ea84
+  ripr context --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:fff3ea84
 
 WARNING src/pricing.ts:14
 
@@ -143,6 +146,9 @@ TypeScript repair packet (advisory)
 
 Next step
   TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.
+Drill in:
+  ripr explain --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:bd772dc8
+  ripr context --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:bd772dc8
 
 
 Note: ripr found no static test path for any of the 2 changed expression(s) in this diff. Scope
@@ -151,4 +157,4 @@ Note: ripr found no static test path for any of the 2 changed expression(s) in t
   integration tests that ripr's static model does not yet trace; if none does, add co-located tests
   that observe the changed behavior.
 
-Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

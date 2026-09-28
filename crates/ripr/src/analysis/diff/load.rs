@@ -51,6 +51,16 @@ pub fn load_diff_with_effective_base(
                 effective_base: None,
             });
         }
+        // #4376(c): a directory is the common wrong `--diff` argument. On
+        // Windows its read fails as "Access is denied", which sends the user
+        // chasing ACLs; name the real cause. Genuine permission failures on a
+        // file still surface the OS error below.
+        if diff_file.is_dir() {
+            return Err(format!(
+                "failed to read diff file {}: the path is a directory, not a unified diff file; pass a diff file path, or `-` to read the diff from stdin",
+                diff_file.display()
+            ));
+        }
         let text = std::fs::read_to_string(diff_file)
             .map_err(|err| format!("failed to read diff file {}: {err}", diff_file.display()))?;
         return Ok(LoadedDiff {
@@ -650,6 +660,62 @@ mod tests {
         assert_eq!(result.as_deref(), Ok("test content"));
 
         ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn directory_diff_path_names_the_directory_cause_not_the_os_error() -> std::io::Result<()> {
+        // #4376(c): a directory passed as the diff file must be named as a
+        // directory, not surfaced as the OS read error ("Access is denied"
+        // on Windows, "Is a directory" on Unix).
+        let dir = unique_fixture_root("load-diff-directory")?;
+        ignore_remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("crates"))?;
+        let as_diff = dir.join("crates");
+
+        let result = load_diff(&dir, None, Some(&as_diff), None);
+        ignore_remove_dir_all(&dir);
+        let Err(message) = result else {
+            return Err(std::io::Error::other(
+                "a directory --diff path must fail to load",
+            ));
+        };
+        assert!(
+            message.contains("is a directory, not a unified diff file"),
+            "directory cause must be named: {message}"
+        );
+        assert!(
+            message.contains(&as_diff.display().to_string()),
+            "the offending path must be named: {message}"
+        );
+        assert!(
+            !message.contains("os error"),
+            "the OS error text must not stand in for the cause: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn missing_diff_file_keeps_the_os_read_error() -> std::io::Result<()> {
+        // #4376(c) negative control: a path that is not a directory keeps the
+        // OS error, so genuine read failures (missing file, ACL denial) are
+        // still reported as read failures rather than as the directory cause.
+        let dir = unique_fixture_root("load-diff-missing")?;
+        ignore_remove_dir_all(&dir);
+        fs::create_dir_all(&dir)?;
+        let missing = dir.join("absent.diff");
+
+        let result = load_diff(&dir, None, Some(&missing), None);
+        ignore_remove_dir_all(&dir);
+        let Err(message) = result else {
+            return Err(std::io::Error::other("a missing diff file must fail"));
+        };
+        assert!(
+            message.starts_with("failed to read diff file "),
+            "{message}"
+        );
+        assert!(message.contains("os error"), "{message}");
+        assert!(!message.contains("is a directory"), "{message}");
         Ok(())
     }
 

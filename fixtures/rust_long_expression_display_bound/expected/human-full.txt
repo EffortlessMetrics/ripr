@@ -41,3 +41,6 @@ Stop reasons:
 
 Next step
   Escalate to real mutation testing or deep static analysis for this probe.
+Drill in:
+  ripr explain --root fixtures/rust_long_expression_display_bound/input --diff fixtures/rust_long_expression_display_bound/diff.patch --mode fast probe:src_lib.rs:predicate:9b6a6cdb
+  ripr context --root fixtures/rust_long_expression_display_bound/input --diff fixtures/rust_long_expression_display_bound/diff.patch --mode fast --at probe:src_lib.rs:predicate:9b6a6cdb

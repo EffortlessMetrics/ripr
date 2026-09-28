@@ -4,7 +4,7 @@ root: fixtures/python_test_placement_verify/input
 
 Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Changed file(s) by language: python: 2, rust: 0.
+Changed file(s) by language: python: 2.
 
 Analysis outcome: complete_with_findings (analysis complete).
   Counts: 2 changed file(s), 2 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
@@ -41,4 +41,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 2 Python files analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 2 Python files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

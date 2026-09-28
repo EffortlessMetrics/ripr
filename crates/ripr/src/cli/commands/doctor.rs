@@ -63,7 +63,7 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
     let mut ok = matches!(core_report.status, output::doctor::DoctorStatus::Pass);
     let enabled_languages = enabled_languages(&core_evaluation.config);
     println!("ripr doctor");
-    println!("- root: {}", root.display());
+    println!("- root: {}", output::path::human_path(&root));
     for line in output::doctor_binary::probe_binary_identity().human_lines() {
         println!("{line}");
     }
@@ -362,21 +362,41 @@ fn runtime_probe_is_required(language: &str, tool: &str, enabled: &[LanguageId])
         && enabled.iter().any(|id| id.as_str() == language)
 }
 
-const PRIMARY_RUNTIME_PROBES: &[(&str, &str, &str)] = &[
-    ("typescript", "node", "install Node.js"),
-    ("javascript", "node", "install Node.js"),
-    (
-        "python",
-        "python3",
-        "install python3 (e.g. apt install python3)",
-    ),
-];
+/// The primary runtime probe per language. Python's command name and install
+/// hint depend on the host ([`python_runtime_for_os`]).
+fn primary_runtime_probes() -> [(&'static str, &'static str, &'static str); 3] {
+    let (python_tool, python_hint) = python_runtime_for_os(std::env::consts::OS);
+    [
+        ("typescript", "node", "install Node.js"),
+        ("javascript", "node", "install Node.js"),
+        ("python", python_tool, python_hint),
+    ]
+}
+
+/// The Python command doctor probes and the install hint it prints, for a
+/// host OS name as `std::env::consts::OS` spells it (#4378). Pure so every
+/// host's answer is testable from any host.
+///
+/// The python.org and winget installers put `python` (not `python3`) on a
+/// Windows PATH, and `apt` does not exist there, so Windows probes `python`
+/// with a Windows install route. RIPR never runs the interpreter itself; the
+/// probe only tells a user whether their Python verify route can start.
+fn python_runtime_for_os(os: &str) -> (&'static str, &'static str) {
+    match os {
+        "windows" => (
+            "python",
+            "install Python and put `python` on PATH (e.g. winget install Python.Python.3.13)",
+        ),
+        "macos" => ("python3", "install python3 (e.g. brew install python)"),
+        _ => ("python3", "install python3 (e.g. apt install python3)"),
+    }
+}
 
 fn primary_runtime(language: &str) -> Option<(&'static str, &'static str)> {
-    PRIMARY_RUNTIME_PROBES
-        .iter()
+    primary_runtime_probes()
+        .into_iter()
         .find(|(candidate, _, _)| *candidate == language)
-        .map(|(_, tool, hint)| (*tool, *hint))
+        .map(|(_, tool, hint)| (tool, hint))
 }
 
 fn language_runtime_probes_for(
@@ -392,12 +412,12 @@ fn append_missing_primary_runtime_probes(
     probes: &mut Vec<(&'static str, &'static str, &'static str)>,
     enabled: &[LanguageId],
 ) {
-    for (language, tool, hint) in PRIMARY_RUNTIME_PROBES {
-        let enabled_language = enabled.iter().any(|id| id.as_str() == *language);
+    for (language, tool, hint) in primary_runtime_probes() {
+        let enabled_language = enabled.iter().any(|id| id.as_str() == language);
         if enabled_language
             && !probes
                 .iter()
-                .any(|(found, detected_tool, _)| *found == *language && *detected_tool == *tool)
+                .any(|(found, detected_tool, _)| *found == language && *detected_tool == tool)
         {
             probes.push((language, tool, hint));
         }
@@ -440,11 +460,8 @@ fn language_runtime_probes(root: &Path) -> Vec<(&'static str, &'static str, &'st
     let detected = detect_languages(root);
     let mut probes: Vec<(&str, &str, &str)> = Vec::new();
     if detected.contains(&LanguageId::Python) {
-        probes.push((
-            "python",
-            "python3",
-            "install python3 (e.g. apt install python3)",
-        ));
+        let (python_tool, python_hint) = python_runtime_for_os(std::env::consts::OS);
+        probes.push(("python", python_tool, python_hint));
         // Reuse the shared framework detector (#2183 review) — no parallel
         // marker list. Gated behind lang-python: the detector lives in the
         // Python adapter which is not compiled under --no-default-features
@@ -1193,10 +1210,10 @@ fn report_cache_status(root: &Path) {
     if relocated {
         println!(
             "- Cache location: {} (RIPR_CACHE_DIR active)",
-            cache_dir.display()
+            output::path::human_path(&cache_dir)
         );
     } else {
-        println!("- Cache location: {}", cache_dir.display());
+        println!("- Cache location: {}", output::path::human_path(&cache_dir));
     }
     println!("- Cache size: {size_display} (run `ripr cache status` for details)");
 }
@@ -1242,7 +1259,7 @@ fn report_config_status(root: &Path, config: Result<RiprConfig, String>, ok: &mu
             match config.source_path() {
                 Some(path) => {
                     println!("✓ Config: loaded {CONFIG_FILE_NAME}");
-                    println!("- Config path: {}", path.display());
+                    println!("- Config path: {}", output::path::human_path(path));
                 }
                 None => println!("✓ Config: not found; using built-in defaults"),
             }
@@ -1284,7 +1301,10 @@ fn report_config_status(root: &Path, config: Result<RiprConfig, String>, ok: &mu
         }
         Err(err) => {
             println!("! Config: invalid {CONFIG_FILE_NAME}");
-            println!("- Config path: {}", root.join(CONFIG_FILE_NAME).display());
+            println!(
+                "- Config path: {}",
+                output::path::human_path(&root.join(CONFIG_FILE_NAME))
+            );
             println!("  error: {err}");
             *ok = false;
         }
@@ -1317,7 +1337,8 @@ mod tests {
             .iter()
             .map(|(_, tool, _)| *tool)
             .collect();
-        assert_eq!(tools, vec!["python3", "pytest"]);
+        let host_python = python_runtime_for_os(std::env::consts::OS).0;
+        assert_eq!(tools, vec![host_python, "pytest"]);
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
 
         let root = unique_command_test_dir("probe-bun");
@@ -1345,7 +1366,7 @@ mod tests {
             .iter()
             .map(|(_, tool, _)| *tool)
             .collect();
-        assert_eq!(tools, vec!["python3"]);
+        assert_eq!(tools, vec![host_python]);
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
 
         // A JS-only workspace is labeled javascript, not typescript (#2183
@@ -1475,6 +1496,31 @@ mod tests {
         ));
     }
 
+    /// #4378: `ripr doctor` on Windows suggested `apt install python3` and
+    /// failed a host whose installer put `python` (not `python3`) on PATH.
+    #[test]
+    fn python_runtime_probe_and_hint_follow_the_host() {
+        let (windows_tool, windows_hint) = python_runtime_for_os("windows");
+        assert_eq!(windows_tool, "python");
+        assert!(windows_hint.contains("winget install"), "{windows_hint}");
+        assert!(!windows_hint.contains("apt"), "{windows_hint}");
+
+        let (macos_tool, macos_hint) = python_runtime_for_os("macos");
+        assert_eq!(macos_tool, "python3");
+        assert!(macos_hint.contains("brew install"), "{macos_hint}");
+        assert!(!macos_hint.contains("apt"), "{macos_hint}");
+
+        assert_eq!(
+            python_runtime_for_os("linux"),
+            ("python3", "install python3 (e.g. apt install python3)")
+        );
+
+        // The configured-language probe and the detected-language probe use
+        // the same host answer, so a Windows root is never probed twice.
+        let host = python_runtime_for_os(std::env::consts::OS);
+        assert_eq!(primary_runtime("python"), Some(host));
+    }
+
     #[test]
     fn language_runtime_probe_line_names_labels_evidence_and_hint() {
         // #2183 review: the emitted contract is pinned, not just the list.
@@ -1596,7 +1642,8 @@ mod tests {
             configured_only_report
                 .runtime_probes
                 .iter()
-                .any(|probe| probe.language == "python" && probe.tool == "python3")
+                .any(|probe| probe.language == "python"
+                    && probe.tool == python_runtime_for_os(std::env::consts::OS).0)
         );
         std::fs::remove_dir_all(&configured_only_root)
             .map_err(|err| format!("remove configured-only root: {err}"))?;

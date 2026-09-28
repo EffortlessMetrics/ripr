@@ -33,6 +33,14 @@ fn install_panic_hook() {
             .copied()
             .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
             .unwrap_or("(no panic message)");
+        // `ripr doctor | head` closes stdout early. That is the reader being
+        // done, not a ripr bug, so skip the internal-error report. The exit
+        // stays 2: the output was cut short, and a command that would have
+        // exited 3 (a gate block, a typed refusal) must never read as a
+        // pass under `pipefail`.
+        if is_closed_stdout_panic(message) {
+            std::process::exit(2);
+        }
         eprintln!(
             "{}",
             format_panic_report(message, info.location().map(|loc| (loc.file(), loc.line())),)
@@ -49,6 +57,16 @@ fn install_panic_hook() {
             );
         }
     }));
+}
+
+/// `println!` panics with this message when the reading end of a pipe has
+/// closed: `EPIPE` on Unix, `ERROR_NO_DATA` (232) or `ERROR_BROKEN_PIPE`
+/// (109) on Windows.
+fn is_closed_stdout_panic(message: &str) -> bool {
+    message.starts_with("failed printing to stdout")
+        && ["Broken pipe", "(os error 232)", "(os error 109)"]
+            .iter()
+            .any(|marker| message.contains(marker))
 }
 
 fn format_panic_report(message: &str, location: Option<(&str, u32)>) -> String {
@@ -116,6 +134,18 @@ mod tests {
         if report != "ripr: internal error (this is a bug): panic hook regression at src/main.rs:42"
         {
             return Err(format!("unexpected formatted report: {report}"));
+        }
+        if !super::is_closed_stdout_panic("failed printing to stdout: Broken pipe (os error 32)")
+            || !super::is_closed_stdout_panic(
+                "failed printing to stdout: The pipe is being closed. (os error 232)",
+            )
+            || !super::is_closed_stdout_panic(
+                "failed printing to stdout: The pipe has been ended. (os error 109)",
+            )
+            || super::is_closed_stdout_panic("failed printing to stdout: Permission denied")
+            || super::is_closed_stdout_panic("Broken pipe")
+        {
+            return Err("closed-stdout detection must match only EPIPE on stdout".to_owned());
         }
         if super::exit_code() != 2 {
             return Err(format!("unexpected exit code: {}", super::exit_code()));
