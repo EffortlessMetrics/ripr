@@ -504,13 +504,23 @@ fn canonical_test_harnesses_identity(registrations: &[TestHarnessRegistration]) 
 ///
 /// When `producer` is `None` (default), the user must supply `--perl-facts
 /// PATH` explicitly. No silent invocation occurs.
+/// Environment variable that lets `[perl].executable` from `ripr.toml` be
+/// run. Only the exact value `1` opts in.
+pub(crate) const PERL_EXECUTABLE_OPT_IN_ENV: &str = "RIPR_ALLOW_REPO_PERL_EXECUTABLE";
+
+fn perl_executable_opt_in() -> bool {
+    std::env::var_os(PERL_EXECUTABLE_OPT_IN_ENV).is_some_and(|value| value == "1")
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PerlConfig {
     /// When `"perllsp"`, enables managed producer mode.
     pub producer: Option<String>,
     /// Override path to the Perl facts exporter executable. The canonical
     /// binary is `perl-ripr-facts`; `perllsp` and `perl-lsp` are
-    /// compatibility wrappers. When `None`, uses `perllsp` from PATH.
+    /// compatibility wrappers. When `None`, the producer's default name is
+    /// resolved on PATH. A configured value is spawned only when the user
+    /// sets `RIPR_ALLOW_REPO_PERL_EXECUTABLE=1`.
     pub executable: Option<PathBuf>,
     /// Timeout in milliseconds for the producer invocation. Default: 30000.
     pub timeout_ms: u64,
@@ -524,8 +534,29 @@ impl PerlConfig {
         self.producer.as_deref()
     }
 
+    /// The exporter executable ripr may run. A `[perl].executable` read from
+    /// `ripr.toml` travels with the repository, so honoring it by default
+    /// would let any cloned repository choose a program that `ripr check`,
+    /// `ripr doctor` and the LSP sidecar (on file open or save) execute. It
+    /// is honored only when the invoking user sets
+    /// [`PERL_EXECUTABLE_OPT_IN_ENV`] to `1`; otherwise callers fall back to
+    /// the exporter on the user's own PATH.
     pub(crate) fn executable(&self) -> Option<&Path> {
-        self.executable.as_deref()
+        self.executable_for_opt_in(perl_executable_opt_in())
+    }
+
+    /// The configured `[perl].executable` that [`Self::executable`] refused,
+    /// so callers can say why it was not run.
+    pub(crate) fn refused_executable(&self) -> Option<&Path> {
+        if perl_executable_opt_in() {
+            None
+        } else {
+            self.executable.as_deref()
+        }
+    }
+
+    pub(crate) fn executable_for_opt_in(&self, opt_in: bool) -> Option<&Path> {
+        self.executable.as_deref().filter(|_| opt_in)
     }
 
     pub(crate) fn timeout_ms(&self) -> u64 {

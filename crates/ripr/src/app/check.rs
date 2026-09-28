@@ -341,6 +341,14 @@ fn invoke_perl_lsp_producer(
     perl_config: &crate::config::PerlConfig,
     input: &CheckInput,
 ) -> Result<PathBuf, String> {
+    if let Some(refused) = perl_config.refused_executable() {
+        eprintln!(
+            "warning: ignoring [perl].executable `{}` from ripr.toml: repository config cannot choose a program for ripr to run; set {}=1 to trust it. Using `{}` from PATH instead.",
+            refused.display(),
+            crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
+            default_executable_for_producer(perl_config.producer()).display()
+        );
+    }
     let executable = perl_config
         .executable()
         .map(|p| p.to_path_buf())

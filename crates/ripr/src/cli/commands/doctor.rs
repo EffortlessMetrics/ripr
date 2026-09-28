@@ -858,6 +858,16 @@ fn report_perl_preview(root: &Path) {
     // the managed `ripr-facts` subcommand. A binary that only answers
     // `--version` (for example the published perllsp LSP server) is reported
     // as found-but-incompatible, never as a working exporter.
+    if let Some(refused) = crate::config::load_for_root(root)
+        .ok()
+        .and_then(|config| config.perl().refused_executable().map(Path::to_path_buf))
+    {
+        println!(
+            "  executable: ignoring [perl].executable `{}` from ripr.toml (not run); set {}=1 to trust it",
+            refused.display(),
+            crate::config::PERL_EXECUTABLE_OPT_IN_ENV
+        );
+    }
     let exporter = probe_perl_exporter(root);
     for line in perl_exporter_lines(&exporter) {
         println!("  {line}");
@@ -955,6 +965,9 @@ fn probe_perl_exporter(root: &Path) -> PerlExporterProbe {
     let config = crate::config::load_for_root(root).ok();
     let timeout =
         std::time::Duration::from_millis(config.as_ref().map_or(30_000, |c| c.perl().timeout_ms()));
+    // `[perl].executable` from ripr.toml is only probed when the user opts
+    // in (see `PerlConfig::executable`); doctor is usually the first command
+    // run in a fresh clone and must not execute a repository-chosen program.
     let explicit = config
         .as_ref()
         .and_then(|c| c.perl().executable().map(|p| p.display().to_string()));
@@ -1042,8 +1055,9 @@ fn perl_exporter_lines(exporter: &PerlExporterProbe) -> Vec<String> {
             ),
         ],
         PerlExporterProbe::NotFound => vec![format!(
-            "exporter: NOT found (expected `{}` or a `perllsp` wrapper on PATH, or [perl].executable); `{}` is not yet published",
+            "exporter: NOT found (expected `{}` or a `perllsp` wrapper on PATH, or [perl].executable with {}=1); `{}` is not yet published",
             crate::domain::PERL_FACT_EXPORTER,
+            crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
             crate::domain::PERL_FACT_EXPORTER
         )],
     }
@@ -1160,8 +1174,9 @@ fn perl_next_command(
     } else if managed {
         // Managed mode configured but no compatible producer.
         format!(
-            "install a compatible Perl fact exporter (`{}`, not yet published) on PATH or set [perl].executable, and add \"perl\" to [languages] enabled in ripr.toml, then: ripr check",
-            crate::domain::PERL_FACT_EXPORTER
+            "install a compatible Perl fact exporter (`{}`, not yet published) on PATH, or set [perl].executable and {}=1, and add \"perl\" to [languages] enabled in ripr.toml, then: ripr check",
+            crate::domain::PERL_FACT_EXPORTER,
+            crate::config::PERL_EXECUTABLE_OPT_IN_ENV
         )
     } else {
         // Explicit packet mode (or producer absent): supply --perl-facts.
@@ -1793,6 +1808,12 @@ mod tests {
         assert!(managed.ends_with("then: ripr check"));
         let unpublished = perl_next_command(true, Some("perllsp"), None);
         assert!(unpublished.ends_with("then: ripr check"));
+        // A repo `[perl].executable` is ignored without the user opt-in, so
+        // recommending it must name the opt-in.
+        assert!(
+            unpublished.contains("set [perl].executable and RIPR_ALLOW_REPO_PERL_EXECUTABLE=1"),
+            "{unpublished}"
+        );
         // The packet-mode branch is unchanged.
         let packet = perl_next_command(true, None, None);
         assert!(packet.contains("--perl-facts"));

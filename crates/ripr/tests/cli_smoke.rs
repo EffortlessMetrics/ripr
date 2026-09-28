@@ -17446,3 +17446,64 @@ fn history_commands_without_a_resolvable_default_base_fail_named() -> Result<(),
         Err(failures.join("\n\n"))
     }
 }
+
+/// A cloned repository's `ripr.toml` must not choose a program for ripr to
+/// run. `[perl].executable = "sh"` plus a `ripr-facts` script in the checkout made
+/// `ripr check` (and the LSP sidecar on open/save, and `ripr doctor`) run
+/// repository code, because the managed argv starts with `ripr-facts`. The
+/// refused runs must leave no marker; the opted-in run must still reach the
+/// configured executable, so the gate is the only thing that changed.
+#[cfg(unix)]
+#[test]
+fn repo_config_perl_executable_runs_only_with_user_opt_in() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Outside the ripr workspace: cargo points TMPDIR at target/, where root
+    // discovery would climb to this repository's Cargo.toml.
+    let root = unique_external_workspace("perl-executable-opt-in")?;
+    init_producer_fixture_repo(&root)?;
+    std::fs::write(
+        root.join("ripr.toml"),
+        "[perl]\nproducer = \"perl-ripr-facts\"\nexecutable = \"sh\"\n",
+    )?;
+    std::fs::write(root.join("lib.pm"), "package Lib;\n1;\n")?;
+    let marker = root.join("repo-code-ran");
+    std::fs::write(
+        root.join("ripr-facts"),
+        format!("touch '{}'\n", marker.display()),
+    )?;
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let opt_in = "RIPR_ALLOW_REPO_PERL_EXECUTABLE";
+
+    let check = run_command_with_env(bin, &root, &["check", "--base", "HEAD"], &[(opt_in, "0")])?;
+    let stderr = String::from_utf8_lossy(&check.stderr);
+    assert!(
+        !marker.exists(),
+        "ripr check ran repository code without opt-in\nstderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("ignoring [perl].executable `sh` from ripr.toml")
+            && stderr.contains(opt_in),
+        "refusal must name the ignored executable and the opt-in: {stderr}"
+    );
+
+    let doctor = run_command_with_env(bin, &root, &["doctor"], &[(opt_in, "0")])?;
+    let stdout = String::from_utf8_lossy(&doctor.stdout);
+    assert!(
+        !marker.exists(),
+        "ripr doctor ran repository code without opt-in\nstdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("ignoring [perl].executable `sh` from ripr.toml (not run)"),
+        "doctor must say the executable was not run: {stdout}"
+    );
+
+    let trusted = run_command_with_env(bin, &root, &["check", "--base", "HEAD"], &[(opt_in, "1")])?;
+    assert!(
+        marker.exists(),
+        "opted-in check must run the configured executable\nstderr:\n{}",
+        String::from_utf8_lossy(&trusted.stderr)
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}

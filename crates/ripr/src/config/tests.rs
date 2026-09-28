@@ -1477,3 +1477,16 @@ fn parse_config_rejects_conflicting_harness_registrations() -> Result<(), String
     );
     Ok(())
 }
+
+#[test]
+fn perl_executable_from_repo_config_needs_user_opt_in() -> Result<(), String> {
+    let config =
+        parse_config("[perl]\nproducer = \"perl-ripr-facts\"\nexecutable = \"./tools/x\"\n")?;
+    let perl = config.perl();
+    assert_eq!(perl.executable_for_opt_in(false), None);
+    assert_eq!(
+        perl.executable_for_opt_in(true),
+        Some(Path::new("./tools/x"))
+    );
+    Ok(())
+}

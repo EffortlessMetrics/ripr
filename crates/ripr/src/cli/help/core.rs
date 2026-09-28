@@ -229,6 +229,12 @@ Environment variables:
                                     that exceeds the deadline is terminated and the
                                     error names git_invocation_timeout. 0 disables
                                     the deadline. Default: 300 (5 minutes).
+  RIPR_ALLOW_REPO_PERL_EXECUTABLE   Set to 1 to let [perl].executable from
+                                    ripr.toml run as the Perl facts exporter.
+                                    Unset, ripr ignores it and runs the
+                                    exporter from PATH, so a cloned
+                                    repository cannot choose a program for
+                                    ripr to run.
 
 Examples:
   ripr check

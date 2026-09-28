@@ -16,6 +16,7 @@ mod python;
 #[cfg(feature = "lang-typescript")]
 mod typescript;
 
+pub(crate) use model::PERL_EXECUTABLE_OPT_IN_ENV;
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub use model::{
     CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
@@ -135,7 +136,7 @@ enabled = ["rust"]
 #
 # [perl]
 # producer = "perl-ripr-facts"  # canonical managed exporter; "perllsp"/"perl-lsp" are compatibility wrappers
-# executable = "perl"      # Perl binary path
+# executable = "perl"      # Exporter path; only run when RIPR_ALLOW_REPO_PERL_EXECUTABLE=1
 # timeout_ms = 30000       # Per-invocation timeout
 # cache_dir = "target/ripr/perl-facts"  # Fact cache location
 "#;
