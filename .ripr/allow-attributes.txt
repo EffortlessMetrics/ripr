@@ -17,7 +17,6 @@ crates/ripr/src/analysis/mod.rs|expect(clippy::unwrap_used)|1|Test module: fixtu
 crates/ripr/src/analysis/pipeline.rs|expect(clippy::expect_used)|1|Test module: `.expect_err("why")` carries the intended file-system failure mode.
 crates/ripr/src/analysis/repair_route.rs|allow(dead_code)|3|Typed new-test target selection is an explicit producer contract reserved until RustIndex supplies proposal facts; no renderer infers a target.
 crates/ripr/src/app/check.rs|allow(dead_code)|2|item 4b: PERL_FACTS_MAX_AGE_SECS + cached_packet_is_fresh retained for future content-keyed cache reuse; intentionally bypassed until content-hash key is implemented
-crates/ripr/src/cli/help.rs|expect(dead_code)|1|Flag-parity test helper used by #2342 test suite; dead in non-test builds
 crates/ripr/tests/cli_smoke.rs|expect(clippy::unwrap_used)|1|CLI smoke test: unwrap on Command::output() and CARGO_MANIFEST_DIR's parent chain is the canonical fail-fast pattern.
 crates/ripr/tests/common/fixture_git.rs|allow(dead_code)|2|#4005: fixture_git_output + decode_stdout are consumed by the generated-workflow integration target; dead in targets that only consume fixture_git_ok (per-target compilation of the shared helper).
 xtask/src/main.rs|allow(dead_code)|1|test-only struct field dead in non-test builds

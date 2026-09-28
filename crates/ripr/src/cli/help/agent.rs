@@ -167,11 +167,14 @@ change cache behavior, or touch LSP/MCP surfaces.
 "#;
 pub(super) const AGENT_STATUS_HELP: &str = r#"Report local agent-loop artifact state and the next command to run.
 
-Usage: ripr agent status [--root PATH] [--json]
+Usage: ripr agent status [--root PATH] [--json] [--out PATH]
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
   --json           Emit the machine-readable status report. Human Markdown is the default.
+  --out PATH       Must resolve to the default workflow directory
+                   (target/ripr/workflow); any other path fails closed
+                   because agent status reads only that directory.
 
 The status command reads existing agent-loop artifacts under target/ripr only
 and reports which before snapshot, after snapshot, brief, packet, verify, and

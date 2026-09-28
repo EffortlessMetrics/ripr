@@ -66,15 +66,41 @@ fn closest_flag(command: &str, arg: &str) -> Option<String> {
 
 /// Scan a help text for the flags it documents.
 ///
-/// Help bodies list options as indented `--flag` lines, e.g.
-/// `  --format FORMAT    Output format. ...`. Usage lines are indented too but
-/// bracket their flags (`[--diff PATH]`), so requiring the token to start the
-/// trimmed line keeps this to the option list.
+/// A flag is documented when it opens an Options line (e.g.
+/// `  --format FORMAT    Output format. ...`) or appears on a usage line owned
+/// by this command (`Usage: ripr explain [--base REV|--diff PATH] ...`). That
+/// is the same documented-surface definition the flag/help parity gate's
+/// `extract_flags` applies in `help.rs`, so a flag the gate counts as
+/// documented is suggestible here with no second edit. Prose and examples
+/// document nothing: a mention inside another option's essay (`--perl-facts`
+/// inside check's `--write-artifact` entry) stays undiscoverable, in both
+/// miners.
+///
+/// Usage candidates are scoped to the command's own usage lines so shared
+/// help bodies (baseline, policy, reports, assistant-loop) keep sibling flags
+/// out of each other's candidate sets: the parser rejects a sibling's flag,
+/// so proposing it would be a wrong suggestion. The Options mining below
+/// keeps its existing section scoping for the same reason.
 fn known_flags<'a>(command: &str, help_text: &'a str) -> Vec<&'a str> {
     let section = option_section(command);
     let mut in_section = section.is_none();
+    let mut in_usage_block = false;
     let mut flags = Vec::new();
     for line in help_text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("Usage:") {
+            in_usage_block = true;
+            collect_usage_flags(line, command, &mut flags);
+            continue;
+        }
+        // Wrapped usage blocks list one `ripr <command>` line per sibling
+        // until the first line that is neither — the same block discipline
+        // the parity gate's extractor applies.
+        if in_usage_block && trimmed.starts_with("ripr ") {
+            collect_usage_flags(line, command, &mut flags);
+            continue;
+        }
+        in_usage_block = false;
         if let Some(section) = section {
             if line == section {
                 in_section = true;
@@ -90,7 +116,6 @@ fn known_flags<'a>(command: &str, help_text: &'a str) -> Vec<&'a str> {
         if !line.starts_with(' ') {
             continue;
         }
-        let trimmed = line.trim_start();
         if !trimmed.starts_with("--") {
             continue;
         }
@@ -107,6 +132,73 @@ fn known_flags<'a>(command: &str, help_text: &'a str) -> Vec<&'a str> {
         }
     }
     flags
+}
+
+/// Collect `--flag` tokens from a usage-block line owned by `command`.
+///
+/// The line must name the command path as the user types it (`ripr explain`,
+/// `ripr baseline create`) with a name boundary after it, so a shared body's
+/// sibling usage lines (`ripr agent verify-execute` next to
+/// `ripr agent verify`) do not leak flags into each other's candidate sets.
+/// Token rules mirror the parity gate's usage scanner in `help.rs`: `--`
+/// preceded by the line start, whitespace, `[`, `(`, or `|`, so bracketed and
+/// alternation forms like `[--base REV|--diff PATH]` are covered.
+fn collect_usage_flags<'a>(line: &'a str, command: &str, flags: &mut Vec<&'a str>) {
+    if !usage_line_belongs_to_command(line, command) {
+        return;
+    }
+    let bytes = line.as_bytes();
+    let mut index = 0usize;
+    while index + 1 < bytes.len() {
+        if bytes[index] != b'-' || bytes[index + 1] != b'-' {
+            index += 1;
+            continue;
+        }
+        let previous_ok =
+            index == 0 || matches!(bytes[index - 1], b' ' | b'\t' | b'[' | b'(' | b'|');
+        if !previous_ok {
+            index += 1;
+            continue;
+        }
+        let mut end = index + 2;
+        while end < bytes.len()
+            && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'-' || bytes[end] == b'_')
+        {
+            end += 1;
+        }
+        let token = &line[index..end];
+        // `--` alone ends options; it is not a suggestible flag.
+        if token.len() > 2 && !flags.contains(&token) {
+            flags.push(token);
+        }
+        index = end;
+    }
+}
+
+/// Whether a usage-block line carries this command's own syntax.
+///
+/// Whole-body mining passes an empty command (a test aid that deliberately
+/// sweeps every Options line); with no owner to scope to, no usage line
+/// qualifies.
+fn usage_line_belongs_to_command(line: &str, command: &str) -> bool {
+    if command.is_empty() {
+        return false;
+    }
+    let needle = format!("ripr {command}");
+    let mut from = 0usize;
+    while let Some(relative) = line[from..].find(&needle) {
+        let after = from + relative + needle.len();
+        let boundary_ok = after >= line.len()
+            || line[after..]
+                .chars()
+                .next()
+                .is_none_or(|next| !(next.is_alphanumeric() || next == '-' || next == '_'));
+        if boundary_ok {
+            return true;
+        }
+        from = after;
+    }
+    false
 }
 
 /// Return the options heading for help bodies shared by sibling commands.
@@ -322,9 +414,12 @@ mod tests {
     }
 
     #[test]
-    fn known_flags_reads_the_option_list_and_skips_usage_brackets() {
+    fn known_flags_reads_the_option_list_and_the_owning_usage_line() {
         let help_text = "Summary line.\n\nUsage: ripr thing [--diff PATH]\n\nOptions:\n  --root PATH    Workspace root.\n  --json         Shortcut.\n  --            End of options.\n";
-        assert_eq!(known_flags("thing", help_text), vec!["--root", "--json"]);
+        assert_eq!(
+            known_flags("thing", help_text),
+            vec!["--diff", "--root", "--json"]
+        );
     }
 
     /// `explain` and `context` had documented help bodies but no entry in
@@ -352,6 +447,42 @@ mod tests {
                 ),
             );
         }
+    }
+
+    /// The parity gate counts usage-line flags as documented, so they must be
+    /// suggestible too. `--base` on `explain` and `--at` on `context` are
+    /// documented only on the `Usage:` line — the Options list never mentions
+    /// them — yet both are parsed, so a typo used to fall to the bare
+    /// no-suggestion branch while the parity gate stayed green.
+    #[test]
+    fn usage_documented_flags_become_suggestible() {
+        let explain_base = unknown_argument("explain", "--bas");
+        assert_eq!(
+            explain_base,
+            "unknown explain argument \"--bas\". \
+             Did you mean `--base`? Run `ripr explain --help`."
+        );
+        let context_at = unknown_argument("context", "--att");
+        assert_eq!(
+            context_at,
+            "unknown context argument \"--att\". \
+             Did you mean `--at`? Run `ripr context --help`."
+        );
+    }
+
+    /// Usage candidates inherit the sibling scoping the Options mining
+    /// already applies: `--previous-readiness` is documented only on the
+    /// readiness sibling's usage line of the shared policy body, so
+    /// `policy operations` must never propose it.
+    #[test]
+    fn usage_candidates_stay_scoped_to_the_owning_sibling() {
+        let readiness = unknown_argument("policy readiness", "--prev");
+        assert!(
+            readiness.contains("Did you mean `--previous-readiness`?"),
+            "{readiness}"
+        );
+        let operations = unknown_argument("policy operations", "--previous-readines");
+        assert!(!operations.contains("Did you mean"), "{operations}");
     }
 
     /// `cache status` and `cache clear` already routed unknown flags through

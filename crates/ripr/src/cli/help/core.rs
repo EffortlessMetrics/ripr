@@ -156,6 +156,8 @@ Options:
                            instead of seam-native/test-efficiency counts.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
+  --perl-facts PATH        Use the explicit Perl facts packet as the
+                           analysis input for Perl files.
   --suppression-policy PATH
                            Apply a suppressions TOML (same schema as
                            .ripr/suppressions.toml) to the findings-based
@@ -289,6 +291,8 @@ pub(super) const CONTEXT_HELP: &str = r#"Print the per-change context packet for
 Usage: ripr context [--root PATH] [--base REV|--diff PATH] [--from PATH] [--mode MODE] [--no-unchanged-tests] [--perl-facts PATH] [--suppression-policy PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]
 
 Options:
+  --finding ID
+               Select the finding by id or `file:line`, like `--at`.
   --from PATH  Load findings from a check artifact written by
                `ripr check --write-artifact PATH` instead of re-running the
                analysis (same fail-closed identity gate as explain --from).
