@@ -66,6 +66,12 @@ It keeps compatibility copies of packet, brief, verify, and receipt JSON under
 
 ## Ordinary path: `ripr agent repair`
 
+For Rust, ignore Cargo's entire `target/` directory before starting (for example
+`/target/` in `.gitignore`, or an equivalent Git exclude rule). The before phase
+checks the effective rule even with no build output and refuses before preparing
+workflow artifacts or an attempt if it is missing. This keeps the focused Cargo
+test's build output separate from the enforced test-only edit surface.
+
 For one named gap, the repair transaction writes the snapshot, packet, verify,
 and receipt artifacts above for you:
 

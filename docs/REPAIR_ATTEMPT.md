@@ -141,6 +141,14 @@ A different attempt for the same seam is a different transaction. Its packet, sn
 
 ### Build output between the phases
 
+Before preparing a Rust attempt, Git must ignore the entire `target/` directory
+(for example `/target/` in `.gitignore`, or an equivalent local/global exclude
+rule). The before phase checks the effective directory rule rather than counting
+existing ignored files, so a fresh repository with no build output works too.
+A missing rule, or a partial rule such as `target/debug/`, refuses before workflow
+preparation or durable attempt publication and names the needed rule. RIPR never
+adds or rewrites ignore rules itself. Add the rule, then rerun the before phase.
+
 Run the project tests between the phases. For a Rust repair, the retained cage policy declares Cargo's default build directory `target/` as `ignored_build_output`. The Git-ignored contents of that directory are build output from `cargo test` or `cargo build`, so they are not treated as edits. The cage still observes these paths:
 
 - tracked and untracked-but-not-ignored paths, including paths inside `target/`;
@@ -148,6 +156,12 @@ Run the project tests between the phases. For a Rust repair, the retained cage p
 - every other ignored path, such as an ignored `.env` or log file.
 
 Static analysis never reads `target/` as source. A Cargo target directory in a non-default location inside the repository (`CARGO_TARGET_DIR` or `build.target-dir`) is not declared, so writes there remain violations. Python attempts keep observing every ignored path.
+
+If effective ignore rules change after preparation, build-output paths can still
+be refused by the after phase. Recovery names the declared build directory and
+the ignore rule; it does not attribute those paths to redirected RIPR output.
+The failed attempt remains terminal. Restore the rule and prepare a new attempt
+while the gap exists, using the recovery sequence printed by the after phase.
 
 ### Cargo.lock between the phases
 

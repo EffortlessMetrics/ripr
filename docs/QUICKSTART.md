@@ -168,6 +168,13 @@ Before starting a repair, make sure `target/` is in a committed `.gitignore`
 location across the repository. The `probe:...` IDs printed by `ripr check`
 name findings in one diff and are not accepted here.
 
+Before starting a Rust repair, ensure Git ignores Cargo's entire `target/`
+directory, for example with `/target/` in `.gitignore`. Effective local or global
+Git exclude rules also work. The before phase checks this even before a build
+exists and stops with recovery guidance if it is missing; ignoring only
+`target/debug/` does not cover Cargo's root-level build files. Set the rule before
+the attempt so running the focused test cannot turn build output into an edit.
+
 The before phase prepares the packet and prints an `--attempt` continuation
 command. Read the allowed test files, proposed assertion, verification command,
 and stop conditions. Make the focused test edit yourself or delegate that packet

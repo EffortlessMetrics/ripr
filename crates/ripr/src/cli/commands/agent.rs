@@ -664,8 +664,14 @@ fn run_agent_repair_phase(
                 gap_id: None,
                 json: true,
             })?;
-            crate::app::repair_attempt::edit_cage_policy_from_packet(&packet, &seam_id)
-                .map_err(|error| before_phase_refusal(&seam_id, &error))?;
+            let policy =
+                crate::app::repair_attempt::edit_cage_policy_from_packet(&packet, &seam_id)
+                    .map_err(|error| before_phase_refusal(&seam_id, &error))?;
+            crate::edit_cage::validate_build_output_precondition(&root, &policy).map_err(
+                |error| {
+                    format!("{error} No workflow was prepared and no repair attempt was started.")
+                },
+            )?;
 
             // Compose existing commands: start (creates workflow + brief) +
             // packet. The start step's `Next: ripr check ...` hint is dropped
@@ -1229,9 +1235,7 @@ fn repair_after_cage_recovery_lines(
                 violations.len() - CAGE_RECOVERY_MAX_VIOLATIONS
             ));
         }
-        if let Some(line) = redirected_output_hint(root, after) {
-            lines.push(line);
-        }
+        lines.extend(untracked_output_hints(root, after));
     }
     let root_arg = shell_arg(&display_path(root));
     let seam_arg = shell_arg(seam_id);
@@ -1251,34 +1255,48 @@ fn repair_after_cage_recovery_lines(
     lines
 }
 
-/// Names the refused out-of-surface paths that Git did not track when the
-/// before phase captured its baseline, the shape a shell redirect of ripr's
-/// own output into the checkout (`> packet.json`, `2> before.err`) leaves.
-/// The cage cannot tell such a file from an authored one: the shell creates
-/// it before ripr starts and ripr keeps writing it after the baseline, so it
-/// stays refused. This is narration only; the verdict is unchanged, and a
-/// baseline that cannot be read yields no hint.
-fn redirected_output_hint(
+/// Names refused untracked paths with recovery guidance for the declared
+/// build directory and possible shell redirects elsewhere in the checkout.
+/// The cage cannot attribute a path to a particular writer, so this narration
+/// leaves its verdict unchanged. An unreadable baseline yields no hint.
+fn untracked_output_hints(
     root: &Path,
     after: &crate::app::repair_attempt::RepairAttemptAfter,
-) -> Option<String> {
+) -> Vec<String> {
     use crate::edit_cage::EditCageViolationKind;
 
-    let baseline =
-        crate::app::repair_attempt::load_edit_cage_baseline(root, &after.attempt_id).ok()?;
-    let untracked = after
+    let Ok(baseline) = crate::app::repair_attempt::load_edit_cage_baseline(root, &after.attempt_id)
+    else {
+        return Vec::new();
+    };
+    let build_output = baseline.policy().ignored_build_output.as_ref();
+    let (build_paths, other_paths): (Vec<_>, Vec<_>) = after
         .verdict
         .violations
         .iter()
         .filter(|violation| violation.kind == EditCageViolationKind::OutsideAllowedSurface)
         .filter(|violation| baseline.index_entry(&violation.path).is_none())
         .take(CAGE_RECOVERY_MAX_VIOLATIONS)
+        .partition(|violation| build_output.is_some_and(|rule| rule.matches(&violation.path)));
+    let mut hints = Vec::new();
+    if let Some(rule) = build_output.filter(|_| !build_paths.is_empty()) {
+        let paths = build_paths
+            .iter()
+            .map(|violation| format!("`{}`", violation.path))
+            .collect::<Vec<_>>();
+        hints.push(format!(
+            "Refused untracked paths under Cargo's declared build directory `{}/`: {}. Check the effective Git ignore rules: generated build output must be ignored before starting a new repair attempt (for example `/{}/` in .gitignore). Tracked and untracked-but-not-ignored files remain subject to the edit cage; these paths are not attributed to redirected ripr output.",
+            rule.path(), paths.join(", "), rule.path()
+        ));
+    }
+    let untracked = other_paths
+        .iter()
         .map(|violation| format!("`{}`", violation.path))
         .collect::<Vec<_>>();
     if untracked.is_empty() {
-        return None;
+        return hints;
     }
-    Some(format!(
+    hints.push(format!(
         "{} {} not tracked by Git when the before phase ran. If {} a file you redirected ripr output into (for example `> packet.json` or `2> before.err`), the edit cage counts it as an edit: delete it, and redirect `agent repair` output outside the checkout or under target/ripr/ (the before phase already writes the packet to target/ripr/workflow/agent-packet.json).",
         untracked.join(", "),
         if untracked.len() == 1 { "was" } else { "were" },
@@ -1287,7 +1305,8 @@ fn redirected_output_hint(
         } else {
             "one is"
         }
-    ))
+    ));
+    hints
 }
 
 /// Recovery narration for an after phase refused because the analysis input

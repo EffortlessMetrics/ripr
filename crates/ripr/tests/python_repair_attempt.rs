@@ -207,6 +207,10 @@ fn build_fixture(label: &str) -> Result<TempFixture, String> {
         .map_err(|error| format!("create tests: {error}"))?;
     std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
         .map_err(|error| format!("write Cargo.toml: {error}"))?;
+    // This hybrid fixture prepares a Rust repair before binding Python trust.
+    // Satisfy the whole Cargo-directory prerequisite before its first commit.
+    std::fs::write(root.join(".gitignore"), "/target/\n")
+        .map_err(|error| format!("write Cargo build ignore: {error}"))?;
     std::fs::write(root.join(PRODUCTION_FILE), sample_src())
         .map_err(|error| format!("write baseline src: {error}"))?;
     std::fs::write(root.join(TARGET_TEST_FILE), SAMPLE_TEST)

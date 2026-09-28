@@ -158,6 +158,10 @@ fn persist_before_repair_attempt(options: &agent::AgentRepairOptions) -> Result<
     let packet_text = String::from_utf8(packet_bytes.clone())
         .map_err(|error| format!("agent packet is not UTF-8: {error}"))?;
     let policy = crate::app::repair_attempt::edit_cage_policy_from_packet(&packet_text, seam_id)?;
+    // Recheck immediately before baseline capture so ignore-rule drift observed
+    // during preparation refuses attempt publication.
+    crate::edit_cage::validate_build_output_precondition(root, &policy)
+        .map_err(|error| format!("{error} No repair attempt was started."))?;
     let edit_cage_baseline = root.join("target/ripr/workflow/attempt-baseline.json");
     crate::app::repair_attempt::write_edit_cage_baseline(root, &edit_cage_baseline, &policy)?;
 

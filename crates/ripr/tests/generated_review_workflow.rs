@@ -780,6 +780,9 @@ fn far_above_threshold_discounts() {
         )?;
         fs::write(root.join("src/lib.rs"), LIB_BASE)?;
         fs::write(root.join("tests/pricing.rs"), TESTS)?;
+        // Printed repair commands require the adopter's whole Cargo build
+        // directory to be effectively ignored before the transaction starts.
+        fs::write(root.join(".gitignore"), "/target/\n")?;
         git(root, &["init", "-q", "-b", "trunk"])?;
         git(root, &["add", "-A"])?;
         git(root, &["commit", "-q", "-m", "initial pricing crate"])?;

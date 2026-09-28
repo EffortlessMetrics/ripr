@@ -668,6 +668,10 @@ fn write_fabricated_agent_verify_json(
 fn init_git_fixture_repo(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write(root.join("marker.txt"), "fixture\n")?;
     run_git(root, &["init"])?;
+    // Ordinary Rust repair fixtures meet the build-output precondition
+    // without adding another tracked analysis input. Dedicated ignore tests
+    // replace this effective local rule to exercise missing/partial ignores.
+    std::fs::write(root.join(".git/info/exclude"), "/target/\n")?;
     run_git(root, &["add", "marker.txt"])?;
     let commit = run_command(
         "git",
@@ -695,6 +699,7 @@ fn init_producer_fixture_repo(root: &Path) -> Result<(), Box<dyn std::error::Err
         std::fs::copy(fixture_root.join(relative), root.join(relative))?;
     }
     run_git(root, &["init"])?;
+    std::fs::write(root.join(".git/info/exclude"), "/target/\n")?;
     // Keep checkouts byte-identical to what was committed. Windows Git
     // defaults to autocrlf=true, so a `git checkout HEAD -- <file>` restore
     // would rewrite LF bytes as CRLF and the edit cage (which digests raw
@@ -4781,6 +4786,215 @@ fn add_boundary_test(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         "\n#[test]\nfn equality_boundary_discounts() {\n    assert_eq!(discounted_total(100, 100), 90);\n}\n",
     );
     std::fs::write(path, tests)?;
+    Ok(())
+}
+
+struct RepairBuildIgnoreFixture(PathBuf);
+
+impl RepairBuildIgnoreFixture {
+    fn new(root: PathBuf) -> std::io::Result<Self> {
+        // Arm recursive cleanup only after exclusively claiming this tree.
+        std::fs::create_dir(&root)?;
+        Ok(Self(root))
+    }
+}
+
+impl Drop for RepairBuildIgnoreFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn disable_ambient_git_excludes(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let global_excludes = root.join(".git/empty-global-excludes");
+    std::fs::write(&global_excludes, "")?;
+    run_git(
+        root,
+        &[
+            "config",
+            "core.excludesFile",
+            &global_excludes.display().to_string(),
+        ],
+    )?;
+    Ok(())
+}
+
+#[test]
+fn agent_repair_before_requires_effective_cargo_build_directory_ignore()
+-> Result<(), Box<dyn std::error::Error>> {
+    for rule in [
+        "",
+        "target/debug/\n",
+        "/target/*\n!/target/keep.log\n",
+        "/target/**\n!/target/keep.log\n",
+    ] {
+        let fixture =
+            RepairBuildIgnoreFixture::new(unique_temp_workspace("agent-repair-build-ignore"))?;
+        let root = fixture.0.as_path();
+        init_producer_fixture_repo(root)?;
+        // Neither ambient global excludes nor a populated build tree may
+        // supply the precondition this fresh adopter repository lacks.
+        let excludes = root.join(".git/info/exclude");
+        std::fs::write(&excludes, rule)?;
+        disable_ambient_git_excludes(root)?;
+        let before = run_repair_phase(root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+        if before.status.success() {
+            return Err(format!(
+                "missing whole-directory ignore must refuse BEFORE the edit, rule {rule:?}: {before:?}"
+            ).into());
+        }
+        let stderr = String::from_utf8_lossy(&before.stderr);
+        for required in [
+            "target/",
+            "Git-ignored",
+            "/target/",
+            "no repair attempt was started",
+        ] {
+            if !stderr.contains(required) {
+                return Err(
+                    format!("missing actionable precondition {required:?}: {stderr}").into(),
+                );
+            }
+        }
+        if !before.stdout.is_empty() || stderr.contains("before phase complete") {
+            return Err(format!(
+                "refused before phase must not publish a packet or completion: {before:?}"
+            )
+            .into());
+        }
+        for artifact in [
+            "target/ripr/workflow/workflow.json",
+            "target/ripr/workflow/agent-packet.json",
+            "target/ripr/workflow/before.repo-exposure.json",
+            "target/ripr/reports/agent-receipt.json",
+        ] {
+            if root.join(artifact).exists() {
+                return Err(format!("precondition refused after publishing {artifact}").into());
+            }
+        }
+        let attempts = root.join("target/ripr/repair-attempts");
+        let published = if attempts.exists() {
+            std::fs::read_dir(attempts)?
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .any(|entry| entry.path().join("attempt.json").exists())
+        } else {
+            false
+        };
+        if published {
+            return Err("precondition refusal published a durable repair attempt".into());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn agent_repair_accepts_empty_effectively_ignored_build_tree_and_actual_cargo_test()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = RepairBuildIgnoreFixture::new(unique_temp_workspace(
+        "agent-repair-effective-build-ignore",
+    ))?;
+    let root = fixture.0.as_path();
+    init_producer_fixture_repo(root)?;
+    // The harness temp root lives under this repository's target directory;
+    // make the dependency-free adopter crate its own Cargo workspace.
+    let manifest_path = root.join("Cargo.toml");
+    let mut manifest = std::fs::read_to_string(&manifest_path)?;
+    manifest.push_str("\n[workspace]\n");
+    std::fs::write(manifest_path, manifest)?;
+    run_git(root, &["add", "Cargo.toml"])?;
+    commit_repair_fixture(root, &["-qm", "standalone adopter workspace"])?;
+    if root.join(".gitignore").exists() || root.join("target").exists() {
+        return Err(
+            "fixture must rely on effective excludes, with no pre-existing Cargo build".into(),
+        );
+    }
+    let before = run_repair_phase(root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+    if !before.status.success() {
+        return Err(format!("effective directory ignore must admit before: {before:?}").into());
+    }
+    let (attempt_id, _) = sole_repair_attempt(root)?;
+    add_boundary_test(root)?;
+    // Explicitly anchor the child build here even when the parent Cargo
+    // invocation shares a CARGO_TARGET_DIR with another verification lane.
+    let target = root.join("target").display().to_string();
+    let test = run_command_with_env(
+        "cargo",
+        root,
+        &[
+            "test",
+            "--offline",
+            "equality_boundary_discounts",
+            "--",
+            "--exact",
+        ],
+        &[("CARGO_TARGET_DIR", &target)],
+    )?;
+    if !test.status.success()
+        || !String::from_utf8_lossy(&test.stdout)
+            .contains("test equality_boundary_discounts ... ok")
+        || !root.join("target/.rustc_info.json").exists()
+    {
+        return Err(format!(
+            "focused Cargo test must run and write actual build output here: {test:?}"
+        )
+        .into());
+    }
+    let after = run_repair_phase(root, &["--attempt", &attempt_id], "after")?;
+    if !after.status.success() {
+        return Err(
+            format!("actual Cargo build must not terminally fail repair: {after:?}").into(),
+        );
+    }
+    let receipt: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
+        root.join("target/ripr/reports/agent-receipt.json"),
+    )?)?;
+    if receipt
+        .pointer("/repair_attempt/edit_cage_verdict/status")
+        .and_then(serde_json::Value::as_str)
+        != Some("compliant")
+    {
+        return Err(
+            format!("actual build repair must produce its compliant receipt: {receipt}").into(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn agent_repair_names_build_ignore_drift_without_redirect_blame()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture =
+        RepairBuildIgnoreFixture::new(unique_temp_workspace("agent-repair-build-ignore-drift"))?;
+    let root = fixture.0.as_path();
+    init_producer_fixture_repo(root)?;
+    disable_ambient_git_excludes(root)?;
+    let before = run_repair_phase(root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+    if !before.status.success() {
+        return Err(format!("effective ignore before fixture failed: {before:?}").into());
+    }
+    let (attempt_id, _) = sole_repair_attempt(root)?;
+    // An older prepared attempt, or a changed local exclude rule, can still
+    // reach the after-phase refusal. Its cause must not become redirect advice.
+    std::fs::write(root.join(".git/info/exclude"), "")?;
+    add_boundary_test(root)?;
+    write_cargo_build_output(root, "build after local ignore drift")?;
+    let after = run_repair_phase(root, &["--attempt", &attempt_id], "after")?;
+    let stderr = String::from_utf8_lossy(&after.stderr);
+    if after.status.success()
+        || !stderr.contains("declared build directory `target/`")
+        || !stderr.contains("effective Git ignore rules")
+        || stderr.contains("If it is a file you redirected")
+        || stderr.contains("If one is a file you redirected")
+    {
+        return Err(
+            format!("build paths must stay refused with truthful recovery: {after:?}").into(),
+        );
+    }
+    let (_, manifest) = sole_repair_attempt(root)?;
+    if manifest.get("state").and_then(serde_json::Value::as_str) != Some("failed") {
+        return Err(format!("ignore drift must not loosen the cage: {manifest}").into());
+    }
     Ok(())
 }
 
