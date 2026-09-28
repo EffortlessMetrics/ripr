@@ -17507,3 +17507,65 @@ fn repo_config_perl_executable_runs_only_with_user_opt_in() -> Result<(), Box<dy
     let _ = std::fs::remove_dir_all(&root);
     Ok(())
 }
+
+/// #4374: an invalid `RIPR_GIT_TIMEOUT` stops `ripr check` with exit 2 and
+/// names the variable, instead of silently keeping the default deadline. An
+/// explicit `--git-timeout` still wins, so the bad env value is not read.
+#[test]
+fn check_rejects_invalid_ripr_git_timeout_env() -> Result<(), String> {
+    // Outside the repository, so the precedence run below cannot analyze it.
+    let workspace = unique_external_workspace("git-timeout-env")?;
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create workspace: {e}"))?;
+    let root = workspace
+        .to_str()
+        .ok_or("workspace path is not valid UTF-8")?;
+
+    let invalid = run_ripr_with_env(&["check", "--root", root], &[("RIPR_GIT_TIMEOUT", "abc")]);
+    let stderr = String::from_utf8_lossy(&invalid.stderr);
+    if invalid.status.code() != Some(2) {
+        return Err(format!(
+            "expected exit 2 for RIPR_GIT_TIMEOUT=abc, got {:?}; stderr: {stderr}",
+            invalid.status.code()
+        ));
+    }
+    if !stderr.contains("RIPR_GIT_TIMEOUT requires a non-negative integer (seconds); got \"abc\"") {
+        return Err(format!(
+            "stderr does not name the variable and value: {stderr}"
+        ));
+    }
+
+    let explicit = run_ripr_with_env(
+        &["check", "--root", root, "--git-timeout", "5"],
+        &[("RIPR_GIT_TIMEOUT", "abc")],
+    );
+    let stderr = String::from_utf8_lossy(&explicit.stderr);
+    if stderr.contains("RIPR_GIT_TIMEOUT") {
+        return Err(format!(
+            "--git-timeout should take precedence over the env var: {stderr}"
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let non_utf8 = probe_command(env!("CARGO_BIN_EXE_ripr"))
+            .args(["check", "--root", root])
+            .env(
+                "RIPR_GIT_TIMEOUT",
+                std::ffi::OsString::from_vec(vec![0xff, b'5']),
+            )
+            .output()
+            .map_err(|e| format!("spawn ripr: {e}"))?;
+        let stderr = String::from_utf8_lossy(&non_utf8.stderr);
+        if non_utf8.status.code() != Some(2)
+            || !stderr.contains("RIPR_GIT_TIMEOUT must be valid UTF-8")
+        {
+            return Err(format!(
+                "non-UTF-8 RIPR_GIT_TIMEOUT should fail closed, got {:?}; stderr: {stderr}",
+                non_utf8.status.code()
+            ));
+        }
+    }
+    ignore_remove_dir_all(&workspace);
+    Ok(())
+}
