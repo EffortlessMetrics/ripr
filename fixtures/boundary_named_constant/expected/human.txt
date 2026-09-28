@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/boundary_named_constant/input
+
+Summary: 3 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/boundary_named_constant/input/src/lib.rs:30
+  Static exposure: infection_unknown (warning, confidence 0.66)
+  Why infection_unknown: the change reaches a sink but infection could not be determined statically
+  Changed behavior: amount >= FREE_SHIPPING
+  Missing discriminator: No detected boundary input for the changed predicate
+  Related test: tests/pricing.rs:17 shipping_boundary
+  Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
+  Evidence:
+    - reach yes: Related tests appear to reach shipping: shipping_boundary
+    - infection unknown: Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a…
+    - 10 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/boundary_named_constant/input --diff fixtures/boundary_named_constant/diff.patch --mode fast probe:src_lib.rs:predicate:70700926
+  ripr context --root fixtures/boundary_named_constant/input --diff fixtures/boundary_named_constant/diff.patch --mode fast --at probe:src_lib.rs:predicate:70700926
+
+Hidden:
+  2 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

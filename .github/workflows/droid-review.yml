@@ -1,0 +1,162 @@
+name: Droid Auto Review
+
+# #1654 PR 1: this privileged workflow runs from default-branch bytes.
+# pull_request_target executes the base definition; the candidate head is
+# never checked out and reaches analysis only as admitted inert data.
+on:
+  pull_request_target:
+    types: [opened, synchronize, ready_for_review, reopened, labeled, unlabeled]
+
+concurrency:
+  group: droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  admit:
+    # No secrets are reachable in this job. Admission binds the exact
+    # subject and writes the receipt before analysis may run.
+    runs-on:
+      group: em-ci-review
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, droid-review]
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      pull-requests: read
+
+    outputs:
+      admitted: ${{ steps.admit.outputs.admitted }}
+      receipt: ${{ steps.admit.outputs.receipt }}
+
+    steps:
+      - name: Checkout default-branch authority
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          allow-unsafe-pr-checkout: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: 1.95.0
+
+      - name: Refetch subject facts
+        id: facts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head="$(gh pr view '${{ github.event.pull_request.number }}' --repo '${{ github.repository }}' --json headRefOid --jq '.headRefOid')"
+          base="$(gh pr view '${{ github.event.pull_request.number }}' --repo '${{ github.repository }}' --json baseRefOid --jq '.baseRefOid')"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Admit subject
+        id: admit
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/droid-admission"
+          cargo run --locked -q -p xtask -- droid-admit \
+            --event-name pull_request_target \
+            --event "$GITHUB_EVENT_PATH" \
+            --repo '${{ github.repository }}' \
+            --fresh-head '${{ steps.facts.outputs.head }}' \
+            --fresh-base '${{ steps.facts.outputs.base }}' \
+            --receipt "$GITHUB_WORKSPACE/droid-admission/receipt.json"
+          cat "$GITHUB_WORKSPACE/droid-admission/receipt.json"
+
+  droid-review:
+    needs: [admit]
+    # Redundant same-repo barrier: the classifier already rejects forks, and
+    # this expression reads event data under a base-owned definition.
+    if: |
+      needs.admit.outputs.admitted == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on:
+      group: em-ci-review
+      labels: [self-hosted, Linux, X64, em-ci, trusted-pr, droid-review]
+    timeout-minutes: 30
+
+    env:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+
+    steps:
+      - name: Checkout default-branch authority
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          allow-unsafe-pr-checkout: false
+
+      - name: Configure MiniMax BYOK for Factory Droid
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.factory"
+          cat > "$HOME/.factory/settings.json" <<'JSON'
+          {
+            "customModels": [
+              {
+                "displayName": "MiniMax-M3",
+                "model": "MiniMax-M3",
+                "baseUrl": "https://api.minimax.io/anthropic",
+                "apiKey": "${MINIMAX_API_KEY}",
+                "provider": "anthropic",
+                "maxOutputTokens": 64000
+              }
+            ]
+          }
+          JSON
+
+      - name: Ensure GitHub CLI for Droid Action
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            gh --version
+            exit 0
+          fi
+          gh_archive="gh_2.82.1_linux_amd64.tar.gz"
+          gh_sha256="afada88676dfccea384e6cc28ae990b3e31bbc55f9d75c4697f902c757fa462b"
+          gh_url="https://github.com/cli/cli/releases/download/v2.82.1/${gh_archive}"
+          gh_root="${RUNNER_TEMP:-/tmp}/gh-cli-2.82.1-${GITHUB_RUN_ID:-manual}"
+          mkdir -p "$gh_root"
+          curl -fsSL "$gh_url" -o "$gh_root/$gh_archive"
+          printf '%s  %s\n' "$gh_sha256" "$gh_root/$gh_archive" > "$gh_root/gh.sha256"
+          sha256sum -c "$gh_root/gh.sha256"
+          tar -xzf "$gh_root/$gh_archive" -C "$gh_root"
+          echo "$gh_root/gh_2.82.1_linux_amd64/bin" >> "$GITHUB_PATH"
+          "$gh_root/gh_2.82.1_linux_amd64/bin/gh" --version
+
+      - name: Run Droid Auto Review with MiniMax M3 BYOK
+        uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
+        env:
+          ANTHROPIC_AUTH_TOKEN: ""
+          ANTHROPIC_BASE_URL: ""
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          upload_debug_artifacts: false
+
+          automatic_review: true
+          automatic_security_review: true
+
+          review_depth: shallow
+          review_model: "custom:MiniMax-M3-0"
+          security_model: "custom:MiniMax-M3-0"
+
+          security_severity_threshold: high
+          security_block_on_critical: true
+          security_block_on_high: false
+
+          include_suggestions: true
+          show_full_output: false

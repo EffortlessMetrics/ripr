@@ -1,0 +1,553 @@
+# Golden Output Changes
+
+## Pending — boundary_gap (4)
+
+Reason:
+RIPR-SPEC-0020 / RIPR-SPEC-0023, #3999/#4000 merged with #4304: the first-action commands #4304 added (`commands.analysis_outcome`, the persisted `agent verify` redirect) and the `agent status` handoff now carry the bound `--root <cwd>/fixtures/boundary_gap/input` like every other first-action command, so the analyzed subject and the redirect anchor name the same repository. The front panel echoes those commands. The typed verify/receipt `command_specs` keep the portable `--root .` with `cwd` at the repository root.
+
+Command:
+`cargo xtask dogfood` produced outputs under `target/ripr/dogfood/{first-useful-action,pr-review-front-panel}/*`, with the renderer cwd projected to `<cwd>` and `generated_at` pinned exactly as the dogfood comparison does; then `cargo xtask dogfood` re-run clean
+
+Updated:
+- `expected/first-useful-action/{actionable,stale,unchanged-after-attempt}/first-useful-action.{json,md}`
+- `expected/pr-review-front-panel/{actionable,blocked}/pr-review-front-panel.{json,md}`
+
+## Pending
+
+Reason:
+#4304: the actionable first-action route now persists `agent verify` to the `--verify-json` path the receipt command reads and adds `commands.analysis_outcome`, which writes the `analysis-outcome.json` a complete receipt needs. The front panel carries the new command as `top_issue.analysis_outcome_command`.
+
+Command:
+`cargo xtask dogfood` produced outputs under `target/ripr/dogfood/{first-useful-action,pr-review-front-panel}/*`, with the renderer cwd projected to `<cwd>` and `generated_at` kept; then `cargo test -p ripr --lib -- first_useful_action pr_review_front_panel`
+
+Updated:
+- `expected/first-useful-action/actionable/first-useful-action.{json,md}`
+- `expected/pr-review-front-panel/{actionable,blocked}/pr-review-front-panel.{json,md}`
+
+## Pending
+
+Reason:
+#3906 (F60-14, F60-2(c)): gate-decision Markdown leads a carried repair start with the after-phase step and labels verify and receipt as the manual alternative that names its prerequisites; the front panel and first-useful-action manual labels name the same prerequisites. JSON is unchanged.
+
+Command:
+`RIPR_UPDATE_FIXTURES=1 cargo test -p ripr --lib -- first_useful_action_matches_repair_start_fixture pr_review_front_panel_matches_fixture_corpus calibrated_gate_fixture_matrix_matches_checked_outputs baseline_fallback_disclosure_fixture_matrix_matches_checked_outputs`; gate adoption Markdown from `cargo xtask dogfood` actual outputs
+
+Updated:
+- `expected/calibrated-gate/*/gate-decision.md`
+- `expected/gate-adoption/*/gate-decision.md`
+- `expected/first-useful-action/repair-start/first-useful-action.md`
+- `expected/pr-review-front-panel/repair-start/pr-review-front-panel.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0067: refresh CLI-backed gate adoption receipts and pin a self-contained blocking repair route
+
+Command:
+`cargo test -p xtask tests::dogfood_blocking_gate_report_is_self_contained -- --exact --test-threads=1`
+
+Updated:
+- `expected/gate-adoption/{visible-only,acknowledged,baseline-aware,baseline-new-gap,calibrated-gate}/gate-decision.json`
+- `expected/gate-adoption/{visible-only,acknowledged,baseline-aware,baseline-new-gap,calibrated-gate}/gate-decision.md`
+- `expected/gate-adoption/README.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0067: project producer-owned gate repair routes into the human and generated-CI summary surface
+
+Command:
+`cargo test -p ripr output::gate --lib -- --test-threads=1`
+
+Updated:
+- `expected/calibrated-gate/*/gate-decision.md`
+- `expected/calibrated-gate/README.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0025: pin and exercise PR inline comment publish-plan cases against the read-only producer
+
+Command:
+`cargo test -p ripr inline_comment_publish_plan`
+
+Updated:
+- `expected/pr-inline-comment-publisher/README.md`
+- `expected/pr-inline-comment-publisher/corpus.json`
+- `expected/pr-inline-comment-publisher/*/comments.json`
+- `expected/pr-inline-comment-publisher/*/existing-comments.json`
+- `expected/pr-inline-comment-publisher/*/comment-publish-plan.json`
+- `expected/pr-inline-comment-publisher/*/comment-publish-plan.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0024: pin report-packet index packet navigation cases before the producer changes
+
+Command:
+`cargo xtask check-fixture-contracts`
+
+Updated:
+- `expected/report-packet-index/README.md`
+- `expected/report-packet-index/corpus.json`
+- `expected/report-packet-index/*/index.json`
+- `expected/report-packet-index/*/index.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0023: update PR review front-panel cases for the read-only producer
+
+Command:
+`cargo test -p ripr pr_review_front_panel`
+
+Updated:
+- `expected/pr-review-front-panel/README.md`
+- `expected/pr-review-front-panel/corpus.json`
+- `expected/pr-review-front-panel/*/pr-review-front-panel.json`
+- `expected/pr-review-front-panel/*/pr-review-front-panel.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0020: pin first-useful-action routing cases before the report producer exists
+
+Command:
+`cargo test -p ripr first_useful_action`
+
+Updated:
+- `expected/first-useful-action/README.md`
+- `expected/first-useful-action/corpus.json`
+- `expected/first-useful-action/*/first-useful-action.json`
+- `expected/first-useful-action/*/first-useful-action.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0019: pin canonical test-oracle assistant loop replay corpus across recommendation, handoff, receipt, and PR ledger projection
+
+Command:
+`cargo test -p ripr test_oracle_assistant`
+
+Updated:
+- `expected/test-oracle-assistant-loop/canonical/README.md`
+- `expected/test-oracle-assistant-loop/canonical/pr-guidance.json`
+- `expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json`
+- `expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json`
+- `expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: baseline current predicate boundary fixture output
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0005: pin editor-facing seam diagnostic and code-action expectations for the boundary-gap fixture
+
+Command:
+`cargo test -p ripr boundary_gap_lsp`
+
+Updated:
+- `expected/lsp-diagnostics.json`
+- `expected/lsp-code-actions.json`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: unknown findings must include stop reasons
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+Human output formatting: align Discriminate spacing with other RIPR evidence lines.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: oracle-strength-v2 distinguishes exact, broad, and smoke oracles
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: local delta flow names the returned value sink for changed predicates
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: activation modeling names observed values and missing equality discriminator
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: evidence-first output renders flow, activation, weakness, and next action
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0026 output(language): RustAdapter tags each Finding with language=rust; check.json gains the additive optional language field
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+audit LSP code-action titles: seam->test gap, analysis->Refresh Analysis
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/lsp-code-actions.json`
+
+## Pending
+
+Reason:
+schema 0.2: dedup assertion text into finding-level assertion_texts map (#1035)
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+content-addressed-probe-ids-#1053
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+platform-stable content-addressed ids (#1053): normalize owner path separators in fp8
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+spec-0068: add gap_state+receipt_command to all working-set cards; tokenize summary_reason vocabulary
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+SPEC-0068: add gap_state+receipt_command to working-set cards; tokenize summary_reason vocabulary; add reject-list tests
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+add run_status field to agent-seam-packets-json output per RIPR-SPEC-0091 pilot artifact bound
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+additive: add related_tests_total cap field (mirrors repo-exposure pattern)
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+add relation_reason and relation_confidence fields to related_test JSON output
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+bound default human output to start-here triage; human-full preserves exhaustive evidence
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+add human-full golden for exhaustive evidence-promotion projection while default human stays bounded
+
+Command:
+cargo xtask goldens check
+
+Updated:
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+changed semantic heads use canonical parser expressions and content-addressed probe identities
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+#2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+#2567: default human render no longer prints a 'Hidden: 0 lower-priority finding(s) omitted' block when nothing was omitted; the format pointers now sit under a 'More:' heading. Formatting-only drift; no evidence, class, or JSON change.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+Issue #2598: default human output now exposes bounded explain and context follow-up commands for the selected finding.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+Issue #2659: finding navigation commands now preserve the analyzed root, diff or artifact scope and shell-safe identity.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: publish typed analysis outcome in human and JSON output.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: align fixture outputs with the typed incomplete-outcome and unquoted human outcome contract.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0023: classification hint added to digest (#2614)
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0122: render the missing-discriminator value without restating the label
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0151: rebless check JSON for the additive source_currentness field; classifications, stages, confidence, counts, and recorded coordinates remain unchanged.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0160: the additive git_candidate_subject identity field (null for ordinary runs) in the check JSON identity block
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — boundary_gap (2)
+
+Reason:
+RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — boundary_gap (3)
+
+Reason:
+#3906: the boundary seam passes the repair-packet flip (RIPR-SPEC-0087 §8), so its LSP code actions gain the repair start (`Start repair: copy repair command`, `ripr.copyAgentRepairCommand`) ahead of the agent-loop actions; every other action is unchanged.
+
+Command:
+`cargo test -p ripr --lib lsp::tests::boundary_gap_lsp_code_actions_match_fixture_expectation`
+
+Updated:
+- `expected/lsp-code-actions.json`
+
+## Pending — boundary_gap (5)
+
+Reason:
+RIPR-SPEC-0122: human-full carries per-finding drill-in commands (#4379); digest why-line names the incomplete stage; unreached static_unknown asks for a test first
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

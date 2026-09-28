@@ -1,0 +1,11 @@
+diff --git a/src/auth.ts b/src/auth.ts
+index 0000000..1111111 100644
+--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -1,6 +1,6 @@
+ export function login(user: string): string {
+-  if (user.length > 3) {
++  if (user.length >= 3) {
+     return session(user);
+   }
+   throw new Error("too short");

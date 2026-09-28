@@ -1,0 +1,53 @@
+{
+  "fixture": "editor_gap_cockpit/typescript_preview_static_limit",
+  "actions": [
+    {
+      "title": "Inspect gap: copy repair packet",
+      "command": "ripr.copyContext",
+      "arguments": [
+        {
+          "label": "gap_repair_packet",
+          "uri": "src/pricing.ts",
+          "line": 18,
+          "gap_id": "gap:ts:pricing:mocked-discount-client",
+          "canonical_gap_id": "gap:ts:pricing:mocked-discount-client",
+          "gap_kind": "MissingMockedModuleAssertion",
+          "language": "typescript",
+          "language_status": "preview",
+          "gap_state": "actionable",
+          "repairability": "repairable",
+          "repair_route": {
+            "route_kind": "AddInteractionAssertion",
+            "target_file": "src/pricing.test.ts",
+            "related_test": "src/pricing.test.ts::applies_discount_from_client"
+          },
+          "verification_commands": [
+            "ripr agent verify --root . --json"
+          ],
+          "receipt_command": "ripr agent receipt --root . --json",
+          "limits_note": "Static limit: mocked_module. Static evidence only; no runtime adequacy claim."
+        }
+      ]
+    },
+    {
+      "title": "Inspect gap: copy static-limit note",
+      "command": "ripr.copyContext",
+      "arguments": [
+        {
+          "label": "static_limit_note",
+          "gap_id": "gap:ts:pricing:mocked-discount-client",
+          "canonical_gap_id": "gap:ts:pricing:mocked-discount-client",
+          "language": "typescript",
+          "language_status": "preview",
+          "note": "Static limit: mocked_module\nDetail: Mocked module behavior is syntax-first preview evidence; runtime replacement semantics are not modeled.\nBoundary: static evidence only; advisory action.",
+          "limits_note": "Static evidence only; no runtime adequacy claim."
+        }
+      ]
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh",
+      "arguments": []
+    }
+  ]
+}

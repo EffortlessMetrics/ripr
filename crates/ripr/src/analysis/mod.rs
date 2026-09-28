@@ -1,0 +1,1499 @@
+pub(crate) mod cancellation;
+pub(crate) mod canonical_gap;
+mod classifier;
+mod classify;
+mod diff;
+mod extract;
+mod facts;
+pub(crate) mod harness_projection;
+mod language;
+mod pipeline;
+mod probes;
+pub(crate) mod repair_route;
+mod rust_index;
+pub(crate) mod seam_cache;
+mod seam_classification;
+mod seam_inventory;
+pub(crate) mod seams;
+mod sort;
+#[cfg(test)]
+mod source_role_corpus;
+mod summary;
+mod syntax;
+pub(crate) mod test_grip_evidence;
+mod value_resolution;
+mod workspace;
+
+/// Shared pinned PR-evidence diff assembly (#3930, #4004): the one named
+/// owner for packet diff presentation, consumed by the product route and the
+/// xtask route alike. Neither route may rebuild its argv inline.
+pub use diff::load_pr_evidence_diff_range;
+/// Shared NUL-delimited Git path-record authority (#4006), consumed by the
+/// product and xtask routes alike.
+pub use diff::records::{
+    PathRecordError, StatusRecord, parse_git_path_records, parse_git_status_records,
+};
+pub(crate) use diff::{
+    load_diff, load_worktree_diff, parse_unified_diff, resolve_base_commit, resolve_effective_base,
+    working_tree_has_tracked_changes,
+};
+/// Shared RIPR-SPEC-0084 default-base authority and pinned analysis-range
+/// diff assembly (#4003): the one named owner for badge input base/diff,
+/// consumed by the analysis route and the xtask badge route alike. Neither
+/// route may hardcode a base ref or rebuild the diff argv inline.
+pub use diff::{load_diff_range, resolve_default_base_commit};
+pub(crate) use facts::validated_file_wide_harness_targets;
+pub(crate) use language::{
+    DIFF_SCOPE_OVERSIZED_PREFIX, JAVASCRIPT_SOURCE_EXTENSIONS, TYPESCRIPT_SOURCE_EXTENSIONS,
+    TsJsSourceKind, is_diff_scope_oversized, is_ts_js_source_extension, ts_js_source_kind,
+};
+pub use language::{
+    PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,
+    PartialDiffStopReason,
+};
+pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
+pub use seam_cache::cache_layer_names;
+pub(crate) use seam_classification::ClassifiedSeam;
+#[cfg(test)]
+pub(crate) use seam_classification::SeamGripClassCounts;
+#[cfg(test)]
+pub(crate) use seam_classification::classify_seam;
+pub(crate) use seam_inventory::{
+    DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory, SeamLimitInfo,
+    SeamLimitSource, apply_pilot_seam_budget,
+    inventory_changed_test_classified_seams_at_with_config_node,
+    inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
+    inventory_diff_scoped_classified_seams_at_with_config,
+    inventory_diff_scoped_classified_seams_at_with_config_and_lines,
+    inventory_seams_at_with_config, workspace_cache_key_at_with_config,
+};
+pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
+pub(crate) use workspace::PathDependencyAdjacency;
+pub(crate) use workspace::SourceRoleContext;
+pub(crate) use workspace::context_for_files;
+pub(crate) use workspace::is_test_surface_path;
+pub(crate) use workspace::seeds_diff_probes;
+
+/// Re-export workspace discovery helpers for the output layer so it can
+/// detect TS-predominant workspaces without importing through analysis::workspace
+/// directly. These are thin shims that forward to the inner workspace module.
+pub(crate) fn workspace_preview_language_files(
+    root: &Path,
+) -> Vec<(language::LanguageId, PathBuf)> {
+    workspace::discover_preview_language_files(root)
+}
+
+/// Re-export workspace Rust file discovery for the output layer so it can
+/// check whether a workspace has any Rust source.
+pub(crate) fn workspace_rust_files(root: &Path) -> Vec<PathBuf> {
+    workspace::discover_rust_files(root).unwrap_or_default()
+}
+
+/// Why a ledger-supplied rerun anchor is not strictly root-relative, or `None`
+/// when it is safe to join onto the workspace root.
+///
+/// This exists as a named predicate rather than an inline condition so each
+/// rejection branch can be asserted independently. That matters here because
+/// `is_absolute()` is platform-dependent: on Windows a path needs a drive or UNC
+/// prefix to be absolute, so a Unix-style `/etc/hostname` reports
+/// `is_absolute() == false` and would otherwise be joined to the root as
+/// `<drive-of-root>/etc/hostname` — outside the workspace.
+///
+/// Component checks run *before* `is_absolute()` deliberately. A leading
+/// separator yields a `RootDir` component on both Windows and Unix, so ordering
+/// it first gives the same attributed reason on every platform. Were
+/// `is_absolute()` checked first, a Linux-only CI run would attribute
+/// `/etc/hostname` to the absolute-path branch and never exercise the `RootDir`
+/// branch at all — the guard would be green without being tested.
+#[cfg(feature = "lang-typescript")]
+fn scope_anchor_escape_reason(file: &Path) -> Option<&'static str> {
+    use std::path::Component;
+
+    if file.as_os_str().is_empty() {
+        return Some("empty anchor");
+    }
+    for component in file.components() {
+        match component {
+            Component::ParentDir => return Some("parent traversal"),
+            Component::RootDir => return Some("rooted path"),
+            Component::Prefix(_) => return Some("drive or UNC prefix"),
+            Component::CurDir | Component::Normal(_) => {}
+        }
+    }
+    // Retained as a backstop: any future platform where a path is absolute
+    // without producing a `RootDir` or `Prefix` component still fails closed.
+    file.is_absolute().then_some("absolute path")
+}
+
+#[cfg(feature = "lang-typescript")]
+pub(crate) fn targeted_typescript_findings_for_scope(
+    root: &Path,
+    config: &crate::config::RiprConfig,
+    file: &Path,
+    line: Option<u64>,
+) -> Result<Vec<Finding>, String> {
+    use diff::{ChangedFile, ChangedLine};
+    use language::{LanguageAdapter, TypeScriptAdapter};
+
+    // Ledger-supplied anchors are untrusted input: reject anything that is not
+    // strictly root-relative so a crafted rerun scope cannot read outside
+    // `root`.
+    if let Some(reason) = scope_anchor_escape_reason(file) {
+        return Err(format!(
+            "TypeScript rerun scope {} escapes the workspace root ({reason})",
+            file.display()
+        ));
+    }
+    let absolute = root.join(file);
+    let source = std::fs::read_to_string(&absolute).map_err(|err| {
+        format!(
+            "read TypeScript rerun scope {} failed: {err}",
+            absolute.display()
+        )
+    })?;
+    let mut added_lines = Vec::new();
+    match line {
+        Some(line) if line > 0 => {
+            let line_usize = usize::try_from(line)
+                .map_err(|err| format!("TypeScript rerun scope line {line} is too large: {err}"))?;
+            let text = source
+                .lines()
+                .nth(line_usize.saturating_sub(1))
+                .ok_or_else(|| {
+                    format!(
+                        "TypeScript rerun scope {} no longer has line {line}",
+                        file.display()
+                    )
+                })?
+                .to_string();
+            added_lines.push(ChangedLine {
+                line: line_usize,
+                text,
+                new_side_line: line_usize,
+            });
+        }
+        Some(line) => {
+            return Err(format!(
+                "TypeScript rerun scope line must be 1-based; got {line}"
+            ));
+        }
+        None => {
+            for (index, text) in source.lines().enumerate() {
+                let line = index + 1;
+                added_lines.push(ChangedLine {
+                    line,
+                    text: text.to_string(),
+                    new_side_line: line,
+                });
+            }
+        }
+    }
+
+    let options = AnalysisOptions {
+        root: root.to_path_buf(),
+        base: None,
+        diff_file: None,
+        mode: AnalysisMode::Draft,
+        resolved_subject_identity: None,
+        include_unchanged_tests: config.analysis().include_unchanged_tests().unwrap_or(true),
+        resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+    };
+    let result = TypeScriptAdapter.analyze_diff(
+        &options,
+        config.oracles(),
+        &[ChangedFile {
+            path: file.to_path_buf(),
+            added_lines,
+            removed_lines: Vec::new(),
+        }],
+    )?;
+    Ok(result.findings)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TypeScriptRepoReadiness {
+    pub(crate) source_file_count: usize,
+    pub(crate) test_file_count: usize,
+    pub(crate) package_root_count: usize,
+    pub(crate) package_confidence: String,
+    pub(crate) runner_status: String,
+    pub(crate) verify_command_count: usize,
+    pub(crate) top_blocker: Option<String>,
+}
+
+/// Detect the TypeScript/JavaScript test framework for a workspace root
+/// (#2106): one detector shared by doctor and the adapter's package
+/// discovery. Fail-closed: `None` when no evidence marker matches.
+#[cfg(feature = "lang-typescript")]
+pub(crate) fn detect_typescript_test_framework(root: &Path) -> Option<&'static str> {
+    language::detect_framework_for_root(root).map(|framework| framework.as_str())
+}
+
+/// Detect the Python test framework for a workspace root (#2106): one
+/// detector shared by doctor and any adapter-side repo-level check.
+/// Fail-closed: `None` when no evidence marker matches.
+#[cfg(feature = "lang-python")]
+pub(crate) fn detect_python_test_framework(root: &Path) -> Option<&'static str> {
+    language::detect_python_test_framework(root)
+}
+
+#[cfg(feature = "lang-typescript")]
+pub(crate) fn workspace_typescript_repo_readiness(root: &Path) -> Option<TypeScriptRepoReadiness> {
+    use language::{
+        TsPackageConfidence, is_test_file, resolve_package_discovery, verify_command_for_discovery,
+    };
+
+    let files = workspace_preview_language_files(root)
+        .into_iter()
+        .filter_map(|(language, path)| {
+            matches!(
+                language,
+                language::LanguageId::TypeScript | language::LanguageId::JavaScript
+            )
+            .then_some(path)
+        })
+        .collect::<Vec<_>>();
+    if files.is_empty() {
+        return None;
+    }
+
+    let mut test_file_count = 0usize;
+    let mut source_file_count = 0usize;
+    let mut package_roots = BTreeSet::<String>::new();
+    let mut best_confidence = TsPackageConfidence::None;
+    let mut verify_command_count = 0usize;
+    let mut package_root_missing = 0usize;
+    let mut framework_missing = 0usize;
+    let mut runner_missing = 0usize;
+    let mut package_manager_missing = 0usize;
+    let mut discovery_cache = HashMap::new();
+
+    for file in &files {
+        let file_is_test = is_test_file(file);
+        if file_is_test {
+            test_file_count += 1;
+        } else {
+            source_file_count += 1;
+        }
+
+        let parent = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        let discovery = discovery_cache
+            .entry(parent)
+            .or_insert_with(|| resolve_package_discovery(file, root));
+        if let Some(package_root) = discovery.package_root.as_ref() {
+            package_roots.insert(display_readiness_path(package_root));
+        }
+        best_confidence = max_ts_package_confidence(best_confidence, discovery.confidence);
+        if file_is_test && verify_command_for_discovery(discovery, file).is_some() {
+            verify_command_count += 1;
+        }
+        for limitation in &discovery.limitations {
+            match limitation.as_str() {
+                "typescript_package_root_unresolved" => package_root_missing += 1,
+                "typescript_framework_hint_unresolved" => framework_missing += 1,
+                "typescript_test_runner_unresolved" => runner_missing += 1,
+                "typescript_package_manager_unresolved" => package_manager_missing += 1,
+                _ => {}
+            }
+        }
+    }
+
+    let runner_status = if test_file_count == 0 {
+        "no_tests_detected"
+    } else if verify_command_count == test_file_count {
+        "resolved"
+    } else if verify_command_count > 0 {
+        "partial"
+    } else {
+        "unresolved"
+    };
+    let top_blocker = top_typescript_readiness_blocker(
+        test_file_count,
+        package_root_missing,
+        framework_missing,
+        runner_missing,
+        package_manager_missing,
+    );
+
+    Some(TypeScriptRepoReadiness {
+        source_file_count,
+        test_file_count,
+        package_root_count: package_roots.len(),
+        package_confidence: best_confidence.as_str().to_string(),
+        runner_status: runner_status.to_string(),
+        verify_command_count,
+        top_blocker,
+    })
+}
+
+#[cfg(not(feature = "lang-typescript"))]
+pub(crate) fn workspace_typescript_repo_readiness(_root: &Path) -> Option<TypeScriptRepoReadiness> {
+    None
+}
+
+#[cfg(feature = "lang-typescript")]
+fn max_ts_package_confidence(
+    left: language::TsPackageConfidence,
+    right: language::TsPackageConfidence,
+) -> language::TsPackageConfidence {
+    if ts_package_confidence_rank(right) > ts_package_confidence_rank(left) {
+        right
+    } else {
+        left
+    }
+}
+
+#[cfg(feature = "lang-typescript")]
+fn ts_package_confidence_rank(confidence: language::TsPackageConfidence) -> usize {
+    use language::TsPackageConfidence;
+    match confidence {
+        TsPackageConfidence::None => 0,
+        TsPackageConfidence::Low => 1,
+        TsPackageConfidence::Medium => 2,
+        TsPackageConfidence::High => 3,
+    }
+}
+
+#[cfg(feature = "lang-typescript")]
+fn display_readiness_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+#[cfg(feature = "lang-typescript")]
+fn top_typescript_readiness_blocker(
+    test_file_count: usize,
+    package_root_missing: usize,
+    framework_missing: usize,
+    runner_missing: usize,
+    package_manager_missing: usize,
+) -> Option<String> {
+    if test_file_count == 0 {
+        return Some("typescript_tests_not_detected".to_string());
+    }
+
+    [
+        (
+            "typescript_package_root_unresolved",
+            package_root_missing,
+            "package roots",
+        ),
+        (
+            "typescript_framework_hint_unresolved",
+            framework_missing,
+            "framework hints",
+        ),
+        (
+            "typescript_test_runner_unresolved",
+            runner_missing,
+            "test runners",
+        ),
+        (
+            "typescript_package_manager_unresolved",
+            package_manager_missing,
+            "package managers",
+        ),
+    ]
+    .into_iter()
+    .max_by(|(name_a, count_a, _), (name_b, count_b, _)| {
+        count_a.cmp(count_b).then_with(|| name_b.cmp(name_a))
+    })
+    .and_then(|(name, count, label)| {
+        (count > 0).then(|| format!("{name} ({count} {label} unresolved)"))
+    })
+}
+
+use crate::config::OraclePolicy;
+use crate::domain::{Finding, Summary};
+use std::collections::{BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
+
+/// Render a path for textual identity without collapsing distinct Unix byte
+/// paths through U+FFFD. Valid paths retain their usual spelling except that
+/// `%` is escaped, reserving `%XX` for bytes that are not valid UTF-8.
+pub(crate) fn stable_path_text(path: &Path) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let mut output = String::new();
+        let mut remaining = path.as_os_str().as_bytes();
+        while !remaining.is_empty() {
+            match std::str::from_utf8(remaining) {
+                Ok(valid) => {
+                    push_stable_path_text(&mut output, valid);
+                    break;
+                }
+                Err(error) => {
+                    let valid_prefix = &remaining[..error.valid_up_to()];
+                    if let Ok(valid) = std::str::from_utf8(valid_prefix) {
+                        push_stable_path_text(&mut output, valid);
+                    }
+                    let invalid = error
+                        .error_len()
+                        .unwrap_or(remaining.len() - error.valid_up_to());
+                    for byte in &remaining[error.valid_up_to()..error.valid_up_to() + invalid] {
+                        output.push_str(&format!("%{byte:02X}"));
+                    }
+                    remaining = &remaining[error.valid_up_to() + invalid..];
+                }
+            }
+        }
+        output.replace('\\', "/")
+    }
+
+    #[cfg(not(unix))]
+    {
+        let mut output = String::new();
+        push_stable_path_text(&mut output, &path.to_string_lossy());
+        output.replace('\\', "/")
+    }
+}
+
+fn push_stable_path_text(output: &mut String, text: &str) {
+    for character in text.chars() {
+        if character == '%' {
+            output.push_str("%25");
+        } else {
+            output.push(character);
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnalysisMode {
+    Instant,
+    Draft,
+    Fast,
+    Deep,
+    Ready,
+}
+
+#[derive(Clone, Debug)]
+pub struct AnalysisOptions {
+    pub root: PathBuf,
+    pub base: Option<String>,
+    pub diff_file: Option<PathBuf>,
+    pub mode: AnalysisMode,
+    pub include_unchanged_tests: bool,
+    /// When `true`, the TypeScript adapter reads `compilerOptions.paths` from
+    /// `tsconfig.json` / `jsconfig.json` and uses alias maps to resolve
+    /// non-relative import specifiers during owner↔test discovery.
+    ///
+    /// Default: `false` (opt-in, fail-closed per RIPR-SPEC-0099).
+    pub resolve_tsconfig_paths: bool,
+    /// Path to a `ripr-perl-facts-v1` packet file for the Perl adapter
+    /// (Campaign 31, #1429). When `None`, the Perl adapter returns a named
+    /// limitation (no analysis). When `Some`, the adapter reads the packet
+    /// and produces Findings + limitations from it.
+    pub perl_facts_path: Option<PathBuf>,
+    /// Cooperative per-invocation git deadline for the diff-load path
+    /// (#2303). `None` keeps every git invocation unbounded — the CLI
+    /// behavior, byte-identical to the pre-#2303 path. Only the LSP refresh
+    /// path sets this (from the `gitTimeoutMs` session option).
+    pub git_timeout: Option<std::time::Duration>,
+    /// Explicit production-like test-infrastructure opt-in (#3283):
+    /// workspace-relative targets this repository wants analyzed as
+    /// production behavior even though their layout or Cargo target
+    /// declares evidence role. Empty by default.
+    pub production_like_targets: std::collections::BTreeSet<std::path::PathBuf>,
+    /// Repository-governed test-harness registrations (#3532): exact
+    /// configured custom-harness targets and registered test-producing
+    /// attributes. Empty by default — nothing is inferred.
+    pub test_harnesses: Vec<crate::config::TestHarnessRegistration>,
+    /// Immutable Git candidate subject (#3237 / #3276 R1). Threaded from
+    /// `CheckInput` so the object producer (#3277) can consume it here;
+    /// no current analysis path executes it, and `run_check` rejects
+    /// subject inputs before analysis begins.
+    pub git_candidate: Option<crate::domain::GitCandidateSubject>,
+    /// Internal (#3278 R3): the R2 producer's resolved subject identity,
+    /// set only on the materialized-candidate options clone so the
+    /// outcome identity block projects machine-visible base/candidate/
+    /// diff identities. Never caller-settable.
+    pub(crate) resolved_subject_identity:
+        Option<crate::analysis_outcome::GitCandidateSubjectIdentity>,
+}
+
+/// Advisory record for one compiled preview-language adapter whose files are
+/// present in the analyzed scope.
+///
+/// Produced by the pipeline when TypeScript, JavaScript, or Python files are
+/// present in the diff or repo — regardless of whether the adapter is
+/// `enabled` in `ripr.toml` and regardless of whether any findings were
+/// emitted. The count and sample paths come from real path routing
+/// (`analysis::language::route`); they are never fabricated.
+///
+/// The `enabled` flag distinguishes the two honesty cases per
+/// RIPR-SPEC-0082:
+///
+/// - `enabled == true` — the adapter was configured and available. Whether it
+///   completed successfully is derived from the matching `language_runs`
+///   failure record; an empty result is advisory and may be incomplete, not a
+///   Rust-grade clean result.
+/// - `enabled == false` — the adapter is preview and NOT enabled, so these
+///   files were not analyzed at all; the empty result must not be read as
+///   clean.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PreviewLanguageAdvisory {
+    /// Stable language wire string (e.g. `"typescript"`, `"python"`).
+    pub language: String,
+    /// Number of files routed to this preview adapter.
+    pub file_count: usize,
+    /// Up to three sample file paths (normalized, forward-slash).
+    pub sample_paths: Vec<String>,
+    /// Whether this preview adapter was configured and available for this
+    /// analysis.
+    ///
+    /// `false` means the preview-language files were detected in scope but not
+    /// analyzed because the adapter is not enabled in `ripr.toml`.
+    pub enabled: bool,
+}
+
+impl PreviewLanguageAdvisory {
+    /// Returns the producer-owned non-success record for this advisory, when
+    /// the adapter did not complete successfully.
+    pub(crate) fn non_success_run<'a>(
+        &self,
+        language_runs: &'a [LanguageRun],
+    ) -> Option<&'a LanguageRun> {
+        language_runs
+            .iter()
+            .find(|run| run.language == self.language && run.status != LanguageRunStatus::Ok)
+    }
+
+    /// Whether the routed files were actually analyzed to adapter completion.
+    ///
+    /// Successful preview runs are omitted from `language_runs`; any matching
+    /// non-success entry therefore closes this readiness claim fail-closed.
+    pub(crate) fn analyzed(&self, language_runs: &[LanguageRun]) -> bool {
+        self.enabled && self.file_count > 0 && self.non_success_run(language_runs).is_none()
+    }
+
+    /// Recovery text for a not-enabled advisory whose adapter is not compiled
+    /// into this ripr binary, or `None` when the adapter is compiled in (the
+    /// `ripr.toml` enablement hint then applies). Text is owned by
+    /// [`crate::domain::LanguageId::unavailable_adapter_recovery`] so every
+    /// renderer tells the same story.
+    pub(crate) fn unavailable_adapter_recovery(&self) -> Option<String> {
+        let language = crate::domain::LanguageId::from_wire(&self.language)?;
+        (!self.enabled && !language.is_available()).then(|| language.unavailable_adapter_recovery())
+    }
+
+    /// Single-line `why` for a not-enabled advisory, shared by the JSON check
+    /// report and the diff report so the two machine surfaces cannot drift.
+    pub(crate) fn not_enabled_why(&self) -> String {
+        if let Some(recovery) = self.unavailable_adapter_recovery() {
+            return format!(
+                "preview adapter not compiled into this ripr binary; files detected but not analyzed; empty result is not Rust-grade clean; {recovery}"
+            );
+        }
+        let mut why = format!(
+            "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"{}\"]",
+            self.language
+        );
+        if let Some(prerequisite) = crate::domain::LanguageId::from_wire(&self.language)
+            .and_then(crate::domain::LanguageId::enable_prerequisite)
+        {
+            why.push_str("; ");
+            why.push_str(&prerequisite);
+        }
+        why
+    }
+}
+
+/// Per-language run status for one language adapter invocation.
+///
+/// A `LanguageRun` is recorded for every language that was *attempted* but
+/// did not complete successfully. Languages that ran to completion are
+/// omitted (their findings speak for themselves). This keeps the field
+/// conditional on non-success so the common single-language-success case
+/// stays silent and no golden re-bless is needed.
+///
+/// This is the non-abort contract (Campaign 31 PR 10, ripr-swarm#1403): a
+/// single language's failure (e.g. a Perl preview adapter that returns
+/// `Err`, or a packet-ingestion rejection) must not abort the whole report.
+/// Instead the failed language is recorded here and the other languages'
+/// findings still emit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LanguageRun {
+    /// Stable language wire string (e.g. `"rust"`, `"perl"`).
+    pub language: String,
+    /// Outcome of the run.
+    pub status: LanguageRunStatus,
+    /// Human-readable reason for a non-ok status (absent for `Ok`).
+    pub reason: Option<String>,
+}
+
+/// Outcome of one language adapter invocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LanguageRunStatus {
+    /// The adapter completed (findings, if any, are in `result.findings`).
+    /// Recorded only when the caller explicitly asks for full accounting;
+    /// the pipeline omits `Ok` runs by default to keep the field conditional.
+    Ok,
+    /// The adapter was invoked but returned a named limitation (e.g. a Perl
+    /// preview adapter that is scaffold-only and returns `Err`).
+    Unavailable,
+    /// The adapter ran but produced a partial result (e.g. a packet was
+    /// rejected by ingestion checks; some findings may still be present).
+    Partial,
+    /// The adapter could not run at all (e.g. required Cargo feature is off,
+    /// or the producer binary is missing).
+    Invalid,
+}
+
+impl LanguageRunStatus {
+    /// Stable wire string for JSON / human output.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Unavailable => "unavailable",
+            Self::Partial => "partial",
+            Self::Invalid => "invalid",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AnalysisResult {
+    /// Test-harness registry projections (#3532): what each exact
+    /// registration established for this run — harness kind, provenance,
+    /// subject identity, selector capability, and typed limitations.
+    /// Empty when the repository has no registrations.
+    pub harness_projections: Vec<harness_projection::TestHarnessProjection>,
+    /// Producer-owned completeness and limitation facts. Diff/worktree
+    /// pipelines populate this; repo-scope analysis has no diff denominator.
+    pub(crate) analysis_outcome: Option<crate::analysis_outcome::AnalysisOutcome>,
+    pub summary: Summary,
+    pub findings: Vec<Finding>,
+    /// Advisory records for preview-language files in the analyzed scope.
+    ///
+    /// Empty when only Rust (stable) files are in scope. Non-empty only when
+    /// at least one file routed to a preview adapter (TypeScript/JS or Python).
+    pub preview_language_advisories: Vec<PreviewLanguageAdvisory>,
+    /// Per-language run-status records for languages that did NOT complete
+    /// successfully. Empty when every enabled language ran to completion
+    /// (the common single-language-success case). Non-abort contract: a
+    /// failure here does not abort the report (Campaign 31 PR 10, #1403).
+    pub language_runs: Vec<LanguageRun>,
+    /// Partial diff-scope run state (RIPR-PROP-0019, #1999). `Some` only when
+    /// the diff exceeded the partial-selection budget and the run analyzed a
+    /// deterministic bounded partition instead of the full diff
+    /// (`limited_partial_scope`). A partial result is advisory only — never a
+    /// gate, baseline, badge, or RIPR Zero input — and the uninspected
+    /// accounting on the record is a lower bound, not an estimate.
+    pub partial_scope: Option<PartialDiffScope>,
+    /// The base ref the diff loader actually used for this run (#3940):
+    /// the explicit base when one was given, the resolved default base
+    /// otherwise, and `None` when no base was involved (diff-file/stdin
+    /// inputs, repo-scope runs, subject-materialized runs).
+    pub effective_base: Option<String>,
+}
+
+/// Default language list when callers do not pass `[languages]` config.
+///
+/// Keeps existing public entry points (`run_analysis`, `run_repo_analysis`)
+/// behaviorally identical to the pre-Campaign-27 Rust-only pipeline.
+const DEFAULT_LANGUAGES: &[language::LanguageId] = &[language::LanguageId::Rust];
+
+/// Rejects immutable Git candidate subjects at the direct analysis entry
+/// points (#3276): executing a subject here would silently fall back to
+/// worktree/diff semantics. Subject inputs are bound, validated, and —
+/// once the object producer lands (#3277) — consumed through the
+/// `check_workspace*` entries only.
+fn reject_git_candidate_subject(options: &AnalysisOptions) -> Result<(), String> {
+    if options.git_candidate.is_some() {
+        return Err(crate::domain::GitCandidateSubjectError::ExecutionUnsupported.to_string());
+    }
+    Ok(())
+}
+
+pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
+    reject_git_candidate_subject(options)?;
+    run_analysis_with_oracle_policy(options, &OraclePolicy::default(), DEFAULT_LANGUAGES)
+}
+
+pub(crate) fn run_analysis_with_oracle_policy(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy, languages)
+}
+
+pub(crate) fn run_analysis_with_oracle_policy_and_generated_file_patterns(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+    generated_file_patterns: &[String],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+    )
+}
+
+pub(crate) fn run_worktree_analysis_with_oracle_policy_and_generated_file_patterns(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+    generated_file_patterns: &[String],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_worktree_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+    )
+}
+
+pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
+    reject_git_candidate_subject(options)?;
+    run_repo_analysis_with_oracle_policy(options, &OraclePolicy::default(), DEFAULT_LANGUAGES)
+}
+
+pub(crate) fn run_repo_analysis_with_oracle_policy(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_repo_pipeline_with_oracle_policy(options, oracle_policy, languages)
+}
+
+pub(crate) fn run_repo_analysis_with_oracle_policy_and_generated_file_patterns(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+    generated_file_patterns: &[String],
+) -> Result<AnalysisResult, String> {
+    pipeline::run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
+        options,
+        oracle_policy,
+        languages,
+        generated_file_patterns,
+    )
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChangedLineOwner {
+    pub(crate) file: PathBuf,
+    pub(crate) line: usize,
+    pub(crate) owner: String,
+}
+
+pub(crate) fn owner_symbols_for_lines(
+    root: &Path,
+    lines: &[(PathBuf, usize)],
+) -> Result<Vec<ChangedLineOwner>, String> {
+    changed_line_ownership_for_lines(root, lines).map(|ownership| ownership.owners)
+}
+
+/// Owner attribution for changed lines from one Rust index build.
+///
+/// `owners` holds the innermost owner function of each changed line (the
+/// historical `owner_symbols_for_lines` projection). `enclosing_owners` holds
+/// every function whose span contains a changed line, so a consumer can tell
+/// whether an outer owner's span overlaps the diff even when attribution named
+/// a nested function. A line outside every function span has no entry in
+/// either list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChangedLineOwnership {
+    pub(crate) owners: Vec<ChangedLineOwner>,
+    pub(crate) enclosing_owners: Vec<ChangedLineOwner>,
+}
+
+pub(crate) fn changed_line_ownership_for_lines(
+    root: &Path,
+    lines: &[(PathBuf, usize)],
+) -> Result<ChangedLineOwnership, String> {
+    let files = lines
+        .iter()
+        .map(|(file, _)| file.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let index = rust_index::build_index(root, &files)?;
+    let owners = lines
+        .iter()
+        .filter_map(|(file, line)| {
+            rust_index::find_owner_function(&index, file, *line).map(|function| ChangedLineOwner {
+                file: file.clone(),
+                line: *line,
+                owner: function.id.to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let enclosing_owners = lines
+        .iter()
+        .flat_map(|(file, line)| {
+            rust_index::find_enclosing_functions(&index, file, *line).map(|function| {
+                ChangedLineOwner {
+                    file: file.clone(),
+                    line: *line,
+                    owner: function.id.to_string(),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(ChangedLineOwnership {
+        owners: sorted_owners(owners),
+        enclosing_owners: sorted_owners(enclosing_owners),
+    })
+}
+
+fn sorted_owners(mut owners: Vec<ChangedLineOwner>) -> Vec<ChangedLineOwner> {
+    owners.sort_by(|left, right| {
+        left.file
+            .cmp(&right.file)
+            .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.owner.cmp(&right.owner))
+    });
+    owners.dedup();
+    owners
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "Test fixture builders use unwrap on fs operations against fresh temp dirs; receipted via policy/no-panic-allowlist.toml entries for crates/ripr/src/analysis/mod.rs."
+)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn stable_path_text_escapes_reserved_percent_on_every_platform() {
+        assert_eq!(
+            stable_path_text(Path::new("pricing_%FF.rs")),
+            "pricing_%25FF.rs"
+        );
+        assert_ne!(
+            stable_path_text(Path::new("pricing_%FF.rs")),
+            "pricing_%FF.rs"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stable_path_text_keeps_invalid_byte_encoding_distinct_from_literal_escape() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let invalid = PathBuf::from(OsString::from_vec(b"pricing_\xff.rs".to_vec()));
+        let literal = Path::new("pricing_%FF.rs");
+
+        assert_eq!(stable_path_text(&invalid), "pricing_%FF.rs");
+        assert_eq!(stable_path_text(literal), "pricing_%25FF.rs");
+        assert_ne!(stable_path_text(&invalid), stable_path_text(literal));
+    }
+
+    /// Each rejection branch of the rerun-anchor guard, asserted by reason so a
+    /// single platform's `is_absolute()` behavior cannot mask an unexercised
+    /// branch.
+    ///
+    /// These shapes are platform-independent: a leading separator yields
+    /// `RootDir` on both Windows and Unix, and `..` yields `ParentDir` on both.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn scope_anchor_escape_reason_names_each_rejection_branch() {
+        // Accepted: strictly root-relative anchors.
+        for accepted in ["foo", "src/discount.ts", "./src/discount.ts", "a/b/c.tsx"] {
+            assert_eq!(
+                scope_anchor_escape_reason(Path::new(accepted)),
+                None,
+                "{accepted} is root-relative and must be accepted"
+            );
+        }
+
+        assert_eq!(
+            scope_anchor_escape_reason(Path::new("")),
+            Some("empty anchor")
+        );
+        for traversal in ["../outside.ts", "src/../../outside.ts", ".."] {
+            assert_eq!(
+                scope_anchor_escape_reason(Path::new(traversal)),
+                Some("parent traversal"),
+                "{traversal} must be refused as traversal"
+            );
+        }
+        // The regression this guard exists for: rooted but NOT absolute on
+        // Windows. Only a *forward* slash is a separator on both platforms, so
+        // only these shapes yield `RootDir` everywhere. Backslash-leading and
+        // drive-prefixed shapes are Windows-only and are asserted separately.
+        for rooted in ["/etc/hostname", "/foo", "/a/b/c.ts"] {
+            assert_eq!(
+                scope_anchor_escape_reason(Path::new(rooted)),
+                Some("rooted path"),
+                "{rooted} must be refused as rooted"
+            );
+        }
+    }
+
+    /// Backslash separators, drive letters, and UNC prefixes are Windows-only
+    /// path syntax, so these shapes can only be asserted there.
+    #[cfg(all(windows, feature = "lang-typescript"))]
+    #[test]
+    fn scope_anchor_escape_reason_refuses_windows_rooted_and_prefixed_paths() {
+        // A backslash is a separator on Windows, yielding `RootDir`.
+        assert_eq!(
+            scope_anchor_escape_reason(Path::new(r"\foo")),
+            Some("rooted path")
+        );
+        // `check-local-context` forbids drive-letter path literals in tracked
+        // files, so the drive shapes are assembled from parts.
+        let drive = "C:";
+        for prefixed in [
+            format!(r"{drive}\x"),
+            r"\\srv\share\x".to_string(),
+            format!(r"\\?\{drive}\x"),
+        ] {
+            assert_eq!(
+                scope_anchor_escape_reason(Path::new(&prefixed)),
+                Some("drive or UNC prefix"),
+                "{prefixed} must be refused as a prefixed path"
+            );
+        }
+    }
+
+    /// On Unix neither a backslash nor a drive letter is path syntax, so both
+    /// are ordinary relative filenames and must be accepted rather than refused
+    /// by accident.
+    #[cfg(all(unix, feature = "lang-typescript"))]
+    #[test]
+    fn scope_anchor_escape_reason_treats_windows_syntax_as_unix_filenames() {
+        // Assembled from parts: `check-local-context` forbids drive-letter
+        // literals in tracked files.
+        let drive = "C:";
+        for filename in [r"\foo".to_string(), format!(r"{drive}\x")] {
+            assert_eq!(
+                scope_anchor_escape_reason(Path::new(&filename)),
+                None,
+                "{filename} is an ordinary Unix filename"
+            );
+        }
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-{name}-{stamp}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn analyzes_simple_predicate_gap() {
+        let root = temp_dir("simple");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("tests")).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname='x'\nversion='0.1.0'\nedition='2024'\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn price(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold { amount - 10 } else { amount }
+}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("tests/pricing.rs"),
+            r#"
+#[test]
+fn premium_customer_gets_discount() {
+    let total = x::price(10000, 100);
+    assert!(total > 0);
+}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("diff.patch"),
+            r#"diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,3 +1,3 @@
+ pub fn price(amount: i32, threshold: i32) -> i32 {
++    if amount >= threshold { amount - 10 } else { amount }
+ }
+"#,
+        )
+        .unwrap();
+        let out = run_analysis(&AnalysisOptions {
+            root: root.clone(),
+            base: None,
+            diff_file: Some(root.join("diff.patch")),
+            mode: AnalysisMode::Draft,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })
+        .unwrap();
+        assert!(!out.findings.is_empty());
+        assert!(
+            out.findings
+                .iter()
+                .any(|f| f.class == crate::domain::ExposureClass::WeaklyExposed
+                    || f.class == crate::domain::ExposureClass::InfectionUnknown)
+        );
+
+        let instant = run_analysis(&AnalysisOptions {
+            root: root.clone(),
+            base: None,
+            diff_file: Some(root.join("diff.patch")),
+            mode: AnalysisMode::Instant,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })
+        .unwrap();
+        assert!(instant.findings.iter().any(|finding| {
+            finding.class == crate::domain::ExposureClass::NoStaticPath
+                && finding.related_tests.is_empty()
+        }));
+    }
+
+    #[test]
+    fn repo_analysis_finds_predicate_in_production_file() -> Result<(), String> {
+        let root = temp_dir("repo_pred");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::create_dir_all(root.join("tests"))
+            .map_err(|e| format!("failed to create tests dir: {e}"))?;
+        fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname='x'\nversion='0.1.0'\nedition='2024'\n",
+        )
+        .map_err(|e| format!("failed to write Cargo.toml: {e}"))?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn price(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold { amount - 10 } else { amount }
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write src/lib.rs: {e}"))?;
+        fs::write(
+            root.join("tests/pricing.rs"),
+            r#"
+#[test]
+fn premium_customer_gets_discount() {
+    let total = x::price(10000, 100);
+    assert!(total > 0);
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write tests/pricing.rs: {e}"))?;
+
+        let out = run_repo_analysis(&AnalysisOptions {
+            root,
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })?;
+
+        if out.findings.is_empty() {
+            return Err("expected at least one finding from repo analysis".to_string());
+        }
+        if !out
+            .findings
+            .iter()
+            .any(|f| f.probe.family == crate::domain::ProbeFamily::Predicate)
+        {
+            return Err("expected at least one Predicate family finding".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "lang-typescript")]
+    fn typescript_repo_readiness_uses_preview_file_scope() -> Result<(), String> {
+        let root = temp_dir("ts_readiness_scope");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::create_dir_all(root.join("fixtures/noise/src"))
+            .map_err(|e| format!("failed to create ignored fixture dir: {e}"))?;
+        fs::write(
+            root.join("package.json"),
+            r#"{"devDependencies":{"vitest":"^1.0.0"}}"#,
+        )
+        .map_err(|e| format!("failed to write package.json: {e}"))?;
+        fs::write(root.join("pnpm-lock.yaml"), "")
+            .map_err(|e| format!("failed to write pnpm-lock.yaml: {e}"))?;
+        fs::write(root.join("src/app.ts"), "export const value = 1;\n")
+            .map_err(|e| format!("failed to write source file: {e}"))?;
+        fs::write(
+            root.join("src/app.test.ts"),
+            "import { value } from './app';\n",
+        )
+        .map_err(|e| format!("failed to write test file: {e}"))?;
+        fs::write(
+            root.join("fixtures/noise/src/noise.test.ts"),
+            "test('noise', () => {});\n",
+        )
+        .map_err(|e| format!("failed to write ignored fixture test file: {e}"))?;
+
+        let readiness = workspace_typescript_repo_readiness(&root)
+            .ok_or_else(|| "expected TypeScript readiness card".to_string())?;
+
+        assert_eq!(readiness.source_file_count, 1);
+        assert_eq!(readiness.test_file_count, 1);
+        assert_eq!(readiness.verify_command_count, 1);
+        assert_eq!(readiness.runner_status, "resolved");
+
+        fs::remove_dir_all(&root).map_err(|e| format!("failed to remove temp dir: {e}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn owner_symbols_for_lines_names_containing_function() -> Result<(), String> {
+        let root = temp_dir("owner_lines");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    let discount = 10;
+    if amount >= threshold {
+        amount - discount
+    } else {
+        amount
+    }
+}
+
+pub fn unrelated() -> i32 {
+    0
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write src/lib.rs: {e}"))?;
+
+        let owners = owner_symbols_for_lines(
+            &root,
+            &[
+                (PathBuf::from("src/lib.rs"), 3),
+                (PathBuf::from("src/lib.rs"), 11),
+            ],
+        )?;
+
+        if !owners
+            .iter()
+            .any(|owner| owner.line == 3 && owner.owner.ends_with("discounted_total"))
+        {
+            return Err(format!("expected discounted_total owner, got {owners:?}"));
+        }
+        if !owners
+            .iter()
+            .any(|owner| owner.line == 11 && owner.owner.ends_with("unrelated"))
+        {
+            return Err(format!("expected unrelated owner, got {owners:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_line_ownership_names_outer_owner_of_nested_function_line() -> Result<(), String> {
+        // Review placement (RIPR-SPEC-0012) needs the outer owner span for a
+        // changed line inside a nested fn; a blank line between functions
+        // has no owner at all.
+        let root = temp_dir("owner_chain_lines");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    fn clamp(value: i32) -> i32 {
+        value.max(0)
+    }
+    if amount >= threshold { clamp(amount - 10) } else { amount }
+}
+
+pub fn unrelated() -> i32 {
+    0
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write src/lib.rs: {e}"))?;
+
+        let ownership = changed_line_ownership_for_lines(
+            &root,
+            &[
+                (PathBuf::from("src/lib.rs"), 4),
+                (PathBuf::from("src/lib.rs"), 8),
+                (PathBuf::from("src/lib.rs"), 10),
+            ],
+        );
+        fs::remove_dir_all(&root).map_err(|e| format!("failed to remove temp dir: {e}"))?;
+        let ownership = ownership?;
+
+        let owners_at = |owners: &[ChangedLineOwner], line: usize| {
+            let mut names = owners
+                .iter()
+                .filter(|owner| owner.line == line)
+                .map(|owner| {
+                    owner
+                        .owner
+                        .rsplit("::")
+                        .next()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(owners_at(&ownership.owners, 4), vec!["clamp"]);
+        assert_eq!(
+            owners_at(&ownership.enclosing_owners, 4),
+            vec!["clamp", "discounted_total"]
+        );
+        assert!(owners_at(&ownership.owners, 8).is_empty());
+        assert!(owners_at(&ownership.enclosing_owners, 8).is_empty());
+        assert_eq!(
+            owners_at(&ownership.enclosing_owners, 10),
+            vec!["unrelated"]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repo_analysis_excludes_test_files_from_probe_seed() -> Result<(), String> {
+        let root = temp_dir("repo_exclude_tests");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::create_dir_all(root.join("tests"))
+            .map_err(|e| format!("failed to create tests dir: {e}"))?;
+        fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname='x'\nversion='0.1.0'\nedition='2024'\n",
+        )
+        .map_err(|e| format!("failed to write Cargo.toml: {e}"))?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn dummy() {
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write src/lib.rs: {e}"))?;
+        fs::write(
+            root.join("tests/test_file.rs"),
+            r#"
+#[test]
+fn test_with_predicate() {
+    let x = 5;
+    if x > 3 {
+        assert!(true);
+    }
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write tests/test_file.rs: {e}"))?;
+
+        let out = run_repo_analysis(&AnalysisOptions {
+            root,
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })?;
+
+        for finding in &out.findings {
+            let file_str = finding.probe.location.file.to_string_lossy().to_lowercase();
+            if file_str.contains("test") || file_str.contains("tests") {
+                return Err(format!(
+                    "expected no findings from test files, but found one at {}",
+                    file_str
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn empty_diff_yields_zero_diff_findings_but_repo_has_findings() -> Result<(), String> {
+        let root = temp_dir("repo_vs_diff");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::create_dir_all(root.join("tests"))
+            .map_err(|e| format!("failed to create tests dir: {e}"))?;
+        fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname='x'\nversion='0.1.0'\nedition='2024'\n",
+        )
+        .map_err(|e| format!("failed to write Cargo.toml: {e}"))?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn price(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold { amount - 10 } else { amount }
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write src/lib.rs: {e}"))?;
+        fs::write(
+            root.join("tests/pricing.rs"),
+            r#"
+#[test]
+fn premium_customer_gets_discount() {
+    let total = x::price(10000, 100);
+    assert!(total > 0);
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write tests/pricing.rs: {e}"))?;
+        fs::write(
+            root.join("empty.patch"),
+            r#"diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+"#,
+        )
+        .map_err(|e| format!("failed to write empty.patch: {e}"))?;
+
+        let diff_out = run_analysis(&AnalysisOptions {
+            root: root.clone(),
+            base: None,
+            diff_file: Some(root.join("empty.patch")),
+            mode: AnalysisMode::Draft,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })?;
+
+        if !diff_out.findings.is_empty() {
+            return Err("expected zero findings from empty diff".to_string());
+        }
+
+        let repo_out = run_repo_analysis(&AnalysisOptions {
+            root,
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })?;
+
+        if repo_out.findings.is_empty() {
+            return Err("expected at least one finding from repo analysis".to_string());
+        }
+        Ok(())
+    }
+}
+
+pub(crate) mod git_candidate_execution;
+
+#[cfg(test)]
+mod git_candidate_entry_tests {
+    use super::*;
+    use crate::domain::{GitCandidateBase, GitCandidateSubject, GitObjectId};
+
+    fn subject_options() -> Result<AnalysisOptions, String> {
+        Ok(AnalysisOptions {
+            git_candidate: Some(GitCandidateSubject::new(
+                std::env::temp_dir(),
+                GitCandidateBase::EmptyTree,
+                GitObjectId::parse(
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                )
+                .map_err(|error| error.to_string())?,
+            )),
+            resolved_subject_identity: None,
+            ..default_options_for_entry_test()?
+        })
+    }
+
+    fn default_options_for_entry_test() -> Result<AnalysisOptions, String> {
+        Ok(AnalysisOptions {
+            root: std::env::temp_dir(),
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            resolved_subject_identity: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn direct_analysis_entries_reject_git_candidate_subjects() -> Result<(), String> {
+        // #3276: the direct public entries must never execute a subject
+        // against worktree/diff semantics. The named error is the single
+        // authority (GitCandidateSubjectError::ExecutionUnsupported).
+        let options = subject_options()?;
+        let error = run_analysis(&options)
+            .err()
+            .unwrap_or_else(|| "expected rejection".to_string());
+        assert!(
+            error.contains("refusing to fall back"),
+            "run_analysis must fail closed: {error:?}"
+        );
+        let repo_error = run_repo_analysis(&options)
+            .err()
+            .unwrap_or_else(|| "expected rejection".to_string());
+        assert!(
+            repo_error.contains("refusing to fall back"),
+            "run_repo_analysis must fail closed: {repo_error:?}"
+        );
+        Ok(())
+    }
+}

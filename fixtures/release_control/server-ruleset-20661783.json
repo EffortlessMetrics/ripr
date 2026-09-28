@@ -1,0 +1,29 @@
+{
+  "id": 20661783,
+  "name": "release-transaction-pins",
+  "target": "tag",
+  "source_type": "Repository",
+  "source": "EffortlessMetrics/ripr-swarm",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": ["refs/tags/ripr-release-*"]
+    }
+  },
+  "rules": [
+    {"type": "update"},
+    {"type": "deletion"}
+  ],
+  "node_id": "RRS_lACqUmVwb3NpdG9yec5KJLHRzgE7Rhc",
+  "created_at": "2026-08-10T19:27:20.510Z",
+  "updated_at": "2026-08-10T19:27:20.522Z",
+  "_links": {
+    "self": {
+      "href": "https://api.github.com/repos/EffortlessMetrics/ripr-swarm/rulesets/20661783"
+    },
+    "html": {
+      "href": "https://github.com/EffortlessMetrics/ripr-swarm/rules/20661783"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_reexport_single_hop/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.
+  File: src/util.ts:4
+  Language: typescript
+  Language status: preview
+  Static exposure: exposed (warning, confidence 0.60)
+  Changed behavior: return false;
+  Discriminator (observed, advisory): Related test reaches `isRawNetworkError` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant…
+  Related test: test/util.test.ts:3 isRawNetworkError returns true for network fetch errors
+  Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
+  Evidence:
+    - reach yes: 2 related test(s) found for owner `isRawNetworkError`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 6 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/typescript_reexport_single_hop/input --diff fixtures/typescript_reexport_single_hop/diff.patch --mode fast probe:src_util.ts:typescript_preview:5a933676
+  ripr context --root fixtures/typescript_reexport_single_hop/input --diff fixtures/typescript_reexport_single_hop/diff.patch --mode fast --at probe:src_util.ts:typescript_preview:5a933676
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

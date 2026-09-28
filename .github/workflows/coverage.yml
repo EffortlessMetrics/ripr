@@ -1,0 +1,67 @@
+name: Coverage
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+jobs:
+  coverage:
+    name: rust-coverage
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'coverage') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Clean coverage state
+        run: cargo llvm-cov clean --workspace
+
+      # Binary-spawning tests resolve a pre-built target/debug/ripr and never
+      # spawn a nested build; the llvm-cov layout does not populate the default
+      # target dir, so build it plainly first (#3764).
+      - name: Pre-build spawned binaries
+        run: cargo build -p ripr
+
+      - name: Generate coverage
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-lcov
+          path: lcov.info
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Upload coverage to Codecov
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: codecov/codecov-action@v6
+        with:
+          files: lcov.info
+          flags: rust
+          name: rust-workspace
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Explain skipped Codecov upload
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: echo "Skipping Codecov upload for fork pull requests because repository secrets are unavailable."

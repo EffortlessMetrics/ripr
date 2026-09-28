@@ -1,0 +1,156 @@
+# kind|value|reason
+
+confidence_label|ambiguous_runtime_join|Mutation calibration confidence label.
+confidence_label|contradicts_static_clean|Mutation calibration confidence label.
+confidence_label|contradicts_static_gap|Mutation calibration confidence label.
+confidence_label|no_runtime_data|Mutation calibration confidence label.
+confidence_label|runtime_only_signal|Mutation calibration confidence label.
+confidence_label|supports_static_clean|Mutation calibration confidence label.
+confidence_label|supports_static_gap|Mutation calibration confidence label.
+confidence|high|Confidence value.
+confidence|low|Confidence value.
+confidence|medium|Confidence value.
+confidence|unknown|Confidence value.
+context_version|1.0|Current agent context packet version.
+delta|control|Delta kind value.
+delta|effect|Delta kind value.
+delta|unknown|Delta kind value.
+delta|value|Delta kind value.
+evidence_record_schema_version|0.1|Current evidence_record schema version.
+exposure_class|exposed|Static classification value.
+exposure_class|infection_unknown|Static classification value.
+exposure_class|no_static_path|Static classification value.
+exposure_class|propagation_unknown|Static classification value.
+exposure_class|reachable_unrevealed|Static classification value.
+exposure_class|static_unknown|Static classification value.
+exposure_class|weakly_exposed|Static classification value.
+flow_sink|call_effect|Flow sink value.
+flow_sink|error_variant|Flow sink value.
+flow_sink|match_arm|Flow sink value.
+flow_sink|return_value|Flow sink value.
+flow_sink|struct_field|Flow sink value.
+flow_sink|unknown|Flow sink value.
+ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit forces unknown outcome.
+ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
+ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
+ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
+kind|python_repair_driver_binding|Prepare binding and apply record for the governed Python repair driver (schema 0.1).
+kind|python_repair_verification_check_report|Structural check report for Python repair verification receipts (schema 0.1).
+kind|python_repair_verification_receipt|Immutable Python repair verification candidate receipt (schema 0.1).
+oracle_alignment|alias|Python oracle observes an import alias of the changed owner.
+oracle_alignment|changed_sink_token|Python oracle observes a changed-sink token from the changed line.
+oracle_alignment|direct|Python oracle observes the changed owner by name.
+oracle_alignment|orthogonal|Python strong oracle observes a different sink than the change.
+oracle_alignment|unknown|No strong Python oracle observed the changed sink.
+oracle_kind|broad_error|Oracle kind value.
+oracle_kind|exact_error_variant|Oracle kind value.
+oracle_kind|exact_value|Oracle kind value.
+oracle_kind|guarded_result_match|Oracle kind value.
+oracle_kind|mock_expectation|Oracle kind value.
+oracle_kind|relational_check|Oracle kind value.
+oracle_kind|smoke_only|Oracle kind value.
+oracle_kind|snapshot|Oracle kind value.
+oracle_kind|unknown|Oracle kind value.
+oracle_kind|whole_object_equality|Oracle kind value.
+oracle_strength|medium|Oracle strength value.
+oracle_strength|none|Oracle strength value.
+oracle_strength|smoke|Oracle strength value.
+oracle_strength|strong|Oracle strength value.
+oracle_strength|unknown|Oracle strength value.
+oracle_strength|weak|Oracle strength value.
+probe_family|call_deletion|Probe family value.
+probe_family|error_path|Probe family value.
+probe_family|field_construction|Probe family value.
+probe_family|match_arm|Probe family value.
+probe_family|predicate|Probe family value.
+probe_family|return_value|Probe family value.
+probe_family|side_effect|Probe family value.
+probe_family|static_unknown|Probe family value.
+schema_version|0.2|Current check JSON schema version.
+severity|info|Output and LSP severity value.
+severity|note|Output and LSP severity value.
+severity|warning|Output and LSP severity value.
+source_currentness|base_deleted|Finding source removed on the candidate side; base-side evidence, not a candidate edit target (#3280).
+source_currentness|candidate_current|Finding source present in the candidate source at the recorded location (#3280).
+source_currentness|moved_or_renamed|Movement evidence exists but candidate identity unproven; not a candidate edit target (#3280).
+source_currentness|unresolved_subject|Producing surface does not resolve source currentness; explicit unknown (#3280).
+stage_state|not_applicable|RIPR stage state value.
+stage_state|no|RIPR stage state value.
+stage_state|opaque|RIPR stage state value.
+stage_state|unknown|RIPR stage state value.
+stage_state|weak|RIPR stage state value.
+stage_state|yes|RIPR stage state value.
+stop_reason|async_boundary_opaque|Static analysis stop reason value.
+stop_reason|dynamic_dispatch_unresolved|Static analysis stop reason value.
+stop_reason|external_crate_boundary|Static analysis stop reason value.
+stop_reason|feature_unknown|Static analysis stop reason value.
+stop_reason|fixture_opaque|Static analysis stop reason value.
+stop_reason|infection_evidence_unknown|Static analysis stop reason value.
+stop_reason|macro_reach_unresolved|Static analysis stop reason value.
+stop_reason|max_depth_reached|Static analysis stop reason value.
+stop_reason|no_changed_rust_line|Static analysis stop reason value.
+stop_reason|proc_macro_opaque|Static analysis stop reason value.
+stop_reason|propagation_evidence_unknown|Static analysis stop reason value.
+stop_reason|static_probe_unknown|Static analysis stop reason value.
+stop_reason|transitive_reach_unresolved|Static analysis stop reason value.
+value_context|assertion_argument|Activation value context.
+value_context|builder_method|Activation value context.
+value_context|enum_variant|Activation value context.
+value_context|function_argument|Activation value context.
+value_context|return_value|Activation value context.
+value_context|table_row|Activation value context.
+value_context|unknown|Activation value context.
+source_promotion_resolved_tree_schema|ripr.source_promotion_resolved_tree_validation.v1|Canonical source-trusted reviewed-tree validation receipt schema.
+source_promotion_resolved_tree_status|rejected|Reviewed tree is ineligible for direct-J construction.
+source_promotion_resolved_tree_status|validated|Every required source-governed command passed for the exact bound tree and sidecars.
+source_promotion_command_state|failed|Required governed command executed and failed.
+source_promotion_command_state|not_run|Required governed command did not execute and carries an explicit stop reason.
+source_promotion_command_state|passed|Required governed command executed successfully.
+source_promotion_command_state|unavailable|Required governed command could not be executed or its evidence could not be retained.
+source_promotion_path_role|os_temp_disposable_checkout|Materialized reviewed tree lives in an operating-system temporary checkout and is not authoritative.
+source_promotion_path_role|source_checkout_regular_file|Bound sidecar is a non-symlink regular file beneath the exact source checkout.
+source_promotion_control_schema|ripr.source_promotion_trusted_builder.v1|Trusted source-built controller executable receipt schema.
+source_promotion_control_schema|ripr.source_promotion_resolved_tree_admission.v1|Exact resolved-tree admission receipt schema.
+source_promotion_control_schema|ripr.source_promotion_exact_join_construction.v1|Unreferenced exact-J construction receipt schema.
+source_promotion_control_schema|ripr.source_promotion_candidate_ref_publication.v1|Guarded candidate-ref publication receipt schema.
+source_promotion_control_schema|ripr.source_promotion_control_packet.v1|Indexed deterministic controller packet schema.
+source_promotion_control_schema|ripr.source_promotion_integration_index.v1|Typed producer-bound integration receipt index schema.
+source_promotion_control_schema|ripr.source_promotion_tree_qualification.v1|Terminal exact-tree qualification receipt schema consumed by construction.
+source_promotion_control_status|admitted|Exact resolved-tree evidence is eligible for later qualification and construction.
+source_promotion_control_status|built|Trusted builder evidence binds the source-built controller executable.
+source_promotion_control_status|constructed|One exact unreferenced two-parent join object was constructed.
+source_promotion_control_status|published|Machine-readable guarded-push status reported an actual update of the exact target ref, the exact candidate ref was observed at the constructed join, and all bound post-push authorities remained current.
+source_promotion_control_status|published_but_invalidated|The remote candidate ref reached the constructed join but a bound input invalidated during publication or the post-push local candidate-ref observation was unavailable.
+source_promotion_control_status|publication_state_unknown|Final remote state was unavailable or equaled the join without machine-readable actual target-update attribution; an exit-zero up-to-date/no-op push is not publication attribution.
+source_promotion_control_status|reserved_before_side_effects|The exclusive output journal exists, but a missing packet index requires Git and remote reconciliation before retry.
+source_promotion_control_status|rejected|The controller denied authority; counters and observations describe any operation already attempted.
+source_promotion_attempt_field|commit_tree_attempts|Count of guarded git commit-tree starts.
+source_promotion_attempt_field|local_ref_attempts|Count of local candidate-ref create, update, or rollback attempts.
+source_promotion_attempt_field|merge_command_attempts|Count of merge-command emissions; this controller requires zero.
+source_promotion_attempt_field|remote_push_attempts|Count of exact-lease remote push starts.
+source_promotion_qualification_lane|editor_package_linux|Linux clean editor/package proof.
+source_promotion_qualification_lane|editor_package_windows|Windows clean editor/package proof.
+source_promotion_qualification_lane|rust_product|Full Rust and product proof.
+source_promotion_qualification_lane|source_governance|Source-governed policy and contract proof.
+source_promotion_qualification_lane|source_survivors|Source-only survivor proof.
+source_promotion_qualification_lane|trusted_product_journeys|Trusted packaged product journey proof.
+source_promotion_qualification_lane|untrusted_workspace_contract|Production untrusted-workspace zero-work proof.
+source_promotion_qualification_lane|w7_product|Frozen-W7 analyzer, CLI, editor, schema, fixture, and product proof.
+source_promotion_admission_workflow_schema|ripr.source_promotion_admission_workflow.v1|Normalized trusted admission workflow disposition schema.
+source_promotion_admission_workflow_packet_schema|ripr.source_promotion_admission_workflow_packet.v1|Indexed admission workflow packet schema.
+source_promotion_admission_workflow_schema|ripr.source_promotion_admission_request.v1|Pre-producer exact identity and locator request bound by its original byte digest.
+source_promotion_admission_workflow_status|admitted|Every exact input, required command, final reread, packet member, and mode-specific attempt invariant passed.
+source_promotion_admission_workflow_status|rejected|Admission workflow evidence is terminal non-green and retains the available failure reason and attempt state.
+source_promotion_admission_workflow_profile|j5_negative|Deterministic source-owned J5-shaped network-policy under-description fixture.
+source_promotion_admission_workflow_profile|live|Exact external source-promotion evidence profile.
+source_promotion_admission_workflow_profile|positive_synthetic|Deterministic source-owned terminal-admission fixture.
+source_promotion_network_policy_resolution_schema|ripr.source_promotion_network_policy_resolution.v1|Exact source/W7 network-policy resolution receipt schema.
+source_promotion_network_policy_resolution_schema|ripr.source_promotion_network_policy_checker_execution.v1|Environment-specific exact checker execution attestation bound to the stable resolution receipt.
+source_promotion_network_policy_resolution_schema|ripr.source_promotion_resolution_manifest_fragment.v1|Single-path integration manifest fragment schema.
+source_promotion_admission_workflow_mode|admit_only|Admission only; all mutation and publication attempt counters remain zero.
+source_promotion_admission_workflow_mode|constructor_dry_run|After terminal admission, permit at most one unreferenced commit-tree attempt in an isolated synthetic repository and no ref, push, merge, or publication attempt.
+source_promotion_admission_workflow_attempt_field|constructor_commit_tree_attempts|Count of constructor commit-tree starts in the isolated dry-run repository.
+source_promotion_admission_workflow_attempt_field|local_ref_attempts|Count of local ref mutation starts; this workflow requires zero.
+source_promotion_admission_workflow_attempt_field|merge_command_attempts|Count of merge-command emissions; this workflow requires zero.
+source_promotion_admission_workflow_attempt_field|release_or_publication_attempts|Count of release or publication operation starts; this workflow requires zero.
+source_promotion_admission_workflow_attempt_field|remote_push_attempts|Count of remote push starts; this workflow requires zero.

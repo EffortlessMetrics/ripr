@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "editor",
+  "sequence": 7,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2351",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {"must_include_0_11": 1},
+  "records": [
+    {
+      "commit_sha": "b7481357aab3b8a7e7c9b652d18763312fe801b6",
+      "pr": "EffortlessMetrics/ripr-swarm#2266",
+      "title": "perf(lsp): LoaderDefault workspaces carry the resolved default-base SHA",
+      "primary_category": "editor",
+      "change_class": "production_input_authority",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "default-base workspaces deduplicate and identify analysis against the exact resolved base commit",
+      "reason": "Resolving Git inputs once is incomplete if LoaderDefault records only the symbolic/default intent; movement of the selected base must defeat dedup and change snapshot identity.",
+      "non_claim": "The default-base selection algorithm remains the existing fail-closed loader policy.",
+      "secondary_impacts": ["ResolvedGitInputs", "input_identity", "deduplication", "spec_0142"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

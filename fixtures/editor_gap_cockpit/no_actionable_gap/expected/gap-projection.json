@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.1",
+  "case": "no_actionable_gap",
+  "state": "no_actionable_gap",
+  "language": "rust",
+  "language_status": "stable",
+  "diagnostics_projected": 0,
+  "actions_projected": [
+    "refresh"
+  ],
+  "fail_closed": true
+}

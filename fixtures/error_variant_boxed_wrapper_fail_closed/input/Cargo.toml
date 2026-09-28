@@ -1,0 +1,8 @@
+[package]
+name = "boxed_wrapper_fail_closed_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "boxed_wrapper_fail_closed_fixture"
+path = "src/lib.rs"

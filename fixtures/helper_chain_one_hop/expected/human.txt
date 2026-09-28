@@ -1,0 +1,31 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/helper_chain_one_hop/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/helper_chain_one_hop/input/src/lib.rs:2
+  Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Changed behavior: c == ' '
+  Missing discriminator: c == ' '
+  Related test: tests/classify.rs:4 leading_space_classifies_other
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach is_word_start: leading_space_classifies_other, letter_classifies_word
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 9 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/helper_chain_one_hop/input --diff fixtures/helper_chain_one_hop/diff.patch --mode fast probe:src_lib.rs:predicate:ac178c7f
+  ripr context --root fixtures/helper_chain_one_hop/input --diff fixtures/helper_chain_one_hop/diff.patch --mode fast --at probe:src_lib.rs:predicate:ac178c7f
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

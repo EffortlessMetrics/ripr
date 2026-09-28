@@ -1,0 +1,20 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,6 +17,6 @@ pub fn parcel_weight(kind: &str) -> u32 {
+ /// Handling fee in cents for fragile parcels.
+ pub fn fragile_fee(weight_grams: u32) -> u32 {
+-    if weight_grams > 2_000 {
++    if weight_grams >= 2_000 {
+         400
+     } else {
+         150
+@@ -26,6 +26,6 @@ pub fn fragile_fee(weight_grams: u32) -> u32 {
+ /// Surcharge in cents for bulky parcels.
+ pub fn bulky_fee(volume_litres: u32) -> u32 {
+-    if volume_litres > 50 {
++    if volume_litres >= 50 {
+         900
+     } else {
+         0

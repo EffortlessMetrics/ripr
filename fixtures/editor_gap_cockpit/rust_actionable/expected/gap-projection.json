@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "case": "rust_actionable",
+  "state": "actionable",
+  "language": "rust",
+  "language_status": "stable",
+  "diagnostics_projected": 1,
+  "actions_projected": [
+    "copy_repair_packet",
+    "open_related_test",
+    "copy_verify_command",
+    "copy_receipt_command",
+    "refresh"
+  ],
+  "fail_closed": false
+}

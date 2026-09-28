@@ -1,0 +1,204 @@
+name: Publish VSCode Extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label for the VSIX artifact, for example 0.2.0"
+        required: true
+      publish_vs_marketplace:
+        description: "Publish to VS Marketplace"
+        required: false
+        default: "false"
+      publish_open_vsx:
+        description: "Publish to Open VSX"
+        required: false
+        default: "false"
+  # No tag trigger and no default-on marketplace: each channel is dispatched
+  # explicitly per docs/RELEASE_TRANSACTION.md (#1646 owns the full topology).
+
+permissions:
+  contents: write
+
+jobs:
+  admit-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require exactly one marketplace channel and a release version
+        env:
+          PUBLISH_VS_MARKETPLACE: ${{ github.event.inputs.publish_vs_marketplace }}
+          PUBLISH_OPEN_VSX: ${{ github.event.inputs.publish_open_vsx }}
+          RAW_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          # Fail closed: one dispatch authorizes exactly one channel, so neither
+          # "no channel" (a Release write with no marketplace) nor "both" passes.
+          case "$PUBLISH_VS_MARKETPLACE/$PUBLISH_OPEN_VSX" in
+            true/false | false/true) ;;
+            *)
+              echo "::error::Set exactly one of publish_vs_marketplace or publish_open_vsx to true (got $PUBLISH_VS_MARKETPLACE/$PUBLISH_OPEN_VSX)"
+              exit 1
+              ;;
+          esac
+          if ! [[ "${RAW_VERSION#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::version must be a release version such as 0.11.0 (got $RAW_VERSION)"
+            exit 1
+          fi
+
+  package:
+    needs: admit-dispatch
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    env:
+      EXTENSION_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Package VSIX
+        run: |
+          version="${EXTENSION_VERSION#v}"
+          mkdir -p dist
+          npx @vscode/vsce package --out "dist/ripr-${version}.vsix"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-vsix
+          path: editors/vscode/dist/*.vsix
+
+  server-assets-ready:
+    needs: admit-dispatch
+    runs-on: ubuntu-latest
+    env:
+      RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Wait for server manifest
+        run: |
+          version="${RAW_VERSION#v}"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/ripr-server-manifest-v${version}.json"
+          for attempt in $(seq 1 90); do
+            status="$(curl -L -sS -o /dev/null -w "%{http_code}" "$url" || true)"
+            if [ "$status" = "200" ]; then
+              echo "Found $url"
+              exit 0
+            fi
+            echo "Waiting for $url (attempt $attempt/90, HTTP $status)"
+            sleep 20
+          done
+          echo "Server manifest was not available: $url" >&2
+          exit 1
+
+  publish-vs-marketplace:
+    needs: [package, server-assets-ready]
+    if: ${{ github.event.inputs.publish_vs_marketplace == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ripr-vsix
+          path: dist
+
+      - name: Require VSCE_PAT
+        if: ${{ env.VSCE_PAT == '' }}
+        run: |
+          echo "::error::VSCE_PAT is not configured; VS Code Marketplace publish cannot run."
+          exit 1
+
+      - name: Publish to VS Marketplace
+        if: ${{ env.VSCE_PAT != '' }}
+        run: |
+          version="${RAW_VERSION#v}"
+          vsix_file="dist/ripr-${version}.vsix"
+          PUBLISHED_VERSION="$(
+            npx -y @vscode/vsce show EffortlessMetrics.ripr --json 2>/dev/null \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['versions'][0]['version'])" \
+              2>/dev/null || echo ""
+          )"
+          if [ "$PUBLISHED_VERSION" = "$version" ]; then
+            echo "::warning::VS Code Marketplace already has version $version; skipping publish."
+            exit 0
+          fi
+          npx -y @vscode/vsce publish --packagePath "$vsix_file" --pat "$VSCE_PAT"
+
+  publish-open-vsx:
+    needs: [package, server-assets-ready]
+    if: ${{ github.event.inputs.publish_open_vsx == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ripr-vsix
+          path: dist
+
+      - name: Require OVSX_PAT
+        if: ${{ env.OVSX_PAT == '' }}
+        run: |
+          echo "::error::OVSX_PAT is not configured; Open VSX publish cannot run."
+          exit 1
+
+      - name: Publish to Open VSX
+        if: ${{ env.OVSX_PAT != '' }}
+        run: |
+          version="${RAW_VERSION#v}"
+          npx -y ovsx publish "dist/ripr-${version}.vsix" -p "$OVSX_PAT" --skip-duplicate
+
+  attach-release-asset:
+    # The Release tag comes from the version input, not the execution ref, so a
+    # fix-forward dispatch from a branch still attaches to the original Release.
+    needs: [admit-dispatch, package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ripr-vsix
+          path: dist
+
+      - name: Attach VSIX to GitHub Release
+        run: |
+          # The GitHub Release has exactly one creator (the release transaction).
+          # Attach to it only; never create it or replace an existing asset, so
+          # a second channel dispatch keeps the first attached VSIX.
+          set -euo pipefail
+          release_tag="v${RAW_VERSION#v}"
+          existing="$(gh release view "$release_tag" --json assets --jq '.assets[].name')"
+          for vsix in dist/*.vsix; do
+            name="$(basename "$vsix")"
+            if printf '%s\n' "$existing" | grep -Fxq "$name"; then
+              echo "$name is already attached to $release_tag; leaving it in place"
+            else
+              gh release upload "$release_tag" "$vsix"
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Through env, not template expansion, so the input is data; its
+          # format is checked in admit-dispatch.
+          RAW_VERSION: ${{ github.event.inputs.version }}

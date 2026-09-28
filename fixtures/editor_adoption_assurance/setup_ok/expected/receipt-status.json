@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/setup_ok",
+  "receipt_state": "receipt_missing",
+  "receipt_path": "target/ripr/agent/agent-receipt.json",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "gate_eligibility_claim": false,
+  "merge_readiness_claim": false,
+  "next_safe_action": "Run verify and emit a receipt after making one focused repair."
+}

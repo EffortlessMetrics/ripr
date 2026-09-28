@@ -1,0 +1,9 @@
+--- a/src/inventory.ts
++++ b/src/inventory.ts
+@@ -1,6 +1,6 @@
+ export function checkStock(quantity: number, minimum: number): boolean {
+-    if (quantity > minimum) {
++    if (quantity >= minimum) {
+         return true;
+     }
+     return false;

@@ -1,0 +1,1707 @@
+use super::super::rust_index::FunctionSummary;
+use super::propagation_witness::{
+    PropagationWitnessV1, complete_direct_witness, normalize_semantic_text,
+    valid_owner_bound_partial_witness,
+};
+use super::text::exact_error_variant;
+use crate::domain::*;
+
+pub(in crate::analysis) fn propagation_evidence(
+    probe: &Probe,
+    flow_sinks: &[FlowSinkFact],
+) -> StageEvidence {
+    if matches!(probe.family, ProbeFamily::StaticUnknown) {
+        return StageEvidence::new(
+            StageState::Unknown,
+            Confidence::Low,
+            "No propagation model is available for this changed syntax",
+        );
+    }
+
+    if let Some(sink) = flow_sinks
+        .iter()
+        .find(|sink| sink.kind != FlowSinkKind::Unknown)
+    {
+        StageEvidence::new(
+            StageState::Yes,
+            Confidence::Medium,
+            format!(
+                "Changed behavior appears to influence {}: {}",
+                sink.kind.label(),
+                sink.text
+            ),
+        )
+    } else {
+        StageEvidence::new(
+            StageState::Unknown,
+            Confidence::Low,
+            "Propagation is not statically obvious from syntax-first analysis",
+        )
+    }
+}
+
+/// Production propagation gate for PR-B's bounded direct sink slice.  The
+/// legacy helper above remains available to characterization tests and to
+/// effect-family callers; only this path can upgrade direct return/error/field
+/// sinks from syntax evidence to `Yes`.
+pub(in crate::analysis) fn propagation_evidence_with_witness(
+    probe: &Probe,
+    flow_sinks: &[FlowSinkFact],
+    witness: Option<&PropagationWitnessV1>,
+) -> StageEvidence {
+    if matches!(probe.family, ProbeFamily::StaticUnknown) {
+        return propagation_evidence(probe, flow_sinks);
+    }
+
+    let sink = if let Some(witness) = witness {
+        flow_sinks.iter().find(|sink| {
+            sink.owner.as_ref() == Some(&witness.behavior.owner)
+                && sink.kind.as_str() == witness.sink.kind
+                && normalize_semantic_text(&sink.text)
+                    == normalize_semantic_text(&witness.sink.identity)
+        })
+    } else {
+        flow_sinks
+            .iter()
+            .find(|sink| sink.kind != FlowSinkKind::Unknown)
+    };
+
+    let Some(sink) = sink else {
+        if !flow_sinks
+            .iter()
+            .any(|sink| sink.kind != FlowSinkKind::Unknown)
+        {
+            return propagation_evidence(probe, flow_sinks);
+        }
+        return StageEvidence::new(
+            StageState::Weak,
+            Confidence::Low,
+            "No complete owner-bound propagation witness found for direct sink".to_string(),
+        );
+    };
+
+    let direct_sink = matches!(
+        sink.kind,
+        FlowSinkKind::ReturnValue | FlowSinkKind::ErrorVariant | FlowSinkKind::StructField
+    );
+    if direct_sink && integrated_direct_family(&probe.family) {
+        if sink.owner.as_ref() == probe.owner.as_ref()
+            && complete_direct_witness(probe, witness)
+            && witness.is_some_and(|witness| {
+                witness.sink.kind == sink.kind.as_str()
+                    && normalize_semantic_text(&witness.sink.identity)
+                        == normalize_semantic_text(&sink.text)
+            })
+        {
+            return StageEvidence::new(
+                StageState::Yes,
+                Confidence::High,
+                format!(
+                    "Complete propagation witness reaches {}: {}",
+                    sink.kind.label(),
+                    sink.text
+                ),
+            );
+        }
+        let summary = if !valid_owner_bound_partial_witness(probe, witness) {
+            format!(
+                "No complete owner-bound propagation witness found for {}: {}",
+                sink.kind.label(),
+                sink.text
+            )
+        } else {
+            format!(
+                "Propagation witness is incomplete for {}: {}",
+                sink.kind.label(),
+                sink.text
+            )
+        };
+        return StageEvidence::new(StageState::Weak, Confidence::Low, summary);
+    }
+
+    propagation_evidence(probe, flow_sinks)
+}
+
+fn integrated_direct_family(family: &ProbeFamily) -> bool {
+    matches!(
+        family,
+        ProbeFamily::ReturnValue | ProbeFamily::ErrorPath | ProbeFamily::FieldConstruction
+    )
+}
+
+pub(in crate::analysis) fn local_flow_sinks(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+) -> Vec<FlowSinkFact> {
+    let owner = owner_fn.map(|function| function.id.clone());
+    let mut sinks = match probe.family {
+        ProbeFamily::StaticUnknown => vec![flow_sink(
+            FlowSinkKind::Unknown,
+            "unknown sink",
+            probe.location.line,
+            owner.clone(),
+        )],
+        ProbeFamily::ErrorPath => vec![flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&probe.expression),
+            probe.location.line,
+            owner.clone(),
+        )],
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+            if probe.expression.contains("Err(") {
+                vec![flow_sink(
+                    FlowSinkKind::ErrorVariant,
+                    result_error_text(&probe.expression),
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            } else if probe.expression.starts_with("return ")
+                || probe.expression.contains("Ok(")
+                || probe.expression.contains("Some(")
+            {
+                vec![flow_sink(
+                    FlowSinkKind::ReturnValue,
+                    return_sink_text(&probe.expression),
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            } else if value_is_swallowed(&probe.expression) {
+                vec![flow_sink(
+                    FlowSinkKind::Unknown,
+                    "value is discarded at the call-chain tail; propagation unknown",
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            } else if is_non_escaping_effect(&probe.expression, owner_fn) {
+                vec![flow_sink(
+                    FlowSinkKind::Unknown,
+                    "effect does not escape the function scope; propagation unknown",
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            } else {
+                vec![flow_sink(
+                    effect_sink_kind(&probe.expression),
+                    call_effect_text(&probe.expression),
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            }
+        }
+        ProbeFamily::FieldConstruction => vec![flow_sink(
+            FlowSinkKind::StructField,
+            field_sink_text(&probe.expression),
+            probe.location.line,
+            owner.clone(),
+        )],
+        ProbeFamily::MatchArm => vec![match_arm_sink(probe, owner.clone())],
+        ProbeFamily::ReturnValue => vec![return_value_sink(probe, owner_fn, owner.clone())],
+        ProbeFamily::Predicate => predicate_flow_sinks(probe, owner_fn, owner.clone()),
+    };
+
+    sinks.sort_by(|a, b| {
+        a.kind
+            .as_str()
+            .cmp(b.kind.as_str())
+            .then(a.line.cmp(&b.line))
+            .then(a.text.cmp(&b.text))
+    });
+    sinks.dedup_by(|a, b| a.kind == b.kind && a.line == b.line && a.text == b.text);
+    sinks
+}
+
+fn predicate_flow_sinks(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    owner: Option<SymbolId>,
+) -> Vec<FlowSinkFact> {
+    if let Some(error) = first_error_return(owner_fn, probe.location.line) {
+        return vec![flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&error.text),
+            error.line,
+            owner,
+        )];
+    }
+    if let Some(tail) = predicate_as_owner_tail(probe, owner_fn) {
+        return vec![flow_sink(
+            FlowSinkKind::ReturnValue,
+            tail.text,
+            tail.line,
+            owner,
+        )];
+    }
+    if let Some(return_fact) = nearest_return(owner_fn, probe.location.line) {
+        return vec![flow_sink(
+            FlowSinkKind::ReturnValue,
+            return_sink_text(&return_fact.text),
+            return_fact.line,
+            owner,
+        )];
+    }
+    let operands = predicate_operand_tokens(&probe.expression);
+    if let Some(field) = first_field_construction(owner_fn, probe.location.line, &operands) {
+        return vec![flow_sink(
+            FlowSinkKind::StructField,
+            field_sink_text(&field.text),
+            field.line,
+            owner,
+        )];
+    }
+    if let Some(branch) = next_branch_value(owner_fn, probe.location.line, &operands) {
+        return vec![flow_sink(
+            FlowSinkKind::ReturnValue,
+            branch.text,
+            branch.line,
+            owner,
+        )];
+    }
+    Vec::new()
+}
+
+/// Identifier-like tokens (`amount`, `threshold`, …) referenced by a predicate
+/// expression such as `amount >= threshold`. Used to require that a forward
+/// text scan for a flow sink only credits a line that plausibly derives from
+/// the changed predicate, instead of the first colon- or value-shaped line
+/// found anywhere later in the function body regardless of relevance.
+fn predicate_operand_tokens(expression: &str) -> Vec<String> {
+    expression
+        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .filter(|token| !token.is_empty())
+        .filter(|token| {
+            token
+                .chars()
+                .next()
+                .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        })
+        .filter(|token| !token.chars().all(|ch| ch == '_'))
+        .filter(|token| !matches!(*token, "self" | "true" | "false"))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Whether `text` references `token` as a whole identifier (not merely a
+/// substring of a longer identifier).
+fn contains_operand_token(text: &str, token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    text.match_indices(token).any(|(start, _)| {
+        let end = start.saturating_add(token.len());
+        let before_ok = start == 0
+            || !text
+                .as_bytes()
+                .get(start - 1)
+                .is_some_and(|byte| is_ident_byte(*byte));
+        let after_ok = end >= text.len()
+            || !text
+                .as_bytes()
+                .get(end)
+                .is_some_and(|byte| is_ident_byte(*byte));
+        before_ok && after_ok
+    })
+}
+
+fn is_ident_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn return_value_sink(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    owner: Option<SymbolId>,
+) -> FlowSinkFact {
+    if probe.expression.contains("Err(") {
+        return flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&probe.expression),
+            probe.location.line,
+            owner,
+        );
+    }
+    if let Some(return_fact) = nearest_return(owner_fn, probe.location.line) {
+        return flow_sink(
+            FlowSinkKind::ReturnValue,
+            return_sink_text(&return_fact.text),
+            return_fact.line,
+            owner,
+        );
+    }
+    if !is_obvious_return_expression(&probe.expression) {
+        return flow_sink(
+            FlowSinkKind::Unknown,
+            "unknown sink",
+            probe.location.line,
+            owner,
+        );
+    }
+    flow_sink(
+        FlowSinkKind::ReturnValue,
+        return_sink_text(&probe.expression),
+        probe.location.line,
+        owner,
+    )
+}
+
+fn match_arm_sink(probe: &Probe, owner: Option<SymbolId>) -> FlowSinkFact {
+    let arm_result = probe
+        .expression
+        .split_once("=>")
+        .map(|(_, result)| result.trim().trim_end_matches(',').to_string())
+        .filter(|text| !text.is_empty())
+        .unwrap_or_else(|| probe.expression.clone());
+
+    if arm_result.contains("Err(") {
+        flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&arm_result),
+            probe.location.line,
+            owner,
+        )
+    } else {
+        flow_sink(
+            FlowSinkKind::MatchArm,
+            arm_result,
+            probe.location.line,
+            owner,
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LocalTextFact {
+    line: usize,
+    text: String,
+}
+
+fn first_error_return(
+    owner_fn: Option<&FunctionSummary>,
+    probe_line: usize,
+) -> Option<LocalTextFact> {
+    owner_fn.and_then(|function| {
+        function
+            .returns
+            .iter()
+            .find(|return_fact| return_fact.line >= probe_line && return_fact.text.contains("Err("))
+            .map(|return_fact| LocalTextFact {
+                line: return_fact.line,
+                text: return_fact.text.clone(),
+            })
+    })
+}
+
+/// The changed predicate when it is the owner's whole tail expression
+/// (`items >= 10` as the last expression of `fn ships_free(..) -> bool`):
+/// the comparison's boolean is the returned value itself, so it propagates
+/// to the return without any branch. Requires a non-unit signature, the
+/// changed line to be exactly the comparison (no `;`, `if`, `let`, or
+/// `return`), and only the function's closing brace after it. A predicate
+/// retargeted from a changed `let` initializer (RIPR-SPEC-0158) is excluded:
+/// its changed text is the initializer, not the returned comparison, and its
+/// operand value stays a named limitation rather than a repair target.
+fn predicate_as_owner_tail(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+) -> Option<LocalTextFact> {
+    let function = owner_fn?;
+    // Compare code only: a trailing `// note` on the changed line must not
+    // hide the tail, and comment text must not make two lines match.
+    let code = |text: &str| {
+        crate::analysis::language::mask_rust_comments_and_strings(text)
+            .trim()
+            .to_string()
+    };
+    let expression = code(&probe.expression);
+    if probe.after.as_deref().map(code).as_deref() != Some(expression.as_str()) {
+        return None;
+    }
+    let masked = crate::analysis::language::mask_rust_comments_and_strings(&function.body);
+    let mut lines = masked.lines();
+    let signature = lines.next()?;
+    if !signature.contains("->") {
+        return None;
+    }
+    let offset = probe.location.line.checked_sub(function.start_line)?;
+    let changed = masked.lines().nth(offset)?.trim();
+    if offset == 0
+        || changed != expression
+        || changed.ends_with(';')
+        || ["if ", "let ", "return ", "match ", "while "]
+            .iter()
+            .any(|keyword| changed.starts_with(keyword))
+    {
+        return None;
+    }
+    let rest = masked
+        .lines()
+        .skip(offset + 1)
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    (rest == ["}"]).then_some(LocalTextFact {
+        line: probe.location.line,
+        text: expression,
+    })
+}
+
+fn nearest_return(owner_fn: Option<&FunctionSummary>, probe_line: usize) -> Option<LocalTextFact> {
+    owner_fn.and_then(|function| {
+        function
+            .returns
+            .iter()
+            .filter(|return_fact| return_fact.line >= probe_line)
+            .min_by_key(|return_fact| return_fact.line - probe_line)
+            .map(|return_fact| LocalTextFact {
+                line: return_fact.line,
+                text: return_fact.text.clone(),
+            })
+    })
+}
+
+fn next_branch_value(
+    owner_fn: Option<&FunctionSummary>,
+    probe_line: usize,
+    predicate_operands: &[String],
+) -> Option<LocalTextFact> {
+    let function = owner_fn?;
+    let start_index = probe_line.saturating_sub(function.start_line);
+    let adjacent_offset = start_index + 1;
+    function
+        .body
+        .lines()
+        .enumerate()
+        .skip(adjacent_offset)
+        .find_map(|(offset, line)| {
+            let text = line.trim().trim_end_matches(',').to_string();
+            if !looks_like_branch_tail_expression(&text) {
+                return None;
+            }
+            // The line immediately after the predicate is trusted without
+            // token correlation: for `if cond { value }`, `value` is the
+            // branch's produced result by control-flow adjacency alone, even
+            // when it shares no identifier with `cond` (e.g. a fixed literal
+            // like `"ok".to_string()`). Any later candidate must correlate —
+            // otherwise a forward scan can walk past the real branch body
+            // into unrelated code and credit an unconnected value.
+            if offset != adjacent_offset
+                && !predicate_operands
+                    .iter()
+                    .any(|operand| contains_operand_token(&text, operand))
+            {
+                return None;
+            }
+            Some(LocalTextFact {
+                line: function.start_line + offset,
+                text,
+            })
+        })
+}
+
+fn first_field_construction(
+    owner_fn: Option<&FunctionSummary>,
+    probe_line: usize,
+    predicate_operands: &[String],
+) -> Option<LocalTextFact> {
+    owner_fn.and_then(|function| {
+        function
+            .body
+            .lines()
+            .enumerate()
+            .skip(probe_line.saturating_sub(function.start_line))
+            .find_map(|(offset, line)| {
+                let text = line.trim().trim_end_matches(',').to_string();
+                let is_relevant_field = looks_like_field_assignment(&text)
+                    && predicate_operands
+                        .iter()
+                        .any(|operand| contains_operand_token(&text, operand));
+                if is_relevant_field {
+                    Some(LocalTextFact {
+                        line: function.start_line + offset,
+                        text,
+                    })
+                } else {
+                    None
+                }
+            })
+    })
+}
+
+fn flow_sink(
+    kind: FlowSinkKind,
+    text: impl Into<String>,
+    line: usize,
+    owner: Option<SymbolId>,
+) -> FlowSinkFact {
+    FlowSinkFact {
+        kind,
+        text: text.into(),
+        line,
+        owner,
+    }
+}
+
+/// Returns true when the effect cannot escape the function's observable boundary.
+///
+/// Three categories (conservative — only provably-local cases flagged):
+/// 1. `println!` / `eprintln!` — stdout macros that produce no capturable
+///    artifact from a static-analysis perspective.  `log::` / `tracing::` are
+///    KEPT as LogMessage (they go to a capturable sink).
+/// 2. `.push(..)` / `.insert(..)` / `.write(..)` on a provably function-local
+///    receiver — scanned from `owner_fn.body` for a `let [mut] <recv> = …`
+///    binding with no subsequent `return <recv>` or field-store of `<recv>`.
+/// 3. Trait-object receiver (`&dyn` / `Box<dyn`) — we cannot statically prove
+///    where dispatch resolves.
+fn is_non_escaping_effect(text: &str, owner_fn: Option<&FunctionSummary>) -> bool {
+    let trimmed = text.trim();
+    // Category 1: stdout macros (but NOT log:: / tracing:: which are capturable)
+    if is_stdout_macro(trimmed) {
+        return true;
+    }
+    // Category 3: trait-object receiver  (&dyn Trait::m or Box<dyn Trait>::m)
+    if has_trait_object_receiver(trimmed) {
+        return true;
+    }
+    // Category 2: local-dropped collection receiver
+    if let Some(receiver) = collection_receiver(trimmed)
+        && is_function_local_dropped_receiver(&receiver, owner_fn)
+    {
+        return true;
+    }
+    false
+}
+
+/// True for `println!(…)` / `eprintln!(…)` but NOT `log::`, `tracing::`,
+/// `info!(`, `warn!(`, etc.  Those go to a capturable sink and stay as
+/// `LogMessage`.
+fn is_stdout_macro(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    // Must start with the macro name to avoid matching a call like
+    // `do_println(x)`.
+    lower.trim_start().starts_with("println!(") || lower.trim_start().starts_with("eprintln!(")
+}
+
+/// True when the receiver is an opaque trait object.
+/// We look for `(&dyn` / `(Box<dyn` in the call chain.
+fn has_trait_object_receiver(text: &str) -> bool {
+    text.contains("&dyn ") || text.contains("Box<dyn ")
+}
+
+/// Extract the receiver name from `.push(` / `.insert(` / `.write(` calls,
+/// e.g. `vec.push(x)` → `Some("vec")`, `self.push(x)` → `None` (self escapes).
+fn collection_receiver(text: &str) -> Option<String> {
+    for method in &[".push(", ".insert(", ".write("] {
+        if let Some(dot_pos) = text.find(method) {
+            // Walk backwards to find the receiver name
+            let before = &text[..dot_pos];
+            let receiver = before
+                .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                .next_back()
+                .unwrap_or("")
+                .to_string();
+            if !receiver.is_empty() && receiver != "self" {
+                return Some(receiver);
+            }
+            // receiver is `self` or empty — cannot determine, leave as Yes
+        }
+    }
+    None
+}
+
+/// Returns true when `receiver` is provably declared and dropped inside
+/// `owner_fn` — i.e. there is a `let [mut] <receiver> = …` in the body and
+/// no `return <receiver>` / `self.<field> = <receiver>` after it.
+fn is_function_local_dropped_receiver(receiver: &str, owner_fn: Option<&FunctionSummary>) -> bool {
+    let Some(function) = owner_fn else {
+        return false;
+    };
+    let body = &function.body;
+    // Check for a let binding of this receiver
+    let let_pat_plain = format!("let {receiver} =");
+    let let_pat_mut = format!("let mut {receiver} =");
+    let has_local_binding = body.contains(&let_pat_plain) || body.contains(&let_pat_mut);
+    if !has_local_binding {
+        return false;
+    }
+    // Check it does NOT escape via return or field-store
+    let escapes = body.contains(&format!("return {receiver}"))
+        || body.contains(&format!("return {receiver};"))
+        || body.contains(&format!("self. = {receiver}")) // self.<any_field> = recv
+        || body
+            .lines()
+            .any(|line| looks_like_field_store_of(line, receiver));
+    !escapes
+}
+
+/// Heuristic: `self.<field> = <receiver>` lines escape the receiver.
+fn looks_like_field_store_of(line: &str, receiver: &str) -> bool {
+    let trimmed = line.trim();
+    // Pattern: `self.<ident> = <receiver>` or `self.<ident> = <receiver>;`
+    if !trimmed.starts_with("self.") {
+        return false;
+    }
+    let suffix = &trimmed["self.".len()..];
+    // There should be ` = <receiver>` somewhere after the field name
+    suffix.contains(&format!("= {receiver}")) || suffix.contains(&format!("= {receiver};"))
+}
+
+/// Returns true when the call-chain tail provably discards the returned value,
+/// meaning the changed call cannot propagate through a return/error/field path.
+///
+/// Conservative: only matches exact tail patterns so `x.ok().map(f)` is NOT
+/// flagged (the value continues to flow).
+fn value_is_swallowed(text: &str) -> bool {
+    let trimmed = text.trim();
+    // Pattern 1: wildcard-discard binding — `let _ = expr;` and
+    // `let _: <ty> = expr;` across any legal whitespace (#2401, #3233).
+    // Same shared predicate as the infection stage's `is_wildcard_discard`,
+    // so the flow and infection contracts cannot drift apart again.
+    if super::text::is_wildcard_discard_binding(trimmed) {
+        return true;
+    }
+    // Pattern 2: trailing `.ok();`  — result converted to Option and dropped
+    // We strip the trailing `;` first, then check if the trimmed tail is ".ok()"
+    let without_semi = trimmed.trim_end_matches(';').trim_end();
+    if without_semi.ends_with(".ok()") {
+        return true;
+    }
+    // Pattern 3: `drop(<expr>)` wrapper — explicit discard
+    if trimmed.starts_with("drop(") {
+        return true;
+    }
+    // Pattern 4: `= ();` — assignment of unit value (explicit unit discard)
+    if trimmed.ends_with("= ();") || trimmed == "= ()" {
+        return true;
+    }
+    false
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FlowEffectKind {
+    Event,
+    StateWrite,
+    Persistence,
+    Log,
+    Config,
+}
+
+impl FlowEffectKind {
+    /// Classify the normalized expression once. The order is intentional:
+    /// logging wins over configuration, persistence, event, and state-write
+    /// signals, matching the former `FlowSinkKind` selection precedence.
+    fn from_text(text: &str) -> Option<Self> {
+        if looks_like_log_effect(text) {
+            Some(Self::Log)
+        } else if looks_like_config_effect(text) {
+            Some(Self::Config)
+        } else if looks_like_persistence_effect(text) {
+            Some(Self::Persistence)
+        } else if looks_like_event_call_effect(text) {
+            Some(Self::Event)
+        } else if looks_like_state_write_effect(text) {
+            Some(Self::StateWrite)
+        } else {
+            None
+        }
+    }
+
+    fn sink_kind(self) -> FlowSinkKind {
+        match self {
+            Self::Event => FlowSinkKind::EventCall,
+            Self::StateWrite => FlowSinkKind::StateWrite,
+            Self::Persistence => FlowSinkKind::Persistence,
+            Self::Log => FlowSinkKind::LogMessage,
+            Self::Config => FlowSinkKind::ConfigChange,
+        }
+    }
+}
+
+fn effect_sink_kind(text: &str) -> FlowSinkKind {
+    let normalized = text.to_ascii_lowercase();
+    FlowEffectKind::from_text(&normalized)
+        .map(FlowEffectKind::sink_kind)
+        .unwrap_or(FlowSinkKind::CallEffect)
+}
+
+fn looks_like_event_call_effect(text: &str) -> bool {
+    [
+        ".publish(",
+        ".emit(",
+        ".send(",
+        ".dispatch(",
+        ".notify(",
+        ".enqueue(",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn looks_like_state_write_effect(text: &str) -> bool {
+    [
+        ".write(",
+        ".insert(",
+        ".push(",
+        ".remove(",
+        ".delete(",
+        ".increment(",
+        ".replace(",
+        ".clear(",
+        ".extend(",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn looks_like_persistence_effect(text: &str) -> bool {
+    [".save(", ".persist(", ".store(", ".commit(", ".upsert("]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
+fn looks_like_log_effect(text: &str) -> bool {
+    text.contains("log::")
+        || text.contains("tracing::")
+        || [
+            "println!(",
+            "eprintln!(",
+            "trace!(",
+            "debug!(",
+            "info!(",
+            "warn!(",
+            "error!(",
+        ]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
+fn looks_like_config_effect(text: &str) -> bool {
+    text.contains("config.")
+        || text.contains("settings.")
+        || [
+            ".set_config(",
+            ".configure(",
+            ".set_option(",
+            ".set_default(",
+            ".set_var(",
+        ]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
+fn result_error_text(text: &str) -> String {
+    if let Some(variant) = exact_error_variant(text) {
+        return format!("Result::Err({variant})");
+    }
+    if let Some(start) = text.find("Err(") {
+        let error = text[start..]
+            .trim()
+            .trim_start_matches("return ")
+            .trim_end_matches(';')
+            .trim_end_matches(',')
+            .to_string();
+        return format!("Result::{error}");
+    }
+    return_sink_text(text)
+}
+
+fn return_sink_text(text: &str) -> String {
+    text.trim()
+        .trim_start_matches("return ")
+        .trim_end_matches(';')
+        .trim_end_matches(',')
+        .trim()
+        .to_string()
+}
+
+fn call_effect_text(text: &str) -> String {
+    return_sink_text(text)
+}
+
+fn field_sink_text(text: &str) -> String {
+    return_sink_text(text)
+}
+
+fn looks_like_field_assignment(text: &str) -> bool {
+    let Some((field, _)) = text.split_once(':') else {
+        return false;
+    };
+    if text.contains("::") {
+        return false;
+    }
+    let field = field.trim();
+    !field.is_empty()
+        && field
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        && field
+            .chars()
+            .next()
+            .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+}
+
+fn looks_like_branch_tail_expression(text: &str) -> bool {
+    if text.is_empty()
+        || text == "{"
+        || text == "}"
+        || text.starts_with("else")
+        || text.starts_with("//")
+        || text.starts_with("let ")
+        || text.ends_with(';')
+    {
+        return false;
+    }
+    if text.contains(" = ")
+        || text.contains(" += ")
+        || text.contains(" -= ")
+        || text.contains(" *= ")
+        || text.contains(" /= ")
+    {
+        return false;
+    }
+    is_obvious_return_expression(text)
+}
+
+fn is_obvious_return_expression(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.starts_with("return ")
+        || trimmed.starts_with("Ok(")
+        || trimmed.starts_with("Some(")
+        || trimmed.contains("Err(")
+        || trimmed.contains('(')
+        || trimmed.contains('"')
+        || trimmed.chars().any(|ch| ch.is_ascii_digit())
+        || [" + ", " - ", " * ", " / ", " % "]
+            .iter()
+            .any(|operator| trimmed.contains(operator))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::propagation_witness::PathCompleteness;
+    use super::*;
+    use crate::analysis::facts::FunctionSourceRole;
+    use crate::analysis::rust_index::ReturnFact;
+    use std::path::PathBuf;
+
+    #[test]
+    fn predicate_flow_uses_nearest_return_after_changed_line() {
+        let owner = function(
+            "pub fn score(amount: i32) -> i32 {\n    if amount > 10 {\n        amount - 1\n    }\n}",
+        );
+        let probe = probe(ProbeFamily::Predicate, "amount > 10", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "amount - 1");
+        assert_eq!(sinks[0].line, 3);
+    }
+
+    #[test]
+    fn predicate_that_is_the_owner_tail_flows_to_the_returned_value() {
+        let owner = tail_owner("pub fn ships_free(items: u32) -> bool {\n    items >= 10\n}");
+        let probe = probe(ProbeFamily::Predicate, "items >= 10", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "items >= 10");
+        assert_eq!(sinks[0].line, 2);
+    }
+
+    #[test]
+    fn predicate_tail_with_a_trailing_comment_still_flows_to_the_returned_value() {
+        let owner = tail_owner(
+            "pub fn ships_free(items: u32) -> bool {\n    items >= 10 // free-shipping line\n}",
+        );
+        let mut probe = probe(
+            ProbeFamily::Predicate,
+            "items >= 10 // free-shipping line",
+            2,
+        );
+        probe.after = Some("items >= 10 // free-shipping line".to_string());
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "items >= 10");
+        assert_eq!(sinks[0].line, 2);
+    }
+
+    #[test]
+    fn predicate_tail_sink_fails_closed_off_the_bare_returned_comparison() {
+        // (owner body, probe expression, probe `after` text): a unit owner,
+        // a comparison continued by `&&` on the next line, a let-bound
+        // comparison, and a predicate retargeted from a changed `let`
+        // initializer (its changed text is the initializer, not the tail).
+        for (body, expression, after) in [
+            (
+                "pub fn check(items: u32) {\n    items >= 10\n}",
+                "items >= 10",
+                "items >= 10",
+            ),
+            (
+                "pub fn ships_free(items: u32, ready: bool) -> bool {\n    items >= 10\n        && ready\n}",
+                "items >= 10",
+                "items >= 10",
+            ),
+            (
+                "pub fn ships_free(items: u32) -> bool {\n    let free = items >= 10;\n    free\n}",
+                "items >= 10",
+                "let free = items >= 10;",
+            ),
+            (
+                "pub fn within(other: &str) -> bool {\n    size == 3\n}",
+                "size == 3",
+                "other.len()",
+            ),
+        ] {
+            let owner = tail_owner(body);
+            let mut probe = probe(ProbeFamily::Predicate, expression, 2);
+            probe.after = Some(after.to_string());
+
+            let sinks = local_flow_sinks(&probe, Some(&owner));
+
+            assert!(
+                !sinks
+                    .iter()
+                    .any(|sink| sink.kind == FlowSinkKind::ReturnValue),
+                "`{body}` must not treat `{expression}` as the returned value: {sinks:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn error_path_flow_uses_exact_error_variant_text() {
+        let probe = probe(
+            ProbeFamily::ErrorPath,
+            "return Err(AuthError::RevokedToken);",
+            2,
+        );
+
+        let sinks = local_flow_sinks(&probe, None);
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(sinks[0].text, "Result::Err(AuthError::RevokedToken)");
+    }
+
+    #[test]
+    fn propagation_names_first_visible_sink() {
+        let probe = probe(ProbeFamily::Predicate, "amount > 10", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "amount - 1".to_string(),
+            line: 3,
+            owner: None,
+        }];
+
+        let evidence = propagation_evidence(&probe, &sinks);
+
+        assert_eq!(evidence.state, StageState::Yes);
+        assert_eq!(
+            evidence.summary,
+            "Changed behavior appears to influence returned value: amount - 1"
+        );
+    }
+
+    #[test]
+    fn direct_sink_propagation_requires_complete_owner_bound_witness() {
+        for (family, expression, kind) in [
+            (
+                ProbeFamily::ReturnValue,
+                "amount",
+                FlowSinkKind::ReturnValue,
+            ),
+            (
+                ProbeFamily::ErrorPath,
+                "Result::Err(error)",
+                FlowSinkKind::ErrorVariant,
+            ),
+            (
+                ProbeFamily::FieldConstruction,
+                "status: amount",
+                FlowSinkKind::StructField,
+            ),
+        ] {
+            let probe = probe(family, expression, 2);
+            let sinks = vec![FlowSinkFact {
+                kind,
+                text: expression.to_string(),
+                line: 3,
+                owner: probe.owner.clone(),
+            }];
+            let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+            let evidence = propagation_evidence_with_witness(&probe, &sinks, witness.as_ref());
+            assert_eq!(evidence.state, StageState::Yes);
+        }
+
+        let comma_probe = probe(ProbeFamily::FieldConstruction, "status: amount", 2);
+        let comma_sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StructField,
+            text: "status: amount,".to_string(),
+            line: 3,
+            owner: comma_probe.owner.clone(),
+        }];
+        let comma_witness =
+            super::super::propagation_witness::current_path_witness(&comma_probe, &comma_sinks);
+        assert!(comma_witness.is_some());
+        let comma_evidence =
+            propagation_evidence_with_witness(&comma_probe, &comma_sinks, comma_witness.as_ref());
+        assert_eq!(comma_evidence.state, StageState::Yes);
+
+        let field_probe = probe(ProbeFamily::FieldConstruction, "status: amount", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StructField,
+            text: "status: amount".to_string(),
+            line: 3,
+            owner: field_probe.owner.clone(),
+        }];
+        let witness = super::super::propagation_witness::current_path_witness(&field_probe, &sinks);
+
+        let mut invalid = witness.clone();
+        if let Some(witness) = invalid.as_mut() {
+            witness.semantic_digest = "sha256:invalid".to_string();
+        }
+        assert_eq!(
+            propagation_evidence_with_witness(&field_probe, &sinks, invalid.as_ref()).state,
+            StageState::Weak
+        );
+
+        let mut sibling = sinks.clone();
+        sibling[0].owner = Some(SymbolId("src/lib.rs::sibling".to_string()));
+        assert_eq!(
+            propagation_evidence_with_witness(&field_probe, &sibling, witness.as_ref()).state,
+            StageState::Weak
+        );
+
+        let probe = probe(ProbeFamily::ReturnValue, "amount", 2);
+        let sinks = vec![
+            FlowSinkFact {
+                kind: FlowSinkKind::ReturnValue,
+                text: "sibling".to_string(),
+                line: 3,
+                owner: probe.owner.clone(),
+            },
+            FlowSinkFact {
+                kind: FlowSinkKind::ReturnValue,
+                text: "amount".to_string(),
+                line: 4,
+                owner: probe.owner.clone(),
+            },
+        ];
+        let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &sinks, witness.as_ref()).state,
+            StageState::Yes
+        );
+
+        let mut invalid_cases = Vec::new();
+        if let Some(witness) = witness {
+            let mut invalid_delta = witness.clone();
+            invalid_delta.behavior.delta = "effect".to_string();
+            invalid_delta.semantic_digest = invalid_delta.compute_semantic_digest();
+            invalid_cases.push(invalid_delta);
+
+            let mut invalid_schema = witness.clone();
+            invalid_schema.schema_version = 99;
+            invalid_schema.semantic_digest = invalid_schema.compute_semantic_digest();
+            invalid_cases.push(invalid_schema);
+
+            let mut invalid_family = witness.clone();
+            invalid_family.behavior.family = "error_path".to_string();
+            invalid_family.semantic_digest = invalid_family.compute_semantic_digest();
+            invalid_cases.push(invalid_family);
+
+            let mut invalid_completeness = witness;
+            invalid_completeness.completeness = PathCompleteness::Partial;
+            invalid_completeness.semantic_digest = invalid_completeness.compute_semantic_digest();
+            invalid_cases.push(invalid_completeness);
+        }
+        for invalid in invalid_cases {
+            let evidence = propagation_evidence_with_witness(&probe, &sinks, Some(&invalid));
+            assert_eq!(evidence.state, StageState::Weak);
+            assert!(
+                evidence
+                    .summary
+                    .starts_with("No complete owner-bound propagation witness")
+            );
+        }
+    }
+
+    #[test]
+    fn candidate_only_and_orthogonal_direct_sinks_do_not_propagate_yes() {
+        let probe = probe(ProbeFamily::ReturnValue, "amount", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "Ok(amount)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, witness.as_ref());
+        assert_eq!(evidence.state, StageState::Weak);
+        assert!(
+            evidence
+                .summary
+                .starts_with("Propagation witness is incomplete for")
+        );
+
+        let opaque = vec![FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "Box<dyn Handler>::amount".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &opaque, None).state,
+            StageState::Weak
+        );
+    }
+
+    #[test]
+    fn propagation_is_unknown_for_static_unknown_probe() {
+        let probe = probe(ProbeFamily::StaticUnknown, "let value = total;", 2);
+
+        let evidence = propagation_evidence(&probe, &[]);
+
+        assert_eq!(evidence.state, StageState::Unknown);
+        assert_eq!(
+            evidence.summary,
+            "No propagation model is available for this changed syntax"
+        );
+    }
+
+    #[test]
+    fn propagation_is_unknown_when_only_unknown_flow_sink_exists() {
+        let probe = probe(ProbeFamily::ReturnValue, "opaque_value", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::Unknown,
+            text: "unknown sink".to_string(),
+            line: 2,
+            owner: None,
+        }];
+
+        let evidence = propagation_evidence(&probe, &sinks);
+
+        assert_eq!(evidence.state, StageState::Unknown);
+        assert_eq!(
+            evidence.summary,
+            "Propagation is not statically obvious from syntax-first analysis"
+        );
+    }
+
+    #[test]
+    fn static_unknown_flow_returns_unknown_sink() {
+        let probe = probe(ProbeFamily::StaticUnknown, "let value = total;", 2);
+
+        let sinks = local_flow_sinks(&probe, None);
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+        assert_eq!(sinks[0].text, "unknown sink");
+    }
+
+    #[test]
+    fn side_effect_flow_distinguishes_error_return_and_call_effect() {
+        let error_probe = probe(
+            ProbeFamily::SideEffect,
+            "return Err(AuthError::ExpiredToken);",
+            2,
+        );
+        let call_probe = probe(ProbeFamily::SideEffect, "adapter.flush();", 2);
+
+        let error_sinks = local_flow_sinks(&error_probe, None);
+        let call_sinks = local_flow_sinks(&call_probe, None);
+
+        assert_eq!(error_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(error_sinks[0].text, "Result::Err(AuthError::ExpiredToken)");
+        assert_eq!(call_sinks[0].kind, FlowSinkKind::CallEffect);
+        assert_eq!(call_sinks[0].text, "adapter.flush()");
+    }
+
+    #[test]
+    fn side_effect_flow_names_event_state_persistence_log_and_config_sinks() {
+        let cases = [
+            ("events.publish(score);", FlowSinkKind::EventCall),
+            ("cache.insert(key, value);", FlowSinkKind::StateWrite),
+            ("repository.save(invoice);", FlowSinkKind::Persistence),
+            ("log::info!(\"saved\");", FlowSinkKind::LogMessage),
+            (
+                "config.set_option(\"mode\", mode);",
+                FlowSinkKind::ConfigChange,
+            ),
+        ];
+
+        for (expression, expected_kind) in cases {
+            let probe = probe(ProbeFamily::SideEffect, expression, 2);
+            let sinks = local_flow_sinks(&probe, None);
+
+            assert_eq!(sinks.len(), 1, "{expression}");
+            assert_eq!(sinks[0].kind, expected_kind, "{expression}");
+            assert_eq!(
+                sinks[0].text,
+                expression.trim_end_matches(';'),
+                "{expression}"
+            );
+        }
+    }
+
+    #[test]
+    fn flow_effect_kind_parses_each_effect_and_preserves_precedence() {
+        let cases = [
+            ("events.publish(score);", Some(FlowEffectKind::Event)),
+            (
+                "cache.insert(key, value);",
+                Some(FlowEffectKind::StateWrite),
+            ),
+            (
+                "repository.save(invoice);",
+                Some(FlowEffectKind::Persistence),
+            ),
+            ("log::info!(\"saved\");", Some(FlowEffectKind::Log)),
+            (
+                "config.set_option(\"mode\", mode);",
+                Some(FlowEffectKind::Config),
+            ),
+            ("calculate(score);", None),
+        ];
+
+        for (expression, expected_kind) in cases {
+            assert_eq!(
+                FlowEffectKind::from_text(&expression.to_ascii_lowercase()),
+                expected_kind,
+                "{expression}"
+            );
+        }
+
+        assert_eq!(
+            FlowEffectKind::from_text("log::info!(config.set_option(\"mode\", mode));"),
+            Some(FlowEffectKind::Log),
+            "log classification must retain the former precedence"
+        );
+    }
+
+    #[test]
+    fn call_deletion_flow_distinguishes_return_value() {
+        let probe = probe(ProbeFamily::CallDeletion, "return Ok(total);", 2);
+
+        let sinks = local_flow_sinks(&probe, None);
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "Ok(total)");
+    }
+
+    #[test]
+    fn field_construction_flow_reports_struct_field() {
+        let probe = probe(ProbeFamily::FieldConstruction, "status: Status::Ready", 2);
+
+        let sinks = local_flow_sinks(&probe, None);
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(sinks[0].text, "status: Status::Ready");
+    }
+
+    #[test]
+    fn match_arm_flow_distinguishes_error_variant_and_match_result() {
+        let error_probe = probe(
+            ProbeFamily::MatchArm,
+            "State::Bad => Err(AuthError::Bad),",
+            2,
+        );
+        let value_probe = probe(ProbeFamily::MatchArm, "State::Good => total + 1,", 2);
+
+        let error_sinks = local_flow_sinks(&error_probe, None);
+        let value_sinks = local_flow_sinks(&value_probe, None);
+
+        assert_eq!(error_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(error_sinks[0].text, "Result::Err(AuthError::Bad)");
+        assert_eq!(value_sinks[0].kind, FlowSinkKind::MatchArm);
+        assert_eq!(value_sinks[0].text, "total + 1");
+    }
+
+    #[test]
+    fn return_value_flow_distinguishes_unknown_and_obvious_expression() {
+        let unknown_probe = probe(ProbeFamily::ReturnValue, "opaque_value", 2);
+        let value_probe = probe(ProbeFamily::ReturnValue, "total + 1", 2);
+
+        let unknown_sinks = local_flow_sinks(&unknown_probe, None);
+        let value_sinks = local_flow_sinks(&value_probe, None);
+
+        assert_eq!(unknown_sinks[0].kind, FlowSinkKind::Unknown);
+        assert_eq!(unknown_sinks[0].text, "unknown sink");
+        assert_eq!(value_sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(value_sinks[0].text, "total + 1");
+    }
+
+    #[test]
+    fn predicate_flow_uses_field_construction_when_no_return_is_available() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::score".to_string()),
+            name: "score".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "pub fn score(amount: i32) -> Response {\n    if amount > 10 {\n        status: amount,\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount > 10", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(sinks[0].text, "status: amount");
+    }
+
+    // Regression for a false propagation claim: a `let`-bound predicate with
+    // no return in scope must not credit an unrelated struct field (one whose
+    // value expression shares no identifier with the predicate) as the flow
+    // sink. Picking the first colon-shaped line regardless of relevance
+    // reported a fabricated "propagation: yes" for a field that could never
+    // have been influenced by the changed comparison.
+    #[test]
+    fn predicate_flow_does_not_credit_unrelated_struct_field() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote".to_string()),
+            name: "quote".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 6,
+            body: "pub fn quote(amount: i32, threshold: i32) -> Quote {\n    let eligible = amount >= threshold;\n    Quote {\n        code: 200,\n        eligible,\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert!(
+            sinks.is_empty(),
+            "an unrelated literal field must not be credited as the predicate's flow sink, got {sinks:?}"
+        );
+    }
+
+    #[test]
+    fn predicate_flow_credits_struct_field_that_references_predicate_operand() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote".to_string()),
+            name: "quote".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 6,
+            body: "pub fn quote(amount: i32, threshold: i32) -> Quote {\n    let eligible = amount >= threshold;\n    Quote {\n        code: 200,\n        remaining: threshold,\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(sinks[0].text, "remaining: threshold");
+    }
+
+    #[test]
+    fn predicate_flow_ignores_self_and_boolean_literal_correlation_tokens() {
+        for (expression, field) in [
+            ("self.ready && enabled", "code: self.default_code"),
+            ("enabled == true", "code: false"),
+            ("enabled == false", "code: true"),
+        ] {
+            let owner = FunctionSummary {
+                id: SymbolId("src/lib.rs::quote".to_string()),
+                name: "quote".to_string(),
+                file: PathBuf::from("src/lib.rs"),
+                start_line: 1,
+                end_line: 6,
+                body: format!(
+                    "pub fn quote() -> Quote {{\n    if {expression} {{\n        Quote {{\n            {field},\n        }}\n    }}\n    Quote {{ code: 0 }}\n}}"
+                ),
+                calls: Vec::new(),
+                returns: Vec::new(),
+                literals: Vec::new(),
+                source_role: FunctionSourceRole::Production,
+                nested_fn_names: Vec::new(),
+                let_bindings: Vec::new(),
+                attrs: Vec::new(),
+            };
+            let probe = probe(ProbeFamily::Predicate, expression, 2);
+
+            let sinks = local_flow_sinks(&probe, Some(&owner));
+
+            assert!(
+                sinks.is_empty(),
+                "non-data token correlation must not credit {field} for {expression}: {sinks:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn predicate_operand_tokens_keep_member_and_ordinary_identifiers() {
+        assert_eq!(
+            predicate_operand_tokens("self.threshold >= limit && enabled == true"),
+            vec!["threshold", "limit", "enabled"]
+        );
+    }
+
+    #[test]
+    fn predicate_flow_keeps_real_operands_and_adjacent_branch_tail() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::quote".to_string()),
+            name: "quote".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 8,
+            body: "pub fn quote(amount: i32, threshold: i32) -> i32 {\n    if amount >= threshold {\n        amount + 1\n    }\n    0\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+            attrs: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "amount + 1");
+    }
+
+    fn function(body: &str) -> FunctionSummary {
+        FunctionSummary {
+            id: SymbolId("src/lib.rs::score".to_string()),
+            name: "score".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: body.lines().count(),
+            body: body.to_string(),
+            calls: Vec::new(),
+            returns: vec![ReturnFact {
+                line: 3,
+                text: "amount - 1".to_string(),
+            }],
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        }
+    }
+
+    fn tail_owner(body: &str) -> FunctionSummary {
+        FunctionSummary {
+            returns: Vec::new(),
+            ..function(body)
+        }
+    }
+
+    // ── Fix B: value_is_swallowed ─────────────────────────────────────────
+
+    #[test]
+    fn swallowed_ok_tail_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "self.persist(amount * 9).ok();", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+        assert!(sinks[0].text.contains("discarded"));
+    }
+
+    #[test]
+    fn wildcard_discard_binding_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "let _ = compute(x);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn typed_wildcard_discard_binding_yields_unknown_sink() {
+        // #2401: `let _: Ty = expr;` is a typed wildcard discard. The flow
+        // stage must flag it as swallowed, matching the infection stage's
+        // is_wildcard_discard (which already handles `let _:`).
+        let probe = probe(ProbeFamily::SideEffect, "let _: i32 = compute(x);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(
+            sinks[0].kind,
+            FlowSinkKind::Unknown,
+            "typed wildcard `let _:` must be swallowed, matching infection stage"
+        );
+    }
+
+    #[test]
+    fn whitespace_padded_wildcard_discards_are_still_swallowed() {
+        // #3233: whitespace is not semantically meaningful between `let`,
+        // `_`, and the binding token. Both stages consume the shared
+        // predicate, so these tokenizations must not resurrect a flow sink.
+        for expression in [
+            "let _ : i32 = compute(x);",
+            "let _=compute(x);",
+            "let   _   =   compute(x);",
+        ] {
+            let probe = probe(ProbeFamily::SideEffect, expression, 2);
+            let sinks = local_flow_sinks(&probe, None);
+            assert_eq!(
+                sinks.len(),
+                1,
+                "`{expression}` must produce exactly one sink"
+            );
+            assert_eq!(
+                sinks[0].kind,
+                FlowSinkKind::Unknown,
+                "`{expression}` must be swallowed across whitespace shapes"
+            );
+        }
+    }
+
+    #[test]
+    fn drop_wrapper_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "drop(compute(x));", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn returned_call_is_not_swallowed_stays_return_value() {
+        // Control: `return self.persist(amount*9)` is NOT swallowed — stays exposed
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "return self.persist(amount * 9);",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+    }
+
+    #[test]
+    fn chained_ok_map_is_not_swallowed() {
+        // `x.ok().map(f)` is NOT a tail-discard: the value continues to flow
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "self.compute().ok().map(transform)",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        // Should NOT be Unknown — the value is not swallowed
+        assert_ne!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    // ── Fix C: is_non_escaping_effect ────────────────────────────────────
+
+    #[test]
+    fn println_macro_yields_unknown_sink() {
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "println!(\"amount is {}\", amount * 9);",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn eprintln_macro_yields_unknown_sink() {
+        let probe = probe(ProbeFamily::SideEffect, "eprintln!(\"err {}\", msg);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn log_info_macro_stays_log_message_not_downgraded() {
+        // Control: `log::info!` is a capturable sink — must NOT be downgraded
+        let probe = probe(
+            ProbeFamily::SideEffect,
+            "log::info!(\"amount is {}\", amount * 9);",
+            2,
+        );
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::LogMessage);
+    }
+
+    #[test]
+    fn local_vec_push_yields_unknown_sink() {
+        // A provably-local Vec receiver: `let mut items = Vec::new(); items.push(x)`
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::collect".to_string()),
+            name: "collect".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 5,
+            body:
+                "pub fn collect(x: i32) {\n    let mut items = Vec::new();\n    items.push(x);\n}"
+                    .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            source_role: FunctionSourceRole::Production,
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::SideEffect, "items.push(x * 9);", 3);
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+    }
+
+    #[test]
+    fn self_field_push_stays_state_write_not_downgraded() {
+        // Control: `self.items.push(x)` — `self` is not a local binding, must stay Yes
+        let probe = probe(ProbeFamily::SideEffect, "self.items.push(x * 9);", 2);
+        let sinks = local_flow_sinks(&probe, None);
+        assert_eq!(sinks.len(), 1);
+        // `self` receiver is NOT considered local-dropped — stays StateWrite
+        assert_eq!(sinks[0].kind, FlowSinkKind::StateWrite);
+    }
+
+    fn probe(family: ProbeFamily, expression: &str, line: usize) -> Probe {
+        Probe {
+            id: ProbeId("probe:test".to_string()),
+            location: SourceLocation::new("src/lib.rs", line, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some(expression.to_string()),
+            expression: expression.to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        }
+    }
+}

@@ -1,0 +1,15 @@
+diff --git a/xtask/src/reports/source_promotion_verify.rs b/xtask/src/reports/source_promotion_verify.rs
+index 0000000..1111111 100644
+--- a/xtask/src/reports/source_promotion_verify.rs
++++ b/xtask/src/reports/source_promotion_verify.rs
+@@ -1,3 +1,18 @@
++// Source-promotion verification fixture contract.
++// The production verifier must prove the declared graph and reviewed tree,
++// rather than accepting a tree-equivalent squash or substituted parent.
++fn verify_source_promotion_join() -> Result<(), String> {
++    // A unique merge base, ordered parents, canonical range, resolution
++    // inventory, and governed metadata are checked before a receipt is emitted.
++    // Rebase/cherry-pick, preview substitution, ambiguous-base, and post-main
++    // witnesses remain rejected and leave caller state unchanged.
++    Ok(())
++}

@@ -1,0 +1,8 @@
+[package]
+name = "constant_declaration_probe_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "constant_declaration_probe_fixture"
+path = "src/lib.rs"

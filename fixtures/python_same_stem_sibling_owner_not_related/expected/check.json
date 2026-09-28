@@ -1,0 +1,405 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_same_stem_sibling_owner_not_related/input",
+  "summary": {"changed_rust_files":0,"probes":5,"findings":5,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":4,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:40a3b28740f0d5ddc5a1ebefae1fcf945a02ca49b5aeebad093fd82de838085b","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":8,"candidate_line_count":5,"probe_count":5,"finding_count":5},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:pricing.py:python_preview:2267e505",
+      "canonical_gap_id": "gap:python:pricing.py:discounted_total:predicate_boundary:predicate:amount>=discount_threshold",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:pricing.py:discounted_total:predicate_boundary:predicate:amount>=discount_threshold",
+        "language": "python",
+        "file": "pricing.py",
+        "owner": "discounted_total",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "amount>=discount_threshold"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:pricing.py:python_preview:2267e505",
+        "family": "predicate",
+        "delta": "control",
+        "file": "pricing.py",
+        "line": 5,
+        "expression": "    if amount >= DISCOUNT_THRESHOLD:",
+        "owner": "python:pricing.py::discounted_total"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"2 related Python test(s) found for owner `discounted_total`"},
+        "infect": {"state":"weak","confidence":"low","summary":"Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary."},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
+       },
+      "evidence_path": ["reach yes: 2 related Python test(s) found for owner `discounted_total`", "infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches unknown sink: if amount >= DISCOUNT_THRESHOLD: (line 5)", "related test tests/test_pricing.py:8 test_discounts_far_above_threshold uses strong exact value oracle: assert discounted_total(20000) == 18000", "related test tests/test_pricing.py:4 test_no_discount_below_threshold uses strong exact value oracle: assert discounted_total(5000) == 5000", "observed function argument value amount = 5000 at line 5", "observed function argument value amount = 20000 at line 9"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if amount >= DISCOUNT_THRESHOLD:","line":5}
+      ],
+      "evidence": ["owner: discounted_total", "owner_kind: function", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_pricing.py", "suggested_test_name: test_discounts_far_above_threshold", "suggested_test_node_id: tests/test_pricing.py::test_discounts_far_above_threshold", "suggested_verify_command: pytest tests/test_pricing.py::test_discounts_far_above_threshold", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discounts_far_above_threshold)", "test_verify_command: pytest tests/test_pricing.py::test_discounts_far_above_threshold (test_discounts_far_above_threshold)", "related_test_relation: syntactic_call (test_discounts_far_above_threshold)", "test_oracle: exact_value strong (test_discounts_far_above_threshold)", "test_framework: pytest (test_no_discount_below_threshold)", "test_verify_command: pytest tests/test_pricing.py::test_no_discount_below_threshold (test_no_discount_below_threshold)", "related_test_relation: syntactic_call (test_no_discount_below_threshold)", "test_oracle: exact_value strong (test_no_discount_below_threshold)"],
+      "missing": ["A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary. No strong related test call places amount equal to DISCOUNT_THRESHOLD; observed amount values: 20000, 5000; observed DISCOUNT_THRESHOLD values: unresolved."],
+      "assertion_texts": {
+        "5": "assert discounted_total(5000) == 5000",
+        "9": "assert discounted_total(20000) == 18000"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "amount = 5000",
+            "context": "function_argument"
+          },
+          {
+            "line": 9,
+            "value": "amount = 20000",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "amount = 5000",
+          "context": "function_argument"
+        },
+        {
+          "line": 9,
+          "value": "amount = 20000",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "test_discounts_far_above_threshold",
+          "file": "tests/test_pricing.py",
+          "line": 8,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert discounted_total(20000) == 18000"
+        },
+        {
+          "name": "test_no_discount_below_threshold",
+          "file": "tests/test_pricing.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert discounted_total(5000) == 5000"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_pricing.py",
+        "suggested_test_name": "test_discounts_far_above_threshold",
+        "suggested_test_node_id": "tests/test_pricing.py::test_discounts_far_above_threshold",
+        "verify_command": "pytest tests/test_pricing.py::test_discounts_far_above_threshold",
+        "verify_command_confidence": "high"
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "amount, DISCOUNT_THRESHOLD",
+      "observed_sink": "assert discounted_total(5000) == 5000",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:pricing.py:python_preview:837738e4",
+      "canonical_gap_id": "gap:python:pricing.py:loyalty_price:predicate_boundary:predicate:def_loyalty_price_amount_years",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:pricing.py:loyalty_price:predicate_boundary:predicate:def_loyalty_price_amount_years",
+        "language": "python",
+        "file": "pricing.py",
+        "owner": "loyalty_price",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "def_loyalty_price_amount_years"
+
+      },
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:pricing.py:python_preview:837738e4",
+        "family": "predicate",
+        "delta": "control",
+        "file": "pricing.py",
+        "line": 10,
+        "expression": "def loyalty_price(amount, years):",
+        "owner": "python:pricing.py::loyalty_price"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `loyalty_price`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python expression can alter preview-classified predicate behavior: `def loyalty_price(amount, years):`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `loyalty_price`", "infection yes: Changed Python expression can alter preview-classified predicate behavior: `def loyalty_price(amount, years):`", "propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches unknown sink: def loyalty_price(amount, years): (line 10)"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"def loyalty_price(amount, years):","line":10}
+      ],
+      "evidence": ["owner: loyalty_price", "owner_kind: function"],
+      "missing": ["No Python test references `loyalty_price(`; add a pytest or unittest test that calls the changed owner."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "loyalty_price, amount, years",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:pricing.py:python_preview:e305ea7e",
+      "canonical_gap_id": "gap:python:pricing.py:loyalty_price:predicate_boundary:predicate:years>=5",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:pricing.py:loyalty_price:predicate_boundary:predicate:years>=5",
+        "language": "python",
+        "file": "pricing.py",
+        "owner": "loyalty_price",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "years>=5"
+
+      },
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:pricing.py:python_preview:e305ea7e",
+        "family": "predicate",
+        "delta": "control",
+        "file": "pricing.py",
+        "line": 11,
+        "expression": "    if years >= 5:",
+        "owner": "python:pricing.py::loyalty_price"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `loyalty_price`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if years >= 5:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `loyalty_price`", "infection yes: Changed Python predicate can alter branch selection: `if years >= 5:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches unknown sink: if years >= 5: (line 11)"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if years >= 5:","line":11}
+      ],
+      "evidence": ["owner: loyalty_price", "owner_kind: function"],
+      "missing": ["No Python test references `loyalty_price(`; add a pytest or unittest test that calls the changed owner."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "years",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:pricing.py:python_preview:d848ee44",
+      "canonical_gap_id": "gap:python:pricing.py:loyalty_price:return_value:return_value:amount*95//100",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:pricing.py:loyalty_price:return_value:return_value:amount*95//100",
+        "language": "python",
+        "file": "pricing.py",
+        "owner": "loyalty_price",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount*95//100"
+
+      },
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:pricing.py:python_preview:d848ee44",
+        "family": "return_value",
+        "delta": "value",
+        "file": "pricing.py",
+        "line": 12,
+        "expression": "        return amount * 95 // 100",
+        "owner": "python:pricing.py::loyalty_price"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `loyalty_price`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount * 95 // 100`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `loyalty_price`", "infection yes: Changed Python return expression can alter the owner return value: `return amount * 95 // 100`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount * 95 // 100 (line 12)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return amount * 95 // 100","line":12}
+      ],
+      "evidence": ["owner: loyalty_price", "owner_kind: function"],
+      "missing": ["No Python test references `loyalty_price(`; add a pytest or unittest test that calls the changed owner."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:pricing.py:python_preview:01e71a22",
+      "canonical_gap_id": "gap:python:pricing.py:loyalty_price:return_value:return_value:amount",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:pricing.py:loyalty_price:return_value:return_value:amount",
+        "language": "python",
+        "file": "pricing.py",
+        "owner": "loyalty_price",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount"
+
+      },
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:pricing.py:python_preview:01e71a22",
+        "family": "return_value",
+        "delta": "value",
+        "file": "pricing.py",
+        "line": 13,
+        "expression": "    return amount",
+        "owner": "python:pricing.py::loyalty_price"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `loyalty_price`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python return expression can alter the owner return value: `return amount`"},
+        "propagate": {"state":"yes","confidence":"low","summary":"Changed Python return value is already at the owner output boundary."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `loyalty_price`", "infection yes: Changed Python return expression can alter the owner return value: `return amount`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount (line 13)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"return amount","line":13}
+      ],
+      "evidence": ["owner: loyalty_price", "owner_kind: function"],
+      "missing": ["No Python test references `loyalty_price(`; add a pytest or unittest test that calls the changed owner."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "amount",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["pricing.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

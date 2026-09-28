@@ -1,0 +1,8 @@
+[package]
+name = "unwrap_err_generic_is_err_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "unwrap_err_generic_is_err_fixture"
+path = "src/lib.rs"

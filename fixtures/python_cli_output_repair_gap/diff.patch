@@ -1,0 +1,9 @@
+diff --git a/src/commands.py b/src/commands.py
+index 0000000..1111111 100644
+--- a/src/commands.py
++++ b/src/commands.py
+@@ -3,3 +3,3 @@
+ @click.command()
+ def ship():
+-    click.echo("shipment ready")
++    click.echo("shipment queued")

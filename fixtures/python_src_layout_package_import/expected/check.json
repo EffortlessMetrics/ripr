@@ -1,0 +1,294 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_src_layout_package_import/input",
+  "summary": {"changed_rust_files":0,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":2},{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:954e3ef3d81680a52972f2f67929cf8bf24ad7489bdddafa69ed4ecd2ea367d6","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":2,"changed_line_count":4,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_pricing_discounts.py:python_preview:230c5b86",
+      "canonical_gap_id": "gap:python:src/pricing/discounts.py:bulk_discount:predicate_boundary:predicate:quantity>100",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/pricing/discounts.py:bulk_discount:predicate_boundary:predicate:quantity>100",
+        "language": "python",
+        "file": "src/pricing/discounts.py",
+        "owner": "bulk_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "quantity>100"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing_discounts.py:python_preview:230c5b86",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing/discounts.py",
+        "line": 2,
+        "expression": "    if quantity > 100:",
+        "owner": "python:src/pricing/discounts.py::bulk_discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `bulk_discount`"},
+        "infect": {"state":"weak","confidence":"low","summary":"Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary."},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `bulk_discount`", "infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches unknown sink: if quantity > 100: (line 2)", "related test tests/test_discounts.py:4 test_bulk_discount_large_order uses strong exact value oracle: assert bulk_discount(101) == 0.15", "observed function argument value quantity = 101 at line 5", "missing discriminator quantity == 100: No strong related test call places quantity equal to 100; observed quantity values: 101"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if quantity > 100:","line":2}
+      ],
+      "evidence": ["owner: bulk_discount", "owner_kind: function", "missing_discriminator: quantity == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discounts.py", "suggested_test_name: test_bulk_discount_large_order", "suggested_test_node_id: tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_bulk_discount_large_order)", "test_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order (test_bulk_discount_large_order)", "related_test_relation: syntactic_call (test_bulk_discount_large_order)", "test_oracle: exact_value strong (test_bulk_discount_large_order)"],
+      "missing": ["A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test call places quantity equal to 100; observed quantity values: 101."],
+      "assertion_texts": {
+        "5": "assert bulk_discount(101) == 0.15"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "quantity = 101",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "quantity == 100",
+            "reason": "No strong related test call places quantity equal to 100; observed quantity values: 101",
+            "flow_sink": {"kind":"unknown","text":"if quantity > 100:","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "quantity = 101",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "quantity == 100",
+          "reason": "No strong related test call places quantity equal to 100; observed quantity values: 101",
+          "flow_sink": {"kind":"unknown","text":"if quantity > 100:","line":2}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_bulk_discount_large_order",
+          "file": "tests/test_discounts.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert bulk_discount(101) == 0.15"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_discounts.py",
+        "suggested_test_name": "test_bulk_discount_large_order",
+        "suggested_test_node_id": "tests/test_discounts.py::test_bulk_discount_large_order",
+        "verify_command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/pricing/discounts.py:bulk_discount:predicate_boundary:predicate:quantity>100",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "bulk_discount",
+        "changed_behavior": "predicate_boundary changed at src/pricing/discounts.py:2: `if quantity > 100:`",
+        "current_test_evidence": "tests/test_discounts.py:4 test_bulk_discount_large_order currently has oracle_strength=strong, oracle_kind=exact_value: assert bulk_discount(101) == 0.15",
+        "missing_discriminator": "quantity == 100",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `quantity == 100`. Keep the equality case as the minimum repair; optional pytest parameterization can add `99`, `100`, and `101` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `quantity == 100` first. Optional pytest shape: @pytest.mark.parametrize(\"quantity, expected\", [(99, ...), (100, ...), (101, ...)]); fill expected values from domain behavior only.",
+        "suggested_location": {
+          "test_file": "tests/test_discounts.py",
+          "test_name": "test_bulk_discount_large_order",
+          "pytest_node_id": "tests/test_discounts.py::test_bulk_discount_large_order"
+         },
+        "verify": {
+          "command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `quantity == 100`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `quantity == 100`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "quantity",
+      "observed_sink": "assert bulk_discount(101) == 0.15",
+      "oracle_alignment": "direct",
+      "alignment_reason": "strong_oracle_observes_owner_name",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_pricing_legacy.py:python_preview:5bce1d28",
+      "canonical_gap_id": "gap:python:src/pricing/legacy.py:bulk_discount:predicate_boundary:predicate:quantity>50",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/pricing/legacy.py:bulk_discount:predicate_boundary:predicate:quantity>50",
+        "language": "python",
+        "file": "src/pricing/legacy.py",
+        "owner": "bulk_discount",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "quantity>50"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_pricing_legacy.py:python_preview:5bce1d28",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/pricing/legacy.py",
+        "line": 2,
+        "expression": "    if quantity > 50:",
+        "owner": "python:src/pricing/legacy.py::bulk_discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `bulk_discount`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if quantity > 50:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `bulk_discount`", "infection yes: Changed Python predicate can alter branch selection: `if quantity > 50:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches unknown sink: if quantity > 50: (line 2)", "related test tests/test_discounts.py:4 test_bulk_discount_large_order uses strong exact value oracle: assert bulk_discount(101) == 0.15", "observed function argument value quantity = 101 at line 5", "missing discriminator quantity == 50: changed Python equality-boundary at line 2 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if quantity > 50:","line":2}
+      ],
+      "evidence": ["owner: bulk_discount", "owner_kind: function", "missing_discriminator: quantity == 50", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discounts.py", "suggested_test_name: test_bulk_discount_large_order", "suggested_test_node_id: tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_bulk_discount_large_order)", "test_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order (test_bulk_discount_large_order)", "related_test_relation: syntactic_call (test_bulk_discount_large_order)", "test_oracle: exact_value strong (test_bulk_discount_large_order)"],
+      "missing": ["A strong Python oracle reaches `bulk_discount`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
+      "assertion_texts": {
+        "5": "assert bulk_discount(101) == 0.15"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "quantity = 101",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "quantity == 50",
+            "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"unknown","text":"if quantity > 50:","line":2}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "quantity = 101",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "quantity == 50",
+          "reason": "changed Python equality-boundary at line 2 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"unknown","text":"if quantity > 50:","line":2}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_bulk_discount_large_order",
+          "file": "tests/test_discounts.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert bulk_discount(101) == 0.15"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_discounts.py",
+        "suggested_test_name": "test_bulk_discount_large_order",
+        "suggested_test_node_id": "tests/test_discounts.py::test_bulk_discount_large_order",
+        "verify_command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/pricing/legacy.py:bulk_discount:predicate_boundary:predicate:quantity>50",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "bulk_discount",
+        "changed_behavior": "predicate_boundary changed at src/pricing/legacy.py:2: `if quantity > 50:`",
+        "current_test_evidence": "tests/test_discounts.py:4 test_bulk_discount_large_order currently has oracle_strength=strong, oracle_kind=exact_value: assert bulk_discount(101) == 0.15",
+        "missing_discriminator": "quantity == 50",
+        "recommended_test_shape": "Strengthen the existing pytest boundary assertion for `quantity == 50`. Keep the equality case as the minimum repair; optional pytest parameterization can add `49`, `50`, and `51` rows when expected values are clear.",
+        "suggested_assertion": "Assert the owner result or effect at `quantity == 50` first. Optional pytest shape: @pytest.mark.parametrize(\"quantity, expected\", [(49, ...), (50, ...), (51, ...)]); fill expected values from domain behavior only.",
+        "suggested_location": {
+          "test_file": "tests/test_discounts.py",
+          "test_name": "test_bulk_discount_large_order",
+          "pytest_node_id": "tests/test_discounts.py::test_bulk_discount_large_order"
+         },
+        "verify": {
+          "command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit.", "Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `quantity == 50`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `quantity == 50`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "quantity",
+      "observed_sink": "assert bulk_discount(101) == 0.15",
+      "oracle_alignment": "orthogonal",
+      "alignment_reason": "strong_oracle_observes_different_sink",
+      "source_currentness": "candidate_current"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 2,
+      "sample_paths": ["src/pricing/discounts.py", "src/pricing/legacy.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

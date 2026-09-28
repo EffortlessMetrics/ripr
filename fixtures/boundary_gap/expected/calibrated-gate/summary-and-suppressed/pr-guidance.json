@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "comments": 0,
+    "summary_only": 1,
+    "suppressed": 1,
+    "unchanged_tests": true
+  },
+  "comments": [],
+  "summary_only": [
+    {
+      "id": "summary-1",
+      "seam_id": "summary-seam",
+      "grip_class": "weakly_gripped",
+      "severity": "warning",
+      "missing_discriminator": "amount == discount_threshold",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88
+      }
+    }
+  ],
+  "suppressed": [
+    {
+      "id": "suppressed-1",
+      "seam_id": "suppressed-seam",
+      "grip_class": "weakly_gripped",
+      "severity": "off",
+      "reason": "severity_off",
+      "missing_discriminator": "amount == discount_threshold",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 89
+      }
+    }
+  ]
+}

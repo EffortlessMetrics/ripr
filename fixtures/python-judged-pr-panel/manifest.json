@@ -1,0 +1,129 @@
+{
+  "schema_version": "0.1",
+  "kind": "python_judged_pr_panel_manifest",
+  "spec": "RIPR-SPEC-0092",
+  "tier": "B",
+  "description": "Seed Tier B judged-diff panel for Python: a small hand-vetted set of diffs spanning should_gap, should_stay_quiet, and should_limit. Schema + seed only; not a full corpus and not an automated judging engine. Labels are unjudged (null) in this seed PR; a later PR populates and measures them.",
+  "limits": [
+    "schema and hand-vetted seed only; no large corpus",
+    "no automated judging engine in this PR",
+    "no analyzer change; reads the existing ripr check surface only",
+    "static preview evidence only",
+    "no provider calls",
+    "no generated tests",
+    "no mutation execution",
+    "no source edits, PR, or CI mutation",
+    "advisory only; never a default gate, badge, or RIPR Zero input",
+    "no support-tier claim"
+  ],
+  "items": [
+    {
+      "id": "synthetic-boundary-flip-weak-oracle-should-gap",
+      "repo": "synthetic-pricing",
+      "base": null,
+      "head": null,
+      "diff_path": "fixtures/python-judged-pr-panel/diffs/boundary_flip_weak_oracle.diff",
+      "shape": ["pytest_library"],
+      "expected_direction": "should_gap",
+      "anchor": {
+        "file": "pricing.py",
+        "line": 2,
+        "owner": "apply_discount",
+        "boundary": "predicate equality boundary at amount == threshold"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": null,
+        "false_exposed": null,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": null,
+        "limitation_quality": null
+      },
+      "judgment_source": null,
+      "judged_at": null,
+      "judged_by": null,
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "must_not_claim": [
+        "Do not treat a null label as a passing judgment.",
+        "Do not derive an error rate from unjudged items."
+      ],
+      "reason": "Boundary flip (>= to >) covered only by a smoke assertion; ground truth is a missing equality-boundary discriminator -> weakly_exposed, not exposed."
+    },
+    {
+      "id": "synthetic-direct-boundary-assertion-should-stay-quiet",
+      "repo": "synthetic-pricing",
+      "base": null,
+      "head": null,
+      "diff_path": "fixtures/python-judged-pr-panel/diffs/direct_boundary_assertion.diff",
+      "shape": ["pytest_library"],
+      "expected_direction": "should_stay_quiet",
+      "anchor": {
+        "file": "pricing.py",
+        "line": 2,
+        "owner": "apply_discount",
+        "boundary": "predicate equality boundary at amount == threshold"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": null,
+        "false_exposed": null,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": null,
+        "limitation_quality": null
+      },
+      "judgment_source": null,
+      "judged_at": null,
+      "judged_by": null,
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "must_not_claim": [
+        "Do not treat a null label as a passing judgment.",
+        "ripr should stay quiet here; a routed repair packet is false_actionable."
+      ],
+      "reason": "Same boundary flip but the test asserts the exact equality boundary (apply_discount(100, 100) == 90); a strong, sink-aligned oracle observes the change -> exposed, ripr should route no card."
+    },
+    {
+      "id": "synthetic-decorator-indirection-should-limit",
+      "repo": "synthetic-routes",
+      "base": null,
+      "head": null,
+      "diff_path": "fixtures/python-judged-pr-panel/diffs/decorator_indirection_limit.diff",
+      "shape": ["api_json"],
+      "expected_direction": "should_limit",
+      "anchor": {
+        "file": "routes.py",
+        "line": 3,
+        "owner": "checkout",
+        "boundary": "return body behind a dynamic route decorator"
+      },
+      "expected_classification": "static_unknown",
+      "expected_static_limit_kind": "decorator_indirection",
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": null,
+        "false_exposed": null,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": null,
+        "limitation_quality": null
+      },
+      "judgment_source": null,
+      "judged_at": null,
+      "judged_by": null,
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "must_not_claim": [
+        "Do not treat a null label as a passing judgment.",
+        "ripr must fail closed here; crediting exposed past the limit is false_exposed."
+      ],
+      "reason": "Changed behavior sits behind a dynamic route decorator the syntax-first adapter cannot resolve -> fail closed to static_unknown with a named decorator_indirection limit, no card."
+    }
+  ]
+}

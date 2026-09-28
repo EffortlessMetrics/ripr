@@ -1,0 +1,161 @@
+# Archived by `cargo xtask closeout --goal lane1-cross-language-oracle-followup` on 2026-06-04.
+id = "lane1-cross-language-oracle-followup"
+title = "Lane 1 Cross-Language Oracle Follow-Up"
+status = "closed"
+lane = "lane1"
+issue = "https://github.com/EffortlessMetrics/ripr-swarm/issues/910"
+no_current_goal = true
+
+# Selected after the Lane 1 post-0.8 operating loop closed with
+# no_current_goal = true. Live repo state on 2026-06-04 shows #913, #911,
+# #912, and #909 closed, while #908 and #910 remain open as broader
+# mixed-language oracle follow-ups. This successor must extend cross-language
+# oracle evidence only through measured, profile-backed graph slices and must
+# keep preview/advisory and fail-closed boundaries explicit.
+# Closed on 2026-06-04 after the measured Bun Blob, Markdown, copy-to-unshared,
+# and FFI panic-boundary slices landed with calibration, dogfood, runbook, and
+# closeout evidence. Broader #908/#910 work remains open, but no next campaign
+# is selected by this manifest.
+
+objective = """
+Make #908/#910 cross-language oracle follow-ups more useful by adding measured
+graph profiles beyond the bounded Bun Blob route while preserving the rule that
+external-language evidence is advisory or a named limitation until every graph
+leg and public repair-packet field is explicit.
+"""
+
+end_state = [
+  "non-Blob Rust seams exercised through TypeScript, binding, or FFI routes have profile-backed samples instead of generic weak-grip repair guidance",
+  "missing binding, FFI, external callsite, external oracle, or target-placement legs remain named static limitations with source locations and unlock conditions",
+  "complete external witnesses remain preview/advisory until canonical actionability fields exist",
+  "public repair queues, LSP actions, badges, CI, and PR/review surfaces do not project cross-language limitations as repair packets",
+]
+
+hard_rules = [
+  "do not force actionability",
+  "do not suggest wrong-language or unrelated test files",
+  "do not create public repair packets from preview or limitation evidence",
+  "do not claim generic cross-language oracle proof from one configured profile",
+  "do not add provider integration, autonomous edits, mutation execution, or a default blocking CI or badge semantic switch",
+  "source ripr remains release, signing, publishing, and distribution authority",
+]
+
+non_goals = [
+  "no generic TypeScript or Bun runtime execution",
+  "no generated tests",
+  "no provider integration",
+  "no autonomous edits",
+  "no mutation execution",
+  "no default blocking CI or badge semantic switch",
+  "no source release, publish, tag, signing, marketplace, or install-doc work without explicit release authorization",
+]
+
+[[work_item]]
+id = "fixtures/cross-language-copy-to-unshared-profile"
+status = "done"
+branch = "lane1-cross-language-oracle-followup"
+stackable = false
+acceptance = "Select #908/#910 as the active follow-up and pin a measured `copy_to_unshared` TypeScript-exercised Rust seam as a profile-backed bridge-unknown limitation with source locations, missing binding edge, repair route, unlock condition, raw evidence refs, and no public repair-packet fields."
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/configured-cross-language-ts-placement"
+status = "done"
+branch = "output-bun-ub-missing-discriminator-placement"
+stackable = false
+acceptance = "For configured missing-discriminator Bun Blob rows, surface `test/js/web/fetch/blob.test.ts` only as advisory TypeScript placement while keeping repair_packet_ready=false, no public projection, no verify command, no receipt command, no allowed edit surface, and no wrong Rust test target."
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/cross-language-copy-to-unshared-bridge-route"
+status = "done"
+branch = "analysis-cross-language-copy-to-unshared-bridge-route"
+stackable = false
+acceptance = "For the profile-backed `copy_to_unshared` case, add explicit configured or generated bridge evidence before crediting the external TypeScript oracle; until that bridge exists, keep the seam as `bridge_unknown` with no verify command, receipt command, allowed edit surface, suggested test file, or public projection eligibility."
+commands = [
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/bun-markdown-resizable-cross-language-profile"
+status = "done"
+branch = "analysis-bun-markdown-cross-language-profile"
+stackable = false
+acceptance = "For #951 `MarkdownObject::to_string`, add a configured TypeScript Markdown profile that credits `test/js/bun/md/md-edge-cases.test.ts` only as an advisory cross-language witness when the resizable ArrayBuffer discriminator, `Bun.markdown` callsite, configured bridge, and strong markdown oracle are present; weak markdown oracle evidence stays a named limitation with no Rust test suggestion, verify command, receipt command, allowed edit surface, public projection eligibility, or generic TypeScript proof claim."
+commands = [
+  "cargo test -p ripr cross_language -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo test -p xtask ripr_swarm_readiness_rolls_up_plan_and_outcomes -- --test-threads=1",
+  "cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-fixture-contracts",
+]
+
+[[work_item]]
+id = "dogfood/bun-blob-witness-receipts"
+status = "done"
+branch = "dogfood-bun-blob-witness-receipts"
+stackable = false
+acceptance = "Record checked Bun Blob cross-language witness dogfood receipts for complete advisory, missing discriminator, bridge-unknown, and partial-oracle cases while preserving advisory-only authority, route-quality counters, non-claims, and no public repair packets."
+commands = [
+  "cargo test -p xtask bun_ub_cross_language_dogfood -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "fixtures/bun-ffi-negative-offset-panic-boundary-profile"
+status = "done"
+branch = "fixtures-bun-ffi-panic-boundary-profile"
+stackable = false
+acceptance = "For #950, pin the Bun FFI `FFIObject::read` negative-offset panic boundary as a profile-backed static limitation with source locations, FFI binding sample, missing negative-offset panic oracle, missing safe external observer target, unlock condition, raw evidence refs, no suggested Rust or TypeScript test file, no verify command, no receipt command, no allowed edit surface, and no public projection eligibility."
+commands = [
+  "cargo test -p xtask cross_language_oracle_graph -- --test-threads=1",
+  "cargo test -p xtask ripr_swarm_readiness_rolls_up_plan_and_outcomes -- --test-threads=1",
+  "cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-fixture-contracts",
+]
+
+[[work_item]]
+id = "dogfood/bun-ffi-panic-boundary-receipt"
+status = "done"
+branch = "dogfood-bun-ffi-panic-boundary-receipt"
+stackable = false
+acceptance = "Record a checked Bun FFI negative-offset panic-boundary dogfood receipt for #950/#974 that proves the new route stays a named limitation with unresolved negative-offset oracle and safe observer target evidence, no suggested test file, no verify command, no receipt command, no allowed edit surface, and no public repair packet."
+commands = [
+  "cargo test -p xtask dogfood_bun_ub_cross_language_receipts_are_checked -- --test-threads=1",
+  "cargo test -p xtask cross_language_oracle_graph_corpus_cases_are_checked -- --test-threads=1",
+  "cargo test -p xtask evidence_quality_scorecard_summarizes_cross_language_oracle_route_quality -- --test-threads=1",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

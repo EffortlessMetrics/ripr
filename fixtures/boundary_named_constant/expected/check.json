@@ -1,0 +1,401 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/boundary_named_constant/input",
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":2,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:78762eb6a780c061ae196e5de20499a54f28ef14069a178c31fbe574215b531b","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":6,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:566edf6b",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:566edf6b",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/boundary_named_constant/input/src/lib.rs",
+        "line": 12,
+        "expression": "amount >= DISCOUNT_THRESHOLD"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: discount_boundary"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - amount / 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: discount_boundary", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: amount - amount / 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: amount - amount / 10 (line 13)", "related test tests/pricing.rs:4 discount_boundary uses strong exact value oracle: assert_eq!(discounted_total(5_000), 5_000);", "related test tests/pricing.rs:4 discount_boundary uses strong exact value oracle: assert_eq!(discounted_total(10_000), 9_000);", "related test tests/pricing.rs:4 discount_boundary uses strong exact value oracle: assert_eq!(discounted_total(20_000), 18_000);", "observed assertion argument value 5_000 at line 5", "observed function argument value amount = 5_000 at line 5", "observed assertion argument value 9_000 at line 6", "observed function argument value amount = 10_000 at line 6", "observed function argument value amount == DISCOUNT_THRESHOLD at line 6", "observed assertion argument value 18_000 at line 7", "observed function argument value amount = 20_000 at line 7"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - amount / 10","line":13}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - amount / 10", "Detected related test input at the changed boundary", "Related tests appear to reach discounted_total: discount_boundary", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "5": "assert_eq!(discounted_total(5_000), 5_000);",
+        "6": "assert_eq!(discounted_total(10_000), 9_000);",
+        "7": "assert_eq!(discounted_total(20_000), 18_000);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "5_000",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "amount = 5_000",
+            "context": "function_argument"
+          },
+          {
+            "line": 6,
+            "value": "9_000",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 6,
+            "value": "amount = 10_000",
+            "context": "function_argument"
+          },
+          {
+            "line": 6,
+            "value": "amount == DISCOUNT_THRESHOLD",
+            "context": "function_argument",
+            "provenance": "assert_eq!(discounted_total(10_000), 9_000); | exact input amount = 10_000; constant DISCOUNT_THRESHOLD = 10_000 (same-file const)"
+          },
+          {
+            "line": 7,
+            "value": "18_000",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 7,
+            "value": "amount = 20_000",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "5_000",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "amount = 5_000",
+          "context": "function_argument"
+        },
+        {
+          "line": 6,
+          "value": "9_000",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 6,
+          "value": "amount = 10_000",
+          "context": "function_argument"
+        },
+        {
+          "line": 6,
+          "value": "amount == DISCOUNT_THRESHOLD",
+          "context": "function_argument",
+          "provenance": "assert_eq!(discounted_total(10_000), 9_000); | exact input amount = 10_000; constant DISCOUNT_THRESHOLD = 10_000 (same-file const)"
+        },
+        {
+          "line": 7,
+          "value": "18_000",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 7,
+          "value": "amount = 20_000",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "discount_boundary",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(discounted_total(5_000), 5_000);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "discount_boundary",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(discounted_total(10_000), 9_000);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "discount_boundary",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(discounted_total(20_000), 18_000);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:a6097ff7",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:a6097ff7",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/boundary_named_constant/input/src/lib.rs",
+        "line": 21,
+        "expression": "items >= BULK_ITEMS"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach bulk_rate: bulk_rate_boundary"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: 90"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach bulk_rate: bulk_rate_boundary", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: 90", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 90 (line 22)", "related test tests/pricing.rs:11 bulk_rate_boundary uses strong exact value oracle: assert_eq!(bulk_rate(3), 100);", "related test tests/pricing.rs:11 bulk_rate_boundary uses strong exact value oracle: assert_eq!(bulk_rate(parcels::BULK_ITEMS), 90);", "observed assertion argument value 100 at line 12", "observed function argument value items = 3 at line 12", "observed assertion argument value 90 at line 13", "observed enum variant value parcels::BULK_ITEMS at line 13", "observed function argument value items == BULK_ITEMS at line 13"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"90","line":22}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: 90", "Detected related test input at the changed boundary", "Related tests appear to reach bulk_rate: bulk_rate_boundary", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "12": "assert_eq!(bulk_rate(3), 100);",
+        "13": "assert_eq!(bulk_rate(parcels::BULK_ITEMS), 90);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 12,
+            "value": "100",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 12,
+            "value": "items = 3",
+            "context": "function_argument"
+          },
+          {
+            "line": 13,
+            "value": "90",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 13,
+            "value": "parcels::BULK_ITEMS",
+            "context": "enum_variant"
+          },
+          {
+            "line": 13,
+            "value": "items == BULK_ITEMS",
+            "context": "function_argument",
+            "provenance": "assert_eq!(bulk_rate(parcels::BULK_ITEMS), 90); | argument names constant BULK_ITEMS"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 12,
+          "value": "100",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 12,
+          "value": "items = 3",
+          "context": "function_argument"
+        },
+        {
+          "line": 13,
+          "value": "90",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 13,
+          "value": "parcels::BULK_ITEMS",
+          "context": "enum_variant"
+        },
+        {
+          "line": 13,
+          "value": "items == BULK_ITEMS",
+          "context": "function_argument",
+          "provenance": "assert_eq!(bulk_rate(parcels::BULK_ITEMS), 90); | argument names constant BULK_ITEMS"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "bulk_rate_boundary",
+          "file": "tests/pricing.rs",
+          "line": 11,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(bulk_rate(3), 100);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "bulk_rate_boundary",
+          "file": "tests/pricing.rs",
+          "line": 11,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(bulk_rate(parcels::BULK_ITEMS), 90);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:70700926",
+      "classification": "infection_unknown",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:70700926",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/boundary_named_constant/input/src/lib.rs",
+        "line": 30,
+        "expression": "amount >= FREE_SHIPPING"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach shipping: shipping_boundary"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a matching literal input, or an argument naming FREE_SHIPPING would resolve it), so activation/infection is unknown"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: 0"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach shipping: shipping_boundary", "infection unknown: Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a matching literal input, or an argument naming FREE_SHIPPING would resolve it), so activation/infection is unknown", "propagation yes: Changed behavior appears to influence returned value: 0", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: 0 (line 31)", "related test tests/pricing.rs:17 shipping_boundary uses strong exact value oracle: assert_eq!(shipping(1_000), 500);", "related test tests/pricing.rs:17 shipping_boundary uses strong exact value oracle: assert_eq!(shipping(5_000), 0);", "observed assertion argument value 500 at line 18", "observed function argument value amount = 1_000 at line 18", "observed assertion argument value 0 at line 19", "observed function argument value amount = 5_000 at line 19"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"0","line":31}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: 0", "Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a matching literal input, or an argument naming FREE_SHIPPING would resolve it), so activation/infection is unknown", "Related tests appear to reach shipping: shipping_boundary", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No detected boundary input for the changed predicate", "Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a matching literal input, or an argument naming FREE_SHIPPING would resolve it), so activation/infection is unknown"],
+      "assertion_texts": {
+        "18": "assert_eq!(shipping(1_000), 500);",
+        "19": "assert_eq!(shipping(5_000), 0);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 18,
+            "value": "500",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 18,
+            "value": "amount = 1_000",
+            "context": "function_argument"
+          },
+          {
+            "line": 19,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 19,
+            "value": "amount = 5_000",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 18,
+          "value": "500",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 18,
+          "value": "amount = 1_000",
+          "context": "function_argument"
+        },
+        {
+          "line": 19,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 19,
+          "value": "amount = 5_000",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "shipping_boundary",
+          "file": "tests/pricing.rs",
+          "line": 17,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(shipping(1_000), 500);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "shipping_boundary",
+          "file": "tests/pricing.rs",
+          "line": 17,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(shipping(5_000), 0);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["infection_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
+      "suggested_next_action": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

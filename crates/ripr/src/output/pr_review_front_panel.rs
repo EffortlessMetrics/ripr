@@ -1,0 +1,3468 @@
+use serde::Serialize;
+use serde_json::Value;
+
+use super::first_pr::{
+    ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP, STATIC_EVIDENCE_BOUNDARY,
+};
+use super::receipt_lifecycle::{
+    RECEIPT_MISSING, RECEIPT_NOT_APPLICABLE, receipt_lifecycle_state,
+    receipt_lifecycle_state_from_movement, receipt_lifecycle_state_from_receipt_value,
+};
+
+const SCHEMA_VERSION: &str = "0.1";
+
+/// Verify and receipt labels for the panel's top issue (#3906).
+///
+/// A carried repair start makes verify and receipt the manual alternative to
+/// the repair's after phase; without one they run after the test edit.
+fn proof_path_labels(issue: &PanelTopIssue) -> (&'static str, &'static str) {
+    let labels = ProofPathLabels::for_repair_start(issue.repair_command.is_some());
+    (labels.verify, labels.receipt)
+}
+
+fn push_repair_start(out: &mut String, command: &str) {
+    out.push_str(&format!("- Repair start: `{command}`\n"));
+    out.push_str(&format!(
+        "- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+    ));
+}
+const REPORT_KIND: &str = "pr_review_front_panel";
+
+pub(crate) const DEFAULT_PR_REVIEW_FRONT_PANEL_OUT: &str =
+    "target/ripr/reports/pr-review-front-panel.json";
+pub(crate) const DEFAULT_PR_REVIEW_FRONT_PANEL_MD_OUT: &str =
+    "target/ripr/reports/pr-review-front-panel.md";
+
+const LIMITS: &[&str] = &[
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority.",
+];
+
+const MARKDOWN_LIMITS: &[&str] = &[
+    "Static RIPR evidence only.",
+    "Does not run mutation testing.",
+    "Does not edit source or generate tests.",
+    "Gate evaluator remains pass/fail authority.",
+];
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PrReviewFrontPanelInput {
+    pub(crate) root: String,
+    pub(crate) generated_at: String,
+    pub(crate) out_md_path: String,
+    pub(crate) pr_guidance_path: Option<String>,
+    pub(crate) first_action_path: Option<String>,
+    pub(crate) assistant_proof_path: Option<String>,
+    pub(crate) assistant_health_path: Option<String>,
+    pub(crate) ledger_path: Option<String>,
+    pub(crate) baseline_delta_path: Option<String>,
+    pub(crate) zero_status_path: Option<String>,
+    pub(crate) gate_decision_path: Option<String>,
+    pub(crate) recommendation_calibration_path: Option<String>,
+    pub(crate) mutation_calibration_path: Option<String>,
+    pub(crate) coverage_frontier_path: Option<String>,
+    pub(crate) receipt_path: Option<String>,
+    pub(crate) pr_guidance_json: Option<Result<String, String>>,
+    pub(crate) first_action_json: Option<Result<String, String>>,
+    pub(crate) assistant_proof_json: Option<Result<String, String>>,
+    pub(crate) assistant_health_json: Option<Result<String, String>>,
+    pub(crate) ledger_json: Option<Result<String, String>>,
+    pub(crate) baseline_delta_json: Option<Result<String, String>>,
+    pub(crate) zero_status_json: Option<Result<String, String>>,
+    pub(crate) gate_decision_json: Option<Result<String, String>>,
+    pub(crate) recommendation_calibration_json: Option<Result<String, String>>,
+    pub(crate) mutation_calibration_json: Option<Result<String, String>>,
+    pub(crate) coverage_frontier_json: Option<Result<String, String>>,
+    pub(crate) receipt_json: Option<Result<String, String>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PrReviewFrontPanelReport {
+    status: String,
+    root: String,
+    generated_at: String,
+    inputs: PanelInputs,
+    summary: PanelSummary,
+    top_issue: Option<PanelTopIssue>,
+    movement: PanelMovement,
+    debt_delta: PanelDebtDelta,
+    policy: PanelPolicy,
+    calibration: PanelCalibration,
+    coverage_grip: PanelCoverageGrip,
+    artifacts: Vec<PanelArtifact>,
+    warnings: Vec<PanelWarning>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelInputs {
+    pr_guidance: Option<String>,
+    first_action: Option<String>,
+    assistant_proof: Option<String>,
+    assistant_health: Option<String>,
+    ledger: Option<String>,
+    baseline_delta: Option<String>,
+    zero_status: Option<String>,
+    gate_decision: Option<String>,
+    recommendation_calibration: Option<String>,
+    mutation_calibration: Option<String>,
+    coverage_frontier: Option<String>,
+    receipt: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelSummary {
+    status: String,
+    headline: String,
+    top_issue_state: String,
+    policy_state: String,
+    placement: String,
+    movement_state: String,
+    coverage_grip_state: String,
+    blocking_candidates: usize,
+    acknowledged: usize,
+    waived: usize,
+    suppressed: usize,
+    new_policy_eligible: usize,
+    baseline_still_present: usize,
+    baseline_resolved: usize,
+    warnings: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelTopIssue {
+    source: String,
+    source_artifact: String,
+    seam_id: Option<String>,
+    canonical_gap_id: Option<String>,
+    path: Option<String>,
+    line: Option<u64>,
+    classification: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    changed_behavior: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_evidence_strength: Option<String>,
+    missing_discriminator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    no_action_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    focused_proof_intent: Option<String>,
+    related_test: Option<String>,
+    suggested_test: Option<String>,
+    /// The repair transaction's start (#3906), carried verbatim from the
+    /// first-action `commands.repair`, a review card's
+    /// `llm_guidance.repair_command`, or a gate route's `repair_command`.
+    /// Upstream names it only past the fail-closed repair-packet flip; the
+    /// panel never builds one from a bare seam id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repair_command: Option<String>,
+    verify_command: Option<String>,
+    /// Carried from first-action `commands.analysis_outcome` (#4304): it
+    /// writes the file the receipt reads beside the verify output.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analysis_outcome_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    receipt_command: Option<String>,
+    static_evidence_boundary: &'static str,
+    agent_command: Option<String>,
+    receipt: PanelReceipt,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelReceipt {
+    artifact: Option<String>,
+    status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+struct PanelMovement {
+    state: String,
+    before_class: Option<String>,
+    after_class: Option<String>,
+    source_artifact: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelDebtDelta {
+    new_policy_eligible: usize,
+    baseline_still_present: usize,
+    baseline_resolved: usize,
+    acknowledged: usize,
+    waived: usize,
+    suppressed: usize,
+    blocking_candidates: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelPolicy {
+    mode: Option<String>,
+    decision: String,
+    authority_artifact: Option<String>,
+    acknowledgement_label: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelCalibration {
+    recommendation: String,
+    mutation: String,
+    source_artifacts: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+struct PanelCoverageGrip {
+    state: String,
+    coverage_delta: Option<f64>,
+    grip_delta: Option<i64>,
+    source_artifact: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelArtifact {
+    group: String,
+    label: String,
+    path: String,
+    available: bool,
+    required: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PanelWarning {
+    kind: String,
+    message: String,
+    source_artifact: Option<String>,
+}
+
+#[derive(Default)]
+struct ParsedPanelSources {
+    pr_guidance: Option<Value>,
+    first_action: Option<Value>,
+    assistant_proof: Option<Value>,
+    assistant_health: Option<Value>,
+    ledger: Option<Value>,
+    baseline_delta: Option<Value>,
+    zero_status: Option<Value>,
+    gate_decision: Option<Value>,
+    recommendation_calibration: Option<Value>,
+    mutation_calibration: Option<Value>,
+    coverage_frontier: Option<Value>,
+    receipt: Option<Value>,
+    warnings: Vec<PanelWarning>,
+}
+
+#[derive(Clone, Debug)]
+struct Candidate {
+    top_issue: Option<PanelTopIssue>,
+    top_issue_state: String,
+    headline: String,
+    placement: String,
+}
+
+pub(crate) fn build_pr_review_front_panel_report(
+    input: PrReviewFrontPanelInput,
+) -> PrReviewFrontPanelReport {
+    let parsed = parse_panel_sources(&input);
+    let inputs = PanelInputs {
+        pr_guidance: input.pr_guidance_path.clone(),
+        first_action: input.first_action_path.clone(),
+        assistant_proof: input.assistant_proof_path.clone(),
+        assistant_health: input.assistant_health_path.clone(),
+        ledger: input.ledger_path.clone(),
+        baseline_delta: input.baseline_delta_path.clone(),
+        zero_status: input.zero_status_path.clone(),
+        gate_decision: input.gate_decision_path.clone(),
+        recommendation_calibration: input.recommendation_calibration_path.clone(),
+        mutation_calibration: input.mutation_calibration_path.clone(),
+        coverage_frontier: input.coverage_frontier_path.clone(),
+        receipt: input.receipt_path.clone(),
+    };
+    let raw_debt_delta = debt_delta(&parsed);
+    let policy = policy(&input, &parsed);
+    let coverage_grip = coverage_grip(&input, &parsed);
+    let mut movement = movement(&input, &parsed);
+    let mut warnings = parsed.warnings.clone();
+
+    let candidate = select_candidate(&input, &parsed, &policy, &movement, &coverage_grip);
+    let mut status = status(&policy, &candidate);
+    let mut policy_state = policy_state(&policy, &candidate, &parsed, &movement);
+    let mut movement_state = movement.state.clone();
+    let mut coverage_state = coverage_grip.state.clone();
+    let mut headline = candidate.headline.clone();
+
+    if is_missing_required(&parsed) {
+        status = "incomplete".to_string();
+        policy_state = "none".to_string();
+        movement_state = "unknown".to_string();
+        movement.state = "unknown".to_string();
+        coverage_state = "not_available".to_string();
+        headline = "Regenerate missing assistant proof before acting.".to_string();
+        warnings.retain(|warning| {
+            warning.kind != "missing_optional_input"
+                || !warning
+                    .source_artifact
+                    .as_deref()
+                    .is_some_and(|path| path.ends_with("test-oracle-assistant-proof.json"))
+        });
+        if !warnings
+            .iter()
+            .any(|warning| warning.kind == "missing_required_input")
+        {
+            warnings.push(PanelWarning {
+                kind: "missing_required_input".to_string(),
+                message: "Assistant proof artifact is missing.".to_string(),
+                source_artifact: input.assistant_proof_path.clone(),
+            });
+        }
+    } else if candidate.placement == "summary_only" {
+        warnings.push(PanelWarning {
+            kind: "summary_only_guidance".to_string(),
+            message:
+                "Recommendation is visible in summary only because changed-line placement is unsafe."
+                    .to_string(),
+            source_artifact: input.pr_guidance_path.clone(),
+        });
+    }
+
+    let debt_delta = display_debt_delta(&raw_debt_delta, &candidate, &movement, &coverage_grip);
+    let summary_acknowledged = if candidate.top_issue_state == "already_improved" {
+        0
+    } else {
+        debt_delta.acknowledged
+    };
+    let summary_waived = if candidate.top_issue_state == "already_improved" {
+        0
+    } else {
+        debt_delta.waived
+    };
+    let summary_suppressed = if candidate.top_issue_state == "already_improved" {
+        0
+    } else {
+        debt_delta.suppressed
+    };
+    let summary = PanelSummary {
+        status: status.clone(),
+        headline,
+        top_issue_state: if status == "incomplete" {
+            "missing_required_input".to_string()
+        } else {
+            candidate.top_issue_state
+        },
+        policy_state,
+        placement: if status == "incomplete" {
+            "not_available".to_string()
+        } else {
+            candidate.placement
+        },
+        movement_state,
+        coverage_grip_state: coverage_state,
+        blocking_candidates: debt_delta.blocking_candidates,
+        acknowledged: summary_acknowledged,
+        waived: summary_waived,
+        suppressed: summary_suppressed,
+        new_policy_eligible: debt_delta.new_policy_eligible,
+        baseline_still_present: debt_delta.baseline_still_present,
+        baseline_resolved: debt_delta.baseline_resolved,
+        warnings: warnings.len(),
+    };
+    let artifacts = artifacts(&input, &inputs, &summary, &parsed);
+    PrReviewFrontPanelReport {
+        status,
+        root: input.root.clone(),
+        generated_at: input.generated_at.clone(),
+        inputs,
+        summary,
+        top_issue: if is_missing_required(&parsed) {
+            None
+        } else {
+            candidate.top_issue
+        },
+        movement,
+        debt_delta,
+        policy,
+        calibration: calibration(&input, &parsed),
+        coverage_grip,
+        artifacts,
+        warnings,
+    }
+}
+
+pub(crate) fn render_pr_review_front_panel_json(
+    report: &PrReviewFrontPanelReport,
+) -> Result<String, String> {
+    #[derive(Serialize)]
+    struct JsonReport<'a> {
+        schema_version: &'static str,
+        tool: &'static str,
+        kind: &'static str,
+        status: &'a str,
+        root: &'a str,
+        generated_at: &'a str,
+        inputs: &'a PanelInputs,
+        summary: &'a PanelSummary,
+        top_issue: &'a Option<PanelTopIssue>,
+        movement: &'a PanelMovement,
+        debt_delta: &'a PanelDebtDelta,
+        policy: &'a PanelPolicy,
+        calibration: &'a PanelCalibration,
+        coverage_grip: &'a PanelCoverageGrip,
+        artifacts: &'a [PanelArtifact],
+        warnings: &'a [PanelWarning],
+        limits: Vec<&'static str>,
+    }
+
+    serde_json::to_string_pretty(&JsonReport {
+        schema_version: SCHEMA_VERSION,
+        tool: "ripr",
+        kind: REPORT_KIND,
+        status: &report.status,
+        root: &report.root,
+        generated_at: &report.generated_at,
+        inputs: &report.inputs,
+        summary: &report.summary,
+        top_issue: &report.top_issue,
+        movement: &report.movement,
+        debt_delta: &report.debt_delta,
+        policy: &report.policy,
+        calibration: &report.calibration,
+        coverage_grip: &report.coverage_grip,
+        artifacts: &report.artifacts,
+        warnings: &report.warnings,
+        limits: LIMITS.to_vec(),
+    })
+    .map_err(|err| format!("render PR review front panel JSON failed: {err}"))
+}
+
+pub(crate) fn render_pr_review_front_panel_markdown(report: &PrReviewFrontPanelReport) -> String {
+    let mut out = String::new();
+    out.push_str("# RIPR PR Review\n\n");
+    out.push_str(&format!("Status: {}\n\n", report.status));
+
+    out.push_str("Start here:\n");
+    if report.summary.top_issue_state == "missing_required_input" {
+        out.push_str("- State: missing required evidence\n");
+        out.push_str("- Safe next action: regenerate the missing assistant proof artifact before acting on this panel.\n");
+        if let Some(warning) = report.warnings.first() {
+            out.push_str(&format!(
+                "- Missing input: {}\n",
+                str_or(warning.source_artifact.as_deref(), "not_available")
+            ));
+        }
+        out.push_str("- Boundary: advisory static evidence only; no gate, runtime, coverage, or mutation proof is implied.\n\n");
+    } else if let Some(issue) = &report.top_issue {
+        out.push_str(&format!("- State: {}\n", report.summary.top_issue_state));
+        out.push_str(&format!("- Source: {}\n", issue.source));
+        out.push_str(&format!("- Identity: {}\n", issue_primary_identity(issue)));
+        out.push_str(&format!(
+            "- File: {}\n",
+            issue_location(issue).unwrap_or_else(|| "not_available".to_string())
+        ));
+        out.push_str(&format!("- Repair route: {}\n", issue_repair_route(issue)));
+        if let Some(classification) = &issue.classification {
+            out.push_str(&format!("- Class: {classification}\n"));
+        }
+        if let Some(changed_behavior) = &issue.changed_behavior {
+            out.push_str(&format!("- Changed behavior: `{changed_behavior}`\n"));
+        }
+        if let Some(strength) = &issue.current_evidence_strength {
+            out.push_str(&format!("- Current evidence strength: {strength}\n"));
+        }
+        if let Some(discriminator) = &issue.missing_discriminator {
+            out.push_str(&format!("- Missing discriminator: {discriminator}\n"));
+        }
+        if let Some(reason) = &issue.no_action_reason {
+            out.push_str(&format!("- Why not actionable: {reason}\n"));
+        }
+        if let Some(intent) = &issue.focused_proof_intent {
+            out.push_str(&format!("- Focused proof intent: {intent}\n"));
+        }
+        if let Some(suggested) = &issue.suggested_test {
+            out.push_str(&format!(
+                "- Suggested focused test: {}\n",
+                compact_suggested_test(suggested)
+            ));
+        }
+        if let Some(related) = &issue.related_test {
+            out.push_str(&format!("- Related test: {related}\n"));
+        }
+        let (verify_label, receipt_label) = proof_path_labels(issue);
+        if let Some(command) = &issue.repair_command {
+            push_repair_start(&mut out, command);
+        }
+        if let Some(command) = &issue.analysis_outcome_command {
+            out.push_str(&format!(
+                "- Analysis outcome for the receipt: `{command}`\n"
+            ));
+        }
+        out.push_str(&format!(
+            "- {verify_label}: {}\n",
+            markdown_command_or(issue.verify_command.as_deref(), "not_available")
+        ));
+        if let Some(command) = &issue.receipt_command {
+            out.push_str(&format!("- {receipt_label}: `{command}`\n"));
+        }
+        out.push_str(&format!("- Receipt: {}\n", issue_receipt_summary(issue)));
+        out.push_str(&format!("- Boundary: {}\n", issue.static_evidence_boundary));
+        out.push('\n');
+    } else {
+        out.push_str("- State: no actionable PR-local RIPR guidance\n");
+        out.push_str("- Safe next action: inspect supporting evidence or regenerate inputs after a relevant change.\n");
+        out.push_str("- Boundary: no actionable gap is not a coverage, runtime, mutation, gate, or merge-readiness claim.\n\n");
+    }
+
+    if report.summary.placement == "summary_only" {
+        out.push_str("Placement:\n");
+        out.push_str("- summary-only\n");
+        out.push_str("- Reason: changed-line placement is unsafe\n\n");
+    }
+
+    out.push_str("Movement:\n");
+    push_count(
+        &mut out,
+        "New policy-eligible gaps",
+        report.debt_delta.new_policy_eligible,
+    );
+    if report.debt_delta.blocking_candidates > 0 {
+        push_count(
+            &mut out,
+            "Blocking candidates",
+            report.debt_delta.blocking_candidates,
+        );
+    } else if report.summary.acknowledged > 0 || report.summary.suppressed > 0 {
+        push_count(&mut out, "Acknowledged gaps", report.summary.acknowledged);
+        push_count(&mut out, "Suppressed gaps", report.summary.suppressed);
+    } else {
+        if report.coverage_grip.state != "flat_coverage_grip_improved"
+            || report.debt_delta.baseline_still_present > 0
+        {
+            push_count(
+                &mut out,
+                "Baseline gaps still present",
+                report.debt_delta.baseline_still_present,
+            );
+        }
+        push_count(
+            &mut out,
+            "Baseline gaps resolved",
+            report.debt_delta.baseline_resolved,
+        );
+    }
+    out.push_str(&format!(
+        "- Static movement: {}\n",
+        report.movement.state.replace('_', " ")
+    ));
+    out.push_str(&format!(
+        "- Coverage/grip: {}\n",
+        coverage_grip_markdown(&report.coverage_grip)
+    ));
+    if report.coverage_grip.state == "flat_coverage_grip_improved" {
+        out.push_str(&format!(
+            "- Coverage delta: {}\n",
+            percent_or(report.coverage_grip.coverage_delta)
+        ));
+        out.push_str(&format!(
+            "- RIPR unresolved delta: {}\n",
+            signed_or(report.coverage_grip.grip_delta)
+        ));
+    }
+    out.push('\n');
+
+    out.push_str("Policy:\n");
+    if report.summary.policy_state != "suppressed"
+        && let Some(mode) = &report.policy.mode
+    {
+        out.push_str(&format!("- Mode: {mode}\n"));
+    }
+    let display_decision = if report.summary.policy_state == "suppressed" {
+        "suppressed"
+    } else {
+        report.policy.decision.as_str()
+    };
+    out.push_str(&format!("- Decision: {display_decision}\n"));
+    if report.summary.policy_state == "blocking" {
+        out.push_str(&format!(
+            "- Gate authority: {}\n",
+            gate_authority_markdown(&report.policy)
+        ));
+        out.push_str(&format!(
+            "- Acknowledgement label: {}\n\n",
+            str_or(
+                report.policy.acknowledgement_label.as_deref(),
+                "not_available"
+            )
+        ));
+    } else if report.summary.policy_state == "waived" {
+        out.push_str(&format!(
+            "- Acknowledgement label: {}\n",
+            str_or(
+                report.policy.acknowledgement_label.as_deref(),
+                "not_available"
+            )
+        ));
+        out.push_str("- Finding remains visible\n");
+    } else if report.summary.policy_state == "suppressed" {
+        out.push_str("- Finding remains visible as a durable policy exception\n");
+    }
+    if report.summary.policy_state != "blocking" {
+        out.push_str(&format!(
+            "- Gate authority: {}\n\n",
+            gate_authority_markdown(&report.policy)
+        ));
+    }
+
+    if let Some(issue) = &report.top_issue
+        && (issue.repair_command.is_some()
+            || issue.agent_command.is_some()
+            || issue.verify_command.is_some()
+            || issue.receipt.status != RECEIPT_NOT_APPLICABLE)
+        && report.summary.policy_state != "waived"
+        && report.summary.policy_state != "suppressed"
+        && report.summary.top_issue_state != "summary_only"
+    {
+        out.push_str("Repair:\n");
+        if report.summary.top_issue_state != "already_improved" {
+            let (verify_label, _) = proof_path_labels(issue);
+            if let Some(command) = &issue.repair_command {
+                push_repair_start(&mut out, command);
+            } else if let Some(command) = &issue.agent_command {
+                out.push_str(&format!("- Agent handoff: `{command}`\n"));
+            }
+            if let Some(command) = &issue.verify_command {
+                out.push_str(&format!("- {verify_label}: `{command}`\n"));
+            }
+        }
+        out.push_str(&format!(
+            "- Receipt: {}\n\n",
+            str_or(
+                issue.receipt.artifact.as_deref(),
+                issue.receipt.status.as_str()
+            )
+        ));
+    }
+
+    out.push_str("Artifacts:\n");
+    for artifact in &report.artifacts {
+        out.push_str(&format!(
+            "- {}: {}\n",
+            artifact_group_label(&artifact.group),
+            artifact.path
+        ));
+    }
+    out.push('\n');
+
+    out.push_str("Limits:\n");
+    for limit in MARKDOWN_LIMITS {
+        out.push_str(&format!("- {limit}\n"));
+    }
+    out
+}
+
+fn issue_primary_identity(issue: &PanelTopIssue) -> String {
+    issue
+        .canonical_gap_id
+        .as_deref()
+        .or(issue.seam_id.as_deref())
+        .unwrap_or("not_available")
+        .to_string()
+}
+
+fn issue_repair_route(issue: &PanelTopIssue) -> String {
+    if issue.no_action_reason.is_some() {
+        "no_repair_packet".to_string()
+    } else if issue.suggested_test.is_some() {
+        "focused_test".to_string()
+    } else if issue.agent_command.is_some() {
+        "agent_handoff".to_string()
+    } else if issue.verify_command.is_some() {
+        "verify_existing_repair".to_string()
+    } else if issue.receipt.status != RECEIPT_NOT_APPLICABLE {
+        "inspect_receipt_state".to_string()
+    } else {
+        "not_available".to_string()
+    }
+}
+
+fn markdown_command_or(command: Option<&str>, fallback: &str) -> String {
+    command
+        .map(|command| format!("`{command}`"))
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn issue_receipt_summary(issue: &PanelTopIssue) -> String {
+    match issue.receipt.artifact.as_deref() {
+        Some(artifact) => format!("{} ({artifact})", issue.receipt.status),
+        None => issue.receipt.status.clone(),
+    }
+}
+
+pub(crate) use crate::output::path::display_path;
+
+fn parse_panel_sources(input: &PrReviewFrontPanelInput) -> ParsedPanelSources {
+    let mut parsed = ParsedPanelSources::default();
+    parsed.pr_guidance = parse_optional_json(
+        "PR guidance",
+        input.pr_guidance_path.as_deref(),
+        &input.pr_guidance_json,
+        &mut parsed,
+    );
+    parsed.first_action = parse_optional_json(
+        "first useful action",
+        input.first_action_path.as_deref(),
+        &input.first_action_json,
+        &mut parsed,
+    );
+    parsed.assistant_proof = parse_optional_json(
+        "assistant proof",
+        input.assistant_proof_path.as_deref(),
+        &input.assistant_proof_json,
+        &mut parsed,
+    );
+    parsed.assistant_health = parse_optional_json(
+        "assistant loop health",
+        input.assistant_health_path.as_deref(),
+        &input.assistant_health_json,
+        &mut parsed,
+    );
+    parsed.ledger = parse_optional_json(
+        "PR evidence ledger",
+        input.ledger_path.as_deref(),
+        &input.ledger_json,
+        &mut parsed,
+    );
+    parsed.baseline_delta = parse_optional_json(
+        "baseline debt delta",
+        input.baseline_delta_path.as_deref(),
+        &input.baseline_delta_json,
+        &mut parsed,
+    );
+    parsed.zero_status = parse_optional_json(
+        "RIPR Zero status",
+        input.zero_status_path.as_deref(),
+        &input.zero_status_json,
+        &mut parsed,
+    );
+    parsed.gate_decision = parse_optional_json(
+        "gate decision",
+        input.gate_decision_path.as_deref(),
+        &input.gate_decision_json,
+        &mut parsed,
+    );
+    parsed.recommendation_calibration = parse_optional_json(
+        "recommendation calibration",
+        input.recommendation_calibration_path.as_deref(),
+        &input.recommendation_calibration_json,
+        &mut parsed,
+    );
+    parsed.mutation_calibration = parse_optional_json(
+        "mutation calibration",
+        input.mutation_calibration_path.as_deref(),
+        &input.mutation_calibration_json,
+        &mut parsed,
+    );
+    parsed.coverage_frontier = parse_optional_json(
+        "coverage/grip frontier",
+        input.coverage_frontier_path.as_deref(),
+        &input.coverage_frontier_json,
+        &mut parsed,
+    );
+    parsed.receipt = parse_optional_json(
+        "receipt",
+        input.receipt_path.as_deref(),
+        &input.receipt_json,
+        &mut parsed,
+    );
+    parsed
+}
+
+fn parse_optional_json(
+    label: &str,
+    path: Option<&str>,
+    text: &Option<Result<String, String>>,
+    parsed: &mut ParsedPanelSources,
+) -> Option<Value> {
+    let path = path?;
+    let Some(text) = text else {
+        parsed.warnings.push(PanelWarning {
+            kind: "missing_optional_input".to_string(),
+            message: format!("{label} path {path} was supplied but no input text was loaded."),
+            source_artifact: Some(path.to_string()),
+        });
+        return None;
+    };
+    let text = match text {
+        Ok(text) => text,
+        Err(error) => {
+            parsed.warnings.push(PanelWarning {
+                kind: "missing_optional_input".to_string(),
+                message: format!("Optional {label} input is unreadable: {error}"),
+                source_artifact: Some(path.to_string()),
+            });
+            return None;
+        }
+    };
+    match serde_json::from_str::<Value>(text) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            parsed.warnings.push(PanelWarning {
+                kind: "malformed_input".to_string(),
+                message: format!("Optional {label} input is malformed: {error}"),
+                source_artifact: Some(path.to_string()),
+            });
+            None
+        }
+    }
+}
+
+fn select_candidate(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+    policy: &PanelPolicy,
+    movement: &PanelMovement,
+    coverage_grip: &PanelCoverageGrip,
+) -> Candidate {
+    if policy.decision == "blocked" {
+        return Candidate {
+            top_issue: top_issue_from_first_action(input, parsed),
+            top_issue_state: "actionable".to_string(),
+            headline: "Configured gate blocked one new policy-eligible gap.".to_string(),
+            placement: placement_from_guidance(parsed.pr_guidance.as_ref()),
+        };
+    }
+    if movement.state == "resolved" {
+        return Candidate {
+            top_issue: top_issue_from_baseline_delta(input, parsed, "resolved"),
+            top_issue_state: "already_improved".to_string(),
+            headline: "This PR resolved reviewed baseline debt.".to_string(),
+            placement: "not_available".to_string(),
+        };
+    }
+    if policy.decision == "acknowledged" {
+        return Candidate {
+            top_issue: top_issue_from_gate_decision(input, parsed, "acknowledged"),
+            top_issue_state: "actionable".to_string(),
+            headline: "Policy-eligible gap acknowledged by ripr-waive.".to_string(),
+            placement: "changed_line".to_string(),
+        };
+    }
+    if has_suppressed(parsed) {
+        return Candidate {
+            top_issue: top_issue_from_gate_decision(input, parsed, "suppressed"),
+            top_issue_state: "baseline_only".to_string(),
+            headline: "Suppressed candidate remains visible.".to_string(),
+            placement: "not_available".to_string(),
+        };
+    }
+    if movement.state == "unchanged" {
+        return Candidate {
+            top_issue: top_issue_from_assistant_health(input, parsed),
+            top_issue_state: "unchanged_after_attempt".to_string(),
+            headline: "Static grip stayed unchanged after the focused attempt.".to_string(),
+            placement: placement_from_assistant_health(parsed.assistant_health.as_ref()),
+        };
+    }
+    if movement.state == "regressed" {
+        return Candidate {
+            top_issue: top_issue_from_assistant_health(input, parsed),
+            top_issue_state: "actionable".to_string(),
+            headline: "Static grip regressed after the focused attempt.".to_string(),
+            placement: placement_from_assistant_health(parsed.assistant_health.as_ref()),
+        };
+    }
+    if movement.state == "unknown" && assistant_health_has_repair_work(parsed) {
+        let top_issue = top_issue_from_assistant_health(input, parsed);
+        return Candidate {
+            top_issue_state: if top_issue.is_some() {
+                "actionable".to_string()
+            } else {
+                "missing_required_input".to_string()
+            },
+            top_issue,
+            headline: "Refresh incomplete assistant proof before treating grip as improved."
+                .to_string(),
+            placement: placement_from_assistant_health(parsed.assistant_health.as_ref()),
+        };
+    }
+    if coverage_grip.state == "flat_coverage_grip_improved"
+        && movement_has_concrete_improvement(movement)
+    {
+        return Candidate {
+            top_issue: top_issue_from_assistant_health(input, parsed)
+                .map(|issue| already_improved_top_issue(issue, movement)),
+            top_issue_state: "already_improved".to_string(),
+            headline: "Static grip improved while coverage stayed flat.".to_string(),
+            placement: "changed_line".to_string(),
+        };
+    }
+    if movement.state == "improved" && !movement_has_concrete_improvement(movement) {
+        let top_issue = top_issue_from_assistant_health(input, parsed);
+        return Candidate {
+            top_issue_state: if top_issue.is_some() {
+                "actionable".to_string()
+            } else {
+                "missing_required_input".to_string()
+            },
+            top_issue,
+            headline: "Refresh incomplete assistant proof before treating grip as improved."
+                .to_string(),
+            placement: placement_from_assistant_health(parsed.assistant_health.as_ref()),
+        };
+    }
+    if first_action_status(parsed.first_action.as_ref()) == Some("actionable") {
+        let placement = placement_from_guidance(parsed.pr_guidance.as_ref());
+        let summary_only = placement == "summary_only";
+        return Candidate {
+            top_issue: if summary_only {
+                top_issue_from_guidance(input, parsed, "summary_only")
+                    .or_else(|| top_issue_from_first_action(input, parsed))
+            } else {
+                top_issue_from_first_action(input, parsed)
+            },
+            top_issue_state: if summary_only {
+                "summary_only".to_string()
+            } else {
+                "actionable".to_string()
+            },
+            headline: if summary_only {
+                "Show summary-only equality-boundary guidance.".to_string()
+            } else {
+                "Add equality-boundary discriminator test.".to_string()
+            },
+            placement,
+        };
+    }
+    if let Some(top_issue) = top_issue_from_python_no_action_ledger(input, parsed) {
+        let state = top_issue
+            .classification
+            .clone()
+            .unwrap_or_else(|| "python_no_action".to_string());
+        return Candidate {
+            top_issue: Some(top_issue),
+            top_issue_state: state.clone(),
+            headline: python_no_action_headline(&state),
+            placement: "not_available".to_string(),
+        };
+    }
+    Candidate {
+        top_issue: None,
+        top_issue_state: "no_actionable_seam".to_string(),
+        headline: "No actionable PR-local RIPR guidance.".to_string(),
+        placement: "not_available".to_string(),
+    }
+}
+
+fn already_improved_top_issue(mut issue: PanelTopIssue, movement: &PanelMovement) -> PanelTopIssue {
+    if !movement_has_concrete_improvement(movement) {
+        return issue;
+    }
+    if let Some(after_class) = &movement.after_class {
+        let public_class = normalize_class(after_class.clone());
+        issue.classification = Some(public_class.clone());
+        issue.current_evidence_strength = Some(public_class);
+    }
+    issue.missing_discriminator = None;
+    issue.no_action_reason = Some(
+        "The receipt reports that static grip already improved; no further repair is recommended."
+            .to_string(),
+    );
+    issue.focused_proof_intent = None;
+    issue.related_test = None;
+    issue.suggested_test = None;
+    issue.repair_command = None;
+    issue.agent_command = None;
+    issue
+}
+
+fn movement_has_concrete_improvement(movement: &PanelMovement) -> bool {
+    let Some(after_class) = movement.after_class.as_deref() else {
+        return false;
+    };
+    movement.state == "improved"
+        // `ungripped` is a recognized receipt class, but it does not carry
+        // enough exposure evidence to clear the repair packet.
+        && after_class != "ungripped"
+        && normalized_receipt_class(after_class).is_some_and(is_concrete_exposure_class)
+}
+
+fn is_concrete_exposure_class(class: &str) -> bool {
+    matches!(
+        class,
+        "weakly_exposed" | "exposed" | "reachable_unrevealed" | "no_static_path"
+    )
+}
+
+fn is_missing_required(parsed: &ParsedPanelSources) -> bool {
+    first_action_status(parsed.first_action.as_ref()) == Some("missing_required_artifact")
+        || parsed.warnings.iter().any(|warning| {
+            warning.source_artifact.as_deref().is_some_and(|path| {
+                path.ends_with("test-oracle-assistant-proof.json")
+                    && warning.kind == "missing_optional_input"
+            })
+        })
+}
+
+fn debt_delta(parsed: &ParsedPanelSources) -> PanelDebtDelta {
+    let ledger = parsed.ledger.as_ref();
+    let baseline = parsed.baseline_delta.as_ref();
+    let gate = parsed.gate_decision.as_ref();
+
+    let blocking = usize_from_sources(&[
+        (gate, &["summary", "blocking"]),
+        (ledger, &["movement", "blocking_candidates"]),
+    ]);
+    let acknowledged = usize_from_sources(&[
+        (gate, &["summary", "acknowledged"]),
+        (ledger, &["movement", "acknowledged"]),
+        (baseline, &["delta", "acknowledged"]),
+    ]);
+    let suppressed = usize_from_sources(&[
+        (gate, &["summary", "suppressed"]),
+        (ledger, &["movement", "suppressed"]),
+        (baseline, &["delta", "suppressed"]),
+    ]);
+    let baseline_resolved = usize_from_sources(&[
+        (ledger, &["movement", "baseline_resolved"]),
+        (baseline, &["delta", "resolved"]),
+    ]);
+    let baseline_still_present = usize_from_sources(&[
+        (ledger, &["movement", "baseline_still_present"]),
+        (baseline, &["delta", "still_present"]),
+    ]);
+    let new_policy_eligible = usize_from_sources(&[
+        (baseline, &["delta", "new_policy_eligible"]),
+        (ledger, &["movement", "new_policy_eligible"]),
+    ]);
+
+    let gate_status = gate.and_then(|value| string_path(value, &["status"]));
+    let has_ledger_waiver = parsed
+        .ledger
+        .as_ref()
+        .and_then(|ledger| ledger.get("waivers"))
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty());
+    let waived = if gate_status.as_deref() == Some("acknowledged") || has_ledger_waiver {
+        acknowledged.max(1)
+    } else {
+        0
+    };
+    let baseline_resolved = if gate_status.as_deref() == Some("acknowledged") {
+        0
+    } else {
+        baseline_resolved
+    };
+    let baseline_still_present = if gate_status.as_deref() == Some("acknowledged") {
+        0
+    } else {
+        baseline_still_present
+    };
+    let suppressed = if gate_status.as_deref() == Some("acknowledged") {
+        0
+    } else {
+        suppressed
+    };
+    let new_policy_eligible = if gate_status.as_deref() == Some("acknowledged") {
+        0
+    } else if gate_status.as_deref() == Some("blocked")
+        || first_action_status(parsed.first_action.as_ref()) == Some("actionable")
+    {
+        new_policy_eligible.max(1)
+    } else {
+        new_policy_eligible
+    };
+
+    PanelDebtDelta {
+        new_policy_eligible,
+        baseline_still_present,
+        baseline_resolved,
+        acknowledged,
+        waived,
+        suppressed,
+        blocking_candidates: blocking,
+    }
+}
+
+fn policy(input: &PrReviewFrontPanelInput, parsed: &ParsedPanelSources) -> PanelPolicy {
+    let gate = parsed.gate_decision.as_ref();
+    let mode = if let Some(gate) = gate {
+        string_path(gate, &["mode"])
+    } else if parsed.baseline_delta.is_some() {
+        Some("baseline-check".to_string())
+    } else {
+        None
+    };
+    let decision = if let Some(gate) = gate {
+        string_path(gate, &["status"])
+    } else {
+        None
+    }
+    .map(|decision| {
+        if decision == "not_configured" {
+            "advisory".to_string()
+        } else {
+            decision
+        }
+    })
+    .unwrap_or_else(|| "advisory".to_string());
+    let acknowledgement_label = string_from_sources(&[
+        (gate, &["policy", "acknowledgement_label"]),
+        (gate, &["policy", "acknowledgement_labels", "0"]),
+        (parsed.ledger.as_ref(), &["gate", "acknowledgement_label"]),
+    ])
+    .or_else(|| {
+        if gate.is_some()
+            || parsed.baseline_delta.is_some()
+            || first_action_status(parsed.first_action.as_ref()) == Some("actionable")
+        {
+            Some("ripr-waive".to_string())
+        } else {
+            None
+        }
+    });
+    PanelPolicy {
+        mode,
+        decision,
+        authority_artifact: input.gate_decision_path.clone(),
+        acknowledgement_label,
+    }
+}
+
+fn policy_state(
+    policy: &PanelPolicy,
+    candidate: &Candidate,
+    parsed: &ParsedPanelSources,
+    movement: &PanelMovement,
+) -> String {
+    match policy.decision.as_str() {
+        "blocked" => "blocking".to_string(),
+        "config_error" => "config_error".to_string(),
+        "acknowledged" => "waived".to_string(),
+        _ if movement.state == "regressed"
+            && candidate.top_issue_state == "actionable"
+            && candidate
+                .top_issue
+                .as_ref()
+                .is_some_and(|issue| issue.source == "assistant_health")
+            && !has_real_policy_authority(parsed) =>
+        {
+            "none".to_string()
+        }
+        _ if candidate.top_issue_state == "summary_only"
+            || candidate.top_issue_state == "actionable" =>
+        {
+            "new_policy_eligible".to_string()
+        }
+        _ if candidate.headline == "Static grip improved while coverage stayed flat." => {
+            "none".to_string()
+        }
+        _ if candidate.top_issue_state == "already_improved" => "baseline".to_string(),
+        _ if candidate.headline.contains("Suppressed") => "suppressed".to_string(),
+        _ => "none".to_string(),
+    }
+}
+
+fn has_real_policy_authority(parsed: &ParsedPanelSources) -> bool {
+    parsed.gate_decision.is_some()
+        || parsed.ledger.is_some()
+        || parsed.baseline_delta.is_some()
+        || first_action_status(parsed.first_action.as_ref()) == Some("actionable")
+}
+
+fn status(policy: &PanelPolicy, candidate: &Candidate) -> String {
+    match policy.decision.as_str() {
+        "blocked" => "blocked".to_string(),
+        "config_error" => "config_error".to_string(),
+        "acknowledged" => "acknowledged".to_string(),
+        "pass" => "pass".to_string(),
+        _ if candidate.top_issue_state == "missing_required_input" => "incomplete".to_string(),
+        _ if candidate.headline.contains("Suppressed") => "advisory".to_string(),
+        _ => "advisory".to_string(),
+    }
+}
+
+fn assistant_health_has_repair_work(parsed: &ParsedPanelSources) -> bool {
+    parsed
+        .assistant_health
+        .as_ref()
+        .and_then(|health| usize_path(health, &["summary", "repair_queue"]))
+        .unwrap_or(0)
+        > 0
+}
+
+fn movement(input: &PrReviewFrontPanelInput, parsed: &ParsedPanelSources) -> PanelMovement {
+    if first_action_status(parsed.first_action.as_ref()) != Some("actionable")
+        && let Some(health) = parsed.assistant_health.as_ref()
+        && let Some(proof) = selected_assistant_health_proof(health)
+        && let Some(state) = string_path(proof, &["movement_state"])
+    {
+        return PanelMovement {
+            state,
+            before_class: string_path(proof, &["movement", "before_class"]),
+            after_class: string_path(proof, &["movement", "after_class"]),
+            source_artifact: input.assistant_health_path.clone(),
+        };
+    }
+    if let Some(receipt) = parsed.receipt.as_ref()
+        && let Some(state) = string_from_sources(&[
+            (Some(receipt), &["provenance", "movement"]),
+            (Some(receipt), &["seam", "change"]),
+        ])
+    {
+        return PanelMovement {
+            state,
+            before_class: string_path(receipt, &["seam", "before_class"]),
+            after_class: string_path(receipt, &["seam", "after_class"]),
+            source_artifact: input.receipt_path.clone(),
+        };
+    }
+    if let Some(baseline) = parsed.baseline_delta.as_ref()
+        && usize_path(baseline, &["delta", "resolved"]).unwrap_or(0) > 0
+    {
+        return PanelMovement {
+            state: "resolved".to_string(),
+            before_class: Some("weakly_exposed".to_string()),
+            after_class: Some("not_present".to_string()),
+            source_artifact: input.baseline_delta_path.clone(),
+        };
+    }
+    if parsed
+        .gate_decision
+        .as_ref()
+        .and_then(|gate| string_path(gate, &["status"]))
+        .as_deref()
+        == Some("acknowledged")
+    {
+        return PanelMovement {
+            state: "unknown".to_string(),
+            before_class: None,
+            after_class: None,
+            source_artifact: None,
+        };
+    }
+    if first_action_status(parsed.first_action.as_ref()) == Some("actionable") {
+        return PanelMovement {
+            state: "unknown".to_string(),
+            before_class: None,
+            after_class: None,
+            source_artifact: None,
+        };
+    }
+    PanelMovement {
+        state: "not_available".to_string(),
+        before_class: None,
+        after_class: None,
+        source_artifact: None,
+    }
+}
+
+fn display_debt_delta(
+    raw: &PanelDebtDelta,
+    candidate: &Candidate,
+    movement: &PanelMovement,
+    coverage_grip: &PanelCoverageGrip,
+) -> PanelDebtDelta {
+    if candidate.top_issue_state == "already_improved"
+        && movement.state == "improved"
+        && coverage_grip.state == "flat_coverage_grip_improved"
+    {
+        return PanelDebtDelta {
+            new_policy_eligible: 0,
+            baseline_still_present: 0,
+            baseline_resolved: raw.baseline_resolved,
+            acknowledged: 0,
+            waived: 0,
+            suppressed: 0,
+            blocking_candidates: 0,
+        };
+    }
+    raw.clone()
+}
+
+fn coverage_grip(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+) -> PanelCoverageGrip {
+    let Some(frontier) = parsed.coverage_frontier.as_ref() else {
+        return PanelCoverageGrip {
+            state: "not_available".to_string(),
+            coverage_delta: None,
+            grip_delta: None,
+            source_artifact: None,
+        };
+    };
+    let state = string_from_sources(&[
+        (Some(frontier), &["coverage_grip", "state"]),
+        (Some(frontier), &["summary", "coverage_grip_state"]),
+        (Some(frontier), &["status"]),
+    ])
+    .unwrap_or_else(|| {
+        if parsed
+            .assistant_health
+            .as_ref()
+            .and_then(|health| usize_path(health, &["summary", "improved"]))
+            .unwrap_or(0)
+            > 0
+        {
+            "flat_coverage_grip_improved".to_string()
+        } else {
+            "unknown".to_string()
+        }
+    });
+    PanelCoverageGrip {
+        state,
+        coverage_delta: f64_from_sources(&[
+            (Some(frontier), &["coverage_grip", "coverage_delta"]),
+            (Some(frontier), &["coverage_delta"]),
+            (Some(frontier), &["coverage_delta_percent"]),
+        ]),
+        grip_delta: i64_from_sources(&[
+            (Some(frontier), &["coverage_grip", "grip_delta"]),
+            (Some(frontier), &["grip_delta"]),
+            (Some(frontier), &["ripr_visible_unresolved_delta"]),
+        ]),
+        source_artifact: input.coverage_frontier_path.clone(),
+    }
+}
+
+fn calibration(input: &PrReviewFrontPanelInput, parsed: &ParsedPanelSources) -> PanelCalibration {
+    let mut source_artifacts = Vec::new();
+    if let Some(path) = &input.recommendation_calibration_path {
+        source_artifacts.push(path.clone());
+    }
+    if let Some(path) = &input.mutation_calibration_path {
+        source_artifacts.push(path.clone());
+    }
+    let recommendation = if parsed.recommendation_calibration.is_some() {
+        "available".to_string()
+    } else if policy(input, parsed).decision == "blocked" {
+        "supports_candidate".to_string()
+    } else if matches!(
+        first_action_status(parsed.first_action.as_ref()),
+        Some("actionable" | "already_improved")
+    ) && parsed.pr_guidance.is_some()
+    {
+        "unknown".to_string()
+    } else {
+        "not_available".to_string()
+    };
+    let mutation = if parsed.mutation_calibration.is_some() {
+        "available".to_string()
+    } else {
+        "not_available".to_string()
+    };
+    PanelCalibration {
+        recommendation,
+        mutation,
+        source_artifacts,
+    }
+}
+
+fn artifacts(
+    input: &PrReviewFrontPanelInput,
+    inputs: &PanelInputs,
+    summary: &PanelSummary,
+    parsed: &ParsedPanelSources,
+) -> Vec<PanelArtifact> {
+    let mut artifacts = vec![PanelArtifact {
+        group: "start_here".to_string(),
+        label: "PR review front panel".to_string(),
+        path: input.out_md_path.clone(),
+        available: true,
+        required: true,
+    }];
+    match summary.top_issue_state.as_str() {
+        "missing_required_input" => {
+            if let Some(path) = &inputs.assistant_proof {
+                artifacts.push(PanelArtifact {
+                    group: "repair".to_string(),
+                    label: "Missing assistant proof".to_string(),
+                    path: json_path_to_md(path),
+                    available: false,
+                    required: true,
+                });
+            } else if let Some(path) = &inputs.assistant_health {
+                artifacts.push(repair_artifact(
+                    "Assistant loop health",
+                    &json_path_to_md(path),
+                    parsed.assistant_health.is_some(),
+                ));
+            }
+            push_first_action_artifact(&mut artifacts, inputs, parsed);
+        }
+        "actionable" if summary.status == "blocked" => {
+            if let Some(path) = &inputs.gate_decision {
+                artifacts.push(policy_artifact(
+                    "Gate decision",
+                    &json_path_to_md(path),
+                    true,
+                ));
+            }
+            if let Some(path) = &inputs.first_action {
+                artifacts.push(repair_artifact(
+                    "First useful action",
+                    &json_path_to_md(path),
+                    parsed.first_action.is_some(),
+                ));
+            }
+        }
+        "actionable" if summary.status == "acknowledged" => {
+            if let Some(path) = &inputs.gate_decision {
+                artifacts.push(policy_artifact("Gate decision", path, true));
+            }
+            if let Some(path) = &inputs.ledger {
+                artifacts.push(evidence_artifact(
+                    "PR evidence ledger",
+                    path,
+                    parsed.ledger.is_some(),
+                ));
+            }
+        }
+        "actionable" if inputs.first_action.is_none() && inputs.assistant_health.is_some() => {
+            if let Some(path) = &inputs.assistant_health {
+                artifacts.push(repair_artifact(
+                    "Assistant loop health",
+                    &json_path_to_md(path),
+                    parsed.assistant_health.is_some(),
+                ));
+            }
+        }
+        "actionable" => {
+            if let Some(path) = &inputs.assistant_proof {
+                artifacts.push(repair_artifact(
+                    "Assistant proof",
+                    &json_path_to_md(path),
+                    true,
+                ));
+            }
+            if let Some(path) = &inputs.pr_guidance {
+                artifacts.push(evidence_artifact(
+                    "PR guidance",
+                    path,
+                    parsed.pr_guidance.is_some(),
+                ));
+            }
+        }
+        "summary_only" => {
+            if let Some(path) = &inputs.pr_guidance {
+                artifacts.push(evidence_artifact(
+                    "PR guidance summary",
+                    &json_path_to_md(path),
+                    parsed.pr_guidance.is_some(),
+                ));
+            }
+        }
+        "unchanged_after_attempt" | "already_improved"
+            if summary.coverage_grip_state == "flat_coverage_grip_improved" =>
+        {
+            push_assistant_health_and_coverage_artifacts(&mut artifacts, inputs, parsed);
+        }
+        "already_improved" => {
+            if let Some(path) = &inputs.baseline_delta {
+                artifacts.push(evidence_artifact(
+                    "Baseline debt delta",
+                    path,
+                    parsed.baseline_delta.is_some(),
+                ));
+            }
+            if let Some(path) = &inputs.ledger {
+                artifacts.push(evidence_artifact(
+                    "PR evidence ledger",
+                    path,
+                    parsed.ledger.is_some(),
+                ));
+            }
+        }
+        "baseline_only" if summary.policy_state == "suppressed" => {
+            if let Some(path) = &inputs.gate_decision {
+                artifacts.push(policy_artifact(
+                    "Gate decision",
+                    path,
+                    parsed.gate_decision.is_some(),
+                ));
+            }
+        }
+        state if is_python_no_action_state(state) => {
+            if let Some(path) = &inputs.ledger {
+                artifacts.push(evidence_artifact(
+                    "Gap decision ledger",
+                    path,
+                    parsed.ledger.is_some(),
+                ));
+            }
+            push_first_action_artifact(&mut artifacts, inputs, parsed);
+        }
+        _ => {
+            push_first_action_artifact(&mut artifacts, inputs, parsed);
+        }
+    }
+    artifacts
+}
+
+fn push_assistant_health_and_coverage_artifacts(
+    artifacts: &mut Vec<PanelArtifact>,
+    inputs: &PanelInputs,
+    parsed: &ParsedPanelSources,
+) {
+    if let Some(path) = &inputs.assistant_health {
+        artifacts.push(repair_artifact(
+            "Assistant loop health",
+            &json_path_to_md(path),
+            parsed.assistant_health.is_some(),
+        ));
+    }
+    if let Some(path) = &inputs.coverage_frontier {
+        artifacts.push(PanelArtifact {
+            group: "calibration".to_string(),
+            label: "Coverage/grip frontier".to_string(),
+            path: json_path_to_md(path),
+            available: parsed.coverage_frontier.is_some(),
+            required: false,
+        });
+    }
+}
+
+fn push_first_action_artifact(
+    artifacts: &mut Vec<PanelArtifact>,
+    inputs: &PanelInputs,
+    parsed: &ParsedPanelSources,
+) {
+    if let Some(path) = &inputs.first_action {
+        artifacts.push(evidence_artifact(
+            "First useful action",
+            &json_path_to_md(path),
+            parsed.first_action.is_some(),
+        ));
+    }
+}
+
+fn repair_artifact(label: &str, path: &str, available: bool) -> PanelArtifact {
+    PanelArtifact {
+        group: "repair".to_string(),
+        label: label.to_string(),
+        path: path.to_string(),
+        available,
+        required: false,
+    }
+}
+
+fn policy_artifact(label: &str, path: &str, available: bool) -> PanelArtifact {
+    PanelArtifact {
+        group: "policy".to_string(),
+        label: label.to_string(),
+        path: path.to_string(),
+        available,
+        required: false,
+    }
+}
+
+fn evidence_artifact(label: &str, path: &str, available: bool) -> PanelArtifact {
+    PanelArtifact {
+        group: "evidence".to_string(),
+        label: label.to_string(),
+        path: path.to_string(),
+        available,
+        required: false,
+    }
+}
+
+fn top_issue_from_first_action(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+) -> Option<PanelTopIssue> {
+    let action = parsed.first_action.as_ref()?;
+    let selected = action.get("selected")?;
+    let target = action.get("target");
+    let seam_id = string_path(selected, &["seam_id"]);
+    let classification = string_path(selected, &["classification"]);
+    let repair_command = non_empty_string_path(action, &["commands", "repair"]);
+    Some(PanelTopIssue {
+        source: "first_useful_action".to_string(),
+        source_artifact: input.first_action_path.clone()?,
+        seam_id,
+        canonical_gap_id: string_path(selected, &["canonical_gap_id"]),
+        path: string_path(selected, &["path"]),
+        line: u64_path(selected, &["line"]),
+        classification: classification.clone(),
+        changed_behavior: string_from_sources(&[
+            (Some(selected), &["changed_behavior"]),
+            (target, &["changed_behavior"]),
+        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(selected)]),
+        missing_discriminator: string_path(selected, &["missing_discriminator"]),
+        no_action_reason: None,
+        focused_proof_intent: focused_proof_intent_from_action_or_proof(
+            action,
+            parsed.assistant_proof.as_ref(),
+        ),
+        related_test: target.and_then(|target| string_path(target, &["related_test"])),
+        suggested_test: suggested_test_from_action_or_proof(
+            action,
+            parsed.assistant_proof.as_ref(),
+        ),
+        repair_command: repair_command.clone(),
+        verify_command: string_path(action, &["commands", "verify"]),
+        receipt_command: string_path(action, &["commands", "receipt"]),
+        analysis_outcome_command: string_path(action, &["commands", "analysis_outcome"]),
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
+        // Carried only: the repair start when first-action names one, else
+        // its read-only context-packet command. Never a synthesized start.
+        agent_command: repair_command
+            .or_else(|| non_empty_string_path(action, &["commands", "context_packet"])),
+        receipt: receipt_from_input(
+            input.receipt_path.as_deref(),
+            parsed.receipt.as_ref(),
+            RECEIPT_MISSING,
+        ),
+    })
+}
+
+fn top_issue_from_guidance(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+    bucket: &str,
+) -> Option<PanelTopIssue> {
+    let guidance = parsed.pr_guidance.as_ref()?;
+    let item = guidance
+        .get(bucket)
+        .and_then(Value::as_array)
+        .and_then(|items| items.first())?;
+    let seam_id = string_path(item, &["seam_id"]);
+    let repair_command = non_empty_string_path(item, &["llm_guidance", "repair_command"]);
+    Some(PanelTopIssue {
+        source: "pr_guidance".to_string(),
+        source_artifact: input.pr_guidance_path.clone()?,
+        seam_id: seam_id.clone(),
+        canonical_gap_id: string_path(item, &["canonical_gap_id"]),
+        path: string_path(item, &["path"]),
+        line: u64_path(item, &["line"]),
+        classification: string_from_sources(&[
+            (Some(item), &["classification"]),
+            (Some(item), &["class"]),
+            (Some(item), &["static_class"]),
+        ])
+        .map(normalize_class),
+        changed_behavior: string_from_sources(&[
+            (Some(item), &["changed_behavior"]),
+            (Some(item), &["changed_expression"]),
+            (Some(item), &["evidence", "changed_behavior"]),
+        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| {
+                string_from_sources(&[
+                    (Some(item), &["classification"]),
+                    (Some(item), &["class"]),
+                    (Some(item), &["static_class"]),
+                ])
+                .map(normalize_class)
+            }),
+        missing_discriminator: string_path(item, &["missing_discriminator"]),
+        no_action_reason: None,
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["focused_proof_intent"]),
+            (Some(item), &["suggested_test", "focused_proof_intent"]),
+            (Some(item), &["suggested_test", "assertion_shape"]),
+        ]),
+        related_test: string_path(item, &["suggested_test", "near_test"]),
+        suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
+        repair_command: repair_command.clone(),
+        verify_command: seam_id.as_ref().map(|_| {
+            format!(
+                "ripr agent verify --root {} --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+                input.root
+            )
+        }),
+        receipt_command: None,
+        analysis_outcome_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
+        // Carried only: the card's repair start, else its read-only
+        // inspection command. Never a start synthesized from the seam id.
+        agent_command: repair_command
+            .or_else(|| non_empty_string_path(item, &["llm_guidance", "command"])),
+        receipt: PanelReceipt {
+            artifact: None,
+            status: RECEIPT_MISSING.to_string(),
+        },
+    })
+}
+
+fn top_issue_from_gate_decision(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+    decision: &str,
+) -> Option<PanelTopIssue> {
+    let gate = parsed.gate_decision.as_ref()?;
+    let item = gate
+        .get("decisions")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|item| string_path(item, &["decision"]).as_deref() == Some(decision))?;
+    let seam_id = string_path(item, &["seam_id"]);
+    // Only an acknowledged decision keeps a repair handoff; suppressed and
+    // other decisions name none. The command is carried from the gate route.
+    let repair_command = (decision == "acknowledged")
+        .then(|| non_empty_string_path(item, &["repair_route", "repair_command"]))
+        .flatten();
+    let inspection_command = (decision == "acknowledged")
+        .then(|| non_empty_string_path(item, &["repair_route", "inspection_command"]))
+        .flatten();
+    Some(PanelTopIssue {
+        source: "gate_decision".to_string(),
+        source_artifact: input.gate_decision_path.clone()?,
+        seam_id,
+        canonical_gap_id: string_path(item, &["canonical_gap_id"]),
+        path: string_from_sources(&[
+            (Some(item), &["placement", "path"]),
+            (Some(item), &["path"]),
+        ]),
+        line: u64_from_sources(&[
+            (Some(item), &["placement", "line"]),
+            (Some(item), &["line"]),
+        ]),
+        classification: Some("weakly_exposed".to_string()),
+        changed_behavior: string_path(item, &["evidence", "changed_behavior"]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| Some("weakly_exposed".to_string())),
+        missing_discriminator: string_path(item, &["evidence", "missing_discriminator"]),
+        no_action_reason: None,
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["evidence", "focused_proof_intent"]),
+            (Some(item), &["evidence", "assertion_shape"]),
+        ]),
+        related_test: string_path(item, &["evidence", "recommended_test"]),
+        suggested_test: string_path(item, &["evidence", "assertion_shape"]),
+        repair_command: repair_command.clone(),
+        verify_command: None,
+        receipt_command: None,
+        analysis_outcome_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
+        agent_command: repair_command.or(inspection_command),
+        receipt: PanelReceipt {
+            artifact: None,
+            status: if decision == "suppressed" {
+                RECEIPT_NOT_APPLICABLE.to_string()
+            } else {
+                RECEIPT_MISSING.to_string()
+            },
+        },
+    })
+}
+
+fn top_issue_from_baseline_delta(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+    bucket: &str,
+) -> Option<PanelTopIssue> {
+    let delta = parsed.baseline_delta.as_ref()?;
+    let item = first_item_with_bucket(delta, bucket)?;
+    Some(PanelTopIssue {
+        source: "baseline_delta".to_string(),
+        source_artifact: input.baseline_delta_path.clone()?,
+        seam_id: string_path(item, &["identity", "seam_id"]),
+        canonical_gap_id: string_path(item, &["identity", "canonical_gap_id"]),
+        path: string_path(item, &["path"]),
+        line: u64_path(item, &["line"]),
+        classification: string_path(item, &["static_class"]).map(normalize_class),
+        changed_behavior: string_path(item, &["changed_behavior"]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
+            .or_else(|| string_path(item, &["static_class"]).map(normalize_class)),
+        missing_discriminator: string_path(item, &["missing_discriminator"]),
+        no_action_reason: None,
+        focused_proof_intent: string_from_sources(&[
+            (Some(item), &["focused_proof_intent"]),
+            (Some(item), &["suggested_test", "assertion_shape"]),
+        ]),
+        related_test: string_path(item, &["suggested_test", "recommended_test"]),
+        suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
+        repair_command: None,
+        verify_command: string_path(item, &["repair", "verify_command"]),
+        receipt_command: string_path(item, &["repair", "receipt_command"]),
+        analysis_outcome_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
+        agent_command: None,
+        receipt: PanelReceipt {
+            artifact: None,
+            status: RECEIPT_NOT_APPLICABLE.to_string(),
+        },
+    })
+}
+
+fn top_issue_from_assistant_health(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+) -> Option<PanelTopIssue> {
+    let health = parsed.assistant_health.as_ref()?;
+    let proof = selected_assistant_health_proof(health)?;
+    let seam = proof.get("seam").filter(|seam| seam.is_object())?;
+    let recommendation = proof.get("recommendation");
+    let handoff = proof.get("handoff");
+    let receipt = proof.get("receipt");
+    let seam_id = string_path(seam, &["seam_id"]);
+    Some(PanelTopIssue {
+        source: "assistant_health".to_string(),
+        source_artifact: input.assistant_health_path.clone()?,
+        seam_id: seam_id.clone(),
+        canonical_gap_id: string_path(seam, &["canonical_gap_id"]),
+        path: string_path(seam, &["path"]),
+        line: u64_path(seam, &["line"]),
+        classification: string_path(seam, &["grip_class"]).map(normalize_class),
+        changed_behavior: string_from_sources(&[
+            (Some(seam), &["changed_behavior"]),
+            (recommendation, &["changed_behavior"]),
+        ]),
+        current_evidence_strength: current_evidence_strength_from_sources(&[
+            Some(seam),
+            recommendation,
+        ])
+        .or_else(|| string_path(seam, &["grip_class"]).map(normalize_class)),
+        missing_discriminator: string_path(seam, &["missing_discriminator"]),
+        no_action_reason: None,
+        focused_proof_intent: recommendation.and_then(|value| {
+            string_from_sources(&[
+                (Some(value), &["focused_proof_intent"]),
+                (Some(value), &["suggested_test"]),
+                (Some(value), &["assertion_shape"]),
+            ])
+        }),
+        related_test: recommendation.and_then(|value| string_path(value, &["related_test"])),
+        suggested_test: recommendation.and_then(|value| string_path(value, &["suggested_test"])),
+        repair_command: None,
+        verify_command: recommendation.and_then(|value| string_path(value, &["verify_command"])),
+        receipt_command: receipt.and_then(|value| string_path(value, &["command"])),
+        analysis_outcome_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
+        agent_command: handoff.and_then(|value| string_path(value, &["agent_command"])),
+        receipt: PanelReceipt {
+            artifact: receipt.and_then(|value| string_path(value, &["artifact"])),
+            status: selected_proof_receipt_status(
+                proof,
+                parsed.receipt.as_ref(),
+                input.receipt_path.as_deref(),
+            ),
+        },
+    })
+}
+
+fn selected_proof_receipt_status(
+    selected_proof: &Value,
+    parsed_receipt: Option<&Value>,
+    parsed_receipt_artifact: Option<&str>,
+) -> String {
+    let selected_receipt = selected_proof.get("receipt");
+    if let Some(status) = selected_receipt.and_then(|value| string_path(value, &["status"])) {
+        return receipt_lifecycle_state(Some(&status));
+    }
+    if let Some(parsed_receipt) = parsed_receipt
+        && parsed_receipt_matches_selected_proof(
+            selected_proof,
+            parsed_receipt,
+            parsed_receipt_artifact,
+        )
+    {
+        return receipt_lifecycle_state_from_receipt_value(parsed_receipt);
+    }
+    RECEIPT_MISSING.to_string()
+}
+
+fn parsed_receipt_matches_selected_proof(
+    selected_proof: &Value,
+    parsed_receipt: &Value,
+    parsed_receipt_artifact: Option<&str>,
+) -> bool {
+    let (Some(selected_artifact), Some(parsed_receipt_artifact)) = (
+        string_path(selected_proof, &["receipt", "artifact"]),
+        parsed_receipt_artifact,
+    ) else {
+        return false;
+    };
+    if selected_artifact != parsed_receipt_artifact {
+        return false;
+    }
+    let Some(selected_seam_id) = string_path(selected_proof, &["seam", "seam_id"]) else {
+        return false;
+    };
+    let parsed_seam_ids = [
+        string_path(parsed_receipt, &["provenance", "seam_id"]),
+        string_path(parsed_receipt, &["seam", "seam_id"]),
+    ];
+    if !all_present_values_match(&parsed_seam_ids, &selected_seam_id) {
+        return false;
+    }
+
+    let Some(selected_movement) = string_path(selected_proof, &["movement", "source_state"])
+        .or_else(|| string_path(selected_proof, &["movement_state"]))
+    else {
+        return false;
+    };
+    let parsed_movements = [
+        string_path(parsed_receipt, &["provenance", "movement"]),
+        string_path(parsed_receipt, &["static_movement", "state"]),
+        string_path(parsed_receipt, &["seam", "change"]),
+        string_path(parsed_receipt, &["summary", "next_action", "kind"]),
+    ];
+    if !all_present_values_match(&parsed_movements, &selected_movement) {
+        return false;
+    }
+    let lifecycle = receipt_lifecycle_state_from_receipt_value(parsed_receipt);
+    let selected_lifecycle = receipt_lifecycle_state_from_movement(Some(&selected_movement));
+    if lifecycle != selected_lifecycle {
+        return false;
+    }
+
+    selected_class_matches_receipt(
+        selected_proof,
+        parsed_receipt,
+        "before_class",
+        &[&["provenance", "before_class"], &["seam", "before"]],
+    ) && selected_class_matches_receipt(
+        selected_proof,
+        parsed_receipt,
+        "after_class",
+        &[&["provenance", "after_class"], &["seam", "after"]],
+    )
+}
+
+fn all_present_values_match(values: &[Option<String>], expected: &str) -> bool {
+    let mut present = values.iter().flatten();
+    present
+        .next()
+        .is_some_and(|first| first == expected && present.all(|value| value == expected))
+}
+
+fn selected_class_matches_receipt(
+    selected_proof: &Value,
+    parsed_receipt: &Value,
+    selected_field: &str,
+    parsed_paths: &[&[&str]],
+) -> bool {
+    let Some(selected) = string_path(selected_proof, &["movement", selected_field]) else {
+        return false;
+    };
+    let Some(selected) = normalized_receipt_class(&selected) else {
+        return false;
+    };
+    let parsed = parsed_paths
+        .iter()
+        .map(|path| string_path(parsed_receipt, path))
+        .collect::<Vec<_>>();
+    let mut present = parsed.iter().flatten();
+    present.next().is_some_and(|first| {
+        normalized_receipt_class(first.as_str()).is_some_and(|value| {
+            value == selected
+                && present.all(|value| {
+                    normalized_receipt_class(value.as_str())
+                        .is_some_and(|parsed| parsed == selected)
+                })
+        })
+    })
+}
+
+fn selected_assistant_health_proof(health: &Value) -> Option<&Value> {
+    let proofs = health.get("proofs").and_then(Value::as_array)?;
+    proofs
+        .iter()
+        .find(|proof| {
+            string_path(proof, &["movement_state"]).is_some_and(|state| state == "regressed")
+        })
+        .or_else(|| {
+            proofs.iter().find(|proof| {
+                string_path(proof, &["movement_state"]).is_some_and(|state| state == "unchanged")
+            })
+        })
+        .or_else(|| {
+            proofs.iter().find(|proof| {
+                string_path(proof, &["proof_state"])
+                    .is_some_and(|state| state == "missing_required_input")
+                    || string_path(proof, &["movement_state"])
+                        .is_some_and(|state| state == "unknown")
+            })
+        })
+        .or_else(|| {
+            proofs.iter().find(|proof| {
+                string_path(proof, &["movement_state"]).is_some_and(|state| state == "improved")
+            })
+        })
+        .or_else(|| proofs.first())
+}
+
+fn placement_from_assistant_health(health: Option<&Value>) -> String {
+    health
+        .and_then(selected_assistant_health_proof)
+        .and_then(|proof| string_path(proof, &["recommendation", "placement"]))
+        .unwrap_or_else(|| "not_available".to_string())
+}
+
+fn top_issue_from_python_no_action_ledger(
+    input: &PrReviewFrontPanelInput,
+    parsed: &ParsedPanelSources,
+) -> Option<PanelTopIssue> {
+    let ledger = parsed.ledger.as_ref()?;
+    let record = ledger
+        .get("records")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|record| python_no_action_record(record))?;
+    let state = string_path(record, &["gap_state"])?;
+    let anchor = record.get("anchor");
+    let static_limit_kind = string_path(record, &["static_limit_kind"]);
+    let static_limit_detail = string_path(record, &["static_limit_detail"]);
+    Some(PanelTopIssue {
+        source: "gap_decision_ledger".to_string(),
+        source_artifact: input.ledger_path.clone()?,
+        seam_id: string_path(record, &["gap_id"]),
+        canonical_gap_id: string_path(record, &["canonical_gap_id"]),
+        path: string_from_sources(&[(anchor, &["file"]), (Some(record), &["path"])]),
+        line: u64_from_sources(&[(anchor, &["line"]), (Some(record), &["line"])]),
+        classification: Some(state.clone()),
+        changed_behavior: string_from_sources(&[
+            (record.get("repair_route"), &["changed_behavior"]),
+            (Some(record), &["changed_behavior"]),
+        ]),
+        current_evidence_strength: Some(python_no_action_current_evidence(
+            &state,
+            static_limit_kind.as_deref(),
+        )),
+        missing_discriminator: None,
+        no_action_reason: Some(python_no_action_reason(
+            &state,
+            static_limit_kind.as_deref(),
+            static_limit_detail.as_deref(),
+        )),
+        focused_proof_intent: None,
+        related_test: string_path(record, &["repair_route", "related_test"]),
+        suggested_test: None,
+        repair_command: None,
+        verify_command: None,
+        receipt_command: None,
+        analysis_outcome_command: None,
+        static_evidence_boundary: STATIC_EVIDENCE_BOUNDARY,
+        agent_command: None,
+        receipt: PanelReceipt {
+            artifact: None,
+            status: RECEIPT_NOT_APPLICABLE.to_string(),
+        },
+    })
+}
+
+fn python_no_action_record(record: &Value) -> bool {
+    string_path(record, &["language"]).as_deref() == Some("python")
+        && string_path(record, &["language_status"]).as_deref() == Some("preview")
+        && matches!(
+            string_path(record, &["gap_state"]).as_deref(),
+            Some("already_observed" | "no_related_test" | "heuristic_only" | "static_limitation")
+        )
+        && matches!(
+            string_path(record, &["repairability"]).as_deref(),
+            Some("no_action" | "analyzer_limitation")
+        )
+}
+
+fn is_python_no_action_state(state: &str) -> bool {
+    matches!(
+        state,
+        "already_observed" | "no_related_test" | "heuristic_only" | "static_limitation"
+    )
+}
+
+fn python_no_action_headline(state: &str) -> String {
+    match state {
+        "already_observed" => "Python evidence is already observed; no repair packet emitted.",
+        "no_related_test" => "Python evidence has no safe related-test route.",
+        "heuristic_only" => "Python evidence is heuristic-only; no repair packet emitted.",
+        "static_limitation" => "Python repair routing stopped at a static limitation.",
+        _ => "Python repair routing found no bounded repair packet.",
+    }
+    .to_string()
+}
+
+fn python_no_action_current_evidence(state: &str, static_limit_kind: Option<&str>) -> String {
+    match state {
+        "already_observed" => {
+            "Current Python test evidence already observes the changed behavior.".to_string()
+        }
+        "no_related_test" => {
+            "No related static Python test path was found for the changed owner.".to_string()
+        }
+        "heuristic_only" => "Only heuristic Python related-test proximity was found.".to_string(),
+        "static_limitation" => format!(
+            "Python preview hit static limitation `{}`.",
+            static_limit_kind.unwrap_or("unknown")
+        ),
+        _ => "Python preview did not find a bounded repair route.".to_string(),
+    }
+}
+
+fn python_no_action_reason(
+    state: &str,
+    static_limit_kind: Option<&str>,
+    static_limit_detail: Option<&str>,
+) -> String {
+    match state {
+        "already_observed" => {
+            "the related Python test already has strong static evidence for this changed behavior"
+                .to_string()
+        }
+        "no_related_test" => {
+            "no related Python test was statically linked, so RIPR cannot choose a safe edit target"
+                .to_string()
+        }
+        "heuristic_only" => {
+            "the only related-test signal is uncertain name or fixture proximity, so bounded repair routing would overclaim"
+                .to_string()
+        }
+        "static_limitation" => {
+            let limit = static_limit_kind.unwrap_or("unknown");
+            let detail = static_limit_detail.unwrap_or(
+                "syntax-first Python preview evidence cannot route this shape safely",
+            );
+            format!("static limit `{limit}` prevents a safe repair packet: {detail}")
+        }
+        _ => "no bounded Python repair packet is available from the supplied evidence".to_string(),
+    }
+}
+
+fn first_action_status(first_action: Option<&Value>) -> Option<&str> {
+    first_action
+        .and_then(|value| value.get("status"))
+        .and_then(Value::as_str)
+}
+
+fn first_item_with_bucket<'a>(report: &'a Value, bucket: &str) -> Option<&'a Value> {
+    report
+        .get("items")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|item| string_path(item, &["bucket"]).as_deref() == Some(bucket))
+}
+
+fn has_suppressed(parsed: &ParsedPanelSources) -> bool {
+    parsed
+        .gate_decision
+        .as_ref()
+        .and_then(|gate| gate.get("decisions"))
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| string_path(item, &["decision"]).as_deref() == Some("suppressed"))
+        })
+        && parsed
+            .gate_decision
+            .as_ref()
+            .and_then(|gate| string_path(gate, &["status"]))
+            .as_deref()
+            != Some("acknowledged")
+}
+
+fn placement_from_guidance(pr_guidance: Option<&Value>) -> String {
+    let Some(guidance) = pr_guidance else {
+        return "changed_line".to_string();
+    };
+    if guidance
+        .get("comments")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
+    {
+        return "changed_line".to_string();
+    }
+    if guidance
+        .get("summary_only")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
+    {
+        return "summary_only".to_string();
+    }
+    "not_available".to_string()
+}
+
+fn focused_proof_intent_from_action_or_proof(
+    action: &Value,
+    proof: Option<&Value>,
+) -> Option<String> {
+    string_from_sources(&[
+        (Some(action), &["target", "focused_proof_intent"]),
+        (Some(action), &["target", "suggested_assertion"]),
+        (proof, &["recommendation", "focused_proof_intent"]),
+        (proof, &["recommendation", "suggested_test"]),
+        (proof, &["recommendation", "assertion_shape"]),
+    ])
+}
+
+fn suggested_test_from_action_or_proof(action: &Value, proof: Option<&Value>) -> Option<String> {
+    string_from_sources(&[
+        (proof, &["recommendation", "suggested_test"]),
+        (Some(action), &["target", "suggested_assertion"]),
+    ])
+    .map(|value| {
+        if value.starts_with("Assert the exact ")
+            && let Some(rest) = value.strip_prefix("Assert the exact ")
+            && let Some((target, condition)) = rest.trim_end_matches('.').split_once(" at ")
+        {
+            return format!("Add a focused test where {condition} and assert the exact {target}.");
+        }
+        value
+    })
+}
+
+fn current_evidence_strength_from_sources(sources: &[Option<&Value>]) -> Option<String> {
+    sources.iter().find_map(|source| {
+        let source = (*source)?;
+        string_from_sources(&[
+            (Some(source), &["current_evidence_strength"]),
+            (Some(source), &["evidence", "current_evidence_strength"]),
+        ])
+    })
+}
+
+fn receipt_from_input(
+    receipt_path: Option<&str>,
+    receipt_json: Option<&Value>,
+    missing_status: &str,
+) -> PanelReceipt {
+    PanelReceipt {
+        artifact: receipt_path.map(ToOwned::to_owned).or_else(|| {
+            receipt_json.and_then(|receipt| {
+                string_from_sources(&[
+                    (Some(receipt), &["provenance", "artifact"]),
+                    (Some(receipt), &["receipt"]),
+                ])
+            })
+        }),
+        status: if let Some(receipt) = receipt_json {
+            receipt_lifecycle_state_from_receipt_value(receipt)
+        } else if receipt_path.is_some() {
+            receipt_lifecycle_state(Some("present"))
+        } else {
+            receipt_lifecycle_state(Some(missing_status))
+        },
+    }
+}
+
+fn normalize_class(value: String) -> String {
+    match value.as_str() {
+        "weakly_gripped" => "weakly_exposed".to_string(),
+        "strongly_gripped" => "exposed".to_string(),
+        _ => value,
+    }
+}
+
+fn normalized_receipt_class(value: &str) -> Option<&'static str> {
+    match value {
+        "weakly_gripped" | "weakly_exposed" => Some("weakly_exposed"),
+        "strongly_gripped" | "exposed" => Some("exposed"),
+        "reachable_unrevealed" => Some("reachable_unrevealed"),
+        "ungripped" | "no_static_path" => Some("no_static_path"),
+        "infection_unknown" => Some("infection_unknown"),
+        "propagation_unknown" => Some("propagation_unknown"),
+        "static_unknown" => Some("static_unknown"),
+        _ => None,
+    }
+}
+
+fn string_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| string_path(value, path)))
+}
+
+fn u64_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<u64> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| u64_path(value, path)))
+}
+
+fn usize_from_sources(sources: &[(Option<&Value>, &[&str])]) -> usize {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| usize_path(value, path)))
+        .unwrap_or(0)
+}
+
+fn f64_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<f64> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| f64_path(value, path)))
+}
+
+fn i64_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<i64> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| i64_path(value, path)))
+}
+
+/// A carried command string, or `None` when the field is absent or blank.
+fn non_empty_string_path(value: &Value, path: &[&str]) -> Option<String> {
+    string_path(value, path).filter(|text| !text.trim().is_empty())
+}
+
+fn string_path(value: &Value, path: &[&str]) -> Option<String> {
+    path_value(value, path).and_then(value_as_string)
+}
+
+fn u64_path(value: &Value, path: &[&str]) -> Option<u64> {
+    path_value(value, path).and_then(Value::as_u64)
+}
+
+fn usize_path(value: &Value, path: &[&str]) -> Option<usize> {
+    path_value(value, path)
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+}
+
+fn i64_path(value: &Value, path: &[&str]) -> Option<i64> {
+    path_value(value, path).and_then(Value::as_i64)
+}
+
+fn f64_path(value: &Value, path: &[&str]) -> Option<f64> {
+    path_value(value, path).and_then(Value::as_f64)
+}
+
+fn path_value<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+    let mut current = value;
+    for key in path {
+        if let Ok(index) = key.parse::<usize>() {
+            current = current.get(index)?;
+        } else {
+            current = current.get(*key)?;
+        }
+    }
+    Some(current)
+}
+
+fn value_as_string(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_string());
+    }
+    if let Some(number) = value.as_i64() {
+        return Some(number.to_string());
+    }
+    value.as_u64().map(|number| number.to_string())
+}
+
+fn json_path_to_md(path: &str) -> String {
+    if let Some(prefix) = path.strip_suffix(".json") {
+        format!("{prefix}.md")
+    } else {
+        path.to_string()
+    }
+}
+
+fn issue_location(issue: &PanelTopIssue) -> Option<String> {
+    match (issue.path.as_deref(), issue.line) {
+        (Some(path), Some(line)) => Some(format!("{path}:{line}")),
+        (Some(path), None) => Some(path.to_string()),
+        (None, Some(line)) => Some(format!("unknown:{line}")),
+        (None, None) => None,
+    }
+}
+
+fn compact_suggested_test(value: &str) -> String {
+    if let Some(predicate) = extract_boundary_subject(value) {
+        return format!("add {predicate} boundary assertion");
+    }
+    value.to_ascii_lowercase()
+}
+
+fn extract_boundary_subject(value: &str) -> Option<String> {
+    let lower = value.to_ascii_lowercase();
+    for marker in [
+        "input that hits the boundary:",
+        "boundary input where ",
+        "boundary test that exercises ",
+    ] {
+        if let Some(index) = lower.find(marker) {
+            return compact_boundary_subject(&value[index + marker.len()..]);
+        }
+    }
+    None
+}
+
+fn compact_boundary_subject(value: &str) -> Option<String> {
+    let lower = value.to_ascii_lowercase();
+    let mut end = value.len();
+    for delimiter in [" and assert", " */", "`", "\n", "."] {
+        if let Some(index) = lower.find(delimiter) {
+            end = end.min(index);
+        }
+    }
+    let subject = value[..end]
+        .trim()
+        .trim_matches(|c: char| c == '`' || c == ',' || c == ')' || c == ';')
+        .trim();
+    if subject.is_empty()
+        || ![">=", "<=", "==", "!=", ">", "<"]
+            .iter()
+            .any(|operator| subject.contains(operator))
+    {
+        return None;
+    }
+    Some(subject.to_string())
+}
+
+fn coverage_grip_markdown(coverage: &PanelCoverageGrip) -> String {
+    match coverage.state.as_str() {
+        "flat_coverage_grip_improved" => "flat coverage, improved grip".to_string(),
+        "not_available" => "not available".to_string(),
+        other => other.replace('_', " "),
+    }
+}
+
+fn percent_or(value: Option<f64>) -> String {
+    match value {
+        Some(value) if value >= 0.0 => format!("+{value:.1}%"),
+        Some(value) => format!("{value:.1}%"),
+        None => "not available".to_string(),
+    }
+}
+
+fn signed_or(value: Option<i64>) -> String {
+    match value {
+        Some(value) if value > 0 => format!("+{value}"),
+        Some(value) => value.to_string(),
+        None => "not available".to_string(),
+    }
+}
+
+fn gate_authority_markdown(policy: &PanelPolicy) -> String {
+    match policy.authority_artifact.as_deref() {
+        Some(path) if policy.decision == "blocked" => json_path_to_md(path),
+        Some(path) => path.to_string(),
+        None => "not configured".to_string(),
+    }
+}
+
+fn artifact_group_label(group: &str) -> &str {
+    match group {
+        "start_here" => "Start here",
+        "repair" => "Repair",
+        "evidence" => "Evidence",
+        "policy" => "Policy",
+        "calibration" => "Calibration",
+        "generated_ci" => "Generated CI",
+        _ => "Artifact",
+    }
+}
+
+fn push_count(out: &mut String, label: &str, count: usize) {
+    out.push_str(&format!("- {label}: {count}\n"));
+}
+
+fn str_or<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
+    match value {
+        Some(value) => value,
+        None => fallback,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::first_pr::{
+        MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL, VERIFY_AFTER_EDIT_LABEL,
+    };
+    use crate::output::test_support::{read_file, repo_root};
+    use std::path::Path;
+
+    #[test]
+    fn pr_review_front_panel_matches_fixture_corpus() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let corpus_path =
+            repo_root.join("fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json");
+        let corpus: Value = serde_json::from_str(&read_file(&corpus_path)?)
+            .map_err(|err| format!("parse corpus failed: {err}"))?;
+        let cases = corpus
+            .get("cases")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "corpus cases missing".to_string())?;
+
+        for case in cases {
+            let case_id =
+                string_path(case, &["id"]).ok_or_else(|| "case id missing".to_string())?;
+            let inputs = case
+                .get("inputs")
+                .ok_or_else(|| format!("{case_id} inputs missing"))?;
+            let expected_json_path = repo_root.join(
+                string_path(case, &["expected_report"])
+                    .ok_or_else(|| format!("{case_id} expected_report missing"))?,
+            );
+            let expected_md_path = repo_root.join(
+                string_path(case, &["expected_markdown"])
+                    .ok_or_else(|| format!("{case_id} expected_markdown missing"))?,
+            );
+            let input = fixture_input(&repo_root, inputs, &expected_md_path)?;
+            let report = build_pr_review_front_panel_report(input);
+
+            if case_id == "coverage_flat_grip_improved" {
+                let top_issue = report
+                    .top_issue
+                    .as_ref()
+                    .ok_or_else(|| format!("{case_id} top issue missing"))?;
+                assert_eq!(
+                    top_issue.classification.as_deref(),
+                    Some("exposed"),
+                    "public classification must use exposure vocabulary"
+                );
+                assert_eq!(
+                    top_issue.current_evidence_strength.as_deref(),
+                    Some("exposed"),
+                    "public evidence strength must use exposure vocabulary"
+                );
+                assert_eq!(
+                    report.movement.before_class.as_deref(),
+                    Some("weakly_gripped"),
+                    "movement must preserve the assistant-health grip vocabulary"
+                );
+                assert_eq!(
+                    report.movement.after_class.as_deref(),
+                    Some("strongly_gripped"),
+                    "movement must retain assistant-health grip vocabulary"
+                );
+            }
+
+            assert_eq!(
+                render_pr_review_front_panel_json(&report)?,
+                read_file(&expected_json_path)?.trim_end(),
+                "{case_id} JSON fixture drifted"
+            );
+            let markdown = render_pr_review_front_panel_markdown(&report);
+            // #3742 class (e): only the explicit RIPR_UPDATE_FIXTURES=1
+            // opt-in rewrites the Markdown pin; JSON stays asserted.
+            if crate::testing::rebless::fixture_rebless_enabled() {
+                std::fs::write(&expected_md_path, &markdown)
+                    .map_err(|err| format!("write {case_id} Markdown: {err}"))?;
+                continue;
+            }
+            assert_eq!(
+                markdown,
+                read_file(&expected_md_path)?,
+                "{case_id} Markdown fixture drifted"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn pr_review_front_panel_reports_malformed_optional_input() -> Result<(), String> {
+        let input = PrReviewFrontPanelInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            out_md_path: "target/ripr/reports/pr-review-front-panel.md".to_string(),
+            pr_guidance_path: Some("comments.json".to_string()),
+            first_action_path: None,
+            assistant_proof_path: None,
+            assistant_health_path: None,
+            ledger_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            gate_decision_path: None,
+            recommendation_calibration_path: None,
+            mutation_calibration_path: None,
+            coverage_frontier_path: None,
+            receipt_path: None,
+            pr_guidance_json: Some(Ok("{".to_string())),
+            first_action_json: None,
+            assistant_proof_json: None,
+            assistant_health_json: None,
+            ledger_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            gate_decision_json: None,
+            recommendation_calibration_json: None,
+            mutation_calibration_json: None,
+            coverage_frontier_json: None,
+            receipt_json: None,
+        };
+        let report = build_pr_review_front_panel_report(input);
+        let rendered = render_pr_review_front_panel_json(&report)?;
+        assert!(rendered.contains("\"kind\": \"malformed_input\""));
+        assert!(rendered.contains("Optional PR guidance input is malformed"));
+        Ok(())
+    }
+
+    #[test]
+    fn assistant_health_movement_keeps_one_producer_vocabulary() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.md",
+        );
+        let input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let report = build_pr_review_front_panel_report(input);
+
+        assert_eq!(
+            report.movement.before_class.as_deref(),
+            Some("weakly_gripped")
+        );
+        assert_eq!(
+            report.movement.after_class.as_deref(),
+            Some("strongly_gripped")
+        );
+        assert_ne!(
+            report.movement.before_class.as_deref(),
+            Some("weakly_exposed")
+        );
+        // This input feeds only assistant_health, so top_issue (which derives
+        // from first_action) is None here. The exposure-vocabulary contrast
+        // for the same fixture family — top_issue stays `exposed` while the
+        // movement pair keeps grip vocabulary — is pinned by the
+        // coverage_flat_grip_improved case in the table-driven test above.
+        Ok(())
+    }
+
+    #[test]
+    fn first_action_top_issue_ignores_target_evidence_strength() -> Result<(), String> {
+        let input = PrReviewFrontPanelInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            out_md_path: "target/ripr/reports/pr-review-front-panel.md".to_string(),
+            pr_guidance_path: None,
+            first_action_path: Some("first-action.json".to_string()),
+            assistant_proof_path: None,
+            assistant_health_path: None,
+            ledger_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            gate_decision_path: None,
+            recommendation_calibration_path: None,
+            mutation_calibration_path: None,
+            coverage_frontier_path: None,
+            receipt_path: None,
+            pr_guidance_json: None,
+            first_action_json: None,
+            assistant_proof_json: None,
+            assistant_health_json: None,
+            ledger_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            gate_decision_json: None,
+            recommendation_calibration_json: None,
+            mutation_calibration_json: None,
+            coverage_frontier_json: None,
+            receipt_json: None,
+        };
+        let parsed = ParsedPanelSources {
+            first_action: Some(
+                serde_json::from_str(
+                    r#"{
+                        "selected": {"classification": "weakly_exposed"},
+                        "target": {"current_evidence_strength": "target-only value"}
+                    }"#,
+                )
+                .map_err(|e| e.to_string())?,
+            ),
+            ..Default::default()
+        };
+
+        let issue = top_issue_from_first_action(&input, &parsed)
+            .ok_or_else(|| "expected first-action top issue".to_string())?;
+        assert_eq!(
+            issue.current_evidence_strength, None,
+            "first-action top issue must source evidence strength only from selected"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn compact_suggested_test_extracts_boundary_subjects_without_fixture_specific_names() {
+        assert_eq!(
+            compact_suggested_test(
+                "Add a focused boundary test that exercises total <= max_total and assert the exact output."
+            ),
+            "add total <= max_total boundary assertion"
+        );
+        assert_eq!(
+            compact_suggested_test(
+                "assert_eq!(foo(/* boundary input where left != right */), expected)"
+            ),
+            "add left != right boundary assertion"
+        );
+        assert_eq!(
+            compact_suggested_test("Review RIPR evidence."),
+            "review ripr evidence."
+        );
+    }
+
+    #[test]
+    fn mixed_assistant_health_keeps_unresolved_repair_visible() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+            "coverage_frontier": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let report = build_pr_review_front_panel_report(input);
+        let json = render_pr_review_front_panel_json(&report)?;
+        let markdown = render_pr_review_front_panel_markdown(&report);
+
+        assert!(json.contains("\"top_issue_state\": \"unchanged_after_attempt\""));
+        assert!(json.contains("\"movement_state\": \"unchanged\""));
+        assert!(json.contains("\"missing_discriminator\": \"input that hits the boundary"));
+        assert!(json.contains("unchanged-after-attempt/agent-receipt.json"));
+        assert!(!json.contains("\"top_issue_state\": \"already_improved\""));
+        assert!(markdown.contains("Repair route: focused_test"));
+        assert!(!markdown.contains("no further repair is recommended"));
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_assistant_health_fails_closed_before_aggregate_improvement() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+            "coverage_frontier": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let mut input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        input.assistant_health_json = Some(Ok(serde_json::json!({
+            "summary": {"improved": 1, "unknown_movement": 1, "repair_queue": 1},
+            "proofs": [
+                {
+                    "proof_state": "complete",
+                    "movement_state": "improved",
+                    "seam": {"seam_id": "improved-seam"},
+                    "movement": {"before_class": "weakly_gripped", "after_class": "strongly_gripped"}
+                },
+                {
+                    "proof_state": "missing_required_input",
+                    "movement_state": "unknown",
+                    "seam": null,
+                    "movement": {"before_class": null, "after_class": null}
+                }
+            ]
+        })
+        .to_string()));
+
+        let report = build_pr_review_front_panel_report(input);
+        let json = render_pr_review_front_panel_json(&report)?;
+        assert!(json.contains("\"status\": \"incomplete\""));
+        assert!(json.contains("\"top_issue_state\": \"missing_required_input\""));
+        assert!(json.contains("\"movement_state\": \"unknown\""));
+        assert!(!json.contains("\"top_issue_state\": \"already_improved\""));
+        Ok(())
+    }
+
+    #[test]
+    fn assistant_health_movement_does_not_require_coverage_frontier() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+
+        let json = render_pr_review_front_panel_json(&build_pr_review_front_panel_report(input))?;
+        assert!(json.contains("\"top_issue_state\": \"unchanged_after_attempt\""));
+        assert!(json.contains("\"movement_state\": \"unchanged\""));
+        Ok(())
+    }
+
+    #[test]
+    fn selected_proof_status_rejects_stale_same_path_receipt() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json",
+            "receipt": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let mut input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        input.receipt_json = Some(Ok(serde_json::json!({
+            "provenance": {"seam_id": "67fc764ba37d77bd", "movement": "improved"},
+            "seam": {"seam_id": "67fc764ba37d77bd", "change": "improved"},
+            "summary": {"receipt_state": "receipt_movement_improved"}
+        })
+        .to_string()));
+
+        let json = render_pr_review_front_panel_json(&build_pr_review_front_panel_report(input))?;
+        assert!(json.contains("\"status\": \"receipt_found\""));
+        assert!(!json.contains("\"status\": \"receipt_movement_improved\""));
+        Ok(())
+    }
+
+    #[test]
+    fn selected_proof_uses_current_same_path_receipt_only_as_fallback() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json",
+            "receipt": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let mut input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let mut health: Value = serde_json::from_str(
+            input
+                .assistant_health_json
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .ok_or_else(|| "assistant health fixture missing".to_string())?,
+        )
+        .map_err(|err| format!("parse assistant health fixture failed: {err}"))?;
+        health["proofs"][0]["receipt"]
+            .as_object_mut()
+            .ok_or_else(|| "selected proof receipt missing".to_string())?
+            .remove("status");
+        input.assistant_health_json = Some(Ok(health.to_string()));
+
+        let json = render_pr_review_front_panel_json(&build_pr_review_front_panel_report(input))?;
+        assert!(json.contains("\"status\": \"receipt_movement_unchanged\""));
+        Ok(())
+    }
+
+    #[test]
+    fn selected_proof_rejects_regenerated_same_path_receipt_fallback() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json",
+            "receipt": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let mut input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let mut health: Value = serde_json::from_str(
+            input
+                .assistant_health_json
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .ok_or_else(|| "assistant health fixture missing".to_string())?,
+        )
+        .map_err(|err| format!("parse assistant health fixture failed: {err}"))?;
+        health["proofs"][0]["receipt"]
+            .as_object_mut()
+            .ok_or_else(|| "selected proof receipt missing".to_string())?
+            .remove("status");
+        input.assistant_health_json = Some(Ok(health.to_string()));
+        input.receipt_json = Some(Ok(serde_json::json!({
+            "provenance": {
+                "seam_id": "67fc764ba37d77bd",
+                "movement": "improved",
+                "before_class": "weakly_gripped",
+                "after_class": "strongly_gripped"
+            },
+            "seam": {
+                "seam_id": "67fc764ba37d77bd",
+                "change": "improved",
+                "before": "weakly_gripped",
+                "after": "strongly_gripped"
+            },
+            "summary": {
+                "receipt_state": "receipt_movement_improved",
+                "next_action": {"kind": "improved"}
+            }
+        })
+        .to_string()));
+
+        let json = render_pr_review_front_panel_json(&build_pr_review_front_panel_report(input))?;
+        assert!(json.contains("\"status\": \"receipt_missing\""));
+        assert!(!json.contains("\"status\": \"receipt_movement_improved\""));
+        Ok(())
+    }
+
+    #[test]
+    fn selected_proof_accepts_matching_changed_source_receipt_fallback() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json",
+            "receipt": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let mut input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let mut health: Value = serde_json::from_str(
+            input
+                .assistant_health_json
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .ok_or_else(|| "assistant health fixture missing".to_string())?,
+        )
+        .map_err(|err| format!("parse assistant health fixture failed: {err}"))?;
+        let selected = &mut health["proofs"][0];
+        selected["movement_state"] = Value::String("unknown".to_string());
+        selected["movement"]["source_state"] = Value::String("changed".to_string());
+        selected["receipt"]
+            .as_object_mut()
+            .ok_or_else(|| "selected proof receipt missing".to_string())?
+            .remove("status");
+        input.assistant_health_json = Some(Ok(health.to_string()));
+        input.receipt_json = Some(Ok(serde_json::json!({
+            "provenance": {
+                "seam_id": "67fc764ba37d77bd",
+                "movement": "changed",
+                "before_class": "weakly_gripped",
+                "after_class": "weakly_gripped"
+            },
+            "seam": {
+                "seam_id": "67fc764ba37d77bd",
+                "change": "changed",
+                "before": "weakly_gripped",
+                "after": "weakly_gripped"
+            },
+            "summary": {
+                "receipt_state": "receipt_found",
+                "next_action": {"kind": "changed"}
+            }
+        })
+        .to_string()));
+
+        let json = render_pr_review_front_panel_json(&build_pr_review_front_panel_report(input))?;
+        assert!(json.contains("\"status\": \"receipt_found\""));
+        assert!(!json.contains("\"status\": \"receipt_missing\""));
+        Ok(())
+    }
+
+    const CARRIED_HEALTH_HANDOFF: &str =
+        "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before";
+
+    #[test]
+    fn invalid_improved_after_class_preserves_repair_packet() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.json",
+            "coverage_frontier": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.md",
+        );
+        for invalid_after in [
+            Value::Null,
+            Value::String("unknown".to_string()),
+            Value::String("ungripped".to_string()),
+            Value::String("infection_unknown".to_string()),
+            Value::String("propagation_unknown".to_string()),
+            Value::String("static_unknown".to_string()),
+        ] {
+            let mut input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+            let mut health: Value = serde_json::from_str(
+                input
+                    .assistant_health_json
+                    .as_ref()
+                    .and_then(|result| result.as_ref().ok())
+                    .ok_or_else(|| "assistant health fixture missing".to_string())?,
+            )
+            .map_err(|err| format!("parse assistant health fixture failed: {err}"))?;
+            health["proofs"][0]["movement"]["after_class"] = invalid_after;
+            // The proof carries its handoff; the panel must keep that exact
+            // command rather than clearing it or deriving another (#3906).
+            health["proofs"][0]["handoff"]["agent_command"] =
+                Value::String(CARRIED_HEALTH_HANDOFF.to_string());
+            input.assistant_health_json = Some(Ok(health.to_string()));
+
+            let report = build_pr_review_front_panel_report(input);
+            let issue = report
+                .top_issue
+                .as_ref()
+                .ok_or_else(|| "invalid improved proof lost its top issue".to_string())?;
+            assert_eq!(report.summary.top_issue_state, "actionable");
+            assert_ne!(report.summary.top_issue_state, "already_improved");
+            assert_eq!(report.summary.policy_state, "new_policy_eligible");
+            assert_eq!(report.movement.state, "improved");
+            assert_eq!(issue.classification.as_deref(), Some("weakly_exposed"));
+            assert!(issue.missing_discriminator.is_some());
+            assert!(issue.focused_proof_intent.is_some());
+            assert!(issue.related_test.is_some());
+            assert!(issue.suggested_test.is_some());
+            assert_eq!(issue.agent_command.as_deref(), Some(CARRIED_HEALTH_HANDOFF));
+            assert!(issue.no_action_reason.is_none());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_health_regression_keeps_repair_visible_over_improvement() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+            "coverage_frontier": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let mut input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let mut health: Value = serde_json::from_str(
+            input
+                .assistant_health_json
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .ok_or_else(|| "assistant health fixture missing".to_string())?,
+        )
+        .map_err(|err| format!("parse assistant health fixture failed: {err}"))?;
+        health["proofs"][1]["movement_state"] = Value::String("regressed".to_string());
+        health["proofs"][1]["movement"]["after_class"] =
+            Value::String("reachable_unrevealed".to_string());
+        input.assistant_health_json = Some(Ok(health.to_string()));
+
+        let report = build_pr_review_front_panel_report(input);
+        assert_eq!(report.summary.top_issue_state, "actionable");
+        assert_eq!(report.summary.policy_state, "none");
+        assert_eq!(report.movement.state, "regressed");
+        assert!(report.top_issue.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn health_only_regression_does_not_create_policy_authority() -> Result<(), String> {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/regressed/assistant-loop-health.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+        );
+        let input = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let report = build_pr_review_front_panel_report(input);
+        assert_eq!(report.summary.top_issue_state, "actionable");
+        assert_eq!(report.summary.policy_state, "none");
+        assert_eq!(report.movement.state, "regressed");
+        assert!(report.top_issue.is_some());
+
+        let mut authorized = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        authorized.gate_decision_path = Some("gate.json".to_string());
+        authorized.gate_decision_json = Some(Ok(
+            serde_json::json!({"status": "not_configured"}).to_string()
+        ));
+        let report = build_pr_review_front_panel_report(authorized);
+        assert_eq!(report.summary.top_issue_state, "actionable");
+        assert_eq!(report.summary.policy_state, "new_policy_eligible");
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_class_identity_rejects_vacuous_or_unknown_evidence() -> Result<(), String> {
+        let mut selected = serde_json::json!({
+            "receipt": {"artifact": "receipt.json"},
+            "seam": {"seam_id": "seam-1"},
+            "movement": {
+                "source_state": "improved",
+                "before_class": "weakly_gripped",
+                "after_class": "strongly_gripped"
+            }
+        });
+        let parsed = serde_json::json!({
+            "provenance": {
+                "seam_id": "seam-1",
+                "movement": "improved",
+                "before_class": "weakly_gripped",
+                "after_class": "strongly_gripped"
+            },
+            "seam": {
+                "seam_id": "seam-1",
+                "change": "improved",
+                "before": "weakly_gripped",
+                "after": "strongly_gripped"
+            },
+            "summary": {"next_action": {"kind": "improved"}}
+        });
+        for (label, value) in [
+            ("missing", Value::Object(serde_json::Map::new())),
+            ("null", Value::Null),
+            ("unknown", Value::String("unknown".to_string())),
+        ] {
+            selected["movement"]["after_class"] = value;
+            assert_eq!(
+                selected_proof_receipt_status(&selected, Some(&parsed), Some("receipt.json")),
+                RECEIPT_MISSING,
+                "{label} selected after class must not authenticate a receipt"
+            );
+        }
+        selected["movement"]["after_class"] = Value::String("strongly_gripped".to_string());
+        let mut absent = parsed.clone();
+        if let Some(object) = absent["provenance"].as_object_mut() {
+            object.remove("before_class");
+            object.remove("after_class");
+        }
+        if let Some(object) = absent["seam"].as_object_mut() {
+            object.remove("before");
+            object.remove("after");
+        }
+        assert_eq!(
+            selected_proof_receipt_status(&selected, Some(&absent), Some("receipt.json")),
+            RECEIPT_MISSING
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn receipt_class_identity_normalizes_grip_aliases() -> Result<(), String> {
+        let selected = serde_json::json!({
+            "receipt": {"artifact": "receipt.json"},
+            "seam": {"seam_id": "seam-1"},
+            "movement": {
+                "source_state": "improved",
+                "before_class": "weakly_gripped",
+                "after_class": "strongly_gripped"
+            }
+        });
+        let parsed = serde_json::json!({
+            "provenance": {
+                "seam_id": "seam-1",
+                "movement": "improved",
+                "before_class": "weakly_exposed",
+                "after_class": "exposed"
+            },
+            "seam": {
+                "seam_id": "seam-1",
+                "change": "improved",
+                "before": "weakly_exposed",
+                "after": "exposed"
+            },
+            "summary": {"next_action": {"kind": "improved"}}
+        });
+        assert_eq!(
+            selected_proof_receipt_status(&selected, Some(&parsed), Some("receipt.json")),
+            "receipt_movement_improved"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ungripped_receipt_alias_matches_without_promoting_improvement() -> Result<(), String> {
+        let selected = serde_json::json!({
+            "receipt": {"artifact": "receipt.json"},
+            "seam": {"seam_id": "seam-1"},
+            "movement": {
+                "source_state": "changed",
+                "before_class": "ungripped",
+                "after_class": "weakly_gripped"
+            }
+        });
+        let parsed = serde_json::json!({
+            "provenance": {
+                "seam_id": "seam-1",
+                "movement": "changed",
+                "before_class": "no_static_path",
+                "after_class": "weakly_exposed"
+            },
+            "seam": {
+                "seam_id": "seam-1",
+                "change": "changed",
+                "before": "no_static_path",
+                "after": "weakly_exposed"
+            },
+            "summary": {"next_action": {"kind": "changed"}}
+        });
+        assert_eq!(
+            selected_proof_receipt_status(&selected, Some(&parsed), Some("receipt.json")),
+            "receipt_found"
+        );
+
+        let improvement = PanelMovement {
+            state: "improved".to_string(),
+            before_class: Some("ungripped".to_string()),
+            after_class: Some("ungripped".to_string()),
+            source_artifact: None,
+        };
+        assert!(!movement_has_concrete_improvement(&improvement));
+        Ok(())
+    }
+
+    fn fixture_input(
+        repo_root: &Path,
+        inputs: &Value,
+        expected_md_path: &Path,
+    ) -> Result<PrReviewFrontPanelInput, String> {
+        let pr_guidance = path_from_inputs(inputs, "pr_guidance");
+        let first_action = path_from_inputs(inputs, "first_action");
+        let assistant_proof = path_from_inputs(inputs, "assistant_proof");
+        let assistant_health = path_from_inputs(inputs, "assistant_health");
+        let ledger = path_from_inputs(inputs, "ledger");
+        let baseline_delta = path_from_inputs(inputs, "baseline_delta");
+        let zero_status = path_from_inputs(inputs, "zero_status");
+        let gate_decision = path_from_inputs(inputs, "gate_decision");
+        let recommendation_calibration = path_from_inputs(inputs, "recommendation_calibration");
+        let mutation_calibration = path_from_inputs(inputs, "mutation_calibration");
+        let coverage_frontier = path_from_inputs(inputs, "coverage_frontier");
+        let receipt = path_from_inputs(inputs, "receipt");
+
+        Ok(PrReviewFrontPanelInput {
+            root: string_path(inputs, &["root"]).unwrap_or_else(|| {
+                if first_action.is_some() || assistant_health.is_some() {
+                    "fixtures/boundary_gap/input".to_string()
+                } else {
+                    ".".to_string()
+                }
+            }),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            out_md_path: fixture_path(repo_root, expected_md_path),
+            pr_guidance_json: read_optional_fixture(repo_root, pr_guidance.as_deref())?,
+            first_action_json: read_optional_fixture(repo_root, first_action.as_deref())?,
+            assistant_proof_json: read_optional_fixture(repo_root, assistant_proof.as_deref())?,
+            assistant_health_json: read_optional_fixture(repo_root, assistant_health.as_deref())?,
+            ledger_json: read_optional_fixture(repo_root, ledger.as_deref())?,
+            baseline_delta_json: read_optional_fixture(repo_root, baseline_delta.as_deref())?,
+            zero_status_json: read_optional_fixture(repo_root, zero_status.as_deref())?,
+            gate_decision_json: read_optional_fixture(repo_root, gate_decision.as_deref())?,
+            recommendation_calibration_json: read_optional_fixture(
+                repo_root,
+                recommendation_calibration.as_deref(),
+            )?,
+            mutation_calibration_json: read_optional_fixture(
+                repo_root,
+                mutation_calibration.as_deref(),
+            )?,
+            coverage_frontier_json: read_optional_fixture(repo_root, coverage_frontier.as_deref())?,
+            receipt_json: read_optional_fixture(repo_root, receipt.as_deref())?,
+            pr_guidance_path: pr_guidance,
+            first_action_path: first_action,
+            assistant_proof_path: assistant_proof,
+            assistant_health_path: assistant_health,
+            ledger_path: ledger,
+            baseline_delta_path: baseline_delta,
+            zero_status_path: zero_status,
+            gate_decision_path: gate_decision,
+            recommendation_calibration_path: recommendation_calibration,
+            mutation_calibration_path: mutation_calibration,
+            coverage_frontier_path: coverage_frontier,
+            receipt_path: receipt,
+        })
+    }
+
+    // ── #3906: carried repair start, never a synthesized one ─────────────
+
+    const PANEL_CARRIED_REPAIR: &str = "ripr agent repair --root . --seam-id seam-a --phase before";
+
+    fn blank_panel_input() -> PrReviewFrontPanelInput {
+        PrReviewFrontPanelInput {
+            root: ".".to_string(),
+            generated_at: "2026-05-09T12:00:00Z".to_string(),
+            out_md_path: "target/ripr/reports/pr-review-front-panel.md".to_string(),
+            pr_guidance_path: None,
+            first_action_path: None,
+            assistant_proof_path: None,
+            assistant_health_path: None,
+            ledger_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            gate_decision_path: None,
+            recommendation_calibration_path: None,
+            mutation_calibration_path: None,
+            coverage_frontier_path: None,
+            receipt_path: None,
+            pr_guidance_json: None,
+            first_action_json: None,
+            assistant_proof_json: None,
+            assistant_health_json: None,
+            ledger_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            gate_decision_json: None,
+            recommendation_calibration_json: None,
+            mutation_calibration_json: None,
+            coverage_frontier_json: None,
+            receipt_json: None,
+        }
+    }
+
+    fn rendered_panel(
+        input: PrReviewFrontPanelInput,
+    ) -> Result<(PanelTopIssue, String, String), String> {
+        let report = build_pr_review_front_panel_report(input);
+        let json = render_pr_review_front_panel_json(&report)?;
+        let markdown = render_pr_review_front_panel_markdown(&report);
+        let issue = report
+            .top_issue
+            .ok_or_else(|| format!("expected a top issue: {json}"))?;
+        Ok((issue, json, markdown))
+    }
+
+    fn assert_no_repair_loop_command(json: &str, markdown: &str) {
+        for text in [json, markdown] {
+            assert!(
+                !text.contains("agent start"),
+                "synthesized agent start: {text}"
+            );
+            assert!(
+                !text.contains("agent repair"),
+                "uncarried agent repair: {text}"
+            );
+        }
+    }
+
+    fn assert_repair_start_leads(issue: &PanelTopIssue, markdown: &str) {
+        assert_eq!(issue.repair_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        assert_eq!(issue.agent_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        let line = format!("- Repair start: `{PANEL_CARRIED_REPAIR}`\n");
+        assert_eq!(
+            markdown.matches(&line).count(),
+            2,
+            "the repair start leads the top issue and the Repair block: {markdown}"
+        );
+        // #3906 (F60-14): each start is followed by its after phase, and
+        // verify and receipt are the manual alternative.
+        let transaction =
+            format!("{line}- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n");
+        assert_eq!(markdown.matches(&transaction).count(), 2, "{markdown}");
+        assert!(
+            !markdown.contains(&format!("- {VERIFY_AFTER_EDIT_LABEL}:")),
+            "{markdown}"
+        );
+        assert!(
+            !markdown.contains(&format!("- {RECEIPT_AFTER_VERIFY_LABEL}:")),
+            "{markdown}"
+        );
+        assert!(
+            markdown.contains(&format!("- {MANUAL_VERIFY_LABEL}:")),
+            "{markdown}"
+        );
+        assert!(!markdown.contains("- Agent handoff:"), "{markdown}");
+    }
+
+    fn first_action_json(repair: Option<&str>) -> String {
+        let mut commands = serde_json::json!({
+            "verify": "ripr agent verify --root . --json",
+            "receipt": "ripr agent receipt --root . --json"
+        });
+        if let Some(repair) = repair {
+            commands["repair"] = Value::from(repair);
+        }
+        serde_json::json!({
+            "status": "actionable",
+            "selected": {
+                "seam_id": "seam-a",
+                "path": "src/lib.rs",
+                "line": 3,
+                "classification": "weakly_exposed"
+            },
+            "commands": commands
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn first_action_top_issue_carries_repair_start_and_never_synthesizes_one() -> Result<(), String>
+    {
+        let mut without = blank_panel_input();
+        without.first_action_path = Some("first-action.json".to_string());
+        without.first_action_json = Some(Ok(first_action_json(None)));
+        let (issue, json, markdown) = rendered_panel(without)?;
+        assert_eq!(issue.seam_id.as_deref(), Some("seam-a"));
+        assert_eq!(issue.repair_command, None);
+        assert_eq!(issue.agent_command, None);
+        assert_no_repair_loop_command(&json, &markdown);
+
+        let mut with = blank_panel_input();
+        with.first_action_path = Some("first-action.json".to_string());
+        with.first_action_json = Some(Ok(first_action_json(Some(PANEL_CARRIED_REPAIR))));
+        let (issue, json, markdown) = rendered_panel(with)?;
+        assert_repair_start_leads(&issue, &markdown);
+        assert!(json.contains(&format!("\"repair_command\": \"{PANEL_CARRIED_REPAIR}\"")));
+        assert!(!json.contains("agent start"));
+        Ok(())
+    }
+
+    #[test]
+    fn guidance_top_issue_carries_repair_start_else_the_inspection_command() -> Result<(), String> {
+        let inspection = "ripr agent brief --root . --seam-id seam-a --json";
+        let guidance = |repair: Option<&str>| {
+            let mut llm_guidance = serde_json::json!({ "command": inspection });
+            if let Some(repair) = repair {
+                llm_guidance["repair_command"] = Value::from(repair);
+            }
+            serde_json::json!({
+                "summary_only": [{
+                    "seam_id": "seam-a",
+                    "missing_discriminator": "x == 1",
+                    "llm_guidance": llm_guidance
+                }]
+            })
+            .to_string()
+        };
+        let input = |repair: Option<&str>| {
+            let mut input = blank_panel_input();
+            input.first_action_path = Some("first-action.json".to_string());
+            input.first_action_json = Some(Ok(first_action_json(None)));
+            input.pr_guidance_path = Some("comments.json".to_string());
+            input.pr_guidance_json = Some(Ok(guidance(repair)));
+            input
+        };
+
+        let (issue, json, markdown) = rendered_panel(input(None))?;
+        assert_eq!(issue.source, "pr_guidance");
+        assert_eq!(issue.repair_command, None);
+        assert_eq!(issue.agent_command.as_deref(), Some(inspection));
+        assert_no_repair_loop_command(&json, &markdown);
+
+        let (issue, _json, _markdown) = rendered_panel(input(Some(PANEL_CARRIED_REPAIR)))?;
+        assert_eq!(issue.source, "pr_guidance");
+        assert_eq!(issue.repair_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        assert_eq!(issue.agent_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        Ok(())
+    }
+
+    #[test]
+    fn acknowledged_gate_top_issue_carries_only_the_gate_route_repair_start() -> Result<(), String>
+    {
+        let repo_root = repo_root()?;
+        let inputs = serde_json::json!({
+            "gate_decision": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json"
+        });
+        let expected_md_path = repo_root.join(
+            "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.md",
+        );
+        let without = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let (issue, json, markdown) = rendered_panel(without)?;
+        assert_eq!(issue.source, "gate_decision");
+        assert_eq!(issue.seam_id.as_deref(), Some("ack"));
+        assert_eq!(issue.agent_command, None);
+        assert_no_repair_loop_command(&json, &markdown);
+
+        let mut with = fixture_input(&repo_root, &inputs, &expected_md_path)?;
+        let mut gate: Value = serde_json::from_str(
+            with.gate_decision_json
+                .as_ref()
+                .and_then(|result| result.as_ref().ok())
+                .ok_or_else(|| "gate fixture missing".to_string())?,
+        )
+        .map_err(|err| format!("parse gate fixture: {err}"))?;
+        gate["decisions"][0]["repair_route"] =
+            serde_json::json!({ "repair_command": PANEL_CARRIED_REPAIR });
+        with.gate_decision_json = Some(Ok(gate.to_string()));
+        let (issue, _json, markdown) = rendered_panel(with)?;
+        assert_eq!(issue.source, "gate_decision");
+        assert_eq!(issue.repair_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        assert_eq!(issue.agent_command.as_deref(), Some(PANEL_CARRIED_REPAIR));
+        // A waived finding shows no Repair block, so the start leads only the
+        // top issue.
+        assert!(markdown.contains(&format!("- Repair start: `{PANEL_CARRIED_REPAIR}`\n")));
+        Ok(())
+    }
+
+    fn path_from_inputs(inputs: &Value, key: &str) -> Option<String> {
+        inputs.get(key).and_then(value_as_string)
+    }
+
+    fn read_optional_fixture(
+        repo_root: &Path,
+        path: Option<&str>,
+    ) -> Result<Option<Result<String, String>>, String> {
+        let Some(path) = path else {
+            return Ok(None);
+        };
+        let absolute = repo_root.join(path);
+        if absolute.exists() {
+            return Ok(Some(Ok(read_file(&absolute)?)));
+        }
+        Ok(Some(Err(format!(
+            "{} does not exist",
+            display_path(&absolute)
+        ))))
+    }
+
+    fn fixture_path(repo_root: &Path, path: &Path) -> String {
+        match path.strip_prefix(repo_root) {
+            Ok(relative) => display_path(relative),
+            Err(_) => display_path(path),
+        }
+    }
+}

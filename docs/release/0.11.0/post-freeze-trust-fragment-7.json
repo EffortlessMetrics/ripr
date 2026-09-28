@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "trust",
+  "sequence": 7,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2350",
+  "review_status": "provisional",
+  "record_count": 1,
+  "disposition_counts": {"must_include_0_11": 1},
+  "records": [
+    {
+      "commit_sha": "854a07ff188d96b9bdae9aaa090a68884ae1f268",
+      "pr": "EffortlessMetrics/ripr-swarm#2244",
+      "title": "docs(specs): reconcile the canonical gap-ID serialization grammar",
+      "primary_category": "trust",
+      "change_class": "normative_identity_contract",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "canonical gap identity has one producer-authoritative, language-aware serialization grammar",
+      "reason": "The receipt spec asserted a format no producer emitted. Gate routes, receipts, artifact comparisons, preview projections, and replay checks must reference the same gap-prefixed content-addressed identity defined by RIPR-SPEC-0021.",
+      "non_claim": "The grammar reconciliation does not make every adapter identity current, actionable, or gate-eligible.",
+      "secondary_impacts": ["spec_0021", "spec_0079", "receipts", "gap_ledger", "preview_adapters"],
+      "source_conflict_risk": "medium"
+    }
+  ]
+}

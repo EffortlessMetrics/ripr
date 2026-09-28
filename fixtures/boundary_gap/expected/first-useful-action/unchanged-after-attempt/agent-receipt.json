@@ -1,0 +1,67 @@
+{
+  "analysis_outcome": null,
+  "analysis_outcome_error": "<analysis_outcome_error>",
+  "analysis_outcome_status": "missing",
+  "inputs": {
+    "after": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/after.repo-exposure.json",
+    "agent_verify_json": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-verify.json",
+    "before": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/before.repo-exposure.json"
+  },
+  "provenance": {
+    "after_artifact": {
+      "path": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/after.repo-exposure.json",
+      "sha256": "sha256:f27712b5d1fdb0fea3aa5f0439397e14fcad60066d53e6b82aa45ba9de4fdb77"
+    },
+    "after_class": "weakly_gripped",
+    "before_artifact": {
+      "path": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/before.repo-exposure.json",
+      "sha256": "sha256:f27712b5d1fdb0fea3aa5f0439397e14fcad60066d53e6b82aa45ba9de4fdb77"
+    },
+    "before_class": "weakly_gripped",
+    "command_template_version": "0.1",
+    "config_fingerprint": null,
+    "generated_at": "<generated_at>",
+    "limits": {
+      "runtime_adequacy_claim": false,
+      "runtime_mutation_execution": false,
+      "static_artifact_relationship": true
+    },
+    "movement": "unchanged",
+    "repo_root": ".",
+    "ripr_version": "<ripr_version>",
+    "seam_id": "67fc764ba37d77bd",
+    "verify_artifact": {
+      "path": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-verify.json",
+      "sha256": "sha256:2f8fb7d5b01596f49771828a7790cde5013d00ed589ae02cbebe626f75bc23b1"
+    },
+    "workflow_artifact": null
+  },
+  "schema_version": "0.5",
+  "seam": {
+    "after": "weakly_gripped",
+    "before": "weakly_gripped",
+    "change": "unchanged",
+    "evidence_delta": [],
+    "file": "src/lib.rs",
+    "grip_class": null,
+    "line": 2,
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary"
+  },
+  "status": "incomplete",
+  "summary": {
+    "next_action": {
+      "kind": "unchanged",
+      "recommended_action": "Add the missing discriminator or stronger assertion named by the packet.",
+      "summary": "Static grip did not improve."
+    },
+    "next_recommendation": "Add or strengthen the missing discriminator named by the seam packet, then rerun agent verify.",
+    "receipt_state": "receipt_movement_unchanged",
+    "remaining_gap": "Static grip class did not move."
+  },
+  "test_changed": null,
+  "tool": "ripr",
+  "verification": {
+    "commands_run": []
+  }
+}

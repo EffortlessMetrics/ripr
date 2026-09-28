@@ -1,0 +1,10 @@
+diff --git a/src/config.py b/src/config.py
+index 0000000..1111111 100644
+--- a/src/config.py
++++ b/src/config.py
+@@ -1,4 +1,4 @@
+-CACHE_TTL: int = 30
++CACHE_TTL: str = 30
+
+
+ def get_ttl():

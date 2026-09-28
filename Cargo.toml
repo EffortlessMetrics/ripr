@@ -1,0 +1,170 @@
+[workspace]
+members = ["crates/ripr", "xtask"]
+default-members = ["crates/ripr"]
+resolver = "2"
+
+[workspace.package]
+# Single source of truth for the released version. `crates/ripr` inherits this
+# with `version.workspace = true`; the VS Code extension is compared against it
+# by `cargo xtask release-readiness` (`extension-version-match`). Bumping a
+# release means editing this line plus the two editor manifests, not three
+# scattered package versions (#2711).
+version = "0.11.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+repository = "https://github.com/EffortlessMetrics/ripr/"
+homepage = "https://github.com/EffortlessMetrics/ripr/"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+const_item_interior_mutations = "deny"
+function_casts_as_integer = "deny"
+unused_must_use = "deny"
+# Belt-and-suspenders for `unsafe_code = "forbid"`: if a future PR ever
+# carves out an unsafe island, this keeps unsafe operations inside an
+# unsafe fn from skipping the explicit `unsafe { ... }` block.
+unsafe_op_in_unsafe_fn = "deny"
+
+# Panic-safety policy: clippy is the fast IDE rail for panic-family code shapes;
+# `cargo xtask check-no-panic-family` is the authoritative semantic gate that
+# matches against `policy/no-panic-allowlist.toml` (path + family + selector).
+# See docs/CLIPPY_POLICY.md.
+[workspace.lints.clippy]
+# Panic family (code-shape rail).
+# Every `unwrap_used` / `expect_used` call site is receipted with
+# `#[expect(clippy::unwrap_used, reason = "...")]` (or `expect_used`) on
+# the enclosing item, mirroring the entries in
+# `policy/no-panic-allowlist.toml`. The semantic checker remains the
+# authoritative gate; clippy is the local code-shape rail.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+panic = "deny"
+unreachable = "deny"
+should_panic_without_expect = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+get_unwrap = "deny"
+unwrap_in_result = "deny"
+
+# Memory / drop footguns.
+mem_forget = "deny"
+forget_non_drop = "deny"
+drop_non_drop = "deny"
+
+# Unsafe-block hygiene. We forbid `unsafe_code` workspace-wide today, so
+# these never fire on current source — they keep any future, scoped unsafe
+# island reviewable: every `unsafe { ... }` must carry a `// SAFETY:`
+# receipt, blocks may not bundle multiple unsafe ops, and `repr(packed)`
+# must pin an explicit ABI so the layout is not unspecified.
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+repr_packed_without_abi = "deny"
+
+# Numeric correctness.
+float_cmp = "deny"
+float_cmp_const = "deny"
+float_equality_without_abs = "deny"
+lossy_float_literal = "deny"
+invalid_upcast_comparisons = "deny"
+cast_sign_loss = "deny"
+cast_abs_to_unsigned = "deny"
+cast_enum_truncation = "deny"
+cast_nan_to_int = "deny"
+
+# Silent failure: ignoring a future, lock guard, `.ok()`'d Result, or
+# wildcard-discarded error loses evidence the analyzer cannot reconstruct.
+# `let_underscore_must_use` is intentionally deferred — best-effort cleanup
+# patterns like `let _ = fs::remove_dir_all(&dir)` are pervasive across the
+# test suite and are recorded as clippy-debt-0001 in policy/clippy-debt.toml.
+let_underscore_future = "deny"
+let_underscore_lock = "deny"
+unused_result_ok = "deny"
+map_err_ignore = "deny"
+assertions_on_result_states = "deny"
+lines_filter_map_ok = "deny"
+# `match x { Ok(v) => ..., Err(_) => ... }` rewritten via `x.ok()` obscures
+# the error path. Prefer matching the typed result directly.
+match_result_ok = "deny"
+
+# Format and I/O footguns: format-arg redundancy hides expression evaluation
+# in the format machinery; path/file APIs have surprising error modes.
+format_in_format_args = "deny"
+to_string_in_format_args = "deny"
+unused_format_specs = "deny"
+suspicious_open_options = "deny"
+nonsensical_open_options = "deny"
+ineffective_open_options = "deny"
+path_buf_push_overwrite = "deny"
+join_absolute_paths = "deny"
+
+# AST / UTF-8 / parser safety: ripr parses Rust source aggressively. Byte
+# vs char index confusion and unchecked slice/index access are bug shapes
+# the analyzer would otherwise have to defend against at runtime.
+char_indices_as_byte_indices = "deny"
+sliced_string_as_bytes = "deny"
+index_refutable_slice = "deny"
+out_of_bounds_indexing = "deny"
+# `string_slice` and `indexing_slicing` are deferred — parser/diff code
+# uses bounded slice arithmetic where the slice indices are derived from
+# AST text ranges that are guaranteed valid. Flipping requires per-call
+# review and is tracked in policy/clippy-lints.toml.
+
+# Collection / ownership helpers introduced after the previous MSRV. These
+# lints catch quiet intent drift in buffer sizing, arithmetic guards, and
+# standard-library helper usage without changing analyzer semantics.
+same_length_and_capacity = "deny"
+manual_ilog2 = "warn"
+needless_type_cast = "warn"
+decimal_bitwise_operands = "warn"
+manual_checked_ops = "warn"
+manual_take = "warn"
+duration_suboptimal_units = "warn"
+unnecessary_trailing_comma = "warn"
+
+# API and trait correctness: types whose implementations don't match the
+# trait contract are quiet bugs. `iter_not_returning_iterator` catches
+# methods named `iter*` that don't actually return iterators;
+# `expl_impl_clone_on_copy` catches manual Clone over derived Copy;
+# `infallible_try_from` and `fallible_impl_from` catch From/TryFrom
+# mismatches; `error_impl_error` catches types that name themselves
+# `Error` but don't implement the `Error` trait.
+iter_not_returning_iterator = "deny"
+expl_impl_clone_on_copy = "deny"
+infallible_try_from = "deny"
+fallible_impl_from = "deny"
+error_impl_error = "deny"
+
+# Async / concurrency: holding a lock or RefCell borrow across an `.await`
+# is the canonical async deadlock; `arc_with_non_send_sync` and `rc_mutex`
+# misuse threading primitives; `mut_mutex_lock` and `readonly_write_lock`
+# pick the wrong API for the read/write pattern.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+await_holding_invalid_type = "deny"
+arc_with_non_send_sync = "deny"
+rc_mutex = "deny"
+mut_mutex_lock = "deny"
+readonly_write_lock = "deny"
+
+# Suppression governance.
+# `allow_attributes` itself stays advisory: some `#[expect]` migrations
+# would fail because the underlying lint only fires in some builds (e.g.
+# `unused_imports` on a public re-export). `allow_attributes_without_reason`
+# is the firm rule — every suppression must carry a written justification.
+allow_attributes_without_reason = "deny"
+blanket_clippy_restriction_lints = "deny"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+
+# Dev profile: line-tables-only gives backtraces with file:line resolution
+# without the full variable-debuginfo cost of the default `debug = "full"`.
+# This cuts link time and binary size for the daily check/test/xtask loop.
+# Full debuginfo is still available via `CARGO_PROFILE_DEV_DEBUG=true cargo
+# test` when a developer needs to step-debug with variable inspection.
+[profile.dev]
+debug = "line-tables-only"

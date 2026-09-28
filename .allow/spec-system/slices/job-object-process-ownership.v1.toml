@@ -1,0 +1,71 @@
+schema_version = "2.0"
+id = "ripr.slice.job-object-process-ownership.v1"
+generation = 1
+
+source_issue = "issue:3803"
+design_reference = "issue:3803#outcome"
+change_class = "behavior_change"
+
+claim_boundary = """
+Introduces one shared owned-subprocess authority (`ripr::process_owner`) and
+routes the shipped bounded subprocess paths through it: the git invocation
+deadline helpers, the doctor Perl exporter probe, the Perl facts exporter
+producer, the cargo metadata probe, and the xtask timed-command runners. On
+Windows every bounded child is created suspended, assigned to a Job Object
+before any child user code can run, and resumed; timeout, cancellation, wait
+failure, and ownership drop terminate the whole assigned tree and reap the
+direct child before returning. This replaces the `taskkill /PID <pid> /T /F`
+shell dependency (retained only as a test-only emergency fallback in the
+descendant-death discriminator) and removes the report-before-exit escape
+race (#3096) and the snapshot window (#1022). Non-Windows behavior keeps the
+existing process-group authority and direct-child kill/reap semantics
+byte-identically; exit statuses, timeout error text, captured output, and
+caller error semantics are preserved. It does not add a generic cross-platform
+process framework, does not change the git/xtask output contracts, and does
+not claim the full #3803 native control matrix (owned by #3922).
+"""
+
+non_goals = [
+  "generic cross-platform process framework or second Job Object implementation",
+  "non-Windows process-group redesign or Unix timeout-semantics changes",
+  "git/xtask output, golden, or schema contract changes",
+  "the complete native Windows controls 1-13 matrix with exact-candidate repeats (#3922)",
+  "#3096 continuation-escape reproduction receipt on exact release candidates",
+  "process-wrap KILL_ON_JOB_CLOSE job-flag hardening upstream",
+]
+
+return_conditions = [
+  "Return to root if the Job Object assignment cannot be shown to precede any child user code on Windows.",
+  "Return to root if a retained deadline/timeout/descendant test changes its established error text or exit semantics.",
+  "Return to root if the xtask bounded runners regress on Linux process-group termination.",
+]
+
+owned_seams = [
+  "seam:ripr:process-owner",
+  "seam:ripr:git:deadline-invocation",
+  "seam:ripr:xtask:timed-command",
+]
+
+shared_seams = [
+  "seam:ripr:app:perl-facts-producer",
+  "seam:ripr:analysis:workspace-cargo-metadata-probe",
+]
+
+forbidden_seams = [
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:domain:exposure-classification",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:3803#outcome"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "summary": {"comments": 0, "summary_only": 0, "suppressed": 0, "unchanged_tests": true},
+  "comments": [],
+  "summary_only": [],
+  "suppressed": [],
+  "warnings": []
+}

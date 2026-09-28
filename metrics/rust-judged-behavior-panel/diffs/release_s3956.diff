@@ -1,0 +1,272 @@
+diff --git a/crates/ripr/src/cli/commands/pilot.rs b/crates/ripr/src/cli/commands/pilot.rs
+index 43fa797d2..76a1a1f0c 100644
+--- a/crates/ripr/src/cli/commands/pilot.rs
++++ b/crates/ripr/src/cli/commands/pilot.rs
+@@ -19,6 +19,56 @@ const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
+ /// enough to cover a cold cache on the ripr-swarm repo itself.
+ const PILOT_RETRY_TIMEOUT_MS: u64 = 240_000;
+ 
++/// Write pilot's `repo-exposure.json`.
++///
++/// When pilot saw the same seam population `ripr check --format
++/// repo-exposure-json` would, the snapshot carries the same producer-owned
++/// `artifact` identity, so it can be the `--before` of `ripr agent verify`
++/// that the first-PR workflow and the evidence records name (#3906). When the
++/// pilot seam budget truncated the population, the snapshot is written
++/// without that identity: a stamped partial snapshot would pass verify's
++/// comparability check against a full after snapshot and compare two
++/// different populations. Verify then refuses it rather than misreporting.
++fn write_pilot_repo_exposure_json(
++    path: &Path,
++    input: &CheckInput,
++    config: &RiprConfig,
++    classified: &[analysis::ClassifiedSeam],
++    limit_info: Option<&analysis::SeamLimitInfo>,
++    ts_guidance: Option<&output::repo_exposure::TsFullRepoGuidance>,
++    pilot_budget_truncated: bool,
++) -> Result<(), String> {
++    let write_failed = |err: String| format!("write {} failed: {err}", path.display());
++    if pilot_budget_truncated {
++        return std::fs::write(
++            path,
++            output::repo_exposure::render_repo_exposure_json(classified, limit_info, ts_guidance),
++        )
++        .map_err(|err| write_failed(err.to_string()));
++    }
++    // Base `None`: pilot's printed after-snapshot command passes no `--base`
++    // or `--diff`, so both snapshots intentionally carry no base under
++    // RIPR-SPEC-0084. Keep this explicit rather than coupling artifact
++    // identity to the `CheckInput` default.
++    let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
++        input.root.clone(),
++        input.mode.as_str().to_string(),
++        None,
++        config,
++    )?;
++    let file = std::fs::File::create(path).map_err(|err| write_failed(err.to_string()))?;
++    let mut writer = std::io::BufWriter::new(file);
++    output::repo_exposure::write_repo_exposure_json_with_context(
++        classified,
++        limit_info,
++        ts_guidance,
++        &context,
++        &mut writer,
++    )
++    .map_err(write_failed)?;
++    std::io::Write::flush(&mut writer).map_err(|err| write_failed(err.to_string()))
++}
++
+ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
+     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+         help::print_pilot_help();
+@@ -116,6 +166,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
+     // manageable size.  `limit_info` carries whichever cap fired (pilot
+     // budget wins when both fire; inventory limit is the outer bound).
+     let pilot_budget_info = analysis::apply_pilot_seam_budget(&mut classified);
++    let pilot_budget_truncated = pilot_budget_info.is_some();
+     let limit_info = pilot_budget_info.or(inventory_limit_info);
+     let (causal_projection, causal_projection_warning) =
+         crate::app::causal_projection::CausalDeltaArtifact::load_optional(&input.root);
+@@ -144,20 +195,15 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
+     };
+ 
+     let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
+-    std::fs::write(
++    write_pilot_repo_exposure_json(
+         &artifacts.repo_exposure_json,
+-        output::repo_exposure::render_repo_exposure_json(
+-            &classified,
+-            limit_info.as_ref(),
+-            ts_guidance.as_ref(),
+-        ),
+-    )
+-    .map_err(|err| {
+-        format!(
+-            "write {} failed: {err}",
+-            artifacts.repo_exposure_json.display()
+-        )
+-    })?;
++        &input,
++        &config,
++        &classified,
++        limit_info.as_ref(),
++        ts_guidance.as_ref(),
++        pilot_budget_truncated,
++    )?;
+     std::fs::write(
+         &artifacts.repo_exposure_md,
+         output::repo_exposure::render_repo_exposure_md(
+diff --git a/crates/ripr/tests/cli_smoke.rs b/crates/ripr/tests/cli_smoke.rs
+index b5c1a393f..f66bf8aa3 100644
+--- a/crates/ripr/tests/cli_smoke.rs
++++ b/crates/ripr/tests/cli_smoke.rs
+@@ -8065,6 +8065,169 @@ fn baseline_update_removes_resolved_without_adopting_new_debt() -> Result<(), St
+     Ok(())
+ }
+ 
++/// The first-PR workflow and every evidence record's `verify_command` name
++/// pilot's `repo-exposure.json` as the `--before` of `ripr agent verify`
++/// (#3906). Walk that route as a user would: pilot, add the missing boundary
++/// test, take the after snapshot with the exact command pilot prints, verify.
++#[test]
++fn pilot_snapshot_is_the_agent_verify_baseline() -> Result<(), Box<dyn std::error::Error>> {
++    let root = unique_temp_workspace("pilot-verify-baseline");
++    std::fs::create_dir_all(&root)?;
++    init_producer_fixture_repo(&root)?;
++    let root_arg = root.display().to_string();
++
++    // From the repository, as a user runs it: pilot's default `--out` is
++    // relative to the working directory.
++    let pilot = run_command(
++        env!("CARGO_BIN_EXE_ripr"),
++        Some(&root),
++        &["pilot", "--root", ".", "--mode", "draft"],
++    )?;
++    assert_success(&pilot);
++    let pilot_dir = root.join("target/ripr/pilot");
++    let before: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
++        pilot_dir.join("repo-exposure.json"),
++    )?)?;
++    assert!(
++        before.pointer("/artifact/content_sha256").is_some(),
++        "pilot repo-exposure.json must carry the producer-owned artifact identity"
++    );
++    let summary: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
++        pilot_dir.join("pilot-summary.json"),
++    )?)?;
++    let after_command = summary
++        .pointer("/next/after_snapshot_command")
++        .and_then(serde_json::Value::as_str)
++        .ok_or("pilot summary names no after-snapshot command")?;
++    // Run the printed command's arguments, not a hand-written equivalent:
++    // a drift between pilot's identity and the command it prints is the bug.
++    let (check_part, redirect) = after_command
++        .split_once(" > ")
++        .ok_or_else(|| format!("after command has no redirect: {after_command}"))?;
++    let check_args: Vec<&str> = check_part
++        .strip_prefix("ripr ")
++        .ok_or_else(|| format!("after command is not a ripr command: {after_command}"))?
++        .split_whitespace()
++        .collect();
++    // Pilot anchors the redirect at the resolved root (#3938), so the printed
++    // target may be absolute; either way it must land in pilot's own out dir.
++    let redirect_path = std::path::Path::new(redirect.trim().trim_matches('\''));
++    let after = if redirect_path.is_absolute() {
++        redirect_path.to_path_buf()
++    } else {
++        root.join(redirect_path)
++    };
++    assert_eq!(
++        after.file_name().and_then(std::ffi::OsStr::to_str),
++        Some("after.repo-exposure.json"),
++        "{after_command}"
++    );
++    let pilot_dir = pilot_dir.canonicalize()?;
++    assert_eq!(
++        after
++            .parent()
++            .ok_or("after snapshot path has no parent")?
++            .canonicalize()?,
++        pilot_dir,
++        "{after_command}"
++    );
++
++    let mut tests = std::fs::read_to_string(root.join("tests/pricing.rs"))?;
++    tests.push_str(
++        "\n#[test]\nfn threshold_equality_discounts() {\n    assert_eq!(discounted_total(100, 100), 90);\n}\n",
++    );
++    std::fs::write(root.join("tests/pricing.rs"), tests)?;
++
++    let check = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), &check_args)?;
++    assert_success(&check);
++    std::fs::write(&after, &check.stdout)?;
++
++    let verify = run_ripr(&[
++        "agent",
++        "verify",
++        "--root",
++        &root_arg,
++        "--before",
++        &pilot_dir.join("repo-exposure.json").display().to_string(),
++        "--after",
++        &after.display().to_string(),
++        "--json",
++    ]);
++    assert_success(&verify);
++    let report: serde_json::Value = serde_json::from_slice(&verify.stdout)?;
++    assert_eq!(
++        report.pointer("/summary/improved"),
++        Some(&serde_json::json!(1)),
++        "{report}"
++    );
++    assert_eq!(
++        report.pointer("/summary/gap_movement/closed"),
++        Some(&serde_json::json!(1)),
++        "{report}"
++    );
++    std::fs::remove_dir_all(root)?;
++    Ok(())
++}
++
++/// When the pilot seam budget truncates the inventory, pilot's snapshot holds
++/// fewer seams than the after snapshot `ripr check` takes. It must not carry
++/// the comparable identity, or verify would compare two populations.
++#[test]
++fn pilot_snapshot_truncated_by_the_seam_budget_is_not_a_verify_baseline()
++-> Result<(), Box<dyn std::error::Error>> {
++    let root = unique_temp_workspace("pilot-verify-truncated");
++    std::fs::create_dir_all(&root)?;
++    init_producer_fixture_repo(&root)?;
++    let mut lib = std::fs::read_to_string(root.join("src/lib.rs"))?;
++    lib.push_str(
++        "\npub fn shipping_fee(weight: i32, free_limit: i32) -> i32 {\n    if weight > free_limit { 5 } else { 0 }\n}\n",
++    );
++    std::fs::write(root.join("src/lib.rs"), lib)?;
++
++    let pilot = run_command_with_env(
++        env!("CARGO_BIN_EXE_ripr"),
++        &root,
++        &["pilot", "--root", ".", "--mode", "draft"],
++        &[("RIPR_PILOT_SEAM_BUDGET", "1")],
++    )?;
++    assert_success(&pilot);
++    let before: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
++        root.join("target/ripr/pilot/repo-exposure.json"),
++    )?)?;
++    // Precondition: the budget really truncated a larger inventory.
++    let check = run_command(
++        env!("CARGO_BIN_EXE_ripr"),
++        Some(&root),
++        &[
++            "check",
++            "--root",
++            ".",
++            "--mode",
++            "draft",
++            "--format",
++            "repo-exposure-json",
++        ],
++    )?;
++    assert_success(&check);
++    let full: serde_json::Value = serde_json::from_slice(&check.stdout)?;
++    let count = |doc: &serde_json::Value| {
++        doc.get("seams")
++            .and_then(serde_json::Value::as_array)
++            .map_or(0, Vec::len)
++    };
++    assert_eq!(count(&before), 1, "{before}");
++    assert!(
++        count(&full) > 1,
++        "fixture must have more seams than the budget: {full}"
++    );
++    assert!(
++        before.get("artifact").is_none(),
++        "a budget-truncated pilot snapshot must not carry the comparable identity"
++    );
++    std::fs::remove_dir_all(root)?;
++    Ok(())
++}
++
+ #[test]
+ fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), String> {
+     let root = workspace_root().join("fixtures/boundary_gap/input");

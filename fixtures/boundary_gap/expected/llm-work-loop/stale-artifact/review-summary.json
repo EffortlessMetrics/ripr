@@ -1,0 +1,160 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "incomplete",
+  "root": ".",
+  "target_seam": {
+    "seam_id": "seam-stale",
+    "source": "agent_receipt",
+    "file": "src/pricing.rs",
+    "line": 42,
+    "seam_kind": "predicate_boundary"
+  },
+  "static_movement": {
+    "state": "unchanged",
+    "before_class": "weakly_gripped",
+    "after_class": "weakly_gripped",
+    "grip_class": "weakly_gripped",
+    "evidence_artifact": "target/ripr/reports/agent-receipt.json",
+    "verify_artifact": "target/ripr/workflow/agent-verify.json",
+    "summary": "Static movement is unchanged (weakly_gripped -> weakly_gripped).",
+    "next_action": {
+      "kind": "unchanged",
+      "summary": "Static grip did not improve.",
+      "recommended_action": "Add the missing discriminator or stronger assertion named by the packet."
+    }
+  },
+  "analysis_outcome": null,
+  "next_command": null,
+  "surfaces": [
+    {
+      "name": "agent_status",
+      "label": "Agent status",
+      "path": "target/ripr/workflow/agent-status.json",
+      "state": "computed",
+      "status": "warning",
+      "required": true,
+      "summary": "7 of 7 required artifacts present, 0 missing, 3 warnings. Command: ripr agent status --root <cwd> --json > <cwd>/target/ripr/workflow/agent-status.json"
+    },
+    {
+      "name": "agent_workflow",
+      "label": "Agent workflow",
+      "path": "target/ripr/workflow/workflow.json",
+      "state": "present",
+      "status": "ready",
+      "required": false,
+      "summary": "Workflow targets seam seam-stale."
+    },
+    {
+      "name": "agent_receipt",
+      "label": "Agent receipt",
+      "path": "target/ripr/reports/agent-receipt.json",
+      "state": "present",
+      "status": "advisory",
+      "required": true,
+      "summary": "Receipt records unchanged movement for seam seam-stale."
+    },
+    {
+      "name": "operator_cockpit",
+      "label": "Operator cockpit",
+      "path": "target/ripr/reports/operator-cockpit.json",
+      "state": "optional_missing",
+      "status": "optional_missing",
+      "required": false,
+      "summary": "Operator cockpit artifact is not present."
+    },
+    {
+      "name": "repo_exposure",
+      "label": "Repo exposure",
+      "path": "target/ripr/reports/repo-exposure.json",
+      "state": "optional_missing",
+      "status": "optional_missing",
+      "required": false,
+      "summary": "Repo exposure artifact is not present."
+    },
+    {
+      "name": "lsp_cockpit",
+      "label": "LSP cockpit",
+      "path": "target/ripr/reports/lsp-cockpit.json",
+      "state": "optional_missing",
+      "status": "optional_missing",
+      "required": false,
+      "summary": "LSP cockpit artifact is not present."
+    },
+    {
+      "name": "analysis_outcome",
+      "label": "Analysis outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "invalid",
+      "status": "invalid",
+      "required": true,
+      "summary": "Analysis outcome artifact has an invalid typed outcome: complete_no_findings requires a behavioral candidate or probe subject."
+    }
+  ],
+  "ci_artifacts": [
+    {
+      "name": "agent_status",
+      "path": "target/ripr/workflow/agent-status.json",
+      "state": "missing"
+    },
+    {
+      "name": "agent_status_markdown",
+      "path": "target/ripr/workflow/agent-status.md",
+      "state": "missing"
+    },
+    {
+      "name": "agent_workflow",
+      "path": "target/ripr/workflow/workflow.json",
+      "state": "present"
+    },
+    {
+      "name": "agent_review_summary",
+      "path": "target/ripr/workflow/agent-review-summary.json",
+      "state": "missing"
+    },
+    {
+      "name": "agent_review_summary_markdown",
+      "path": "target/ripr/workflow/agent-review-summary.md",
+      "state": "missing"
+    },
+    {
+      "name": "analysis_outcome",
+      "path": "target/ripr/workflow/analysis-outcome.json",
+      "state": "present"
+    },
+    {
+      "name": "agent_receipt",
+      "path": "target/ripr/reports/agent-receipt.json",
+      "state": "present"
+    },
+    {
+      "name": "operator_cockpit",
+      "path": "target/ripr/reports/operator-cockpit.json",
+      "state": "missing"
+    },
+    {
+      "name": "operator_cockpit_markdown",
+      "path": "target/ripr/reports/operator-cockpit.md",
+      "state": "missing"
+    }
+  ],
+  "reviewer_summary": {
+    "headline": "Review packet is incomplete for seam-stale: producer analysis outcome is unavailable.",
+    "what_changed": "No producer-backed completeness result is available; static review evidence cannot be treated as complete.",
+    "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
+    "remaining": "Add the missing discriminator or stronger assertion named by the packet.",
+    "reviewer_should_inspect": [
+      "target/ripr/reports/agent-receipt.json",
+      "target/ripr/workflow/agent-verify.json",
+      "target/ripr/workflow/analysis-outcome.json",
+      "target/ripr/reports/operator-cockpit.json",
+      "target/ripr/reports/repo-exposure.json"
+    ]
+  },
+  "limits": {
+    "static_artifact_relationship": true,
+    "runtime_mutation_execution": false,
+    "automatic_edits": false,
+    "generated_tests": false
+  }
+}

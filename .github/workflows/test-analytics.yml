@@ -1,0 +1,63 @@
+name: Test Analytics
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+jobs:
+  rust-tests:
+    name: rust-tests-junit
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ripr-test-analytics-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: taiki-e/install-action@nextest
+
+      - name: Run Rust tests with JUnit output
+        run: cargo nextest run --workspace --all-features --profile ci
+
+      - name: Run doc tests
+        run: cargo test --workspace --doc
+
+      - name: Upload test results artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-junit
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: warn
+          retention-days: 5
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+        uses: codecov/codecov-action@v6
+        with:
+          files: target/nextest/ci/junit.xml
+          report_type: test_results
+          token: ${{ env.CODECOV_TOKEN }}
+
+      - name: Explain skipped Codecov test-results upload
+        if: ${{ !cancelled() && (env.CODECOV_TOKEN == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
+        run: echo "Skipping Codecov test-results upload because CODECOV_TOKEN is unavailable for this run."

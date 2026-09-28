@@ -1,0 +1,2841 @@
+use std::collections::BTreeSet;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum XtaskCommand {
+    Shape,
+    FixPr,
+    InstallHooks(Vec<String>),
+    Commands,
+    PrSummary,
+    Proof(Vec<String>),
+    PrReady,
+    Cockpit,
+    PrTriageReport,
+    BranchInventory(Vec<String>),
+    GhPrStatus(Vec<String>),
+    CiBudget(Vec<String>),
+    PerlMigrationRefresh(Vec<String>),
+    ModuleHealth(Vec<String>),
+    WindowsAdvisorySummary(Vec<String>),
+    WindowsAdvisoryIsolatedSummary(Vec<String>),
+    SuggestedFixes,
+    Precommit,
+    CheckFast,
+    CheckPr,
+    Fixtures(Vec<String>),
+    Goldens(Vec<String>),
+    Metrics,
+    RustRepairTrustReport,
+    RustJudgedPanel(Vec<String>),
+    CheckRustJudgedPanel,
+    CheckReleaseChallengeSelection,
+    CheckReleaseChallengeJudgments,
+    PythonJudgedPanel(Vec<String>),
+    CheckPythonJudgedPanel,
+    PythonRepairTrust(Vec<String>),
+    TestOracleReport,
+    TestEfficiencyReport,
+    BadgeArtifacts,
+    RepoBadgeArtifacts(Vec<String>),
+    BadgeBasis(Vec<String>),
+    RiprPlus(Vec<String>),
+    RepoSeamInventory,
+    RepoExposureReport,
+    RepoExposureSummaryReport,
+    RepoExposureLatencyReport,
+    TargetedRerunBenchmark(Vec<String>),
+    RepoContractReport,
+    EvidenceHealth,
+    Lane1EvidenceAudit,
+    EvidenceQualityScorecard,
+    EvidenceQualityTrend(Vec<String>),
+    ActionableGapOutcomes(Vec<String>),
+    AgentSeamPackets(Option<String>),
+    RiprSwarm(Vec<String>),
+    RouteQuality(Vec<String>),
+    LspCockpitReport,
+    OperatorCockpitReport,
+    ReleaseReadiness(Vec<String>),
+    ReleaseNegativeCorpus(Vec<String>),
+    BumpVersion(Vec<String>),
+    ReleaseControl(Vec<String>),
+    ReleaseDenominator(Vec<String>),
+    SourcePromotion(Vec<String>),
+    BackSync(Vec<String>),
+    ReleaseScope(Vec<String>),
+    CiDocsOnly(Vec<String>),
+    CiRoutedRustPlan(Vec<String>),
+    CiRecordCommand(Vec<String>),
+    CiChildReceipt(Vec<String>),
+    CiRoutedRustResult(Vec<String>),
+    ReleaseServerArchive(Vec<String>),
+    ReleaseServerManifest(Vec<String>),
+    ReleaseDistributionCatalog(Vec<String>),
+    ReleaseUploadAssets(Vec<String>),
+    TargetedTestOutcome(Vec<String>),
+    MutationCalibration(Vec<String>),
+    BunUbCalibration(Vec<String>),
+    BunUbPreviewSummary(Vec<String>),
+    ConfiguredBridgeInventory(Vec<String>),
+    RecommendationCalibration(Vec<String>),
+    SarifPolicy(Vec<String>),
+    ImpactedEvidence(Vec<String>),
+    RiprPr(Vec<String>),
+    FirstPr(Vec<String>),
+    RiprReviewComments(Vec<String>),
+    RiprPrSummary(Vec<String>),
+    RiprAnnotations(Vec<String>),
+    UpdateBadgeEndpoints(Vec<String>),
+    CheckBadgeEndpoints(Vec<String>),
+    Dogfood,
+    EvalSweep(Vec<String>),
+    FirstHour(Vec<String>),
+    FirstHourControls(Vec<String>),
+    Critic,
+    Reports(Vec<String>),
+    Cache(Vec<String>),
+    Receipts(Vec<String>),
+    Worktree(Vec<String>),
+    Specs(Vec<String>),
+    GoldenDrift,
+    CiFast,
+    CiFull,
+    CheckStaticLanguage,
+    CheckAgentSkills,
+    CheckNoPanicFamily(Vec<String>),
+    CheckAllowAttributes,
+    CheckLocalContext,
+    CheckFilePolicy,
+    CheckCoveredBy,
+    RustConversionCandidates,
+    CheckExecutableFiles,
+    CheckWorkflows,
+    CheckDroidReviewConfig,
+    CheckSpecFormat,
+    CheckSpecNumbering,
+    CheckFixtureContracts,
+    CheckTraceability,
+    CheckCapabilities,
+    CheckWorkspaceShape,
+    CheckArchitecture,
+    CheckSourceRoleAuthority,
+    CheckPublicApi,
+    CheckOutputContracts,
+    CheckDocArtifacts,
+    CheckSupportTiers,
+    CheckDocIndex,
+    CheckReadmeState,
+    MarkdownLinks,
+    CheckPrShape,
+    CheckGenerated,
+    CheckCommandCatalog,
+    CheckEvidencePromotionHonesty(Vec<String>),
+    CheckBadgeDiffPolicy,
+    CheckGeneratedClean,
+    CheckVerificationContracts(Vec<String>),
+    SchemaProducerSweep(Vec<String>),
+    CheckDependencies,
+    CheckSupplyChain,
+    CheckProcessPolicy,
+    CheckNetworkPolicy,
+    CheckLintPolicy,
+    CheckCiLaneWhitelist,
+    CheckProofPacks,
+    CheckProductCopy,
+    CheckPositioningLanguage,
+    CheckDocRoles,
+    CheckReleaseTargets,
+    VscodeCompile,
+    VscodePackage(Vec<String>),
+    VscodeTest,
+    VscodeTestE2e,
+    DroidAdmit(Vec<String>),
+    Package,
+    PublishDryRun,
+    Help(Vec<String>),
+    IssueIntake(Vec<String>),
+    Unknown(String),
+}
+
+impl XtaskCommand {
+    pub(crate) fn parse(args: impl IntoIterator<Item = String>) -> Self {
+        let mut args = args.into_iter();
+        let Some(command) = args.next() else {
+            return Self::Help(Vec::new());
+        };
+        let rest: Vec<String> = args.collect();
+        match command.as_str() {
+            "shape" => Self::Shape,
+            "fix-pr" => Self::FixPr,
+            "install-hooks" => Self::InstallHooks(rest),
+            "commands" => Self::Commands,
+            "pr-summary" => Self::PrSummary,
+            "proof" => Self::Proof(rest),
+            "pr-ready" => Self::PrReady,
+            "cockpit" => Self::Cockpit,
+            "pr-triage-report" => Self::PrTriageReport,
+            "branch-inventory" => Self::BranchInventory(rest),
+            "gh-pr-status" => Self::GhPrStatus(rest),
+            "ci-budget" => Self::CiBudget(rest),
+            "perl-migration-refresh" => Self::PerlMigrationRefresh(rest),
+            "module-health" => Self::ModuleHealth(rest),
+            "windows-advisory-summary" => Self::WindowsAdvisorySummary(rest),
+            "windows-advisory-isolated-summary" => Self::WindowsAdvisoryIsolatedSummary(rest),
+            "eval-sweep" => Self::EvalSweep(rest),
+            "first-hour" => Self::FirstHour(rest),
+            "first-hour-controls" => Self::FirstHourControls(rest),
+            "suggested-fixes" => Self::SuggestedFixes,
+            "precommit" => Self::Precommit,
+            "check-fast" => Self::CheckFast,
+            "check-pr" => Self::CheckPr,
+            "fixtures" => Self::Fixtures(rest),
+            "goldens" => Self::Goldens(rest),
+            "metrics" => Self::Metrics,
+            "rust-repair-trust-report" => Self::RustRepairTrustReport,
+            "rust-judged-panel" => Self::RustJudgedPanel(rest),
+            "check-rust-judged-panel" => Self::CheckRustJudgedPanel,
+            "check-release-challenge-selection" => Self::CheckReleaseChallengeSelection,
+            "check-release-challenge-judgments" => Self::CheckReleaseChallengeJudgments,
+            "python-judged-panel" => Self::PythonJudgedPanel(rest),
+            "check-python-judged-panel" => Self::CheckPythonJudgedPanel,
+            "python-repair-trust" => Self::PythonRepairTrust(rest),
+            "test-oracle-report" | "check-test-oracles" => Self::TestOracleReport,
+            "test-efficiency-report" => Self::TestEfficiencyReport,
+            "badge-artifacts" => Self::BadgeArtifacts,
+            "repo-badge-artifacts" => Self::RepoBadgeArtifacts(rest),
+            "badge-basis" => Self::BadgeBasis(rest),
+            "ripr-plus" => Self::RiprPlus(rest),
+            "repo-seam-inventory" => Self::RepoSeamInventory,
+            "repo-exposure-report" => Self::RepoExposureReport,
+            "repo-exposure-summary-report" => Self::RepoExposureSummaryReport,
+            "repo-exposure-latency-report" => Self::RepoExposureLatencyReport,
+            "targeted-rerun-benchmark" => Self::TargetedRerunBenchmark(rest),
+            "repo-contract-report" => Self::RepoContractReport,
+            "evidence-health" => Self::EvidenceHealth,
+            "lane1-evidence-audit" | "evidence-quality-audit" => Self::Lane1EvidenceAudit,
+            "evidence-quality-scorecard" => Self::EvidenceQualityScorecard,
+            "evidence-quality-trend" => Self::EvidenceQualityTrend(rest),
+            "actionable-gap-outcomes" => Self::ActionableGapOutcomes(rest),
+            "agent-seam-packets" => Self::AgentSeamPackets(rest.first().cloned()),
+            "ripr-swarm" => Self::RiprSwarm(rest),
+            "route-quality" => Self::RouteQuality(rest),
+            "lsp-cockpit-report" => Self::LspCockpitReport,
+            "operator-cockpit" | "operator-cockpit-report" => Self::OperatorCockpitReport,
+            "release-readiness" => Self::ReleaseReadiness(rest),
+            "release-negative-corpus" => Self::ReleaseNegativeCorpus(rest),
+            "bump-version" => Self::BumpVersion(rest),
+            "release-control" => Self::ReleaseControl(rest),
+            "release-denominator" => Self::ReleaseDenominator(rest),
+            "source-promotion" => Self::SourcePromotion(rest),
+            "back-sync" => Self::BackSync(rest),
+            "release-scope" => Self::ReleaseScope(rest),
+            "ci-docs-only" => Self::CiDocsOnly(rest),
+            "ci-routed-rust-plan" => Self::CiRoutedRustPlan(rest),
+            "ci-record-command" => Self::CiRecordCommand(rest),
+            "ci-child-receipt" => Self::CiChildReceipt(rest),
+            "ci-routed-rust-result" => Self::CiRoutedRustResult(rest),
+            "release-server-archive" => Self::ReleaseServerArchive(rest),
+            "release-server-manifest" => Self::ReleaseServerManifest(rest),
+            "release-distribution-catalog" => Self::ReleaseDistributionCatalog(rest),
+            "release-upload-assets" => Self::ReleaseUploadAssets(rest),
+            "targeted-test-outcome" => Self::TargetedTestOutcome(rest),
+            "mutation-calibration" => Self::MutationCalibration(rest),
+            "bun-ub-calibration" => Self::BunUbCalibration(rest),
+            "bun-ub-preview-summary" => Self::BunUbPreviewSummary(rest),
+            "configured-bridge-inventory" => Self::ConfiguredBridgeInventory(rest),
+            "recommendation-calibration" => Self::RecommendationCalibration(rest),
+            "sarif-policy" => Self::SarifPolicy(rest),
+            "impacted-evidence" => Self::ImpactedEvidence(rest),
+            "ripr-pr" => Self::RiprPr(rest),
+            "first-pr" => Self::FirstPr(rest),
+            "ripr-review-comments" => Self::RiprReviewComments(rest),
+            "ripr-pr-summary" => Self::RiprPrSummary(rest),
+            "ripr-annotations" => Self::RiprAnnotations(rest),
+            "badges" if rest.iter().any(|arg| arg == "--check") => Self::CheckBadgeEndpoints(rest),
+            "badges" => Self::UpdateBadgeEndpoints(rest),
+            "update-badge-endpoints" => Self::UpdateBadgeEndpoints(rest),
+            "check-badge-endpoints" => Self::CheckBadgeEndpoints(rest),
+            "dogfood" => Self::Dogfood,
+            "critic" => Self::Critic,
+            "reports" => Self::Reports(rest),
+            "cache" => Self::Cache(rest),
+            "receipts" => Self::Receipts(rest),
+            "doctor" => Self::Worktree(vec!["doctor".to_string()]),
+            "worktree" => Self::Worktree(rest),
+            "specs" => Self::Specs(rest),
+            "golden-drift" => Self::GoldenDrift,
+            "ci-fast" => Self::CiFast,
+            "ci-full" => Self::CiFull,
+            "check-static-language" => Self::CheckStaticLanguage,
+            "check-agent-skills" => Self::CheckAgentSkills,
+            "check-no-panic-family" => Self::CheckNoPanicFamily(rest),
+            "check-allow-attributes" => Self::CheckAllowAttributes,
+            "check-local-context" => Self::CheckLocalContext,
+            "check-file-policy" => Self::CheckFilePolicy,
+            "check-covered-by" => Self::CheckCoveredBy,
+            "rust-conversion-candidates" => Self::RustConversionCandidates,
+            "check-executable-files" => Self::CheckExecutableFiles,
+            "check-workflows" => Self::CheckWorkflows,
+            "check-droid-review-config" => Self::CheckDroidReviewConfig,
+            "check-spec-format" => Self::CheckSpecFormat,
+            "check-spec-numbering" => Self::CheckSpecNumbering,
+            "check-fixture-contracts" => Self::CheckFixtureContracts,
+            "check-evidence-promotion-honesty" => Self::CheckEvidencePromotionHonesty(rest),
+            "check-traceability" | "check-spec-ids" | "check-behavior-manifest" => {
+                Self::CheckTraceability
+            }
+            "check-capabilities" => Self::CheckCapabilities,
+            "check-workspace-shape" => Self::CheckWorkspaceShape,
+            "check-architecture" => Self::CheckArchitecture,
+            "check-rust-source-role-authority" => Self::CheckSourceRoleAuthority,
+            "check-public-api" => Self::CheckPublicApi,
+            "check-output-contracts" => Self::CheckOutputContracts,
+            "check-doc-artifacts" => Self::CheckDocArtifacts,
+            "check-support-tiers" => Self::CheckSupportTiers,
+            "check-doc-index" => Self::CheckDocIndex,
+            "check-readme-state" => Self::CheckReadmeState,
+            "markdown-links" => Self::MarkdownLinks,
+            "check-pr-shape" => Self::CheckPrShape,
+            "check-generated" => Self::CheckGenerated,
+            "check-command-catalog" => Self::CheckCommandCatalog,
+            "check-badge-diff-policy" => Self::CheckBadgeDiffPolicy,
+            "check-generated-clean" => Self::CheckGeneratedClean,
+            "check-verification-contracts" => Self::CheckVerificationContracts(rest),
+            "schema-producer-sweep" => Self::SchemaProducerSweep(rest),
+            "check-dependencies" => Self::CheckDependencies,
+            "check-supply-chain" => Self::CheckSupplyChain,
+            "check-process-policy" => Self::CheckProcessPolicy,
+            "check-network-policy" => Self::CheckNetworkPolicy,
+            "check-lint-policy" => Self::CheckLintPolicy,
+            "check-ci-lane-whitelist" => Self::CheckCiLaneWhitelist,
+            "check-proof-packs" => Self::CheckProofPacks,
+            "check-product-copy" => Self::CheckProductCopy,
+            "check-positioning-language" => Self::CheckPositioningLanguage,
+            "check-doc-roles" => Self::CheckDocRoles,
+            "check-release-targets" => Self::CheckReleaseTargets,
+            "vscode-compile" => Self::VscodeCompile,
+            "vscode-package" => Self::VscodePackage(rest),
+            "vscode-test" => Self::VscodeTest,
+            "vscode-test-e2e" => Self::VscodeTestE2e,
+            "droid-admit" => Self::DroidAdmit(rest.to_vec()),
+            "package" => Self::Package,
+            "publish-dry-run" => Self::PublishDryRun,
+            "issue-intake" => Self::IssueIntake(rest),
+            "help" => Self::Help(rest),
+            other => Self::Unknown(other.to_string()),
+        }
+    }
+}
+
+pub(crate) fn print_help(args: &[String]) -> Result<(), String> {
+    println!("{}", help_message(args)?);
+    Ok(())
+}
+
+pub(crate) fn help_message(args: &[String]) -> Result<String, String> {
+    if args.is_empty() {
+        let ci_enforced: BTreeSet<&str> = command_catalog()
+            .into_iter()
+            .filter(|entry| entry.ci_enforced)
+            .map(|entry| entry.command)
+            .collect();
+        return Ok(format_top_level_help(&known_commands(), &ci_enforced));
+    }
+
+    let query = args.join(" ");
+    let matches = help_entries_for_query(&query);
+    if matches.is_empty() {
+        return Err(unknown_command_message(&query));
+    }
+
+    Ok(format_help_entries(&query, &matches))
+}
+
+fn help_entries_for_query(query: &str) -> Vec<CommandCatalogEntry> {
+    let normalized = query.trim();
+    let root = known_command_root(normalized);
+    command_catalog()
+        .into_iter()
+        .filter(|entry| {
+            entry.command == normalized
+                || known_command_root(entry.command) == root
+                || known_command_root(entry.command) == normalized
+        })
+        .collect()
+}
+
+pub(crate) fn known_commands() -> Vec<&'static str> {
+    vec![
+        "shape",
+        "fix-pr",
+        "install-hooks",
+        "commands",
+        "pr-summary",
+        "proof route [--base <rev>] [--head <rev>]",
+        "proof preflight [--base <rev>] [--head <rev>]",
+        "pr-ready",
+        "cockpit",
+        "pr-triage-report",
+        "branch-inventory [--input <path>] [--dry-run]",
+        "branch-inventory apply --plan <path> --digest <digest>",
+        "gh-pr-status --pr <number>",
+        "ci-budget [--workflow <name>] [--limit <n>] [--input <path>]",
+        "module-health [--threshold <n>]",
+        "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path> [--nofeatures-log <path> --nofeatures-status <path>]",
+        "windows-advisory-isolated-summary --dir <path>",
+        "suggested-fixes",
+        "precommit",
+        "check-pr",
+        "fixtures [name]",
+        "fixtures new <name>",
+        "goldens check",
+        "goldens bless <name> --reason <reason>",
+        "golden-drift",
+        "metrics",
+        "rust-repair-trust-report",
+        "rust-judged-panel check",
+        "rust-judged-panel replay [--out target/ripr/<path>]",
+        "rust-judged-panel packet [--host-current target/ripr/<path>/current.json]",
+        "check-rust-judged-panel",
+        "check-release-challenge-selection",
+        "check-release-challenge-judgments",
+        "python-judged-panel check [--check]",
+        "python-judged-panel replay [--check] [--limit <n>] [--network]",
+        "python-judged-panel report [--records <dir>] [--adjudications <dir>] [--threshold-policy <path>] [--out <dir>] [--check]",
+        "python-judged-panel adjudicate --case <id> --verdict <classification> --role <role> (--reviewer <identity> | env RIPR_PANEL_ADJUDICATOR) --evidence <ref> [--adjudications <dir>] [--records <dir>]",
+        "python-judged-panel feedback [--records <dir>] [--adjudications <dir>] [--out <dir>] [--check]",
+        "check-python-judged-panel",
+        "python-repair-trust check [--manifest <path>] [--attempts <dir-or-file>]",
+        "python-repair-trust check-driver [--manifest <path>] --bindings <dir-or-file>",
+        "python-repair-trust check-verification [--manifest <path>] --receipts <dir-or-file>",
+        "test-oracle-report",
+        "check-test-oracles",
+        "test-efficiency-report",
+        "badge-artifacts",
+        "repo-badge-artifacts [--gap-ledger <path>]",
+        "badge-basis [--gap-ledger <path>] [--include-seam-classes]",
+        "ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]",
+        "repo-seam-inventory",
+        "repo-exposure-report",
+        "repo-exposure-summary-report",
+        "repo-exposure-latency-report",
+        "targeted-rerun-benchmark --root <path> --changed-test <path> [--samples <n>] [--timeout-ms <n>]",
+        "repo-contract-report",
+        "evidence-health",
+        "lane1-evidence-audit",
+        "evidence-quality-audit",
+        "evidence-quality-scorecard",
+        "evidence-quality-trend [--current <path>] [--previous <path>]",
+        "actionable-gap-outcomes [--actionable-gaps <path>] [--agent-receipt <path>] [--targeted-test-outcome <path>]",
+        "agent-seam-packets [root]",
+        "ripr-swarm plan [--top <n>] [--actionable-gaps <path>]",
+        "ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]",
+        "ripr-swarm attempt-ledger [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--previous-ledger <path>]",
+        "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--attempt-ledger <path>]",
+        "route-quality [--attempt-ledger <path>]",
+        "lsp-cockpit-report",
+        "operator-cockpit",
+        "operator-cockpit-report",
+        "release-readiness --version <version>",
+        "release-negative-corpus --version <version>",
+        "bump-version <version>",
+        "release-control --input <captured-snapshot.json>",
+        "release-control --live",
+        "release-denominator --input <ledger.json>",
+        "release-denominator --live --input <ledger.json>",
+        "release-denominator --capture-github --input <ledger.json> --output <capture.json>",
+        "release-denominator --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>",
+        "release-denominator --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>",
+        "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+        "back-sync verify --swarm-before <sha> --source-release-head <sha> --source-release-tag <tag> --join <sha> --tree <tree-sha> --swarm-repo <path> --source-repo <path> --version <version> --release-receipt <path> --policy-before <path> --policy-exception <path> --policy-after <path> [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+        "release-scope --input <scope.json>",
+        "ci-docs-only --base <sha> [--head <sha>] --expect <docs_only|full>",
+        "ci-routed-rust-plan --scheduled-route <route> --base <sha> --pr-head <sha> --subject <sha> --event <event> --trust-class <class> --repository <owner/repo> --workflow <workflow-ref>",
+        "ci-record-command --id <id> -- <command...>",
+        "ci-child-receipt --plan <ids> --plan-path <plan.json> --job-outcome <outcome> --subject-sha <sha> --subject-tree <tree>",
+        "ci-routed-rust-result --plan-path <plan.json> --execution-path <execution.json> --download-outcome <outcome> --expected-repository <owner/repo> --expected-workflow <workflow-ref> --expected-event <event> --expected-base <sha> --expected-pr-head <sha> --expected-pr-head-tree <tree> --expected-trust-class <class> --expected-authoritative-applicability <route> --expected-route <route> --expected-subject <sha> --expected-subject-tree <tree> --expected-changed-paths-sha256 <digest> --expected-changed-path-count <count> --expected-changed-paths-utf8 <bool> --expected-toolchain-identity <digest> --expected-cargo-identity <digest> --expected-cargo-lock-sha256 <digest> --expected-cache-identity <identity> --expected-cache-hit <state> --expected-cache-matched-identity <identity> --expected-runner-os <os> --expected-runner-arch <arch> --expected-runner-image-os <image> --expected-runner-image-version <version> --expected-artifact-identity <identity> --child-conclusion <state> --self-hosted-selection-attempted <bool> --private-runner-secret-requested <bool> --org-runner-query-attempted <bool>",
+        "release-distribution-catalog --product-version <version> --channel <stable|rc> --stable-tag <tag> [--rc-tag <tag>] --manifest <path> --repository <owner/repo> [--out <path>]",
+        "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
+        "release-server-manifest --version <version> --repository <owner/repo>",
+        "release-upload-assets --version <version>",
+        "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
+        "source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>",
+        "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
+        "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
+        "source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> --integration-index-sha256 <digest> [--out <dir>]",
+        "source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --integration-index-sha256 <digest> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --qualification-receipt-sha256 <digest> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
+        "source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
+        "source-promotion run-admission-workflow <exact identity and locator inputs> --requested-identity <file> --requested-identity-sha256 <digest> --workspace-root <dir> --out <dir>",
+        "source-promotion verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest>",
+        "source-promotion enforce-admission-workflow --packet <dir> --expected-status admitted",
+        "source-promotion finalize-admission-workflow --admission-packet <dir> --workspace-root <dir> --out <dir>",
+        "targeted-test-outcome --before <path> --after <path>",
+        "mutation-calibration [root] --mutants-json <path>",
+        "bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]",
+        "bun-ub-preview-summary [--calibration-corpus <path>] [--graph-corpus <path>] [--dogfood-corpus <path>] [--out <path>] [--out-md <path>]",
+        "configured-bridge-inventory [--graph-corpus <path>] [--out <path>] [--out-md <path>]",
+        "recommendation-calibration [--root <path>] [--pr-guidance <path>] [--outcome-receipts <path>] [--out <path>]",
+        "sarif-policy --current <path> [--baseline <path>]",
+        "impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]",
+        "ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]",
+        "first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
+        "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check-output <path>] [--check]",
+        "ripr-pr-summary [--check]",
+        "ripr-annotations [--comments <path>] [--out <path>] [--check]",
+        "badges [--check] [--gap-ledger <path>]",
+        "update-badge-endpoints",
+        "check-badge-endpoints",
+        "dogfood",
+        "critic",
+        "reports index",
+        "cache report",
+        "cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",
+        "receipts [check]",
+        "doctor",
+        "worktree doctor",
+        "specs next",
+        "specs maintenance --as-of YYYY-MM-DD [--json] [--receipts <dir>]",
+        "specs digest --as-of YYYY-MM-DD [--json] [--receipts <dir>]",
+        "specs close --spec RIPR-SPEC-NNNN --disposition <label> --as-of YYYY-MM-DD --reviewed-by <identity>",
+        "ci-fast",
+        "ci-full",
+        "check-static-language",
+        "check-agent-skills",
+        "check-no-panic-family [--propose]",
+        "check-allow-attributes",
+        "check-local-context",
+        "check-file-policy",
+        "check-covered-by",
+        "rust-conversion-candidates",
+        "check-executable-files",
+        "check-workflows",
+        "check-droid-review-config",
+        "check-spec-format",
+        "check-spec-numbering",
+        "check-fixture-contracts",
+        "perl-migration-refresh --producer-bin <path> [--case <id>]",
+        "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
+        "check-traceability",
+        "check-spec-ids",
+        "check-behavior-manifest",
+        "check-capabilities",
+        "check-workspace-shape",
+        "check-architecture",
+        "check-rust-source-role-authority",
+        "check-public-api",
+        "check-output-contracts",
+        "check-doc-artifacts",
+        "check-support-tiers",
+        "check-doc-index",
+        "check-readme-state",
+        "markdown-links",
+        "check-pr-shape",
+        "check-generated",
+        "check-command-catalog",
+        "check-badge-diff-policy",
+        "check-generated-clean",
+        "check-verification-contracts [--check]",
+        "schema-producer-sweep [--rev REV] [--artifact SCHEMA[#POINTER]=FILE[#POINTER]]...",
+        "check-dependencies",
+        "check-supply-chain",
+        "check-process-policy",
+        "check-network-policy",
+        "check-lint-policy",
+        "check-ci-lane-whitelist",
+        "check-proof-packs",
+        "check-product-copy",
+        "check-positioning-language",
+        "check-doc-roles",
+        "check-release-targets",
+        "vscode-compile",
+        "vscode-package",
+        "vscode-test",
+        "vscode-test-e2e",
+        "droid-admit",
+        "package",
+        "publish-dry-run",
+        "issue-intake --issue <number>",
+        "first-hour --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
+        "first-hour-controls --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
+    ]
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct CommandCatalogEntry {
+    pub(crate) command: &'static str,
+    pub(crate) mutability: &'static str,
+    pub(crate) writes: &'static str,
+    pub(crate) judgment_required: bool,
+    pub(crate) ci_enforced: bool,
+    pub(crate) notes: &'static str,
+}
+
+pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
+    vec![
+        command_entry(
+            "shape",
+            "mutating",
+            "source files and target/ripr/reports",
+            false,
+            false,
+            "Runs deterministic local shaping such as formatting and repo shape report generation.",
+        ),
+        command_entry(
+            "fix-pr",
+            "mutating",
+            "source files and target/ripr/reports",
+            false,
+            false,
+            "Runs safe PR shaping and refreshes the reviewer packet.",
+        ),
+        command_entry(
+            "install-hooks",
+            "mutating",
+            ".git/hooks",
+            false,
+            false,
+            "Installs repo-managed local hooks.",
+        ),
+        command_entry(
+            "commands",
+            "report_only",
+            "target/ripr/reports/commands.{md,json}",
+            false,
+            false,
+            "Writes this command mutability catalog.",
+        ),
+        command_entry(
+            "pr-summary",
+            "report_only",
+            "target/ripr/reports/pr-summary.md",
+            false,
+            false,
+            "Summarizes the current diff for review.",
+        ),
+        command_entry(
+            "proof route [--base <rev>] [--head <rev>]",
+            "report_only",
+            "target/ripr/reports/proof-route.{json,md}",
+            false,
+            false,
+            "Maps changed files onto proof packs and reports required, advisory, skipped, and never-routed CI lanes; read-only and advisory, it executes no proof commands and changes no CI behavior.",
+        ),
+        command_entry(
+            "proof preflight [--base <rev>] [--head <rev>]",
+            "report_only",
+            "target/ripr/reports/proof-preflight.{json,md} plus the generated evidence the executed proof commands write under target/",
+            false,
+            false,
+            "Executes the routed proof packs' required commands locally (deduplicated, fail-fast; advisory commands are listed but never run) and writes a local, advisory preflight receipt; it does not replace CI and changes no CI behavior.",
+        ),
+        command_entry(
+            "pr-ready",
+            "report_only",
+            "target/ripr/reports/pr-ready.{md,json}, target/ripr/reports/index.{md,json}, and composed repo-ops reports",
+            false,
+            false,
+            "Composes local readiness signals and points to safe next action, receipt state, and check-pr proof before opening or updating a PR.",
+        ),
+        command_entry(
+            "cockpit",
+            "external_state_read",
+            "target/ripr/reports/cockpit.{md,json}, target/ripr/reports/index.{md,json}, and composed repo-ops reports",
+            false,
+            false,
+            "Composes repo-level operating packets into an advisory front panel that names the next safe command and stop states before more work.",
+        ),
+        command_entry(
+            "pr-triage-report",
+            "external_state_read",
+            "target/ripr/reports/pr-triage.{md,json}",
+            false,
+            false,
+            "Reads GitHub PR metadata and writes an advisory queue report.",
+        ),
+        command_entry(
+            "branch-inventory [--input <path>] [--dry-run]",
+            "external_state_read",
+            "target/ripr/reports/branch-inventory.{md,json}, branch-inventory-input.json, and branch-inventory-plan.json",
+            false,
+            false,
+            "Regenerates the remote-branch inventory from current GitHub/Git data (full all-state PR pagination; classification by head branch name, never Git ancestry) and writes a deterministic review artifact plus a separate digest-bound deletion plan; read-only and never deletes branches.",
+        ),
+        command_entry(
+            "branch-inventory apply --plan <path> --digest <digest>",
+            "external_state_mutating",
+            "remote branch refs (non-force deletion only) and target/ripr/reports/branch-inventory-cleanup.{md,json}",
+            true,
+            false,
+            "Applies an exact reviewed deletion plan: refuses a regenerated or changed plan (sha256 digest), rechecks open PR heads and branch SHAs immediately before each deletion, uses non-force ref deletion bound to the rechecked SHA (--force-with-lease=<ref>:<sha>, never plain --force), refuses to run under CI, and writes a cleanup receipt; never wired into CI, hooks, or other commands.",
+        ),
+        command_entry(
+            "gh-pr-status --pr <number>",
+            "external_state_read",
+            "target/ripr/reports/gh-pr-status.{md,json}",
+            false,
+            false,
+            "Reads one GitHub PR and reports safe next action.",
+        ),
+        command_entry(
+            "ci-budget [--workflow <name>] [--limit <n>] [--input <path>]",
+            "external_state_read",
+            "target/ripr/reports/ci-budget.{json,md}",
+            false,
+            false,
+            "Reads recent routed-workflow runs through gh (or a supplied --input JSON file) and writes an advisory CI budget and merge-queue hygiene report; it separates disk-guard infrastructure tempfails (issue #1058) from product failures, never reruns or mutates any run, and changes no CI behavior.",
+        ),
+        command_entry(
+            "module-health [--threshold <n>]",
+            "report_only",
+            "target/ripr/reports/module-health.{json,md}",
+            false,
+            false,
+            "Walks crates/ripr/src/ and xtask/src/ for *.rs files, counts lines per file, and writes an advisory ranked report flagging files over the configurable line threshold (default 2000); always exits 0, never mutates source, and is never wired into CI gates.",
+        ),
+        command_entry(
+            "windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path> [--nofeatures-log <path> --nofeatures-status <path>]",
+            "report_only",
+            "stdout only",
+            false,
+            true,
+            "Turns two `cargo test --workspace --no-fail-fast` logs plus their captured cargo exit statuses into a Markdown verdict on stdout. Classifies each failing test from a three-state observation per run (failed / observed pass / not observed) into repeated_failure, unstable, or masked_unknown, so a test absent from one run is never counted as having passed there. Derives run state from the real exit status rather than log prose. When both workspace runs are unusable, an optional earlier no-default-features log pair renders a single-sample partial observation naming stuck tests without deriving a stability verdict. Exits non-zero when a log or status file is missing, because the lane's test outcomes are advisory but its evidence is not. Reads only the supplied files and writes none.",
+        ),
+        command_entry(
+            "windows-advisory-isolated-summary --dir <path>",
+            "report_only",
+            "stdout only",
+            false,
+            true,
+            "Reads three numbered native Windows nested-alias test logs and captured Cargo statuses from the directory, prints every exact named-test observation, and exits non-zero for a failed test or missing/malformed evidence. Used only by the manual #4377 isolation route; reads files and writes none.",
+        ),
+        command_entry(
+            "suggested-fixes",
+            "report_only",
+            "target/ripr/reports/suggested-fixes.{patch,md}",
+            false,
+            false,
+            "Emits deterministic repair suggestions only; never writes badge values, goldens, baselines, suppressions, dependency exceptions, or schema changes.",
+        ),
+        command_entry(
+            "precommit",
+            "non_mutating_check",
+            "target/ripr/reports/precommit.md",
+            false,
+            true,
+            "Cheap local guardrail for formatting and policy checks; the routed-rust lanes invoke it as the shared required gate table, so an enforced precommit invocation transitively enforces every gate it runs.",
+        ),
+        command_entry(
+            "check-pr",
+            "non_mutating_check",
+            "target/ripr/reports and target/ripr/receipts",
+            false,
+            false,
+            "Review-ready gate; must not mutate tracked files.",
+        ),
+        command_entry(
+            "fixtures [name]",
+            "report_only",
+            "target/ripr/reports and fixture actual outputs under target",
+            false,
+            true,
+            "Runs fixture checks and writes local evidence.",
+        ),
+        command_entry(
+            "goldens check",
+            "non_mutating_check",
+            "target/ripr/reports/goldens.md",
+            false,
+            true,
+            "Checks golden drift without updating expected outputs.",
+        ),
+        command_entry(
+            "goldens bless <name> --reason <reason>",
+            "mutating",
+            "fixtures/**/expected/**",
+            true,
+            false,
+            "Updates golden expected outputs and requires explicit review reason.",
+        ),
+        command_entry(
+            "golden-drift",
+            "report_only",
+            "target/ripr/reports/golden-drift.{md,json}",
+            false,
+            false,
+            "Reports golden drift without blessing changes.",
+        ),
+        command_entry(
+            "metrics",
+            "report_only",
+            "target/ripr/reports/metrics.{md,json}",
+            false,
+            false,
+            "Writes capability metrics reports.",
+        ),
+        command_entry(
+            "rust-repair-trust-report",
+            "report_only",
+            "target/ripr/reports/rust-repair-trust.{md,json}",
+            false,
+            false,
+            "Scores only authorized, receipt-backed Rust repair attempts; incomplete input stays limited.",
+        ),
+        command_entry(
+            "rust-judged-panel check",
+            "non_mutating_check",
+            "stdout only",
+            false,
+            false,
+            "Validates the governed Rust judged-panel seed manifest and anchored diffs.",
+        ),
+        command_entry(
+            "rust-judged-panel replay [--out target/ripr/<path>]",
+            "report_only",
+            "target/ripr/rust-judged-panel host receipts",
+            false,
+            false,
+            "Freshly builds RIPR offline and atomically retains all three host-bound raw runs.",
+        ),
+        command_entry(
+            "rust-judged-panel packet [--host-current target/ripr/<path>/current.json]",
+            "mutating",
+            "metrics/rust-judged-behavior-panel/portable",
+            false,
+            false,
+            "Projects one validated complete host run into three bounded portable semantic packets; it does not build or execute RIPR.",
+        ),
+        command_entry(
+            "check-rust-judged-panel",
+            "non_mutating_check",
+            "stdout only",
+            false,
+            true,
+            "Precommit alias for the same Rust judged-panel semantic validator.",
+        ),
+        command_entry(
+            "check-release-challenge-selection",
+            "non_mutating_check",
+            "target/ripr/reports/release-selection.md, target/ripr/reports/release-selection-floors.json, and stdout",
+            false,
+            true,
+            "Validates the frozen 0.11 release-challenge selection manifest (exact identities, digest-bound diffs, explicit scope stances) and reports acceptance-floor status without lowering unmet floors.",
+        ),
+        command_entry(
+            "check-release-challenge-judgments",
+            "non_mutating_check",
+            "target/ripr/reports/release-judgments.md and stdout",
+            false,
+            true,
+            "Validates the #3806 independent judgment packet against the frozen release-challenge selection: exact selection digest, one terminal judgment per row, two roles on limit/gap/disputed rows, and exclusive false-actionable/false-exposed labels.",
+        ),
+        command_entry(
+            "python-judged-panel check [--check]",
+            "non_mutating_check",
+            "stdout only",
+            false,
+            false,
+            "Validates the retained Python judged PR panel inventory (RIPR-SPEC-0092 seed plus the two historical judged panels): envelope identity, judgment and direction contracts, derived totals, and diff/anchor proofs. Read-only over immutable fixtures; replay and report land in later #3555 slices.",
+        ),
+        command_entry(
+            "python-judged-panel replay [--check] [--limit <n>] [--network]",
+            "report_only",
+            "target/ripr/python-judged-panel/replay/<case_id>.json",
+            false,
+            false,
+            "Replays the retained Python judged-panel inventory against the real ripr check binary over diff-proved temp workspaces (offline; --network is declared and refused until a later #3555 slice) and writes typed candidate records outside the accepted panel; accepted judgments are never rewritten.",
+        ),
+        command_entry(
+            "python-judged-panel report [--records <dir>] [--adjudications <dir>] [--threshold-policy <path>] [--out <dir>] [--check]",
+            "report_only",
+            "target/ripr/python-judged-panel/report.{json,md}",
+            false,
+            false,
+            "Derives deterministic JSON and Markdown reports from the validated panel inventory, the replay records, and the adjudication records: separate false_actionable/false_exposed denominators and rates, coverage tables, and per-case references; with --threshold-policy it evaluates the supplied policy per threshold as pass/fail/not_evaluable and echoes its rationale, never choosing a threshold from observed results, never promoting support, and never writing a tier claim; no denominator means no rate.",
+        ),
+        command_entry(
+            "python-judged-panel adjudicate --case <id> --verdict <classification> --role <role> (--reviewer <identity> | env RIPR_PANEL_ADJUDICATOR) --evidence <ref> [--adjudications <dir>] [--records <dir>]",
+            "report_only",
+            "target/ripr/python-judged-panel/adjudications/<stable_case_slug(case_id)>.json",
+            false,
+            false,
+            "Records a current independent judgment for one panel case outside the accepted panel: reviewer role and identity are required, at least one own evidence citation is required, must_not_claim is echoed from the validated row, and RIPR's replay candidate is stored only as a named advisory reference; a case counts as adjudicated only with two distinct recorded roles/identities (independence is self-claimed, not verified); records are published atomically and bound to the row revision they judged.",
+        ),
+        command_entry(
+            "python-judged-panel feedback [--records <dir>] [--adjudications <dir>] [--out <dir>] [--check]",
+            "report_only",
+            "target/ripr/python-judged-panel/feedback/",
+            false,
+            false,
+            "Stages deterministic regression-feedback proposals for confirmed over-credits (two independent roles agreeing verdict exposed with false_exposed decided true on a should_gap/should_limit row, replay still current) with full provenance and a promotion recipe; proposals never write the evidence-promotion corpus and never change analyzer behaviour - promotion is a human-reviewed PR.",
+        ),
+        command_entry(
+            "check-python-judged-panel",
+            "non_mutating_check",
+            "stdout only",
+            false,
+            true,
+            "Precommit alias for the same Python judged-panel semantic validator.",
+        ),
+        command_entry(
+            "python-repair-trust check [--manifest <path>] [--attempts <dir-or-file>]",
+            "non_mutating_check",
+            "target/ripr/reports/python-repair-trust-check.{json,md}",
+            false,
+            false,
+            "Validates the accepted Python repair-trust selection manifest and retained attempt envelopes offline (RIPR-SPEC-0176): immutable selection digests, lifecycle state machine, movement/execution separation, transition-required identities, unsafe edit surfaces, and row-derived aggregates. With no corpus the check reports not_run and never a vacuous pass; it executes no external command and makes no support-tier or repair-correctness claim.",
+        ),
+        command_entry(
+            "python-repair-trust check-driver [--manifest <path>] --bindings <dir-or-file>",
+            "non_mutating_check",
+            "target/ripr/reports/python-repair-driver-check.{json,md}",
+            false,
+            false,
+            "Validates retained two-phase driver binding records (#3569) against the accepted selection manifest offline (RIPR-SPEC-0176): manifest digest staleness, canonical selection digest anchors, target identity agreement, explicit-operator-flags authorization, the standing no-verification/no-movement/no-closure non-claims, denied edit surfaces, and the apply-phase durable-attempt and patch identities. It executes no external command and makes no support-tier or repair-correctness claim.",
+        ),
+        command_entry(
+            "python-repair-trust check-verification [--manifest <path>] --receipts <dir-or-file>",
+            "non_mutating_check",
+            "target/ripr/reports/python-repair-verification-check.{json,md}",
+            false,
+            false,
+            "Validates retained #3570 verification candidate receipts against the accepted selection manifest offline (RIPR-SPEC-0176): manifest and selection-digest staleness, native-identity and target agreement, the closed execution and movement vocabularies bound to their retained process dispositions, output commitments on real runs, typed reasons for stale/uncertain/limited movements, unrelated-finding visibility, rollback evidence, and the standing non-claims. No rule derives movement from execution or execution from movement, and the schema admits no lifecycle field, so a passing execution alone can never mark an attempt accepted or closed. It executes no external command and makes no support-tier or repair-correctness claim.",
+        ),
+        command_entry(
+            "test-oracle-report",
+            "report_only",
+            "target/ripr/reports/test-oracles.{md,json}",
+            false,
+            false,
+            "Writes advisory test-oracle report.",
+        ),
+        command_entry(
+            "check-test-oracles",
+            "report_only",
+            "target/ripr/reports/test-oracles.{md,json}",
+            false,
+            false,
+            "Alias for test-oracle-report.",
+        ),
+        command_entry(
+            "test-efficiency-report",
+            "report_only",
+            "target/ripr/reports/test-efficiency.{md,json}",
+            false,
+            false,
+            "Writes advisory test-efficiency report.",
+        ),
+        command_entry(
+            "badge-artifacts",
+            "report_only",
+            "target/ripr/reports",
+            false,
+            false,
+            "Writes PR-scoped badge evidence under target.",
+        ),
+        command_entry(
+            "repo-badge-artifacts [--gap-ledger <path>]",
+            "report_only",
+            "target/ripr/reports",
+            false,
+            false,
+            "Writes repo-scoped badge evidence under target.",
+        ),
+        command_entry(
+            "badge-basis [--gap-ledger <path>] [--include-seam-classes]",
+            "report_only",
+            "target/ripr/reports/badge-basis.{json,md}",
+            false,
+            false,
+            "Audits public badge endpoint counts, current repo badge basis, seam-native inventory pressure, and the recommended actionable gap projection without editing badges/*.json; --include-seam-classes opts into the expensive full class breakdown.",
+        ),
+        command_entry(
+            "ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]",
+            "report_only",
+            "target/ripr/reports/ripr-plus.{json,md}",
+            false,
+            false,
+            "Writes the repo-wide RIPR+ quality receipt from bounded repo-exposure-summary-json canonical actionable gaps, not raw seam inventory; --repo-exposure-summary reuses a downstream-consumable bounded summary artifact, and --gap-ledger uses an existing gap decision ledger through repo-badge-json to avoid an expensive fresh repo scan.",
+        ),
+        command_entry(
+            "repo-seam-inventory",
+            "report_only",
+            "target/ripr/reports/repo-seams.{json,md}",
+            false,
+            false,
+            "Writes repo seam inventory reports.",
+        ),
+        command_entry(
+            "repo-exposure-report",
+            "report_only",
+            "target/ripr/reports/repo-exposure.{json,md}",
+            false,
+            false,
+            "Writes full evidence-heavy repo exposure reports for explicit deep inspection.",
+        ),
+        command_entry(
+            "repo-exposure-summary-report",
+            "report_only",
+            "target/ripr/reports/repo-exposure-summary.json",
+            false,
+            false,
+            "Writes the bounded repo exposure summary JSON for ordinary local metrics, planning, and CI-safe inspection.",
+        ),
+        command_entry(
+            "repo-exposure-latency-report",
+            "report_only",
+            "target/ripr/reports/repo-exposure-latency.{json,md}",
+            false,
+            false,
+            "Writes repo exposure latency reports.",
+        ),
+        command_entry(
+            "targeted-rerun-benchmark --root <path> --changed-test <path> [--samples <n>] [--timeout-ms <n>]",
+            "report_only",
+            "target/ripr/reports/targeted-rerun-benchmark.{json,md}",
+            false,
+            false,
+            "Runs a bounded cold full, cold targeted, warm targeted, explicit cache-reset invalidation, and parity comparison benchmark for SPEC-0123.",
+        ),
+        command_entry(
+            "repo-contract-report",
+            "report_only",
+            "target/ripr/reports/source-of-truth-graph.{md,json}",
+            false,
+            false,
+            "Writes the source-of-truth contract graph report.",
+        ),
+        command_entry(
+            "evidence-health",
+            "report_only",
+            "target/ripr/reports/evidence-health.{json,md}",
+            false,
+            false,
+            "Writes evidence-health reports.",
+        ),
+        command_entry(
+            "lane1-evidence-audit",
+            "report_only",
+            "target/ripr/reports/lane1-evidence-audit.{json,md}",
+            false,
+            false,
+            "Writes Lane 1 evidence audit reports.",
+        ),
+        command_entry(
+            "evidence-quality-audit",
+            "report_only",
+            "target/ripr/reports/lane1-evidence-audit.{json,md}",
+            false,
+            false,
+            "Alias for lane1-evidence-audit.",
+        ),
+        command_entry(
+            "evidence-quality-scorecard",
+            "report_only",
+            "target/ripr/reports/evidence-quality-scorecard.{json,md}",
+            false,
+            false,
+            "Writes evidence-quality scorecard reports.",
+        ),
+        command_entry(
+            "evidence-quality-trend [--current <path>] [--previous <path>]",
+            "report_only",
+            "target/ripr/reports/evidence-quality-trend.{json,md}",
+            false,
+            false,
+            "Writes evidence-quality trend reports.",
+        ),
+        command_entry(
+            "actionable-gap-outcomes [--actionable-gaps <path>] [--agent-receipt <path>] [--targeted-test-outcome <path>]",
+            "report_only",
+            "target/ripr/reports/actionable-gap-outcomes.{json,md}",
+            false,
+            false,
+            "Joins actionable gap packets with optional receipt and targeted-test outcome artifacts.",
+        ),
+        command_entry(
+            "agent-seam-packets [root]",
+            "report_only",
+            "target/ripr/reports/agent-seam-packets.json",
+            false,
+            false,
+            "Writes agent seam packets under target.",
+        ),
+        command_entry(
+            "ripr-swarm plan [--top <n>] [--actionable-gaps <path>]",
+            "report_only",
+            "target/ripr/reports/swarm-plan.{json,md}",
+            false,
+            false,
+            "Ranks existing actionable canonical gap packets into swarm-ready and blocked repair candidates; does not edit files, run tests, call providers, create receipts, or infer work from raw findings.",
+        ),
+        command_entry(
+            "ripr-swarm attempt --packet <id> --dry-run [--actionable-gaps <path>]",
+            "report_only",
+            "stdout",
+            false,
+            false,
+            "Prints one bounded swarm repair packet for operator handoff without editing files, running tests, calling providers, or creating receipts.",
+        ),
+        command_entry(
+            "ripr-swarm attempt-ledger [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--previous-ledger <path>] [--real-repair-attempts <path>]",
+            "report_only",
+            "target/ripr/reports/swarm-attempt-ledger.{json,md}",
+            false,
+            false,
+            "Builds durable attempt history from swarm plan, outcome, prior ledger, and real repair attempt artifacts without executing repairs.",
+        ),
+        command_entry(
+            "ripr-swarm readiness [--swarm-plan <path>] [--actionable-gap-outcomes <path>] [--attempt-ledger <path>]",
+            "report_only",
+            "target/ripr/reports/swarm-readiness.{json,md}",
+            false,
+            false,
+            "Rolls up swarm plan, actionable-gap outcome, and attempt-ledger artifacts into advisory repair-coordination readiness counts and next actions.",
+        ),
+        command_entry(
+            "route-quality [--attempt-ledger <path>]",
+            "report_only",
+            "target/ripr/reports/route-quality.{json,md}",
+            false,
+            false,
+            "Surfaces repair-route quality rows as a standalone report (RIPR-SPEC-0080). Reads from the swarm-attempt-ledger artifact; does not execute repairs or recompute attempt counts.",
+        ),
+        command_entry(
+            "lsp-cockpit-report",
+            "report_only",
+            "target/ripr/reports/lsp-cockpit.{json,md}",
+            false,
+            false,
+            "Writes LSP cockpit reports.",
+        ),
+        command_entry(
+            "operator-cockpit",
+            "report_only",
+            "target/ripr/reports/operator-cockpit.{json,md}",
+            false,
+            false,
+            "Writes operator cockpit reports.",
+        ),
+        command_entry(
+            "operator-cockpit-report",
+            "report_only",
+            "target/ripr/reports/operator-cockpit.{json,md}",
+            false,
+            false,
+            "Alias for operator-cockpit.",
+        ),
+        command_entry(
+            "release-readiness --version <version>",
+            "report_only",
+            "target/ripr/reports/release-readiness.{json,md}",
+            false,
+            true,
+            "Writes release-readiness evidence; does not publish.",
+        ),
+        command_entry(
+            "release-negative-corpus --version <version>",
+            "report_only",
+            "target/ripr/reports/release-negative-corpus.{json,md}",
+            false,
+            false,
+            "Runs the installed candidate through the integrated negative corpus for readiness-chain authority (#2824): one mutation per case, closed reason tokens, byte-exact restoration, and control reruns; retains per-case failure receipts and writes the case matrix.",
+        ),
+        command_entry(
+            "bump-version <version>",
+            "mutating",
+            "Cargo.toml and editor version manifests",
+            true,
+            false,
+            "Updates the workspace release version and both VS Code manifest version surfaces after fail-closed consistency checks; validates Cargo metadata and rolls back on failure.",
+        ),
+        command_entry(
+            "release-control --input <captured-snapshot.json>",
+            "report_only",
+            "target/ripr/reports/release-control.{json,md}",
+            false,
+            false,
+            "Replays the historical captured 0.11 release lens for PR dispositions; missing or contradictory authority input fails closed and the command never selects the live-head candidate, merges, closes, or publishes.",
+        ),
+        command_entry(
+            "release-control --live",
+            "external_state_read",
+            "target/ripr/reports/release-control.{json,md}",
+            false,
+            false,
+            "Collects current GitHub/main observations through bounded read-only adapters; incomplete portfolio or claim authority remains reconcile_required, and the report never substitutes for the transaction-boundary live-head pin.",
+        ),
+        command_entry(
+            "release-denominator --input <ledger.json>",
+            "report_only",
+            "target/ripr/reports/release-denominator.{json,md}",
+            false,
+            false,
+            "Validates a captured historical supplemental release denominator ledger without selecting or qualifying the live-head candidate.",
+        ),
+        command_entry(
+            "release-denominator --live --input <ledger.json>",
+            "external_state_read",
+            "target/ripr/reports/release-denominator.{json,md}",
+            false,
+            false,
+            "Reconciles a historical supplemental release denominator ledger with bounded live Git facts; it does not select the active release head.",
+        ),
+        command_entry(
+            "release-denominator --capture-github --input <ledger.json> --output <capture.json>",
+            "external_state_read",
+            "<capture.json>",
+            false,
+            false,
+            "Captures replayable typed PR, issue, and body-reference authority from GitHub for the exact ledger range; captured references remain unreviewed until adjudicated.",
+        ),
+        command_entry(
+            "release-denominator --import-github --input <ledger.json> --capture <capture.json> --output <ledger.json>",
+            "report_only",
+            "<ledger.json>",
+            false,
+            false,
+            "Imports an exact GitHub capture into a replayable denominator ledger and converts inherited blanket post-cutoff exclusions into explicit pending operator decisions.",
+        ),
+        command_entry(
+            "release-denominator --apply-adjudication --input <ledger.json> --decisions <adjudication.json> --output <ledger.json>",
+            "report_only",
+            "<ledger.json>",
+            false,
+            false,
+            "Applies a reviewed, range-complete #2832 adjudication manifest through the pinned provisional cutoff without qualifying a candidate.",
+        ),
+        command_entry(
+            "source-promotion preflight --source-parent <sha> --swarm-parent <sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+            "external_state_read",
+            "<out>/source-promotion-preflight.{json,md}",
+            false,
+            false,
+            "Validates exact source/swarm parents, repository identity and reachability, deterministic ancestry counts/digests, and a disposable merge-tree conflict inventory; it never mutates either repository, constructs a join, changes versions, or publishes.",
+        ),
+        command_entry(
+            "back-sync verify --swarm-before <sha> --source-release-head <sha> --source-release-tag <tag> --join <sha> --tree <tree-sha> --swarm-repo <path> --source-repo <path> --version <version> --release-receipt <path> --policy-before <path> --policy-exception <path> --policy-after <path> [--swarm-main <rev>] [--source-main <rev>] [--out <dir>]",
+            "external_state_read",
+            "<out>/back-sync-verification.{json,md}",
+            true,
+            false,
+            "Verifies the exact ancestry-preserving source-to-swarm back-sync object, release tag and policy-transition evidence; it writes only deterministic receipts and never mutates repository refs, settings, or publication state.",
+        ),
+        command_entry(
+            "release-scope --input <scope.json>",
+            "report_only",
+            "target/ripr/reports/release-scope.{json,md}",
+            false,
+            false,
+            "Verifies a candidate-only 0.11 execution-surface disposition against the named commit and candidate parent; it never constructs, merges, or publishes a candidate.",
+        ),
+        command_entry(
+            "ci-docs-only --base <sha> [--head <sha>] --expect <docs_only|full>",
+            "report_only",
+            "GITHUB_OUTPUT",
+            false,
+            true,
+            "Decides whether a pull request may take the reduced docs-only route; an unobserved or mixed change set takes the full proof.",
+        ),
+        command_entry(
+            "ci-routed-rust-plan --scheduled-route <route> --base <sha> --pr-head <sha> --subject <sha> --event <event> --trust-class <class> --repository <owner/repo> --workflow <workflow-ref>",
+            "report_only",
+            "target/ripr/reports/routed-rust-plan",
+            false,
+            true,
+            "Writes the durable routed-Rust plan packet, rederiving subject and changed-path identity instead of restating the scheduler's claims.",
+        ),
+        command_entry(
+            "ci-record-command --id <id> -- <command...>",
+            "argument_dependent",
+            "routed-rust child evidence",
+            false,
+            // The CI-invocation scan deliberately attributes a recorded line to
+            // the command being wrapped, so the gate keeps its own enforcement
+            // obligation. The wrapper is transport for that attribution rather
+            // than an independently enforced gate.
+            false,
+            "Runs one planned proof command and records its terminal state before the exit code propagates. Writes routed-rust child evidence on every invocation; whether anything else is written depends on the wrapped command, so mutability follows the wrapped command rather than a fixed default.",
+        ),
+        command_entry(
+            "ci-child-receipt --plan <ids> --plan-path <plan.json> --job-outcome <outcome> --subject-sha <sha> --subject-tree <tree>",
+            "report_only",
+            "routed-rust child evidence",
+            false,
+            true,
+            "Finalizes a child execution receipt, marking planned commands that never ran as not_run rather than dropping them.",
+        ),
+        command_entry(
+            "ci-routed-rust-result --plan-path <plan.json> --execution-path <execution.json> --download-outcome <outcome> --expected-repository <owner/repo> --expected-workflow <workflow-ref> --expected-event <event> --expected-base <sha> --expected-pr-head <sha> --expected-pr-head-tree <tree> --expected-trust-class <class> --expected-authoritative-applicability <route> --expected-route <route> --expected-subject <sha> --expected-subject-tree <tree> --expected-changed-paths-sha256 <digest> --expected-changed-path-count <count> --expected-changed-paths-utf8 <bool> --expected-toolchain-identity <digest> --expected-cargo-identity <digest> --expected-cargo-lock-sha256 <digest> --expected-cache-identity <identity> --expected-cache-hit <state> --expected-cache-matched-identity <identity> --expected-runner-os <os> --expected-runner-arch <arch> --expected-runner-image-os <image> --expected-runner-image-version <version> --expected-artifact-identity <identity> --child-conclusion <state> --self-hosted-selection-attempted <bool> --private-runner-secret-requested <bool> --org-runner-query-attempted <bool>",
+            "report_only",
+            "target/ripr/reports/routed-rust-result.json and GITHUB_STEP_SUMMARY",
+            false,
+            true,
+            "Publishes the normalized routed-Rust verdict from planned propositions and child receipts; only `passed` is green.",
+        ),
+        command_entry(
+            "release-distribution-catalog --product-version <version> --channel <stable|rc> --stable-tag <tag> [--rc-tag <tag>] --manifest <path> --repository <owner/repo> [--out <path>]",
+            "mutating",
+            "dist/ripr-distribution-catalog.json by default (--out or DISTRIBUTION_CATALOG_OUT overrides)",
+            false,
+            true,
+            "Builds the candidate release distribution catalog outside tracked source at dist/ripr-distribution-catalog.json by default; --out or DISTRIBUTION_CATALOG_OUT selects the output path.",
+        ),
+        command_entry(
+            "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
+            "mutating",
+            "target/release artifacts",
+            false,
+            true,
+            "Builds local release server archive artifacts.",
+        ),
+        command_entry(
+            "release-server-manifest --version <version> --repository <owner/repo>",
+            "mutating",
+            "target/release artifacts",
+            false,
+            true,
+            "Builds local release server manifest artifacts.",
+        ),
+        command_entry(
+            "release-upload-assets --version <version>",
+            "external_state_mutating",
+            "GitHub release assets",
+            true,
+            true,
+            "Uploads release assets; requires explicit release approval.",
+        ),
+        command_entry(
+            "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/source-promotion-verification.{json,md} or explicit --out <dir>",
+            false,
+            false,
+            "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
+        ),
+        command_entry(
+            "source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>",
+            "mutating",
+            "explicit --output-dir plus unreferenced immutable Git objects and a disposable target/ripr checkout",
+            false,
+            false,
+            "Reconciles the exact source/W7 network ledger with reviewer decisions, runs the source-owned production checker on a one-path policy tree, and writes typed integration evidence without moving a ref.",
+        ),
+        command_entry(
+            "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/resolved-tree/{resolved-tree-validation.json,resolved-tree-validation.md,commands/**} or explicit --out <dir>; transient unreferenced Git object and worktree-registry entries in the caller repository are removed before return",
+            false,
+            false,
+            "Validates one exact reviewed tree with the source-parent governance catalog and retained bounded evidence before direct-J construction; retained worktree state or authoritative ref movement rejects validation.",
+        ),
+        command_entry(
+            "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/trusted-builder/{trusted-builder.json,packet-index.json} or explicit --out <dir>",
+            false,
+            false,
+            "Writes a source-bound trusted-builder receipt without constructing a join or mutating Git refs.",
+        ),
+        command_entry(
+            "source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> --integration-index-sha256 <digest> [--out <dir>]",
+            "report_only",
+            "target/ripr/source-promotion/resolved-tree-admission/{resolved-tree-admission.json,packet-index.json} or explicit --out <dir>",
+            false,
+            false,
+            "Admits one exact resolved tree only after every bound source-owned validation, builder, and integration receipt passes and the integration-index bytes match the caller-bound lowercase SHA-256; it does not construct a join or mutate Git refs.",
+        ),
+        command_entry(
+            "source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --integration-index-sha256 <digest> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --qualification-receipt-sha256 <digest> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
+            "mutating",
+            "Git object database plus target/ripr/source-promotion/exact-join-construction/{exact-join-construction.json,packet-index.json} or explicit --out <dir>; no Git ref",
+            false,
+            false,
+            "Constructs one deterministic unreferenced exact-J commit object only after admission, caller-bound integration-index rereads, and terminal qualification; it does not publish or mutate a Git ref.",
+        ),
+        command_entry(
+            "source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
+            "external_state_mutating",
+            "local and remote candidate refs plus target/ripr/source-promotion/candidate-ref-publication/{candidate-ref-publication.json,packet-index.json} or explicit --out <dir>",
+            true,
+            false,
+            "Publishes only the construction-bound candidate ref with an exact expected-state lease; this capability is judgment-required and does not authorize a real promotion.",
+        ),
+        command_entry(
+            "source-promotion run-admission-workflow <exact identity and locator inputs> --requested-identity <file> --requested-identity-sha256 <digest> --workspace-root <dir> --out <dir>",
+            "report_only",
+            "runner-owned immutable pre-enforcement workflow admission packet",
+            false,
+            false,
+            "Materializes exact immutable inputs and writes a normalized admission disposition; it has no construction, ref, merge, release, or publication authority.",
+        ),
+        command_entry(
+            "source-promotion verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest>",
+            "report_only",
+            "none",
+            false,
+            false,
+            "Independently verifies one immutable workflow admission packet and its closed mutation-attempt contract.",
+        ),
+        command_entry(
+            "source-promotion enforce-admission-workflow --packet <dir> --expected-status admitted",
+            "report_only",
+            "none",
+            false,
+            false,
+            "Fails closed unless a self-verifying workflow packet has the exact admitted terminal state.",
+        ),
+        command_entry(
+            "source-promotion finalize-admission-workflow --admission-packet <dir> --workspace-root <dir> --out <dir>",
+            "mutating",
+            "one unreferenced commit-tree object in the isolated workflow repository plus a new immutable final packet",
+            false,
+            false,
+            "After uploaded admission evidence is independently verified and enforced, optionally constructs exactly one unreferenced dry-run object; it never mutates refs or publishes.",
+        ),
+        command_entry(
+            "targeted-test-outcome --before <path> --after <path>",
+            "report_only",
+            "target/ripr/reports/targeted-test-outcome.{json,md}",
+            false,
+            false,
+            "Writes targeted-test outcome receipts under target.",
+        ),
+        command_entry(
+            "mutation-calibration [root] --mutants-json <path>",
+            "report_only",
+            "target/ripr/reports/mutation-calibration.{json,md}",
+            false,
+            false,
+            "Imports supplied runtime mutation results into advisory reports; does not run mutation testing.",
+        ),
+        command_entry(
+            "bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]",
+            "report_only",
+            "target/ripr/reports/bun-ub-calibration.{json,md} or explicit --out paths",
+            false,
+            false,
+            "Writes advisory Bun UB TypeScript calibration reports; does not run Bun, TypeScript, mutation, providers, generated tests, or source edits.",
+        ),
+        command_entry(
+            "bun-ub-preview-summary [--calibration-corpus <path>] [--graph-corpus <path>] [--dogfood-corpus <path>] [--out <path>] [--out-md <path>]",
+            "report_only",
+            "target/ripr/reports/bun-ub-preview-summary.{json,md} or explicit --out paths",
+            false,
+            false,
+            "Writes a compact advisory Bun UB preview summary from existing calibration, graph, and dogfood data; does not run Bun, TypeScript, mutation, providers, generated tests, or source edits.",
+        ),
+        command_entry(
+            "configured-bridge-inventory [--graph-corpus <path>] [--out <path>] [--out-md <path>]",
+            "report_only",
+            "target/ripr/reports/configured-bridge-inventory.{json,md} or explicit --out paths",
+            false,
+            false,
+            "Writes a report-only configured bridge inventory from existing cross-language oracle graph data; does not infer reachability, create repair packets, suggest placement from missing inventory rows, run Bun or TypeScript, create gates/badges, or promote support status.",
+        ),
+        command_entry(
+            "recommendation-calibration [--root <path>] [--pr-guidance <path>] [--outcome-receipts <path>] [--out <path>]",
+            "report_only",
+            "target/ripr/reports or explicit --out",
+            false,
+            false,
+            "Writes recommendation calibration reports.",
+        ),
+        command_entry(
+            "sarif-policy --current <path> [--baseline <path>]",
+            "report_only",
+            "target/ripr/reports/sarif-policy.{json,md}",
+            false,
+            false,
+            "Writes advisory SARIF policy report; blocking only if caller requests a failing policy mode.",
+        ),
+        command_entry(
+            "impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]",
+            "argument_dependent",
+            "target/ripr/reports or check-only",
+            false,
+            true,
+            "Writes or checks impacted-evidence reports depending on --check.",
+        ),
+        command_entry(
+            "ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]",
+            "argument_dependent",
+            "target/ripr/reports or check-only",
+            false,
+            true,
+            "Writes or checks PR evidence packets depending on --check.",
+        ),
+        command_entry(
+            "first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]",
+            "argument_dependent",
+            "target/ripr/reports or check-only",
+            false,
+            false,
+            "Writes the start-here packet when --check is absent; checks existing packets when --check is present. The packet names one repairable gap, fallback state, verify command, receipt command, and receipt path.",
+        ),
+        command_entry(
+            "ripr-review-comments [--base <rev>] [--head <rev>] [--root <path>] [--check-output <path>] [--check]",
+            "argument_dependent",
+            "target/ripr/reports or check-only",
+            false,
+            true,
+            "Writes or checks review-comment wrapper output depending on --check.",
+        ),
+        command_entry(
+            "ripr-pr-summary [--check]",
+            "argument_dependent",
+            "target/ripr/reports or check-only",
+            false,
+            true,
+            "Writes or checks PR summary output depending on --check.",
+        ),
+        command_entry(
+            "ripr-annotations [--comments <path>] [--out <path>] [--check]",
+            "argument_dependent",
+            "target/ripr/reports or explicit --out",
+            false,
+            true,
+            "Writes or checks annotation output depending on --check.",
+        ),
+        command_entry(
+            "badges",
+            "mutating",
+            "badges/*.json and target/ripr/reports",
+            false,
+            false,
+            "Refreshes committed public badge endpoint JSON; use only in explicit badge refresh work.",
+        ),
+        command_entry(
+            "badges --check",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            false,
+            "Compares generated badge endpoint output without updating committed badges/*.json.",
+        ),
+        command_entry(
+            "update-badge-endpoints",
+            "mutating",
+            "badges/*.json",
+            false,
+            false,
+            "Refreshes committed public badge endpoint JSON; use only in explicit badge refresh work.",
+        ),
+        command_entry(
+            "check-badge-endpoints",
+            "non_mutating_check",
+            "target/ripr/reports/badge-endpoints.md",
+            false,
+            false,
+            "Checks committed public badge endpoint JSON against generated target output.",
+        ),
+        command_entry(
+            "dogfood",
+            "report_only",
+            "target/ripr/dogfood and target/ripr/reports",
+            false,
+            false,
+            "Writes repo-local dogfood evidence and receipts under target.",
+        ),
+        command_entry(
+            "critic",
+            "report_only",
+            "target/ripr/reports/critic.{md,json}",
+            false,
+            false,
+            "Writes advisory reviewer-risk report.",
+        ),
+        command_entry(
+            "reports index",
+            "report_only",
+            "target/ripr/reports/index.{md,json}",
+            false,
+            false,
+            "Indexes generated report packets under target.",
+        ),
+        command_entry(
+            "cache report",
+            "report_only",
+            "stdout and target/ripr/reports/cache-report.{md,json}",
+            false,
+            false,
+            "Reports families, largest files, and sharded cache sets under the resolved cache root (RIPR_CACHE_DIR when set, otherwise target/ripr/cache) without reading or deleting source, build, report, receipt, PR, review, workflow, or agent artifacts.",
+        ),
+        command_entry(
+            "cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",
+            "argument_dependent",
+            "the resolved cache root (RIPR_CACHE_DIR when set, otherwise target/ripr/cache) and target/ripr/reports/cache-gc.{md,json}",
+            false,
+            false,
+            "Depending on --dry-run, deletes only selected files under the resolved cache root (RIPR_CACHE_DIR when set, otherwise target/ripr/cache) or writes the exact deletion plan without deleting files.",
+        ),
+        command_entry(
+            "receipts [check]",
+            "argument_dependent",
+            "target/ripr/receipts and target/ripr/reports/receipts.md",
+            false,
+            false,
+            "Writes receipts by default; checks existing receipts with `receipts check`.",
+        ),
+        command_entry(
+            "doctor",
+            "report_only",
+            "target/ripr/reports/worktree-doctor.md",
+            false,
+            false,
+            "Shortcut for worktree doctor; use before first-pr when setup, missing artifacts, stale evidence, or wrong-root state is unclear.",
+        ),
+        command_entry(
+            "worktree doctor",
+            "report_only",
+            "target/ripr/reports/worktree-doctor.md",
+            false,
+            false,
+            "Writes advisory setup and worktree hygiene status before choosing a start-here repair path.",
+        ),
+        command_entry(
+            "specs next",
+            "report_only",
+            "stdout",
+            false,
+            false,
+            "Prints the next available RIPR-SPEC ID.",
+        ),
+        command_entry(
+            "specs maintenance --as-of YYYY-MM-DD [--json] [--receipts <dir>]",
+            "report_only",
+            "target/ripr/reports/spec-maintenance.{json,md}",
+            false,
+            false,
+            "Writes an advisory, reason-coded specification maintenance inventory that honors content-bound review receipts; rejected receipts close nothing.",
+        ),
+        command_entry(
+            "specs digest --as-of YYYY-MM-DD [--json] [--receipts <dir>]",
+            "report_only",
+            "target/ripr/reports/spec-maintenance.{json,md} + spec-maintenance-digest.md",
+            false,
+            false,
+            "Writes the full advisory maintenance inventory plus one short bounded digest from the same DTO for the Source of Truth workflow step summary; maintenance_status is clean or attention_required and never gates merges.",
+        ),
+        command_entry(
+            "specs close --spec RIPR-SPEC-NNNN --disposition <label> --as-of YYYY-MM-DD --reviewed-by <identity>",
+            "mutating",
+            ".allow/spec-system/reviews/*.toml",
+            true,
+            false,
+            "Writes one content-bound SpecReviewReceiptV1 maintenance review receipt, computing the digest from current spec bytes; it never edits the spec file and never changes normative status.",
+        ),
+        command_entry(
+            "ci-fast",
+            "non_mutating_check",
+            "target/ripr/reports and target/ripr/receipts",
+            false,
+            false,
+            "Runs the fast CI lane and writes local receipts.",
+        ),
+        command_entry(
+            "ci-full",
+            "non_mutating_check",
+            "target/ripr/reports and target/ripr/receipts",
+            false,
+            false,
+            "Runs the full CI lane and writes local receipts.",
+        ),
+        command_entry(
+            "check-static-language",
+            "non_mutating_check",
+            "target/ripr/reports/static-language.md",
+            false,
+            true,
+            "Checks static language policy.",
+        ),
+        command_entry(
+            "check-agent-skills",
+            "non_mutating_check",
+            "target/ripr/reports/agent-skills.{md,json}",
+            false,
+            true,
+            "Checks Codex, Claude, and ZCode instruction roots and their seven canonical skills for structural validity, provider separation, retired orchestration drift, sibling references, required yielding states, and required architecture-map module tokens in AGENTS.md, CLAUDE.md, and docs/ARCHITECTURE.md; it does not enforce prose symmetry or model choices.",
+        ),
+        command_entry(
+            "check-no-panic-family [--propose]",
+            "argument_dependent",
+            "target/ripr/reports or proposal output",
+            false,
+            true,
+            "Checks panic-family policy; --propose only emits proposed allowlist material for review.",
+        ),
+        command_entry(
+            "check-allow-attributes",
+            "non_mutating_check",
+            "target/ripr/reports",
+            false,
+            true,
+            "Checks allow-attribute policy.",
+        ),
+        command_entry(
+            "check-local-context",
+            "non_mutating_check",
+            "target/ripr/reports/local-context.json",
+            false,
+            true,
+            "Checks local-context leak policy.",
+        ),
+        command_entry(
+            "check-file-policy",
+            "non_mutating_check",
+            "target/ripr/reports/file-policy.md",
+            false,
+            true,
+            "Checks file policy.",
+        ),
+        command_entry(
+            "check-covered-by",
+            "non_mutating_check",
+            "target/ripr/reports/covered-by.md",
+            false,
+            true,
+            "Checks that test-valued `covered_by` claims in policy ledgers resolve against the statically enumerated test inventory.",
+        ),
+        command_entry(
+            "rust-conversion-candidates",
+            "report_only",
+            "target/ripr/reports/rust-conversion-candidates.{md,json}",
+            false,
+            false,
+            "Reports non-Rust and workflow-shell surfaces that are candidates for migration into Rust/xtask, while documenting approved external-runtime and fixture boundaries.",
+        ),
+        command_entry(
+            "check-executable-files",
+            "non_mutating_check",
+            "target/ripr/reports/executable-files.md",
+            false,
+            true,
+            "Checks executable-file policy.",
+        ),
+        command_entry(
+            "check-workflows",
+            "non_mutating_check",
+            "target/ripr/reports/workflows.md",
+            false,
+            true,
+            "Checks workflow policy.",
+        ),
+        command_entry(
+            "check-droid-review-config",
+            "non_mutating_check",
+            "target/ripr/reports/droid-review-config.md",
+            false,
+            true,
+            "Checks Droid review configuration.",
+        ),
+        command_entry(
+            "check-spec-format",
+            "non_mutating_check",
+            "target/ripr/reports/spec-format.md",
+            false,
+            true,
+            "Checks spec formatting.",
+        ),
+        command_entry(
+            "check-spec-numbering",
+            "non_mutating_check",
+            "target/ripr/reports/spec-numbering.md",
+            false,
+            true,
+            "Checks spec ID uniqueness and references.",
+        ),
+        command_entry(
+            "check-fixture-contracts",
+            "non_mutating_check",
+            "target/ripr/reports/fixture-contracts.md",
+            false,
+            true,
+            "Checks fixture contracts.",
+        ),
+        command_entry(
+            "perl-migration-refresh --producer-bin <path> [--case <id>]",
+            "report_only",
+            "target/ripr/reports/perl-migration-candidates/<case>.json and <case>.drift.json",
+            false,
+            false,
+            "Re-runs the pinned perl_packet_contract_migration producer command (issue #3217) with a maintainer-supplied producer binary, writes candidate packets and typed drift reports under target/ripr/reports/perl-migration-candidates/, and never writes under fixtures/; advisory only — drift exits 0 and promotion of accepted evidence is a reviewed manual act.",
+        ),
+        command_entry(
+            "check-evidence-promotion-honesty [--pinned-external] [--clone] [--case <id>] [--checkout-root <path>] [--timeout-secs <n>]",
+            "non_mutating_check",
+            "target/ripr/reports/evidence-promotion-honesty.md, target/ripr/reports/corpus-summary.{json,md}, and optional target/ripr/reports/evidence-promotion-pinned-external.{json,md}",
+            false,
+            true,
+            "Reads byte-pinned golden check.json files for pure charter members, writes a typed corpus summary envelope, and asserts semantic promotion honesty; with --pinned-external, runs exact external repo+commit+patch cases through the current ripr binary using an opt-in clone/cache path.",
+        ),
+        command_entry(
+            "check-traceability",
+            "non_mutating_check",
+            "target/ripr/reports/traceability.md",
+            false,
+            true,
+            "Checks traceability references.",
+        ),
+        command_entry(
+            "check-spec-ids",
+            "non_mutating_check",
+            "target/ripr/reports/traceability.md",
+            false,
+            false,
+            "Alias for check-traceability.",
+        ),
+        command_entry(
+            "check-behavior-manifest",
+            "non_mutating_check",
+            "target/ripr/reports/traceability.md",
+            false,
+            false,
+            "Alias for check-traceability.",
+        ),
+        command_entry(
+            "check-capabilities",
+            "non_mutating_check",
+            "target/ripr/reports/capabilities.md",
+            false,
+            true,
+            "Checks capability metadata.",
+        ),
+        command_entry(
+            "check-workspace-shape",
+            "non_mutating_check",
+            "target/ripr/reports/workspace-shape.md",
+            false,
+            true,
+            "Checks workspace shape.",
+        ),
+        command_entry(
+            "check-architecture",
+            "non_mutating_check",
+            "target/ripr/reports/architecture.md",
+            false,
+            true,
+            "Checks architecture boundaries.",
+        ),
+        command_entry(
+            "check-rust-source-role-authority",
+            "non_mutating_check",
+            "target/ripr/reports/source-role-authority.md",
+            false,
+            true,
+            "Checks Rust source-role authority boundaries.",
+        ),
+        command_entry(
+            "check-public-api",
+            "non_mutating_check",
+            "target/ripr/reports/public-api.md",
+            false,
+            true,
+            "Checks public API boundaries.",
+        ),
+        command_entry(
+            "check-output-contracts",
+            "non_mutating_check",
+            "target/ripr/reports/output-contracts.md",
+            false,
+            true,
+            "Checks output contract registry.",
+        ),
+        command_entry(
+            "check-doc-artifacts",
+            "non_mutating_check",
+            "target/ripr/reports/doc-artifacts.md",
+            false,
+            true,
+            "Checks the source-of-truth document artifact ledger.",
+        ),
+        command_entry(
+            "check-support-tiers",
+            "non_mutating_check",
+            "target/ripr/reports/support-tiers.md",
+            false,
+            false,
+            "Checks support-tier claim proof mapping.",
+        ),
+        command_entry(
+            "check-doc-index",
+            "non_mutating_check",
+            "target/ripr/reports/doc-index.md",
+            false,
+            true,
+            "Checks documentation index coverage.",
+        ),
+        command_entry(
+            "check-readme-state",
+            "non_mutating_check",
+            "target/ripr/reports/readme-state.md",
+            false,
+            true,
+            "Checks README state.",
+        ),
+        command_entry(
+            "markdown-links",
+            "non_mutating_check",
+            "target/ripr/reports/markdown-links.md",
+            false,
+            true,
+            "Checks Markdown links and their heading anchors.",
+        ),
+        command_entry(
+            "check-pr-shape",
+            "non_mutating_check",
+            "target/ripr/reports/pr-shape.md",
+            false,
+            true,
+            "Checks PR shape.",
+        ),
+        command_entry(
+            "check-generated",
+            "non_mutating_check",
+            "target/ripr/reports/generated.md",
+            false,
+            true,
+            "Checks generated file policy.",
+        ),
+        command_entry(
+            "check-command-catalog",
+            "non_mutating_check",
+            "target/ripr/reports/command-catalog.md",
+            false,
+            true,
+            "Checks that every xtask command is classified by the command mutability catalog.",
+        ),
+        command_entry(
+            "check-badge-diff-policy",
+            "non_mutating_check",
+            "target/ripr/reports/badge-diff-policy.md",
+            false,
+            true,
+            "Rejects ordinary badge endpoint diffs.",
+        ),
+        command_entry(
+            "check-generated-clean",
+            "non_mutating_check",
+            "target/ripr/reports/generated-clean.md",
+            false,
+            true,
+            "Rejects generated residue in ordinary PRs.",
+        ),
+        command_entry(
+            "check-verification-contracts [--check]",
+            "argument_dependent",
+            "target/ripr/reports or check-only",
+            false,
+            false,
+            "Writes or checks verification contract reports depending on --check.",
+        ),
+        command_entry(
+            "schema-producer-sweep [--rev REV] [--artifact SCHEMA[#POINTER]=FILE[#POINTER]]...",
+            "report_only",
+            "target/ripr/reports/schema-producer-sweep.json",
+            false,
+            false,
+            "Release-only: validates every committed producer document and supplied live artifact against its published schema.",
+        ),
+        command_entry(
+            "check-dependencies",
+            "non_mutating_check",
+            "target/ripr/reports/dependencies.md",
+            false,
+            true,
+            "Checks dependency policy.",
+        ),
+        command_entry(
+            "check-supply-chain",
+            "non_mutating_check",
+            "target/ripr/reports/supply-chain.md",
+            false,
+            false,
+            "Checks supply-chain policy.",
+        ),
+        command_entry(
+            "check-process-policy",
+            "non_mutating_check",
+            "target/ripr/reports/process-policy.md",
+            false,
+            true,
+            "Checks process policy.",
+        ),
+        command_entry(
+            "check-network-policy",
+            "non_mutating_check",
+            "target/ripr/reports/network-policy.md",
+            false,
+            true,
+            "Checks network policy.",
+        ),
+        command_entry(
+            "check-lint-policy",
+            "non_mutating_check",
+            "target/ripr/reports/lint-policy.md",
+            false,
+            true,
+            "Checks lint policy.",
+        ),
+        command_entry(
+            "check-ci-lane-whitelist",
+            "non_mutating_check",
+            "target/ripr/reports/ci-lane-whitelist.md",
+            false,
+            false,
+            "Checks CI lane whitelist.",
+        ),
+        command_entry(
+            "check-proof-packs",
+            "non_mutating_check",
+            "target/ripr/reports/proof-packs.md",
+            false,
+            true,
+            "Checks the proof-pack manifest structure; manifest-only, no routing.",
+        ),
+        command_entry(
+            "check-product-copy",
+            "non_mutating_check",
+            "target/ripr/reports/product-copy.md",
+            false,
+            false,
+            "Checks public product-copy policy.",
+        ),
+        command_entry(
+            "check-positioning-language",
+            "non_mutating_check",
+            "target/ripr/reports/positioning-language.md",
+            false,
+            false,
+            "Checks positioning-language policy.",
+        ),
+        command_entry(
+            "check-doc-roles",
+            "non_mutating_check",
+            "target/ripr/reports/doc-roles.md",
+            false,
+            false,
+            "Checks documentation role policy.",
+        ),
+        command_entry(
+            "check-release-targets",
+            "non_mutating_check",
+            "target/ripr/reports/release-targets.{json,md}",
+            false,
+            true,
+            "Checks policy/release-targets.toml for internal release graph integrity offline; never reads GitHub and never qualifies or publishes a candidate.",
+        ),
+        command_entry(
+            "vscode-compile",
+            "non_mutating_check",
+            "editors/vscode build output",
+            false,
+            false,
+            "Runs VS Code extension compile.",
+        ),
+        command_entry(
+            "vscode-package [--catalog <path>]",
+            "mutating",
+            "editors/vscode/dist",
+            false,
+            false,
+            "Admits the staged distribution catalog, builds the VS Code extension package, and proves the packaged catalog bytes.",
+        ),
+        command_entry(
+            "vscode-test",
+            "non_mutating_check",
+            "editor test output",
+            false,
+            false,
+            "Runs VS Code tests.",
+        ),
+        command_entry(
+            "vscode-test-e2e",
+            "non_mutating_check",
+            "editor test output",
+            false,
+            false,
+            "Runs VS Code end-to-end tests.",
+        ),
+        command_entry(
+            "droid-admit --mode auto-review|dispatch --event-name NAME --repo OWNER/NAME --receipt PATH [--event PATH --fresh-head SHA --fresh-base SHA | --facts PATH]",
+            "non_mutating_check",
+            "droid admission receipt",
+            false,
+            false,
+            "Admits a pull_request_target or dispatched Droid subject for trusted analysis and writes the admission receipt.",
+        ),
+        command_entry(
+            "package",
+            "non_mutating_check",
+            "cargo package staging output",
+            false,
+            false,
+            "Lists package contents without publishing.",
+        ),
+        command_entry(
+            "publish-dry-run",
+            "non_mutating_check",
+            "cargo publish dry-run staging output",
+            false,
+            false,
+            "Runs publish dry run without publishing.",
+        ),
+        command_entry(
+            "issue-intake --issue <number>",
+            "external_state_read",
+            "target/ripr/reports/issue-intake-<number>.json",
+            false,
+            false,
+            "Fetches a live GitHub issue and emits a typed intake packet.",
+        ),
+        command_entry(
+            "first-hour --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
+            "external_state_mutating",
+            "caller-selected --prefix install tree, --out receipt, and --fixture-root checkout (created, journey-run, cleaned)",
+            true,
+            false,
+            "Installs the packaged candidate into a clean prefix, builds the disposable baseline fixture, and runs the installed check journey under fresh per-rendering cache/HOME roots; deletes the harness-created fixture root on completion.",
+        ),
+        command_entry(
+            "first-hour-controls --crate <path.crate> --prefix <clean-dir> --out <receipt-dir> --fixture-root <dir>",
+            "external_state_mutating",
+            "caller-selected --prefix install tree (including one deliberately tampered executable), --out controls receipt, and --fixture-root checkouts (created, journey-run, cleaned)",
+            true,
+            false,
+            "Installs the packaged candidate once, then drives the production journey with three dishonest states (invalid base, empty diff, tampered binary); each control passes only on its typed refusal and the run exits nonzero otherwise.",
+        ),
+    ]
+}
+
+const fn command_entry(
+    command: &'static str,
+    mutability: &'static str,
+    writes: &'static str,
+    judgment_required: bool,
+    ci_enforced: bool,
+    notes: &'static str,
+) -> CommandCatalogEntry {
+    CommandCatalogEntry {
+        command,
+        mutability,
+        writes,
+        judgment_required,
+        ci_enforced,
+        notes,
+    }
+}
+
+pub(crate) fn unknown_command_message(command: &str) -> String {
+    let normalized = command.trim();
+    // Retired commands: point users to the GitHub-based reconciliation flow.
+    if matches!(
+        normalized,
+        "goals" | "check-goals" | "check-campaign" | "closeout" | "pr-body"
+    ) {
+        return format!(
+            "unknown xtask command `{normalized}`.\nThe `{normalized}` command was retired when the .ripr/goals/ scheduler was deleted (#1701).\nLive work selection now comes from GitHub issues, PRs, and checks; implementation slices are scope records for already-selected work.\nRun `gh issue list --state open` or `cargo xtask help --all` for the full list of current commands."
+        );
+    }
+    let suggestion = known_commands()
+        .into_iter()
+        .filter_map(|candidate| {
+            let root = known_command_root(candidate);
+            let distance = levenshtein(normalized, root);
+            (distance <= 3).then_some((root, distance))
+        })
+        .min_by_key(|(_, distance)| *distance)
+        .map(|(root, _)| root);
+    match suggestion {
+        Some(suggestion) => format!(
+            "unknown xtask command `{normalized}`.\nDid you mean `{suggestion}`?\nRun `cargo xtask help --all` for the full list."
+        ),
+        None => format!(
+            "unknown xtask command `{normalized}`.\nRun `cargo xtask help --all` for the full list."
+        ),
+    }
+}
+
+pub(crate) fn known_command_root(command: &str) -> &str {
+    command
+        .split_once(' ')
+        .map_or(command, |(prefix, _)| prefix)
+}
+
+fn levenshtein(lhs: &str, rhs: &str) -> usize {
+    if lhs.is_empty() {
+        return rhs.chars().count();
+    }
+    if rhs.is_empty() {
+        return lhs.chars().count();
+    }
+
+    let rhs_len = rhs.chars().count();
+    let mut previous_row: Vec<usize> = (0..=rhs_len).collect();
+    let mut current_row = vec![0; rhs_len + 1];
+
+    for (left_index, left_char) in lhs.chars().enumerate() {
+        current_row[0] = left_index + 1;
+        for (right_index, right_char) in rhs.chars().enumerate() {
+            let insertion = current_row[right_index] + 1;
+            let deletion = previous_row[right_index + 1] + 1;
+            let substitution = previous_row[right_index] + usize::from(left_char != right_char);
+            current_row[right_index + 1] = insertion.min(deletion).min(substitution);
+        }
+        std::mem::swap(&mut previous_row, &mut current_row);
+    }
+
+    previous_row[rhs_len]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{XtaskCommand, command_catalog, help_message, known_commands, levenshtein};
+
+    #[test]
+    fn top_level_help_pins_start_here_front_door_language() -> Result<(), String> {
+        let help = help_message(&[])?;
+        assert!(help.contains("cargo xtask doctor"));
+        assert!(help.contains("cargo xtask first-pr"));
+        assert!(help.contains("safe next action"));
+        assert!(help.contains("missing artifact"));
+        assert!(help.contains("stale evidence"));
+        assert!(help.contains("wrong root"));
+        assert!(help.contains("malformed artifact"));
+        assert!(help.contains("no actionable gap"));
+        assert!(help.contains("preview-limited evidence"));
+        assert!(help.contains("verify command"));
+        assert!(help.contains("receipt command"));
+        assert!(help.contains("receipt path"));
+        Ok(())
+    }
+
+    #[test]
+    fn command_catalog_pins_start_here_notes() {
+        let catalog = command_catalog();
+        let note = |command: &str| {
+            catalog
+                .iter()
+                .find(|entry| entry.command == command)
+                .map(|entry| entry.notes)
+                .unwrap_or("")
+        };
+        assert!(note("first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]").contains("start-here packet"));
+        assert!(note("first-pr [--root <path>] [--base <rev>] [--head <rev>] [--gap-ledger <path>] [--out-dir <path>] [--check]").contains("verify command"));
+        assert!(note("pr-ready").contains("safe next action"));
+        assert!(note("cockpit").contains("stop states"));
+        assert!(note("doctor").contains("missing artifacts"));
+        assert!(note("worktree doctor").contains("start-here repair path"));
+        assert!(
+            note("badge-basis [--gap-ledger <path>] [--include-seam-classes]")
+                .contains("Audits public badge endpoint counts")
+        );
+        assert!(
+            note("ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]")
+                .contains("canonical actionable gaps")
+        );
+        assert!(
+            note("ripr-plus [--gap-ledger <path>] [--repo-exposure-summary <path>]")
+                .contains("downstream-consumable bounded summary artifact")
+        );
+    }
+
+    #[test]
+    fn top_level_help_marks_ci_enforced_commands() -> Result<(), String> {
+        let help = help_message(&[])?;
+        assert!(help.contains("check-static-language [CI]"));
+        assert!(help.contains("goldens check [CI]"));
+        assert!(!help.contains("check-supply-chain [CI]"));
+        assert!(!help.contains("goldens bless <name> --reason <reason> [CI]"));
+        assert!(help.contains("advisory or local-only"));
+        Ok(())
+    }
+
+    #[test]
+    fn per_command_help_reports_ci_enforcement() -> Result<(), String> {
+        let enforced = help_message(&["check-static-language".to_string()])?;
+        assert!(enforced.contains("CI enforced: true"));
+        let advisory = help_message(&["check-supply-chain".to_string()])?;
+        assert!(advisory.contains("CI enforced: false"));
+        Ok(())
+    }
+
+    #[test]
+    fn levenshtein_distance_handles_ascii_and_unicode_inputs() {
+        assert_eq!(levenshtein("check-pr", "check-pr"), 0);
+        assert_eq!(levenshtein("chek-pr", "check-pr"), 1);
+        assert_eq!(levenshtein("réport", "report"), 1);
+    }
+
+    #[test]
+    fn source_promotion_verify_cli_entrypoint() -> Result<(), String> {
+        let command = XtaskCommand::parse([
+            "source-promotion".to_string(),
+            "verify".to_string(),
+            "--preflight".to_string(),
+            "preflight.json".to_string(),
+        ]);
+        match command {
+            XtaskCommand::SourcePromotion(args) => {
+                if args != ["verify", "--preflight", "preflight.json"] {
+                    return Err(format!("unexpected source-promotion args: {args:?}"));
+                }
+            }
+            other => return Err(format!("source-promotion did not dispatch: {other:?}")),
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_controller_commands_are_cataloged() -> Result<(), String> {
+        let known = known_commands();
+        let catalog = command_catalog();
+        for (command, expected_mutability, expected_judgment) in [
+            (
+                "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
+                "report_only",
+                false,
+            ),
+            (
+                "source-promotion admit-resolved-tree --source-parent <sha> --swarm-parent <sha> --join-tree <tree> --preflight <path> --preflight-sha256 <digest> --resolution-manifest <path> --resolution-sha256 <digest> --validation-packet <dir> --builder-packet <dir> --integration-index <path> --integration-index-sha256 <digest> [--out <dir>]",
+                "report_only",
+                false,
+            ),
+            (
+                "source-promotion construct-exact-join --admission-packet <dir> --validation-packet <dir> --integration-index <path> --integration-index-sha256 <digest> --preflight <path> --resolution-manifest <path> --qualification-receipt <path> --qualification-receipt-sha256 <digest> --source-main-ref <ref> --swarm-ref <ref> --candidate-ref <ref> [--out <dir>]",
+                "mutating",
+                false,
+            ),
+            (
+                "source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
+                "external_state_mutating",
+                true,
+            ),
+        ] {
+            if !known.contains(&command) {
+                return Err(format!(
+                    "source-promotion controller command is missing from help: {command}"
+                ));
+            }
+            let entry = catalog
+                .iter()
+                .find(|entry| entry.command == command)
+                .ok_or_else(|| {
+                    format!("source-promotion controller command is not cataloged: {command}")
+                })?;
+            if entry.mutability != expected_mutability
+                || entry.judgment_required != expected_judgment
+            {
+                return Err(format!(
+                    "source-promotion controller command has incorrect safety metadata: {command}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn source_promotion_workflow() -> Result<String, String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?;
+        std::fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
+            .map_err(|error| format!("failed to read source-promotion workflow: {error}"))
+    }
+
+    #[test]
+    fn source_promotion_workflow_is_exact_head_and_read_only() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "fetch-depth: 0",
+            "ref: ${{ github.event.pull_request.head.sha }}",
+            "join_head",
+            "source-promotion-control: [0-9a-f]{40}",
+            "marker_count",
+            "grep -E '^<!-- source-promotion-control: [0-9a-f]{40} -->$'",
+            "exactly one lowercase source-promotion-control marker",
+            "git -C \"$control_dir\" fetch --no-tags origin \"$control_commit\"",
+            "CONTROL_INPUTS_PATH: docs/release/source-promotion/contract-inputs.json",
+            "PREFLIGHT_PATH: docs/release/source-promotion/preflight.json",
+            "RESOLUTION_MANIFEST_PATH: docs/release/source-promotion/resolution-manifest.json",
+            "ripr.source_promotion_ci_inputs.v2",
+            "preflight_sha256",
+            "git -C \"$control_dir\" show \"$control_commit:$PREFLIGHT_PATH\"",
+            "--match-head-commit $PR_HEAD",
+            "Build verifier from trusted base source",
+            "\"$TRUSTED_VERIFIER\" source-promotion verify",
+            "--main-head \"$MAIN_HEAD\"",
+            "toolchain: 1.95.0",
+            "PR_NUMBER: ${{ github.event.pull_request.number }}",
+            "resolution_sha256",
+            "validation_phase",
+            "validation_reason",
+            "validation_status",
+            "version",
+            "source_parent",
+            "source_parent:$source_parent",
+            "control_sidecars",
+            "control_preflight_path",
+            "control_resolution_manifest_path",
+            "phase=$validation_phase",
+            "reason=$validation_reason",
+            "if: steps.inputs.outcome == 'success'",
+            "if: steps.inputs.outcome == 'success' && steps.live-governance.outcome == 'success'",
+            "source-promotion-validation.log",
+            "mkdir -p \"$out\"",
+            "trusted verifier checkout identity mismatch",
+            "jq -e . \"$PREFLIGHT\"",
+            "control preflight digest mismatch",
+            "control resolution digest mismatch",
+            "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
+            "(.conditions.ref_name.exclude // []) == []",
+            "permissions:\n  contents: read",
+            "<!-- source-promotion: true -->",
+            "This workflow never executes the merge command",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "source-promotion workflow lost required contract: {needle}"
+                ));
+            }
+        }
+        if workflow
+            .lines()
+            .any(|line| line.trim_start().starts_with("gh pr merge"))
+        {
+            return Err(
+                "source-promotion workflow must print, not execute, gh pr merge".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_symlink_and_path_escape_inputs() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "validate_tracked_regular_file",
+            "git -C \"$control_dir\" ls-tree \"$control_commit\"",
+            "control input is not a tracked regular file",
+            "control input path is not canonical",
+            "fixed source repository",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks symlink/path-escape guard: {needle}"
+                ));
+            }
+        }
+        for forbidden in [
+            "git show \"$PR_HEAD:$CONTROL_INPUTS_PATH\"",
+            "git show \"$PR_HEAD:$PREFLIGHT_PATH\"",
+            "git show \"$PR_HEAD:$RESOLUTION_MANIFEST_PATH\"",
+            "validate_tracked_regular_file \"$INPUTS_PATH\"",
+        ] {
+            if workflow.contains(forbidden) {
+                return Err(format!(
+                    "promotion workflow retained candidate-checkout authority: {forbidden}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_requires_external_fixed_sidecar() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "CONTROL_REPOSITORY_URL: https://github.com/EffortlessMetrics/ripr.git",
+            "git -C \"$control_dir\" rev-parse --verify \"$control_commit^{commit}\"",
+            "test \"$(git -C \"$control_dir\" remote get-url origin)\" = \"$CONTROL_REPOSITORY_URL\"",
+            "validate_tracked_regular_file \"$CONTROL_INPUTS_PATH\"",
+            "validate_tracked_regular_file \"$PREFLIGHT_PATH\"",
+            "validate_tracked_regular_file \"$RESOLUTION_MANIFEST_PATH\"",
+            "sha256sum \"$preflight\"",
+            "sha256sum \"$resolution_manifest\"",
+            "control_commit:$control_commit",
+            "ripr.source_promotion_post_merge_contract.v1",
+            "source-promotion-post-merge-contract.json",
+            "--arg control_commit \"$CONTROL_COMMIT\"",
+            "CONTROL_COMMIT: ${{ inputs.control_commit }}",
+            "if: always()",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks immutable sidecar guard: {needle}"));
+            }
+        }
+        for forbidden in [
+            "validate_tracked_regular_file \"$INPUTS_PATH\"",
+            "          INPUTS_PATH: docs/release/source-promotion/contract-inputs.json",
+        ] {
+            if workflow.contains(forbidden) {
+                return Err(format!(
+                    "workflow retained candidate-checkout input authority: {forbidden}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_binds_trusted_source_parent() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "EXPECTED_SOURCE_PARENT: ${{ inputs.source_parent }}",
+            "source_parent must be an exact lowercase SHA",
+            "test \"$EXPECTED_SOURCE_PARENT\" = \"$source_main\" || fail \"source_parent must equal control source_main\"",
+            "control commit must not be an ancestor of the join head",
+            "control commit must not be a descendant of the join head",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks trusted source-parent binding: {needle}"
+                ));
+            }
+        }
+        if workflow.contains("EXPECTED_SOURCE_PARENT: ${{ inputs.source_main }}") {
+            return Err("workflow aliases source_parent from the wrong dispatch input".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_post_merge_receipt_binds_dispatch_input_on_rejection() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        let receipt = workflow
+            .find("- name: Write SHA-bound post-merge contract receipt")
+            .ok_or_else(|| "post-merge receipt step is missing".to_string())?;
+        let post_merge = &workflow[receipt..];
+        for needle in [
+            "if: always()",
+            "CONTROL_COMMIT: ${{ inputs.control_commit }}",
+            "source-promotion-post-merge-contract.json",
+            "ripr.source_promotion_post_merge_contract.v1",
+        ] {
+            if !post_merge.contains(needle) {
+                return Err(format!("post-merge rejection receipt lacks: {needle}"));
+            }
+        }
+        if post_merge.contains("CONTROL_COMMIT: ${{ steps.control.outputs.control_commit }}") {
+            return Err("post-merge receipt depends on a failed validation step output".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_placeholder_and_wrong_repo_commands() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr",
+            "merge command must bind numeric PR",
+            "merge_command=$(printf '%s\\n' \"$merge_block\"",
+            "exactly one canonical merge command is required",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks merge-command guard: {needle}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_candidate_verifier_bypass() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "Build verifier from trusted base source",
+            "git -C \"$trusted_dir\" checkout --detach \"$SOURCE_PARENT\"",
+            "cargo build --locked --manifest-path \"$trusted_dir/Cargo.toml\" -p xtask --bin xtask",
+            "TRUSTED_VERIFIER",
+            "rev-parse HEAD)\" = \"$SOURCE_PARENT",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks trusted-verifier guard: {needle}"));
+            }
+        }
+        if workflow.contains("cargo build --manifest-path \"$trusted_dir/Cargo.toml\" --bin xtask")
+        {
+            return Err("candidate-verifier build shape is still accepted".into());
+        }
+        if workflow.matches("cargo build --locked --manifest-path \"$trusted_dir/Cargo.toml\" -p xtask --bin xtask").count() != 2 {
+            return Err("both trusted verifier lanes must use the locked xtask package binary".into());
+        }
+        if workflow
+            .contains("cargo build --locked --manifest-path \"$GITHUB_WORKSPACE/Cargo.toml\"")
+            || workflow.contains("./target/debug/xtask source-promotion verify")
+        {
+            return Err("candidate checkout can still supply the verifier".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_receipt_contract_distinguishes_success_missing_and_mismatch()
+    -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion",
+            "SOURCE_PARENT: ${{ steps.inputs.outputs.source_parent }}",
+            "--out \"$SOURCE_PROMOTION_OUT\"",
+            "out=\"$SOURCE_PROMOTION_OUT\"",
+            "verification=\"$out/source-promotion-verification.json\"",
+            "type == \"object\" and .schema == \"ripr.source_promotion_verification.v2\"",
+            "verifier_receipt_status=present",
+            "verifier_receipt_status=missing",
+            "verifier_receipt_status=schema_mismatch",
+            "verifier receipt schema mismatch",
+            "trusted verifier receipt missing",
+            "verifier_receipt_status:$verifier_receipt_status",
+            "verifier_exit_code:$verifier_exit_code",
+            "TRUSTED_VERIFIER_SHA: ${{ steps.trusted-verifier.outputs.sha }}",
+            "LIVE_TAG: ${{ steps.live-governance.outputs.tag }}",
+            "LIVE_RULESET: ${{ steps.live-governance.outputs.ruleset }}",
+            "(.join_head | type) == \"string\"",
+            "(.source_main | type) == \"string\"",
+            "(.parents | type) == \"array\"",
+            "(.swarm_reachability | type) == \"object\"",
+            "(.release_metadata_surfaces | type) == \"array\"",
+            "(.checks | type) == \"object\"",
+            "(.failure_reasons | type) == \"array\"",
+            "(.invalidation_rules | type) == \"array\"",
+            "(.non_claims | type) == \"array\"",
+            "(.status == \"rejected\" or ((.tree | type) == \"string\"",
+            "(.parents | length) == 2",
+            "all(.parents[]; type == \"string\")",
+            "(.swarm_reachability.all_reachable_count | type) == \"number\"",
+            "trusted verifier exited non-zero",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "receipt contract lacks discriminating branch: {needle}"
+                ));
+            }
+        }
+        if workflow.contains("echo \"- PR head / candidate SHA: `")
+            || workflow.contains("echo \"Failure reasons: `")
+        {
+            return Err("receipt summary still executes interpolated Markdown backticks".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_has_failure_fixture_corpus() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?
+            .join("tests/fixtures/source_promotion_contract");
+        for (name, expected_phase, expected_reason) in [
+            (
+                "malformed-control.json",
+                "control_marker",
+                "exactly one lowercase source-promotion-control marker is required",
+            ),
+            (
+                "unreachable-control.json",
+                "control_repository",
+                "control commit is unreachable from the source repository",
+            ),
+            (
+                "source-mismatch.json",
+                "control_identity",
+                "control source_main does not equal the PR base SHA",
+            ),
+            (
+                "missing-receipt.json",
+                "verifier_receipt",
+                "trusted verifier receipt missing",
+            ),
+            (
+                "schema-mismatch.json",
+                "verifier_receipt",
+                "trusted verifier receipt schema mismatch",
+            ),
+            (
+                "empty-artifact-dir.json",
+                "verifier_receipt",
+                "trusted verifier receipt missing",
+            ),
+        ] {
+            let path = root.join(name);
+            let text = std::fs::read_to_string(&path)
+                .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+            for key in ["case", "validation_phase", "validation_reason", "status"] {
+                if value.get(key).and_then(serde_json::Value::as_str).is_none() {
+                    return Err(format!("{} is missing string field {key}", path.display()));
+                }
+            }
+            if value["status"] != "rejected" {
+                return Err(format!("{} must pin fail-closed rejection", path.display()));
+            }
+            if value["validation_phase"] != expected_phase {
+                return Err(format!(
+                    "{} must pin emitted validation phase {expected_phase}",
+                    path.display()
+                ));
+            }
+            if value["validation_reason"] != expected_reason {
+                return Err(format!(
+                    "{} must pin emitted validation reason {expected_reason}",
+                    path.display()
+                ));
+            }
+            if matches!(name, "missing-receipt.json" | "empty-artifact-dir.json")
+                && value["receipt_status"] != "missing"
+            {
+                return Err(format!(
+                    "{} must pin a missing verifier receipt",
+                    path.display()
+                ));
+            }
+            if name == "schema-mismatch.json" && value["receipt_status"] != "schema_mismatch" {
+                return Err(format!(
+                    "{} must pin a schema-mismatched verifier receipt",
+                    path.display()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_builds_xtask_explicitly_from_trusted_source() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        let expected = "CARGO_TARGET_DIR=\"$trusted_target\" cargo build --locked --manifest-path \"$trusted_dir/Cargo.toml\" -p xtask --bin xtask";
+        if workflow.contains(
+            "CARGO_TARGET_DIR=\"$trusted_target\" cargo build --manifest-path \"$trusted_dir/Cargo.toml\" --bin xtask",
+        ) {
+            return Err("trusted-verifier build regressed to default-package selection".into());
+        }
+
+        for (label, next_label) in [
+            (
+                "Build verifier from trusted base source",
+                "Verify promotion inputs and PR-head binding",
+            ),
+            (
+                "Build verifier from trusted source parent",
+                "Verify exact J reaches merged source main",
+            ),
+        ] {
+            let start = workflow
+                .find(label)
+                .ok_or_else(|| format!("trusted-verifier lane is missing: {label}"))?;
+            let lane = &workflow[start..];
+            let end = lane.find(next_label).ok_or_else(|| {
+                format!("trusted-verifier lane has no expected end marker: {label}")
+            })?;
+            let lane = &lane[..end];
+            let build_count = lane.matches(expected).count();
+            if build_count != 1 {
+                return Err(format!(
+                    "trusted-verifier lane {label:?} must contain exactly one explicit xtask build; found {build_count}"
+                ));
+            }
+            for needle in [
+                "verifier=\"$trusted_target/debug/xtask\"",
+                "test -x \"$verifier\"",
+            ] {
+                if !lane.contains(needle) {
+                    return Err(format!(
+                        "trusted-verifier lane {label:?} must validate the selected xtask binary path: {needle}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_mixed_merge_strategies() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "exactly one canonical merge command is required",
+            "--squash",
+            "--rebase",
+            "exactly one --merge strategy is required",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!("workflow lacks merge-strategy guard: {needle}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_accepts_documented_multiline_merge_command() -> Result<(), String>
+    {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "__RIPR_MERGE_BLOCK__",
+            "exactly one fenced bash block may contain the merge command",
+            "sed 's/\\\\$//' | tr '\\n' ' '",
+            "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr --merge --match-head-commit $PR_HEAD",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks multiline merge acceptance: {needle}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_scans_all_bash_fences_for_merge_command() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        for needle in [
+            "inside && /```/",
+            "if (block ~ /gh pr merge/)",
+            "merge_block_count",
+            "exactly one fenced bash block may contain the merge command",
+        ] {
+            if !workflow.contains(needle) {
+                return Err(format!(
+                    "workflow lacks multi-fence merge parsing: {needle}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_rejects_multiple_merge_fences() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        if !workflow.contains("test \"$merge_block_count\" -eq 1") {
+            return Err("workflow does not reject multiple merge-containing fences".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_disables_checkout_credentials_before_code() -> Result<(), String> {
+        let workflow = source_promotion_workflow()?;
+        let count = workflow.matches("persist-credentials: false").count();
+        if count != 2 {
+            return Err(format!(
+                "expected both source-promotion checkouts to disable credentials, found {count}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn source_promotion_workflow_refutes_crlf_rewrite_thread() -> Result<(), String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest has no repository parent".to_string())?;
+        let attributes = std::fs::read_to_string(root.join(".gitattributes"))
+            .map_err(|error| format!("failed to read .gitattributes: {error}"))?;
+        if !attributes.contains("* text=auto eol=lf") {
+            return Err(".gitattributes does not enforce LF text checkout".to_string());
+        }
+        Ok(())
+    }
+}
+#[path = "command/help.rs"]
+mod help;
+
+use help::{format_help_entries, format_top_level_help};

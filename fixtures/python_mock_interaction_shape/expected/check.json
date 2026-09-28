@@ -1,0 +1,147 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_mock_interaction_shape/input",
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:fbacc2fbdd794c4703763ba64f12b532c41c2ab086fa2f509d12451e1528ec40","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_callbacks.py:python_preview:d5d2a2c6",
+      "canonical_gap_id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+        "language": "python",
+        "file": "src/callbacks.py",
+        "owner": "recording_callback",
+        "behavior_kind": "call_or_output_effect",
+        "probe_kind": "side_effect",
+        "normalized_discriminator": "callback=magicmock_name=receipt.sent"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_callbacks.py:python_preview:d5d2a2c6",
+        "family": "side_effect",
+        "delta": "effect",
+        "file": "src/callbacks.py",
+        "line": 4,
+        "expression": "    callback = MagicMock(name=\"receipt.sent\")",
+        "owner": "python:src/callbacks.py::recording_callback"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"low","summary":"1 related Python test(s) found for owner `recording_callback`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name=\"receipt.sent\")`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred."},
+        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `mock_expectation` (rank 4)"},
+        "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; missing proof: `call includes \"receipt.sent\"`."}
+       },
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `recording_callback`", "infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name=\"receipt.sent\")`", "propagation weak: Changed Python call/output behavior can propagate through side effects; runtime target resolution is not inferred.", "observation weak: Strongest extracted Python oracle kind: `mock_expectation` (rank 4)", "discriminator weak: Python preview adapter found no strong discriminator; missing proof: `call includes \"receipt.sent\"`.", "local flow reaches call effect: callback = MagicMock(name=\"receipt.sent\") (line 4)", "related test tests/test_callbacks.py:4 test_recording_callback_starts_idle uses medium mock expectation oracle: callback.assert_not_called()", "missing discriminator call includes \"receipt.sent\": changed Python output/log/call effect at line 4 lacks a concrete repair discriminator"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"callback = MagicMock(name=\"receipt.sent\")","line":4}
+      ],
+      "evidence": ["owner: recording_callback", "owner_kind: function", "missing_discriminator: call includes \"receipt.sent\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_callbacks.py", "suggested_test_name: test_recording_callback_starts_idle", "suggested_test_node_id: tests/test_callbacks.py::test_recording_callback_starts_idle", "suggested_verify_command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_recording_callback_starts_idle)", "test_verify_command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (test_recording_callback_starts_idle)", "related_test_relation: syntactic_call (test_recording_callback_starts_idle)", "test_oracle: mock_expectation medium (test_recording_callback_starts_idle)", "test_oracle_shape: mock_expectation (test_recording_callback_starts_idle)"],
+      "missing": ["Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+          {
+            "value": "call includes \"receipt.sent\"",
+            "reason": "changed Python output/log/call effect at line 4 lacks a concrete repair discriminator",
+            "flow_sink": {"kind":"call_effect","text":"callback = MagicMock(name=\"receipt.sent\")","line":4}
+          }
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+        {
+          "value": "call includes \"receipt.sent\"",
+          "reason": "changed Python output/log/call effect at line 4 lacks a concrete repair discriminator",
+          "flow_sink": {"kind":"call_effect","text":"callback = MagicMock(name=\"receipt.sent\")","line":4}
+        }
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_recording_callback_starts_idle",
+          "file": "tests/test_callbacks.py",
+          "line": 4,
+          "oracle_strength": "medium",
+          "oracle_kind": "mock_expectation",
+          "oracle": "callback.assert_not_called()"
+        }
+      ],
+      "repair_placement": {
+        "suggested_test_file": "tests/test_callbacks.py",
+        "suggested_test_name": "test_recording_callback_starts_idle",
+        "suggested_test_node_id": "tests/test_callbacks.py::test_recording_callback_starts_idle",
+        "verify_command": "pytest tests/test_callbacks.py::test_recording_callback_starts_idle",
+        "verify_command_confidence": "high"
+       },
+      "python_repair_card": {
+        "card_version": "python_repair_card.v1",
+        "source": "check_python_preview",
+        "canonical_gap_id": "gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent",
+        "language": "python",
+        "language_status": "preview",
+        "authority_boundary": "preview_advisory_only",
+        "repair_action": "strengthen_existing_test",
+        "changed_owner": "recording_callback",
+        "changed_behavior": "call_or_output_effect changed at src/callbacks.py:4: `callback = MagicMock(name=\"receipt.sent\")`",
+        "current_test_evidence": "tests/test_callbacks.py:4 test_recording_callback_starts_idle currently has oracle_strength=medium, oracle_kind=mock_expectation: callback.assert_not_called()",
+        "missing_discriminator": "call includes \"receipt.sent\"",
+        "recommended_test_shape": "Strengthen the existing pytest output/log/call-effect assertion for `call includes \"receipt.sent\"`.",
+        "suggested_assertion": "Assert the changed output, log text, or call effect for `call includes \"receipt.sent\"`.",
+        "suggested_location": {
+          "test_file": "tests/test_callbacks.py",
+          "test_name": "test_recording_callback_starts_idle",
+          "pytest_node_id": "tests/test_callbacks.py::test_recording_callback_starts_idle"
+         },
+        "verify": {
+          "command": "pytest tests/test_callbacks.py::test_recording_callback_starts_idle",
+          "confidence": "high"
+         },
+        "receipt": {
+          "command": null,
+          "status": "unavailable_until_python_gap_ledger",
+          "guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command."
+         },
+        "stop_conditions": ["Stop if imports, fixtures, or test setup cannot call the changed owner.", "Stop if the expected value for the missing discriminator is ambiguous.", "Stop if adding the test appears to require a production-code edit."],
+        "limits": ["Syntax-first Python preview evidence only.", "No source edits, generated tests, mutation execution, provider calls, or gate authority.", "Verify success alone is not a gap-closure receipt."]
+       },
+      "stop_reasons": [],
+      "oracle_kind": "mock_expectation",
+      "oracle_strength": "medium",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes \"receipt.sent\"`.",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "function",
+      "changed_sink": "callback, MagicMock, name, receipt, sent, receipt.sent",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/callbacks.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ]
+}

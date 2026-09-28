@@ -1,0 +1,8 @@
+[package]
+name = "mixed_rust_typescript_preview_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "mixed_rust_typescript_preview_fixture"
+path = "src/lib.rs"
