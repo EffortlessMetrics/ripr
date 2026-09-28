@@ -210,9 +210,18 @@ none. The Markdown panel keeps the two apart under `## Limitations` and
 | `top_limitation` | object or absent | first entry in `limitations[]` | Omitted when limitations are empty or `"not_available"`. |
 | `local_reproduction_commands` | string[] | start-here repair_command (first, when present) + diff-report base/head + start-here verify_command | Always present; at least two commands. |
 
+For the two commands RIPR builds, the selected `base` and `head` values
+remain one literal Bash argument each, quoted when needed. The diff-report
+base takes precedence over the start-here input base. Without a base, the
+option is omitted, and without a head, `HEAD` is used. The complete repair
+and verification commands carried from start-here remain byte-identical: this
+summary neither parses nor validates their shell syntax.
+
 ## Required Evidence
 
 - Unit tests in `crates/ripr/src/app/pr_summary/json.rs`:
+  - `generated_reproduction_commands_preserve_hostile_refs_in_bash` (Unix Bash argv control)
+  - `generated_reproduction_commands_keep_base_authority_and_carried_commands`
   - `missing_all_artifacts_yields_unknown_run_status`
   - `present_top_gap_populates_top_repair`
   - `start_here_repair_command_is_carried_into_top_repair`

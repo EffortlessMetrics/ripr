@@ -16203,11 +16203,18 @@ start-here carried `selected.repair_command` (a review-card selection, #3906);
 it is copied unchanged, never derived, and pr-summary does not read review
 comments itself. When present it is also the first entry in
 `local_reproduction_commands`, and the Markdown panel shows a `start repair`
-line before `verify`. When `limitations` is empty or
-`"not_available"`, `top_limitation` is omitted entirely; the Markdown
-panel distinguishes the two, rendering `- none` for the first and
-`- not_available` for the second. When delta fields are computed (baseline supplied),
-`gap_delta_note` is absent.
+line before `verify`.
+
+RIPR renders the `base` and `head` values as one literal Bash argument,
+quoting when needed, in the `ripr check` and `ripr first-pr` lines it builds.
+The complete `selected.repair_command` and `selected.verify_command` strings
+are carried unchanged from start-here. `pr-summary` does not parse or
+validate their shell syntax. Review those commands before execution.
+
+When `limitations` is empty or `"not_available"`, `top_limitation` is
+omitted entirely; the Markdown panel distinguishes the two, rendering
+`- none` for the first and `- not_available` for the second. When delta
+fields are computed (baseline supplied), `gap_delta_note` is absent.
 
 Field sources:
 
