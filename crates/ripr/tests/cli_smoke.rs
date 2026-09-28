@@ -5495,6 +5495,75 @@ fn agent_repair_admits_a_cargo_lock_first_generated_between_the_phases()
     Ok(())
 }
 
+/// #4445: a repo-scoped format still records `--base` as snapshot
+/// provenance and names `--diff` as an input, so an unresolvable base or a
+/// missing diff file exits 2 with empty stdout, like the diff-scoped
+/// formats. A resolvable base keeps working.
+#[test]
+fn repo_scope_formats_reject_unresolvable_base_and_missing_diff()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("repo-scope-bad-base");
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"scope\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn big(x: u32) -> bool {\n    x >= 10\n}\n",
+    )?;
+    std::fs::write(root.join(".gitignore"), "/target\n")?;
+    run_git(&root, &["init", "-q"])?;
+    run_git(&root, &["add", "."])?;
+    commit_repair_fixture(&root, &["-qm", "scope"])?;
+    let root_arg = root.display().to_string();
+    let missing_diff = root.join("no-such.diff").display().to_string();
+
+    for format in [
+        "repo-exposure-json",
+        "repo-sarif",
+        "agent-seam-packets-json",
+    ] {
+        for bad in [
+            ["--base", "no-such-ref-4445"],
+            ["--diff", missing_diff.as_str()],
+        ] {
+            let output = run_ripr(&[
+                "check", "--root", &root_arg, bad[0], bad[1], "--format", format,
+            ]);
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "{format} {bad:?}: stderr={}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                output.stdout.is_empty(),
+                "{format} {bad:?} wrote stdout on a failed invocation"
+            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                stderr.contains(bad[1]),
+                "{format} {bad:?}: stderr does not name the rejected input: {stderr}"
+            );
+        }
+    }
+
+    let good = run_ripr(&[
+        "check",
+        "--root",
+        &root_arg,
+        "--base",
+        "HEAD",
+        "--format",
+        "repo-exposure-json",
+    ]);
+    assert_success(&good);
+    let good: serde_json::Value = serde_json::from_slice(&good.stdout)?;
+    assert_eq!(good["artifact"]["analysis"]["base_revision"], "HEAD");
+    Ok(())
+}
+
 /// F15-12: a seam whose only related test lives inline in another crate has
 /// no test file the repair can edit. The before phase refuses before it
 /// writes any workflow artifact and never prints a completion line first, so

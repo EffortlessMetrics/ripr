@@ -32,6 +32,46 @@ Use --format json for diff-scoped findings, or --format repo-exposure-summary-js
     ))
 }
 
+/// A repo-scoped format does not read the diff, but `--base` is still
+/// recorded as snapshot provenance (`base_revision`) and `--diff` still
+/// names an input. Both must exist, exactly as on the diff-scoped path,
+/// so a typo exits 2 instead of producing an artifact that records a ref
+/// or file that is not there (#4445).
+fn validate_repo_scope_diff_inputs(
+    input: &CheckInput,
+    base_explicitly_provided: bool,
+) -> Result<(), String> {
+    if let Some(diff) = input.diff_file.as_deref() {
+        if diff != Path::new("-") && !diff.is_file() {
+            return Err(format!(
+                "check: --diff {} is not a readable file",
+                diff.display()
+            ));
+        }
+        return Ok(());
+    }
+    if !base_explicitly_provided {
+        return Ok(());
+    }
+    let Some(base) = input.base.as_deref() else {
+        return Ok(());
+    };
+    let commit = format!("{base}^{{commit}}");
+    let output = crate::git::run_git_output_with_deadline(
+        &input.root,
+        &["rev-parse", "--verify", "--quiet", commit.as_str()],
+        input.git_timeout,
+    )?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "check: base revision {base:?} does not resolve to a commit in {}",
+            input.root.display()
+        ))
+    }
+}
+
 pub(super) fn resolve_workspace_root(start: &Path) -> Result<Option<PathBuf>, String> {
     let start = std::fs::canonicalize(start).map_err(|error| {
         format!(
@@ -449,6 +489,9 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         repo_scope_diff_bound_warning(format, base_explicitly_provided, input.diff_file.as_deref())
     {
         eprintln!("{warning}");
+    }
+    if format.is_repo_scope() {
+        validate_repo_scope_diff_inputs(&input, base_explicitly_provided)?;
     }
     if let Some(gap_ledger) = gap_ledger.as_ref() {
         write_stdout_chunked(&render_check_gap_ledger_badge(
