@@ -1,8 +1,8 @@
 name: Join Tree Qualification
 
 # Hosted product/editor qualification for one exact reviewed source/W7 join tree
-# (ripr#1771, 0.11.0 J). The tree is materialized from a ref that points directly at the
-# tree object, so no commit carrying that tree ever exists: nothing here can be
+# (ripr#1771, 0.11.0 J). The tree is materialized from a parentless carrier commit on a
+# control branch whose tree is the reviewed tree. A parentless carrier cannot be
 # mistaken for, or merged as, the two-parent join J.
 #
 # This workflow creates no branch, tag, release, or package publication, uses no
@@ -151,9 +151,11 @@ jobs:
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           git fetch --quiet --depth=1 origin "$REVIEWED_TREE_REF"
           # The carrier is a parentless commit on a control branch whose tree is
-          # the reviewed tree; it is never J and is never merged.
-          test -z "$(git log -1 --format=%P FETCH_HEAD)" \
-            || { echo "::error::$REVIEWED_TREE_REF carrier has parents"; exit 1; }
+          # the reviewed tree; it is never J and is never merged. Read the raw
+          # object: a shallow fetch grafts parents away from `git log --format=%P`.
+          if git cat-file commit FETCH_HEAD | sed '/^$/q' | grep -q '^parent '; then
+            echo "::error::$REVIEWED_TREE_REF carrier has parents"; exit 1
+          fi
           fetched="$(git rev-parse 'FETCH_HEAD^{tree}')"
           test "$fetched" = "$REVIEWED_TREE" \
             || { echo "::error::carrier tree is $fetched, not $REVIEWED_TREE"; exit 1; }
@@ -184,7 +186,7 @@ jobs:
           toolchain: 1.95.0
           components: clippy, rustfmt
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           cache: npm
