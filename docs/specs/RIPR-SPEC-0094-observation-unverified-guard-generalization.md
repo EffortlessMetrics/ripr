@@ -9,6 +9,7 @@ Created: 2026-06-13
 Linked issues:
 
 - #1216
+- #4404
 
 Linked PRs:
 
@@ -187,9 +188,33 @@ A bare Medium mock observer (`mock.verify();`, no token) clears
 `observation_unverified` via Part C but remains `weakly_exposed` because Medium
 strength maps to a weak discriminator — see Non-Goals.
 
+## Strongest-oracle confirmation (#4404)
+
+For the families requiring observation confirmation, oracle strength and its
+confirmation must come from the same matched assertion. A weaker assertion
+that names the changed expression cannot confirm an unrelated strongest
+oracle, even when both assertions occur in one test. The same rule applies
+across related tests and is independent of encounter order.
+
+An equally strong confirmed assertion can supply discrimination in either
+order. Related candidate assertions remain visible. When weaker confirmation
+exists but the strongest oracle lacks its own confirmation, discrimination
+stays weak and names `oracle_confirmation_mixed`; the existing
+`observation_unverified` narration remains for cases with no confirmation.
+
+This is a bounded correction to evidence aggregation. Existing confirmation
+matchers remain heuristic: it does not establish general source-to-sink
+identity or resolve literal-token coincidence independently.
+
+Proof: `strongest_oracle_cannot_borrow_weaker_assertion_confirmation`,
+`equally_strong_confirmed_oracle_preserves_discrimination_in_either_order`,
+and the `oracle_confirmation_mixed` fixture registered in the honesty corpus.
+
 ## Test Mapping
 
 - `crates/ripr/src/analysis/classify/reveal.rs` unit tests for all new families.
+- Strongest-oracle confirmation: the two fallible classifier tests named above
+  and `fixtures/oracle_confirmation_mixed`, registered in the honesty corpus.
 - 9 new golden fixtures (see traceability.toml for the full list).
 - `crates/ripr/src/analysis/classifier.rs` — 2 existing tests updated.
 
@@ -201,6 +226,8 @@ strength maps to a weak discriminator — see Non-Goals.
   - `is_effect_family(family)` + `effect_observer_confirms(assertion)` new
     helpers for Part C.
   - `RevealAssertionAnalysis.observation_unverified` (renamed).
+  - `RevealAssertionAnalysis.strongest_observation_confirmed` keeps confirmation
+    on the assertion supplying the selected strength and kind.
   - `analyze_related_assertions` computes `observation_confirmed =
     has_token_match || (is_effect_family && effect_observer_confirms)`.
   - `assertion_matches_probe_detail` receives `match_arm_variants` param.

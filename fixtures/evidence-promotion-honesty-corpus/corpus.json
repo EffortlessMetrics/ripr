@@ -5,6 +5,20 @@
   "description": "Cross-language pinned adversarial corpus: evidence may not promote to exposed/strong unless it structurally matches the seam.",
   "cases": [
     {
+      "id": "rust_oracle_confirmation_mixed",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/oracle_confirmation_mixed",
+      "vector": "unrelated_exact_oracle_borrows_weak_assertion_confirmation",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "expected_finding_count", "count": 1 },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "py_multiline_docstring_interior_no_behavior",
       "language": "python",
       "tier": "pure",

@@ -51,12 +51,24 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
     );
     let related = finalize_related_tests(analysis.related);
     let observe = build_observe_evidence(analysis.matched_any);
-    let discriminate = build_discriminate_evidence(
-        &analysis.strongest,
-        &analysis.strongest_kind,
-        &probe.family,
-        analysis.observation_unverified,
-    );
+    let discriminate = if needs_token_confirmation(&probe.family)
+        && analysis.matched_any
+        && !analysis.observation_unverified
+        && !analysis.strongest_observation_confirmed
+    {
+        StageEvidence::new(
+            StageState::Weak,
+            Confidence::Medium,
+            "Strongest oracle does not confirm observation of the changed expression; a weaker assertion cannot supply its confirmation (oracle_confirmation_mixed)",
+        )
+    } else {
+        build_discriminate_evidence(
+            &analysis.strongest,
+            &analysis.strongest_kind,
+            &probe.family,
+            analysis.observation_unverified,
+        )
+    };
 
     (observe, discriminate, related)
 }
@@ -65,6 +77,10 @@ struct RevealAssertionAnalysis {
     related: Vec<RelatedTest>,
     strongest: OracleStrength,
     strongest_kind: OracleKind,
+    /// Confirmation belongs to the assertion supplying the selected oracle
+    /// strength. A weaker token match must not upgrade an unrelated exact
+    /// oracle, even when both assertions are in the same related test.
+    strongest_observation_confirmed: bool,
     matched_any: bool,
     /// True when this probe's family requires a `token_match` to confirm that
     /// an assertion actually references the specific changed sub-expression, and
@@ -283,6 +299,7 @@ fn analyze_related_assertions(
     let mut related = Vec::new();
     let mut strongest = OracleStrength::None;
     let mut strongest_kind = OracleKind::Unknown;
+    let mut strongest_observation_confirmed = false;
     let mut matched_any = false;
     // For families that need token confirmation: start pessimistic and clear
     // once a token_match fires.
@@ -327,6 +344,9 @@ fn analyze_related_assertions(
                 cross_package_defeats_owner,
             );
             if matched {
+                let observation_confirmed = !confirm_required
+                    || has_token_match
+                    || (is_effect_family(&probe.family) && effect_observer_confirms(assertion));
                 if confirm_required {
                     // Observation is confirmed when the assertion specifically
                     // references the changed sub-expression. For value families
@@ -339,8 +359,6 @@ fn analyze_related_assertions(
                     // flagged `observation_unverified`, while a plain
                     // non-observing assertion (no token, no effect observer)
                     // stays unverified.
-                    let observation_confirmed = has_token_match
-                        || (is_effect_family(&probe.family) && effect_observer_confirms(assertion));
                     if !matched_any {
                         // First matching assertion: observation is unverified
                         // unless confirmed.
@@ -352,9 +370,17 @@ fn analyze_related_assertions(
                 }
                 matched_any = true;
                 let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
-                if relative_strength.rank() > strongest.rank() {
+                // Keep strength, kind, and confirmation on one assertion.
+                // An equally strong confirmed oracle wins over an unrelated
+                // one regardless of encounter order; a weaker oracle cannot.
+                if relative_strength.rank() > strongest.rank()
+                    || (relative_strength.rank() == strongest.rank()
+                        && observation_confirmed
+                        && !strongest_observation_confirmed)
+                {
                     strongest = relative_strength.clone();
                     strongest_kind = assertion.kind.clone();
+                    strongest_observation_confirmed = observation_confirmed;
                 }
                 related.push(RelatedTest {
                     name: test.name.clone(),
@@ -374,6 +400,7 @@ fn analyze_related_assertions(
         related,
         strongest,
         strongest_kind,
+        strongest_observation_confirmed,
         matched_any,
         observation_unverified,
     }
@@ -1989,6 +2016,86 @@ fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) 
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn strongest_oracle_cannot_borrow_weaker_assertion_confirmation() -> Result<(), String> {
+        for family in [ProbeFamily::ReturnValue, ProbeFamily::CallDeletion] {
+            let probe = probe(family, "compute_score(input)");
+            let exact = oracle(
+                "assert_eq!(unrelated, 42);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            );
+            let weak = oracle(
+                "assert!(compute_score > 0);",
+                OracleKind::RelationalCheck,
+                OracleStrength::Weak,
+            );
+            for assertions in [
+                vec![exact.clone(), weak.clone()],
+                vec![weak.clone(), exact.clone()],
+            ] {
+                let test = test_with_assertions("mixed_oracles", assertions);
+                let (_, discriminate, _) =
+                    reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+                if discriminate.state != StageState::Weak {
+                    return Err(format!(
+                        "unrelated exact oracle borrowed weak confirmation: {discriminate:?}"
+                    ));
+                }
+            }
+            let strong_test = test_with_assertions("unrelated_exact", vec![exact]);
+            let weak_test = test_with_assertions("weak_owner_observer", vec![weak]);
+            for related in [
+                vec![
+                    (&strong_test, RelationReason::SameTestFile),
+                    (&weak_test, RelationReason::DirectOwnerCall),
+                ],
+                vec![
+                    (&weak_test, RelationReason::DirectOwnerCall),
+                    (&strong_test, RelationReason::SameTestFile),
+                ],
+            ] {
+                let (_, discriminate, _) = reveal_evidence(&probe, &related);
+                if discriminate.state != StageState::Weak {
+                    return Err(format!(
+                        "unrelated test supplied exact discrimination: {discriminate:?}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn equally_strong_confirmed_oracle_preserves_discrimination_in_either_order()
+    -> Result<(), String> {
+        let probe = probe(ProbeFamily::ReturnValue, "compute_score(input)");
+        let unrelated = oracle(
+            "assert_eq!(unrelated, 42);",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        let aligned = oracle(
+            "assert_eq!(compute_score(input), 42);",
+            OracleKind::ExactValue,
+            OracleStrength::Strong,
+        );
+        for assertions in [
+            vec![unrelated.clone(), aligned.clone()],
+            vec![aligned, unrelated],
+        ] {
+            let test = test_with_assertions("exact_owner_observer", assertions);
+            let (_, discriminate, _) =
+                reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+            if discriminate.state != StageState::Yes {
+                return Err(format!(
+                    "confirmed exact oracle lost discrimination: {discriminate:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn reveal_evidence_keeps_assertionless_related_test_without_observe_signal() {

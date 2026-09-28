@@ -19,6 +19,12 @@ are scoped or reviewed.
   hover evidence without promising an unavailable clipboard action or repair
   route. Missing-path guidance remains explicitly static (#4328).
 
+- Static discrimination keeps oracle strength and confirmation on the same
+  assertion. An unrelated exact assertion can no longer borrow a weaker
+  assertion's token match to promote a finding to `exposed`; equally strong
+  confirmed assertions retain their classification regardless of order
+  ([#4404](https://github.com/EffortlessMetrics/ripr-swarm/issues/4404)).
+
 ### Added
 
 - `ripr --version` now names the commit the binary was built from, as

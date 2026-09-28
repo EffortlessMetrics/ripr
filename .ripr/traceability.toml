@@ -6159,6 +6159,8 @@ id = "RIPR-SPEC-0094"
 name = "observation_unverified guard generalization"
 spec = "docs/specs/RIPR-SPEC-0094-observation-unverified-guard-generalization.md"
 tests = [
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::strongest_oracle_cannot_borrow_weaker_assertion_confirmation",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::equally_strong_confirmed_oracle_preserves_discrimination_in_either_order",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::return_value_family_match_only_without_token_downgrades_discriminate_to_weak",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::return_value_with_token_match_keeps_discriminate_yes",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::field_construction_family_match_only_without_token_downgrades_to_weak",
@@ -6175,6 +6177,7 @@ tests = [
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",
+  "fixtures/oracle_confirmation_mixed",
   "fixtures/observation_unverified_return_value",
   "fixtures/observation_verified_return_value",
   "fixtures/observation_unverified_field_construction",
@@ -6190,6 +6193,9 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0094-observation-unverified-guard-generalization.md",
+  "fixtures/oracle_confirmation_mixed/expected/check.json",
+  "fixtures/oracle_confirmation_mixed/expected/human.txt",
+  "fixtures/oracle_confirmation_mixed/expected/human-full.txt",
   "fixtures/observation_unverified_return_value/expected/check.json",
   "fixtures/observation_unverified_return_value/expected/human.txt",
   "fixtures/observation_verified_return_value/expected/check.json",
