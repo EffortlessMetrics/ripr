@@ -734,6 +734,21 @@ impl AnalysisSnapshot {
             .flatten()
             .filter(|diagnostic| diagnostic_has_string_data(diagnostic, "gap_id"))
             .count();
+        // Limited-run scope-guard disclosures (#2299, #4325): the oversized
+        // diff warning is a governed, code-marked publication that is not a
+        // finding, seam, or gap-record projection. Accounting it here keeps
+        // the reject-unknown-extras property for every other plain diagnostic.
+        let scope_guard_disclosures = self
+            .diagnostics_by_uri
+            .values()
+            .flatten()
+            .filter(|diagnostic| {
+                diagnostic_has_code(
+                    diagnostic,
+                    super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE,
+                )
+            })
+            .count();
         let published_finding_count = super::diagnostics::canonical_finding_groups(&self.findings)
             .into_iter()
             .filter(|(primary, _)| {
@@ -746,7 +761,11 @@ impl AnalysisSnapshot {
                 .as_ref()
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
-            && published_finding_count + surfacable_seams + gap_diagnostics == diagnostic_count
+            && published_finding_count
+                + surfacable_seams
+                + gap_diagnostics
+                + scope_guard_disclosures
+                == diagnostic_count
             && self
                 .gap_artifacts
                 .iter()
@@ -876,6 +895,13 @@ fn diagnostic_has_string_data(diagnostic: &Diagnostic, key: &str) -> bool {
         .and_then(|data| data.get(key))
         .and_then(|value| value.as_str())
         .is_some()
+}
+
+fn diagnostic_has_code(diagnostic: &Diagnostic, code: &str) -> bool {
+    matches!(
+        diagnostic.code.as_ref(),
+        Some(tower_lsp_server::ls_types::NumberOrString::String(value)) if value == code
+    )
 }
 
 /// Stable content identity for saved workspace bytes. Only a digest is
@@ -1789,6 +1815,61 @@ mod tests {
             return Err(
                 "plain diagnostics should still require matching source evidence".to_string(),
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn snapshot_consistency_counts_scope_guard_disclosures() -> Result<(), String> {
+        // #2299 / #4325: the oversized-diff warning is a governed,
+        // code-marked limited-run disclosure, so it is accounted without
+        // findings, seams, or gap records. A lookalike with a different code
+        // stays unaccounted.
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut scope_guard = plain_diagnostic();
+        scope_guard.code = Some(tower_lsp_server::ls_types::NumberOrString::String(
+            crate::lsp::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+        ));
+        let mut diagnostics_by_uri = BTreeMap::new();
+        diagnostics_by_uri.insert(uri.clone(), vec![scope_guard]);
+        let snapshot = AnalysisSnapshot {
+            root: PathBuf::from("/workspace"),
+            input_identity: None,
+            base: None,
+            mode: Mode::Draft,
+            refresh: RefreshMetadata::default(),
+            findings: Vec::new(),
+            analysis_outcome: None,
+            diagnostic_profile: LspDiagnosticProfile::Full,
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
+            gap_artifact_rejections: Vec::new(),
+            harness_facts: HarnessFactsOnSnapshot::NotRegistered,
+            diagnostics_by_uri,
+            delivery_selection: None,
+            seams_deferred: false,
+            partial_scope: None,
+            component_outcomes: Vec::new(),
+            out_of_scope_test_file_findings: 0,
+        };
+
+        if !snapshot.is_consistent() {
+            return Err("scope-guard disclosures should count as explicit diagnostics".to_string());
+        }
+
+        let mut lookalike = plain_diagnostic();
+        lookalike.code = Some(tower_lsp_server::ls_types::NumberOrString::String(
+            "ripr-something-else".to_string(),
+        ));
+        let mut lookalike_by_uri = BTreeMap::new();
+        lookalike_by_uri.insert(uri, vec![lookalike]);
+        let lookalike_snapshot = AnalysisSnapshot {
+            diagnostics_by_uri: lookalike_by_uri,
+            ..snapshot
+        };
+
+        if lookalike_snapshot.is_consistent() {
+            return Err("a lookalike code must stay unaccounted".to_string());
         }
         Ok(())
     }

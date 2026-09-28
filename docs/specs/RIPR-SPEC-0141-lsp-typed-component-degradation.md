@@ -220,9 +220,11 @@ then the diff outcome is failed with the named kind and
   findings_trustworthy: false, the run status is limited, and exactly
   ONE workspace-scoped warning diagnostic (code
   ripr-scope-diff-oversized) anchored at the workspace root URI carries
-  the guard's bounded first line (kind, actual counts, split guidance),
-  while the CLI keeps its non-zero exit and unchanged error text.
-  Only the raw, unwrapped guard error converts; the distinct
+  the guard's bounded first line (kind, actual counts, split guidance)
+  and the producer-owned delivery eligibility (RIPR-SPEC-0126), so the
+  delivery budget admits it into both the push publication and the pull
+  report (#4325), while the CLI keeps its non-zero exit and unchanged
+  error text. Only the raw, unwrapped guard error converts; the distinct
   repo_scope_oversized guard and wrapped lookalikes do not.
 ```
 

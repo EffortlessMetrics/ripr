@@ -821,6 +821,85 @@ mod tests {
     }
 
     #[test]
+    fn scope_guard_disclosure_delivers_only_through_the_producer_signal() -> Result<(), String> {
+        // #4325: the scope-guard warning reaches editors only through the
+        // producer-owned `delivery_eligible` stamp. The governed catalog code
+        // is an identity, not an eligibility authority: the same warning
+        // without the stamp — and any lookalike code — must stay
+        // profile-filtered and serve an empty delivered surface.
+        let uri = "file:///workspace"
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))?;
+        let scope_code = crate::lsp::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE;
+        let with_code = |code: &str, stamped: bool| tower_lsp_server::ls_types::Diagnostic {
+            range: tower_lsp_server::ls_types::Range::default(),
+            severity: Some(tower_lsp_server::ls_types::DiagnosticSeverity::WARNING),
+            code: Some(tower_lsp_server::ls_types::NumberOrString::String(
+                code.to_string(),
+            )),
+            source: Some("ripr".to_string()),
+            message: "diff_scope_oversized: bounded guard message".to_string(),
+            data: stamped.then_some(serde_json::json!({ "delivery_eligible": true })),
+            ..Default::default()
+        };
+        let delivered_for = |diagnostic: tower_lsp_server::ls_types::Diagnostic| {
+            let diagnostics = std::collections::BTreeMap::from([(uri.clone(), vec![diagnostic])]);
+            let selection = DiagnosticDeliverySelection::evaluate(
+                &diagnostics,
+                &DiagnosticBudget::default(),
+                "snapshot:s1:profile:actionable",
+                "evidence:e1",
+            );
+            let served = selection.diagnostics_for_document(uri.as_str(), &diagnostics[&uri]);
+            (selection, served)
+        };
+
+        let (stamped_selection, stamped_served) = delivered_for(with_code(scope_code, true));
+        if stamped_served.len() != 1 {
+            return Err(format!(
+                "the producer-stamped scope-guard disclosure must deliver: {stamped_served:?}"
+            ));
+        }
+        let DiagnosticDeliveryOutcome::Applied { result, .. } = &stamped_selection.outcome else {
+            return Err("expected an applied delivery selection".to_string());
+        };
+        if result.selected.len() != 1 || !result.omitted.is_empty() {
+            return Err(format!(
+                "the stamped disclosure must be the one selected item: selected={:?}, omitted={:?}",
+                result.selected, result.omitted
+            ));
+        }
+
+        for (code, label) in [
+            (scope_code, "the governed code without the producer stamp"),
+            ("ripr-scope-diff-oversized-lookalike", "a lookalike code"),
+        ] {
+            let (selection, served) = delivered_for(with_code(code, false));
+            if !served.is_empty() {
+                return Err(format!("{label} must not deliver: {served:?}"));
+            }
+            let DiagnosticDeliveryOutcome::Applied { result, .. } = &selection.outcome else {
+                return Err("expected an applied delivery selection".to_string());
+            };
+            if result.eligible_items != 0 {
+                return Err(format!("{label} must not count as eligible: {result:?}"));
+            }
+            if result.selected.len() != 1
+                && result
+                    .omitted
+                    .iter()
+                    .any(|item| item.reason != OmittedDiagnosticReason::ProfileFiltered)
+            {
+                return Err(format!(
+                    "{label} must be omitted as profile-filtered, not budget-overflowed: {:?}",
+                    result.omitted
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn selection_is_deterministic_and_uses_evidence_owned_order() -> Result<(), String> {
         let budget = DiagnosticBudget {
             max_items_per_document: 2,

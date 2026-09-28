@@ -12726,6 +12726,170 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
 }
 
 #[test]
+fn oversized_diff_warning_snapshot_prepares_commits_and_publishes() -> Result<(), String> {
+    // #4325: the production oversized-diff construction (one root-URI warning
+    // batch) must satisfy the publication invariant and survive the real
+    // prepare -> commit path, and the warning must reach editors through BOTH
+    // delivered surfaces: the push publication's batch selection and the pull
+    // report for the root URI — not merely sit in the committed snapshot.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let message = "diff_scope_oversized: 2301 changed Rust lines across 42 Rust files exceed \
+                       the 2000-line guard (RIPR_MAX_DIFF_CHANGED_RUST_LINES); split the extraction PR"
+            .to_string();
+        let mut diagnostics = super::diagnostics::oversized_diff_limited_diagnostics(
+            Path::new("/workspace"),
+            &LspAnalysisConfig::default(),
+            false,
+            message,
+        );
+        // The production caller binds the input identity before prepare; the
+        // constructor leaves it unset so the identity is bound at refresh time.
+        diagnostics.snapshot.input_identity = Some(LspAnalysisInputIdentity::from_refresh_inputs(
+            diagnostics.snapshot.root.clone(),
+            1,
+            &LspAnalysisConfig::default(),
+        ));
+        if diagnostics.snapshot.diagnostics_by_uri
+            != super::backend::diagnostics_by_uri_from_batches(&diagnostics.batches)
+        {
+            return Err(
+                "the oversized snapshot must satisfy the publication invariant by construction"
+                    .to_string(),
+            );
+        }
+
+        let transaction = backend
+            .prepare_refresh_transaction(diagnostics)
+            .ok_or_else(|| "expected the oversized warning snapshot to prepare".to_string())?;
+        let super::backend::RefreshTransaction { plan, snapshot, .. } = transaction;
+        let root_uri = super::uri::file_uri_for_path(Path::new("/workspace"))
+            .map_err(|err| format!("root URI construction failed: {err}"))?;
+        if plan.publish_batches.len() != 1 || plan.publish_batches[0].uri != root_uri {
+            return Err("expected exactly one publish batch at the root URI".to_string());
+        }
+        let publish_batch = &plan.publish_batches[0];
+        if publish_batch.diagnostics.len() != 1 {
+            return Err(format!(
+                "expected the publish batch to carry exactly one warning, got {}",
+                publish_batch.diagnostics.len()
+            ));
+        }
+        if publish_batch.diagnostics[0].code
+            != Some(tower_lsp_server::ls_types::NumberOrString::String(
+                super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+            ))
+        {
+            return Err("expected the governed scope code in the publish batch".to_string());
+        }
+
+        // Delivered push surface (#1973): the stored selection is the one
+        // membership authority push publication filters the batch through.
+        let selection = snapshot
+            .delivery_selection
+            .clone()
+            .ok_or_else(|| "expected the prepared delivery selection".to_string())?;
+        let crate::lsp::diagnostic_budget::DiagnosticDeliveryOutcome::Applied {
+            result, ..
+        } = &selection.outcome
+        else {
+            return Err("expected an applied delivery selection".to_string());
+        };
+        if result.total_canonical_items != 1
+            || result.eligible_items != 1
+            || result.selected.len() != 1
+            || !result.omitted.is_empty()
+            || result.overflowed
+        {
+            return Err(format!(
+                "the warning must be the one selected delivered item: total={}, eligible={}, selected={:?}, omitted={:?}",
+                result.total_canonical_items,
+                result.eligible_items,
+                result.selected,
+                result.omitted
+            ));
+        }
+        if result.selected[0].document != root_uri.as_str() {
+            return Err(format!(
+                "expected the warning selected at the root document, got {:?}",
+                result.selected[0].document
+            ));
+        }
+        let push_delivered =
+            selection.diagnostics_for_document(root_uri.as_str(), &publish_batch.diagnostics);
+        if push_delivered.len() != 1
+            || push_delivered[0].code != publish_batch.diagnostics[0].code
+        {
+            return Err(format!(
+                "the push selection must deliver exactly the warning, got {push_delivered:?}"
+            ));
+        }
+
+        let pending_analyzed = BTreeMap::new();
+        let pending_entered = Vec::new();
+        if backend
+            .commit_refresh_snapshot(snapshot, &plan, &pending_analyzed, &pending_entered)
+            .is_none()
+        {
+            return Err("expected the oversized warning snapshot to commit".to_string());
+        }
+
+        let committed = backend
+            .latest_analysis_snapshot()
+            .ok_or_else(|| "expected the committed snapshot".to_string())?;
+        let published = committed
+            .diagnostics_for_uri(&root_uri)
+            .ok_or_else(|| "expected the warning published at the root URI".to_string())?;
+        if published.len() != 1 {
+            return Err(format!(
+                "expected exactly one published warning, got {}",
+                published.len()
+            ));
+        }
+        if published[0].severity
+            != Some(tower_lsp_server::ls_types::DiagnosticSeverity::WARNING)
+        {
+            return Err("expected the published warning severity".to_string());
+        }
+        if !published[0].message.contains("diff_scope_oversized") {
+            return Err("expected the published guard message".to_string());
+        }
+        // Delivered pull surface (#1973): the pull report for the root URI
+        // serves exactly the stored selection's per-document set, so the
+        // warning must appear here too — profile filtering must not drop it
+        // after the snapshot committed it.
+        let served = committed.served_diagnostics_for_uri(&root_uri);
+        if served.len() != 1 {
+            return Err(format!(
+                "expected exactly one delivered warning in the pull report, got {}",
+                served.len()
+            ));
+        }
+        if served[0].severity
+            != Some(tower_lsp_server::ls_types::DiagnosticSeverity::WARNING)
+        {
+            return Err("expected the delivered warning severity".to_string());
+        }
+        if served[0].code
+            != Some(tower_lsp_server::ls_types::NumberOrString::String(
+                super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+            ))
+        {
+            return Err("expected the governed scope code delivered".to_string());
+        }
+        if !served[0].message.contains("diff_scope_oversized") {
+            return Err("expected the delivered guard message".to_string());
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn seam_evidence_is_identity_bound_and_deferred_refresh_returns_typed_stale_result()
 -> Result<(), String> {
     let runtime = tokio::runtime::Builder::new_current_thread()

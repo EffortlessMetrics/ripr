@@ -1155,8 +1155,18 @@ fn git_timeout_limited_diagnostics(
 /// derivation turns the degraded component into `limited` (no new
 /// run-status string). The diagnostic message is the guard error's first
 /// line, already bounded and carrying the actual counts and split guidance.
-/// Pure so the conversion contract is testable without an oversized diff.
-fn oversized_diff_limited_diagnostics(
+/// The warning is published through the ordinary batch channel: the batches
+/// are the authority and `diagnostics_by_uri` is derived from them, so the
+/// publication invariant checked by `prepare_refresh_transaction`
+/// (`snapshot.diagnostics_by_uri == diagnostics_by_uri_from_batches`) holds
+/// by construction (#4325). The producer also stamps the ordinary
+/// `delivery_eligible` signal on the warning (the same producer-owned stamp
+/// profile-admitted findings carry), because the delivery budget admits only
+/// explicit producer signals and fails closed on missing data — without the
+/// stamp the warning would be profile-filtered out of both the push
+/// publication and the pull report (#4325). Pure so the conversion contract
+/// is testable without an oversized diff.
+pub(super) fn oversized_diff_limited_diagnostics(
     root: &Path,
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
@@ -1169,27 +1179,40 @@ fn oversized_diff_limited_diagnostics(
         false,
         "split the diff or raise the guarded budget as the diagnostic message names",
     )];
-    let mut diagnostics_by_uri = BTreeMap::new();
-    if let Ok(root_uri) = super::uri::file_uri_for_path(root) {
-        let first_line = message.lines().next().unwrap_or(&message);
-        let bounded_message: String = first_line.chars().take(500).collect();
-        diagnostics_by_uri.insert(
-            root_uri,
-            vec![Diagnostic {
-                range: tower_lsp_server::ls_types::Range::default(),
-                severity: Some(DiagnosticSeverity::WARNING),
-                code: Some(NumberOrString::String(
-                    super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
-                )),
-                code_description: None,
-                source: Some("ripr".to_string()),
-                message: bounded_message,
-                related_information: None,
-                tags: None,
-                data: None,
-            }],
-        );
-    }
+    let batches = match super::uri::file_uri_for_path(root) {
+        Ok(root_uri) => {
+            let first_line = message.lines().next().unwrap_or(&message);
+            let bounded_message: String = first_line.chars().take(500).collect();
+            canonicalize_diagnostic_batches(vec![DiagnosticBatch {
+                uri: root_uri,
+                diagnostics: vec![Diagnostic {
+                    range: tower_lsp_server::ls_types::Range::default(),
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    code: Some(NumberOrString::String(
+                        super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+                    )),
+                    code_description: None,
+                    source: Some("ripr".to_string()),
+                    message: bounded_message,
+                    related_information: None,
+                    tags: None,
+                    // Producer authority (RIPR-SPEC-0126), same stamp as
+                    // profile-admitted findings: the delivery budget reads
+                    // this explicit signal after the gap/seam/preview
+                    // authorities and fails closed without it, so the
+                    // governed code alone admits nothing.
+                    data: Some(serde_json::json!({
+                        "delivery_eligible": true,
+                    })),
+                }],
+            }])
+        }
+        Err(_) => Vec::new(),
+    };
+    let diagnostics_by_uri = batches
+        .iter()
+        .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
+        .collect();
     let snapshot = AnalysisSnapshot {
         root: root.to_path_buf(),
         input_identity: None,
@@ -1218,10 +1241,7 @@ fn oversized_diff_limited_diagnostics(
         component_outcomes,
         out_of_scope_test_file_findings: 0,
     };
-    WorkspaceDiagnostics {
-        snapshot,
-        batches: Vec::new(),
-    }
+    WorkspaceDiagnostics { snapshot, batches }
 }
 
 /// Compute the run status from findings, gap-artifact rejections, and the
@@ -1548,8 +1568,34 @@ fn oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warnin
     if !diagnostics.snapshot.findings.is_empty() {
         return Err("an oversized diff must commit zero findings".to_string());
     }
-    if !diagnostics.batches.is_empty() {
-        return Err("an oversized diff must publish no diagnostic batches".to_string());
+    // #4325: the publication invariant checked by
+    // `prepare_refresh_transaction` must hold by construction — the snapshot
+    // map is exactly what the publish batches derive.
+    if diagnostics.snapshot.diagnostics_by_uri
+        != super::backend::diagnostics_by_uri_from_batches(&diagnostics.batches)
+    {
+        return Err(
+            "the oversized snapshot must satisfy the publication invariant by construction"
+                .to_string(),
+        );
+    }
+    if diagnostics.batches.len() != 1 {
+        return Err(format!(
+            "expected exactly one publish batch, got {}",
+            diagnostics.batches.len()
+        ));
+    }
+    let root_uri = super::uri::file_uri_for_path(Path::new("/workspace"))
+        .map_err(|err| format!("root URI construction failed: {err}"))?;
+    let batch = &diagnostics.batches[0];
+    if batch.uri != root_uri {
+        return Err("expected the publish batch anchored at the workspace root URI".to_string());
+    }
+    if batch.diagnostics.len() != 1 {
+        return Err(format!(
+            "expected exactly one diagnostic in the publish batch, got {}",
+            batch.diagnostics.len()
+        ));
     }
     if diagnostics.snapshot.diagnostics_by_uri.len() != 1 {
         return Err(format!(
@@ -1557,8 +1603,6 @@ fn oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warnin
             diagnostics.snapshot.diagnostics_by_uri.len()
         ));
     }
-    let root_uri = super::uri::file_uri_for_path(Path::new("/workspace"))
-        .map_err(|err| format!("root URI construction failed: {err}"))?;
     let Some(list) = diagnostics.snapshot.diagnostics_by_uri.get(&root_uri) else {
         return Err("expected the warning anchored at the workspace root URI".to_string());
     };
@@ -1591,6 +1635,20 @@ fn oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warnin
         return Err(format!(
             "expected the guard kind and actual counts, got {:?}",
             diagnostic.message
+        ));
+    }
+    // #4325: the producer stamps the ordinary delivery-eligibility signal so
+    // the delivery budget admits the warning; the governed code alone admits
+    // nothing (the budget fails closed on missing data).
+    if diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("delivery_eligible"))
+        != Some(&serde_json::Value::Bool(true))
+    {
+        return Err(format!(
+            "the scope-guard disclosure must carry the producer delivery signal: {:?}",
+            diagnostic.data
         ));
     }
     if diagnostics.snapshot.component_outcomes.len() != 1 {

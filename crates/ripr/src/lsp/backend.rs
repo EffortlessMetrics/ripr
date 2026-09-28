@@ -3338,7 +3338,9 @@ fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
     }
 }
 
-fn diagnostics_by_uri_from_batches(batches: &[DiagnosticBatch]) -> BTreeMap<Uri, Vec<Diagnostic>> {
+pub(super) fn diagnostics_by_uri_from_batches(
+    batches: &[DiagnosticBatch],
+) -> BTreeMap<Uri, Vec<Diagnostic>> {
     batches
         .iter()
         .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))

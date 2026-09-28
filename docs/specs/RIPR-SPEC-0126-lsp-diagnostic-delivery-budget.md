@@ -19,6 +19,13 @@ after the existing gap-ledger, classified-seam, and preview-family authorities;
 those more specific producer decisions retain precedence. Missing or false
 signals remain fail-closed.
 
+The limited-run scope-guard disclosure (#4325) carries the same producer-owned
+signal: the `ripr-scope-diff-oversized` workspace warning is delivered because
+its producer stamps `data.delivery_eligible: true`, not because of its code.
+The governed code is an identity, not an eligibility authority, so the same
+warning without the stamp — and any lookalike code — stays fail-closed and is
+recorded as `profile_filtered`.
+
 The selector receives:
 
 - a stable canonical identity;
@@ -111,6 +118,9 @@ them.
 - Profile-filtered items never consume an item or byte budget.
 - A profile-admitted ordinary finding is eligible only through the explicit
   producer-owned `delivery_eligible` signal.
+- The scope-guard disclosure warning (RIPR-SPEC-0141) is eligible only through
+  the same explicit producer-owned `delivery_eligible` signal; its catalog code
+  alone admits nothing.
 - Existing gap-ledger, classified-seam, and preview eligibility signals take
   precedence over the ordinary-finding signal.
 - Overflow is machine-readable and cannot be presented as a complete inventory.
@@ -153,7 +163,9 @@ and produces the same result for equivalent input orderings.
 The pure fixtures live in
 `crates/ripr/src/lsp/diagnostic_budget.rs::tests` and cover deterministic
 ordering, document/workspace/byte limits, oversized detail, profile filtering,
-and invalid budgets.
+the scope-guard producer-signal boundary, and invalid budgets. The delivered
+push and pull surfaces for the scope-guard warning are covered by
+`crates/ripr/src/lsp/tests.rs::oversized_diff_warning_snapshot_prepares_commits_and_publishes`.
 
 ## Implementation Mapping
 
