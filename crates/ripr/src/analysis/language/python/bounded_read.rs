@@ -449,11 +449,13 @@ mod tests {
             regular.err()
         );
         // A symlink must not be followed even when the pre-open path check
-        // raced (review: nonblocking, no-follow open flags).
-        let link_target = dir.0.join("real.py");
-        let link = dir.0.join("linked.py");
+        // raced (review: nonblocking, no-follow open flags). The symlink
+        // scenario is unix-only, so its bindings live inside the cfg block
+        // and do not trip unused-variable clippy on Windows hosts.
         #[cfg(unix)]
         {
+            let link_target = dir.0.join("real.py");
+            let link = dir.0.join("linked.py");
             let created = std::os::unix::fs::symlink(&link_target, &link);
             assert!(created.is_ok(), "create symlink: {:?}", created.err());
             let outcome = open_source_read_no_follow(&link);
@@ -466,7 +468,6 @@ mod tests {
                 err.reason()
             );
         }
-        let _ = link_target;
         Ok(())
     }
 
