@@ -1733,3 +1733,201 @@ fn assert_lsp_refresh_names_the_windows_path_limit(root: &Path) -> Result<(), St
     }
     exit_and_wait(&mut session)
 }
+
+// ── Startup disclosure of a blocked workspace root ──
+//
+// tower-lsp-server drops custom notifications while `initialize` runs, so a
+// root that blocks analysis must be disclosed from `initialized`. A generic
+// editor (no `riprEditor` block) sees nothing else: no diagnostics, and hover
+// falls back to generic text.
+
+/// Collects server notifications until `done` holds for the collected set,
+/// then keeps reading for `settle` so a negative assertion also sees any
+/// message the same handler sends right after the awaited one.
+fn collect_notifications(
+    session: &mut LspSession,
+    done: impl Fn(&[serde_json::Value]) -> bool,
+    settle: Duration,
+) -> Result<Vec<serde_json::Value>, String> {
+    let deadline = Instant::now() + RESPONSE_TIMEOUT;
+    let mut notifications = Vec::new();
+    while !done(&notifications) {
+        let message = session.await_message(deadline, "startup notifications")?;
+        if message.get("method").is_some() && message.get("id").is_none() {
+            notifications.push(message);
+        }
+    }
+    let settle_deadline = Instant::now() + settle;
+    while let Ok(message) = session.await_message(settle_deadline, "settle window") {
+        if message.get("method").is_some() && message.get("id").is_none() {
+            notifications.push(message);
+        }
+    }
+    Ok(notifications)
+}
+
+const STARTUP_SETTLE: Duration = Duration::from_secs(2);
+
+fn messages_of<'a>(notifications: &'a [serde_json::Value], method: &str) -> Vec<&'a str> {
+    notifications
+        .iter()
+        .filter(|message| message.get("method").and_then(serde_json::Value::as_str) == Some(method))
+        .filter_map(|message| {
+            message
+                .pointer("/params/message")
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect()
+}
+
+fn startup_root_states(notifications: &[serde_json::Value]) -> Vec<&str> {
+    notifications
+        .iter()
+        .filter(|message| {
+            message.get("method").and_then(serde_json::Value::as_str) == Some("ripr/analysisStatus")
+        })
+        .filter_map(|message| {
+            message
+                .pointer("/params/root_state")
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect()
+}
+
+fn initialize_with(
+    session: &mut LspSession,
+    params: serde_json::Value,
+    done: impl Fn(&[serde_json::Value]) -> bool,
+) -> Result<Vec<serde_json::Value>, String> {
+    let response = session.request("initialize", params)?;
+    expect_result(&response, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+    collect_notifications(session, done, STARTUP_SETTLE)
+}
+
+#[test]
+fn two_workspace_folders_warn_a_generic_client_at_startup() -> Result<(), String> {
+    let first = unique_compat_fixture_root("ambiguous-a")?;
+    let second = unique_compat_fixture_root("ambiguous-b")?;
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        serde_json::json!({
+            "processId": null,
+            "rootUri": compat_file_uri(&first.path)?,
+            "workspaceFolders": [
+                {"uri": compat_file_uri(&first.path)?, "name": "a"},
+                {"uri": compat_file_uri(&second.path)?, "name": "b"},
+            ],
+            "capabilities": {},
+        }),
+        |seen: &[serde_json::Value]| !messages_of(seen, "window/showMessage").is_empty(),
+    )?;
+    let shown = messages_of(&notifications, "window/showMessage");
+    if shown.len() != 1 || !shown[0].contains("workspace_ambiguous") {
+        return Err(format!(
+            "expected one workspace_ambiguous window/showMessage, got: {notifications:?}"
+        ));
+    }
+    let second_name = second.path.display().to_string();
+    if !shown[0].contains(&second_name) {
+        return Err(format!("warning must name the folders, got: {}", shown[0]));
+    }
+    if !messages_of(&notifications, "window/logMessage")
+        .iter()
+        .any(|message| message.contains("workspace_ambiguous"))
+    {
+        return Err(format!(
+            "expected the warning in the log too, got: {notifications:?}"
+        ));
+    }
+    if !startup_root_states(&notifications).contains(&"workspace_ambiguous") {
+        return Err(format!(
+            "expected a ripr/analysisStatus with root_state workspace_ambiguous, got: {notifications:?}"
+        ));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn missing_workspace_root_warns_a_generic_client_at_startup() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        initialize_params(),
+        |seen: &[serde_json::Value]| !messages_of(seen, "window/showMessage").is_empty(),
+    )?;
+    let shown = messages_of(&notifications, "window/showMessage");
+    if shown.len() != 1 || !shown[0].contains("root_unavailable") {
+        return Err(format!(
+            "expected one root_unavailable window/showMessage, got: {notifications:?}"
+        ));
+    }
+    if !startup_root_states(&notifications).contains(&"root_unavailable") {
+        return Err(format!(
+            "expected a ripr/analysisStatus with root_state root_unavailable, got: {notifications:?}"
+        ));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn ripr_editor_client_gets_the_blocked_root_in_the_log_only() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        serde_json::json!({
+            "processId": null,
+            "rootUri": null,
+            "capabilities": {"experimental": {"riprEditor": {"version": "0.1", "commands": []}}},
+        }),
+        |seen: &[serde_json::Value]| {
+            messages_of(seen, "window/logMessage")
+                .iter()
+                .any(|message| message.contains("root_unavailable"))
+        },
+    )?;
+    if !messages_of(&notifications, "window/showMessage").is_empty() {
+        return Err(format!(
+            "the riprEditor integration renders root state itself; no showMessage expected, got: {notifications:?}"
+        ));
+    }
+    if !messages_of(&notifications, "window/logMessage")
+        .iter()
+        .any(|message| message.contains("root_unavailable"))
+    {
+        return Err(format!("expected the log warning, got: {notifications:?}"));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
+}
+
+#[test]
+fn single_workspace_root_starts_without_a_root_warning() -> Result<(), String> {
+    let root = unique_compat_fixture_root("single-root")?;
+    let mut session = LspSession::spawn()?;
+    let notifications = initialize_with(
+        &mut session,
+        serde_json::json!({
+            "processId": null,
+            "rootUri": compat_file_uri(&root.path)?,
+            "workspaceFolders": [{"uri": compat_file_uri(&root.path)?, "name": "only"}],
+            "capabilities": {},
+        }),
+        |seen: &[serde_json::Value]| startup_root_states(seen).contains(&"selected_single_root"),
+    )?;
+    if !messages_of(&notifications, "window/showMessage").is_empty() {
+        return Err(format!(
+            "a single root must not warn, got: {notifications:?}"
+        ));
+    }
+    if !startup_root_states(&notifications).contains(&"selected_single_root") {
+        return Err(format!(
+            "expected the startup ripr/analysisStatus for the selected root, got: {notifications:?}"
+        ));
+    }
+    session.request("shutdown", serde_json::Value::Null)?;
+    exit_and_wait(&mut session)
+}

@@ -20,10 +20,14 @@ use tower_lsp_server::ls_types::{
 };
 
 pub(super) fn hover_response() -> Hover {
+    markdown_hover(HOVER_TEXT.to_string())
+}
+
+pub(super) fn markdown_hover(value: String) -> Hover {
     Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
-            value: HOVER_TEXT.to_string(),
+            value,
         }),
         range: None,
     }

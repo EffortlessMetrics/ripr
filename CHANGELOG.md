@@ -11,6 +11,24 @@ are scoped or reviewed.
 
 ### Fixed
 
+- LSP: opening a second repository in the same Helix session no longer stops
+  ripr for the first. Helix adds the new repository as a workspace folder to
+  the running server, which made the folder set ambiguous and stopped
+  analysis for both. Editors without the VS Code integration now keep the
+  root they started with, are told which folder is not analyzed, and hover
+  on a file from that folder says it is outside the analyzed root. The VS
+  Code extension keeps its folder-picker behavior.
+- LSP: an editor that opens two workspace folders, or none, now hears why
+  ripr is silent. Before, the server stopped analysis and sent nothing: the
+  startup `ripr/analysisStatus` was dropped because the transport discards
+  custom notifications during `initialize`, and hover showed the generic
+  `ripr check` pointer. The server now publishes the startup status from
+  `initialized`, logs a warning naming the root state and folders, and shows
+  it with `window/showMessage` to clients without the VS Code integration,
+  at startup and when a later folder change stops analysis. Hover names the
+  blocked root, a file outside the analyzed root, an edited buffer whose
+  evidence is paused until the file is saved, or a file no refresh has
+  analyzed yet.
 - `ripr review-comments` no longer times out on a large diff. It evaluates
   seams on changed lines and in changed owner functions first, and skips the
   rest of the scope when those already fill the ten review slots; a warning
