@@ -85,6 +85,68 @@ The design-only assurance envelope keeps `implementation_state`,
 `non_claims` as independent axes, so a static comparison can never be read as
 an executed test or a runtime mutation outcome.
 
+## Release producer-corpus sweep
+
+The registered contracts validate one chosen subject per row. The release sweep
+validates every committed producer document instead, so a qualification run does
+not depend on which subjects someone remembered to register (#3919, #3920):
+
+```bash
+cargo xtask schema-producer-sweep [--rev REV] \
+  [--artifact SCHEMA[#POINTER]=FILE[#POINTER]]...
+```
+
+Every schema and document it validates is read from one commit (`--rev`,
+default `HEAD`) through `git archive`, never from the working tree, so
+uncommitted edits and untracked files such as live artifacts cannot change the
+result. It uses the same validator as the registered contracts and writes
+`target/ripr/reports/schema-producer-sweep.json`: per schema row, the schema
+digest, discovered and validated producer counts, edge fixtures, excluded
+stimulus, live artifacts, every subject's byte digest, the commit, and a `rows_sha256` digest over all
+rows. The binding table in `xtask/src/schema_producer_sweep.rs` is the reviewed
+rule for which bytes count:
+
+- **Corpus rows** bind by file name or path (`check.json`, `gate-decision.json`,
+  the committed badge endpoints, the trust corpus) or, for the command-spec
+  subschemas, every `command_specs` entry in any committed document. Binding by
+  name rather than shape means a producer that drops a required field fails its
+  own golden instead of falling out of the sweep. A row that binds nothing fails.
+- **Excluded stimulus** is a path prefix with a stated reason, such as the
+  evidence-promotion `source_report` inputs. A document outside every binding
+  that still carries a schema's `const` discriminators and required fields fails
+  as an unbound lookalike until it is bound or excluded.
+- **Runtime-only rows** (`pr-evidence`, `review-comments`, `repair-attempt`,
+  the `execution_result` subschema) have no committed producer bytes. They report
+  `not_run` unless live artifacts are passed with `--artifact`.
+- **Exempt rows** are the reserved envelopes and the capability schema, whose
+  narrower authorities are named in the audit table above.
+
+Hand-written edge fixtures are counted apart from producer bytes, so they can
+never be a row's only subjects.
+
+The sweep is release-only. It is not a required check; replacing the required
+gate's subject selection is #3919, deferred past the 0.11 cut. Unit tests pin
+the sweep's own failure modes and that its binding table names exactly the
+published inventory.
+
+To feed the runtime-only rows on a candidate, run the producers in a scratch Git
+repository with one committed behavior change (for example
+`fixtures/boundary_gap/input` with `diff.patch` applied as the head commit) and
+pass the outputs:
+
+```bash
+ripr pr-evidence --base "$BASE" --head "$HEAD"
+ripr review-comments --base "$BASE" --head "$HEAD" --out rc.json
+cargo xtask schema-producer-sweep \
+  --artifact schemas/ripr/pr-evidence.schema.json=target/ripr/pr/repo-exposure.json \
+  --artifact schemas/ripr/review-comments.schema.json=rc.json
+```
+
+`repair-attempt` manifests come from `ripr agent repair --phase before|after`
+(`target/ripr/repair-attempts/<id>/attempt.json`), and `execution_result` from
+`ripr agent verify-execute --result-json FILE`, passed as
+`schemas/ripr/repair-assurance.schema.json#/$defs/execution_result=FILE#/result`.
+
 ## The inventory this table covers
 
 `cargo xtask check-verification-contracts --check` reads every

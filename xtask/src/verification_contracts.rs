@@ -929,7 +929,7 @@ fn validate_schema_document(path: &str, schema: &Value, violations: &mut Vec<Str
     }
 }
 
-fn validate_value_against_schema(
+pub(crate) fn validate_value_against_schema(
     value: &Value,
     schema: &Value,
     root_schema: &Value,

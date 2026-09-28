@@ -148,6 +148,7 @@ cargo xtask route-quality [--attempt-ledger <path>]
 cargo xtask rust-conversion-candidates
 cargo xtask rust-repair-trust-report
 cargo xtask sarif-policy --current <path> [--baseline <path>]
+cargo xtask schema-producer-sweep [--rev REV] [--artifact SCHEMA[#POINTER]=FILE[#POINTER]]...
 cargo xtask shape
 cargo xtask specs next
 cargo xtask suggested-fixes
