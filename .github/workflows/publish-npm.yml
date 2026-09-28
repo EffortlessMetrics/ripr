@@ -1,0 +1,49 @@
+name: npm publisher contract
+
+# Trusted-publisher identity planned for the future npm package family:
+#
+#   owner:       EffortlessMetrics
+#   repository:  ripr
+#   workflow:    publish-npm.yml
+#   environment: npm
+#
+# This bootstrap workflow intentionally cannot publish or stage packages. It has
+# no OIDC permission, package build, npm setup or registry write. Complete
+# #1781, qualify the exact tarball set, and obtain explicit release authorization
+# under #1784 before enabling any external write.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publisher-contract:
+    name: Validate npm publisher tuple (no publish)
+    if: ${{ github.repository == 'EffortlessMetrics/ripr' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+    steps:
+      - name: Record trusted-publisher contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## npm trusted-publisher contract"
+            echo
+            echo "- Launcher: \`@effortlessmetrics/ripr\`"
+            echo "- Native packages: five target-specific packages from ripr-swarm#4488"
+            echo "- GitHub owner: \`EffortlessMetrics\`"
+            echo "- Repository: \`ripr\`"
+            echo "- Workflow: \`publish-npm.yml\`"
+            echo "- Environment: \`npm\`"
+            echo "- Staging enabled: **no**"
+            echo "- Direct publication enabled: **no**"
+            echo
+            echo "This workflow deliberately has no \`id-token: write\` permission,"
+            echo "Node/npm setup, package retrieval, \`npm stage publish\`, or"
+            echo "\`npm publish\` step. Complete #1781 and obtain exact-artifact"
+            echo "authorization under #1784 before enabling registry writes."
+          } >> "$GITHUB_STEP_SUMMARY"
