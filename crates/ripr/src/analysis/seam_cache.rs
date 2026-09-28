@@ -85,6 +85,9 @@ cache_layers! {
     CompactClassifiedSeamsSharded => "repo-compact-classified-seams-sharded",
     CorpusFingerprint => "repo-corpus-fingerprint",
     FileFacts => "repo-file-facts",
+    // Test-only producer: `RepoSeamCountCache` is constructed only under
+    // `#[cfg(test)]`. It stays registered so `cache clear` still removes
+    // count caches left by earlier builds and test runs.
     SeamCounts => "repo-seam-counts",
 }
 
@@ -3074,6 +3077,36 @@ mod tests {
             "duplicate layer name"
         );
         Ok(())
+    }
+
+    /// xtask's cache report recognizes shard sets by the `-sharded` suffix
+    /// on the layer name, so the registry must keep that suffix bound to
+    /// exactly the sharded half of each classified family.
+    #[test]
+    fn sharded_layers_carry_the_suffix_cache_maintenance_reads() {
+        let families = [
+            ClassifiedCacheFamily::SeamFacts,
+            ClassifiedCacheFamily::CompactClassifiedSeams,
+        ];
+        let mut sharded = BTreeSet::new();
+        for family in families {
+            let (layer, sharded_layer) = family.layers();
+            assert_eq!(
+                sharded_layer.name(),
+                format!("{}-sharded", layer.name()),
+                "sharded layer must be its family name plus `-sharded`"
+            );
+            sharded.insert(sharded_layer.name());
+        }
+        let suffixed: BTreeSet<_> = cache_layer_names()
+            .iter()
+            .copied()
+            .filter(|name| name.ends_with("-sharded"))
+            .collect();
+        assert_eq!(
+            suffixed, sharded,
+            "only sharded layers may carry the `-sharded` suffix"
+        );
     }
 
     #[test]

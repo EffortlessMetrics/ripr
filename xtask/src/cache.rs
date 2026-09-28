@@ -1090,8 +1090,9 @@ mod tests {
     use super::{
         GcOptions, ShardSetStatus, build_cache_report, build_cache_report_from_env, build_gc_plan,
         build_gc_plan_from_env, cache_gc_markdown, cache_report_json, cache_report_markdown,
-        cache_root_from_env, deletion_path, parse_gc_options,
+        cache_root_from_env, deletion_path, is_recognized_cache_root, parse_gc_options,
     };
+    use ripr::analysis::cache_layer_names;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -1433,6 +1434,31 @@ mod tests {
             traversal.is_err(),
             "parent-directory RIPR_CACHE_DIR must be refused before any delete: {traversal:?}"
         );
+    }
+
+    /// A relocated root holding any single producer layer is recognized, and
+    /// the same directory without layers is not. Driven by the product
+    /// registry, so a layer the reporter stops deriving goes red here.
+    #[test]
+    fn relocated_root_recognizes_each_producer_layer() -> Result<(), String> {
+        let root = temp_root("registry-layers")?;
+        let mut unrecognized = Vec::new();
+        for &layer in cache_layer_names() {
+            let path = root.join(layer);
+            fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+            if !is_recognized_cache_root(&root) {
+                unrecognized.push(layer);
+            }
+            fs::remove_dir(&path).map_err(|error| error.to_string())?;
+        }
+        let empty_recognized = is_recognized_cache_root(&root);
+        cleanup(root)?;
+        assert!(
+            unrecognized.is_empty(),
+            "relocated root not recognized for {unrecognized:?}"
+        );
+        assert!(!empty_recognized, "empty relocated root was recognized");
+        Ok(())
     }
 
     #[test]
