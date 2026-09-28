@@ -194,6 +194,8 @@ problem and the two remediation paths.
 - `crates/ripr/src/analysis/diff/load.rs::tests::load_diff_from_file_returns_content`
 - `crates/ripr/tests/cli_smoke.rs::history_commands_resolve_the_default_base_without_origin`
 - `crates/ripr/tests/cli_smoke.rs::history_commands_without_a_resolvable_default_base_fail_named`
+- `crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_recovers_without_a_resolvable_base`
+- `crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base`
 
 ## Implementation Mapping
 

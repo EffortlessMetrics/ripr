@@ -221,9 +221,12 @@ from reading `--base` or `--diff` as a size bound for repo-scoped formats.
 create one. If the expected packet is missing, the error names validate-only
 mode, prints the missing path, and shows a create-and-validate command using
 the same root, head, check-output, out-dir, and explicit base and gap-ledger
-inputs where present. An omitted `--base` stays omitted from that command, and
-the recovery is printed before an omitted base is resolved, so a checkout with
-no resolvable default branch still gets it (#4285).
+inputs where present. The recovery is printed before an omitted base is
+resolved, so a checkout with no resolvable default branch still gets it
+(#4285). An omitted `--base` stays omitted when the default branch resolves,
+because the write run resolves it the same way; when nothing resolves, the
+command carries `--base <ref>` followed by the resolution error, so the
+suggested write cannot fail on the same missing base.
 
 ## Non-Claims
 
@@ -288,6 +291,10 @@ no resolvable default branch still gets it (#4285).
 - `crates/ripr/src/cli/commands.rs::tests::diff_json_with_base_does_not_emit_repo_scope_warning`
 - `crates/ripr/src/output/first_pr.rs::tests::first_pr_check_missing_packet_error_explains_validate_only_mode`
 - `crates/ripr/src/output/first_pr.rs::tests::first_pr_write_command_preserves_explicit_gap_ledger_only`
+- `crates/ripr/src/output/first_pr.rs::tests::first_pr_write_command_renders_only_an_explicit_base`
+- `crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_suggests_rooted_out_dir`
+- `crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_recovers_without_a_resolvable_base`
+- `crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base`
 - `cargo xtask goldens check`
 
 ## Implementation Mapping

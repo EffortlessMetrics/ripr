@@ -1108,6 +1108,15 @@ are scoped or reviewed.
   line, which stays byte-identical
   ([#3870](https://github.com/EffortlessMetrics/ripr-swarm/issues/3870)).
 
+- `ripr first-pr --check` without a start-here packet in a checkout where
+  no default base resolves (a detached HEAD with no branches, as in some CI
+  checkouts) now prints a recovery command that requires `--base <ref>` and
+  names the resolution error, instead of a write command that fails on the
+  same missing base. When a default base resolves, the recovery still omits
+  `--base`
+  ([#4285](https://github.com/EffortlessMetrics/ripr-swarm/issues/4285),
+  [#4290](https://github.com/EffortlessMetrics/ripr-swarm/pull/4290)).
+
 ### Docs
 
 - `docs/REPAIR_ATTEMPT.md` and `docs/COMMAND_HIERARCHY.md` now document
