@@ -720,7 +720,62 @@ pub(crate) fn doctor_tool_check_isolated(tool: &str) -> (DoctorStatus, String) {
 }
 
 fn doctor_tool_command(tool: &str) -> std::process::Command {
-    std::process::Command::new(tool)
+    // Windows: std's program lookup for a bare `pnpm` only resolves
+    // `pnpm.exe` on PATH, so a tool installed as a batch shim (npm/corepack
+    // install `pnpm.cmd` and `yarn.cmd`) would be misreported as not
+    // installed. When no `.exe` exists, run the resolved shim by full path;
+    // std launches `.cmd`/`.bat` through cmd.exe with its batch-argument
+    // escaping. Other platforms keep the plain tool name unchanged.
+    let mut program = std::ffi::OsString::from(tool);
+    if cfg!(windows) {
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        let pathext = std::env::var("PATHEXT").ok();
+        let dirs: Vec<std::path::PathBuf> = std::env::split_paths(&path).collect();
+        if let Some(shim) =
+            resolve_windows_batch_shim(tool, &dirs, pathext.as_deref(), &|p| p.is_file())
+        {
+            // A relative PATH entry was checked against this process's
+            // directory; pin that before a probe moves the child's cwd.
+            program = std::path::absolute(&shim).unwrap_or(shim).into_os_string();
+        }
+    }
+    std::process::Command::new(program)
+}
+
+/// Resolve a Windows batch shim (`<tool>.cmd`/`<tool>.bat`) on PATH for a bare
+/// tool name that has no `<tool>.exe` anywhere on PATH. Returns `None` when the
+/// native lookup should be used: the name already carries a path or
+/// extension, a `.exe` exists (it wins, matching `Command`'s own lookup), or no
+/// shim exists. Pure over its inputs so the policy is testable on any host.
+fn resolve_windows_batch_shim(
+    tool: &str,
+    path_dirs: &[std::path::PathBuf],
+    pathext: Option<&str>,
+    is_file: &dyn Fn(&Path) -> bool,
+) -> Option<std::path::PathBuf> {
+    if tool.is_empty() || tool.contains(['/', '\\', '.']) {
+        return None;
+    }
+    if path_dirs
+        .iter()
+        .any(|dir| is_file(&dir.join(format!("{tool}.exe"))))
+    {
+        return None;
+    }
+    // Only batch extensions, in PATHEXT order; PATHEXT's other entries
+    // (`.com`, `.vbs`, `.js`, ...) are not run by the doctor.
+    let batch_exts: Vec<String> = pathext
+        .unwrap_or(".COM;.EXE;.BAT;.CMD")
+        .split(';')
+        .map(str::to_ascii_lowercase)
+        .filter(|ext| ext == ".cmd" || ext == ".bat")
+        .collect();
+    path_dirs.iter().find_map(|dir| {
+        batch_exts
+            .iter()
+            .map(|ext| dir.join(format!("{tool}{ext}")))
+            .find(|candidate| is_file(candidate))
+    })
 }
 
 pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
@@ -1060,6 +1115,76 @@ mod tests {
         } else {
             Err(failures.join("\n"))
         }
+    }
+
+    fn shim_dirs() -> Vec<std::path::PathBuf> {
+        vec![
+            std::path::PathBuf::from("first-bin"),
+            std::path::PathBuf::from("npm-global"),
+        ]
+    }
+
+    #[test]
+    fn windows_shim_resolves_cmd_when_no_exe_exists() {
+        let dirs = shim_dirs();
+        let shim = dirs[1].join("pnpm.cmd");
+        let resolved =
+            resolve_windows_batch_shim("pnpm", &dirs, Some(".COM;.EXE;.BAT;.CMD"), &|p| {
+                p == shim.as_path()
+            });
+        assert_eq!(resolved, Some(shim.clone()));
+        // PATHEXT absent falls back to the Windows default list.
+        assert_eq!(
+            resolve_windows_batch_shim("pnpm", &dirs, None, &|p| p == shim.as_path()),
+            Some(shim)
+        );
+    }
+
+    #[test]
+    fn windows_shim_defers_to_exe_anywhere_on_path() {
+        let dirs = shim_dirs();
+        let cmd = dirs[0].join("yarn.cmd");
+        let exe = dirs[1].join("yarn.exe");
+        let resolved = resolve_windows_batch_shim("yarn", &dirs, Some(".EXE;.CMD"), &|p| {
+            p == cmd.as_path() || p == exe.as_path()
+        });
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn windows_shim_absent_stays_unresolved() {
+        let dirs = shim_dirs();
+        assert_eq!(
+            resolve_windows_batch_shim("pnpm", &dirs, Some(".EXE;.CMD"), &|_| false),
+            None
+        );
+        // A non-batch PATHEXT match is not run as a shim.
+        let js = dirs[0].join("pnpm.js");
+        assert_eq!(
+            resolve_windows_batch_shim("pnpm", &dirs, Some(".JS;.EXE"), &|p| p == js.as_path()),
+            None
+        );
+        // Names that already carry a path or extension use native lookup.
+        assert_eq!(
+            resolve_windows_batch_shim(r"npm-global\pnpm", &dirs, None, &|_| true),
+            None
+        );
+    }
+
+    #[test]
+    fn windows_shim_honours_pathext_order_within_a_directory() {
+        let dirs = shim_dirs();
+        let bat = dirs[0].join("yarn.bat");
+        let cmd = dirs[0].join("yarn.cmd");
+        let exists = |p: &Path| p == bat.as_path() || p == cmd.as_path();
+        assert_eq!(
+            resolve_windows_batch_shim("yarn", &dirs, Some(".EXE;.CMD;.BAT"), &exists),
+            Some(cmd.clone())
+        );
+        assert_eq!(
+            resolve_windows_batch_shim("yarn", &dirs, Some(".EXE;.BAT;.CMD"), &exists),
+            Some(bat)
+        );
     }
 
     #[test]

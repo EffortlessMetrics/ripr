@@ -6,10 +6,19 @@ export interface RiprPlatform {
 }
 
 export function currentRiprPlatform(): RiprPlatform | undefined {
-  const platform = process.platform;
-  const arch = process.arch;
+  return riprPlatformFor(process.platform, process.arch);
+}
 
-  if (platform === 'win32' && arch === 'x64') {
+/**
+ * Pure mapping from a Node `(platform, arch)` pair to the published release
+ * target. Kept separate from `process` so the mapping is unit-testable on any
+ * host.
+ */
+export function riprPlatformFor(platform: string, arch: string): RiprPlatform | undefined {
+  // Windows on ARM64 has no native release target. Windows 11 on ARM runs
+  // x64 binaries through built-in emulation, so the x64 MSVC artifact is the
+  // working managed-server download there rather than offering none.
+  if (platform === 'win32' && (arch === 'x64' || arch === 'arm64')) {
     return {
       target: 'x86_64-pc-windows-msvc',
       executableName: 'ripr.exe',

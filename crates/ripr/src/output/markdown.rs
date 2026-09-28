@@ -56,6 +56,28 @@ pub(crate) fn powershell_form(command: &str) -> PowershellForm {
     }
 }
 
+/// Statement that makes PowerShell decode the captured producer stdout as
+/// UTF-8. PowerShell decodes native stdout with `[Console]::OutputEncoding`,
+/// which is the OEM code page (437, 850, ...) in Windows PowerShell 5.1 and
+/// in pwsh without the UTF-8 system locale, so a non-ASCII byte such as the
+/// `—` in check JSON was re-encoded as `ΓÇö` before the BOM-free write and
+/// broke `agent verify` content commitments. The setter fails without an
+/// attached console; the `catch` keeps the command running in that case,
+/// where there is also no console code page to misdecode through.
+const POWERSHELL_UTF8_STDOUT: &str =
+    "try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; ";
+
+/// Saves the session's console encoding before [`POWERSHELL_UTF8_STDOUT`]
+/// so the capture can restore it: the setting is process-wide, and a pasted
+/// line must not leave later native tools in a long-lived session decoding
+/// their OEM output as UTF-8.
+const POWERSHELL_SAVE_ENCODING: &str = "$riprEncoding = [Console]::OutputEncoding; ";
+
+/// Restores the saved encoding in a `finally`, so a throwing capture
+/// restores it too.
+const POWERSHELL_RESTORE_ENCODING: &str =
+    " finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }";
+
 /// Translate a bash-rendered advisory command into its PowerShell form.
 ///
 /// The bash string stays authoritative (`agent::loop_commands::shell_arg`
@@ -99,6 +121,11 @@ pub(crate) fn powershell_form(command: &str) -> PowershellForm {
 ///   commitment was computed over; the write then preserves them with
 ///   BOM-free UTF-8. A producer emitting raw CR bytes would need a
 ///   different transport — none exists on main.
+/// - Capture decodes stdout as UTF-8 ([`POWERSHELL_UTF8_STDOUT`]), and the
+///   write target resolves against the PowerShell location: .NET resolves a
+///   relative path against the process directory, which `Set-Location` does
+///   not move, so `cd repo` followed by the pasted line wrote the artifact
+///   into the directory PowerShell started in.
 ///
 /// cmd.exe has no translation: it has no quoting form that keeps an argv token
 /// literal, so a generated command is deliberately not offered for it. This
@@ -126,7 +153,7 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
         }
         let output = powershell_literal(target);
         return Some(format!(
-            "$ripr = (({invocation}) | Out-String); if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText({output}, $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
+            "{POWERSHELL_SAVE_ENCODING}{POWERSHELL_UTF8_STDOUT}try {{ $ripr = (({invocation}) | Out-String) }}{POWERSHELL_RESTORE_ENCODING}; if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath({output}), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
         ));
     }
     Some(invoke_quoted_program(&command))
@@ -353,7 +380,7 @@ mod tests {
         );
         assert_eq!(
             powershell_command("ripr check --root 'café' > 'résumé.json'"),
-            Some("$ripr = ((ripr check --root 'café') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root 'café') | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('résumé.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -373,7 +400,7 @@ mod tests {
     fn powershell_command_finds_real_redirect_after_double_quoted_argument() {
         assert_eq!(
             powershell_command("ripr check --root \"café > owner's repo\" > 'résumé.json'"),
-            Some("$ripr = ((ripr check --root \"café > owner's repo\") | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root \"café > owner's repo\") | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('résumé.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -381,7 +408,7 @@ mod tests {
     fn powershell_command_keeps_double_quote_literal_inside_single_quotes() {
         assert_eq!(
             powershell_command("cargo test 'a \" > b' > evidence.txt"),
-            Some("$ripr = ((cargo test 'a \" > b') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('evidence.txt', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((cargo test 'a \" > b') | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('evidence.txt'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -433,7 +460,7 @@ mod tests {
         );
         assert_eq!(
             powershell_command("'my tools\\recorder.exe' --gap > 'out\\after.json'"),
-            Some("$ripr = ((& 'my tools\\recorder.exe' --gap) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('out\\after.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((& 'my tools\\recorder.exe' --gap) | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('out\\after.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
         assert_eq!(
             powershell_command("cargo test --gap"),
@@ -458,7 +485,7 @@ mod tests {
             powershell_command(
                 "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
             ),
-            Some("$ripr = ((ripr check --root . --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/pilot/after.repo-exposure.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root . --mode draft --format repo-exposure-json) | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('target/ripr/pilot/after.repo-exposure.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -473,7 +500,7 @@ mod tests {
         assert_eq!(powershell_command("ripr check --root . > it's.json"), None);
         assert_eq!(
             powershell_command("ripr check --root . > 'it'\\''s.json'"),
-            Some("$ripr = ((ripr check --root .) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('it''s.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root .) | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('it''s.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -542,7 +569,7 @@ mod tests {
         // branch throws with the invocation's exit status instead of exiting.
         assert!(
             line.contains(
-                "if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/agent-packet.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) }"
+                "if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('target/ripr/workflow/agent-packet.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) }"
             ),
             "write must be guarded by the success branch:\n{line}"
         );
@@ -665,7 +692,7 @@ mod tests {
     fn powershell_command_keeps_redirect_after_quoted_newline() {
         assert_eq!(
             powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'"),
-            Some("$ripr = ((ripr check --root 'café\nrepo') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root 'café\nrepo') | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('résumé.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -693,7 +720,7 @@ fn main() -> ExitCode {
             fs::write(&record, &out).unwrap();
         }
     }
-    println!("RECORDER_OK");
+    println!("RECORDER_OK café —");
     let code: u8 = env::var("RIPR_EXIT_CODE")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -701,6 +728,11 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 "#;
+
+    /// Exact stdout of [`NATIVE_PROOF_RECORDER`]: UTF-8 with non-ASCII text,
+    /// LF-terminated as `println!` writes it.
+    #[cfg(windows)]
+    const RECORDER_STDOUT: &[u8] = "RECORDER_OK café —\n".as_bytes();
 
     /// Removes a native-proof root when the case ends, pass or fail, so
     /// repeated runs do not accumulate compiled recorders under the temp dir.
@@ -902,10 +934,100 @@ fn main() -> ExitCode {
         }
         // Byte-exact: `Out-String` ends the captured line with CRLF, so this
         // fails if the `.Replace` LF normalization is dropped or altered.
-        if artifact_bytes != b"RECORDER_OK\n" {
+        if artifact_bytes != RECORDER_STDOUT {
             return Err(format!(
-                "artifact bytes {artifact_bytes:?} are not exactly RECORDER_OK LF"
+                "artifact bytes {artifact_bytes:?} are not exactly the recorder's UTF-8 stdout"
             ));
+        }
+
+        // Encoding control: under the OEM console code page Windows
+        // PowerShell 5.1 defaults to, the non-ASCII stdout bytes still reach
+        // the artifact unchanged. The same line without the UTF-8 capture
+        // statement must garble them, which proves this instrument can see
+        // the misdecode rather than passing on a UTF-8 host.
+        let oem = "[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(437); ";
+        // The trailing probe prints the session's encoding after the line,
+        // so the capture must also have restored code page 437.
+        let probe = "; [Console]::OutputEncoding.CodePage";
+        let oem_output = run_pwsh_line(
+            &format!("{oem}{redirect_line}{probe}"),
+            &root,
+            &redirect_record,
+            "0",
+        )?;
+        if !oem_output.status.success() {
+            return Err(format!(
+                "translated redirect under code page 437 failed: {}",
+                String::from_utf8_lossy(&oem_output.stderr)
+            ));
+        }
+        if String::from_utf8_lossy(&oem_output.stdout).trim() != "437" {
+            return Err(format!(
+                "the capture left the session encoding changed: {:?}",
+                String::from_utf8_lossy(&oem_output.stdout)
+            ));
+        }
+        // A failing invocation throws inside the capture; `finally` must
+        // still restore the session encoding.
+        let failed_restore = run_pwsh_line(
+            &format!("{oem}try {{ {redirect_line} }} catch {{}}{probe}"),
+            &root,
+            &redirect_record,
+            "1",
+        )?;
+        if String::from_utf8_lossy(&failed_restore.stdout).trim() != "437" {
+            return Err(format!(
+                "a failing capture left the session encoding changed: {:?}",
+                String::from_utf8_lossy(&failed_restore.stdout)
+            ));
+        }
+        let oem_bytes = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to read code page 437 artifact: {error}"))?;
+        if oem_bytes != RECORDER_STDOUT {
+            return Err(format!(
+                "code page 437 capture changed the artifact bytes to {oem_bytes:?}"
+            ));
+        }
+        let unguarded = format!(
+            "{oem}{}",
+            redirect_line.replacen(POWERSHELL_UTF8_STDOUT, "", 1)
+        );
+        run_pwsh_line(&unguarded, &root, &redirect_record, "0")?;
+        let garbled = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to read unguarded artifact: {error}"))?;
+        if garbled == RECORDER_STDOUT {
+            return Err(
+                "control failed: without the UTF-8 capture statement code page 437 still \
+                 produced exact bytes, so this host cannot observe the misdecode"
+                    .to_string(),
+            );
+        }
+
+        // Location control: a relative target lands under the PowerShell
+        // location after `Set-Location`, not under the directory pwsh
+        // started in, which `Set-Location` does not move.
+        let elsewhere = root.join("started-here");
+        std::fs::create_dir_all(&elsewhere)
+            .map_err(|error| format!("failed to stage start directory: {error}"))?;
+        let relative_line = powershell_command(&format!("{bash} > relative.json"))
+            .ok_or_else(|| "relative redirect must translate".to_string())?;
+        let root_literal = root
+            .to_str()
+            .ok_or_else(|| "native proof root is not UTF-8".to_string())?
+            .replace('\'', "''");
+        let located = format!("Set-Location -LiteralPath '{root_literal}'; {relative_line}");
+        let located_output = run_pwsh_line(&located, &elsewhere, &redirect_record, "0")?;
+        if !located_output.status.success() {
+            return Err(format!(
+                "relative redirect after Set-Location failed: {}",
+                String::from_utf8_lossy(&located_output.stderr)
+            ));
+        }
+        if !root.join("relative.json").is_file() || elsewhere.join("relative.json").exists() {
+            return Err(
+                "relative artifact target did not resolve against the PowerShell location"
+                    .to_string(),
+            );
         }
 
         // Failure control: a nonzero invocation throws without publishing
