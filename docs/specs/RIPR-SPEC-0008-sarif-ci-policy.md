@@ -125,6 +125,12 @@ same text, because an absolute root prefix is removed before rendering. A
 relative root keeps its spelling, since it already names a path under the
 invoking directory.
 
+The physical location `uri` is that path percent-encoded as an RFC 3986
+relative reference: every byte of the UTF-8 path outside `A-Z a-z 0-9 - . _ ~ /` is written
+as `%XX` (so `é` becomes `%C3%A9`), so a space, `#`, `?`, `%` or `:` in a file name cannot change which file
+the uri names. Fingerprints hash the unencoded `normalized_file`, so the
+encoding does not move alert identity.
+
 Fallback fingerprints may use `rule_id | normalized_file | line | message`,
 but only when the stable finding or seam identifier is unavailable.
 
