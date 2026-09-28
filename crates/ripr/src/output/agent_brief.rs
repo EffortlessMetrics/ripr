@@ -1,7 +1,7 @@
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_seam_packets_command, agent_verify_command,
-    check_repo_exposure_command, display_path,
+    bound_root, check_repo_exposure_command, display_path,
 };
 use crate::analysis::canonical_gap::canonical_gap_identities;
 use crate::app::Mode;
@@ -49,12 +49,12 @@ pub(crate) fn render_agent_brief_json(
             .collect::<Vec<_>>(),
         "next": {
             "inspect_packet": agent_seam_packets_command(
-                &display_path(root),
+                &bound_root(&display_path(root)),
                 mode.as_str(),
                 WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
             ),
             "verify_after_edit": agent_verify_command(
-                &display_path(root),
+                &bound_root(&display_path(root)),
                 WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
                 WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
                 None,
@@ -175,7 +175,7 @@ fn top_seam_json(
 }
 
 fn verification_json(root: &Path, mode: &Mode, recommended_name: &str) -> Value {
-    let root = display_path(root);
+    let root = bound_root(&display_path(root));
     json!({
         "before_snapshot_command": check_repo_exposure_command(
             &root,

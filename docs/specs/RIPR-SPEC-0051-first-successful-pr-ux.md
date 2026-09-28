@@ -380,7 +380,10 @@ Follow-up implementation should add or update:
 - agent packet tests for pasteable task, context, repair, verification, stop
   conditions, and "do not do" sections;
 - dogfood receipt checks for detect gap, repair, verify, movement, and
-  no-action states.
+  no-action states;
+- a foreign-working-directory replay proving every generated artifact command
+  reads and writes the selected root when pasted elsewhere (#3948, #4287):
+  `crates/ripr/tests/generated_review_workflow.rs::generated_first_pr_artifact_commands_run_from_a_foreign_working_directory`.
 
 This spec PR does not add production code or output fields.
 

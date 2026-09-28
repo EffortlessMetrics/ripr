@@ -40,7 +40,7 @@
     "after_snapshot": null,
     "verify": null,
     "receipt": null,
-    "status": "ripr agent status --root fixtures/boundary_gap/input --json"
+    "status": "ripr agent status --root <cwd>/fixtures/boundary_gap/input --json"
   },
   "evidence": {
     "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",

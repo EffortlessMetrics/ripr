@@ -184,7 +184,10 @@ pub(super) fn agent_status_surface(
         required: true,
         summary: format!(
             "{required_present} of {required_count} required artifacts present, {missing} missing, {warnings} warnings. Command: {}",
-            agent_status_command(root_display, Some(WORKFLOW_AGENT_STATUS_ARTIFACT))
+            agent_status_command(
+                &crate::agent::loop_commands::bound_root(root_display),
+                Some(WORKFLOW_AGENT_STATUS_ARTIFACT)
+            )
         ),
     }
 }

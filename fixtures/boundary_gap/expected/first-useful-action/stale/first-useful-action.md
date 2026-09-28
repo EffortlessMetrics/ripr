@@ -26,7 +26,7 @@ Refresh RIPR evidence before acting.
 
 ## Check Workflow Status
 
-`ripr agent status --root fixtures/boundary_gap/input --json`
+`ripr agent status --root <cwd>/fixtures/boundary_gap/input --json`
 
 ## Fallback
 

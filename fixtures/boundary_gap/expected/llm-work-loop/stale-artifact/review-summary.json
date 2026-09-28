@@ -34,7 +34,7 @@
       "state": "computed",
       "status": "warning",
       "required": true,
-      "summary": "7 of 7 required artifacts present, 0 missing, 3 warnings. Command: ripr agent status --root . --json > <cwd>/target/ripr/workflow/agent-status.json"
+      "summary": "7 of 7 required artifacts present, 0 missing, 3 warnings. Command: ripr agent status --root <cwd> --json > <cwd>/target/ripr/workflow/agent-status.json"
     },
     {
       "name": "agent_workflow",

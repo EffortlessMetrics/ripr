@@ -1,5 +1,17 @@
 # Golden Output Changes
 
+## Pending — boundary_gap (4)
+
+Reason:
+RIPR-SPEC-0020 / RIPR-SPEC-0023, #3999/#4000 merged with #4304: the first-action commands #4304 added (`commands.analysis_outcome`, the persisted `agent verify` redirect) and the `agent status` handoff now carry the bound `--root <cwd>/fixtures/boundary_gap/input` like every other first-action command, so the analyzed subject and the redirect anchor name the same repository. The front panel echoes those commands. The typed verify/receipt `command_specs` keep the portable `--root .` with `cwd` at the repository root.
+
+Command:
+`cargo xtask dogfood` produced outputs under `target/ripr/dogfood/{first-useful-action,pr-review-front-panel}/*`, with the renderer cwd projected to `<cwd>` and `generated_at` pinned exactly as the dogfood comparison does; then `cargo xtask dogfood` re-run clean
+
+Updated:
+- `expected/first-useful-action/{actionable,stale,unchanged-after-attempt}/first-useful-action.{json,md}`
+- `expected/pr-review-front-panel/{actionable,blocked}/pr-review-front-panel.{json,md}`
+
 ## Pending
 
 Reason:

@@ -26,7 +26,7 @@ Regenerate a complete agent receipt before routing.
 
 ## Check Workflow Status
 
-`ripr agent status --root fixtures/boundary_gap/input --json`
+`ripr agent status --root <cwd>/fixtures/boundary_gap/input --json`
 
 ## Fallback
 

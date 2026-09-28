@@ -3,7 +3,7 @@ use crate::agent::loop_commands::{
     WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
     WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT, agent_brief_command,
     agent_packet_command, agent_receipt_command, agent_seam_packets_command, agent_start_command,
-    agent_verify_command, check_analysis_outcome_command, check_repo_exposure_command,
+    agent_verify_command, bound_root, check_analysis_outcome_command, check_repo_exposure_command,
     display_path, workflow_artifact_path,
 };
 use crate::app::Mode;
@@ -102,7 +102,9 @@ pub(crate) fn build_agent_workflow_manifest(
     let out_display = display_path(out_dir);
     let paths = AgentWorkflowPaths::new(out_dir);
     let seam = workflow_seam_from_brief(agent_brief_json, seam_id)?;
-    let commands = workflow_commands(&root_display, mode, &paths, seam_id);
+    // #3999: copy/paste commands bind the selected root once, here; the
+    // manifest's `root` field keeps the invocation spelling.
+    let commands = workflow_commands(&bound_root(&root_display), mode, &paths, seam_id);
     let repair_attempt_present = repair_attempt_present(root);
     let artifacts = workflow_artifacts(root, &paths, repair_attempt_present);
     let missing_inputs = commands
@@ -597,14 +599,14 @@ mod tests {
                     "workflow_manifest",
                     WORKFLOW_MANIFEST_ARTIFACT,
                     "Regenerate this source-edit-free workflow manifest.",
-                    agent_start_command(".", seam_id, "target/ripr/workflow"),
+                    agent_start_command(&bound_root("."), seam_id, "target/ripr/workflow"),
                 ),
                 (
                     "before_snapshot",
                     "target/ripr/workflow/before.repo-exposure.json",
                     "Capture static seam evidence before editing tests.",
                     check_repo_exposure_command(
-                        ".",
+                        &bound_root("."),
                         "draft",
                         "target/ripr/workflow/before.repo-exposure.json"
                     ),
@@ -614,7 +616,7 @@ mod tests {
                     "target/ripr/workflow/agent-seam-packets.json",
                     "Render the full agent seam packet set for reference.",
                     agent_seam_packets_command(
-                        ".",
+                        &bound_root("."),
                         "draft",
                         "target/ripr/workflow/agent-seam-packets.json"
                     ),
@@ -623,20 +625,28 @@ mod tests {
                     "agent_packet",
                     "target/ripr/workflow/agent-packet.json",
                     "Expand the selected seam into a bounded agent packet.",
-                    agent_packet_command(".", seam_id, "target/ripr/workflow/agent-packet.json"),
+                    agent_packet_command(
+                        &bound_root("."),
+                        seam_id,
+                        "target/ripr/workflow/agent-packet.json"
+                    ),
                 ),
                 (
                     "agent_brief",
                     "target/ripr/workflow/agent-brief.json",
                     "Refresh this seam's working-set brief.",
-                    agent_brief_command(".", seam_id, "target/ripr/workflow/agent-brief.json"),
+                    agent_brief_command(
+                        &bound_root("."),
+                        seam_id,
+                        "target/ripr/workflow/agent-brief.json"
+                    ),
                 ),
                 (
                     "after_snapshot",
                     "target/ripr/workflow/after.repo-exposure.json",
                     "Capture static seam evidence after adding one focused test.",
                     check_repo_exposure_command(
-                        ".",
+                        &bound_root("."),
                         "draft",
                         "target/ripr/workflow/after.repo-exposure.json"
                     ),
@@ -646,7 +656,7 @@ mod tests {
                     "target/ripr/workflow/analysis-outcome.json",
                     "Capture the producer-backed diff completeness outcome after the focused test change.",
                     check_analysis_outcome_command(
-                        ".",
+                        &bound_root("."),
                         "draft",
                         "target/ripr/workflow/analysis-outcome.json"
                     ),
@@ -656,7 +666,7 @@ mod tests {
                     "target/ripr/workflow/agent-verify.json",
                     "Compare before and after static evidence for the agent loop.",
                     agent_verify_command(
-                        ".",
+                        &bound_root("."),
                         "target/ripr/workflow/before.repo-exposure.json",
                         "target/ripr/workflow/after.repo-exposure.json",
                         Some("target/ripr/workflow/agent-verify.json"),
@@ -667,7 +677,7 @@ mod tests {
                     WORKFLOW_AGENT_RECEIPT_ARTIFACT,
                     "Write a review handoff receipt for the selected seam.",
                     agent_receipt_command(
-                        ".",
+                        &bound_root("."),
                         "target/ripr/workflow/agent-verify.json",
                         seam_id,
                         Some("target/ripr/reports/agent-receipt.json"),

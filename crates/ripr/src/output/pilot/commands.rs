@@ -3,7 +3,7 @@ use crate::analysis::repair_route::repair_packet_eligibility;
 use crate::analysis::{ClassifiedSeam, is_test_surface_path};
 use crate::output::agent_seam_packets::recommended_test_for;
 use crate::output::pilot::PilotSummaryContext;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// The documented start of the repair transaction for `entry` (#3906), or
 /// `None` when the fail-closed repair-packet flip does not hold. The flip, not
@@ -26,7 +26,7 @@ pub(super) fn repair_start_command(root: &Path, entry: &ClassifiedSeam) -> Optio
     }
     Some(format!(
         "ripr agent repair --root {} --seam-id {} --phase before",
-        loop_commands::shell_path(root),
+        loop_commands::shell_arg(&loop_commands::bound_root(&display_path(root))),
         loop_commands::shell_arg(entry.seam.id().as_str()),
     ))
 }
@@ -39,32 +39,36 @@ pub(super) struct PilotCommands {
 
 impl PilotCommands {
     pub(super) fn new(context: PilotSummaryContext<'_>) -> Self {
-        let out_dir = context
-            .artifacts
-            .pilot_summary_json
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."));
-        let after_path = context
-            .artifacts
-            .pilot_summary_json
-            .parent()
-            .map(|dir| dir.join("after.repo-exposure.json"))
-            .unwrap_or_else(|| PathBuf::from("after.repo-exposure.json"));
+        // `ripr pilot` writes its artifacts relative to the working directory
+        // it ran in, not `--root`, so every pilot path a follow-up command
+        // names is bound against that directory once, as is the root (#4000):
+        // pasted from any directory, the commands read and write the files
+        // this run produced.
+        let out_dir = loop_commands::bound_root_path(
+            context
+                .artifacts
+                .pilot_summary_json
+                .parent()
+                .unwrap_or_else(|| Path::new(".")),
+        );
+        let after_path = out_dir.join("after.repo-exposure.json");
+        let command_root = loop_commands::bound_root(&display_path(context.root));
         let after_snapshot = loop_commands::check_repo_exposure_command(
-            &display_path(context.root),
+            &command_root,
             context.mode.as_str(),
-            &loop_commands::shell_path(&after_path),
+            &display_path(&after_path),
         );
         let outcome = loop_commands::outcome_command(
-            &loop_commands::shell_path(&context.artifacts.repo_exposure_json),
-            &loop_commands::shell_path(&after_path),
+            &display_path(&loop_commands::bound_root_path(
+                &context.artifacts.repo_exposure_json,
+            )),
+            &display_path(&after_path),
             None,
         );
         let retry_timeout_ms = context.timeout_ms.saturating_mul(4).max(120_000);
         let retry = format!(
             "ripr pilot --root {} --out {} --mode {} --max-seams {} --timeout-ms {}",
-            loop_commands::shell_path(context.root),
+            loop_commands::shell_arg(&command_root),
             loop_commands::shell_path(&out_dir),
             context.mode.as_str(),
             context.max_seams,

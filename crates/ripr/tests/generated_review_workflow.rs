@@ -425,6 +425,263 @@ fn generated_workflow_replay_prints_only_runnable_next_steps() -> Result<(), Box
     Ok(())
 }
 
+/// #3937/#3999/#4000: the seam-selection command `agent status` generates
+/// in repository A, pasted into Bash from an unrelated directory B, analyzes
+/// and writes A, and the next status step reads what it wrote. B holds a
+/// decoy checkout under the same relative name, so a command that re-resolved
+/// the relative `--root` at the paste site would analyze the decoy while its
+/// anchored `--out` still wrote under A — the split this binding removes.
+#[cfg(unix)]
+#[test]
+fn generated_status_command_runs_from_a_foreign_working_directory() -> Result<(), Box<dyn Error>> {
+    for tool in ["bash", "git"] {
+        if !replay::tool_available(tool) {
+            if std::env::var_os("GITHUB_ACTIONS").is_some() {
+                return Err(format!("`{tool}` is not on PATH under GitHub Actions").into());
+            }
+            eprintln!(
+                "SKIPPED generated_status_command_runs_from_a_foreign_working_directory: `{tool}` is not on PATH"
+            );
+            return Ok(());
+        }
+    }
+    let base = replay::unique_temp_dir("rooted-foreign-cwd")?;
+    let parent = base.join("sélected parent");
+    let repo = parent.join("repo root");
+    let foreign = base.join("foreign cwd");
+    let decoy = foreign.join("repo root");
+    replay::write_pr_fixture(&repo)?;
+    replay::write_pr_fixture(&decoy)?;
+
+    // Render: status runs from A's parent with a relative --root, the way a
+    // user in a monorepo parent directory would select the repository.
+    let status = |dir: &std::path::Path| -> Result<serde_json::Value, Box<dyn Error>> {
+        let output = replay::ripr(dir, &["agent", "status", "--root", "repo root", "--json"])?;
+        assert!(
+            output.status.success(),
+            "agent status failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(serde_json::from_slice(&output.stdout)?)
+    };
+    let before = status(&parent)?;
+    assert_eq!(before["next_command"]["step"], "select_seam", "{before}");
+    let command = before["next_command"]["command"]
+        .as_str()
+        .ok_or("status next command is not a string")?
+        .to_string();
+
+    // Paste: run the exact generated text from B.
+    let run = replay::bash(&foreign, &command, &[])?;
+    assert!(
+        run.status.success(),
+        "generated command failed from a foreign directory: {command}\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    // Placement: the artifacts land under A and nothing lands in B.
+    let pilot_dir = repo.join("target/ripr/pilot");
+    let snapshot: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(pilot_dir.join("repo-exposure.json"))?)?;
+    let analyzed_root = snapshot
+        .pointer("/artifact/repository/root")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("repo-exposure snapshot names no repository root")?;
+    // Subject: the snapshot analyzed A, not B's decoy of the same name.
+    assert_eq!(
+        std::path::Path::new(analyzed_root).canonicalize()?,
+        repo.canonicalize()?,
+        "{command} analyzed the wrong repository"
+    );
+    assert!(pilot_dir.join("pilot-summary.json").is_file());
+    assert!(
+        !foreign.join("target").exists() && !decoy.join("target").exists(),
+        "{command} wrote under the paste directory"
+    );
+
+    // Consumption: the next status step reads the artifact the pasted
+    // command wrote and routes to the repair start bound to A.
+    let after = status(&parent)?;
+    assert_eq!(
+        after["next_command"]["step"], "repair_attempt_before",
+        "{after}"
+    );
+    let repair = after["next_command"]["command"]
+        .as_str()
+        .ok_or("repair command is not a string")?;
+    assert!(
+        repair.contains(&format!("--root '{}'", repo.canonicalize()?.display())),
+        "repair start must bind A: {repair}"
+    );
+
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
+/// #3948/#4287: the artifact regeneration commands `first-pr` renders for
+/// repository A, pasted into Bash from an unrelated directory B, read and
+/// write A. `first-action`, `review-comments`, `agent packet`, `gate
+/// evaluate`, `reports gap-ledger` and the `ripr check > FILE` redirects
+/// resolve their paths against the working directory, so a command that
+/// bound `--root` but kept a relative path would read or write under B. B
+/// holds a decoy checkout under the same relative name, as in the status
+/// replay above.
+#[cfg(unix)]
+#[test]
+fn generated_first_pr_artifact_commands_run_from_a_foreign_working_directory()
+-> Result<(), Box<dyn Error>> {
+    for tool in ["bash", "git"] {
+        if !replay::tool_available(tool) {
+            if std::env::var_os("GITHUB_ACTIONS").is_some() {
+                return Err(format!("`{tool}` is not on PATH under GitHub Actions").into());
+            }
+            eprintln!(
+                "SKIPPED generated_first_pr_artifact_commands_run_from_a_foreign_working_directory: `{tool}` is not on PATH"
+            );
+            return Ok(());
+        }
+    }
+    let base = replay::unique_temp_dir("first-pr-foreign-cwd")?;
+    let parent = base.join("sélected parent");
+    let repo = parent.join("repo root");
+    let foreign = base.join("foreign cwd");
+    let decoy = foreign.join("repo root");
+    replay::write_pr_fixture(&repo)?;
+    replay::write_pr_fixture(&decoy)?;
+    let reports = repo.join("target/ripr/reports");
+    fs::create_dir_all(&reports)?;
+    fs::create_dir_all(repo.join("target/ripr/workflow"))?;
+
+    // first-pr runs from A's parent with a relative --root, the way a user in
+    // a monorepo parent directory selects the repository.
+    let first_pr = |extra: &[&str]| -> Result<serde_json::Value, Box<dyn Error>> {
+        let mut args = vec![
+            "first-pr",
+            "--root",
+            "repo root",
+            "--base",
+            "origin/trunk",
+            "--head",
+            "HEAD",
+        ];
+        args.extend_from_slice(extra);
+        let output = replay::ripr(&parent, &args)?;
+        assert!(
+            output.status.success(),
+            "first-pr failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(serde_json::from_str(&fs::read_to_string(
+            reports.join("start-here.json"),
+        )?)?)
+    };
+    // Paste one generated command from B; it must succeed, and nothing may
+    // land under B or its decoy.
+    let paste = |label: &str, command: &str| -> Result<(), Box<dyn Error>> {
+        let run = replay::bash(&foreign, command, &[])?;
+        assert!(
+            run.status.success(),
+            "`{label}` command failed from a foreign directory: {command}\nstdout={}\nstderr={}",
+            String::from_utf8_lossy(&run.stdout),
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert!(
+            !foreign.join("target").exists() && !decoy.join("target").exists(),
+            "`{label}` command read or wrote under the paste directory: {command}"
+        );
+        Ok(())
+    };
+    let artifact_command = |packet: &serde_json::Value,
+                            id: &str|
+     -> Result<(String, std::path::PathBuf), Box<dyn Error>> {
+        let artifact = packet["artifacts"]
+            .as_array()
+            .and_then(|artifacts| artifacts.iter().find(|artifact| artifact["id"] == id))
+            .ok_or_else(|| format!("start-here packet has no `{id}` artifact: {packet}"))?;
+        let command = artifact["regeneration_command"]
+            .as_str()
+            .ok_or_else(|| format!("`{id}` has no regeneration command: {artifact}"))?;
+        let path = artifact["path"]
+            .as_str()
+            .ok_or_else(|| format!("`{id}` has no path: {artifact}"))?;
+        Ok((command.to_string(), repo.join(path)))
+    };
+
+    // Phase 1: the check-output artifact and the blocked-ledger recovery.
+    // A Rust check output yields a blocked ledger, whose recovery compound
+    // regenerates the repo-exposure input and the ledger.
+    let check_output = "target/ripr/reports/check.json";
+    let seed = replay::ripr(
+        &repo,
+        &["check", "--root", ".", "--base", "origin/trunk", "--json"],
+    )?;
+    fs::write(repo.join(check_output), &seed.stdout)?;
+    let packet = first_pr(&["--check-output", check_output])?;
+    let (command, artifact) = artifact_command(&packet, "check_output")?;
+    fs::remove_file(&artifact)?;
+    paste("check_output", &command)?;
+    assert!(
+        artifact.is_file(),
+        "{command} did not write A's check output"
+    );
+    assert_eq!(packet["status"], "blocked", "{packet}");
+    let recovery = packet["selected"]["next_command"]
+        .as_str()
+        .ok_or("blocked selection carries no next command")?;
+    let ledger = reports.join("gap-decision-ledger.json");
+    fs::remove_file(&ledger)?;
+    paste("blocked gap ledger", recovery)?;
+    assert!(ledger.is_file(), "{recovery} did not write A's gap ledger");
+    assert!(reports.join("repo-exposure.json").is_file());
+
+    // Phase 2: with a checked PR-local ledger whose top gap is agent-packet
+    // eligible, first-pr selects that gap and renders the first-action,
+    // review-comments, agent-packet and gate commands. Each is pasted from B
+    // after A's copy is removed.
+    fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../fixtures/first_successful_pr/python-preview-gap/inputs/reports/gap-decision-ledger.json",
+        ),
+        &ledger,
+    )?;
+    let packet = first_pr(&[])?;
+    assert_eq!(packet["status"], "actionable", "{packet}");
+    assert!(
+        packet["selected"]["agent_packet_command"].is_string(),
+        "the top gap must carry an agent packet command: {packet}"
+    );
+    for id in [
+        "first_action",
+        "review_comments",
+        "agent_packet",
+        "gate_decision",
+    ] {
+        let (command, artifact) = artifact_command(&packet, id)?;
+        if artifact.exists() {
+            fs::remove_file(&artifact)?;
+        }
+        paste(id, &command)?;
+        assert!(
+            artifact.is_file(),
+            "`{id}` command did not write A's artifact: {command}"
+        );
+    }
+
+    // Consumption: first-pr in A sees every regenerated artifact.
+    let after = first_pr(&[])?;
+    for artifact in after["artifacts"]
+        .as_array()
+        .ok_or("start-here packet has no artifacts")?
+    {
+        assert_eq!(artifact["status"], "present", "{artifact}");
+    }
+
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
 #[cfg(unix)]
 mod replay {
     use std::collections::BTreeMap;

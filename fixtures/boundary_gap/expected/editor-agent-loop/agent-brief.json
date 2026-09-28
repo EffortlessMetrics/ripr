@@ -12,8 +12,8 @@
   },
   "mode": "draft",
   "next": {
-    "inspect_packet": "ripr check --root fixtures/boundary_gap/input --mode draft --format agent-seam-packets-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-seam-packets.json",
-    "verify_after_edit": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+    "inspect_packet": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format agent-seam-packets-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-seam-packets.json",
+    "verify_after_edit": "ripr agent verify --root <cwd>/fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
   },
   "root": "fixtures/boundary_gap/input",
   "schema_version": "0.1",
@@ -85,10 +85,10 @@
       "seam_kind": "predicate_boundary",
       "severity": "warning",
       "verification": {
-        "after_snapshot_command": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/after.repo-exposure.json",
-        "before_snapshot_command": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/before.repo-exposure.json",
+        "after_snapshot_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/after.repo-exposure.json",
+        "before_snapshot_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/before.repo-exposure.json",
         "suggested_test_command": "cargo test discounted_total_boundary_discriminator",
-        "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root <cwd>/fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },
       "why_now": {
         "confidence": "high",

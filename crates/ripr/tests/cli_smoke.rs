@@ -2358,11 +2358,11 @@ fn first_action_cli_writes_actionable_report() -> Result<(), Box<dyn std::error:
     let prefix = format!("{}/", workspace_root().to_string_lossy().replace('\\', "/"));
     assert_eq!(
         json_pointer_str(&report, "/commands/verify")?.replace(&prefix, "<cwd>/"),
-        "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-verify.json"
+        "ripr agent verify --root <cwd>/fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-verify.json"
     );
     assert_eq!(
         json_pointer_str(&report, "/commands/analysis_outcome")?.replace(&prefix, "<cwd>/"),
-        "ripr check --root fixtures/boundary_gap/input --mode draft --format json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/analysis-outcome.json"
+        "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/analysis-outcome.json"
     );
     assert_eq!(
         json_pointer_str(&report, "/target/suggested_test_name")?,
@@ -2581,8 +2581,8 @@ fn first_pr_check_missing_packet_suggests_rooted_out_dir() -> Result<(), Box<dyn
 }
 
 /// The write command a `first-pr --check` missing-packet recovery suggests,
-/// as arguments after `ripr` (quotes stripped; the fixture paths have no
-/// spaces).
+/// as arguments after `ripr` (each shell word decoded; the fixture paths have
+/// no spaces).
 fn suggested_first_pr_write(stderr: &str) -> Result<Vec<String>, String> {
     let line = stderr
         .split("Create and validate it with:\n")
@@ -2591,13 +2591,37 @@ fn suggested_first_pr_write(stderr: &str) -> Result<Vec<String>, String> {
         .ok_or_else(|| format!("no suggested write command:\n{stderr}"))?;
     let mut args = line
         .split_whitespace()
-        .map(|arg| arg.trim_matches('\'').to_string())
-        .collect::<Vec<_>>();
+        .map(|arg| {
+            decode_shell_token(arg).ok_or_else(|| format!("malformed shell word `{arg}`: {line}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     if args.first().map(String::as_str) != Some("ripr") {
         return Err(format!("suggested command is not a ripr command: {line}"));
     }
     args.remove(0);
     Ok(args)
+}
+
+/// #3999: the suggested write binds `--root` to the repository the check
+/// resolved, so it names an absolute root ending in the scratch repository's
+/// directory rather than a caller-relative spelling such as `.`.
+fn assert_bound_write_root(write: &[String], repo: &Path, stderr: &str) -> Result<(), String> {
+    let repo_name = repo
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .ok_or_else(|| format!("scratch repository has no name: {}", repo.display()))?;
+    let bound = write
+        .iter()
+        .position(|arg| arg == "--root")
+        .and_then(|index| write.get(index + 1))
+        .ok_or_else(|| format!("the suggested write must name --root:\n{stderr}"))?;
+    if Path::new(bound).is_absolute() && bound.trim_end_matches(['/', '\\']).ends_with(&repo_name) {
+        Ok(())
+    } else {
+        Err(format!(
+            "the suggested write must bind --root to the absolute repository `{repo_name}`, got `{bound}`:\n{stderr}"
+        ))
+    }
 }
 
 fn run_ripr_owned(args: &[String]) -> Output {
@@ -2635,7 +2659,13 @@ fn first_pr_check_missing_packet_recovers_without_a_resolvable_base()
     run_git(&workspace, &["checkout", "-q", "--detach"])?;
     run_git(&workspace, &["branch", "-q", "-D", "topic"])?;
     let root = workspace.display().to_string();
-    let output = run_ripr(&["first-pr", "--root", &root, "--check"]);
+    // Run from inside the repository with a relative `--root .` so the
+    // suggested write must bind it (#3999) to work from the harness's cwd.
+    let output = run_command(
+        env!("CARGO_BIN_EXE_ripr"),
+        Some(&workspace),
+        &["first-pr", "--root", ".", "--check"],
+    )?;
     assert_failure(&output);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("it does not create one"), "{stderr}");
@@ -2652,6 +2682,7 @@ fn first_pr_check_missing_packet_recovers_without_a_resolvable_base()
     // The suggested write names the base it needs; with a real ref filled in
     // it writes a packet that `--check` with the same base accepts.
     let mut write = suggested_first_pr_write(&stderr)?;
+    assert_bound_write_root(&write, &workspace, &stderr)?;
     let base = write
         .iter()
         .position(|arg| arg == "--base")
@@ -2689,7 +2720,9 @@ fn first_pr_check_recovery_write_resolves_the_default_base() -> Result<(), Strin
     assert!(stderr.contains("it does not create one"), "{stderr}");
     assert!(!stderr.contains("--base"), "{stderr}");
 
-    let write = run_ripr_owned(&suggested_first_pr_write(&stderr)?);
+    let suggested = suggested_first_pr_write(&stderr)?;
+    assert_bound_write_root(&suggested, &root, &stderr)?;
+    let write = run_ripr_owned(&suggested);
     assert_success(&write);
     let base = json_string_at(
         &root.join("target/ripr/reports/start-here.json"),
@@ -4090,7 +4123,23 @@ fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn s
     assert!(workflow_json.contains(r#""source_edits": false"#));
     assert!(workflow_json.contains(r#""llm_api_calls": false"#));
     assert!(workflow_json.contains(seam_id));
-    assert!(workflow_json.contains("ripr agent verify --root fixtures/boundary_gap/input"));
+    // #4000: generated commands bind the selected root the invocation resolved.
+    // The expected root uses the renderer's shell quoting, so a checkout path
+    // with spaces or other shell metacharacters still matches exactly.
+    let expected_verify = format!(
+        "ripr agent verify --root {} ",
+        renderer_shell_arg(&format!(
+            "{}/fixtures/boundary_gap/input",
+            workspace_root().to_string_lossy().replace('\\', "/")
+        ))
+    );
+    let workflow: serde_json::Value = serde_json::from_str(&workflow_json)?;
+    assert!(
+        json_strings(&workflow)
+            .iter()
+            .any(|value| value.contains(&expected_verify)),
+        "workflow.json should carry `{expected_verify}`: {workflow_json}"
+    );
     assert!(commands_md.contains("# RIPR Agent Workflow"));
     assert!(commands_md.contains("Does not edit source files."));
     assert!(commands_md.contains("Does not call an LLM API."));
@@ -14212,19 +14261,24 @@ fn agent_status_routes_a_fresh_workspace_to_pilot() -> Result<(), Box<dyn std::e
     assert_eq!(step, "select_seam", "{report:#}");
     assert_installed_command(&command)?;
     let root_display = root.to_string_lossy().replace('\\', "/");
-    assert_eq!(command, format!("ripr pilot --root '{root_display}'"));
+    // #4000: pilot resolves a relative `--out` against the working
+    // directory, so the route names the pilot directory under the root.
+    assert_eq!(
+        command,
+        format!("ripr pilot --root '{root_display}' --out '{root_display}/target/ripr/pilot'")
+    );
     assert!(!command.contains('>'), "no redirect expected: {command}");
     assert!(!root.join("target/ripr/workflow").exists());
     assert_eq!(report["status"], "incomplete");
 
-    // The route runs: pilot accepts the root and writes its summary. Pilot's
-    // default `--out` is relative to the working directory, so run it from
-    // the workspace the way a user following `--root .` would.
+    // The route runs: pilot accepts the root and writes its summary under
+    // the named `--out`.
     let root_arg = root.to_string_lossy().into_owned();
+    let out_arg = format!("{root_display}/target/ripr/pilot");
     let pilot = run_command(
         env!("CARGO_BIN_EXE_ripr"),
         Some(&root),
-        &["pilot", "--root", &root_arg],
+        &["pilot", "--root", &root_arg, "--out", &out_arg],
     )?;
     assert_success(&pilot);
     assert!(root.join("target/ripr/pilot/pilot-summary.json").is_file());
@@ -15044,6 +15098,76 @@ fn agent_status_follows_a_focused_test_committed_between_the_phases()
 
     let _ = std::fs::remove_dir_all(&root);
     Ok(())
+}
+
+/// Quote one argument exactly as the product's generated-command renderer
+/// (`agent::loop_commands::shell_arg`) does: a plain token stays bare, any
+/// other value is POSIX single-quoted.
+fn renderer_shell_arg(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '_' | '-' | ':'))
+    {
+        return value.to_string();
+    }
+    shell_single_quoted(value)
+}
+
+/// Decode one rendered POSIX shell word (bare, single-quoted, or `'\''`
+/// concatenations) back to its argument value. Returns `None` for an
+/// unterminated quote so a malformed rendering fails the caller's oracle.
+fn decode_shell_token(token: &str) -> Option<String> {
+    let mut decoded = String::new();
+    let mut chars = token.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\'' => loop {
+                match chars.next()? {
+                    '\'' => break,
+                    inner => decoded.push(inner),
+                }
+            },
+            '\\' => decoded.push(chars.next()?),
+            other => decoded.push(other),
+        }
+    }
+    Some(decoded)
+}
+
+#[test]
+fn decode_shell_token_inverts_the_renderer_quoting() {
+    // A backslash inside single quotes is literal (the renderer preserves it);
+    // only an unquoted backslash, as in the renderer's `'\''`, is an escape.
+    for value in [
+        "/tmp/plain",
+        "/tmp/with space/repo",
+        "/tmp/it's here",
+        "",
+        r"/tmp/repo\sub\dir",
+        r"/tmp/back\slash it's",
+    ] {
+        assert_eq!(
+            decode_shell_token(&renderer_shell_arg(value)).as_deref(),
+            Some(value),
+            "round trip for {value:?}"
+        );
+    }
+    assert_eq!(
+        decode_shell_token(r"'/tmp/a\b'"),
+        Some(r"/tmp/a\b".to_string())
+    );
+    assert_eq!(decode_shell_token("'unterminated"), None);
+}
+
+/// Every string value in a JSON document, depth first.
+fn json_strings(value: &serde_json::Value) -> Vec<&str> {
+    match value {
+        serde_json::Value::String(text) => vec![text.as_str()],
+        serde_json::Value::Array(items) => items.iter().flat_map(json_strings).collect(),
+        serde_json::Value::Object(map) => map.values().flat_map(json_strings).collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// POSIX single quotes around a path, as the status command templates print.

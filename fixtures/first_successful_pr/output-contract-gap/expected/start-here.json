@@ -4,35 +4,35 @@
       "id": "gap_ledger",
       "label": "Gap decision ledger",
       "path": "inputs/reports/gap-decision-ledger.json",
-      "regeneration_command": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
+      "regeneration_command": "ripr reports gap-ledger --root <cwd>/fixtures/first_successful_pr/output-contract-gap --repo-exposure <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/reports/repo-exposure.json --out <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.json --out-md <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.md",
       "status": "present"
     },
     {
       "id": "first_action",
       "label": "First useful action",
       "path": "target/ripr/reports/first-useful-action.json",
-      "regeneration_command": "ripr first-action --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md",
+      "regeneration_command": "ripr first-action --root <cwd>/fixtures/first_successful_pr/output-contract-gap --gap-ledger <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.json --out <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/reports/first-useful-action.json --out-md <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/reports/first-useful-action.md",
       "status": "missing"
     },
     {
       "id": "review_comments",
       "label": "PR repair cards",
       "path": "target/ripr/review/comments.json",
-      "regeneration_command": "ripr review-comments --root fixtures/first_successful_pr/output-contract-gap --base origin/main --head HEAD --out target/ripr/review/comments.json",
+      "regeneration_command": "ripr review-comments --root <cwd>/fixtures/first_successful_pr/output-contract-gap --base origin/main --head HEAD --out <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/review/comments.json",
       "status": "missing"
     },
     {
       "id": "agent_packet",
       "label": "Agent repair packet",
       "path": "target/ripr/workflow/agent-packet.json",
-      "regeneration_command": "ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/workflow/agent-packet.json",
+      "regeneration_command": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/output-contract-gap --gap-ledger <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/workflow/agent-packet.json",
       "status": "missing"
     },
     {
       "id": "gate_decision",
       "label": "Gate decision",
       "path": "target/ripr/reports/gate-decision.json",
-      "regeneration_command": "ripr gate evaluate --gap-ledger inputs/reports/gap-decision-ledger.json --out target/ripr/reports/gate-decision.json --out-md target/ripr/reports/gate-decision.md",
+      "regeneration_command": "ripr gate evaluate --gap-ledger <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.json --out <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/reports/gate-decision.json --out-md <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/reports/gate-decision.md",
       "status": "missing"
     }
   ],
@@ -42,9 +42,9 @@
     "status": "advisory"
   },
   "commands": {
-    "agent_packet": "ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/workflow/agent-packet.json",
+    "agent_packet": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/output-contract-gap --gap-ledger <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/workflow/agent-packet.json",
     "receipt": "ripr receipt write --gap gap:rust:output:device-label --verify-command 'cargo xtask goldens check' --status not_run --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json",
-    "regenerate_gap_ledger": "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out inputs/reports/gap-decision-ledger.json --out-md inputs/reports/gap-decision-ledger.md",
+    "regenerate_gap_ledger": "ripr reports gap-ledger --root <cwd>/fixtures/first_successful_pr/output-contract-gap --repo-exposure <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/reports/repo-exposure.json --out <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.json --out-md <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.md",
     "verify": "cargo xtask goldens check"
   },
   "inputs": {
@@ -69,7 +69,7 @@
   "root": "fixtures/first_successful_pr/output-contract-gap",
   "schema_version": "0.1",
   "selected": {
-    "agent_packet_command": "ripr agent packet --root fixtures/first_successful_pr/output-contract-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/workflow/agent-packet.json",
+    "agent_packet_command": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/output-contract-gap --gap-ledger <cwd>/fixtures/first_successful_pr/output-contract-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:output:device-label --json > <cwd>/fixtures/first_successful_pr/output-contract-gap/target/ripr/workflow/agent-packet.json",
     "anchor": {
       "dedupe_fingerprint": "gap:rust:output:device-label",
       "file": "src/output/device_labels.rs",

@@ -31,7 +31,7 @@
           "agent_receipt_json": "target/ripr/agent/agent-receipt.json",
           "agent_verify_json": "target/ripr/agent/agent-verify.json",
           "before_snapshot": "target/ripr/pilot/repo-exposure.json",
-          "command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before",
+          "command": "ripr agent repair --root <root> --seam-id 67fc764ba37d77bd --phase before",
           "diagnostic_range": {
             "end": {
               "character": 120,
@@ -70,7 +70,7 @@
           "agent_receipt_json": "target/ripr/agent/agent-receipt.json",
           "agent_verify_json": "target/ripr/agent/agent-verify.json",
           "before_snapshot": "target/ripr/pilot/repo-exposure.json",
-          "command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > <cwd>/target/ripr/agent/agent-packet.json",
+          "command": "ripr agent packet --root <root> --seam-id 67fc764ba37d77bd --json > <root>/target/ripr/agent/agent-packet.json",
           "diagnostic_range": {
             "end": {
               "character": 120,
@@ -109,7 +109,7 @@
           "agent_receipt_json": "target/ripr/agent/agent-receipt.json",
           "agent_verify_json": "target/ripr/agent/agent-verify.json",
           "before_snapshot": "target/ripr/pilot/repo-exposure.json",
-          "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > <cwd>/target/ripr/agent/agent-brief.json",
+          "command": "ripr agent brief --root <root> --seam-id 67fc764ba37d77bd --json > <root>/target/ripr/agent/agent-brief.json",
           "diagnostic_range": {
             "end": {
               "character": 120,
@@ -148,7 +148,7 @@
           "agent_receipt_json": "target/ripr/agent/agent-receipt.json",
           "agent_verify_json": "target/ripr/agent/agent-verify.json",
           "before_snapshot": "target/ripr/pilot/repo-exposure.json",
-          "command": "ripr check --root . --base origin/main --mode fast --format repo-exposure-json > <cwd>/target/ripr/pilot/after.repo-exposure.json",
+          "command": "ripr check --root <root> --base origin/main --mode fast --format repo-exposure-json > <root>/target/ripr/pilot/after.repo-exposure.json",
           "diagnostic_range": {
             "end": {
               "character": 120,
@@ -187,7 +187,7 @@
           "agent_receipt_json": "target/ripr/agent/agent-receipt.json",
           "agent_verify_json": "target/ripr/agent/agent-verify.json",
           "before_snapshot": "target/ripr/pilot/repo-exposure.json",
-          "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > <cwd>/target/ripr/agent/agent-verify.json",
+          "command": "ripr agent verify --root <root> --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > <root>/target/ripr/agent/agent-verify.json",
           "diagnostic_range": {
             "end": {
               "character": 120,
@@ -226,7 +226,7 @@
           "agent_receipt_json": "target/ripr/agent/agent-receipt.json",
           "agent_verify_json": "target/ripr/agent/agent-verify.json",
           "before_snapshot": "target/ripr/pilot/repo-exposure.json",
-          "command": "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/agent/agent-receipt.json",
+          "command": "ripr agent receipt --root <root> --verify-json target/ripr/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/agent/agent-receipt.json",
           "diagnostic_range": {
             "end": {
               "character": 120,

@@ -538,7 +538,7 @@ fn validate_packet_route(root: &Path, packet_path: &Path) -> Result<CandidateRou
     // producer performs, so any divergence is caller authorship.
     let reproduced = displays
         .iter()
-        .filter_map(|display| agent_command_spec_from_display(display))
+        .filter_map(|display| agent_command_spec_from_display(display, root))
         .collect::<Vec<_>>();
 
     let typed_value = packet
@@ -592,7 +592,7 @@ fn validate_packet_route(root: &Path, packet_path: &Path) -> Result<CandidateRou
         .get("verify_command")
         .and_then(Value::as_str)
         .ok_or_else(|| rejected("packet verify_command is required"))?;
-    let headline_spec = agent_command_spec_from_display(headline)
+    let headline_spec = agent_command_spec_from_display(headline, root)
         .ok_or_else(|| rejected("packet verify_command is not a canonical route"))?;
     if headline_spec != command_spec {
         return Err(rejected(
@@ -646,13 +646,16 @@ fn bind_producer_route(root: &Path, candidate: CandidateRoute) -> Result<Validat
     }
 
     // The authority step: the route is constructed here, not accepted.
+    // The recomputed display binds the selected root (#3999); the packet's
+    // display may be the portable `--root .` shape or a root-bound one, so
+    // the comparison is route identity, which excludes the display.
     let recomputed = agent_verify_command_spec(
-        ".",
+        &root.to_string_lossy(),
         &candidate.declared_before,
         &candidate.declared_after,
         None,
     );
-    if candidate.command_spec != recomputed {
+    if !candidate.command_spec.same_route(&recomputed) {
         return Err(rejected(
             "packet route does not equal the canonical verify route recomputed from the validated producer artifacts",
         ));
@@ -1125,10 +1128,13 @@ mod tests {
     /// — `command_specs.verify` is an array derived from
     /// `verification_commands` — so the fixture cannot drift into a shape the
     /// producer never emits.
-    fn producer_envelope(displays: &[String], headline: &str) -> Value {
+    ///
+    /// `root` is the selected root the producer bound its displays to and the
+    /// consumer recovers them against (#3999).
+    fn producer_envelope(root: &Path, displays: &[String], headline: &str) -> Value {
         let verify = displays
             .iter()
-            .filter_map(|display| agent_command_spec_from_display(display))
+            .filter_map(|display| agent_command_spec_from_display(display, root))
             .collect::<Vec<_>>();
         serde_json::json!({
             "schema_version": PACKET_SCHEMA_VERSION,
@@ -1160,6 +1166,11 @@ mod tests {
             Ok(Self {
                 path: normalize(&path),
             })
+        }
+
+        /// The selected root as a producer binds it into a display.
+        fn bound(&self) -> String {
+            self.path.to_string_lossy().into_owned()
         }
 
         fn write(&self, name: &str, contents: &[u8]) -> Result<(), String> {
@@ -1195,8 +1206,9 @@ mod tests {
     #[test]
     fn accepts_the_canonical_producer_array_shape() -> Result<(), String> {
         let root = seeded_root("accept")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
-        let envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         let packet = root.write_packet("packet.json", &envelope)?;
         let candidate = validate_packet_route(&root.path, &packet)?;
         assert_eq!(candidate.command_spec.program, "ripr");
@@ -1210,7 +1222,7 @@ mod tests {
     #[test]
     fn rejects_a_single_object_verify_spec_the_producer_never_emits() -> Result<(), String> {
         let root = seeded_root("object")?;
-        let spec = agent_verify_command_spec(".", "before.json", "after.json", None);
+        let spec = agent_verify_command_spec(&root.bound(), "before.json", "after.json", None);
         let envelope = serde_json::json!({
             "schema_version": PACKET_SCHEMA_VERSION,
             "packets": [{
@@ -1231,8 +1243,9 @@ mod tests {
     #[test]
     fn rejects_caller_authored_typed_spec_not_reproducible_from_displays() -> Result<(), String> {
         let root = seeded_root("forged")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
-        let mut envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
+        let mut envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         // Swap the verify route for a receipt route while leaving the display
         // text untouched: the classic borrowed-authority forgery.
         envelope["packets"][0]["command_specs"]["verify"][0]["args"][1] =
@@ -1248,7 +1261,8 @@ mod tests {
     #[test]
     fn rejects_every_caller_mutated_typed_field() -> Result<(), String> {
         let root = seeded_root("fields")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
         let mutations: Vec<(&str, Value)> = vec![
             ("program", Value::String("cmd".to_string())),
             ("cwd", Value::String("..".to_string())),
@@ -1271,7 +1285,8 @@ mod tests {
             ),
         ];
         for (field, replacement) in mutations {
-            let mut envelope = producer_envelope(std::slice::from_ref(&display), &display);
+            let mut envelope =
+                producer_envelope(&root.path, std::slice::from_ref(&display), &display);
             envelope["packets"][0]["command_specs"]["verify"][0][field] = replacement;
             let packet = root.write_packet(&format!("packet-{field}.json"), &envelope)?;
             let error = validate_packet_route(&root.path, &packet)
@@ -1305,12 +1320,12 @@ mod tests {
         root.write("alt-after.json", b"{}")?;
         // A route the producer never emitted, rewritten consistently everywhere.
         let forged = crate::agent::loop_commands::agent_verify_command(
-            ".",
+            &root.bound(),
             "alt-before.json",
             "alt-after.json",
             None,
         );
-        let envelope = producer_envelope(std::slice::from_ref(&forged), &forged);
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&forged), &forged);
         let packet = root.write_packet("coherent.json", &envelope)?;
         // Consistency alone cannot tell this apart from a producer packet.
         let candidate = validate_packet_route(&root.path, &packet)?;
@@ -1338,7 +1353,7 @@ mod tests {
         // escape from the root even before provenance is consulted.
         for escape in [
             crate::agent::loop_commands::agent_verify_command(
-                ".",
+                &root.bound(),
                 "../outside.json",
                 "alt-after.json",
                 None,
@@ -1347,7 +1362,7 @@ mod tests {
             "ripr agent receipt --root . --verify-json alt-before.json --seam-id x --json"
                 .to_string(),
         ] {
-            let envelope = producer_envelope(std::slice::from_ref(&escape), &escape);
+            let envelope = producer_envelope(&root.path, std::slice::from_ref(&escape), &escape);
             let packet = root.write_packet("escape-attempt.json", &envelope)?;
             assert!(
                 validate_packet_route(&root.path, &packet).is_err(),
@@ -1360,10 +1375,11 @@ mod tests {
     #[test]
     fn rejects_ambiguous_and_empty_executable_route_sets() -> Result<(), String> {
         let root = seeded_root("ambiguous")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
 
         // Two identical executable routes are ambiguous, not "obviously the same".
-        let envelope = producer_envelope(&[display.clone(), display.clone()], &display);
+        let envelope = producer_envelope(&root.path, &[display.clone(), display.clone()], &display);
         let packet = root.write_packet("two.json", &envelope)?;
         let error = validate_packet_route(&root.path, &packet)
             .err()
@@ -1372,7 +1388,7 @@ mod tests {
 
         // A redirect route is shell-required, so nothing is executable.
         let redirect = format!("{display} > out.json");
-        let envelope = producer_envelope(std::slice::from_ref(&redirect), &redirect);
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&redirect), &redirect);
         let packet = root.write_packet("redirect.json", &envelope)?;
         let error = validate_packet_route(&root.path, &packet)
             .err()
@@ -1385,12 +1401,12 @@ mod tests {
     fn rejects_inputs_outside_the_selected_root() -> Result<(), String> {
         let root = seeded_root("escape")?;
         let display = crate::agent::loop_commands::agent_verify_command(
-            ".",
+            &root.bound(),
             "../escaped.json",
             "after.json",
             None,
         );
-        let envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         let packet = root.write_packet("packet.json", &envelope)?;
         let error = validate_packet_route(&root.path, &packet)
             .err()
@@ -1402,8 +1418,9 @@ mod tests {
     #[test]
     fn unauthorized_execution_is_refused_with_a_public_disposition() -> Result<(), String> {
         let root = seeded_root("unauthorized")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
-        let envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         let packet = root.write_packet("packet.json", &envelope)?;
         let outcome =
             execute_verify_packet(&root.path, &packet, Path::new("result.json"), false, None);

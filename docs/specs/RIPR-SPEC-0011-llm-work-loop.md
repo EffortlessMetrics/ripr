@@ -572,6 +572,12 @@ The LLM work loop must not:
 - `crates/ripr/src/cli/commands.rs::tests::agent_start_rejects_missing_root_before_analysis`
 - `crates/ripr/src/agent/loop_commands.rs::tests::workflow_commands_match_existing_status_templates`
 - `crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates`
+- `crates/ripr/src/agent/loop_commands.rs::tests::anchored_redirect_target_roots_relative_outputs_at_root`
+- `crates/ripr/src/agent/loop_commands.rs::tests::bound_roots_render_absolute_and_relative_roots_stay_portable`
+- `crates/ripr/src/agent/loop_commands.rs::tests::bound_root_keeps_a_unix_backslash_directory_name`
+- `crates/ripr/src/app/agent_status.rs::tests::pilot_select_command_binds_raw_and_bound_roots_once`
+- `crates/ripr/tests/generated_review_workflow.rs::generated_status_command_runs_from_a_foreign_working_directory`
+- `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_root_anchored_for_platform_roots`
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory`
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_markdown_lists_commands_and_boundaries`
 - `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_json_selects_changed_seam`

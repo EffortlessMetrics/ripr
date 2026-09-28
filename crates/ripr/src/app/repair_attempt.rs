@@ -5,7 +5,7 @@
 //! the after phase consumes the retained before snapshot and packet attached to
 //! that exact attempt.
 
-use crate::agent::loop_commands::{display_path, shell_arg};
+use crate::agent::loop_commands::{bound_root, display_path, shell_arg};
 use crate::analysis::is_test_surface_path;
 use crate::edit_cage::{
     AttemptBaseline, EditCagePolicy, EditCageVerdict, HeadMovement,
@@ -470,7 +470,7 @@ fn complete_repair_attempt(
         .and_then(|artifacts| {
             let next_command = format!(
                 "ripr agent repair --root {} --attempt {} --phase after{}",
-                shell_arg(&display_path(publication.root_argument)),
+                shell_arg(&bound_root(&display_path(publication.root_argument))),
                 shell_arg(publication.repair_attempt_id.as_str()),
                 publication.next_command_suffix.unwrap_or_default()
             );

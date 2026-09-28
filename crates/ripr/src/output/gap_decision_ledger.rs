@@ -5,6 +5,7 @@ use crate::output::receipt_write::receipt_write_command;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 const SCHEMA_VERSION: &str = "0.1";
 const REPORT_KIND: &str = "gap_decision_ledger";
@@ -192,7 +193,7 @@ where
 /// report-regeneration routes gain their typed specs at read time — a pure
 /// enrichment; records whose routes are not canonical keep empty typed
 /// collections and stay legacy-string-only.
-fn recover_regeneration_command_specs(record: &mut GapRecord) {
+fn recover_regeneration_command_specs(record: &mut GapRecord, selected_root: &Path) {
     let already_typed = record
         .command_specs
         .as_ref()
@@ -203,7 +204,10 @@ fn recover_regeneration_command_specs(record: &mut GapRecord) {
     let mut recovered = Vec::new();
     for display in &record.regeneration_commands {
         if let Some(spec) =
-            crate::agent::command_specs::report_regeneration_command_spec_from_display(display)
+            crate::agent::command_specs::report_regeneration_command_spec_from_display(
+                display,
+                selected_root,
+            )
         {
             recovered.push(spec);
         }
@@ -437,7 +441,7 @@ pub(crate) fn build_gap_decision_ledger_report(
     // every downstream surface (LSP projections, first-pr, review packets)
     // sees the typed form without any upstream emitter change.
     for record in &mut records {
-        recover_regeneration_command_specs(record);
+        recover_regeneration_command_specs(record, Path::new(&input.root));
     }
 
     for record in &records {
@@ -646,12 +650,38 @@ pub(crate) fn render_gap_decision_ledger_markdown(report: &GapDecisionLedgerRepo
     out
 }
 
+/// Parse a persisted ledger for a CLI consumer. The CLI resolves `--root .`
+/// against its own working directory, so that directory is the selected root
+/// typed recovery binds to (#3999).
 pub(crate) fn parse_gap_records_json(contents: &str) -> Result<Vec<GapRecord>, String> {
     parse_gap_record_source_json(contents).map(|source| source.records)
 }
 
+/// Parse a persisted ledger for a consumer that owns its selected root
+/// rather than inheriting the process working directory (#4287). The LSP
+/// passes its workspace root, so a root-bound regeneration display keeps its
+/// typed route when the editor starts the server elsewhere. `None` is the
+/// legacy-only path for a caller without a trusted root: records keep their
+/// displays and gain no recovered typed regeneration specs.
+pub(crate) fn parse_gap_records_json_for_root(
+    contents: &str,
+    selected_root: Option<&Path>,
+) -> Result<Vec<GapRecord>, String> {
+    parse_gap_record_source_json_with_root(contents, selected_root).map(|source| source.records)
+}
+
 pub(crate) fn parse_gap_record_source_json(
     contents: &str,
+) -> Result<ParsedGapRecordSource, String> {
+    parse_gap_record_source_json_with_root(
+        contents,
+        Some(Path::new(crate::agent::command_specs::PORTABLE_ROOT)),
+    )
+}
+
+fn parse_gap_record_source_json_with_root(
+    contents: &str,
+    selected_root: Option<&Path>,
 ) -> Result<ParsedGapRecordSource, String> {
     let value: Value =
         serde_json::from_str(contents).map_err(|err| format!("invalid JSON: {err}"))?;
@@ -670,9 +700,16 @@ pub(crate) fn parse_gap_record_source_json(
     // legacy string-only records with the typed regeneration specs, so the
     // LSP loaders (diagnostics/backend) see the typed form too. The
     // enrichment is idempotent: a record already carrying typed
-    // regeneration specs is left untouched.
-    for record in &mut records {
-        recover_regeneration_command_specs(record);
+    // regeneration specs is left untouched. A persisted ledger carries no
+    // selected-root authority of its own (its `root` field is producer text,
+    // not a consumer selection), so a display bound to a concrete root gains
+    // a typed spec here only when that root is the consumer's selected root;
+    // any other bound root stays legacy-string-only (#3999). Without a
+    // trusted selected root nothing is recovered (#4287).
+    if let Some(selected_root) = selected_root {
+        for record in &mut records {
+            recover_regeneration_command_specs(record, selected_root);
+        }
     }
     Ok(ParsedGapRecordSource {
         root,
@@ -6581,7 +6618,7 @@ mod tests {
     #[test]
     fn regeneration_collection_shares_object_or_array_contract() -> Result<(), String> {
         let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md", std::path::Path::new(".")
         )
         .ok_or("canonical gap-ledger route was not recoverable")?;
         // Null collection deserializes to empty.
@@ -6664,6 +6701,69 @@ mod tests {
         Ok(())
     }
 
+    /// #3999: a persisted ledger carries no selected-root authority, so a
+    /// regeneration display bound to some other absolute root stays
+    /// legacy-string-only when read; the same display bound to the reading
+    /// directory recovers the portable typed route.
+    #[test]
+    fn parse_keeps_a_display_bound_to_a_foreign_root_legacy_string_only() -> Result<(), String> {
+        use crate::agent::loop_commands::{bound_root, check_repo_exposure_command};
+        let record = |display: &str| {
+            serde_json::json!([{
+                "gap_id": "gap:bound-regen",
+                "kind": "MissingValueAssertion",
+                "regeneration_commands": [display]
+            }])
+            .to_string()
+        };
+        let reading_root = bound_root(".");
+        let foreign_root = bound_root("../ripr-foreign-selected-root");
+        assert_ne!(reading_root, foreign_root);
+
+        // Control: bound to the reading directory, the route is typed and
+        // its argv carries the portable root.
+        let local = check_repo_exposure_command(
+            &reading_root,
+            "instant",
+            "target/ripr/reports/repo-exposure.json",
+        );
+        let records = parse_gap_records_json(&record(&local))?;
+        let specs = records[0]
+            .command_specs
+            .as_ref()
+            .ok_or_else(|| format!("reading-root display was not typed: {local}"))?;
+        if specs.regeneration.len() != 1
+            || !specs.regeneration[0]
+                .args
+                .windows(2)
+                .any(|pair| pair == ["--root", "."])
+        {
+            return Err(format!("unexpected typed route: {:?}", specs.regeneration));
+        }
+
+        // Foreign root: the display is kept, no typed spec is invented.
+        let foreign = check_repo_exposure_command(
+            &foreign_root,
+            "instant",
+            "target/ripr/reports/repo-exposure.json",
+        );
+        let records = parse_gap_records_json(&record(&foreign))?;
+        if records[0].regeneration_commands != vec![foreign.clone()] {
+            return Err(format!("legacy display was not kept: {:?}", records[0]));
+        }
+        if records[0]
+            .command_specs
+            .as_ref()
+            .is_some_and(|specs| !specs.regeneration.is_empty())
+        {
+            return Err(format!(
+                "a display bound to a foreign root gained typed authority: {:?}",
+                records[0].command_specs
+            ));
+        }
+        Ok(())
+    }
+
     /// FIX (round-1 review): every persisted-ledger parse path enriches
     /// legacy string-only records with typed regeneration specs, and the
     /// enrichment is idempotent — producer-carried collections are never
@@ -6721,7 +6821,7 @@ mod tests {
         );
         let mut producer_spec =
             crate::agent::command_specs::report_regeneration_command_spec_from_display(
-                "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+                "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md", std::path::Path::new(".")
             )
             .ok_or("canonical gap-ledger route was not recoverable")?;
         producer_spec.command_id = "ripr:producer:gap-ledger".to_string();
@@ -6759,6 +6859,7 @@ mod tests {
     -> Result<(), String> {
         let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
             "ripr check --root . --mode instant --format repo-exposure-json > repo.json",
+            std::path::Path::new("."),
         )
         .ok_or("canonical repo-exposure route was not recoverable")?;
         let base = serde_json::json!({

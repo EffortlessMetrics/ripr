@@ -32,7 +32,7 @@
     "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
     "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
     "assertion_shape": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
-    "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+    "verify_command": "ripr agent verify --root <cwd>/fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
   },
   "handoff": {
     "source": "agent_packet",

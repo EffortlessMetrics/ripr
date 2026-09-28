@@ -1416,7 +1416,10 @@ fn load_gap_ledger_records(
             );
         }
     }
-    match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
+    // #4287: typed recovery binds to the workspace root, not the server's
+    // process working directory.
+    match crate::output::gap_decision_ledger::parse_gap_records_json_for_root(&contents, Some(root))
+    {
         Ok(records) => (
             Some((ledger_path, records)),
             Some(ComponentOutcome::complete(AnalysisComponent::GapLedger)),
@@ -2893,6 +2896,81 @@ mod seam_diagnostic_tests {
         Ok(())
     }
 
+    /// #4287: the LSP loader binds typed recovery to its workspace root, not
+    /// the server's process working directory. The workspace is a temp
+    /// directory, so the process working directory (the crate root under
+    /// test) differs from it; a regeneration display bound to the workspace
+    /// keeps its typed route, while the process-directory and legacy-only
+    /// parse paths gain none.
+    #[test]
+    fn load_gap_ledger_records_binds_typed_routes_to_the_workspace_root() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let result = (|| {
+            let cwd = std::env::current_dir().map_err(|err| err.to_string())?;
+            if crate::agent::loop_commands::bound_root_path(&root)
+                == crate::agent::loop_commands::bound_root_path(&cwd)
+            {
+                return Err("the workspace must differ from the process working directory".into());
+            }
+            let workspace = crate::agent::loop_commands::bound_root(&root.to_string_lossy());
+            let display = crate::agent::loop_commands::check_repo_exposure_command(
+                &workspace,
+                "instant",
+                "target/ripr/reports/repo-exposure.json",
+            );
+            let mut record = gap_record(true);
+            record.regeneration_commands = vec![display.clone()];
+            let contents = gap_ledger_json(vec![record]).to_string();
+            fs::write(root.join(DEFAULT_GAP_DECISION_LEDGER_OUT), &contents)
+                .map_err(|err| format!("write ledger failed: {err}"))?;
+
+            let (records, _) = load_gap_ledger_records(&root, &[LanguageId::Rust]);
+            let Some((_, records)) = records else {
+                return Err("a usable ledger must return its records".to_string());
+            };
+            let typed = records[0]
+                .command_specs
+                .as_ref()
+                .map(|specs| specs.regeneration.clone())
+                .unwrap_or_default();
+            if typed.len() != 1
+                || !typed[0].args.windows(2).any(|pair| pair == ["--root", "."])
+                || typed[0].expected_writes
+                    != vec!["target/ripr/reports/repo-exposure.json".to_string()]
+            {
+                return Err(format!(
+                    "a workspace-bound display must keep its typed route: {display} -> {typed:?}"
+                ));
+            }
+
+            // The same ledger parsed against the process working directory,
+            // and on the legacy-only path, stays legacy-string-only.
+            let untyped = |records: Vec<GapRecord>| {
+                records[0].regeneration_commands == vec![display.clone()]
+                    && records[0]
+                        .command_specs
+                        .as_ref()
+                        .is_none_or(|specs| specs.regeneration.is_empty())
+            };
+            if !untyped(crate::output::gap_decision_ledger::parse_gap_records_json(
+                &contents,
+            )?) {
+                return Err("the process-directory parse must not bind a foreign root".into());
+            }
+            if !untyped(
+                crate::output::gap_decision_ledger::parse_gap_records_json_for_root(
+                    &contents, None,
+                )?,
+            ) {
+                return Err("the legacy-only parse must not recover typed routes".into());
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        result
+    }
+
     #[test]
     fn load_gap_ledger_records_types_every_failure_mode() -> Result<(), String> {
         // RIPR-SPEC-0141 (#1997): the ledger is read, validated, and parsed
@@ -3225,7 +3303,7 @@ mod seam_diagnostic_tests {
         }
 
         let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md", std::path::Path::new(".")
         )
         .ok_or("canonical gap-ledger route was not recoverable")?;
         let (value, error) = regeneration_specs_payload(std::slice::from_ref(&spec));

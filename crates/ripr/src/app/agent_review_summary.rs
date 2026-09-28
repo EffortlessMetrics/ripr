@@ -745,7 +745,11 @@ mod tests {
 
         assert!(rendered.contains("Target seam: unknown"));
         assert!(rendered.contains("Next command:"));
-        assert!(rendered.contains("ripr pilot --root ."));
+        assert!(
+            rendered.contains(&crate::app::agent_status::pilot_select_command(
+                &crate::agent::loop_commands::bound_root(".")
+            ))
+        );
         assert!(rendered.contains("No generated tests."));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
@@ -839,7 +843,11 @@ mod tests {
                 "Movement: missing_artifact\nReceipt: {NO_RECEIPT_BEFORE_REPAIR}\n"
             ))
             .ok_or_else(|| format!("no-receipt line missing:\n{rendered}"))?;
-        let next = check_repo_exposure_command(".", "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT);
+        let next = check_repo_exposure_command(
+            &crate::agent::loop_commands::bound_root("."),
+            "draft",
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        );
         let heading = rendered
             .find("Next command:")
             .ok_or_else(|| format!("next command missing:\n{rendered}"))?;
@@ -879,7 +887,11 @@ mod tests {
         // Issue #3872: the next-command redirect anchors at the resolved
         // --root, so both presented forms build from the same builder output
         // (the anchor math itself is pinned in loop_commands tests).
-        let next = check_repo_exposure_command(".", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT);
+        let next = check_repo_exposure_command(
+            &crate::agent::loop_commands::bound_root("."),
+            "draft",
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+        );
         let bash_form = format!("```bash\n{next}\n```\n");
         assert!(
             rendered.contains(bash_form.as_str()),

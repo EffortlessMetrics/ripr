@@ -23,7 +23,7 @@
     "step": "select_seam",
     "artifact": "target/ripr/pilot",
     "reason": "no repair seam is known yet; `ripr pilot` inspects the workspace and selects the seam to repair",
-    "command": "ripr pilot --root repo/root"
+    "command": "ripr pilot --root <cwd>/repo/root --out <cwd>/repo/root/target/ripr/pilot"
   },
   "surfaces": [
     {
@@ -33,7 +33,7 @@
       "state": "computed",
       "status": "incomplete",
       "required": true,
-      "summary": "0 of 7 required artifacts present, 7 missing, 0 warnings. Command: ripr agent status --root repo/root --json > <cwd>/repo/root/target/ripr/workflow/agent-status.json"
+      "summary": "0 of 7 required artifacts present, 7 missing, 0 warnings. Command: ripr agent status --root <cwd>/repo/root --json > <cwd>/repo/root/target/ripr/workflow/agent-status.json"
     },
     {
       "name": "agent_workflow",

@@ -636,7 +636,11 @@ fn push_seam_actions(
     // §8, plus a test-surface target): any other seam gets no new action
     // rather than a command that would be refused (#3906). The shared
     // builder is the only place the command string and its gate live.
-    if let Some(command) = repair_start_command_for(context.seam) {
+    // #4001/#3999: the loop commands bind the snapshot's selected workspace
+    // root, never the language-server process working directory. The
+    // payload's `root` field stays the portable role (`COMMAND_ROOT`).
+    let root = loop_commands::bound_root(&context.snapshot.root.to_string_lossy());
+    if let Some(command) = repair_start_command_for(context.seam, &root) {
         actions.push(copy_agent_loop_command_action(
             AGENT_REPAIR_COMMAND_TITLE,
             COPY_AGENT_REPAIR_COMMAND,
@@ -664,7 +668,7 @@ fn push_seam_actions(
             "agent_packet",
             loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
             loop_commands::agent_packet_command(
-                COMMAND_ROOT,
+                &root,
                 context.seam.seam.id().as_str(),
                 loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
             ),
@@ -683,7 +687,7 @@ fn push_seam_actions(
             "agent_brief",
             loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
             loop_commands::agent_brief_command(
-                COMMAND_ROOT,
+                &root,
                 context.seam.seam.id().as_str(),
                 loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
             ),
@@ -702,7 +706,7 @@ fn push_seam_actions(
             "after_snapshot",
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
             loop_commands::check_repo_exposure_command_with_base(
-                COMMAND_ROOT,
+                &root,
                 context.snapshot.base.as_deref(),
                 context.snapshot.mode.as_str(),
                 loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
@@ -722,7 +726,7 @@ fn push_seam_actions(
             "agent_verify",
             loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
             loop_commands::agent_verify_command(
-                COMMAND_ROOT,
+                &root,
                 loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
                 loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
                 Some(loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
@@ -742,7 +746,7 @@ fn push_seam_actions(
             "agent_receipt",
             loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT,
             loop_commands::agent_receipt_command(
-                COMMAND_ROOT,
+                &root,
                 loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
                 context.seam.seam.id().as_str(),
                 Some(loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),

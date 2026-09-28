@@ -78,8 +78,27 @@ fn tail_renders_bare(tail: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '_' | '-' | ':'))
 }
 
+/// Project a selected workspace root (#3999/#4001) the same way: commands
+/// bound to `root` carry it as the bare `--root` token and as the prefix of
+/// every anchored target, and both map to `<root>`. Goldens whose producer
+/// binds a fixture workspace (rather than the renderer working directory)
+/// use this projection; `<cwd>` stays the renderer-directory placeholder.
+#[cfg(test)]
+pub(crate) fn project_root_text(text: &str, root: &std::path::Path) -> String {
+    let prefix = format!(
+        "{}/",
+        crate::agent::loop_commands::bound_root(&root.to_string_lossy())
+    );
+    project_text_with_placeholder(text, &prefix, "<root>")
+}
+
 #[cfg(test)]
 fn project_text_with_prefix(text: &str, prefix: &str) -> String {
+    project_text_with_placeholder(text, prefix, "<cwd>")
+}
+
+#[cfg(test)]
+fn project_text_with_placeholder(text: &str, prefix: &str, placeholder: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     // Mirror `shell_arg`'s single-quote escaping so a prefix that itself
@@ -93,17 +112,51 @@ fn project_text_with_prefix(text: &str, prefix: &str) -> String {
         let tail = &after[..end];
         out.push_str(&rest[..at]);
         if tail_renders_bare(tail) {
-            out.push_str("> <cwd>/");
+            out.push_str(&format!("> {placeholder}/"));
             out.push_str(tail);
         } else {
-            out.push_str("> '<cwd>/");
+            out.push_str(&format!("> '{placeholder}/"));
             out.push_str(tail);
             out.push('\'');
         }
         rest = &after[end + 1..];
     }
     out.push_str(rest);
-    out.replace(prefix, "<cwd>/")
+    project_bound_root_token(
+        &out.replace(prefix, &format!("{placeholder}/")),
+        prefix,
+        placeholder,
+    )
+}
+
+/// Project the bound `--root` token itself (#3999): generated commands name
+/// the selected root as one absolute path with no trailing slash, so after
+/// the `<cwd>/` prefix pass the remaining bare occurrences are root tokens.
+/// The `shell_arg`-quoted form (a checkout path carrying a space) unquotes to
+/// the same `<cwd>` placeholder; a longer sibling path that merely starts
+/// with the same bytes is left alone.
+#[cfg(test)]
+fn project_bound_root_token(text: &str, prefix: &str, placeholder: &str) -> String {
+    let bare = prefix.trim_end_matches('/');
+    if bare.is_empty() {
+        return text.to_string();
+    }
+    let quoted = format!("'{}'", bare.replace('\'', r"'\''"));
+    let text = text.replace(&quoted, placeholder);
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    while let Some(at) = rest.find(bare) {
+        let after = &rest[at + bare.len()..];
+        let continues_path = after
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_alphanumeric() || matches!(ch, '.' | '_' | '-' | '/'));
+        out.push_str(&rest[..at]);
+        out.push_str(if continues_path { bare } else { placeholder });
+        rest = after;
+    }
+    out.push_str(rest);
+    out
 }
 
 #[cfg(test)]
@@ -161,6 +214,32 @@ mod tests {
         assert_eq!(
             project_text_with_prefix(&rendered, prefix),
             "> '<cwd>/repo root/target/out.json'"
+        );
+    }
+
+    #[test]
+    fn bound_root_token_projects_bare_and_quoted_forms() {
+        let prefix = "/srv/checkout/";
+        assert_eq!(
+            project_text_with_prefix(
+                "ripr check --root /srv/checkout --mode draft > /srv/checkout/target/out.json",
+                prefix
+            ),
+            "ripr check --root <cwd> --mode draft > <cwd>/target/out.json"
+        );
+        assert_eq!(
+            project_text_with_prefix("`ripr pilot --root /srv/checkout`", prefix),
+            "`ripr pilot --root <cwd>`"
+        );
+        // A sibling checkout sharing the prefix bytes is not the root.
+        assert_eq!(
+            project_text_with_prefix("--root /srv/checkout2 --json", prefix),
+            "--root /srv/checkout2 --json"
+        );
+        let spaced = "/srv/checkout with space/";
+        assert_eq!(
+            project_text_with_prefix("--root '/srv/checkout with space' --json", spaced),
+            "--root <cwd> --json"
         );
     }
 

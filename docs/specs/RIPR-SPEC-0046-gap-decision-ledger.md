@@ -487,6 +487,16 @@ Follow-up implementation should include:
   role-validated collections, read-time enrichment idempotence, and LSP
   payload disclosure of the typed routes.
 
+Rooted regeneration routes (#3999, #4287) are pinned by
+`crates/ripr/src/agent/command_specs.rs::tests::anchored_gap_ledger_displays_recover_root_relative_argv`
+(anchored paths recover root-relative argv; paths outside the selected root
+stay legacy-string-only),
+`crates/ripr/src/output/gap_decision_ledger.rs::tests::parse_keeps_a_display_bound_to_a_foreign_root_legacy_string_only`
+(a display bound to another root gains no typed spec), and
+`crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::load_gap_ledger_records_binds_typed_routes_to_the_workspace_root`
+(the LSP binds recovery to its workspace root, not the server's working
+directory, and the legacy-only path recovers nothing).
+
 This spec PR does not add production code or public output fields.
 
 ## Implementation Mapping

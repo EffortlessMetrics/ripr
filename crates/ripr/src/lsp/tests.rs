@@ -1327,20 +1327,37 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
                 .as_str()
                 .is_some_and(|value| value.contains("tests/pricing.rs"))
         );
+        // #3999/#4001 discriminator: the server was launched with root `.`
+        // (this test process's working directory) while the client selected
+        // the fixture workspace; every copied command names the workspace.
+        let workspace_root = crate::agent::loop_commands::shell_arg(
+            &crate::agent::loop_commands::bound_root(&repo_root.to_string_lossy()),
+        );
+        assert_ne!(
+            workspace_root,
+            crate::agent::loop_commands::shell_arg(&crate::agent::loop_commands::bound_root(".")),
+            "the fixture workspace must differ from the server process directory"
+        );
         assert!(
             context_packet["result"]["agent_brief_command"]
                 .as_str()
-                .is_some_and(|value| value.starts_with("ripr agent brief --root . --seam-id "))
+                .is_some_and(|value| value.starts_with(&format!(
+                    "ripr agent brief --root {workspace_root} --seam-id "
+                )))
         );
         assert!(
             context_packet["result"]["verify_command"]
                 .as_str()
-                .is_some_and(|value| value.contains("ripr agent verify --root ."))
+                .is_some_and(
+                    |value| value.contains(&format!("ripr agent verify --root {workspace_root} "))
+                )
         );
         assert!(
             context_packet["result"]["receipt_command"]
                 .as_str()
-                .is_some_and(|value| value.contains("ripr agent receipt --root ."))
+                .is_some_and(
+                    |value| value.contains(&format!("ripr agent receipt --root {workspace_root} "))
+                )
         );
         assert_eq!(
             context_packet["result"]["limits_note"],
@@ -4036,6 +4053,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
         Vec::new(),
     );
     snapshot.classified_seams = vec![seam.clone()];
+    let workspace = snapshot.root.to_string_lossy().into_owned();
     let actions = code_action_response(
         &code_action_params_for(uri, diagnostic.range.start.line, vec![diagnostic])?,
         Some(&snapshot),
@@ -4089,7 +4107,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     assert_eq!(
         commands[2].2[0]["command"],
         format!(
-            "ripr agent repair --root . --seam-id {} --phase before",
+            "ripr agent repair --root /workspace --seam-id {} --phase before",
             seam.seam.id().as_str()
         )
     );
@@ -4108,12 +4126,13 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
         commands[3].2[0]["target_artifact"],
         "target/ripr/agent/agent-packet.json"
     );
-    // Issue #3872: pasted redirect targets anchor at the resolved --root
-    // (the anchor math itself is pinned in loop_commands tests).
+    // Issues #3872/#3999/#4001: loop commands bind the snapshot's selected
+    // workspace root (the anchor math itself is pinned in loop_commands
+    // tests); the payload `root` stays the portable role.
     assert_eq!(
         commands[3].2[0]["command"],
         crate::agent::loop_commands::agent_packet_command(
-            ".",
+            &workspace,
             seam.seam.id().as_str(),
             "target/ripr/agent/agent-packet.json",
         )
@@ -4123,7 +4142,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     assert_eq!(
         commands[4].2[0]["command"],
         crate::agent::loop_commands::agent_brief_command(
-            ".",
+            &workspace,
             seam.seam.id().as_str(),
             "target/ripr/agent/agent-brief.json",
         )
@@ -4136,7 +4155,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     assert_eq!(
         commands[5].2[0]["command"],
         crate::agent::loop_commands::check_repo_exposure_command_with_base(
-            ".",
+            &workspace,
             Some("origin/main"),
             "draft",
             "target/ripr/pilot/after.repo-exposure.json",
@@ -4147,7 +4166,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     assert_eq!(
         commands[6].2[0]["command"],
         crate::agent::loop_commands::agent_verify_command(
-            ".",
+            &workspace,
             "target/ripr/pilot/repo-exposure.json",
             "target/ripr/pilot/after.repo-exposure.json",
             Some("target/ripr/agent/agent-verify.json"),
@@ -4158,7 +4177,10 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     assert_eq!(
         commands[7].2[0]["command"],
         format!(
-            "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id {} --json --out target/ripr/agent/agent-receipt.json",
+            "ripr agent receipt --root {} --verify-json target/ripr/agent/agent-verify.json --seam-id {} --json --out target/ripr/agent/agent-receipt.json",
+            crate::agent::loop_commands::shell_arg(&crate::agent::loop_commands::bound_root(
+                &workspace
+            )),
             seam.seam.id().as_str()
         )
     );
@@ -4220,7 +4242,7 @@ fn repair_start_is_offered_only_for_a_seam_past_the_repair_packet_flip() -> Resu
     ));
 
     let expected = format!(
-        "ripr agent repair --root . --seam-id {} --phase before",
+        "ripr agent repair --root /workspace --seam-id {} --phase before",
         eligible.seam.id().as_str()
     );
 
@@ -6258,7 +6280,7 @@ fn seam_code_actions_fail_closed_for_cross_language_target_unresolved() -> Resul
 
 #[test]
 fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result<(), String> {
-    use crate::agent::loop_commands::{anchored_redirect_target, shell_arg};
+    use crate::agent::loop_commands::{anchored_redirect_target, bound_root, shell_arg};
 
     let seam = sample_classified_seam();
     let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
@@ -6279,10 +6301,13 @@ fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result
         &vscode_client_features()?,
     );
 
-    // Issue #3872: pasted redirect targets anchor at the resolved --root, so
-    // the expectations name the anchored absolute target (never a machine
-    // directory literally: the anchor builds from the renderer prefix).
-    let anchored = |tail: &str| shell_arg(&anchored_redirect_target(".", tail));
+    // Issues #3872/#3999/#4001: `--root` and the pasted redirect target both
+    // bind the snapshot's selected workspace root, so the expectations name
+    // the bound absolute root and target (never a machine directory
+    // literally: both build from the same resolution rule).
+    let workspace = snapshot.root.to_string_lossy().into_owned();
+    let root = shell_arg(&bound_root(&workspace));
+    let anchored = |tail: &str| shell_arg(&anchored_redirect_target(&workspace, tail));
     let commands = code_action_commands(&actions)?;
     let expected_commands = [
         (
@@ -6290,7 +6315,7 @@ fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result
             "agent_packet",
             "target/ripr/agent/agent-packet.json",
             format!(
-                "ripr agent packet --root . --seam-id {} --json > {}",
+                "ripr agent packet --root {root} --seam-id {} --json > {}",
                 seam.seam.id().as_str(),
                 anchored("target/ripr/agent/agent-packet.json"),
             ),
@@ -6300,7 +6325,7 @@ fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result
             "agent_brief",
             "target/ripr/agent/agent-brief.json",
             format!(
-                "ripr agent brief --root . --seam-id {} --json > {}",
+                "ripr agent brief --root {root} --seam-id {} --json > {}",
                 seam.seam.id().as_str(),
                 anchored("target/ripr/agent/agent-brief.json"),
             ),
@@ -6310,7 +6335,7 @@ fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result
             "after_snapshot",
             "target/ripr/pilot/after.repo-exposure.json",
             format!(
-                "ripr check --root . --base 'origin/main with space' --mode ready --format repo-exposure-json > {}",
+                "ripr check --root {root} --base 'origin/main with space' --mode ready --format repo-exposure-json > {}",
                 anchored("target/ripr/pilot/after.repo-exposure.json"),
             ),
         ),
@@ -6319,7 +6344,7 @@ fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result
             "agent_verify",
             "target/ripr/agent/agent-verify.json",
             format!(
-                "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > {}",
+                "ripr agent verify --root {root} --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > {}",
                 anchored("target/ripr/agent/agent-verify.json"),
             ),
         ),
@@ -6328,7 +6353,7 @@ fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result
             "agent_receipt",
             "target/ripr/agent/agent-receipt.json",
             format!(
-                "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id {} --json --out target/ripr/agent/agent-receipt.json",
+                "ripr agent receipt --root {root} --verify-json target/ripr/agent/agent-verify.json --seam-id {} --json --out target/ripr/agent/agent-receipt.json",
                 seam.seam.id().as_str()
             ),
         ),
@@ -6353,13 +6378,25 @@ fn agent_loop_command_payloads_stay_root_anchored_for_platform_roots() -> Result
         let copied = argument["command"]
             .as_str()
             .ok_or_else(|| "expected command string".to_string())?;
+        // #4287: separators normalize to `/` on Windows. On Unix `\\` is a
+        // filename character, so the selected root keeps it verbatim and
+        // only the root-relative remainder is slash-separated.
+        let unrooted = copied.replace(&bound_root(&workspace), "");
         assert!(
-            !copied.contains('\\'),
+            !unrooted.contains('\\'),
             "copied commands should use slash-separated paths, got {copied}"
         );
+        assert_eq!(
+            copied.contains('\\'),
+            !cfg!(windows),
+            "only a Unix root keeps its literal backslash, got {copied}"
+        );
+        // #3999/#4001: the copied command names the selected workspace root
+        // (slash-normalized), so it analyzes that workspace from any
+        // working directory; the payload `root` above stays portable.
         assert!(
-            !copied.contains("ripr workspace"),
-            "copied commands should not leak platform-specific workspace roots, got {copied}"
+            copied.contains(&format!("--root {root} ")),
+            "copied commands must bind the selected workspace root, got {copied}"
         );
         // Shell redirects must carry an absolute anchor so the pasted command
         // reproduces the validated location from any working directory; the
@@ -11651,11 +11688,11 @@ fn normalize_lsp_action_argument(
     let Some(object) = argument.as_object() else {
         return Ok(argument.clone());
     };
-    // Issue #3872: copied command strings carry root-anchored absolute
-    // redirect targets, so the renderer working-directory prefix projects to
-    // `<cwd>/` — the same placeholder rule as the corpus and fixture
-    // projections (loop_commands) — keeping the golden machine-independent
-    // while still pinning the anchored shape.
+    // Issues #3872/#3999/#4001: copied command strings bind the selected
+    // workspace root — the `--root` token and every anchored redirect target
+    // — so the workspace projects to `<root>` (and any renderer
+    // working-directory prefix to `<cwd>/`), keeping the golden
+    // machine-independent while still pinning the bound shape.
     let mut normalized = serde_json::Map::new();
     for (key, value) in object {
         if key == "uri"
@@ -11672,7 +11709,9 @@ fn normalize_lsp_action_argument(
         } else if let Some(text) = value.as_str() {
             normalized.insert(
                 key.clone(),
-                serde_json::json!(crate::testing::cwd_placeholder::project_cwd_text(text)),
+                serde_json::json!(crate::testing::cwd_placeholder::project_cwd_text(
+                    &crate::testing::cwd_placeholder::project_root_text(text, root)
+                )),
             );
         } else {
             normalized.insert(key.clone(), value.clone());
@@ -12631,6 +12670,9 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
             Vec::new(),
         );
         diagnostics.snapshot.classified_seams = vec![seam];
+        let workspace_root = crate::agent::loop_commands::shell_arg(
+            &crate::agent::loop_commands::bound_root("/workspace"),
+        );
         let Some(_) = backend.refresh_plan(diagnostics) else {
             return Err("expected refresh plan".to_string());
         };
@@ -12684,14 +12726,15 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
         assert!(
             packet["agent_brief_command"]
                 .as_str()
-                .is_some_and(|value| value.starts_with("ripr agent brief --root . --seam-id "))
+                .is_some_and(|value| value
+                    .starts_with(&format!("ripr agent brief --root {workspace_root} --seam-id ")))
         );
         // Issue #3872: pasted redirect targets anchor at the resolved
         // --root (the anchor math itself is pinned in loop_commands tests).
         assert_eq!(
             packet["after_snapshot_command"],
             crate::agent::loop_commands::check_repo_exposure_command_with_base(
-                ".",
+                "/workspace",
                 Some("origin/main"),
                 "draft",
                 "target/ripr/pilot/after.repo-exposure.json",
@@ -12701,7 +12744,7 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
         assert_eq!(
             packet["verify_command"],
             crate::agent::loop_commands::agent_verify_command(
-                ".",
+                "/workspace",
                 "target/ripr/pilot/repo-exposure.json",
                 "target/ripr/pilot/after.repo-exposure.json",
                 Some("target/ripr/agent/agent-verify.json"),
@@ -12709,13 +12752,13 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
             .as_str()
         );
         assert!(packet["receipt_command"].as_str().is_some_and(|value| {
-            value.contains(
-                "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json",
-            ) && value.contains("--out target/ripr/agent/agent-receipt.json")
+            value.contains(&format!(
+                "ripr agent receipt --root {workspace_root} --verify-json target/ripr/agent/agent-verify.json",
+            )) && value.contains("--out target/ripr/agent/agent-receipt.json")
         }));
         assert_eq!(
             packet["repair_command"],
-            format!("ripr agent repair --root . --seam-id {seam_id} --phase before")
+            format!("ripr agent repair --root {workspace_root} --seam-id {seam_id} --phase before")
         );
         assert_eq!(
             packet["limits_note"],

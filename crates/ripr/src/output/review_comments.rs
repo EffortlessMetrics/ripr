@@ -793,6 +793,10 @@ fn review_recommendation_json(
     let candidate_values = agent_seam_packets::candidate_values_for(entry, &missing);
     let assertion_shape = agent_seam_packets::assertion_shape_for_entry(entry);
     let seam_id = seam.id().as_str();
+    // Review cards are published into pull requests, where a checkout path
+    // from the machine that rendered them (often a CI runner) names nothing
+    // the reader has: their commands keep the portable `--root` the report
+    // was invoked with, meaning the reader's own checkout root (#4000).
     let root_display = display_path(root);
     let missing_value = missing.first().map(|record| record.value.clone());
     let seam_file = display_path(seam.file());
@@ -812,7 +816,7 @@ fn review_recommendation_json(
     };
 
     // receipt_command: only for actionable cards; reuses canonical_receipt_command_for.
-    let receipt_command = canonical_receipt_command_for(entry, gap_state);
+    let receipt_command = canonical_receipt_command_for(entry, gap_state, &root_display);
 
     // why_not_actionable + non_claims: for static_limitation cards.
     let static_limitations = if gap_state == "static_limitation" {
@@ -960,7 +964,7 @@ fn review_recommendation_json(
     // repair-packet flip. The evidence record owns the decision; the card
     // projects it.
     if let (Some(cmd), Some(guidance)) = (
-        canonical_repair_command_for(entry, gap_state),
+        canonical_repair_command_for(entry, gap_state, &root_display),
         recommendation
             .get_mut("llm_guidance")
             .and_then(Value::as_object_mut),

@@ -2,19 +2,28 @@
 
 use super::loop_commands::{
     agent_brief_command, agent_packet_command, agent_receipt_command, agent_verify_command,
-    shell_arg,
+    bound_root_path, lexically_clean, root_display, shell_arg,
 };
 use crate::domain::{
     CancellationPolicy, CommandAuthorityBoundary, CommandCostClass, CommandExecutionMode,
     CommandPlatform, CommandRole, CommandSpec, EnvironmentPolicy, ExpectedResultParser,
     NetworkPolicy, StdinPolicy,
 };
+use std::path::{Component, Path};
 
 /// Compatibility command displays are usable only when they carry content.
 ///
 /// Typed [`CommandSpec`] validation remains the execution authority. This
 /// predicate owns the narrower legacy-display readiness contract shared by
 /// producers and consumers that still carry compatibility strings.
+/// The portable `--root` role a typed route carries (#3999). A
+/// [`CommandSpec`] runs with `cwd` at the selected repository root, so its
+/// argv names that root as `.`; the concrete checkout path appears only in
+/// the human display (see `loop_commands::bound_root`) and never in argv or
+/// expected writes. Equivalent checkouts therefore share argv, working
+/// directory, and expected writes while their displays differ.
+pub(crate) const PORTABLE_ROOT: &str = ".";
+
 pub(crate) fn command_display_is_nonblank(display: &str) -> bool {
     !display.trim().is_empty()
 }
@@ -49,7 +58,7 @@ pub(crate) fn agent_verify_command_spec(
             "agent".to_string(),
             "verify".to_string(),
             "--root".to_string(),
-            root.to_string(),
+            PORTABLE_ROOT.to_string(),
             "--before".to_string(),
             before_path.to_string(),
             "--after".to_string(),
@@ -72,7 +81,7 @@ pub(crate) fn agent_receipt_command_spec(
         "agent".to_string(),
         "receipt".to_string(),
         "--root".to_string(),
-        root.to_string(),
+        PORTABLE_ROOT.to_string(),
         "--verify-json".to_string(),
         verify_json.to_string(),
         "--seam-id".to_string(),
@@ -141,7 +150,7 @@ pub(crate) fn agent_regeneration_command_spec(
             "agent".to_string(),
             route.command_word().to_string(),
             "--root".to_string(),
-            root.to_string(),
+            PORTABLE_ROOT.to_string(),
             "--seam-id".to_string(),
             seam_id.to_string(),
             "--json".to_string(),
@@ -174,7 +183,7 @@ pub(crate) fn agent_inspection_command_spec(
     let display = format!(
         "ripr agent {} --root {} --seam-id {} --json",
         route.command_word(),
-        shell_arg(root),
+        shell_arg(&root_display(root)),
         shell_arg(seam_id)
     );
     command_spec(
@@ -185,7 +194,7 @@ pub(crate) fn agent_inspection_command_spec(
             "agent".to_string(),
             route.command_word().to_string(),
             "--root".to_string(),
-            root.to_string(),
+            PORTABLE_ROOT.to_string(),
             "--seam-id".to_string(),
             seam_id.to_string(),
             "--json".to_string(),
@@ -304,21 +313,33 @@ fn report_route_template(command_word: &str) -> Option<ReportRouteTemplate> {
 /// parses them. The report routes write their `--out`/`--out-md` outputs
 /// themselves (`Direct`); the check route writes through a shell redirect
 /// (`ShellRequired`, redirect target as the expected write).
-pub(crate) fn report_regeneration_command_spec_from_display(command: &str) -> Option<CommandSpec> {
+///
+/// `selected_root` is the repository the consumer selected (#3999): an
+/// absolute `--root` in the display gains typed authority only when it names
+/// that root, and root-relative expected writes are derived against it —
+/// never against the consumer process working directory.
+pub(crate) fn report_regeneration_command_spec_from_display(
+    command: &str,
+    selected_root: &Path,
+) -> Option<CommandSpec> {
+    // Bind the selected root once per recovery (#3999): every helper below
+    // compares and anchors against this one resolution.
+    let selected_root = bound_root_path(selected_root);
+    let selected_root = selected_root.as_path();
     let words = shell_words(command)?;
     if words.first().map(String::as_str) != Some("ripr") {
         return None;
     }
     match words.get(1).map(String::as_str) {
         // Route word at index 1: the repo-exposure check route.
-        Some("check") => recover_check_repo_exposure_spec(&words, command),
+        Some("check") => recover_check_repo_exposure_spec(&words, command, selected_root),
         Some("reports") => match words.get(2).map(String::as_str) {
-            Some("gap-ledger") => recover_gap_ledger_spec(&words, command),
-            Some("index") => recover_loop_template_spec(&words, command, "index"),
+            Some("gap-ledger") => recover_gap_ledger_spec(&words, command, selected_root),
+            Some("index") => recover_loop_template_spec(&words, command, "index", selected_root),
             _ => None,
         },
         Some("pr-review") if words.get(2).map(String::as_str) == Some("front-panel") => {
-            recover_loop_template_spec(&words, command, "front-panel")
+            recover_loop_template_spec(&words, command, "front-panel", selected_root)
         }
         _ => None,
     }
@@ -336,6 +357,7 @@ fn recover_loop_template_spec(
     words: &[String],
     command: &str,
     command_word: &str,
+    selected_root: &Path,
 ) -> Option<CommandSpec> {
     let template = report_route_template(command_word)?;
     let mut args = vec![words[1].to_string(), words[2].to_string()];
@@ -356,7 +378,11 @@ fn recover_loop_template_spec(
         if value.starts_with("--") && template.allowed.contains(&value.as_str()) {
             return None;
         }
-        args.push(value.clone());
+        if token == "--root" {
+            args.push(portable_root_arg(value, selected_root)?);
+        } else {
+            args.push(value.clone());
+        }
         if token == "--out" || token == "--out-md" {
             expected_writes.push(value.clone());
         }
@@ -396,7 +422,11 @@ const CHECK_MODE_VALUES: [&str; 5] = ["instant", "draft", "fast", "deep", "ready
 /// repo-exposure-json > OUT` (10 tokens). The redirect is shell semantics,
 /// so the recovered spec is `ShellRequired` and names the redirect target
 /// as its expected write; argv stops before the redirect.
-fn recover_check_repo_exposure_spec(words: &[String], command: &str) -> Option<CommandSpec> {
+fn recover_check_repo_exposure_spec(
+    words: &[String],
+    command: &str,
+    selected_root: &Path,
+) -> Option<CommandSpec> {
     if words.len() != 10
         || words[2] != "--root"
         || words[4] != "--mode"
@@ -415,12 +445,12 @@ fn recover_check_repo_exposure_spec(words: &[String], command: &str) -> Option<C
     }
     // Issue #3872: the rendered redirect target is absolute; recovery keeps
     // the root-relative expected write when it falls under --root.
-    let expected_write = relativize_write_against_root(&words[3], &words[9])?;
+    let expected_write = relativize_write_against_root(&words[3], &words[9], selected_root)?;
     let spec = command_spec(
         "ripr:check:repo-exposure",
         CommandRole::Regeneration,
         CommandExecutionMode::ShellRequired,
-        words[1..8].to_vec(),
+        portable_root_args(&words[1..8], selected_root)?,
         vec![expected_write],
         command.to_string(),
     );
@@ -433,34 +463,66 @@ fn recover_check_repo_exposure_spec(words: &[String], command: &str) -> Option<C
     Some(spec)
 }
 
+/// Map a display's `--root` value onto the portable argv role (#3999).
+///
+/// A relative value is a historical display shape (`--root .`, or a
+/// root-relative subdirectory) and is kept verbatim for compatibility. An
+/// absolute value is the concrete root a current producer binds; it gains
+/// typed authority only when it names the consumer's selected root, and then
+/// becomes [`PORTABLE_ROOT`] so the checkout path never enters argv. Any
+/// other absolute root — a display whose root was substituted after it was
+/// rendered — fails closed. `selected_root` is already bound by the public
+/// recovery entry point.
+fn portable_root_arg(value: &str, selected_root: &Path) -> Option<String> {
+    let value_path = Path::new(value);
+    if !value_path.is_absolute() {
+        return Some(value.to_string());
+    }
+    (lexically_clean(value_path) == selected_root).then(|| PORTABLE_ROOT.to_string())
+}
+
+/// Apply [`portable_root_arg`] to the value of every `--root` flag in `args`.
+/// A trailing `--root` with no value is copied through unchanged; the route
+/// shape checks own that refusal.
+fn portable_root_args(args: &[String], selected_root: &Path) -> Option<Vec<String>> {
+    let mut portable = Vec::with_capacity(args.len());
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        portable.push(arg.clone());
+        if arg == "--root"
+            && let Some(value) = iter.next()
+        {
+            portable.push(portable_root_arg(value, selected_root)?);
+        }
+    }
+    Some(portable)
+}
+
 /// Relativize an absolute funnel write target against the command's own
-/// `--root` value (issue #3872): guidance renders redirect targets rooted at
-/// `--root` as absolute paths, but typed recovery keeps root-relative
-/// expected writes under the shared validator. When the absolute target
-/// falls under the absolutized `--root`, the relative remainder is the
-/// expected write; anything else (unaligned roots, traversal, unresolvable
-/// working directory) stays legacy-string-only. Relative targets pass
-/// through untouched.
-fn relativize_write_against_root(root: &str, target: &str) -> Option<String> {
-    if !std::path::Path::new(target).is_absolute() {
+/// `--root` value (issues #3872, #3999): guidance renders redirect targets
+/// rooted at the bound root as absolute paths, but typed recovery keeps
+/// root-relative expected writes under the shared validator. A relative
+/// `--root` value resolves under the consumer's selected root — never the
+/// consumer process working directory. When the absolute target falls under
+/// that anchor, the relative remainder is the expected write; anything else
+/// (unaligned roots, traversal) stays legacy-string-only. Relative targets
+/// pass through untouched.
+fn relativize_write_against_root(root: &str, target: &str, selected_root: &Path) -> Option<String> {
+    if !Path::new(target).is_absolute() {
         return Some(target.to_string());
     }
     // Review #3938: the rendered target is lexically cleaned, so the anchor
     // is cleaned the same way — otherwise a `--root` carrying traversal
-    // segments can never prefix-match its own rendered target.
-    let anchor = if std::path::Path::new(root).is_absolute() {
-        super::loop_commands::lexically_clean(std::path::Path::new(root))
-    } else {
-        super::loop_commands::lexically_clean(&std::env::current_dir().ok()?.join(root))
-    };
-    let relative = std::path::Path::new(target).strip_prefix(&anchor).ok()?;
+    // segments can never prefix-match its own rendered target. `join` keeps
+    // an absolute `--root` as-is and nests a relative one under the
+    // selected root.
+    let anchor = lexically_clean(&selected_root.join(root));
+    let relative = Path::new(target).strip_prefix(&anchor).ok()?;
     if relative.as_os_str().is_empty()
         || relative.components().any(|component| {
             matches!(
                 component,
-                std::path::Component::ParentDir
-                    | std::path::Component::Prefix(_)
-                    | std::path::Component::RootDir
+                Component::ParentDir | Component::Prefix(_) | Component::RootDir
             )
         })
     {
@@ -476,37 +538,63 @@ fn relativize_write_against_root(root: &str, target: &str) -> Option<String> {
 /// CLI defaults `--out-md` independently to
 /// DEFAULT_GAP_DECISION_LEDGER_MD_OUT — not a with_extension derivation of
 /// `--out` — so the default constant is what the expected writes name.
-fn recover_gap_ledger_spec(words: &[String], command: &str) -> Option<CommandSpec> {
-    // (argv, --out value, explicit --out-md value when present)
-    let (args, out, out_md) = match words.len() {
-        9 if words[3] == "--repo-exposure" && words[5] == "--out" && words[7] == "--out-md" => (
-            words[1..9].to_vec(),
-            words[6].as_str(),
-            Some(words[8].as_str()),
-        ),
-        11 if words[3] == "--check-output"
-            && words[5] == "--root"
-            && words[7] == "--out"
-            && words[9] == "--out-md" =>
-        {
-            (
-                words[1..11].to_vec(),
-                words[8].as_str(),
-                Some(words[10].as_str()),
-            )
+fn recover_gap_ledger_spec(
+    words: &[String],
+    command: &str,
+    selected_root: &Path,
+) -> Option<CommandSpec> {
+    // `ripr reports gap-ledger` followed by exact flag/value pairs.
+    let pairs = words.get(3..)?;
+    if pairs.len() % 2 != 0 {
+        return None;
+    }
+    let flags = pairs
+        .iter()
+        .step_by(2)
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    // Other shapes (including a display with no output flag at all) fail
+    // closed: the exact positional contract cannot state the route's writes.
+    if !matches!(
+        flags.as_slice(),
+        ["--repo-exposure", "--out"]
+            | ["--repo-exposure", "--out", "--out-md"]
+            | ["--root", "--repo-exposure", "--out"]
+            | ["--root", "--repo-exposure", "--out", "--out-md"]
+            | ["--check-output", "--root", "--out"]
+            | ["--check-output", "--root", "--out", "--out-md"]
+    ) {
+        return None;
+    }
+    // #4287: current producers anchor every path value at the bound
+    // `--root`, because the CLI resolves them against its working directory.
+    // Recovery maps each anchored value back to its root-relative form under
+    // the same rule as a redirect target, so argv stays portable; a value
+    // outside the root, or a root that is not the selected root, stays
+    // legacy-string-only.
+    let root = pairs
+        .chunks(2)
+        .find(|pair| pair[0] == "--root")
+        .map_or(PORTABLE_ROOT, |pair| pair[1].as_str());
+    let mut args = words[1..3].to_vec();
+    let mut out = None;
+    let mut out_md = None;
+    for pair in pairs.chunks(2) {
+        let (flag, value) = (pair[0].as_str(), pair[1].as_str());
+        let portable = if flag == "--root" {
+            portable_root_arg(value, selected_root)?
+        } else {
+            relativize_write_against_root(root, value, selected_root)?
+        };
+        match flag {
+            "--out" => out = Some(portable.clone()),
+            "--out-md" => out_md = Some(portable.clone()),
+            _ => {}
         }
-        7 if words[3] == "--repo-exposure" && words[5] == "--out" => {
-            (words[1..7].to_vec(), words[6].as_str(), None)
-        }
-        9 if words[3] == "--check-output" && words[5] == "--root" && words[7] == "--out" => {
-            (words[1..9].to_vec(), words[8].as_str(), None)
-        }
-        // Other shapes (including a display with no output flag at all)
-        // fail closed: the exact positional contract cannot state the
-        // route's writes.
-        _ => return None,
-    };
-    let markdown_out = out_md.map(ToOwned::to_owned).unwrap_or_else(|| {
+        args.push(flag.to_string());
+        args.push(portable);
+    }
+    let markdown_out = out_md.unwrap_or_else(|| {
         crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_MD_OUT.to_string()
     });
     let spec = command_spec(
@@ -514,7 +602,7 @@ fn recover_gap_ledger_spec(words: &[String], command: &str) -> Option<CommandSpe
         CommandRole::Regeneration,
         CommandExecutionMode::Direct,
         args,
-        vec![out.to_string(), markdown_out],
+        vec![out?, markdown_out],
         command.to_string(),
     );
     if spec.validate().is_err() {
@@ -525,8 +613,17 @@ fn recover_gap_ledger_spec(words: &[String], command: &str) -> Option<CommandSpe
 
 /// Recover a typed spec only for canonical agent routes. Arbitrary
 /// user-supplied test commands remain legacy advisory text until a producer
-/// supplies their executable and argument boundary.
-pub(crate) fn agent_command_spec_from_display(command: &str) -> Option<CommandSpec> {
+/// supplies their executable and argument boundary. `selected_root` binds
+/// the display's `--root` exactly as in
+/// [`report_regeneration_command_spec_from_display`] (#3999).
+pub(crate) fn agent_command_spec_from_display(
+    command: &str,
+    selected_root: &Path,
+) -> Option<CommandSpec> {
+    // Bind the selected root once per recovery (#3999); see
+    // `report_regeneration_command_spec_from_display`.
+    let selected_root = bound_root_path(selected_root);
+    let selected_root = selected_root.as_path();
     let words = shell_words(command)?;
     if words.iter().any(|word| {
         word.chars()
@@ -567,15 +664,16 @@ pub(crate) fn agent_command_spec_from_display(command: &str) -> Option<CommandSp
                         })
                         .map(String::as_str)
                         .unwrap_or(".");
-                    let expected_write = relativize_write_against_root(root, out_path)?;
+                    let expected_write =
+                        relativize_write_against_root(root, out_path, selected_root)?;
                     (
-                        words.get(1..redirect)?.to_vec(),
+                        portable_root_args(words.get(1..redirect)?, selected_root)?,
                         CommandExecutionMode::ShellRequired,
                         vec![expected_write],
                     )
                 }
                 None => (
-                    words.get(1..)?.to_vec(),
+                    portable_root_args(words.get(1..)?, selected_root)?,
                     CommandExecutionMode::Direct,
                     Vec::new(),
                 ),
@@ -641,18 +739,19 @@ pub(crate) fn agent_command_spec_from_display(command: &str) -> Option<CommandSp
                         })
                         .map(String::as_str)
                         .unwrap_or(".");
-                    let expected_write = relativize_write_against_root(root, out_path)?;
+                    let expected_write =
+                        relativize_write_against_root(root, out_path, selected_root)?;
                     (
                         CommandRole::Regeneration,
                         CommandExecutionMode::ShellRequired,
-                        words.get(1..redirect)?.to_vec(),
+                        portable_root_args(words.get(1..redirect)?, selected_root)?,
                         vec![expected_write],
                     )
                 }
                 None => (
                     CommandRole::Inspection,
                     CommandExecutionMode::Direct,
-                    words.get(1..)?.to_vec(),
+                    portable_root_args(words.get(1..)?, selected_root)?,
                     Vec::new(),
                 ),
             };
@@ -677,7 +776,7 @@ pub(crate) fn agent_command_spec_from_display(command: &str) -> Option<CommandSp
             Some(spec)
         }
         Some("receipt") => {
-            let args = words.get(1..)?.to_vec();
+            let args = portable_root_args(words.get(1..)?, selected_root)?;
             if args.is_empty() || args.iter().any(|arg| arg == ">") {
                 return None;
             }
@@ -857,13 +956,22 @@ mod tests {
         let cwd = std::env::current_dir().map_err(|err| format!("read test cwd: {err}"))?;
         let display = |path: &std::path::Path| path.to_string_lossy().replace('\\', "/");
         let under_cwd = display(&cwd.join("target/ripr/workflow/agent-verify.json"));
-        if super::relativize_write_against_root(".", &under_cwd).as_deref()
+        if super::relativize_write_against_root(
+            ".",
+            &under_cwd,
+            &super::bound_root_path(std::path::Path::new(".")),
+        )
+        .as_deref()
             != Some("target/ripr/workflow/agent-verify.json")
         {
             return Err("absolute target under --root must relativize".to_string());
         }
-        if super::relativize_write_against_root(".", "target/ripr/workflow/agent-verify.json")
-            .as_deref()
+        if super::relativize_write_against_root(
+            ".",
+            "target/ripr/workflow/agent-verify.json",
+            &super::bound_root_path(std::path::Path::new(".")),
+        )
+        .as_deref()
             != Some("target/ripr/workflow/agent-verify.json")
         {
             return Err("relative target must pass through untouched".to_string());
@@ -879,7 +987,13 @@ mod tests {
             "{}/outside-scope/out.json",
             parent.to_string_lossy().replace('\\', "/")
         );
-        if super::relativize_write_against_root(".", &outside).is_some() {
+        if super::relativize_write_against_root(
+            ".",
+            &outside,
+            &super::bound_root_path(std::path::Path::new(".")),
+        )
+        .is_some()
+        {
             return Err(format!(
                 "unaligned absolute target must stay legacy-string-only: {outside}"
             ));
@@ -887,18 +1001,35 @@ mod tests {
         // Traversal out of the root fails closed even when the lexical
         // prefix lines up.
         let traversal = display(&cwd.join("../escape.json"));
-        if super::relativize_write_against_root(".", &traversal).is_some() {
+        if super::relativize_write_against_root(
+            ".",
+            &traversal,
+            &super::bound_root_path(std::path::Path::new(".")),
+        )
+        .is_some()
+        {
             return Err("traversing target must stay legacy-string-only".to_string());
         }
         // The anchor itself names no file.
         let bare_anchor = display(&cwd);
-        if super::relativize_write_against_root(".", &bare_anchor).is_some() {
+        if super::relativize_write_against_root(
+            ".",
+            &bare_anchor,
+            &super::bound_root_path(std::path::Path::new(".")),
+        )
+        .is_some()
+        {
             return Err("bare-anchor target must stay legacy-string-only".to_string());
         }
         // An absolute --root anchors without the working directory.
         let absolute_root = display(&cwd.join("workspace-root"));
         let absolute_target = format!("{absolute_root}/out.json");
-        if super::relativize_write_against_root(&absolute_root, &absolute_target).as_deref()
+        if super::relativize_write_against_root(
+            &absolute_root,
+            &absolute_target,
+            &super::bound_root_path(std::path::Path::new(".")),
+        )
+        .as_deref()
             != Some("out.json")
         {
             return Err("absolute root must anchor directly".to_string());
@@ -908,7 +1039,12 @@ mod tests {
         let base = display(&cwd);
         let traversing_root = format!("{base}/sub/../tail");
         let traversing_target = format!("{base}/tail/out.json");
-        if super::relativize_write_against_root(&traversing_root, &traversing_target).as_deref()
+        if super::relativize_write_against_root(
+            &traversing_root,
+            &traversing_target,
+            &super::bound_root_path(std::path::Path::new(".")),
+        )
+        .as_deref()
             != Some("out.json")
         {
             return Err("traversing root must still anchor its own target".to_string());
@@ -917,6 +1053,7 @@ mod tests {
         // redirect) falls back to `.` instead of parsing `>` as the root.
         let dangling = super::agent_command_spec_from_display(
             "ripr agent verify --before a.json --after b.json --root > out.json",
+            std::path::Path::new("."),
         )
         .ok_or_else(|| "dangling --root display must still recover".to_string())?;
         if dangling.expected_writes != ["out.json".to_string()] {
@@ -970,16 +1107,19 @@ mod tests {
     /// at runtime so no literal drive-letter path sits in the source tree.
     #[test]
     fn single_quoted_backslash_tokens_round_trip_through_recovery() -> Result<(), String> {
-        let windows_root = format!("C:{}ws{}repo", '\\', '\\');
+        // The Windows-like token rides in `--before`: `--root` is bound to an
+        // absolute selected root (#3999), so the byte-exact quoting contract
+        // is exercised on a path argument the builders pass through verbatim.
+        let windows_before = format!("C:{}ws{}before.json", '\\', '\\');
         let display = format!(
-            "ripr agent verify --root '{windows_root}' --before before.json --after after.json --json"
+            "ripr agent verify --root . --before '{windows_before}' --after after.json --json"
         );
-        let spec =
-            agent_command_spec_from_display(&display).ok_or("quoted route was not recoverable")?;
+        let spec = agent_command_spec_from_display(&display, std::path::Path::new("."))
+            .ok_or("quoted route was not recoverable")?;
         if !spec
             .args
             .windows(2)
-            .any(|pair| pair == ["--root", windows_root.as_str()])
+            .any(|pair| pair == ["--before", windows_before.as_str()])
         {
             return Err(format!(
                 "single-quoted Windows-like token lost its backslashes: {:?}",
@@ -989,20 +1129,20 @@ mod tests {
         // Renderer agreement: the same token rendered by `shell_arg` (inside
         // `agent_verify_command`) recovers to the identical argv entry.
         let rendered = crate::agent::loop_commands::agent_verify_command(
-            &windows_root,
-            "before.json",
+            ".",
+            &windows_before,
             "after.json",
             None,
         );
-        if !rendered.contains(&format!("'{windows_root}'")) {
+        if !rendered.contains(&format!("'{windows_before}'")) {
             return Err(format!("renderer left the token unquoted: {rendered}"));
         }
-        let round_tripped = agent_command_spec_from_display(&rendered)
+        let round_tripped = agent_command_spec_from_display(&rendered, std::path::Path::new("."))
             .ok_or("rendered route was not recoverable")?;
         if !round_tripped
             .args
             .windows(2)
-            .any(|pair| pair == ["--root", windows_root.as_str()])
+            .any(|pair| pair == ["--before", windows_before.as_str()])
         {
             return Err(format!(
                 "rendered token did not round-trip byte-for-byte: {:?}",
@@ -1035,26 +1175,37 @@ mod tests {
     /// here would re-establish display text as argv authority (#1906).
     #[test]
     fn producer_owned_routes_preserve_windows_argv_without_display_parsing() -> Result<(), String> {
+        // Path arguments keep their semantic Windows bytes in argv; the root
+        // is the portable role whatever the producer's concrete root (#3999).
         let windows_root = format!("C:{}ws{}repo", '\\', '\\');
-        let verify = agent_verify_command_spec(&windows_root, "before.json", "after.json", None);
+        let windows_before = format!("C:{}ws{}before.json", '\\', '\\');
+        let verify = agent_verify_command_spec(&windows_root, &windows_before, "after.json", None);
         if !verify
             .args
             .windows(2)
-            .any(|pair| pair == ["--root", windows_root.as_str()])
+            .any(|pair| pair == ["--before", windows_before.as_str()])
+            || !verify
+                .args
+                .windows(2)
+                .any(|pair| pair == ["--root", PORTABLE_ROOT])
         {
             return Err(format!(
-                "verify spec lost the semantic Windows token in args: {:?}",
+                "verify spec lost the semantic Windows token or the portable root in args: {:?}",
                 verify.args
             ));
         }
-        let receipt = agent_receipt_command_spec(&windows_root, "verify.json", "seam-a", None);
+        let receipt = agent_receipt_command_spec(&windows_root, &windows_before, "seam-a", None);
         if !receipt
             .args
             .windows(2)
-            .any(|pair| pair == ["--root", windows_root.as_str()])
+            .any(|pair| pair == ["--verify-json", windows_before.as_str()])
+            || !receipt
+                .args
+                .windows(2)
+                .any(|pair| pair == ["--root", PORTABLE_ROOT])
         {
             return Err(format!(
-                "receipt spec lost the semantic Windows token in args: {:?}",
+                "receipt spec lost the semantic Windows token or the portable root in args: {:?}",
                 receipt.args
             ));
         }
@@ -1063,11 +1214,14 @@ mod tests {
 
     #[test]
     fn typed_route_recovery_rejects_arbitrary_test_commands() -> Result<(), String> {
-        if agent_command_spec_from_display("cargo test pricing").is_some() {
+        if agent_command_spec_from_display("cargo test pricing", std::path::Path::new("."))
+            .is_some()
+        {
             return Err("arbitrary test command was promoted without a producer".to_string());
         }
         if agent_command_spec_from_display(
             "ripr agent verify --root . --before before.json --after after.json --json && whoami",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1075,6 +1229,7 @@ mod tests {
         }
         if agent_command_spec_from_display(
             "ripr agent verify --root . --before before.json --after after.json --json || whoami",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1083,14 +1238,14 @@ mod tests {
             );
         }
         if agent_command_spec_from_display(
-            "ripr agent verify --root . --before before.json --after after.json --json \">\" verify.json",
+            "ripr agent verify --root . --before before.json --after after.json --json \">\" verify.json", std::path::Path::new(".")
         )
         .is_some()
         {
             return Err("quoted redirection operator crossed the typed route boundary".to_string());
         }
         let verify = agent_command_spec_from_display(
-            "ripr agent verify --root . --before before.json --after after.json --json > verify.json",
+            "ripr agent verify --root . --before before.json --after after.json --json > verify.json", std::path::Path::new(".")
         )
         .ok_or_else(|| "canonical verify route was not recoverable".to_string())?;
         if verify.execution_mode != CommandExecutionMode::ShellRequired {
@@ -1105,7 +1260,7 @@ mod tests {
         verify.validate().map_err(|err| err.to_string())?;
 
         let receipt = agent_command_spec_from_display(
-            "ripr agent receipt --root . --verify-json verify.json --seam-id seam-a --json --out receipt.json",
+            "ripr agent receipt --root . --verify-json verify.json --seam-id seam-a --json --out receipt.json", std::path::Path::new(".")
         )
         .ok_or_else(|| "canonical receipt route was not recoverable".to_string())?;
         if receipt.args.get(0..2) != Some(["agent".to_string(), "receipt".to_string()].as_slice()) {
@@ -1122,6 +1277,7 @@ mod tests {
         }
         if agent_command_spec_from_display(
             "ripr agent receipt --root . --verify-json verify.json --seam-id seam-a --json --out",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1136,7 +1292,9 @@ mod tests {
     /// quoting (spaces, quotes, unicode) without argument loss.
     #[test]
     fn regeneration_and_inspection_specs_round_trip() -> Result<(), String> {
-        let root = "./my repo";
+        // A producer binds its selected root before rendering (#3999).
+        let bound = crate::agent::loop_commands::bound_root("./my repo");
+        let root = bound.as_str();
         let seam_id = "seam:ünïcode \"quoted\"";
         let out_path = "target/ripr/artifacts/out file.json";
 
@@ -1167,7 +1325,7 @@ mod tests {
             "agent".to_string(),
             "packet".to_string(),
             "--root".to_string(),
-            root.to_string(),
+            PORTABLE_ROOT.to_string(),
             "--seam-id".to_string(),
             seam_id.to_string(),
             "--json".to_string(),
@@ -1222,16 +1380,21 @@ mod tests {
 
         // Display recovery recognizes both artifact routes in both modes
         // and rejects their non-canonical shapes.
-        let recovered = super::agent_command_spec_from_display(&regeneration.display)
-            .ok_or("the regeneration display was not recoverable")?;
+        let recovered = super::agent_command_spec_from_display(
+            &regeneration.display,
+            std::path::Path::new(root),
+        )
+        .ok_or("the regeneration display was not recoverable")?;
         if recovered.role != crate::domain::CommandRole::Regeneration
             || recovered.execution_mode != crate::domain::CommandExecutionMode::ShellRequired
             || recovered.expected_writes != [out_path.to_string()]
+            || !recovered.same_route(&regeneration)
         {
             return Err("regeneration recovery lost the typed facts".to_string());
         }
-        let recovered = super::agent_command_spec_from_display(&inspection.display)
-            .ok_or("the inspection display was not recoverable")?;
+        let recovered =
+            super::agent_command_spec_from_display(&inspection.display, std::path::Path::new(root))
+                .ok_or("the inspection display was not recoverable")?;
         if recovered.role != crate::domain::CommandRole::Inspection
             || recovered.execution_mode != crate::domain::CommandExecutionMode::Direct
         {
@@ -1239,6 +1402,7 @@ mod tests {
         }
         if super::agent_command_spec_from_display(
             "ripr agent packet --root . --seam-id s --json --out out.json",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1248,6 +1412,7 @@ mod tests {
         }
         if super::agent_command_spec_from_display(
             "ripr agent packet --root . --seam-id s --json > out.json extra",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1259,6 +1424,7 @@ mod tests {
         // so recovery keeps the route legacy-string-only.
         if super::agent_command_spec_from_display(
             "ripr agent packet --root . --seam-id s --json > ../outside.json",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1271,6 +1437,129 @@ mod tests {
     /// typed specs only at their exact token shapes; any deviation — wrong
     /// flag order, unknown or missing flags, extra tokens, a compound `&&`
     /// command — stays legacy-string-only.
+    /// #4287: first-pr anchors every gap-ledger path at the bound `--root`,
+    /// because `reports gap-ledger` resolves them against its working
+    /// directory. Recovery maps the anchored values back to root-relative
+    /// argv and writes; a path outside the selected root stays
+    /// legacy-string-only.
+    #[test]
+    fn anchored_gap_ledger_displays_recover_root_relative_argv() -> Result<(), String> {
+        use crate::agent::loop_commands::{anchored_redirect_target, bound_root, shell_arg};
+        let selected = std::path::Path::new(".");
+        let root = bound_root(".");
+        let anchored = |path: &str| shell_arg(&anchored_redirect_target(".", path));
+        let args = |pairs: &[(&str, &str)]| {
+            let mut args = vec!["reports".to_string(), "gap-ledger".to_string()];
+            for (flag, value) in pairs {
+                args.push((*flag).to_string());
+                args.push((*value).to_string());
+            }
+            args
+        };
+        let writes = vec![
+            "target/ripr/reports/gap-decision-ledger.json".to_string(),
+            "target/ripr/reports/gap-decision-ledger.md".to_string(),
+        ];
+
+        let repo_exposure = format!(
+            "ripr reports gap-ledger --root {} --repo-exposure {} --out {} --out-md {}",
+            shell_arg(&root),
+            anchored("target/ripr/reports/repo-exposure.json"),
+            anchored("target/ripr/reports/gap-decision-ledger.json"),
+            anchored("target/ripr/reports/gap-decision-ledger.md"),
+        );
+        let spec = super::report_regeneration_command_spec_from_display(&repo_exposure, selected)
+            .ok_or_else(|| {
+            format!("anchored repo-exposure route was not recovered: {repo_exposure}")
+        })?;
+        if spec.args
+            != args(&[
+                ("--root", "."),
+                ("--repo-exposure", "target/ripr/reports/repo-exposure.json"),
+                ("--out", "target/ripr/reports/gap-decision-ledger.json"),
+                ("--out-md", "target/ripr/reports/gap-decision-ledger.md"),
+            ])
+            || spec.expected_writes != writes
+        {
+            return Err(format!("unexpected anchored repo-exposure spec: {spec:?}"));
+        }
+
+        let check_output = format!(
+            "ripr reports gap-ledger --check-output {} --root {} --out {} --out-md {}",
+            anchored("target/ripr/reports/check.json"),
+            shell_arg(&root),
+            anchored("target/ripr/reports/gap-decision-ledger.json"),
+            anchored("target/ripr/reports/gap-decision-ledger.md"),
+        );
+        let spec = super::report_regeneration_command_spec_from_display(&check_output, selected)
+            .ok_or_else(|| {
+                format!("anchored check-output route was not recovered: {check_output}")
+            })?;
+        if spec.args
+            != args(&[
+                ("--check-output", "target/ripr/reports/check.json"),
+                ("--root", "."),
+                ("--out", "target/ripr/reports/gap-decision-ledger.json"),
+                ("--out-md", "target/ripr/reports/gap-decision-ledger.md"),
+            ])
+            || spec.expected_writes != writes
+        {
+            return Err(format!("unexpected anchored check-output spec: {spec:?}"));
+        }
+
+        // An input or output outside the selected root fails closed.
+        let outside = shell_arg(&anchored_redirect_target(
+            "../ripr-outside-root",
+            "target/ripr/reports/gap-decision-ledger.json",
+        ));
+        for display in [
+            repo_exposure.replacen(
+                &anchored("target/ripr/reports/gap-decision-ledger.json"),
+                &outside,
+                1,
+            ),
+            check_output.replacen(&anchored("target/ripr/reports/check.json"), &outside, 1),
+        ] {
+            if super::report_regeneration_command_spec_from_display(&display, selected).is_some() {
+                return Err(format!(
+                    "a path outside the selected root gained a typed spec: {display}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// #4287: a Unix root whose directory name carries a literal `\\` keeps
+    /// it in the rendered display, and typed recovery binds that display to
+    /// the same selected root.
+    #[cfg(unix)]
+    #[test]
+    fn backslash_root_display_recovers_its_typed_route() -> Result<(), String> {
+        use crate::agent::loop_commands::{bound_root, check_repo_exposure_command};
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| err.to_string())?
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!(
+            "ripr-backslash-recovery-{}-{nonce}",
+            std::process::id()
+        ));
+        let root = base.join("team\\repo");
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        let bound = bound_root(&root.to_string_lossy());
+        let display = check_repo_exposure_command(&bound, "instant", "target/ripr/out.json");
+        let spec = super::report_regeneration_command_spec_from_display(&display, &root);
+        std::fs::remove_dir_all(&base).map_err(|err| err.to_string())?;
+        let spec =
+            spec.ok_or_else(|| format!("backslash-root display did not recover: {display}"))?;
+        if spec.expected_writes != ["target/ripr/out.json"]
+            || !spec.args.windows(2).any(|pair| pair == ["--root", "."])
+        {
+            return Err(format!("unexpected backslash-root spec: {spec:?}"));
+        }
+        Ok(())
+    }
+
     #[test]
     fn first_pr_report_routes_recover_exact_shapes_and_reject_deviations() -> Result<(), String> {
         // Route 1: the repo-exposure check redirect (route word at index 1),
@@ -1280,8 +1569,11 @@ mod tests {
             "instant",
             "target/ripr/reports/repo-exposure.json",
         );
-        let check = super::report_regeneration_command_spec_from_display(&check_display)
-            .ok_or("the repo-exposure check route was not recoverable")?;
+        let check = super::report_regeneration_command_spec_from_display(
+            &check_display,
+            std::path::Path::new("."),
+        )
+        .ok_or("the repo-exposure check route was not recoverable")?;
         ensure_role(
             &check,
             CommandRole::Regeneration,
@@ -1319,9 +1611,11 @@ mod tests {
 
         // Route 2: the repo-exposure gap-ledger bridge.
         let repo_exposure_display = "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md";
-        let repo_exposure =
-            super::report_regeneration_command_spec_from_display(repo_exposure_display)
-                .ok_or("the repo-exposure gap-ledger route was not recoverable")?;
+        let repo_exposure = super::report_regeneration_command_spec_from_display(
+            repo_exposure_display,
+            std::path::Path::new("."),
+        )
+        .ok_or("the repo-exposure gap-ledger route was not recoverable")?;
         ensure_role(
             &repo_exposure,
             CommandRole::Regeneration,
@@ -1353,7 +1647,7 @@ mod tests {
 
         // Route 3: the check-output gap-ledger bridge.
         let check_output = super::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --check-output target/ripr/reports/check.json --root . --out ledger.json --out-md ledger.md",
+            "ripr reports gap-ledger --check-output target/ripr/reports/check.json --root . --out ledger.json --out-md ledger.md", std::path::Path::new(".")
         )
         .ok_or("the check-output gap-ledger route was not recoverable")?;
         if check_output.command_id != "ripr:reports:gap-ledger"
@@ -1369,6 +1663,7 @@ mod tests {
         // writes must be represented. Repo-exposure 7-token shape:
         let derived = super::report_regeneration_command_spec_from_display(
             "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json",
+            std::path::Path::new("."),
         )
         .ok_or("the single-output gap-ledger route was not recoverable")?;
         if derived.expected_writes
@@ -1387,6 +1682,7 @@ mod tests {
         // multi-dot name (with_extension replaces the extension).
         let derived = super::report_regeneration_command_spec_from_display(
             "ripr reports gap-ledger --check-output check.json --root . --out day.one.json",
+            std::path::Path::new("."),
         )
         .ok_or("the single-output check-output bridge was not recoverable")?;
         if derived.expected_writes
@@ -1404,6 +1700,7 @@ mod tests {
         // cannot state the route's writes.
         if super::report_regeneration_command_spec_from_display(
             "ripr reports gap-ledger --repo-exposure repo.json",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1415,7 +1712,7 @@ mod tests {
         // Values are matched by position: dash-prefixed values keep typed
         // recovery exactly as the CLI would parse them.
         if super::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --repo-exposure -repo.json --out -ledger.json --out-md -ledger.md",
+            "ripr reports gap-ledger --repo-exposure -repo.json --out -ledger.json --out-md -ledger.md", std::path::Path::new(".")
         )
         .is_none()
         {
@@ -1424,7 +1721,7 @@ mod tests {
 
         // Deviations fail closed. Wrong flag order:
         if super::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --out ledger.json --repo-exposure repo.json --out-md ledger.md",
+            "ripr reports gap-ledger --out ledger.json --repo-exposure repo.json --out-md ledger.md", std::path::Path::new(".")
         )
         .is_some()
         {
@@ -1432,7 +1729,7 @@ mod tests {
         }
         // Unknown flag:
         if super::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md --format repo-exposure-json",
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md --format repo-exposure-json", std::path::Path::new(".")
         )
         .is_some()
         {
@@ -1441,6 +1738,7 @@ mod tests {
         // Wrong --format value:
         if super::report_regeneration_command_spec_from_display(
             "ripr check --root . --mode instant --format agent-seam-packets-json > out.json",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1452,6 +1750,7 @@ mod tests {
         // vocabulary (cli/parse/mode.rs); anything else fails closed.
         if super::report_regeneration_command_spec_from_display(
             "ripr check --root . --mode bogus --format repo-exposure-json > out.json",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1461,13 +1760,19 @@ mod tests {
             let display = format!(
                 "ripr check --root . --mode {mode} --format repo-exposure-json > repo.json"
             );
-            if super::report_regeneration_command_spec_from_display(&display).is_none() {
+            if super::report_regeneration_command_spec_from_display(
+                &display,
+                std::path::Path::new("."),
+            )
+            .is_none()
+            {
                 return Err(format!("supported mode `{mode}` must keep typed recovery"));
             }
         }
         // Extra token after the redirect:
         if super::report_regeneration_command_spec_from_display(
             "ripr check --root . --mode instant --format repo-exposure-json > out.json extra",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1476,7 +1781,7 @@ mod tests {
         // A compound && command first_pr renders for the default python
         // bridge is two routes in one shell line — neither half alone.
         if super::report_regeneration_command_spec_from_display(
-            "ripr check --root . --base origin/main --json > target/ripr/reports/check.json && ripr reports gap-ledger --check-output target/ripr/reports/check.json --root . --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md",
+            "ripr check --root . --base origin/main --json > target/ripr/reports/check.json && ripr reports gap-ledger --check-output target/ripr/reports/check.json --root . --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md", std::path::Path::new(".")
         )
         .is_some()
         {
@@ -1486,6 +1791,7 @@ mod tests {
         // validation — a traversing output path stays legacy-string-only.
         if super::report_regeneration_command_spec_from_display(
             "ripr pr-review front-panel --root . --pr-guidance guidance.md --out ../outside.json",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1498,6 +1804,7 @@ mod tests {
         // invalid command per the CLI and stays legacy-string-only.
         if super::report_regeneration_command_spec_from_display(
             "ripr pr-review front-panel --root . --out panel.json --out-md panel.md",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1508,7 +1815,7 @@ mod tests {
         // Template lookup is by route word: front-panel must not accept an
         // index-only flag, and index requires its own mandatory flags.
         if super::report_regeneration_command_spec_from_display(
-            "ripr pr-review front-panel --root . --reports-dir target/ripr/reports --pr-guidance guidance.md --out panel.json --out-md panel.md",
+            "ripr pr-review front-panel --root . --reports-dir target/ripr/reports --pr-guidance guidance.md --out panel.json --out-md panel.md", std::path::Path::new(".")
         )
         .is_some()
         {
@@ -1516,6 +1823,7 @@ mod tests {
         }
         if super::report_regeneration_command_spec_from_display(
             "ripr reports index --root . --out index.json --out-md index.md",
+            std::path::Path::new("."),
         )
         .is_some()
         {
@@ -1532,8 +1840,11 @@ mod tests {
             let display = format!(
                 "ripr pr-review front-panel --root . {input_flag} artifacts/{label}.json --out panel.json --out-md panel.md"
             );
-            let panel = super::report_regeneration_command_spec_from_display(&display)
-                .ok_or_else(|| format!("the front-panel {label} form must keep recovering"))?;
+            let panel = super::report_regeneration_command_spec_from_display(
+                &display,
+                std::path::Path::new("."),
+            )
+            .ok_or_else(|| format!("the front-panel {label} form must keep recovering"))?;
             if panel.command_id != "ripr:pr-review:front-panel"
                 || panel.execution_mode != CommandExecutionMode::Direct
                 || panel.expected_writes != ["panel.json".to_string(), "panel.md".to_string()]
@@ -1553,7 +1864,7 @@ mod tests {
         }
         // The remaining input families are inside the allowed template.
         if super::report_regeneration_command_spec_from_display(
-            "ripr pr-review front-panel --receipt r.json --gate-decision gate.json --zero-status zero.json --coverage-frontier frontier.json --out panel.json --out-md panel.md",
+            "ripr pr-review front-panel --receipt r.json --gate-decision gate.json --zero-status zero.json --coverage-frontier frontier.json --out panel.json --out-md panel.md", std::path::Path::new(".")
         )
         .is_none()
         {
@@ -1562,7 +1873,7 @@ mod tests {
 
         // The pre-existing loop-template routes keep working unchanged.
         let front_panel = super::report_regeneration_command_spec_from_display(
-            "ripr pr-review front-panel --root . --assistant-proof proof.json --out panel.json --out-md panel.md",
+            "ripr pr-review front-panel --root . --assistant-proof proof.json --out panel.json --out-md panel.md", std::path::Path::new(".")
         )
         .ok_or("the front-panel loop route must keep recovering")?;
         if front_panel.command_id != "ripr:pr-review:front-panel" {
@@ -1572,7 +1883,7 @@ mod tests {
             ));
         }
         let index = super::report_regeneration_command_spec_from_display(
-            "ripr reports index --root . --reports-dir target/ripr/reports --out index.json --out-md index.md",
+            "ripr reports index --root . --reports-dir target/ripr/reports --out index.json --out-md index.md", std::path::Path::new(".")
         )
         .ok_or("the reports index loop route must keep recovering")?;
         if index.command_id != "ripr:reports:index" {

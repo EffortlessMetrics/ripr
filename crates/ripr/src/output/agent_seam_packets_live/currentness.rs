@@ -1,7 +1,9 @@
 use crate::agent::artifact::{
     ArtifactCurrentness, RepoExposureArtifactContext, validate_repo_exposure_artifact,
 };
-use crate::agent::loop_commands::{check_repo_exposure_command, shell_arg};
+use crate::agent::loop_commands::{
+    bound_root, bound_root_path, check_repo_exposure_command, lexically_clean, shell_arg,
+};
 use crate::output::gap_decision_ledger::{
     self, GapDecisionLedgerInput, GapDecisionLedgerSourceKind, GapRecord,
 };
@@ -388,11 +390,19 @@ fn resolve_declared_path(root: &Path, declared: &str) -> PathBuf {
 }
 
 fn refresh_commands(root: &Path, gap_ledger_path: &Path, source_path: Option<&str>) -> Vec<String> {
-    let root_display = crate::output::outcome::display_path(root);
+    let root_display = bound_root(&crate::output::outcome::display_path(root));
+    // The source artifact is anchored to the same bound root as `--root`, so
+    // the generated `--repo-exposure` path stays absolute and names the
+    // selected repository from any working directory (#3999). The ledger
+    // output path is the caller's own path and is rendered unchanged.
+    let command_root = bound_root_path(root);
     let source_path = source_path
-        .map(|path| resolve_declared_path(root, path))
-        .filter(|path| path.starts_with(root))
-        .unwrap_or_else(|| root.join(DEFAULT_REPO_EXPOSURE_PATH));
+        // Clean `.`/`..` lexically before the containment check:
+        // `Path::starts_with` is component-wise on the raw path, so an
+        // un-normalized `<root>/../outside.json` would otherwise pass it.
+        .map(|path| lexically_clean(&resolve_declared_path(&command_root, path)))
+        .filter(|path| path.starts_with(&command_root))
+        .unwrap_or_else(|| command_root.join(DEFAULT_REPO_EXPOSURE_PATH));
     let source_display = crate::output::outcome::display_path(&source_path);
     let ledger_display = crate::output::outcome::display_path(gap_ledger_path);
     vec![
@@ -501,6 +511,62 @@ mod tests {
         assert!(!currentness.is_assignable());
         std::fs::remove_dir_all(&root).map_err(|error| format!("remove root: {error}"))?;
         std::fs::remove_dir_all(&other).map_err(|error| format!("remove other: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_commands_anchor_repo_exposure_to_the_bound_root() -> Result<(), String> {
+        let cwd = std::env::current_dir().map_err(|error| format!("current dir: {error}"))?;
+        let relative_root = Path::new("selected-root");
+        let ledger = Path::new("out/gap-ledger.json");
+        let bound = bound_root_path(relative_root);
+        assert!(
+            bound.is_absolute(),
+            "bound root must be absolute: {bound:?}"
+        );
+        assert_eq!(bound, cwd.join("selected-root"));
+
+        // A declared source that lexically escapes the bound root (`..`) must
+        // not survive the containment check: `Path::starts_with` compares
+        // un-normalized components, so `<root>/../outside.json` would pass it
+        // while naming a file outside the selected repository.
+        let default_source = bound.join(DEFAULT_REPO_EXPOSURE_PATH);
+        for (declared, expected_source) in [
+            (
+                Some("reports/repo-exposure.json"),
+                bound.join("reports/repo-exposure.json"),
+            ),
+            (None, default_source.clone()),
+            (Some("../outside.json"), default_source.clone()),
+            (Some("reports/../../outside.json"), default_source.clone()),
+        ] {
+            let commands = refresh_commands(relative_root, ledger, declared);
+            let source_display = crate::output::outcome::display_path(&expected_source);
+            let root_display = bound_root(&crate::output::outcome::display_path(relative_root));
+            let expected_ledger_command = format!(
+                "ripr reports gap-ledger --repo-exposure {} --root {} --out {}",
+                shell_arg(&source_display),
+                shell_arg(&root_display),
+                shell_arg("out/gap-ledger.json")
+            );
+            assert_eq!(commands.len(), 2, "{commands:?}");
+            assert_eq!(commands[1], expected_ledger_command);
+            assert!(
+                Path::new(&source_display).is_absolute(),
+                "--repo-exposure must be absolute under the bound root: {source_display}"
+            );
+            assert!(
+                commands[0].contains(&shell_arg(&source_display)),
+                "check command must name the anchored source: {}",
+                commands[0]
+            );
+            assert!(
+                !commands[1].contains("--repo-exposure selected-root/")
+                    && !commands[1].contains("--repo-exposure target/"),
+                "--repo-exposure must not stay relative: {}",
+                commands[1]
+            );
+        }
         Ok(())
     }
 

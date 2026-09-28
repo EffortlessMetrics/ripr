@@ -473,7 +473,7 @@ fn revalidate_for_verification(
         .unwrap_or_default()
         .to_string();
     let command_route: Option<(String, String)> =
-        match crate::agent::command_specs::agent_command_spec_from_display(&command_display) {
+        match crate::agent::command_specs::agent_command_spec_from_display(&command_display, root) {
             Some(command_spec) => {
                 let digest = crate::domain::command_spec_sha256(&command_spec).map_err(|error| {
                     format!(

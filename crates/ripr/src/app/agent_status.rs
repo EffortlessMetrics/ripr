@@ -7,7 +7,8 @@ use crate::agent::loop_commands::{
     WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_packet_command,
     agent_receipt_command, agent_review_summary_command, agent_review_summary_markdown_command,
     agent_status_command, agent_status_markdown_command, agent_verify_command,
-    check_analysis_outcome_command, check_repo_exposure_command, display_path, shell_arg,
+    anchored_redirect_target, bound_root, check_analysis_outcome_command,
+    check_repo_exposure_command, display_path, shell_arg,
 };
 use crate::app::repair_attempt::{
     AfterPhaseHeadAdmission, DivergedHeadRecovery, REPAIR_ATTEMPT_DIRECTORY,
@@ -255,7 +256,10 @@ impl AgentStatusReport {
 
 pub(crate) fn build_agent_status_report(root: &Path, root_argument: &Path) -> AgentStatusReport {
     let root_display = display_path(root_argument);
-    keep_follow_up_templates_reachable(&root_display);
+    // #3999: every next command binds the selected root once, here; the
+    // report's `root` field keeps the invocation spelling.
+    let command_root = bound_root(&root_display);
+    keep_follow_up_templates_reachable(&command_root);
     let artifacts = ARTIFACTS
         .iter()
         .map(|artifact| inspect_artifact(root, artifact))
@@ -265,10 +269,10 @@ pub(crate) fn build_agent_status_report(root: &Path, root_argument: &Path) -> Ag
     warnings.extend(stale_warnings(&artifacts));
     let missing_commands = missing_commands(root_argument, seam.as_ref(), &artifacts);
     let receipt = read_workflow_receipt(root);
-    let repair_attempts = inspect_repair_attempts(root, &root_display, &receipt, &mut warnings);
+    let repair_attempts = inspect_repair_attempts(root, &command_root, &receipt, &mut warnings);
     let next_command = select_next_command(
         root,
-        &root_display,
+        &command_root,
         seam.as_ref(),
         repair_attempts.as_ref(),
         &missing_commands,
@@ -803,6 +807,25 @@ fn select_next_command(
 /// Where `ripr pilot` writes its summary by default, relative to the root.
 const PILOT_SUMMARY_ARTIFACT: &str = "target/ripr/pilot/pilot-summary.json";
 
+/// The seam-selection route status offers before any seam is known. `ripr
+/// pilot` resolves a relative `--out` against the working directory, not
+/// `--root`, so the command names the pilot directory under the selected root
+/// explicitly; pasted from any directory it writes the summary status reads
+/// next (#4000).
+///
+/// The root is bound here, once (#4287): a caller may pass the raw `--root`
+/// or an already bound one. Binding is idempotent for an absolute root, so
+/// `--root` and `--out` always name the same bound directory and the pilot
+/// directory is never anchored twice.
+pub(crate) fn pilot_select_command(root: &str) -> String {
+    let root = bound_root(root);
+    format!(
+        "ripr pilot --root {} --out {}",
+        shell_arg(&root),
+        shell_arg(&anchored_redirect_target(&root, "target/ripr/pilot"))
+    )
+}
+
 /// The repair start `ripr pilot` recorded for its top seam (#3906), carried
 /// verbatim. Pilot fills `next.repair_command` only past the repair-packet
 /// flip, so status repeats that decision instead of re-deriving it. A missing,
@@ -976,8 +999,8 @@ fn pilot_routed_to_check_message(routes: &PilotCheckRoutes, root_display: &str) 
         ));
     }
     message.push_str(&format!(
-        ". If the workspace changed since that run, rerun `ripr pilot --root {}`",
-        shell_arg(root_display)
+        ". If the workspace changed since that run, rerun `{}`",
+        pilot_select_command(root_display)
     ));
     message
 }
@@ -1023,7 +1046,7 @@ fn legacy_next_command(
             step: "select_seam".to_string(),
             artifact: "target/ripr/pilot".to_string(),
             reason: "no repair seam is known yet; `ripr pilot` inspects the workspace and selects the seam to repair".to_string(),
-            command: format!("ripr pilot --root {}", shell_arg(root_display)),
+            command: pilot_select_command(root_display),
         });
     };
     let target_directory_exists = Path::new(&first.artifact)
@@ -1586,7 +1609,7 @@ fn command_for_missing_artifact(
     seam: Option<&AgentStatusSeam>,
     artifact: &AgentStatusArtifact,
 ) -> String {
-    let root = display_path(root_argument);
+    let root = bound_root(&display_path(root_argument));
     let seam_id = seam
         .map(|seam| seam.seam_id.as_str())
         .unwrap_or("<seam-id>");
@@ -1668,6 +1691,26 @@ mod tests {
         }
     }
 
+    /// #4287: `pilot_select_command` binds its root once, so a raw root and an
+    /// already bound root render the same command and the pilot directory is
+    /// anchored exactly once under the bound root.
+    #[test]
+    fn pilot_select_command_binds_raw_and_bound_roots_once() {
+        let bound = bound_root(".");
+        let command = pilot_select_command(&bound);
+        assert_eq!(pilot_select_command("."), command);
+        assert_eq!(pilot_select_command(&bound_root(&bound)), command);
+        assert_eq!(
+            command,
+            format!(
+                "ripr pilot --root {} --out {}",
+                shell_arg(&bound),
+                shell_arg(&format!("{bound}/target/ripr/pilot"))
+            )
+        );
+        assert_eq!(command.matches("target/ripr/pilot").count(), 1, "{command}");
+    }
+
     #[test]
     fn agent_status_reports_missing_artifacts_and_next_commands() -> Result<(), String> {
         let root = unique_agent_status_test_dir("missing");
@@ -1701,7 +1744,10 @@ mod tests {
         // next command is the product route that selects a seam, not a
         // redirect into `target/ripr/workflow/` (#3906).
         assert_eq!(value["next_command"]["step"], "select_seam");
-        assert_eq!(value["next_command"]["command"], "ripr pilot --root .");
+        assert_eq!(
+            value["next_command"]["command"],
+            pilot_select_command(&bound_root("."))
+        );
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
@@ -1995,7 +2041,7 @@ mod tests {
         assert!(rendered.contains("Status: incomplete"));
         assert!(rendered.contains("| before snapshot | missing |"));
         assert!(rendered.contains("## Next Command"));
-        assert!(rendered.contains("ripr pilot --root ."));
+        assert!(rendered.contains(&pilot_select_command(&bound_root("."))));
         assert!(rendered.contains("No runtime mutation execution."));
         assert!(rendered.contains("No generated tests."));
 
@@ -2083,7 +2129,11 @@ mod tests {
         let fence = rendered
             .find(&format!(
                 "```bash\n{}\n```",
-                check_repo_exposure_command(".", "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT)
+                check_repo_exposure_command(
+                    &bound_root("."),
+                    "draft",
+                    WORKFLOW_AFTER_SNAPSHOT_ARTIFACT
+                )
             ))
             .ok_or_else(|| format!("after-snapshot command missing:\n{rendered}"))?;
         assert!(reason < note && note < fence, "{rendered}");
@@ -2113,8 +2163,11 @@ mod tests {
         // Issue #3872: the next-command redirect anchors at the resolved
         // --root, so both presented forms build from the same builder output
         // (the anchor math itself is pinned in loop_commands tests).
-        let next =
-            check_repo_exposure_command("repo root", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT);
+        let next = check_repo_exposure_command(
+            &bound_root("repo root"),
+            "draft",
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+        );
         let bash_form = format!("```bash\n{next}\n```\n");
         assert!(
             rendered.contains(bash_form.as_str()),
@@ -2168,7 +2221,7 @@ mod tests {
             command.step == "agent_packet"
                 && command.command
                     == agent_packet_command(
-                        "repo root",
+                        &bound_root("repo root"),
                         "67fc764ba37d77bd",
                         WORKFLOW_AGENT_PACKET_ARTIFACT,
                     )
@@ -2373,7 +2426,7 @@ mod tests {
             .as_ref()
             .ok_or_else(|| "expected a next command".to_string())?;
         assert_eq!(next.step, "select_seam");
-        assert_eq!(next.command, "ripr pilot --root .");
+        assert_eq!(next.command, pilot_select_command(&bound_root(".")));
 
         // #4216 row 3: a complete pilot run that ranked a top seam and
         // recorded no repair start is terminal for status. Sending the user
@@ -2427,7 +2480,7 @@ mod tests {
             .as_ref()
             .ok_or_else(|| "expected a next command".to_string())?;
         assert_eq!(next.step, "select_seam");
-        assert_eq!(next.command, "ripr pilot --root .");
+        assert_eq!(next.command, pilot_select_command(&bound_root(".")));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
@@ -2490,12 +2543,17 @@ mod tests {
                 enabled_routes,
                 "null",
             ))?;
+            // The carried route keeps the pilot artifact's text; the rerun
+            // hint status generates binds the selected root (#4000).
             for expected in [
-                "routed the typescript, python code to `ripr check --root .`",
-                "add or strengthen a test for the changed behavior by hand, then rerun `ripr check --root .`",
-                "If the workspace changed since that run, rerun `ripr pilot --root .`",
+                "routed the typescript, python code to `ripr check --root .`".to_string(),
+                "add or strengthen a test for the changed behavior by hand, then rerun `ripr check --root .`".to_string(),
+                format!(
+                    "If the workspace changed since that run, rerun `{}`",
+                    pilot_select_command(&bound_root("."))
+                ),
             ] {
-                assert!(message.contains(expected), "{message}");
+                assert!(message.contains(&expected), "{message}");
             }
         }
 
@@ -2573,7 +2631,11 @@ mod tests {
                 .as_ref()
                 .ok_or_else(|| format!("expected pilot for control {control}"))?;
             assert_eq!(next.step, "select_seam", "{control}");
-            assert_eq!(next.command, "ripr pilot --root .", "{control}");
+            assert_eq!(
+                next.command,
+                pilot_select_command(&bound_root(".")),
+                "{control}"
+            );
         }
         std::fs::remove_file(root.join(PILOT_SUMMARY_ARTIFACT))
             .map_err(|err| format!("remove summary: {err}"))?;
@@ -2607,7 +2669,10 @@ mod tests {
         assert_eq!(next.step, "repair_attempt_before");
         assert_eq!(
             next.command,
-            "ripr agent repair --root 'repo root' --seam-id from-receipt --phase before"
+            format!(
+                "ripr agent repair --root {} --seam-id from-receipt --phase before",
+                shell_arg(&bound_root("repo root"))
+            )
         );
         assert!(!next.command.contains('>'));
 
@@ -2638,13 +2703,17 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.step == "after_snapshot"
                 && command.command
-                    == check_repo_exposure_command(".", "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT)
+                    == check_repo_exposure_command(
+                        &bound_root("."),
+                        "draft",
+                        WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                    )
         }));
         assert!(commands.iter().any(|command| {
             command.step == "analysis_outcome"
                 && command.command
                     == check_analysis_outcome_command(
-                        ".",
+                        &bound_root("."),
                         "draft",
                         WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
                     )
@@ -2652,13 +2721,17 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.step == "agent_brief"
                 && command.command
-                    == agent_brief_command(".", "seam-a", WORKFLOW_AGENT_BRIEF_ARTIFACT)
+                    == agent_brief_command(
+                        &bound_root("."),
+                        "seam-a",
+                        WORKFLOW_AGENT_BRIEF_ARTIFACT,
+                    )
         }));
         assert!(commands.iter().any(|command| {
             command.step == "agent_verify"
                 && command.command
                     == agent_verify_command(
-                        ".",
+                        &bound_root("."),
                         WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
                         WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
                         Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
@@ -2667,7 +2740,10 @@ mod tests {
         assert!(commands.iter().any(|command| {
             command.step == "agent_receipt"
                 && command.command
-                    == "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a --json --out target/ripr/reports/agent-receipt.json"
+                    == format!(
+                        "ripr agent receipt --root {} --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a --json --out target/ripr/reports/agent-receipt.json",
+                        shell_arg(&bound_root("."))
+                    )
         }));
     }
 

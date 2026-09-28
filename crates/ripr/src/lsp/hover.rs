@@ -788,21 +788,33 @@ fn push_editor_commands(
     entry: &ClassifiedSeam,
     snapshot: Option<&AnalysisSnapshot>,
 ) {
-    let mode = snapshot.map_or("draft", |snapshot| snapshot.mode.as_str());
-    let base = snapshot.and_then(|snapshot| snapshot.base.as_deref());
     let seam_id = entry.seam.id().as_str();
     lines.push(String::new());
     lines.push("## Handoff, verify, and receipt commands".to_string());
+    // #4001/#3999: the commands bind the snapshot's selected workspace root.
+    // Without a snapshot there is no selected root, and the language-server
+    // process working directory is never a substitute, so no command is
+    // offered.
+    let Some(snapshot) = snapshot else {
+        lines.push(
+            "- unavailable: no analysis snapshot selects a workspace root; refresh analysis first"
+                .to_string(),
+        );
+        return;
+    };
+    let mode = snapshot.mode.as_str();
+    let base = snapshot.base.as_deref();
+    let root = loop_commands::bound_root(&snapshot.root.to_string_lossy());
     // Only a seam `agent repair` would accept (the fail-closed repair-packet
     // flip, RIPR-SPEC-0087 §8, plus a test-surface target) names the repair
     // start; any other seam's hover stays as it was (#3906).
-    if let Some(repair) = repair_start_command_for(entry) {
+    if let Some(repair) = repair_start_command_for(entry, &root) {
         lines.push(format!("- repair (start here): `{repair}`"));
     }
     lines.push(format!(
         "- packet: `{}`",
         loop_commands::agent_packet_command(
-            ".",
+            &root,
             seam_id,
             loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
         )
@@ -810,7 +822,7 @@ fn push_editor_commands(
     lines.push(format!(
         "- brief: `{}`",
         loop_commands::agent_brief_command(
-            ".",
+            &root,
             seam_id,
             loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
         )
@@ -818,7 +830,7 @@ fn push_editor_commands(
     lines.push(format!(
         "- after snapshot: `{}`",
         loop_commands::check_repo_exposure_command_with_base(
-            ".",
+            &root,
             base,
             mode,
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
@@ -827,7 +839,7 @@ fn push_editor_commands(
     lines.push(format!(
         "- verify: `{}`",
         loop_commands::agent_verify_command(
-            ".",
+            &root,
             loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
             Some(loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
@@ -836,7 +848,7 @@ fn push_editor_commands(
     lines.push(format!(
         "- receipt: `{}`",
         loop_commands::agent_receipt_command(
-            ".",
+            &root,
             loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
             seam_id,
             Some(loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),
@@ -1441,7 +1453,7 @@ mod seam_hover_tests {
     #[test]
     fn gap_diagnostic_hover_recognizes_serialized_command_spec() -> Result<(), String> {
         let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md", std::path::Path::new(".")
         )
         .ok_or("canonical gap-ledger route was not recoverable")?;
         let serialized = serde_json::to_value(&spec)
@@ -1647,32 +1659,54 @@ mod seam_hover_tests {
         let snapshot = sample_snapshot(Mode::Ready);
         let hover = classified_seam_hover_response(&seam, &diagnostic, Some(&snapshot));
         let md = extract_markup(&hover)?;
+        // #3999/#4001: every handoff command binds the snapshot's selected
+        // workspace root — `--root` and the redirect target alike — never
+        // the language-server process working directory.
+        let workspace = snapshot.root.to_string_lossy();
+        let root = loop_commands::shell_arg(&loop_commands::bound_root(&workspace));
+        let anchored = |tail: &str| {
+            loop_commands::shell_arg(&loop_commands::anchored_redirect_target(&workspace, tail))
+        };
         for needle in [
-            "## Handoff, verify, and receipt commands",
-            "- packet: `ripr agent packet --root . --seam-id",
-            "- brief: `ripr agent brief --root . --seam-id",
-            "- after snapshot: `ripr check --root . --mode ready --format repo-exposure-json > ",
-            "- verify: `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > ",
-            "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id",
-            "--json --out target/ripr/agent/agent-receipt.json",
+            "## Handoff, verify, and receipt commands".to_string(),
+            format!("- packet: `ripr agent packet --root {root} --seam-id"),
+            format!("- brief: `ripr agent brief --root {root} --seam-id"),
+            format!(
+                "- after snapshot: `ripr check --root {root} --mode ready --format repo-exposure-json > "
+            ),
+            format!(
+                "- verify: `ripr agent verify --root {root} --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > "
+            ),
+            format!(
+                "ripr agent receipt --root {root} --verify-json target/ripr/agent/agent-verify.json --seam-id"
+            ),
+            "--json --out target/ripr/agent/agent-receipt.json".to_string(),
+            format!(
+                "--json > {}",
+                anchored("target/ripr/agent/agent-packet.json")
+            ),
+            format!(
+                "--json > {}",
+                anchored("target/ripr/agent/agent-brief.json")
+            ),
+            format!(
+                "--format repo-exposure-json > {}",
+                anchored("target/ripr/pilot/after.repo-exposure.json")
+            ),
+            format!(
+                "--json > {}",
+                anchored("target/ripr/agent/agent-verify.json")
+            ),
         ] {
-            if !md.contains(needle) {
+            if !md.contains(&needle) {
                 return Err(format!("missing {needle:?} in:\n{md}"));
             }
         }
-        // Issue #3872: handoff redirects anchor at the resolved --root. The
-        // markup projects to `<cwd>/` first, so the needles hold on
-        // checkouts whose machine prefix needs shell quoting.
-        let md = crate::testing::cwd_placeholder::project_cwd_text(md);
-        for needle in [
-            "--json > <cwd>/target/ripr/agent/agent-packet.json",
-            "--json > <cwd>/target/ripr/agent/agent-brief.json",
-            "--format repo-exposure-json > <cwd>/target/ripr/pilot/after.repo-exposure.json",
-            "--json > <cwd>/target/ripr/agent/agent-verify.json",
-        ] {
-            if !md.contains(needle) {
-                return Err(format!("missing anchored {needle:?} in:\n{md}"));
-            }
+        // Discriminator: the process working directory is not the
+        // workspace, and no handoff command may name it.
+        let process_root = loop_commands::bound_root(".");
+        if process_root != loop_commands::bound_root(&workspace) && md.contains(&process_root) {
+            return Err(format!("hover named the process working directory:\n{md}"));
         }
         Ok(())
     }

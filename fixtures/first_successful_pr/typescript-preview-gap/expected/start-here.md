@@ -44,10 +44,10 @@ Receipt after verify:
 It runs unchanged in Bash and PowerShell; cmd.exe is not supported.
 
 Agent packet command:
-`ripr agent packet --root fixtures/first_successful_pr/typescript-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json > <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/workflow/agent-packet.json`
+`ripr agent packet --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json > <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/workflow/agent-packet.json`
 
 Agent packet command (PowerShell):
-`$ripr = ((ripr agent packet --root fixtures/first_successful_pr/typescript-preview-gap --gap-ledger inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('<cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/workflow/agent-packet.json', $ripr.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false)) } else { throw "ripr exited with code $LASTEXITCODE" }`
+`$ripr = ((ripr agent packet --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('<cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/workflow/agent-packet.json', $ripr.Replace("`r`n", "`n"), [System.Text.UTF8Encoding]::new($false)) } else { throw "ripr exited with code $LASTEXITCODE" }`
 
 The first form is written for Bash; cmd.exe is not supported.
 
