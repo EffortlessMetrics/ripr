@@ -40,6 +40,7 @@ pub(super) fn build_gate_repair_route(candidate: &GateCandidate) -> GateRepairRo
         repair_target: facts.repair_target.clone(),
         test_intent: facts.test_intent.clone(),
         repair_command: facts.repair_command.clone(),
+        analysis_outcome_command: facts.analysis_outcome_command.clone(),
         verify_command: facts.verify_command.clone(),
         receipt_command: facts.receipt_command.clone(),
         inspection_command: facts.inspection_command.clone(),
@@ -113,6 +114,9 @@ fn review_card_route_facts(item: &Value) -> GateRouteFacts {
         test_intent: string_field(item.pointer("/llm_guidance/prompt"))
             .or_else(|| string_field(item.pointer("/suggested_test/intent"))),
         repair_command: string_field(item.pointer("/llm_guidance/repair_command")),
+        analysis_outcome_command: string_field(
+            item.pointer("/llm_guidance/analysis_outcome_command"),
+        ),
         verify_command: string_field(item.pointer("/llm_guidance/verify_command")),
         receipt_command: string_field(item.get("receipt_command")),
         inspection_command: string_field(item.pointer("/llm_guidance/command")),
@@ -155,6 +159,7 @@ fn gap_record_route_facts(record: &GapRecord) -> GateRouteFacts {
         // passed the seam repair-packet flip. The route under-emits and keeps
         // its verify and inspection commands.
         repair_command: None,
+        analysis_outcome_command: None,
         verify_command: record
             .verification_commands
             .first()
@@ -278,6 +283,7 @@ mod tests {
                 }),
                 test_intent: Some("Exercise foo::dispatch and assert Event::Ready".to_string()),
                 repair_command: None,
+                analysis_outcome_command: None,
                 verify_command: Some("cargo test -p foo dispatches_ready_event".to_string()),
                 receipt_command: Some("ripr receipt write --gap gap:shared".to_string()),
                 inspection_command: Some(
@@ -349,6 +355,45 @@ mod tests {
             gate_repair_route_is_complete(&candidate),
             "a missing repair start must not make the route incomplete",
         )
+    }
+
+    #[test]
+    fn review_card_outcome_step_is_carried_without_changing_completeness() -> Result<(), String> {
+        let command = "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json";
+        for supplied in [None, Some(command)] {
+            let mut item = json!({"llm_guidance": {}});
+            if let Some(command) = supplied {
+                item["llm_guidance"]["analysis_outcome_command"] = json!(command);
+            }
+            let facts = review_card_route_facts(&item);
+            require_equal(
+                facts.analysis_outcome_command.as_deref(),
+                supplied,
+                "carried outcome",
+            )?;
+            let mut candidate = complete_candidate();
+            candidate.route_facts.analysis_outcome_command = facts.analysis_outcome_command;
+            require(
+                gate_repair_route_is_complete(&candidate),
+                "optional outcome must not change completeness",
+            )?;
+            let route = build_gate_repair_route(&candidate);
+            let value = super::super::presentation::repair_route_json(&route);
+            match supplied {
+                Some(command) => require_equal(
+                    value
+                        .get("analysis_outcome_command")
+                        .and_then(Value::as_str),
+                    Some(command),
+                    "rendered outcome",
+                )?,
+                None => require(
+                    value.get("analysis_outcome_command").is_none(),
+                    "older route must omit outcome",
+                )?,
+            }
+        }
+        Ok(())
     }
 
     #[test]

@@ -39,6 +39,7 @@
         "threshold": "high_confidence_new_gap"
       },
       "repair_route": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "authority_boundary": "static_ripr_evidence_only",
         "canonical_gap_id": "gap:dedf923a13a00573",
         "changed_behavior": "amount >= discount_threshold",
@@ -57,7 +58,7 @@
         },
         "seam_id": "8f7fa8644fd12280",
         "test_intent": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "seam_id": "8f7fa8644fd12280",
       "severity": "warning",

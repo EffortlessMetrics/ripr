@@ -1410,6 +1410,11 @@
           ],
           "minLength": 1
         },
+        "analysis_outcome_command": {
+          "description": "Optional working-set card command that writes the static analysis outcome beside the persisted verify artifact before agent receipt. Not project-test execution or repair eligibility.",
+          "type": "string",
+          "minLength": 1
+        },
         "repair_command": {
           "description": "Present only on an actionable card whose seam passed the fail-closed repair-packet flip (#3906): the `ripr agent repair ... --phase before` command that starts the repair transaction.",
           "type": "string",

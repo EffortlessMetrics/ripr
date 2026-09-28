@@ -31,10 +31,11 @@
       "id": "ripr-review-53d21b642e4945bb",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 53d21b642e4945bb --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 53d21b642e4945bb --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -97,10 +98,11 @@
       "id": "ripr-review-5b353664321bdea6",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 5b353664321bdea6 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 5b353664321bdea6 --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -163,10 +165,11 @@
       "id": "ripr-review-644b716437604271",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 644b716437604271 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 644b716437604271 --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -247,10 +250,11 @@
       "id": "ripr-review-6d620c643ca5495c",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 6d620c643ca5495c --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 6d620c643ca5495c --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -314,10 +318,11 @@
       "id": "ripr-review-7678476441e9ad27",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 7678476441e9ad27 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 7678476441e9ad27 --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -381,10 +386,11 @@
       "id": "ripr-review-7f21626446d108b2",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 7f21626446d108b2 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 7f21626446d108b2 --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -448,10 +454,11 @@
       "id": "ripr-review-86849d644aa3d7fd",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 86849d644aa3d7fd --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 86849d644aa3d7fd --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -515,10 +522,11 @@
       "id": "ripr-review-8f9b38644fe8dee8",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 8f9b38644fe8dee8 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 8f9b38644fe8dee8 --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -582,10 +590,11 @@
       "id": "ripr-review-98b15364552d0c53",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id 98b15364552d0c53 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id 98b15364552d0c53 --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",
@@ -649,10 +658,11 @@
       "id": "ripr-review-b74a163aa6812b31",
       "kind": "predicate_boundary",
       "llm_guidance": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "command": "ripr agent brief --root . --seam-id b74a163aa6812b31 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "prompt": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
         "repair_command": "ripr agent repair --root . --seam-id b74a163aa6812b31 --phase before",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "missing_discriminator": "amount == discount_threshold",
       "oracle_kind": "exact_value",

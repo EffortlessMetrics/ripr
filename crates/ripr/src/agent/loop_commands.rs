@@ -194,9 +194,22 @@ pub(crate) fn agent_seam_packets_command(root: &str, mode: &str, out_path: &str)
 }
 
 pub(crate) fn check_analysis_outcome_command(root: &str, mode: &str, out_path: &str) -> String {
+    check_analysis_outcome_command_with_base(root, None, mode, out_path)
+}
+
+pub(crate) fn check_analysis_outcome_command_with_base(
+    root: &str,
+    base: Option<&str>,
+    mode: &str,
+    out_path: &str,
+) -> String {
+    let base_arg = base
+        .map(|base| format!(" --base {}", shell_arg(base)))
+        .unwrap_or_default();
     format!(
-        "ripr check --root {} --mode {} --format json > {}",
+        "ripr check --root {}{} --mode {} --format json > {}",
         shell_arg(&root_display(root)),
+        base_arg,
         shell_arg(mode),
         shell_arg(&anchored_redirect_target(root, out_path))
     )
@@ -385,6 +398,30 @@ fn append_redirect(root: &str, command: String, out_path: Option<&str>) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn analysis_outcome_preserves_selected_base_and_default_compatibility() -> Result<(), String> {
+        let out = "target/ripr/workflow/analysis-outcome.json";
+        let selected = check_analysis_outcome_command_with_base(
+            ".",
+            Some("origin/trunk with space"),
+            "draft",
+            out,
+        );
+        if !selected.contains(" --base 'origin/trunk with space' --mode draft ") {
+            return Err(format!("selected base was not shell-quoted: {selected}"));
+        }
+        let expected = format!(
+            "ripr check --root . --mode draft --format json > {}",
+            anchored_expectation(out)
+        );
+        if check_analysis_outcome_command_with_base(".", None, "draft", out) != expected
+            || check_analysis_outcome_command(".", "draft", out) != expected
+        {
+            return Err("default outcome command changed".to_owned());
+        }
+        Ok(())
+    }
 
     /// Render the expected redirect target for a `--root .` tail: the anchor
     /// rule resolves through the renderer working directory, so expectations

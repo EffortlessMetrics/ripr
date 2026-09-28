@@ -7472,6 +7472,18 @@ Field contract:
   (`recommended_file`); eligibility does not require either.
 - `comments[].llm_guidance` - bounded handoff command and prompt for one
   focused test. It is not a request for free-form diff review.
+- Actionable working-set cards persist `llm_guidance.verify_command` to
+  `target/ripr/workflow/agent-verify.json` under the selected root. Their
+  optional `llm_guidance.analysis_outcome_command` writes
+  `target/ripr/workflow/analysis-outcome.json` beside it before the card's
+  receipt command runs, carrying the producing review's selected `--base`.
+  It does not rely on default branch discovery. These are Bash-style redirects,
+  anchored at `--root`;
+  before and after snapshots must already have been taken around the edit.
+  Markdown carries the same outcome, verify and receipt chain. The outcome
+  describes static completeness, not executed project tests. Limitation cards
+  do not gain these commands. Older cards and the deferred GapRecord/editor
+  route remain compatible; consumers must not invent a missing outcome step.
 - `comments[].llm_guidance.repair_command` - present only on an actionable
   working-set card whose seam passes the fail-closed repair-packet flip
   (`repair_packet_eligibility`, #3906): `ripr agent repair --root . --seam-id
@@ -8527,6 +8539,10 @@ Field contract:
   caller, generic evidence-vector position is not treated as seam identity,
   and path/line is not manufactured into an exact inspection selector. The
   `authority_boundary` is `static_ripr_evidence_only`.
+- `decisions[].repair_route.analysis_outcome_command` is optional and copied
+  unchanged from a review card. Older cards and GapRecord routes omit it. It
+  is not a route-completeness or repair-eligibility requirement; Markdown
+  places the supplied static-completeness step before verify and receipt.
 - `decisions[].repair_route.limitation` - `null` only when the route is
   complete. Otherwise it has kind `incomplete_repair_route`, a closed list of
   missing fields, and a bounded detail. A candidate that would otherwise be
@@ -10495,6 +10511,10 @@ Field contract:
   step, with verify and receipt labelled as the manual alternative (#3906).
   `top_repair_route.receipt_command` for a review card is read from the card
   root.
+- `top_repair_route.analysis_outcome_command` is optional and carried from
+  the selected review card, gate route or RIPR Zero route. Gate projections
+  also retain their supplied verify and receipt commands. Absent outcome
+  commands stay absent; ledger and delta routes do not derive one.
 - `history.*` - present only when prior ledger history or previous ledger
   summary is supplied.
 - `warnings[]` - missing inputs, unavailable coverage, unsupported schemas,
@@ -10946,6 +10966,12 @@ Field contract:
   recommendation. The after-phase step follows it, and verify and receipt are
   labelled as the manual alternative (`Manual verify without a repair attempt (needs before and after snapshots taken around the test edit)`); without a repair start they read `Verify after the test edit`
   and `Receipt after verify` (#3906). JSON fields are unchanged.
+- On that review-card route, `commands.analysis_outcome` also carries the
+  card's optional outcome command. First-PR projections carry it as
+  `selected.analysis_outcome_command`, with Markdown before verify. First-PR
+  keeps this step outside its editor-executable `commands` map because
+  `ripr check` is outside the current editor allowlist. No field is added when
+  the upstream card lacks it.
 - `evidence.*` records supporting artifact paths and static movement when
   supplied. Static movement is not runtime mutation confirmation.
 - `fallback` records the reason for non-actionable statuses and the next safe

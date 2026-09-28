@@ -21,14 +21,23 @@ Advisory static evidence only. RIPR does not edit source, generate tests, run mu
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 53d21b642e4945bb --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 53d21b642e4945bb --json --out target/ripr/reports/agent-receipt.json`
 - `5b353664321bdea6` @ `src/pricing.rs:20`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 5b353664321bdea6 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 5b353664321bdea6 --json --out target/ripr/reports/agent-receipt.json`
 - `644b716437604271` @ `src/pricing.rs:30`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 644b716437604271 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 644b716437604271 --json --out target/ripr/reports/agent-receipt.json`
 
 ## Summary-Only Recommendations
 
@@ -36,30 +45,51 @@ Advisory static evidence only. RIPR does not edit source, generate tests, run mu
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 6d620c643ca5495c --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 6d620c643ca5495c --json --out target/ripr/reports/agent-receipt.json`
 - `7678476441e9ad27` @ `src/pricing.rs:50`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 7678476441e9ad27 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 7678476441e9ad27 --json --out target/ripr/reports/agent-receipt.json`
 - `7f21626446d108b2` @ `src/pricing.rs:60`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 7f21626446d108b2 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 7f21626446d108b2 --json --out target/ripr/reports/agent-receipt.json`
 - `86849d644aa3d7fd` @ `src/pricing.rs:70`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 86849d644aa3d7fd --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 86849d644aa3d7fd --json --out target/ripr/reports/agent-receipt.json`
 - `8f9b38644fe8dee8` @ `src/pricing.rs:80`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 8f9b38644fe8dee8 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f9b38644fe8dee8 --json --out target/ripr/reports/agent-receipt.json`
 - `98b15364552d0c53` @ `src/pricing.rs:90`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 98b15364552d0c53 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 98b15364552d0c53 --json --out target/ripr/reports/agent-receipt.json`
 - `b74a163aa6812b31` @ `src/pricing.rs:100`: Static evidence names missing discriminator `amount == discount_threshold` for this seam.
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id b74a163aa6812b31 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id b74a163aa6812b31 --json --out target/ripr/reports/agent-receipt.json`
 
 ## Suppressed
 

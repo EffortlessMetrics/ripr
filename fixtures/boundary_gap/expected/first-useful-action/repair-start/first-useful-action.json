@@ -45,7 +45,8 @@
     "repair": "ripr agent repair --root . --seam-id 8f7fa8644fd12280 --phase before",
     "context_packet": null,
     "after_snapshot": null,
-    "verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "analysis_outcome": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
+    "verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json",
     "receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f7fa8644fd12280 --json --out target/ripr/reports/agent-receipt.json"
   },
   "evidence": {

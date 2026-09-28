@@ -233,6 +233,11 @@
           ]
         },
         "verify_command": { "$ref": "#/$defs/nullable_string" },
+        "analysis_outcome_command": {
+          "description": "Optional completeness step carried from the producing review card; omitted for older cards and GapRecord routes. Not a route-completeness or repair-eligibility requirement.",
+          "type": "string",
+          "minLength": 1
+        },
         "receipt_command": { "$ref": "#/$defs/nullable_string" },
         "inspection_command": { "$ref": "#/$defs/nullable_string" },
         "authority_boundary": { "const": "static_ripr_evidence_only" },

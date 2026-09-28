@@ -20,7 +20,8 @@ Linked plan:
 
 Linked issues:
 
-- None yet
+- [#4307](https://github.com/EffortlessMetrics/ripr-swarm/issues/4307):
+  persisted working-set card verification and receipt inputs.
 
 Linked PRs:
 
@@ -118,12 +119,8 @@ Every rendered review card must include:
   eligible identity; the renderer never synthesizes one from file, line,
   expression, or test navigation. `seam_id` remains the source-locator
   identity whenever a seam identity exists.
-- `gap_state` using the canonical actionability vocabulary
-  (RIPR-SPEC-0061); cards never invent an alternate state. Today
-  `gap_state` ships on gap-ledger cards and cross-language
-  limitation cards while working-set actionable cards carry
-  `grip_class` only; carrying `gap_state` on every card is
-  contract-to-implement in the linked plan slice.
+- `gap_state` on every card using the canonical actionability vocabulary
+  (RIPR-SPEC-0061); cards never invent an alternate state.
 - a card repair summary — a projection of the canonical repair
   packet (RIPR-SPEC-0061), never a packet contract of its own:
   changed owner, changed behavior or missing discriminator,
@@ -131,16 +128,23 @@ Every rendered review card must include:
   (`suggested_test.recommended_file`,
   `suggested_test.recommended_name`, `suggested_test.near_test`) —
   or a named limitation with a `repair_route` when the repair
-  contract cannot be satisfied. Two extensions are
-  contract-to-implement in the linked plan slice: a structured
-  related-test object `{name, file, line}` (today
-  `GapRepairRoute.related_test` is a single string) and card-level
-  `oracle_kind` / `oracle_strength` (today carried by agent briefs
-  and seam packets, not review cards).
-- `verify_command` when the card is actionable.
-- a receipt command when the card is actionable —
-  contract-to-implement in the linked plan slice; no review card
-  carries a receipt command today.
+  contract cannot be satisfied. The card carries a structured related-test
+  object `{name, file, line}` or null, and card-level `oracle_kind` /
+  `oracle_strength`; these project existing evidence rather than inventing
+  an observer.
+- `verify_command` when the card is actionable; working-set cards write its
+  output to the workflow verify artifact consumed by the receipt command.
+- a receipt command when the card is actionable.
+- `llm_guidance.analysis_outcome_command` on current actionable working-set
+  cards: the static-completeness producer writes the analysis outcome beside
+  the verify artifact before receipt, using the producing review's selected
+  base rather than default branch discovery. Before/after snapshots are
+  prerequisites.
+  Gate, first-action, first-PR and PR-evidence-ledger projections carry this
+  optional command unchanged and omit it for older cards that lack it. It is
+  not a new repair-eligibility or gate-completeness rule. Non-actionable cards
+  gain no outcome command; GapRecord/editor persistence remains separately
+  deferred. No command here establishes project-test execution.
 - explicit non-claims (`language_status`, `authority_boundary`) when
   the card is advisory or preview.
 

@@ -764,6 +764,7 @@ fn repair_start_report(
         target_from_guidance_item(card),
         ActionCommands {
             repair: Some(repair),
+            analysis_outcome: string_path(card, &["llm_guidance", "analysis_outcome_command"]),
             verify: string_path(card, &["llm_guidance", "verify_command"]),
             receipt: string_path(card, &["receipt_command"])
                 .or_else(|| string_path(card, &["llm_guidance", "receipt_command"])),

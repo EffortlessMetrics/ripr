@@ -843,6 +843,9 @@ impl Selection {
                 // editor's first-pr projection fails the whole packet closed on
                 // a `commands` value outside its allowlist, and `agent repair`
                 // is not on it.
+                // The carried analysis-outcome step also stays in selected
+                // metadata and Markdown: `ripr check` is outside that editor
+                // allowlist. Do not make an otherwise usable packet unsafe.
                 commands.insert(
                     "verify".to_string(),
                     Value::String(top_gap.verify_command.clone()),
@@ -946,6 +949,7 @@ struct TopGapSelection {
     anchor_line: Option<u64>,
     anchor_owner: Option<String>,
     dedupe_fingerprint: Option<String>,
+    analysis_outcome_command: Option<String>,
     verify_command: String,
     receipt_command: String,
     /// `None` for a review-card selection: its carried receipt command names
@@ -1006,6 +1010,9 @@ impl TopGapSelection {
         // selections keep their existing shape.
         if let Some(command) = &self.repair_command {
             value["repair_command"] = Value::String(command.clone());
+        }
+        if let Some(command) = &self.analysis_outcome_command {
+            value["analysis_outcome_command"] = Value::String(command.clone());
         }
         value
     }
@@ -1356,6 +1363,7 @@ fn top_gap_from_review_card(card: &Value, options: &FirstPrOptions) -> Option<To
         ]),
         anchor_owner: string_path(card, &["owner"]),
         dedupe_fingerprint: string_path(card, &["dedupe_key"]),
+        analysis_outcome_command: string_path(card, &["llm_guidance", "analysis_outcome_command"]),
         verify_command,
         receipt_command,
         receipt_path: None,
@@ -1730,6 +1738,7 @@ fn top_gap_from_record(record: &Value, root: &Path, options: &FirstPrOptions) ->
         anchor_line: u64_from_sources(&[(anchor, &["line"])]),
         anchor_owner: string_from_sources(&[(anchor, &["owner"])]),
         dedupe_fingerprint: string_from_sources(&[(anchor, &["dedupe_fingerprint"])]),
+        analysis_outcome_command: None,
         verify_command,
         receipt_command,
         receipt_path: Some(receipt_path),
@@ -3799,6 +3808,45 @@ mod tests {
             "summary_only": [],
             "suppressed": []
         })
+    }
+
+    #[test]
+    fn review_card_selection_carries_optional_outcome_without_inventing_it() -> Result<(), String> {
+        let options = FirstPrOptions::default();
+        let command = "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json";
+        for supplied in [None, Some(command)] {
+            let mut card = review_card(
+                "seam-a",
+                Some("ripr agent repair --root . --seam-id seam-a --phase before"),
+            );
+            if let Some(command) = supplied {
+                card["llm_guidance"]["analysis_outcome_command"] = json!(command);
+            }
+            let top_gap = top_gap_from_review_card(&card, &options)
+                .ok_or("old and new cards must retain top-gap selection")?;
+            let selected = top_gap.to_json();
+            let commands =
+                Selection::TopGap(Box::new(top_gap)).commands_json(Path::new("."), &options);
+            let markdown = render_start_here_markdown(&json!({"selected": selected}));
+            match supplied {
+                Some(command)
+                    if selected
+                        .get("analysis_outcome_command")
+                        .and_then(Value::as_str)
+                        == Some(command)
+                        && commands.get("analysis_outcome").is_none()
+                        && markdown.contains(command) => {}
+                None if selected.get("analysis_outcome_command").is_none()
+                    && commands.get("analysis_outcome").is_none()
+                    && !markdown.contains(command) => {}
+                _ => {
+                    return Err(format!(
+                        "optional outcome was lost or invented: {selected}, {commands}"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Preconditions shared by the review-card tests: the ledger really

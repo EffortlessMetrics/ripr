@@ -183,6 +183,7 @@ struct RepairRoute {
     /// upstream artifact that made the fail-closed repair-packet decision
     /// (a review card, a gate route, or ripr-zero status). Never derived here.
     repair_command: Option<String>,
+    analysis_outcome_command: Option<String>,
     verify_command: Option<String>,
     receipt_command: Option<String>,
     receipt_state: Option<String>,
@@ -390,6 +391,11 @@ pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport
             ));
         }
         let labels = ProofPathLabels::for_repair_start(route.repair_command.is_some());
+        if let Some(outcome) = route.analysis_outcome_command.as_deref() {
+            out.push_str(&format!(
+                "- Analysis outcome for the receipt: `{outcome}`\n"
+            ));
+        }
         if let Some(verify) = route.verify_command.as_deref() {
             out.push_str(&format!("- {}: `{verify}`\n", labels.verify));
         }
@@ -1119,6 +1125,7 @@ fn route_from_gap_ledger(value: &Value) -> Option<RepairRoute> {
         // Gap records carry no repair start (#3906): none of them passed the
         // seam repair-packet flip. The route keeps its verify command.
         repair_command: None,
+        analysis_outcome_command: None,
         verify_command: first_string_array_item(record, &["verification_commands"]),
         receipt_command: string_path(record, &["receipt_command"]),
         receipt_state: string_path(record, &["receipt", "state"])
@@ -1193,6 +1200,7 @@ fn route_from_zero_status(value: &Value) -> Option<RepairRoute> {
         suggested_test: string_path(route, &["suggested_test"]),
         related_test: string_path(route, &["related_test"]),
         repair_command: repair_command.clone(),
+        analysis_outcome_command: string_path(route, &["analysis_outcome_command"]),
         verify_command: string_path(route, &["verify_command"]),
         receipt_command: string_path(route, &["receipt_command"]),
         receipt_state: string_path(route, &["receipt_state"])
@@ -1227,6 +1235,7 @@ fn route_from_pr_guidance(value: &Value) -> Option<RepairRoute> {
             .or_else(|| string_path(item, &["suggested_test", "intent"])),
         related_test: string_path(item, &["suggested_test", "near_test"]),
         repair_command: repair_command.clone(),
+        analysis_outcome_command: string_path(item, &["llm_guidance", "analysis_outcome_command"]),
         verify_command: string_path(item, &["llm_guidance", "verify_command"]),
         // Review cards put the receipt command at the card root; the
         // `llm_guidance` spelling is kept as a fallback for older cards.
@@ -1268,8 +1277,10 @@ fn route_from_gate(value: &Value) -> Option<RepairRoute> {
         suggested_test: string_path(item, &["evidence", "assertion_shape"]),
         related_test: string_path(item, &["evidence", "recommended_test"]),
         repair_command: repair_command.clone(),
-        verify_command: Some("ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json".to_string()),
-        receipt_command: None,
+        analysis_outcome_command: string_path(item, &["repair_route", "analysis_outcome_command"]),
+        verify_command: string_path(item, &["repair_route", "verify_command"])
+            .or_else(|| Some("ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json".to_string())),
+        receipt_command: string_path(item, &["repair_route", "receipt_command"]),
         receipt_state: None,
         static_limit_kind: string_path(item, &["static_limit_kind"])
             .or_else(|| string_path(item, &["evidence", "static_limit_kind"])),
@@ -1309,6 +1320,7 @@ fn route_from_baseline_delta(value: &Value) -> Option<RepairRoute> {
         // Baseline-delta items carry no repair start (#3906), so the route
         // names none and keeps its verify command.
         repair_command: None,
+        analysis_outcome_command: None,
         verify_command: string_path(item, &["repair", "verify_command"]),
         receipt_command: string_path(item, &["repair", "receipt_command"]),
         receipt_state: string_path(item, &["receipt_state"])
@@ -1468,6 +1480,9 @@ fn repair_route_json(route: &RepairRoute) -> Value {
             Value::String(repair_command.clone()),
         );
     }
+    if let Some(command) = &route.analysis_outcome_command {
+        value["analysis_outcome_command"] = Value::String(command.clone());
+    }
     value
 }
 
@@ -1594,6 +1609,7 @@ mod tests {
         render_pr_evidence_ledger_markdown,
     };
     use crate::output::first_pr::{REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
+    use serde_json::Value;
     use std::path::{Path, PathBuf};
 
     /// F60-4: with no baseline debt delta and no RIPR Zero status the gap
@@ -2343,6 +2359,44 @@ mod tests {
             ..LedgerSources::default()
         })?;
         assert_repair_start_leads(&route, &rendered);
+        Ok(())
+    }
+
+    #[test]
+    fn card_and_gate_routes_carry_the_optional_complete_receipt_chain() -> Result<(), String> {
+        let outcome = "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json";
+        let verify = "ripr agent verify --root . --before before.json --after after.json --json > target/ripr/workflow/agent-verify.json";
+        let receipt = "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a --json";
+        for supplied in [None, Some(outcome)] {
+            let mut guidance = serde_json::json!({"verify_command": verify});
+            let mut gate_route = serde_json::json!({"seam_id": "seam-a", "verify_command": verify, "receipt_command": receipt});
+            if let Some(command) = supplied {
+                guidance["analysis_outcome_command"] = serde_json::json!(command);
+                gate_route["analysis_outcome_command"] = serde_json::json!(command);
+            }
+            for sources in [
+                LedgerSources { guidance: Some(serde_json::json!({
+                    "comments": [{"seam_id": "seam-a", "llm_guidance": guidance, "receipt_command": receipt}]
+                }).to_string()), ..LedgerSources::default() },
+                LedgerSources { gate: Some(serde_json::json!({
+                    "mode": "visible-only", "status": "advisory", "decisions": [{
+                        "decision": "advisory", "seam_id": "seam-a", "repair_route": gate_route
+                    }]
+                }).to_string()), ..LedgerSources::default() },
+            ] {
+                let (route, markdown) = ledger_route(sources)?;
+                if route.get("verify_command").and_then(Value::as_str) != Some(verify)
+                    || route.get("receipt_command").and_then(Value::as_str) != Some(receipt)
+                {
+                    return Err(format!("ledger replaced the producer's verify/receipt chain: {route}"));
+                }
+                match supplied {
+                    Some(command) if route.get("analysis_outcome_command").and_then(Value::as_str) == Some(command) && markdown.contains(command) => {}
+                    None if route.get("analysis_outcome_command").is_none() && !markdown.contains(outcome) => {}
+                    _ => return Err(format!("ledger lost or invented optional outcome: {route}")),
+                }
+            }
+        }
         Ok(())
     }
 

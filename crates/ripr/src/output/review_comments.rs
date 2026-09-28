@@ -1,7 +1,9 @@
 use crate::agent::command_specs::command_displays_are_complete;
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
-    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command, display_path,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_verify_command,
+    check_analysis_outcome_command_with_base, display_path,
 };
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::canonical_gap::canonical_gap_identity;
@@ -119,6 +121,7 @@ pub(crate) fn render_review_comments_json_with_scope(
     for selected in actionable.iter().take(DEFAULT_REVIEW_MAX_SUMMARY_ITEMS) {
         let recommendation = review_recommendation_json(
             context.root,
+            context.base,
             context.mode,
             context.config,
             selected,
@@ -780,6 +783,7 @@ fn repair_prompt(route: &GapRepairRoute, verify_command: &str) -> String {
 
 fn review_recommendation_json(
     root: &Path,
+    base: &str,
     _mode: &Mode,
     config: &RiprConfig,
     selected: &AgentBriefSelectedSeam<'_>,
@@ -866,11 +870,17 @@ fn review_recommendation_json(
         json!({
             "prompt": llm_prompt(&recommended.file, nearest.map(|test| test.test_name.as_str()), missing_value.as_deref()),
             "command": agent_brief_command(&root_display, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+            "analysis_outcome_command": check_analysis_outcome_command_with_base(
+                &root_display,
+                Some(base),
+                "draft",
+                WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+            ),
             "verify_command": agent_verify_command(
                 &root_display,
                 WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
                 WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
-                None,
+                Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
             ),
         })
     } else if gap_state == "static_limitation" {
@@ -1352,6 +1362,17 @@ fn push_markdown_items(lines: &mut Vec<String>, heading: &str, value: Option<&Va
             );
         }
         lines.push(format!("  - command: `{command}`"));
+        if let Some(guidance) = item.get("llm_guidance")
+            && let Some(outcome) = string_field(guidance, "analysis_outcome_command")
+        {
+            lines.push(format!("  - analysis_outcome_command: `{outcome}`"));
+            if let Some(verify) = string_field(guidance, "verify_command") {
+                lines.push(format!("  - verify_command: `{verify}`"));
+            }
+            if let Some(receipt) = string_field(item, "receipt_command") {
+                lines.push(format!("  - receipt_command: `{receipt}`"));
+            }
+        }
     }
     lines.push(String::new());
 }
@@ -2116,6 +2137,69 @@ mod tests {
     }
 
     #[test]
+    fn actionable_review_card_writes_every_receipt_input() -> Result<(), String> {
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        let seams = [classified(88)];
+        let value = render_value(&working_set, &seams)?;
+        let card = value
+            .get("comments")
+            .and_then(Value::as_array)
+            .and_then(|cards| cards.first())
+            .ok_or("producer did not emit the actionable fixture card")?;
+        if card.get("gap_state").and_then(Value::as_str) != Some("actionable") {
+            return Err(format!(
+                "fixture must exercise the actionable producer: {card}"
+            ));
+        }
+        let guidance = card.get("llm_guidance").ok_or("missing guidance")?;
+        let verify = guidance
+            .get("verify_command")
+            .and_then(Value::as_str)
+            .ok_or("missing verify command")?;
+        let receipt = card
+            .get("receipt_command")
+            .and_then(Value::as_str)
+            .ok_or("missing receipt command")?;
+        if !receipt.contains("--verify-json target/ripr/workflow/agent-verify.json") {
+            return Err(format!(
+                "fixture must consume the canonical verify artifact: {receipt}"
+            ));
+        }
+        if !verify.contains(" > ") || !verify.contains("target/ripr/workflow/agent-verify.json") {
+            return Err(format!(
+                "listed verify command does not persist the receipt input: {verify}"
+            ));
+        }
+        let outcome = guidance
+            .get("analysis_outcome_command")
+            .and_then(Value::as_str)
+            .ok_or("actionable card does not list the receipt analysis-outcome producer")?;
+        if !outcome.contains("--format json > ")
+            || !outcome.contains("target/ripr/workflow/analysis-outcome.json")
+        {
+            return Err(format!(
+                "analysis outcome is not written beside verification: {outcome}"
+            ));
+        }
+        if !outcome.contains("--base main ") {
+            return Err(format!(
+                "outcome command lost the producing review's selected base: {outcome}"
+            ));
+        }
+        let markdown = render_markdown(&working_set, &seams);
+        if ![outcome, verify, receipt]
+            .iter()
+            .all(|command| markdown.contains(*command))
+        {
+            return Err("Markdown must carry the actual persisted receipt chain".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_places_exact_changed_seam_line() -> Result<(), String> {
         let seams = [classified(88)];
         let working_set = AgentBriefResolvedWorkingSet::base(
@@ -2137,10 +2221,17 @@ mod tests {
                 "repair_route": null,
             })
         );
-        assert_eq!(
-            value["comments"][0]["llm_guidance"]["verify_command"],
-            "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
-        );
+        let verify = value
+            .pointer("/comments/0/llm_guidance/verify_command")
+            .and_then(Value::as_str)
+            .ok_or("exact-line card omitted its verify command")?;
+        if project_cwd_text(verify)
+            != "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
+        {
+            return Err(format!(
+                "exact-line card must persist root-anchored verification: {verify}"
+            ));
+        }
         Ok(())
     }
 
@@ -2801,6 +2892,7 @@ mod tests {
         let selected = selection(&seams);
         let item = review_recommendation_json(
             Path::new("."),
+            "main",
             &Mode::Draft,
             &RiprConfig::default(),
             &selected.top_seams[0],
@@ -2812,6 +2904,12 @@ mod tests {
         assert!(item["suggested_test"]["assertion_guidance"].is_null());
         assert!(item["receipt_command"].is_null());
         assert!(item["llm_guidance"].get("verify_command").is_none());
+        if item
+            .pointer("/llm_guidance/analysis_outcome_command")
+            .is_some()
+        {
+            return Err("static-limitation card must not gain an outcome producer".to_string());
+        }
         assert!(
             item["llm_guidance"]["prompt"]
                 .as_str()

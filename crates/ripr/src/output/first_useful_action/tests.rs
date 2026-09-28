@@ -2258,6 +2258,41 @@ fn first_useful_action_matches_repair_start_fixture() -> Result<(), String> {
 }
 
 #[test]
+fn repair_start_carries_optional_outcome_without_inventing_it() -> Result<(), String> {
+    let command = "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json";
+    for supplied in [None, Some(command)] {
+        let mut comments = exact_line_comments()?;
+        let guidance = comments
+            .pointer_mut("/comments/0/llm_guidance")
+            .and_then(Value::as_object_mut)
+            .ok_or("fixture card has no guidance")?;
+        guidance.remove("analysis_outcome_command");
+        if let Some(command) = supplied {
+            guidance.insert(
+                "analysis_outcome_command".to_string(),
+                Value::String(command.to_string()),
+            );
+        }
+        let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+        let value: Value = serde_json::from_str(&render_first_useful_action_json(&report)?)
+            .map_err(|error| error.to_string())?;
+        if value.get("status").and_then(Value::as_str) != Some("actionable") {
+            return Err("old and new cards must retain repair-start actionability".to_string());
+        }
+        let actual = value.pointer("/commands/analysis_outcome");
+        let markdown = render_first_useful_action_markdown(&report);
+        match supplied {
+            Some(command)
+                if actual.and_then(Value::as_str) == Some(command)
+                    && markdown.contains(command) => {}
+            None if actual.is_none() && !markdown.contains(command) => {}
+            _ => return Err(format!("optional outcome was lost or invented: {value}")),
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn carried_repair_start_leads_a_fresh_pr_and_its_absence_keeps_the_missing_proof_route()
 -> Result<(), String> {
     let comments = exact_line_comments()?;

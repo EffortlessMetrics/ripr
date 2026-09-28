@@ -191,6 +191,8 @@ pub(super) struct GateRepairRoute {
     /// upstream card carries it, which it does only past the fail-closed
     /// repair-packet flip; the gate never derives it.
     pub(super) repair_command: Option<String>,
+    /// Optional producer-owned completeness step; never derived by the gate.
+    pub(super) analysis_outcome_command: Option<String>,
     pub(super) verify_command: Option<String>,
     pub(super) receipt_command: Option<String>,
     pub(super) inspection_command: Option<String>,
@@ -306,6 +308,7 @@ pub(super) struct GateRouteFacts {
     /// upstream card carries it, which it does only past the fail-closed
     /// repair-packet flip; the gate never derives it.
     pub(super) repair_command: Option<String>,
+    pub(super) analysis_outcome_command: Option<String>,
     pub(super) verify_command: Option<String>,
     pub(super) receipt_command: Option<String>,
     pub(super) inspection_command: Option<String>,

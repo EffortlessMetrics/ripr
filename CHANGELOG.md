@@ -76,6 +76,13 @@ are scoped or reviewed.
   command that keeps base, head, and root arguments literal when copied, including
   refs with shell syntax and roots with spaces (#4367).
 
+- Actionable working-set review cards write the verify and analysis-outcome
+  artifacts consumed by their receipt command. Gate and onboarding projections
+  carry the complete optional command chain, preserving the selected base in
+  the analysis-outcome command even without a conventional default branch;
+  older cards and deferred
+  GapRecord routes remain compatible (#4307).
+
 - LSP `ripr.collectContext`, `ripr.collectEvidenceContext` and
   `ripr.collectRepairPacket` no longer answer `null`. An unreadable argument
   or an id missing from the current snapshot is a `-32602` InvalidParams

@@ -410,7 +410,7 @@ pub(super) fn repair_route_json(route: &GateRepairRoute) -> Value {
             "detail": limitation.detail,
         })
     });
-    json!({
+    let mut value = json!({
         "canonical_gap_id": route.canonical_gap_id,
         "seam_id": route.seam_id,
         "classification": route.classification,
@@ -425,7 +425,11 @@ pub(super) fn repair_route_json(route: &GateRepairRoute) -> Value {
         "inspection_command": route.inspection_command,
         "authority_boundary": route.authority_boundary,
         "limitation": limitation,
-    })
+    });
+    if let Some(command) = &route.analysis_outcome_command {
+        value["analysis_outcome_command"] = Value::String(command.clone());
+    }
+    value
 }
 
 fn calibration_json(evidence: &CalibrationEvidence) -> Value {
@@ -515,6 +519,11 @@ fn push_repair_route(out: &mut String, route: &GateRepairRoute, changed_line_anc
             "  - {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
         ));
     }
+    push_optional_code(
+        out,
+        "Analysis outcome for the receipt",
+        route.analysis_outcome_command.as_deref(),
+    );
     push_optional_code(out, labels.verify, route.verify_command.as_deref());
     push_optional_code(out, labels.receipt, route.receipt_command.as_deref());
     push_optional_code(out, "Inspect", route.inspection_command.as_deref());
@@ -642,6 +651,7 @@ mod tests {
             repair_target: None,
             test_intent: Some("Assert the equality boundary.".to_string()),
             repair_command: repair_command.map(ToString::to_string),
+            analysis_outcome_command: None,
             verify_command: Some("ripr agent verify --root . --json".to_string()),
             receipt_command: None,
             inspection_command: Some(

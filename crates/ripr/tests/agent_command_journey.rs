@@ -452,7 +452,29 @@ fn printed_command(report: &Value, field: &str) -> Result<String, String> {
 /// the foreign launch directory, through the shell. Returns the receipt the
 /// printed receipt command emitted on stdout.
 fn execute_funnel(journey: &Journey, report: &Value) -> Result<Value, String> {
-    for field in ["after_snapshot", "analysis_outcome", "verify"] {
+    execute_funnel_with_receipt_file(journey, report, None)
+}
+
+fn execute_funnel_with_receipt_file(
+    journey: &Journey,
+    report: &Value,
+    receipt_file: Option<&Path>,
+) -> Result<Value, String> {
+    execute_receipt_steps(
+        journey,
+        report,
+        receipt_file,
+        &["after_snapshot", "analysis_outcome", "verify"],
+    )
+}
+
+fn execute_receipt_steps(
+    journey: &Journey,
+    report: &Value,
+    receipt_file: Option<&Path>,
+    steps: &[&str],
+) -> Result<Value, String> {
+    for field in steps {
         let command = printed_command(report, field)?;
         let output = run_in_shell(journey, &command)?;
         assert_success(
@@ -466,16 +488,21 @@ fn execute_funnel(journey: &Journey, report: &Value) -> Result<Value, String> {
         &output,
         &format!("printed receipt command through a shell: {receipt_command}"),
     )?;
-    let receipt_text = String::from_utf8(output.stdout.clone())
-        .map_err(|error| format!("receipt stdout is not UTF-8: {error}"))?;
+    let receipt_text = match receipt_file {
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|error| format!("read advertised receipt {}: {error}", path.display()))?,
+        None => String::from_utf8(output.stdout.clone())
+            .map_err(|error| format!("receipt stdout is not UTF-8: {error}"))?,
+    };
     serde_json::from_str(&receipt_text).map_err(|error| {
-        format!("receipt stdout is not one JSON document: {error}\n{receipt_text}")
+        format!("receipt output is not one JSON document: {error}\n{receipt_text}")
     })
 }
 
 /// The producer-consumer bindings a completed funnel must show: the verify
 /// redirect landed, the analysis outcome landed beside it, and the receipt
-/// binds the exact fresh bytes of all three artifacts.
+/// binds the exact fresh verify/before/after bytes and carries the fresh
+/// producer-owned analysis outcome.
 fn assert_funnel_writes_bind_fresh_artifacts(
     journey: &Journey,
     receipt: &Value,
@@ -545,6 +572,19 @@ fn assert_funnel_writes_bind_fresh_artifacts(
         return Err(format!(
             "receipt did not read the funnel-written analysis outcome as complete:\n{receipt}"
         ));
+    }
+    let analysis_text = std::fs::read_to_string(&analysis_path)
+        .map_err(|error| format!("read fresh analysis outcome: {error}"))?;
+    let analysis: Value = serde_json::from_str(&analysis_text)
+        .map_err(|error| format!("parse fresh analysis outcome: {error}"))?;
+    let written_outcome = analysis
+        .pointer("/analysis_outcome/outcome")
+        .filter(|outcome| outcome.is_object())
+        .ok_or("fresh analysis artifact carries no typed outcome")?;
+    if receipt.pointer("/analysis_outcome/outcome") != Some(written_outcome) {
+        return Err(
+            "receipt did not carry the outcome written by the advertised command".to_string(),
+        );
     }
     if receipt.pointer("/status").and_then(Value::as_str) != Some("advisory") {
         return Err(format!(
@@ -636,6 +676,234 @@ fn persist_receipt_for_status(journey: &Journey) -> Result<(), String> {
 
 fn cleanup(root: &Path) {
     let _ = std::fs::remove_dir_all(root);
+}
+
+struct ReviewCardFixture(PathBuf);
+
+impl Drop for ReviewCardFixture {
+    fn drop(&mut self) {
+        cleanup(&self.0);
+    }
+}
+
+/// Execute commands obtained from the actual review-card and inherited gate
+/// producers, with fresh artifacts and a foreign launch directory.
+#[test]
+fn review_card_and_gate_commands_persist_fresh_receipt_inputs() -> Result<(), String> {
+    let Some(bash) = shell_prerequisite()? else {
+        return Ok(());
+    };
+    let root = unique_temp_workspace("review-card-café space");
+    std::fs::create_dir(&root).map_err(|error| format!("claim fixture root: {error}"))?;
+    let fixture = ReviewCardFixture(root);
+    let (mut journey, setup) = start_journey_at_root(&fixture.0, &bash)?;
+    let source = journey.root.join("src/lib.rs");
+    let old = std::fs::read_to_string(&source).map_err(|error| error.to_string())?;
+    let changed = old.replace(
+        "amount >= discount_threshold",
+        "amount > discount_threshold",
+    );
+    if changed == old {
+        return Err("fixture change did not alter its predicate".to_string());
+    }
+    std::fs::write(&source, changed).map_err(|error| error.to_string())?;
+    fixture_git_ok(&journey.root, &["add", "src/lib.rs"]).map_err(|error| error.to_string())?;
+    commit_fixture(&journey.root, "change the boundary predicate")?;
+    let snapshot = run_in_shell(&journey, &printed_command(&setup, "after_snapshot")?)?;
+    assert_success(&snapshot, "prepare current after snapshot")?;
+    // The card selects HEAD~1 explicitly. Remove the fixture's default-name
+    // branch only after preparing its prerequisite snapshots: card/gate steps
+    // must keep that selection rather than rediscover main or master.
+    fixture_git_ok(&journey.root, &["branch", "-M", "trunk"]).map_err(|error| error.to_string())?;
+
+    let comments_path = journey.root.join("target/ripr/review/comments.json");
+    let comments_output = run_ripr(
+        &journey.launch_dir,
+        &[
+            "review-comments",
+            "--root",
+            &journey.root_arg,
+            "--base",
+            "HEAD~1",
+            "--head",
+            "HEAD",
+            "--out",
+            &comments_path.display().to_string(),
+        ],
+    )?;
+    assert_success(&comments_output, "actual review-comments producer")?;
+    let comments = read_json(&comments_path)?;
+    let card = comments
+        .get("comments")
+        .and_then(Value::as_array)
+        .and_then(|cards| {
+            cards
+                .iter()
+                .find(|card| card.get("gap_state").and_then(Value::as_str) == Some("actionable"))
+        })
+        .ok_or_else(|| format!("producer emitted no actionable review card: {comments}"))?;
+    journey.seam_id = card
+        .get("seam_id")
+        .and_then(Value::as_str)
+        .ok_or("actionable card has no seam identity")?
+        .to_string();
+    for name in ["before.repo-exposure.json", "after.repo-exposure.json"] {
+        let snapshot = read_json(&workflow_artifact(&journey.root, name))?;
+        let contains_selected =
+            snapshot
+                .get("seams")
+                .and_then(Value::as_array)
+                .is_some_and(|seams| {
+                    seams.iter().any(|seam| {
+                        seam.get("seam_id").and_then(Value::as_str)
+                            == Some(journey.seam_id.as_str())
+                    })
+                });
+        if !contains_selected {
+            return Err(format!("selected review-card seam is absent from {name}"));
+        }
+    }
+
+    let gate_path = journey.root.join("target/ripr/reports/gate-decision.json");
+    let gate_output = run_ripr(
+        &journey.launch_dir,
+        &[
+            "gate",
+            "evaluate",
+            "--root",
+            &journey.root_arg,
+            "--pr-guidance",
+            &comments_path.display().to_string(),
+            "--mode",
+            "visible-only",
+            "--out",
+            &gate_path.display().to_string(),
+        ],
+    )?;
+    assert_success(&gate_output, "actual inherited gate producer")?;
+    let gate = read_json(&gate_path)?;
+    let route = gate
+        .get("decisions")
+        .and_then(Value::as_array)
+        .and_then(|decisions| {
+            decisions.iter().find_map(|decision| {
+                let route = decision.get("repair_route")?;
+                (route.get("seam_id").and_then(Value::as_str) == Some(journey.seam_id.as_str()))
+                    .then_some(route)
+            })
+        })
+        .ok_or_else(|| format!("gate lost the actionable card route: {gate}"))?;
+    for (label, guidance, receipt) in [
+        (
+            "review card",
+            card.get("llm_guidance").ok_or("missing guidance")?,
+            card.get("receipt_command"),
+        ),
+        ("gate route", route, route.get("receipt_command")),
+    ] {
+        let verify_path = workflow_artifact(&journey.root, "agent-verify.json");
+        std::fs::write(&verify_path, "{\"decoy\":true}").map_err(|error| error.to_string())?;
+        let decoy_digest = sha256_file(&verify_path)?;
+        let analysis_path = workflow_artifact(&journey.root, "analysis-outcome.json");
+        std::fs::write(&analysis_path, "{\"decoy\":true}").map_err(|error| error.to_string())?;
+        let analysis_decoy_digest = sha256_file(&analysis_path)?;
+        let receipt_command = receipt
+            .and_then(Value::as_str)
+            .ok_or("missing receipt command")?;
+        if !receipt_command.contains("--out target/ripr/reports/agent-receipt.json") {
+            return Err(format!(
+                "fixture must name its receipt output explicitly: {receipt_command}"
+            ));
+        }
+        let receipt_path = journey.root.join("target/ripr/reports/agent-receipt.json");
+        std::fs::write(&receipt_path, "{\"decoy\":true}").map_err(|error| error.to_string())?;
+        let receipt_decoy_digest = sha256_file(&receipt_path)?;
+        let funnel = serde_json::json!({"commands": {
+            "analysis_outcome": guidance.get("analysis_outcome_command"),
+            "verify": guidance.get("verify_command"),
+            "receipt": receipt,
+        }});
+        // A complete outcome in another sibling must not rescue the invalid
+        // canonical input. Keep the root and every other printed step intact.
+        let outcome_command = printed_command(&funnel, "analysis_outcome")?;
+        let canonical_target = "target/ripr/workflow/analysis-outcome.json";
+        if outcome_command.matches(canonical_target).count() != 1 {
+            return Err(format!(
+                "{label} must name exactly one canonical outcome target"
+            ));
+        }
+        let mut wrong_sibling = funnel.clone();
+        wrong_sibling["commands"]["analysis_outcome"] =
+            serde_json::json!(outcome_command.replacen(
+                canonical_target,
+                "target/ripr/workflow/wrong-analysis-outcome.json",
+                1,
+            ));
+        std::fs::write(
+            workflow_artifact(&journey.root, "wrong-analysis-outcome.json"),
+            "{\"decoy\":true}",
+        )
+        .map_err(|error| error.to_string())?;
+        let refused = execute_receipt_steps(
+            &journey,
+            &wrong_sibling,
+            Some(&receipt_path),
+            &["analysis_outcome", "verify"],
+        )?;
+        let wrong_outcome = read_json(&workflow_artifact(
+            &journey.root,
+            "wrong-analysis-outcome.json",
+        ))?;
+        if wrong_outcome
+            .pointer("/analysis_outcome/analysis_complete")
+            .and_then(Value::as_bool)
+            != Some(true)
+            || sha256_file(&analysis_path)? != analysis_decoy_digest
+            || sha256_file(&verify_path)? == decoy_digest
+            || sha256_file(&receipt_path)? == receipt_decoy_digest
+        {
+            return Err(format!(
+                "{label} wrong-sibling control did not exercise fresh producers"
+            ));
+        }
+        if refused.get("status").and_then(Value::as_str) != Some("invalid")
+            || refused
+                .get("analysis_outcome_status")
+                .and_then(Value::as_str)
+                != Some("invalid")
+            || refused.get("analysis_outcome") != Some(&Value::Null)
+            || refused
+                .get("analysis_outcome_error")
+                .and_then(Value::as_str)
+                .is_none_or(|error| error.is_empty())
+        {
+            return Err(format!(
+                "{label} accepted an outcome written to the wrong sibling: {refused}"
+            ));
+        }
+        std::fs::write(&verify_path, "{\"decoy\":true}").map_err(|error| error.to_string())?;
+        std::fs::write(&receipt_path, "{\"decoy\":true}").map_err(|error| error.to_string())?;
+        let receipt = execute_receipt_steps(
+            &journey,
+            &funnel,
+            Some(&receipt_path),
+            &["analysis_outcome", "verify"],
+        )
+        .map_err(|error| format!("{label}: {error}"))?;
+        assert_funnel_writes_bind_fresh_artifacts(&journey, &receipt)?;
+        if sha256_file(&verify_path)? == decoy_digest {
+            return Err(format!("{label} did not replace the decoy verify"));
+        }
+        if sha256_file(&analysis_path)? == analysis_decoy_digest {
+            return Err(format!(
+                "{label} did not replace the decoy analysis outcome"
+            ));
+        }
+        if sha256_file(&receipt_path)? == receipt_decoy_digest {
+            return Err(format!("{label} did not replace the advertised receipt"));
+        }
+    }
+    Ok(())
 }
 
 /// The happy producer-consumer journey: first-action prints the funnel, the

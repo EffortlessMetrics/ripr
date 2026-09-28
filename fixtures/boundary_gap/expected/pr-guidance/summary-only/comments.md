@@ -25,6 +25,9 @@ Advisory static evidence only. RIPR does not edit source, generate tests, run mu
   - canonical_gap_id: `gap:dedf923a13a00573`
   - state: `actionable`
   - command: `ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > <cwd>/target/ripr/workflow/agent-brief.json`
+  - analysis_outcome_command: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - verify_command: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
+  - receipt_command: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f7fa8644fd12280 --json --out target/ripr/reports/agent-receipt.json`
 
 ## Suppressed
 

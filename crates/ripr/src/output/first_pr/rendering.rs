@@ -353,6 +353,14 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
             "- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
         ));
     }
+    if let Some(command) = selected
+        .get("analysis_outcome_command")
+        .and_then(Value::as_str)
+    {
+        out.push_str(&format!(
+            "- Analysis outcome for the receipt: `{command}`\n"
+        ));
+    }
     if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
         out.push_str(&format!("- {}: `{command}`\n", labels.verify));
     }
@@ -412,6 +420,12 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
         out.push_str(&format!(
             "{REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n\n"
         ));
+    }
+    if let Some(command) = selected
+        .get("analysis_outcome_command")
+        .and_then(Value::as_str)
+    {
+        push_shell_command_pair(out, "Analysis outcome for the receipt", command, true);
     }
     if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
         push_shell_command_pair(out, labels.verify, command, true);

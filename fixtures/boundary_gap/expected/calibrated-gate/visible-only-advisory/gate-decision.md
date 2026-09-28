@@ -21,7 +21,8 @@ Advisory: 1
   - Start repair: `ripr agent repair --root . --seam-id 8f7fa8644fd12280 --phase before`
   - Add: Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style.
   - After the test edit: run the `--attempt ... --phase after` command the before phase prints; it verifies movement and writes the receipt.
-  - Manual verify without a repair attempt (needs before and after snapshots taken around the test edit): `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
+  - Analysis outcome for the receipt: `ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json`
+  - Manual verify without a repair attempt (needs before and after snapshots taken around the test edit): `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json`
   - Manual receipt without a repair attempt (after the manual verify): `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f7fa8644fd12280 --json --out target/ripr/reports/agent-receipt.json`
   - Inspect: `ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > <cwd>/target/ripr/workflow/agent-brief.json`
   - Boundary: `static_ripr_evidence_only`
