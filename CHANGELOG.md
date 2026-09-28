@@ -550,6 +550,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- The VS Code download test no longer commits a localhost TLS private key.
+  The suite generates a one-day `127.0.0.1` certificate when it starts.
+  The removed pair was self-signed for that name only
+  ([#4143](https://github.com/EffortlessMetrics/ripr-swarm/issues/4143)).
+
 - Python pytest and unittest verify commands single-quote a test path that
   is not a plain relative path, matching the TypeScript command quoter.
   A name containing a shell metacharacter stays inside quotes in the command
