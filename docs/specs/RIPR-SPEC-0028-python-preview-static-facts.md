@@ -144,6 +144,33 @@ directory named `src` (the PyPA src layout, including monorepo
 root, so `from pricing.discounts import f` identifies `src/pricing/discounts.py`
 while the repository-relative `src.pricing.discounts` form still matches. Bare
 file stems and arbitrary path suffixes never count as module identity.
+
+A package whose `__init__.py` re-exports a top-level function or class under
+its own name is also an import path of that owner: `from .time import
+naturaldelta` in `src/humanize/__init__.py` lets `import humanize` +
+`humanize.naturaldelta(...)` and `from humanize import naturaldelta` relate to
+`src/humanize/time.py::naturaldelta`, and `from .more import *` lets
+`import more_itertools as mi` + `mi.one(...)` relate to
+`more_itertools/more.py::one`. The re-export is followed only from
+`__init__.py` module imports whose source module is the owner's module (or an
+earlier re-exporting package), for at most three packages. A renamed
+re-export (`from .time import naturaldelta as delta`) is not followed. A star re-export
+never carries a `_private` name, and when the source module binds `__all__`
+at top level the name must be listed in it; any other binding of `__all__`
+(an import, `del`, a loop target, a binding inside a conditional block, or a
+value other than a literal list or tuple of strings or a `+=` of one) fails
+closed, and a mention of `__all__` in a comment or docstring is not a binding.
+When the initializer also binds the name to something else (a second import
+under that name, a star import from another module that defines it, its own
+definition, an assignment, `del`, a loop or `with` target, or any binding
+inside a conditional block), the re-export is not followed, because the
+reader does not order bindings. An unreadable or unparsable initializer
+re-exports nothing.
+Methods and module owners are never re-exported. The test must still call the owner's own name through
+the package, so a test that only calls a sibling name from the same package
+stays unrelated, and a test that binds a local named like the package alias
+(a parameter, fixture or assignment) calls that local, not the package. Diff
+mode and repo mode apply the same rule.
 Test-name and fixture-name proximity may provide a suggested repair location,
 but these links must be marked uncertain, must keep weak reachability, and must
 not promote unrelated assertions to strong revealability.
@@ -563,6 +590,17 @@ suggested test file when the repair route carries a bare test name.
 The single-literal expected-value rule (including one triple-quoted string,
 and excluding compounds and adjacent-string concatenation) is covered by
 `crates/ripr/src/analysis/language/python/tests.rs::classify_change_never_restates_changed_expression_as_discriminator`.
+
+Package re-export reach is covered end to end, in diff and repo mode, by
+`crates/ripr/src/analysis/language/python/reexport_tests.rs`: attribute calls
+through an explicit `__init__.py` re-export, `from package import name`
+module identity, a star re-export honoring `__all__`, and the negative
+controls (a name `__all__` omits, a name quoted elsewhere but not in
+`__all__`, a sibling name, a renamed re-export, a shadowed package alias, an
+initializer that binds the name twice, an initializer that reassigns, deletes
+or conditionally rebinds it, and an `__all__` replaced by an import), a
+binding of another name that keeps the re-export, and a docstring that
+mentions `__all__` without binding it.
 
 ## Implementation Mapping
 

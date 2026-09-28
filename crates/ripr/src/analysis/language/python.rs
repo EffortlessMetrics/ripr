@@ -62,6 +62,7 @@ mod oracles;
 mod owners_tests;
 mod parse_budget;
 mod probe_shape;
+mod reexports;
 mod related_tests;
 mod repo;
 mod sink_alignment;
@@ -177,6 +178,9 @@ struct PythonOwner {
     /// Empty for class and module owners. Used only to bind literal test-call
     /// arguments to predicate boundary operands (`boundary.rs`).
     parameters: Vec<PythonParameter>,
+    /// Dotted package paths whose `__init__.py` re-exports this owner under
+    /// its own name (`reexports.rs`). Empty until the workspace pass fills it.
+    reexport_modules: Vec<String>,
     /// Module-scope literal constants visible in a function/method owner
     /// (not shadowed locally). Empty for class and module owners. Used only
     /// to resolve named predicate boundary operands (`boundary.rs`, #4227).
@@ -524,6 +528,9 @@ impl PythonAdapter {
                 all_owners.extend(facts.owners);
             }
         }
+        reexports::apply_package_reexports(&mut all_owners, |file| {
+            workspace_read.sources.get(file).map(String::as_str)
+        });
 
         // Walk-count cap disclosure: one named limitation carrying the
         // refused count, mirroring the TypeScript adapter's
@@ -732,6 +739,9 @@ mod new_declaration_tests;
 
 #[cfg(test)]
 mod python_tests;
+
+#[cfg(test)]
+mod reexport_tests;
 
 #[cfg(test)]
 mod tests;

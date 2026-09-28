@@ -258,6 +258,13 @@ are scoped or reviewed.
   closed (exit 2) naming the variable and the value, like `--git-timeout` and
   the `RIPR_PARTIAL_*_BUDGET` overrides. It used to keep the default deadline
   silently (#4374).
+- Python: a function a package re-exports from its `__init__.py` is now
+  related to tests that call it through the package. On humanize
+  (`import humanize`, `humanize.naturaldelta(...)`) and more-itertools
+  (`import more_itertools as mi`, `mi.one(...)` via `from .more import *`)
+  every changed line read `no_static_path` although mutating those lines
+  fails the projects' own tests. Renamed re-exports, `_private` names under a
+  star import, and names a declared `__all__` omits are not followed.
 
 ### Added
 

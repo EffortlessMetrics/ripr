@@ -51,8 +51,9 @@
 
 use super::super::classify::{PythonNoBehaviorContext, classify_change_with_context};
 use super::super::probe_shape::{canonical_python_gap_for, classify_probe_shape};
+use super::super::reexports::apply_package_reexports_from;
 use super::super::related_tests::{
-    PythonRelatedCandidate, find_related_tests, related_test_candidates,
+    PythonRelatedCandidate, find_related_tests, owner_module_paths, related_test_candidates,
 };
 use super::super::sink_alignment::classify_sink_alignment_with_old;
 use super::super::source_facts::{
@@ -329,9 +330,67 @@ pub(in crate::analysis::language::python) fn build_repo_evidence(
     // Production subjects: owners + behavior items, related against the
     // evidence pool built above. The public Finding projection is built in
     // the same pass so both views share one read+parse per file (PR C).
+    // Package `__init__.py` module owners and sources, so owners re-exported
+    // by their package (`import humanize` + `humanize.naturaldelta(`) relate
+    // the same way diff mode relates them. Unreadable files are simply not
+    // exporters here; the loop below still types their read failure.
+    let package_inits: Vec<(PythonOwner, String)> = input
+        .production_files
+        .iter()
+        .filter(|relative| {
+            relative.file_name().and_then(|name| name.to_str()) == Some("__init__.py")
+        })
+        .filter_map(|relative| {
+            let (facts, source) = load_facts_with_source(root, relative).ok()?;
+            let module = facts
+                .owners
+                .into_iter()
+                .find(PythonOwner::is_module_owner)?;
+            Some((module, source))
+        })
+        .collect();
+    let init_owners: Vec<PythonOwner> = package_inits
+        .iter()
+        .map(|(owner, _)| owner.clone())
+        .collect();
+    // The modules those initializers star-import, loaded for their top-level
+    // definitions, so a name that two star sources both define fails closed
+    // here as it does in diff mode (which reads the whole workspace).
+    let star_sources: Vec<&str> = init_owners
+        .iter()
+        .flat_map(|owner| owner.imports.iter())
+        .filter(|import| import.imported == "*")
+        .map(|import| import.source_module.as_str())
+        .collect();
+    let star_source_owners: Vec<PythonOwner> = input
+        .production_files
+        .iter()
+        .filter(|relative| {
+            owner_module_paths(relative)
+                .iter()
+                .any(|path| star_sources.contains(&path.as_str()))
+        })
+        .filter_map(|relative| load_facts_with_source(root, relative).ok())
+        .flat_map(|(facts, _)| facts.owners)
+        .collect();
+
     for relative in &input.production_files {
-        match load_facts(root, relative) {
-            Ok(facts) => {
+        match load_facts_with_source(root, relative) {
+            Ok((mut facts, source)) => {
+                apply_package_reexports_from(
+                    &mut facts.owners,
+                    &init_owners,
+                    &star_source_owners,
+                    |file| {
+                        if file == relative.as_path() {
+                            return Some(source.as_str());
+                        }
+                        package_inits
+                            .iter()
+                            .find(|(owner, _)| owner.file == file)
+                            .map(|(_, init_source)| init_source.as_str())
+                    },
+                );
                 analyzed += 1;
                 let owner_evidence = build_production_file_evidence(
                     relative,
@@ -479,13 +538,20 @@ pub(in crate::analysis::language::python) fn partial_disclosure(
 /// Read a selected file once and parse it once via the shared facts
 /// producer. A read or parse failure becomes the typed limitation reason.
 fn load_facts(root: &Path, relative: &Path) -> Result<PythonSourceFacts, String> {
+    load_facts_with_source(root, relative).map(|(facts, _)| facts)
+}
+
+fn load_facts_with_source(
+    root: &Path,
+    relative: &Path,
+) -> Result<(PythonSourceFacts, String), String> {
     let absolute = root.join(relative);
     let source = std::fs::read_to_string(&absolute).map_err(|err| format!("read_error: {err}"))?;
     let facts = extract_source_facts(relative, &source);
     debug_assert!(source_fact_snapshot_observation(&facts) > 0);
     match source_facts_parse_error(&facts) {
         Some(limitation) => Err(limitation.evidence.clone()),
-        None => Ok(facts),
+        None => Ok((facts, source)),
     }
 }
 
