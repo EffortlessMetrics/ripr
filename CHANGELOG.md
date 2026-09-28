@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `cargo xtask ripr-pr` timeout packets now give one host-shell-labeled retry
+  command that keeps base, head, and root arguments literal when copied, including
+  refs with shell syntax and roots with spaces (#4367).
+
 - LSP fallback diagnostics explain their static classification and point to
   hover evidence without promising an unavailable clipboard action or repair
   route. Missing-path guidance remains explicitly static (#4328).
