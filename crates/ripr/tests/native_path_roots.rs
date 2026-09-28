@@ -340,9 +340,9 @@ fn unicode_root_check_and_file_fact_cache_round_trip() -> Result<(), String> {
 /// `MAX_PATH` (#4350): the limit and the remedy, not `os error 267`.
 #[cfg(windows)]
 const WINDOWS_LONG_ROOT_LIMITATION: [&str; 2] = [
-    "failed to run git diff: failed to run git: the workspace root is ",
-    " characters long, and Windows cannot start git in a directory longer than 258 \
-     characters (MAX_PATH). Clone or move the repository to a shorter path and rerun ripr",
+    "failed to run git diff: failed to run git: clone or move the repository to a shorter \
+     path; the workspace root is ",
+    " characters, over the 258 Windows allows for a working directory (MAX_PATH)",
 ];
 
 /// Windows cannot start git under a root past `MAX_PATH`, and 0.11 does not

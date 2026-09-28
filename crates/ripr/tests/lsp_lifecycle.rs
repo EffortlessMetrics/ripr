@@ -1719,14 +1719,16 @@ fn assert_lsp_refresh_names_the_windows_path_limit(root: &Path) -> Result<(), St
         .pointer("/analysis_status/failure/message")
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| format!("refresh failure must carry a message: {status}"))?;
-    // The server bounds client-visible failure text to 240 characters, which
-    // keeps the limit but cuts the "Clone or move" remedy the CLI prints in
-    // full (observed natively on 0fc223b). Pin what the editor receives.
-    let named = message.contains("failed to run git: the workspace root is ")
-        && message.contains("Windows cannot start git in a directory longer than 258");
+    // The server bounds client-visible failure text to 240 characters. The
+    // message leads with the remedy so the editor keeps it along with the
+    // limit (#4350; the earlier wording lost the remedy, observed natively on
+    // 0fc223b). Pin what the editor receives.
+    let named = message
+        .contains("failed to run git: clone or move the repository to a shorter path; ")
+        && message.contains("over the 258 Windows allows for a working directory (MAX_PATH)");
     if !named {
         return Err(format!(
-            "refresh failure must name the MAX_PATH limit: {message}"
+            "refresh failure must name the remedy and the MAX_PATH limit: {message}"
         ));
     }
     exit_and_wait(&mut session)

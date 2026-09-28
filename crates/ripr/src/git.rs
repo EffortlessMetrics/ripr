@@ -166,16 +166,27 @@ impl SpawnSite {
             .filter(|_| path_limit_error)
             .and_then(|dir| windows_overlong_working_directory(is_windows, dir))
         {
-            Some(units) => format!(
-                "failed to run {program}: the workspace root is {units} characters long, and \
-                 Windows cannot start {program} in a directory longer than \
-                 {WINDOWS_MAX_WORKING_DIRECTORY_UNITS} characters (MAX_PATH). Clone or move \
-                 the repository to a shorter path and rerun ripr ({err}; {describe})",
-                program = self.program,
-            ),
+            Some(units) => windows_path_limit_message(&self.program, units, err, describe),
             None => format!("failed to run {describe}: {err}"),
         }
     }
+}
+
+/// The remedy leads so it survives the LSP's 240-character client bound
+/// (`lsp::component_outcome::bounded_message`) behind the caller prefixes;
+/// the limit and the original error follow for the CLI, which prints all of
+/// it.
+pub(crate) fn windows_path_limit_message(
+    program: &str,
+    units: usize,
+    err: &std::io::Error,
+    describe: &str,
+) -> String {
+    format!(
+        "failed to run {program}: clone or move the repository to a shorter path; the \
+         workspace root is {units} characters, over the {WINDOWS_MAX_WORKING_DIRECTORY_UNITS} \
+         Windows allows for a working directory (MAX_PATH) ({err}; {describe})"
+    )
 }
 
 /// Length of `dir` in UTF-16 units when it exceeds the Windows working
@@ -714,8 +725,10 @@ mod tests {
         match result {
             Err(message) => {
                 assert!(
-                    message.starts_with("failed to run git: the workspace root is ")
-                        && message.contains("(MAX_PATH). Clone or move the repository"),
+                    message.starts_with(
+                        "failed to run git: clone or move the repository to a shorter path; the \
+                         workspace root is "
+                    ) && message.contains("(MAX_PATH)"),
                     "{message}"
                 );
                 Ok(())
@@ -754,9 +767,9 @@ mod tests {
         let windows = site.failure_message_on(true, &describe, &err);
         assert!(
             windows.starts_with(
-                "failed to run git: the workspace root is 387 characters long, and Windows \
-                 cannot start git in a directory longer than 258 characters (MAX_PATH). Clone \
-                 or move the repository to a shorter path and rerun ripr ("
+                "failed to run git: clone or move the repository to a shorter path; the \
+                 workspace root is 387 characters, over the 258 Windows allows for a working \
+                 directory (MAX_PATH) ("
             ),
             "{windows}"
         );
@@ -773,7 +786,7 @@ mod tests {
         let too_long = std::io::Error::from_raw_os_error(206);
         assert!(
             site.failure_message_on(true, &describe, &too_long)
-                .starts_with("failed to run git: the workspace root is 387 characters long"),
+                .contains("the workspace root is 387 characters"),
             "ERROR_FILENAME_EXCED_RANGE is the other path-limit code"
         );
         for other in [

@@ -6888,13 +6888,16 @@ reach the child — not an empty environment block. The verify route invokes
 `git`, so a literally empty environment strips `PATH` and makes a passing
 observation unreachable on every real repository. Only a fixed platform floor
 crosses the boundary (`PATH`, Windows `SystemRoot`/`SystemDrive`/`windir`/
-`COMSPEC`/`PATHEXT`/`TEMP`/`TMP`, and `HOME`/`TMPDIR`/`LANG`/`LC_ALL`). The
-floor is disclosed by name in the response `preflight.environment_floor`;
-values are never emitted. Tokens and cloud credentials are dropped.
+`COMSPEC`/`PATHEXT`/`TEMP`/`TMP`/`USERPROFILE`/`HOMEDRIVE`/`HOMEPATH`, and
+`HOME`/`TMPDIR`/`LANG`/`LC_ALL`). The floor is disclosed by name in the
+response `preflight.environment_floor`; values are never emitted. Tokens and
+cloud credentials are dropped.
 
-Because `HOME` is in the floor, host global Git configuration can influence the
-child's Git behavior. "Clean" here means no ambient credential or application
-variables — not behavioural independence from host Git configuration. Disabling
+Because `HOME` (and, on Windows, `USERPROFILE`/`HOMEDRIVE`/`HOMEPATH`, which Git
+for Windows uses to find the home directory) is in the floor, host global Git
+configuration can influence the child's Git behavior on every platform.
+"Clean" here means no ambient credential or application variables — not
+behavioural independence from host Git configuration. Disabling
 global and system Git configuration for the child is a possible future
 tightening, not a current guarantee.
 

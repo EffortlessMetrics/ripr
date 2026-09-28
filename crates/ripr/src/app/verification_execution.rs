@@ -84,6 +84,14 @@ const ENVIRONMENT_FLOOR: &[&str] = &[
     "PATHEXT",
     "TEMP",
     "TMP",
+    // The Windows counterpart of HOME. Git for Windows finds its global
+    // configuration through HOME, then HOMEDRIVE+HOMEPATH, then USERPROFILE;
+    // HOME is normally unset there, so without these the child's git ran
+    // without the user's global config (safe.directory, core.autocrlf) while
+    // the same route on Unix read it.
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
     // Unix platform essentials. HOME is required for git to resolve its own
     // configuration; it is ambient but not a credential.
     "HOME",
@@ -1614,6 +1622,60 @@ mod tests {
                 "undeclared variable {name} reached the child"
             );
         }
+    }
+
+    /// Native proof for the Windows home variables in the floor: the child's
+    /// git finds the user's global config only when USERPROFILE crosses, and
+    /// the floor carries it. HOME and HOMEDRIVE/HOMEPATH are removed so
+    /// USERPROFILE alone decides, and the control without it must not see the
+    /// marker.
+    #[cfg(windows)]
+    #[test]
+    fn windows_child_git_reads_global_config_through_userprofile() -> Result<(), String> {
+        let profile =
+            std::env::temp_dir().join(format!("ripr-verify-profile-{}", std::process::id()));
+        std::fs::create_dir_all(&profile).map_err(|err| format!("create profile: {err}"))?;
+        std::fs::write(
+            profile.join(".gitconfig"),
+            "[ripr]\n\tprobe = floor-home-ok\n",
+        )
+        .map_err(|err| format!("write gitconfig: {err}"))?;
+        let profile_text = profile.display().to_string();
+        let run = |with_profile: bool| -> Result<String, String> {
+            let mut env: Vec<(String, String)> = child_environment()
+                .into_iter()
+                .filter(|(name, _)| {
+                    !["HOME", "HOMEDRIVE", "HOMEPATH", "USERPROFILE"].contains(&name.as_str())
+                })
+                .collect();
+            if with_profile {
+                env.push(("USERPROFILE".to_string(), profile_text.clone()));
+            }
+            let output = Command::new("git")
+                .args(["config", "--global", "--get", "ripr.probe"])
+                .env_clear()
+                .envs(env)
+                .stdin(Stdio::null())
+                .output()
+                .map_err(|err| format!("spawn git: {err}"))?;
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        };
+        let with_profile = run(true);
+        let without_profile = run(false);
+        let _ = std::fs::remove_dir_all(&profile);
+        if !ENVIRONMENT_FLOOR.contains(&"USERPROFILE") {
+            return Err("USERPROFILE must be in the environment floor".to_string());
+        }
+        if with_profile? != "floor-home-ok" {
+            return Err("git did not read the global config through USERPROFILE".to_string());
+        }
+        let control = without_profile?;
+        if !control.is_empty() {
+            return Err(format!(
+                "control without USERPROFILE still read global config: {control}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]
