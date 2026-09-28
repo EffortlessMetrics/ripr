@@ -132,7 +132,6 @@ pub(crate) fn classify_seam(_seam: &RepoSeam, evidence: &TestGripEvidence) -> Se
 /// Seams without a matching evidence record are skipped. The inventory
 /// walker always builds evidence for every seam, so this only filters
 /// out genuinely orphaned input.
-#[cfg(test)]
 pub(crate) fn classify_seams(
     seams: &[RepoSeam],
     evidence: &[TestGripEvidence],

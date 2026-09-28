@@ -26,6 +26,9 @@ pub(crate) struct ReviewCommentsAnalysisScope {
     pub(crate) total_production_files: Option<usize>,
     pub(crate) production_files_considered: usize,
     pub(crate) classified_seams_considered: usize,
+    /// Scoped seams skipped because changed-line seams filled every
+    /// review slot; zero when the whole scope was classified.
+    pub(crate) unevaluated_seams: usize,
     pub(crate) downstream_consumable: bool,
     pub(crate) limitation: &'static str,
     pub(crate) repair_route: &'static str,
@@ -50,6 +53,7 @@ impl ReviewCommentsAnalysisScope {
             total_production_files: Some(inventory.total_production_files),
             production_files_considered: inventory.scoped_production_files.len(),
             classified_seams_considered: inventory.classified.len(),
+            unevaluated_seams: inventory.unevaluated_seams,
             downstream_consumable: true,
             limitation: "review_comments_diff_scope_only",
             repair_route: "analysis/diff-scoped-large-repo-review-fast-path",
@@ -75,6 +79,7 @@ impl ReviewCommentsAnalysisScope {
             total_production_files: None,
             production_files_considered: working_set.files.len(),
             classified_seams_considered,
+            unevaluated_seams: 0,
             downstream_consumable: true,
             limitation: "review_comments_working_set_scope_only",
             repair_route: "analysis/review-comments-working-set",
@@ -119,6 +124,7 @@ impl ReviewCommentsAnalysisScope {
             total_production_files: None,
             production_files_considered: anchor_files.len(),
             classified_seams_considered: records.len(),
+            unevaluated_seams: 0,
             downstream_consumable: true,
             limitation: "review_comments_gap_ledger_artifact_scope_only",
             repair_route: "reports/gap-decision-ledger",

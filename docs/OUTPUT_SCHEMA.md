@@ -7408,7 +7408,11 @@ Field contract:
   "limited_diff_scope"`, changed files, changed owner count, changed production
   files, immediate caller files, total production-file counts, the classified
   seam count considered, and the `review_comments_diff_scope_only` limitation
-  route. This makes the report useful on large repos without representing the
+  route. When seams on changed lines and in changed owners fill every review
+  slot, the rest of the scope is skipped: `classified_seams_considered` counts
+  only the evaluated seams, the optional `unevaluated_seams` (present only
+  then) counts the skipped ones, a warning says the same, and the brief-cap
+  warning reads "at least N" because it counts evaluated seams only. This makes the report useful on large repos without representing the
   scoped review as full-repo evidence. Gap-ledger rendering emits `scope =
   "gap_ledger_artifact"` and `run_status = "artifact_scope"` with `basis =
   "supplied_gap_decision_ledger"`, ledger anchor files, the supplied GapRecord

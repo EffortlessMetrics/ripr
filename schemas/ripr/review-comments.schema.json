@@ -650,6 +650,11 @@
           "type": "integer",
           "minimum": 0
         },
+        "unevaluated_seams": {
+          "description": "Present only when seams on changed lines and in changed owner functions filled every review slot and the rest of the scope was not evaluated.",
+          "type": "integer",
+          "minimum": 1
+        },
         "downstream_consumable": {
           "type": "boolean"
         },

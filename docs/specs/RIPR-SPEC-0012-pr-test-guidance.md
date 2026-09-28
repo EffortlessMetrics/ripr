@@ -51,6 +51,14 @@ production files, changed test files, configured severity, and suppression
 policy. The default diff path reviews changed production files plus bounded
 immediate caller files and reports that narrowed basis as
 `analysis_scope.run_status = "limited_diff_scope"` rather than full-repo truth.
+Within that scope, seams on changed lines and in changed owner functions are
+evaluated first. Only those seams can take the two highest selection
+priorities, so when they already fill every review slot the rest of the scope
+is not evaluated: `analysis_scope.unevaluated_seams` and a warning give the
+skipped count, `classified_seams_considered` counts only the seams evaluated,
+and the brief-cap warning reads "at least N". When they do not
+fill the slots, the whole scope is evaluated. Past the first ten hidden matching
+seams, omission warnings are counted per reason instead of named.
 It writes review-ready JSON and Markdown without posting to GitHub.
 
 Generated CI should publish that report through the least intrusive useful

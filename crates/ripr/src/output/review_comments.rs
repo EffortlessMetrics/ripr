@@ -1121,7 +1121,7 @@ fn unresolved_source_location_json() -> Value {
 }
 
 fn analysis_scope_json(scope: &ReviewCommentsAnalysisScope) -> Value {
-    json!({
+    let mut value = json!({
         "scope": scope.scope,
         "run_status": scope.run_status,
         "basis": scope.basis,
@@ -1138,7 +1138,13 @@ fn analysis_scope_json(scope: &ReviewCommentsAnalysisScope) -> Value {
         "downstream_consumable": scope.downstream_consumable,
         "limitation": scope.limitation,
         "repair_route": scope.repair_route,
-    })
+    });
+    // Present only when the staged scope skipped seams, so a consumer
+    // can tell `classified_seams_considered` is not the whole scope.
+    if scope.unevaluated_seams > 0 {
+        value["unevaluated_seams"] = json!(scope.unevaluated_seams);
+    }
+    value
 }
 
 fn display_paths(paths: &[std::path::PathBuf]) -> Vec<String> {
@@ -1444,6 +1450,11 @@ fn push_analysis_scope_summary(lines: &mut Vec<String>, value: Option<&Value>) {
         "- scoped production files: {considered}/{total_production}"
     ));
     lines.push(format!("- classified seams considered: {classified}"));
+    if let Some(unevaluated) = scope.get("unevaluated_seams").and_then(Value::as_u64) {
+        lines.push(format!(
+            "- scoped seams not evaluated: {unevaluated} (changed-line seams filled every review slot)"
+        ));
+    }
     if let (Some(limitation), Some(route)) = (
         scope.get("limitation").and_then(Value::as_str),
         scope.get("repair_route").and_then(Value::as_str),

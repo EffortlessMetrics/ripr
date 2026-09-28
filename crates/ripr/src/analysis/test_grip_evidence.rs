@@ -184,40 +184,59 @@ pub(crate) struct OracleSemantics {
 /// caller that runs under a cancellation context must checkpoint immediately
 /// after this function returns before using or publishing the vector.
 pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<TestGripEvidence> {
-    let context_started = Instant::now();
-    trace_latency_phase(
-        "evidence_context",
-        &format!("start_seams_{}", seams.len()),
-        Duration::ZERO,
-    );
-    let context = match CompactGripContext::try_new(index) {
-        Ok(context) => context,
-        Err(_) => return Vec::new(),
-    };
-    trace_latency_phase(
-        "evidence_context",
-        &format!("tests_{}_seams_{}", context.tests.len(), seams.len()),
-        context_started.elapsed(),
-    );
+    EvidencePass::new(index).evidence_for(seams)
+}
 
-    let evidence_started = Instant::now();
-    let mut out: Vec<TestGripEvidence> = Vec::with_capacity(seams.len());
-    for (index, seam) in seams.iter().enumerate() {
-        if cancellation::checkpoint().is_err() {
-            break;
-        }
-        out.push(evidence_for_seam_with_context(seam, &context));
-        let processed = index + 1;
-        if processed % EVIDENCE_PROGRESS_CHUNK == 0 || processed == seams.len() {
-            trace_latency_phase(
-                "evidence_for_seams_progress",
-                &format!("processed_{processed}_of_{}", seams.len()),
-                evidence_started.elapsed(),
-            );
-        }
+/// One test context shared by several [`EvidencePass::evidence_for`]
+/// calls, so a caller that evaluates seams in stages builds the test
+/// context once. Its caches are keyed memoization, so a seam's evidence
+/// does not depend on which seams the pass evaluated before it.
+pub(crate) struct EvidencePass<'index> {
+    context: Option<CompactGripContext<'index>>,
+}
+
+impl<'index> EvidencePass<'index> {
+    pub(crate) fn new(index: &'index RustIndex) -> Self {
+        let context_started = Instant::now();
+        trace_latency_phase("evidence_context", "start", Duration::ZERO);
+        let context = CompactGripContext::try_new(index).ok();
+        trace_latency_phase(
+            "evidence_context",
+            &format!(
+                "tests_{}",
+                context.as_ref().map_or(0, |context| context.tests.len())
+            ),
+            context_started.elapsed(),
+        );
+        Self { context }
     }
-    out.sort_by(|a, b| a.seam_id.as_str().cmp(b.seam_id.as_str()));
-    out
+
+    /// Evidence for `seams`, sorted by `seam_id`; empty when the context
+    /// could not be built. Carries the same cancellation contract as
+    /// [`evidence_for_seams`].
+    pub(crate) fn evidence_for(&self, seams: &[RepoSeam]) -> Vec<TestGripEvidence> {
+        let Some(context) = self.context.as_ref() else {
+            return Vec::new();
+        };
+        let evidence_started = Instant::now();
+        let mut out: Vec<TestGripEvidence> = Vec::with_capacity(seams.len());
+        for (index, seam) in seams.iter().enumerate() {
+            if cancellation::checkpoint().is_err() {
+                break;
+            }
+            out.push(evidence_for_seam_with_context(seam, context));
+            let processed = index + 1;
+            if processed % EVIDENCE_PROGRESS_CHUNK == 0 || processed == seams.len() {
+                trace_latency_phase(
+                    "evidence_for_seams_progress",
+                    &format!("processed_{processed}_of_{}", seams.len()),
+                    evidence_started.elapsed(),
+                );
+            }
+        }
+        out.sort_by(|a, b| a.seam_id.as_str().cmp(b.seam_id.as_str()));
+        out
+    }
 }
 
 /// Build evidence for a single seam.

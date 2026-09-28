@@ -1,6 +1,6 @@
-use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
+use crate::analysis::{ClassifiedSeam, RepoSeam};
 use crate::config::{ConfigSeverity, RiprConfig};
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 pub(crate) const DEFAULT_AGENT_BRIEF_MAX_SEAMS: usize = 3;
 pub(crate) const AGENT_BRIEF_HARD_MAX_SEAMS: usize = 10;
 const RELATED_TEST_ASSERTION_WINDOW_LINES: usize = 12;
+/// Hidden matching seams named one per warning before the rest are
+/// counted per reason.
+const AGENT_BRIEF_MAX_NAMED_OMISSIONS: usize = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AgentBriefWorkingSetSource {
@@ -331,23 +334,43 @@ fn direct_candidates<'a>(
 
     let mut candidates = Vec::new();
     let mut matched_working_set = false;
+    let mut named_omissions = 0;
+    let mut more_omissions: Vec<(AgentBriefOmission, usize)> = Vec::new();
     let normalized_working_set = NormalizedAgentBriefWorkingSet::new(working_set);
     for entry in classified {
         let Some(why_now) = why_now_for(entry, &normalized_working_set) else {
             continue;
         };
         matched_working_set = true;
-        if let Some(reason) = agent_brief_omission_reason(entry, policy) {
-            warnings.push(format!(
-                "seam {} at {}:{} {reason}",
-                entry.seam.id().as_str(),
-                display_path(entry.seam.file()),
-                entry.seam.display_line()
-            ));
+        if let Some(omission) = AgentBriefOmission::for_entry(entry, policy) {
+            // A large diff can match thousands of hidden seams; name
+            // the first few and count the rest per reason.
+            if named_omissions < AGENT_BRIEF_MAX_NAMED_OMISSIONS {
+                named_omissions += 1;
+                warnings.push(format!(
+                    "seam {} at {}:{} {}",
+                    entry.seam.id().as_str(),
+                    display_path(entry.seam.file()),
+                    entry.seam.display_line(),
+                    omission.reason()
+                ));
+            } else if let Some((_, count)) = more_omissions
+                .iter_mut()
+                .find(|(seen, _)| *seen == omission)
+            {
+                *count += 1;
+            } else {
+                more_omissions.push((omission, 1));
+            }
             continue;
         }
         candidates.push(selected(entry, why_now));
     }
+    warnings.extend(
+        more_omissions
+            .into_iter()
+            .map(|(omission, count)| omission.more(count)),
+    );
 
     AgentBriefCandidateSelection {
         candidates,
@@ -405,6 +428,62 @@ fn fallback_candidates<'a>(
         .collect()
 }
 
+/// The seams a working set can select at the changed-line and
+/// changed-owner why-now priorities, decided from the seam alone.
+///
+/// Only a seam on a changed line or inside a changed owner can sort at
+/// those two priorities; every other match (related tests, same file)
+/// sorts after them. So when these seams alone supply the requested
+/// number of selectable seams, selection over any larger scope returns
+/// the same top seams, and a caller may skip evidence for the rest.
+pub(crate) struct AgentBriefChangedScope<'a> {
+    working_set: NormalizedAgentBriefWorkingSet<'a>,
+    explicit_seam: bool,
+}
+
+impl<'a> AgentBriefChangedScope<'a> {
+    pub(crate) fn new(working_set: &'a AgentBriefResolvedWorkingSet) -> Self {
+        Self {
+            working_set: NormalizedAgentBriefWorkingSet::new(working_set),
+            explicit_seam: working_set.seam_id.is_some(),
+        }
+    }
+
+    pub(crate) fn contains(&self, seam: &RepoSeam) -> bool {
+        matching_changed_line(seam, &self.working_set).is_some()
+            || matching_changed_owner(seam, &self.working_set).is_some()
+    }
+
+    /// True when `classified` holds at least the requested number of
+    /// selectable seams at the changed-line or changed-owner priority.
+    /// An explicit seam id selects by id, so it never qualifies.
+    pub(crate) fn fills_selection(
+        &self,
+        classified: &[ClassifiedSeam],
+        requested_max: usize,
+        policy: AgentBriefPolicy<'_>,
+    ) -> bool {
+        if self.explicit_seam {
+            return false;
+        }
+        let needed = normalize_requested_max(requested_max);
+        classified
+            .iter()
+            .filter(|entry| agent_brief_omission_reason(entry, policy).is_none())
+            .filter(|entry| {
+                why_now_for(entry, &self.working_set).is_some_and(|why_now| {
+                    matches!(
+                        why_now.reason,
+                        AgentBriefWhyNowReason::ChangedLineIntersectsSeam
+                            | AgentBriefWhyNowReason::ChangedOwnerFunction
+                    )
+                })
+            })
+            .nth(needed.saturating_sub(1))
+            .is_some()
+    }
+}
+
 struct NormalizedAgentBriefWorkingSet<'a> {
     changed_lines: Vec<(String, &'a AgentBriefLine)>,
     changed_owners: Vec<(String, &'a AgentBriefChangedOwner)>,
@@ -441,7 +520,7 @@ fn why_now_for(
     entry: &ClassifiedSeam,
     working_set: &NormalizedAgentBriefWorkingSet<'_>,
 ) -> Option<AgentBriefWhyNow> {
-    if let Some(line) = matching_changed_line(entry, working_set) {
+    if let Some(line) = matching_changed_line(&entry.seam, working_set) {
         return Some(AgentBriefWhyNow {
             reason: AgentBriefWhyNowReason::ChangedLineIntersectsSeam,
             confidence: AgentBriefWhyNowConfidence::High,
@@ -463,7 +542,7 @@ fn why_now_for(
         });
     }
 
-    if let Some(owner) = matching_changed_owner(entry, working_set) {
+    if let Some(owner) = matching_changed_owner(&entry.seam, working_set) {
         return Some(AgentBriefWhyNow {
             reason: AgentBriefWhyNowReason::ChangedOwnerFunction,
             confidence: AgentBriefWhyNowConfidence::High,
@@ -514,28 +593,28 @@ fn why_now_for(
 }
 
 fn matching_changed_line<'a>(
-    entry: &ClassifiedSeam,
+    seam: &RepoSeam,
     working_set: &'a NormalizedAgentBriefWorkingSet<'a>,
 ) -> Option<&'a AgentBriefLine> {
-    let seam_file = normalized_path(entry.seam.file());
+    let seam_file = normalized_path(seam.file());
     working_set
         .changed_lines
         .iter()
         .find_map(|(line_file, line)| {
-            (line_file == &seam_file && line.line == entry.seam.display_line()).then_some(*line)
+            (line_file == &seam_file && line.line == seam.display_line()).then_some(*line)
         })
 }
 
 fn matching_changed_owner<'a>(
-    entry: &ClassifiedSeam,
+    seam: &RepoSeam,
     working_set: &'a NormalizedAgentBriefWorkingSet<'a>,
 ) -> Option<&'a AgentBriefChangedOwner> {
-    let seam_file = normalized_path(entry.seam.file());
+    let seam_file = normalized_path(seam.file());
     working_set
         .changed_owners
         .iter()
         .find_map(|(owner_file, owner)| {
-            (owner_file == &seam_file && owner.owner == entry.seam.owner()).then_some(*owner)
+            (owner_file == &seam_file && owner.owner == seam.owner()).then_some(*owner)
         })
 }
 
@@ -692,25 +771,63 @@ fn is_agent_actionable(class: SeamGripClass) -> bool {
     class.is_headline_eligible() || matches!(class, SeamGripClass::Opaque)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AgentBriefOmission {
+    ConfiguredOff(SeamGripClass),
+    NotActionable(SeamGripClass),
+}
+
+impl AgentBriefOmission {
+    fn for_entry(entry: &ClassifiedSeam, policy: AgentBriefPolicy<'_>) -> Option<Self> {
+        if matches!(policy.severity_for(entry.class), ConfigSeverity::Off) {
+            return Some(Self::ConfiguredOff(entry.class));
+        }
+        if !is_agent_actionable(entry.class) {
+            return Some(Self::NotActionable(entry.class));
+        }
+        None
+    }
+
+    /// Predicate for one named seam: "seam X at f:l <reason>".
+    fn reason(self) -> String {
+        match self {
+            Self::ConfiguredOff(class) => format!(
+                "is configured off for {} seams and is not included in agent brief results",
+                class.as_str()
+            ),
+            Self::NotActionable(class) => format!(
+                "is {} and is not included in agent brief results",
+                class.as_str()
+            ),
+        }
+    }
+
+    /// Count line for omitted seams past the per-seam warning bound.
+    fn more(self, count: usize) -> String {
+        let (noun, verb) = if count == 1 {
+            ("seam", "is")
+        } else {
+            ("seams", "are")
+        };
+        match self {
+            Self::ConfiguredOff(class) => format!(
+                "{count} more matching {noun} {verb} configured off for {} seams and not \
+                 included in agent brief results",
+                class.as_str()
+            ),
+            Self::NotActionable(class) => format!(
+                "{count} more matching {noun} {verb} {} and not included in agent brief results",
+                class.as_str()
+            ),
+        }
+    }
+}
+
 fn agent_brief_omission_reason(
     entry: &ClassifiedSeam,
     policy: AgentBriefPolicy<'_>,
 ) -> Option<String> {
-    if matches!(policy.severity_for(entry.class), ConfigSeverity::Off) {
-        return Some(format!(
-            "is configured off for {} seams and is not included in agent brief results",
-            entry.class.as_str()
-        ));
-    }
-
-    if !is_agent_actionable(entry.class) {
-        return Some(format!(
-            "is {} and is not included in agent brief results",
-            entry.class.as_str()
-        ));
-    }
-
-    None
+    AgentBriefOmission::for_entry(entry, policy).map(AgentBriefOmission::reason)
 }
 
 fn files_from_changed_lines(changed_lines: &[AgentBriefLine]) -> Vec<PathBuf> {
@@ -1669,5 +1786,183 @@ weakly_gripped = "off"
             selection.top_seams[0].why_now.reason,
             AgentBriefWhyNowReason::SameFileSeam
         );
+    }
+
+    fn weak_at(file: &str, line: usize, owner: &str) -> ClassifiedSeam {
+        classified(
+            file,
+            line,
+            owner,
+            &format!("amount >= {line}"),
+            SeamGripClass::WeaklyGripped,
+        )
+    }
+
+    #[test]
+    fn changed_scope_that_fills_the_slots_selects_the_same_seams_as_the_full_scope() {
+        // Ten actionable seams on changed lines, one in a changed owner,
+        // and three that only match through the same file or a changed
+        // related test: those sort after every changed-line seam.
+        let mut seams = (10..20)
+            .map(|line| weak_at("src/pricing.rs", line, "pricing::discounted_total"))
+            .collect::<Vec<_>>();
+        seams.push(weak_at("src/pricing.rs", 40, "pricing::taxed_total"));
+        seams.push(classified(
+            "src/pricing.rs",
+            60,
+            "pricing::rounding",
+            "cents > 0",
+            SeamGripClass::Ungripped,
+        ));
+        let mut caller = weak_at("src/caller.rs", 5, "caller::checkout");
+        related_test(&mut caller, "tests/sample.rs", 7, RelationConfidence::High);
+        seams.push(caller);
+        let mut changed_lines = (10..20)
+            .map(|line| AgentBriefLine::new("src/pricing.rs", line))
+            .collect::<Vec<_>>();
+        changed_lines.push(AgentBriefLine::new("src/pricing.rs", 41));
+        changed_lines.push(AgentBriefLine::new("tests/sample.rs", 7));
+        let working_set =
+            AgentBriefResolvedWorkingSet::base("main", changed_lines).with_changed_owners(vec![
+                AgentBriefChangedOwner::new("src/pricing.rs", 41, "pricing::taxed_total"),
+            ]);
+        let config = RiprConfig::default();
+        let policy = AgentBriefPolicy::from_config(&config);
+        let scope = AgentBriefChangedScope::new(&working_set);
+
+        let first = seams
+            .iter()
+            .filter(|entry| scope.contains(&entry.seam))
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(first.len(), 11, "changed lines plus the changed owner");
+        assert!(scope.fills_selection(&first, 10, policy));
+
+        let full = select(&seams, &working_set, 10);
+        let staged = select(&first, &working_set, 10);
+        assert!(
+            full.top_seams
+                .iter()
+                .all(|entry| scope.contains(&entry.seam.seam)),
+            "the full-scope top seams must all come from the changed scope"
+        );
+        assert_eq!(selected_ids(&staged), selected_ids(&full));
+    }
+
+    #[test]
+    fn changed_scope_does_not_fill_the_slots_with_hidden_or_too_few_seams() {
+        let mut seams = (10..19)
+            .map(|line| weak_at("src/pricing.rs", line, "pricing::discounted_total"))
+            .collect::<Vec<_>>();
+        seams.push(classified(
+            "src/pricing.rs",
+            19,
+            "pricing::discounted_total",
+            "amount >= 19",
+            SeamGripClass::StronglyGripped,
+        ));
+        let changed_lines = (10..20)
+            .map(|line| AgentBriefLine::new("src/pricing.rs", line))
+            .collect::<Vec<_>>();
+        let working_set = AgentBriefResolvedWorkingSet::base("main", changed_lines);
+        let config = RiprConfig::default();
+        let policy = AgentBriefPolicy::from_config(&config);
+        let scope = AgentBriefChangedScope::new(&working_set);
+
+        assert!(seams.iter().all(|entry| scope.contains(&entry.seam)));
+        assert!(
+            !scope.fills_selection(&seams, 10, policy),
+            "nine selectable seams cannot fill ten slots"
+        );
+        assert!(scope.fills_selection(&seams, 9, policy));
+
+        let explicit = AgentBriefResolvedWorkingSet::seam_id(seams[0].seam.id().as_str());
+        assert!(!AgentBriefChangedScope::new(&explicit).fills_selection(&seams, 1, policy));
+    }
+
+    #[test]
+    fn changed_owner_seam_routed_through_a_changed_related_test_does_not_fill_a_slot() {
+        // A changed-owner seam whose related test's exact line also
+        // changed sorts at the related-test priority, where unevaluated
+        // caller seams can outrank it; it must not count toward the slots.
+        let mut seams = (10..19)
+            .map(|line| weak_at("src/pricing.rs", line, "pricing::discounted_total"))
+            .collect::<Vec<_>>();
+        let mut owner_seam = weak_at("src/pricing.rs", 40, "pricing::taxed_total");
+        related_test(
+            &mut owner_seam,
+            "tests/sample.rs",
+            7,
+            RelationConfidence::High,
+        );
+        seams.push(owner_seam);
+        let mut changed_lines = (10..19)
+            .map(|line| AgentBriefLine::new("src/pricing.rs", line))
+            .collect::<Vec<_>>();
+        changed_lines.push(AgentBriefLine::new("src/pricing.rs", 41));
+        changed_lines.push(AgentBriefLine::new("tests/sample.rs", 7));
+        let working_set =
+            AgentBriefResolvedWorkingSet::base("main", changed_lines).with_changed_owners(vec![
+                AgentBriefChangedOwner::new("src/pricing.rs", 41, "pricing::taxed_total"),
+            ]);
+        let config = RiprConfig::default();
+        let policy = AgentBriefPolicy::from_config(&config);
+        let scope = AgentBriefChangedScope::new(&working_set);
+
+        assert!(seams.iter().all(|entry| scope.contains(&entry.seam)));
+        let owner_pick = select(&seams, &working_set, 10)
+            .top_seams
+            .into_iter()
+            .find(|entry| entry.seam.seam.owner() == "pricing::taxed_total")
+            .map(|entry| entry.why_now.reason);
+        assert_eq!(
+            owner_pick,
+            Some(AgentBriefWhyNowReason::ChangedTestForRelatedSeam),
+            "fixture must route the owner seam through its changed related test"
+        );
+        assert!(!scope.fills_selection(&seams, 10, policy));
+        assert!(scope.fills_selection(&seams, 9, policy));
+    }
+
+    #[test]
+    fn hidden_matching_seams_past_the_named_bound_are_counted_per_reason() -> Result<(), String> {
+        let mut seams = (1..=12)
+            .map(|line| weak_at("src/pricing.rs", line, "pricing::discounted_total"))
+            .collect::<Vec<_>>();
+        seams.push(classified(
+            "src/pricing.rs",
+            13,
+            "pricing::discounted_total",
+            "flag",
+            SeamGripClass::StronglyGripped,
+        ));
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
+        let config = tests_only_parse(
+            r#"
+[severity.seams]
+weakly_gripped = "off"
+"#,
+        )?;
+
+        let selection = select_with_config(&seams, &working_set, 3, &config);
+
+        assert!(selection.top_seams.is_empty());
+        let named = selection
+            .warnings
+            .iter()
+            .filter(|warning| warning.starts_with("seam "))
+            .count();
+        assert_eq!(named, AGENT_BRIEF_MAX_NAMED_OMISSIONS);
+        assert_eq!(
+            selection.warnings[AGENT_BRIEF_MAX_NAMED_OMISSIONS..],
+            [
+                "2 more matching seams are configured off for weakly_gripped seams and not \
+                 included in agent brief results",
+                "1 more matching seam is configured off for strongly_gripped seams and not \
+                 included in agent brief results",
+            ]
+        );
+        Ok(())
     }
 }

@@ -60,11 +60,12 @@ pub(crate) use seam_classification::SeamGripClassCounts;
 #[cfg(test)]
 pub(crate) use seam_classification::classify_seam;
 pub(crate) use seam_inventory::{
-    DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory, SeamLimitInfo,
-    SeamLimitSource, apply_pilot_seam_budget,
+    DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, DiffScopeEvidenceStages, ScopedClassifiedSeamInventory,
+    SeamLimitInfo, SeamLimitSource, apply_pilot_seam_budget,
     inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
-    inventory_diff_scoped_classified_seams_at_with_config, inventory_seams_at_with_config,
+    inventory_diff_scoped_classified_seams_at_with_config,
+    inventory_diff_scoped_classified_seams_staged_at_with_config, inventory_seams_at_with_config,
     workspace_cache_key_at_with_config,
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};

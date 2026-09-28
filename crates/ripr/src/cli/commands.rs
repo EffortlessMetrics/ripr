@@ -1,6 +1,7 @@
 use crate::analysis;
 use crate::app::agent_brief::{
-    AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
+    AgentBriefChangedScope, AgentBriefPolicy, AgentBriefResolvedWorkingSet,
+    select_agent_brief_seams,
 };
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::commands_numeric::parse_positive_u64;
@@ -1492,12 +1493,29 @@ fn review_comments_with_diff_loader_at(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
+    // Review slots fill from changed lines and changed owners first, so
+    // the rest of the scope is only evaluated when those fall short.
+    let changed_scope = AgentBriefChangedScope::new(&working_set);
+    let policy = AgentBriefPolicy::from_config(&config);
+    let first_stage = |seam: &analysis::RepoSeam| changed_scope.contains(seam);
+    let first_stage_sufficient = |classified: &[analysis::ClassifiedSeam]| {
+        changed_scope.fills_selection(
+            classified,
+            output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
+            policy,
+        )
+    };
+    let stages = analysis::DiffScopeEvidenceStages {
+        first: &first_stage,
+        sufficient: &first_stage_sufficient,
+    };
     let scoped_inventory = analysis::cancellation::with_token(&cancellation, || {
-        analysis::inventory_diff_scoped_classified_seams_at_with_config(
+        analysis::inventory_diff_scoped_classified_seams_staged_at_with_config(
             &input.root,
             &config,
             &working_set.files,
             &changed_owner_names,
+            &stages,
         )
     })
     .map_err(|error| {
@@ -1520,12 +1538,32 @@ fn review_comments_with_diff_loader_at(
     )?;
     receipt.phase("canonical_analysis", "route_construction");
     receipt.write_atomic(&receipt_path)?;
-    let selection = select_agent_brief_seams(
+    let mut selection = select_agent_brief_seams(
         &scoped_inventory.classified,
         &working_set,
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
-        AgentBriefPolicy::from_config(&config),
+        policy,
     );
+    if scoped_inventory.unevaluated_seams > 0 {
+        // The cap count covers only evaluated seams, so it is a floor.
+        for warning in &mut selection.warnings {
+            if warning.ends_with("omitted by the brief cap") {
+                *warning = format!("at least {warning}");
+            }
+        }
+        let skipped = scoped_inventory.unevaluated_seams;
+        let (noun, verb) = if skipped == 1 {
+            ("seam", "was")
+        } else {
+            ("seams", "were")
+        };
+        selection.warnings.push(format!(
+            "{skipped} scoped {noun} outside changed lines and changed owner functions {verb} \
+             not evaluated: seams on changed lines and in changed owners already filled all {} \
+             review slots",
+            output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS
+        ));
+    }
     enforce_review_comments_deadline(
         &mut receipt,
         &receipt_path,
@@ -6644,6 +6682,100 @@ language = "rust"
         assert!(rendered_md.contains("analysis scope: `diff_scoped_changed_files`"));
         assert!(rendered_md.contains("scoped production files: 2/3"));
         assert!(rendered_md.contains("review_comments_diff_scope_only"));
+        assert!(
+            !rendered_json.contains("not evaluated") && scope.get("unevaluated_seams").is_none(),
+            "a scope the changed lines cannot fill is evaluated in full"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_skips_evidence_outside_changed_lines_once_they_fill_the_review_slots()
+    -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-staged-scope");
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"review_comments_staged_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        // Twelve changed one-line predicates fill the ten review slots;
+        // the unchanged thirteenth function is never evaluated.
+        let changed = (1..=12)
+            .map(|n| format!("pub fn changed_{n}(value: i32) -> i32 {{ if value > {n} {{ 1 }} else {{ 0 }} }}\n"))
+            .collect::<String>();
+        std::fs::write(
+            root.join("src/lib.rs"),
+            format!("{changed}pub fn untouched(value: i32) -> i32 {{ if value > 99 {{ 1 }} else {{ 0 }} }}\n"),
+        )
+        .map_err(|err| format!("write src/lib.rs: {err}"))?;
+        let removed = (1..=12)
+            .map(|n| format!("-pub fn changed_{n}(value: i32) -> i32 {{ if value >= {n} {{ 1 }} else {{ 0 }} }}\n"))
+            .collect::<String>();
+        let added = changed
+            .lines()
+            .map(|line| format!("+{line}\n"))
+            .collect::<String>();
+        let diff = format!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,12 +1,12 @@\n{removed}{added}"
+        );
+
+        let out = root.join("target/ripr/review/comments.json");
+        review_comments_with_diff_loader(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "HEAD~1",
+                "--head",
+                "HEAD",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            move |_diff_root, _base, _head| Ok(diff.clone()),
+        )?;
+
+        let rendered_json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read review comments JSON: {err}"))?;
+        let value: serde_json::Value = serde_json::from_str(&rendered_json)
+            .map_err(|err| format!("parse review comments JSON: {err}"))?;
+        let returned = value["comments"].as_array().map_or(0, Vec::len)
+            + value["summary_only"].as_array().map_or(0, Vec::len);
+        assert_eq!(
+            returned,
+            output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS
+        );
+        assert!(
+            !rendered_json.contains("untouched"),
+            "the unchanged function's seam must not be evaluated or rendered"
+        );
+        assert_eq!(value["analysis_scope"]["unevaluated_seams"], 1);
+        let messages = value["warnings"]
+            .as_array()
+            .ok_or("warnings must be an array")?
+            .iter()
+            .filter_map(|warning| warning["message"].as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            messages.contains(
+                &"1 scoped seam outside changed lines and changed owner functions was not \
+                  evaluated: seams on changed lines and in changed owners already filled all 10 \
+                  review slots"
+            ),
+            "missing staged-scope warning in {messages:?}"
+        );
+        assert!(
+            messages
+                .iter()
+                .filter(|message| message.contains("omitted by the brief cap"))
+                .all(|message| message.starts_with("at least ")),
+            "a cap count over evaluated seams only is a floor: {messages:?}"
+        );
+        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
+            .map_err(|err| format!("read review comments Markdown: {err}"))?;
+        assert!(rendered_md.contains("- scoped seams not evaluated: 1"));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())

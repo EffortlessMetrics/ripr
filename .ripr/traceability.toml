@@ -882,6 +882,10 @@ name = "agent working-set brief"
 spec = "docs/specs/RIPR-SPEC-0010-agent-working-set-brief.md"
 tests = [
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_ranks_explicit_seam_id_first",
+  "crates/ripr/src/app/agent_brief.rs::tests::changed_scope_that_fills_the_slots_selects_the_same_seams_as_the_full_scope",
+  "crates/ripr/src/app/agent_brief.rs::tests::changed_scope_does_not_fill_the_slots_with_hidden_or_too_few_seams",
+  "crates/ripr/src/app/agent_brief.rs::tests::changed_owner_seam_routed_through_a_changed_related_test_does_not_fill_a_slot",
+  "crates/ripr/src/app/agent_brief.rs::tests::hidden_matching_seams_past_the_named_bound_are_counted_per_reason",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_prefers_changed_line_intersection_over_same_file",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_routes_changed_owner_function_to_seam",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_routes_file_scoped_related_test_to_seam",
@@ -1090,6 +1094,8 @@ tests = [
   "crates/ripr/src/output/review_comments.rs::review_comments_gap_ledger_renders_only_eligible_repair_cards",
   "crates/ripr/src/cli/commands.rs::review_comments_writes_json_and_markdown_from_loaded_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_scopes_diff_fast_path_to_changed_files_and_immediate_callers",
+  "crates/ripr/src/cli/commands.rs::review_comments_skips_evidence_outside_changed_lines_once_they_fill_the_review_slots",
+  "crates/ripr/src/analysis/seam_inventory.rs::staged_scope_evidence_skips_the_rest_only_when_the_first_stage_is_sufficient",
   "crates/ripr/src/app/annotations.rs::tests::render_missing_comments_file_is_optional_state",
   "crates/ripr/src/app/annotations.rs::tests::render_valid_comments_file_emits_annotations",
   "crates/ripr/src/app/annotations.rs::tests::render_directory_as_comments_path_is_an_explicit_error",
