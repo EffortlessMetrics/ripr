@@ -31,11 +31,13 @@
 //!
 //! A handful of tests are the only native Windows proof for a release seam
 //! (#3922): Job Object process ownership, poisoned LSP initialize terminality,
-//! and the stat-only cache refusal. Their names are listed in
-//! [`RELEASE_SEAM_CONTROLS`] and every run reports each one's observation. A
-//! control that *fails* stays advisory like any other test. A control that is
-//! *absent* from a usable run is an evidence failure: the seam would otherwise
-//! read as covered by a green lane that never executed its only native proof.
+//! the stat-only cache refusal, and the real-binary CLI, cache, PowerShell and
+//! LSP journeys under spaced, non-ASCII and beyond-`MAX_PATH` roots. Their
+//! names are listed in [`RELEASE_SEAM_CONTROLS`] and every run reports each
+//! one's observation. A control that *fails* stays advisory like any other
+//! test. A control that is *absent* from a usable run is an evidence failure:
+//! the seam would otherwise read as covered by a green lane that never executed
+//! its only native proof.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -111,6 +113,42 @@ pub(crate) const RELEASE_SEAM_CONTROLS: &[SeamControl] = &[
         issue: "#3848",
         test: "analysis::seam_cache::tests::corpus_fingerprint_is_none_without_a_content_change_witness",
         source: "crates/ripr/src/analysis/seam_cache.rs",
+    },
+    SeamControl {
+        seam: "paths",
+        issue: "#3922",
+        test: "spaced_root_check_and_file_fact_cache_round_trip",
+        source: "crates/ripr/tests/native_path_roots.rs",
+    },
+    SeamControl {
+        seam: "paths",
+        issue: "#3922",
+        test: "unicode_root_check_and_file_fact_cache_round_trip",
+        source: "crates/ripr/tests/native_path_roots.rs",
+    },
+    SeamControl {
+        seam: "paths",
+        issue: "#3922",
+        test: "long_root_check_round_trips_or_names_the_windows_path_limit",
+        source: "crates/ripr/tests/native_path_roots.rs",
+    },
+    SeamControl {
+        seam: "paths",
+        issue: "#3922",
+        test: "powershell_launch_passes_a_quoted_unicode_root_to_ripr",
+        source: "crates/ripr/tests/native_path_roots.rs",
+    },
+    SeamControl {
+        seam: "paths",
+        issue: "#3922",
+        test: "refresh_publishes_diagnostics_under_a_spaced_unicode_root",
+        source: "crates/ripr/tests/lsp_lifecycle.rs",
+    },
+    SeamControl {
+        seam: "paths",
+        issue: "#3922",
+        test: "refresh_under_a_root_beyond_max_path_publishes_or_names_the_windows_path_limit",
+        source: "crates/ripr/tests/lsp_lifecycle.rs",
     },
 ];
 

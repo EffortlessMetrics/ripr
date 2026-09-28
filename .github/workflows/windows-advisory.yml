@@ -68,7 +68,8 @@ concurrency:
 #
 # Release-seam controls (#3922): the summarizer lists the tests that are the
 # only native Windows proof for process ownership, LSP initialize terminality,
-# and the stat-only cache refusal, with each one's observation per run. A
+# the stat-only cache refusal, and spaced, non-ASCII, beyond-MAX_PATH and
+# PowerShell-launched roots, with each one's observation per run. A
 # failing control stays advisory; a control missing from a usable run fails
 # this lane, so a green run means every control was executed twice.
 

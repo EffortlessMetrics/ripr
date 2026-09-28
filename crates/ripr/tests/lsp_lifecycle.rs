@@ -1448,3 +1448,286 @@ fn compat_journey_collect_workspace_status_over_real_wire() -> Result<(), String
     println!("{receipt}");
     Ok(())
 }
+
+// ── Native path roots (#3922) ──
+
+/// A `file:` URI spelled the way VS Code's `Uri.file(..).toString()` spells it:
+/// every byte outside `[A-Za-z0-9-._~/]` percent-encoded (so spaces, `'`, and
+/// UTF-8 become escapes) and a Windows drive written as `/c%3A/`. This is the
+/// form an editor client actually sends, unlike `compat_file_uri`.
+fn editor_file_uri(path: &Path) -> Result<String, String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| format!("fixture root is not UTF-8: {}", path.display()))?
+        .replace('\\', "/");
+    let mut absolute = if text.starts_with('/') {
+        text
+    } else {
+        format!("/{text}")
+    };
+    if absolute.as_bytes().get(2) == Some(&b':') {
+        absolute.replace_range(1..2, &absolute[1..2].to_ascii_lowercase());
+    }
+    let mut encoded = String::from("file://");
+    for byte in absolute.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    Ok(encoded)
+}
+
+/// Decode a server-published `file:` URI back to a host path.
+fn editor_uri_path(uri: &str) -> Option<PathBuf> {
+    let rest = uri.strip_prefix("file://")?;
+    let mut bytes = Vec::with_capacity(rest.len());
+    let raw = rest.as_bytes();
+    let mut index = 0;
+    while index < raw.len() {
+        if raw[index] == b'%' {
+            let hex = std::str::from_utf8(raw.get(index + 1..index + 3)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            index += 3;
+        } else {
+            bytes.push(raw[index]);
+            index += 1;
+        }
+    }
+    let decoded = String::from_utf8(bytes).ok()?;
+    if cfg!(windows) {
+        Some(PathBuf::from(decoded.trim_start_matches('/')))
+    } else {
+        Some(PathBuf::from(decoded))
+    }
+}
+
+/// Initialize against `root` with an editor-encoded URI, run the explicit
+/// refresh, and require a full snapshot whose diagnostics are published for
+/// `root/src/lib.rs`. The root, the published URI, and the analysis all cross
+/// the same unusual path.
+fn assert_lsp_refresh_publishes_under_root(root: &Path) -> Result<(), String> {
+    let root_uri = editor_file_uri(root)?;
+    let mut session = LspSession::spawn()?;
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {},
+        }),
+    )?;
+    expect_result(&initialize, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+
+    let refresh_id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+    )?;
+    let deadline = Instant::now() + ANALYSIS_TIMEOUT;
+    let mut published: Vec<(String, usize)> = Vec::new();
+    loop {
+        let message = session.await_message(deadline, "ripr.refresh response")?;
+        if message.get("method").and_then(serde_json::Value::as_str)
+            == Some("textDocument/publishDiagnostics")
+        {
+            let uri = message
+                .pointer("/params/uri")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let count = message
+                .pointer("/params/diagnostics")
+                .and_then(serde_json::Value::as_array)
+                .map_or(0, Vec::len);
+            published.push((uri, count));
+            continue;
+        }
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(refresh_id) {
+            expect_result(&message, "ripr.refresh")?;
+            break;
+        }
+    }
+
+    let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
+    check_workspace_status_envelope(&status, "native root")?;
+    if status.get("run_status").and_then(serde_json::Value::as_str) != Some("full") {
+        return Err(format!(
+            "refresh under {} must publish a full snapshot: {status}",
+            root.display()
+        ));
+    }
+    let expected = fs::canonicalize(root.join("src").join("lib.rs"))
+        .map_err(|err| format!("canonicalize fixture file failed: {err}"))?;
+    let hit = published.iter().any(|(uri, count)| {
+        *count > 0
+            && editor_uri_path(uri)
+                .and_then(|path| fs::canonicalize(path).ok())
+                .is_some_and(|path| path == expected)
+    });
+    if !hit {
+        return Err(format!(
+            "refresh must publish diagnostics for {}; published (uri, count): {published:?}",
+            expected.display()
+        ));
+    }
+    exit_and_wait(&mut session)
+}
+
+/// Build the compatibility fixture at `base/relative` with a committed base
+/// and a committed production change. Git commits at a short staging path;
+/// the completed repository then moves under the requested root.
+fn build_native_root_fixture(base: &Path, relative: &str) -> Result<PathBuf, String> {
+    let root = base.join(relative);
+    let staging = base.join("fixture-staging");
+    write_compat_fixture(&staging)?;
+    let git = |args: &[&str]| {
+        let mut full = vec!["-c", "core.longpaths=true", "-C", "fixture-staging"];
+        full.extend_from_slice(args);
+        run_compat_git(base, &full)
+    };
+    git(&["init", "-q"])?;
+    git(&["config", "core.longpaths", "true"])?;
+    git(&["config", "user.email", "ripr@example.invalid"])?;
+    git(&["config", "user.name", "RIPR Test"])?;
+    git(&["add", "Cargo.toml", "src/lib.rs", "tests/end_to_end.rs"])?;
+    git(&["commit", "-q", "-m", "base"])?;
+    fs::write(
+        staging.join("src/lib.rs"),
+        "pub fn gate_state(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+    )
+    .map_err(|err| format!("write changed production fixture failed: {err}"))?;
+    git(&["add", "src/lib.rs"])?;
+    git(&["commit", "-q", "-m", "change production"])?;
+    let parent = root
+        .parent()
+        .ok_or_else(|| format!("fixture setup: root has no parent: {}", root.display()))?;
+    fs::create_dir_all(parent)
+        .map_err(|err| format!("fixture setup: create {}: {err}", parent.display()))?;
+    fs::rename(&staging, &root).map_err(|err| {
+        format!(
+            "fixture setup: move {} to {}: {err}",
+            staging.display(),
+            root.display()
+        )
+    })?;
+    Ok(root)
+}
+
+#[test]
+fn refresh_publishes_diagnostics_under_a_spaced_unicode_root() -> Result<(), String> {
+    let base = unique_compat_fixture_root("native-unicode")?;
+    let root = build_native_root_fixture(&base.path, "it's ünïcødé 日本語 😀/repo")?;
+    assert_lsp_refresh_publishes_under_root(&root)
+}
+
+/// Refresh under a root past `MAX_PATH`. Windows cannot start git there and
+/// 0.11 does not claim it can (#4350, a 0.11 non-claim in #2766), so on
+/// Windows the control pins the actionable limitation the server reports;
+/// everywhere else the root must publish like any other.
+#[test]
+fn refresh_under_a_root_beyond_max_path_publishes_or_names_the_windows_path_limit()
+-> Result<(), String> {
+    let base = unique_compat_fixture_root("native-long")?;
+    let segment = "long-path-segment-0123456789-abcdefghijklmnopqrstuvwxyz";
+    let relative = format!("{segment}-0/{segment}-1/{segment}-2/{segment}-3/{segment}-4/repo");
+    let root = build_native_root_fixture(&base.path, &relative)?;
+    let length = root.as_os_str().len();
+    if length <= 260 {
+        return Err(format!(
+            "fixture setup: long root is only {length} bytes, not beyond MAX_PATH"
+        ));
+    }
+    if cfg!(windows) {
+        assert_lsp_refresh_names_the_windows_path_limit(&root)
+    } else {
+        assert_lsp_refresh_publishes_under_root(&root)
+    }
+}
+
+/// Refresh under an overlong Windows root commits no snapshot, publishes no
+/// diagnostic for the changed file, and reports the MAX_PATH limit as the
+/// analysis failure the editor shows.
+fn assert_lsp_refresh_names_the_windows_path_limit(root: &Path) -> Result<(), String> {
+    let root_uri = editor_file_uri(root)?;
+    let mut session = LspSession::spawn()?;
+    let initialize = session.request(
+        "initialize",
+        serde_json::json!({
+            "processId": null,
+            "rootUri": root_uri,
+            "initializationOptions": {
+                "baseRef": "HEAD~1",
+                "checkMode": "instant",
+                "diagnosticProfile": "full"
+            },
+            "capabilities": {},
+        }),
+    )?;
+    expect_result(&initialize, "initialize")?;
+    session.notify("initialized", Some(serde_json::json!({})))?;
+
+    let refresh_id = fire(
+        &mut session,
+        "workspace/executeCommand",
+        serde_json::json!({"command": "ripr.refresh", "arguments": []}),
+    )?;
+    let deadline = Instant::now() + ANALYSIS_TIMEOUT;
+    let mut nonempty_publications = Vec::new();
+    loop {
+        let message = session.await_message(deadline, "ripr.refresh response")?;
+        if message.get("method").and_then(serde_json::Value::as_str)
+            == Some("textDocument/publishDiagnostics")
+        {
+            if message
+                .pointer("/params/diagnostics")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|diagnostics| !diagnostics.is_empty())
+            {
+                nonempty_publications.push(message);
+            }
+            continue;
+        }
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(refresh_id) {
+            break;
+        }
+    }
+    if !nonempty_publications.is_empty() {
+        return Err(format!(
+            "refresh under an overlong Windows root must publish no diagnostics: \
+             {nonempty_publications:?}"
+        ));
+    }
+
+    let status = execute_compat_command(&mut session, "ripr.collectWorkspaceStatus")?;
+    check_workspace_status_envelope(&status, "overlong Windows root")?;
+    if status.get("run_status").and_then(serde_json::Value::as_str) != Some("no_snapshot") {
+        return Err(format!(
+            "refresh under a {}-byte root committed a snapshot; #4350's MAX_PATH non-claim no \
+             longer holds, so this control must assert publication again: {status}",
+            root.as_os_str().len()
+        ));
+    }
+    let message = status
+        .pointer("/analysis_status/failure/message")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("refresh failure must carry a message: {status}"))?;
+    // The server bounds client-visible failure text to 240 characters, which
+    // keeps the limit but cuts the "Clone or move" remedy the CLI prints in
+    // full (observed natively on 0fc223b). Pin what the editor receives.
+    let named = message.contains("failed to run git: the workspace root is ")
+        && message.contains("Windows cannot start git in a directory longer than 258");
+    if !named {
+        return Err(format!(
+            "refresh failure must name the MAX_PATH limit: {message}"
+        ));
+    }
+    exit_and_wait(&mut session)
+}
