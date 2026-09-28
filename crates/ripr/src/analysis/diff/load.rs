@@ -315,7 +315,6 @@ fn default_base_failure_context(root: &Path, git_timeout: Option<Duration>) -> S
     let current = git_lines(&["symbolic-ref", "--quiet", "--short", "HEAD"]);
     let others = git_lines(&[
         "for-each-ref",
-        "--count=8",
         "--format=%(refname)",
         "refs/heads",
         "refs/remotes",
@@ -331,23 +330,56 @@ fn default_base_failure_context(root: &Path, git_timeout: Option<Duration>) -> S
     })
     // The current branch cannot be its own base.
     .filter(|name| !current.contains(name))
-    .take(5)
     .collect::<Vec<_>>();
-    match (others.first(), current.first()) {
-        (Some(first), _) => format!(
+    // `base...HEAD` needs a merge base, so only a branch that shares history
+    // with HEAD is offered as a working `--base`. The probe is bounded; past
+    // the cap, "no branch shares history" would be unproven, so it stays
+    // unsaid.
+    const MERGE_BASE_PROBE_CAP: usize = 64;
+    let all_checked = others.len() <= MERGE_BASE_PROBE_CAP;
+    let mut related = Vec::new();
+    let mut unrelated = Vec::new();
+    for name in others.into_iter().take(MERGE_BASE_PROBE_CAP) {
+        let shares_history = crate::git::run_git_output_with_deadline(
+            root,
+            &["merge-base", name.as_str(), "HEAD"],
+            git_timeout,
+        )
+        .is_ok_and(|output| output.status.success());
+        if shares_history {
+            related.push(name);
+            if related.len() == 5 {
+                break;
+            }
+        } else {
+            unrelated.push(name);
+        }
+    }
+    let listed = |names: &[String]| {
+        names
+            .iter()
+            .take(5)
+            .map(|name| format!("`{name}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match (related.first(), unrelated.is_empty(), current.first()) {
+        (Some(first), _, _) => format!(
             " Other branches here: {}; for example `--base {first}`.",
-            others
-                .iter()
-                .map(|name| format!("`{name}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
+            listed(&related)
         ),
-        (None, Some(only)) => format!(
+        (None, false, _) if all_checked => format!(
+            " No other branch here shares history with HEAD ({}), so none can be a base; \
+             fetch the branch this work started from, or use `--base HEAD~1` for the last \
+             commit.",
+            listed(&unrelated)
+        ),
+        (None, true, Some(only)) => format!(
             " `{only}` is the only branch, so there is no separate base to compare; use \
              `--base HEAD~1` for the last commit or `--base HEAD --worktree` for uncommitted \
              edits."
         ),
-        (None, None) => String::new(),
+        (None, false, _) | (None, true, None) => String::new(),
     }
 }
 
@@ -662,7 +694,18 @@ fn run_git_diff(
 ) -> Result<String, String> {
     // Analysis loaders consume source-coordinate patches: zero context
     // lines stay the assembly default.
-    run_git_diff_with_unified(root, range, extra_args, "0", git_timeout)
+    //
+    // `--relative` scopes the diff to `root` and reports paths relative to
+    // it (git runs with `current_dir(root)`). Without it, `--root` at a
+    // workspace member received repository-relative paths
+    // (`tokio-util/src/x.rs` under `tokio-util/`), so every changed file
+    // resolved to a path that does not exist, related tests went unfound,
+    // and files outside the member entered scope. At the repository top
+    // level the flag changes nothing.
+    let mut args = Vec::with_capacity(extra_args.len() + 1);
+    args.push("--relative");
+    args.extend_from_slice(extra_args);
+    run_git_diff_with_unified(root, range, &args, "0", git_timeout)
 }
 
 fn run_git_diff_with_unified(
@@ -1109,10 +1152,18 @@ mod tests {
     /// `Ok(())` having produced a repo with no commit and no refs, and every
     /// assertion downstream would then fail for a reason unrelated to what it
     /// tests.
-    fn run_git_checked(dir: &Path, args: &[&str]) -> std::io::Result<()> {
-        let output = Command::new("git").args(args).current_dir(dir).output()?;
+    fn run_git_checked(dir: &Path, args: &[&str]) -> std::io::Result<String> {
+        // A hook-launched test inherits `GIT_DIR`/`GIT_WORK_TREE`, which
+        // would point these fixture commands at the caller's repository.
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()?;
         if output.status.success() {
-            return Ok(());
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
         }
         Err(std::io::Error::other(format!(
             "git {args:?} in {} failed with {:?}: {}{}",
@@ -1335,6 +1386,41 @@ mod tests {
             !err.contains("`feature/discount`"),
             "the current branch is never offered as its own base, got: {err}"
         );
+
+        // Unrelated refs that sort first must not hide the related base.
+        let tree = run_git_checked(&dir, &["rev-parse", "HEAD^{tree}"])?;
+        let island_names = (0..9).map(|n| format!("a-island-{n}")).collect::<Vec<_>>();
+        for name in &island_names {
+            let sha = run_git_checked(&dir, &["commit-tree", &tree, "-m", name])?;
+            run_git_checked(&dir, &["branch", "-q", name, &sha])?;
+        }
+        let err = resolve_default_base(&dir, None).expect_err("still no default candidate");
+        assert!(
+            err.contains("`--base trunk`") && !err.contains("a-island-0`;"),
+            "a related branch past many unrelated refs must still be offered, got: {err}"
+        );
+        for name in &island_names {
+            run_git_checked(&dir, &["branch", "-q", "-D", name])?;
+        }
+
+        // An orphan branch shares no history with HEAD: `--base orphan`
+        // would fail on the missing merge base, so it is never offered.
+        run_git_checked(&dir, &["checkout", "-q", "--orphan", "orphan"])?;
+        run_git_checked(&dir, &["commit", "-q", "-m", "orphan root"])?;
+        run_git_checked(&dir, &["branch", "-q", "-D", "trunk", "feature/discount"])?;
+        let err = resolve_default_base(&dir, None).expect_err("no default candidate");
+        assert!(
+            err.contains("`orphan` is the only branch"),
+            "the lone orphan branch must say so, got: {err}"
+        );
+        run_git_checked(&dir, &["checkout", "-q", "--orphan", "island"])?;
+        run_git_checked(&dir, &["commit", "-q", "-m", "island root"])?;
+        let err = resolve_default_base(&dir, None).expect_err("no default candidate");
+        assert!(
+            err.contains("No other branch here shares history with HEAD (`orphan`)")
+                && !err.contains("--base orphan"),
+            "an unrelated branch must not be offered as a base, got: {err}"
+        );
         ignore_remove_dir_all(&dir);
         Ok(())
     }
@@ -1410,6 +1496,52 @@ mod tests {
         );
         ignore_remove_dir_all(&shallow);
         ignore_remove_dir_all(&origin);
+        Ok(())
+    }
+
+    #[test]
+    fn member_root_diff_is_scoped_and_relative_to_the_member() -> std::io::Result<()> {
+        // `ripr check --root crates/core` inside a workspace: paths must be
+        // relative to the member so they resolve under `--root`, and
+        // changes outside the member are not in its scope.
+        let dir = unique_fixture_root("member-root-relative")?;
+        init_git_repo(&dir, "main")?;
+        fs::create_dir_all(dir.join("crates/core/src"))?;
+        fs::write(
+            dir.join("crates/core/src/lib.rs"),
+            "pub fn f() -> bool { 1 > 0 }\n",
+        )?;
+        fs::write(dir.join("other.rs"), "pub fn g() -> bool { 1 > 0 }\n")?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-m", "base"])?;
+        fs::write(
+            dir.join("crates/core/src/lib.rs"),
+            "pub fn f() -> bool { 1 >= 0 }\n",
+        )?;
+        fs::write(dir.join("other.rs"), "pub fn g() -> bool { 1 >= 0 }\n")?;
+        run_git_checked(&dir, &["commit", "-am", "change"])?;
+
+        let member = dir.join("crates/core");
+        for text in [
+            load_diff(&member, Some("HEAD~1"), None, None).map_err(std::io::Error::other)?,
+            load_worktree_diff(&member, Some("HEAD~1"), None).map_err(std::io::Error::other)?,
+            load_diff_range(&member, "HEAD~1", "HEAD").map_err(std::io::Error::other)?,
+        ] {
+            assert!(
+                text.contains("+++ b/src/lib.rs"),
+                "member paths must be relative to the member root: {text}"
+            );
+            assert!(
+                !text.contains("crates/core/") && !text.contains("other.rs"),
+                "nothing outside the member root may enter its diff: {text}"
+            );
+        }
+        let top = load_diff(&dir, Some("HEAD~1"), None, None).map_err(std::io::Error::other)?;
+        assert!(
+            top.contains("+++ b/crates/core/src/lib.rs") && top.contains("+++ b/other.rs"),
+            "the repository top level keeps every path: {top}"
+        );
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 

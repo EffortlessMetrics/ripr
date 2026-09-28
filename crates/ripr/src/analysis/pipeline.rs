@@ -420,18 +420,60 @@ fn run_pipeline_for_diff_text(
         )?;
         cancellation::checkpoint()?;
         if result.skipped_files > 0 {
+            // Name the files and the rule that matched: most repositories
+            // configure nothing, so "the configured predicate" pointed at a
+            // setting that did not exist while a hand-written `schema.rs`
+            // or `gen/` module went unanalyzed.
+            let skipped = analysis_changed_files
+                .iter()
+                .map(|file| file.path.as_path())
+                .filter(|path| route(path) == Some(LanguageId::Rust))
+                .filter(|path| {
+                    super::language::is_generated_rust_file_with_patterns(
+                        path,
+                        generated_file_patterns,
+                    )
+                })
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+                .collect::<Vec<_>>();
+            let shown = skipped
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            let more = skipped.len().saturating_sub(3);
+            let listed = if more > 0 {
+                format!("{shown} and {more} more")
+            } else {
+                shown
+            };
+            // The recovery and detail texts are bounded; a long path must
+            // shorten the listing, never fail the analysis.
+            let listed = if listed.chars().count() > 160 {
+                format!("{}…", listed.chars().take(159).collect::<String>())
+            } else {
+                listed
+            };
             limitations.push(
                 AnalysisLimitation::new(
                     AnalysisLimitationKind::LanguageScopeUnsupported,
                     AnalysisStage::LanguageAdapter,
                     AnalysisRecovery::new(
                         AnalysisRecoveryKind::Retry,
-                        "Review the configured generated-file predicate and re-run the analysis.",
+                        format!(
+                            "Not analyzed as generated code: {listed}. ripr treats `gen/`, \
+                             `generated/` and `out/` directories and `generated.rs`, `schema.rs`, \
+                             `bindings.rs`, `*.gen.rs`, `*_generated.rs` and `generated_*` files, \
+                             plus `[languages.rust] generated_file_patterns`, as generated; if one of these \
+                             is hand-written, its changes stay outside this analysis."
+                        ),
                     )?,
                 )
                 .with_affected_items(result.skipped_files as u64)?
                 .with_detail(format!(
-                    "{} generated Rust file(s) were intentionally skipped by the configured generated-file predicate",
+                    "{} generated Rust file(s) were intentionally skipped by the generated-file \
+                     conventions or configured patterns: {listed}",
                     result.skipped_files
                 ))?,
             );
@@ -1566,6 +1608,41 @@ mod tests {
     }
 
     #[test]
+    fn long_generated_paths_shorten_the_listing_instead_of_failing() -> Result<(), String> {
+        // Recovery text is bounded; a deep generated path must not turn the
+        // disclosure into an analysis failure.
+        let root = temp_root("analysis-outcome-generated-long")?;
+        let deep = format!("src/{}/generated/values.rs", "nested".repeat(120));
+        let result = run_pipeline_for_diff_text(
+            &AnalysisOptions {
+                root,
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
+                include_unchanged_tests: false,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
+            },
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            &format!(
+                "diff --git a/{deep} b/{deep}\n--- /dev/null\n+++ b/{deep}\n@@ -0,0 +1 @@\n+pub fn v() -> u32 {{ 1 }}\n"
+            ),
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "generated skip must carry an analysis outcome".to_string())?;
+        assert_eq!(outcome.kind, AnalysisOutcomeKind::PartialWithLimitations);
+        Ok(())
+    }
+
+    #[test]
     fn configured_generated_skip_is_a_scope_limitation_not_a_producer_failure() -> Result<(), String>
     {
         let root = temp_root("analysis-outcome-generated-skip")?;
@@ -1599,10 +1676,18 @@ mod tests {
         assert_eq!(outcome.kind, AnalysisOutcomeKind::PartialWithLimitations);
         assert!(outcome.limitations.iter().any(|limitation| {
             limitation.kind == AnalysisLimitationKind::LanguageScopeUnsupported
+                && limitation.bounded_detail.as_deref().is_some_and(|detail| {
+                    detail.contains("intentionally skipped")
+                        && detail.contains("src/generated_values.rs")
+                })
                 && limitation
-                    .bounded_detail
-                    .as_deref()
-                    .is_some_and(|detail| detail.contains("intentionally skipped"))
+                    .recovery
+                    .detail
+                    .contains("src/generated_values.rs")
+                && !limitation
+                    .recovery
+                    .detail
+                    .contains("configured generated-file predicate")
         }));
         assert!(
             !result
