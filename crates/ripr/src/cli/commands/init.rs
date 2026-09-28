@@ -559,7 +559,7 @@ jobs:
               | (.body // "") as $body
               | {
                   comment_id: .id,
-                  dedupe_key: ($body | capture("<!-- ripr:dedupe=(?<key>[^ ]+)").key),
+                  dedupe_key: ($body | capture("<!-- ripr:dedupe=(?<key>.*?)(?: presentation=[^ ]+)? -->").key),
                   path: .path,
                   line: (.line // .original_line),
                   side: (.side // "RIGHT"),

@@ -1619,6 +1619,118 @@ fn generated_capture_step_runs_end_to_end() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// The existing-comment capture must read back the whole dedupe key the
+/// publish step wrote. The key embeds the seam file path, so a path with a
+/// space was cut at the space, no existing comment matched its
+/// recommendation, and every rerun planned a duplicate create.
+#[cfg(unix)]
+#[test]
+fn generated_existing_comment_capture_reads_keys_with_spaces() -> Result<(), Box<dyn Error>> {
+    let tools = run_sh(
+        "command -v bash >/dev/null && command -v jq >/dev/null",
+        std::env::temp_dir().as_path(),
+    )?;
+    if !tools.status.success() {
+        eprintln!(
+            "skipping generated_existing_comment_capture_reads_keys_with_spaces: bash or jq missing"
+        );
+        return Ok(());
+    }
+
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-existing-comment-keys-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root)?;
+    let output = run_ripr_init(&root)?;
+    if !output.status.success() {
+        let _ = fs::remove_dir_all(&root);
+        return Err(format!(
+            "ripr init failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
+    let script = existing_comment_capture_script(&workflow)?;
+
+    // Bodies as the publish step writes them (compact marker) and as older
+    // workflows wrote them (legacy marker), in `gh api --paginate --slurp`
+    // page shape.
+    let compact_key = "ripr:seam-1:src/we ird/pricing.rs:12";
+    let legacy_key = "ripr:seam-2:src/lib.rs:3";
+    let compact_body = format!(
+        "**ripr: gap**\n\n<details><summary>Full RIPR repair card</summary>\n\ncard\n\n</details>\n\n<!-- ripr:dedupe={compact_key} presentation=compact-v1 -->"
+    );
+    let legacy_body = format!("legacy card\n\n<!-- ripr:dedupe={legacy_key} -->");
+    // Negatives: a human comment with no marker, and a marker that never
+    // closes. Neither may become an existing RIPR comment, and neither may
+    // fail the step.
+    let unmarked_body = "LGTM, but see ripr:dedupe docs";
+    let unclosed_body = "<!-- ripr:dedupe=ripr:seam-3:src/x.rs:1";
+    let raw = format!(
+        "[[{{\"id\":1,\"body\":{},\"path\":\"src/we ird/pricing.rs\",\"line\":12}},{{\"id\":2,\"body\":{},\"path\":\"src/lib.rs\",\"line\":3}},{{\"id\":3,\"body\":{},\"path\":\"src/lib.rs\",\"line\":4}},{{\"id\":4,\"body\":{},\"path\":\"src/x.rs\",\"line\":1}}]]",
+        json_string(&compact_body),
+        json_string(&legacy_body),
+        json_string(unmarked_body),
+        json_string(unclosed_body)
+    );
+    fs::create_dir_all(root.join("target/ripr/review"))?;
+    fs::write(
+        root.join("target/ripr/review/existing-comments.raw.json"),
+        raw,
+    )?;
+
+    let run = run_sh(&script, &root)?;
+    let captured = fs::read_to_string(root.join("target/ripr/review/existing-comments.json"));
+    let _ = fs::remove_dir_all(&root);
+    assert!(
+        run.status.success(),
+        "capture script failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let captured: serde_json::Value = serde_json::from_str(&captured?)?;
+    let keys = captured["comments"]
+        .as_array()
+        .map(|comments| {
+            comments
+                .iter()
+                .map(|comment| comment["dedupe_key"].as_str().unwrap_or_default())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    assert_eq!(keys, vec![compact_key, legacy_key], "{captured}");
+    assert_eq!(captured["comments"][0]["body"], "card", "{captured}");
+    Ok(())
+}
+
+/// The capture step's `run:` body after its `gh api` fetch, which the test
+/// replaces with a fixture page file.
+#[cfg(unix)]
+fn existing_comment_capture_script(workflow: &str) -> Result<String, String> {
+    let marker = "- name: Capture existing RIPR inline comments";
+    let start = workflow
+        .find(marker)
+        .ok_or("missing existing-comment step")?;
+    let rest = &workflow[start..];
+    let run_marker = "\n        run: |\n";
+    let run_at = rest
+        .find(run_marker)
+        .ok_or("missing existing-comment run")?;
+    let body = &rest[run_at + run_marker.len()..];
+    let end = body
+        .find("\n      - name:")
+        .ok_or("existing-comment step does not end")?;
+    let body = &body[..end];
+    let fetch_end = "> target/ripr/review/existing-comments.raw.json\n";
+    let jq_at = body
+        .find(fetch_end)
+        .ok_or("existing-comment step does not fetch into the raw file")?;
+    Ok(body[jq_at + fetch_end.len()..].trim_end().to_string())
+}
+
 /// #4089: the generated annotation step must keep path and message bytes.
 /// The old `@tsv` | `read` loop stored jq's transport escapes, so a later
 /// GitHub workflow-command decode could not recover a backslash, tab, or

@@ -8034,7 +8034,10 @@ language = "rust"
             existing_comments.contains("pulls/${{ github.event.pull_request.number }}/comments")
         );
         assert!(existing_comments.contains("target/ripr/review/existing-comments.json"));
-        assert!(existing_comments.contains("capture(\"<!-- ripr:dedupe=(?<key>[^ ]+)\")"));
+        assert!(
+            existing_comments
+                .contains("capture(\"<!-- ripr:dedupe=(?<key>.*?)(?: presentation=[^ ]+)? -->\")")
+        );
 
         let comment_plan = workflow_step(&workflow, "Plan RIPR inline comments");
         assert!(comment_plan.contains("env.RIPR_COMMENT_MODE != 'off'"));
