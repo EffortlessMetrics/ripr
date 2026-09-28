@@ -13,6 +13,7 @@ use super::{
     sort, summary,
 };
 use crate::analysis::cancellation;
+use crate::analysis::committed_source;
 use crate::analysis_outcome::{
     AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
     AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
@@ -115,15 +116,77 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
         options.git_timeout,
     )?;
     cancellation::checkpoint()?;
-    let mut result = run_pipeline_for_diff_text(
-        options,
-        oracle_policy,
-        languages,
-        generated_file_patterns,
-        &loaded.text,
-    )?;
+    // A committed-history diff names lines as they exist at HEAD, so the
+    // adapters must read HEAD content for tracked files with uncommitted
+    // edits. `--diff` input (no effective base) keeps reading the tree.
+    let overlay = match loaded.effective_base {
+        Some(_) => committed_history_overlay(options)?,
+        None => None,
+    };
+    cancellation::checkpoint()?;
+    let mut result = committed_source::with_overlay(overlay.clone(), || {
+        run_pipeline_for_diff_text(
+            options,
+            oracle_policy,
+            languages,
+            generated_file_patterns,
+            &loaded.text,
+        )
+    })?;
+    if let Some(overlay) = overlay {
+        result.uncommitted_source_paths = overlay.dirty_source_paths();
+    }
     bind_effective_base(&mut result, loaded.effective_base)?;
     Ok(result)
+}
+
+/// Build the committed-content overlay for a committed-history diff and
+/// disclose the dirty paths it cannot place back into discovery.
+fn committed_history_overlay(
+    options: &AnalysisOptions,
+) -> Result<Option<std::sync::Arc<committed_source::CommittedSourceOverlay>>, String> {
+    let Some(overlay) = committed_source::probe(&options.root, options.git_timeout)? else {
+        return Ok(None);
+    };
+    if crate::is_verbose() {
+        let dirty = overlay.dirty_paths().collect::<Vec<_>>();
+        eprintln!(
+            "ripr: committed-history diff; reading HEAD content for {} tracked file(s) with uncommitted changes: {}",
+            dirty.len(),
+            dirty.join(", ")
+        );
+    }
+    if let Some(message) =
+        committed_paths_missing_disclosure(&overlay.committed_paths_missing_on_disk())
+    {
+        eprintln!("{message}");
+    }
+    Ok(Some(std::sync::Arc::new(overlay)))
+}
+
+/// Tracked files that exist at HEAD but were deleted from the working tree
+/// cannot be discovered by the working-tree walk; name them so the
+/// committed-history result is not read as covering them.
+fn committed_paths_missing_disclosure(paths: &[String]) -> Option<String> {
+    const MAX_NAMED_PATHS: usize = 3;
+    if paths.is_empty() {
+        return None;
+    }
+    let mut named = paths
+        .iter()
+        .take(MAX_NAMED_PATHS)
+        .cloned()
+        .collect::<Vec<_>>();
+    if paths.len() > MAX_NAMED_PATHS {
+        named.push(format!("{} more", paths.len() - MAX_NAMED_PATHS));
+    }
+    Some(format!(
+        "ripr: {} tracked file(s) exist at HEAD but are deleted in the working tree ({}); \
+         the committed-history analysis could not discover them. Restore them or commit the \
+         deletion, then re-run.",
+        paths.len(),
+        named.join(", ")
+    ))
 }
 
 pub(crate) fn run_worktree_pipeline_with_oracle_policy_and_generated_file_patterns(
@@ -762,6 +825,7 @@ fn run_pipeline_for_diff_text(
         // The diff/worktree entry points overwrite this with the loader's
         // effective base (#3940); every other path involves no base.
         effective_base: None,
+        uncommitted_source_paths: Vec::new(),
     })
 }
 
@@ -952,6 +1016,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
         partial_scope: None,
         // Repo-scope analysis has no diff denominator and no base (#3940).
         effective_base: None,
+        uncommitted_source_paths: Vec::new(),
     })
 }
 

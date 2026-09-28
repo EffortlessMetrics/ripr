@@ -266,12 +266,47 @@ pub(crate) fn run_git_output_with_deadline_and_limit_isolated(
 /// The command is consumed by value: the owned subprocess authority
 /// (#3803) takes it over for the Job Object-backed spawn on Windows.
 pub(crate) fn collect_output_with_deadline_and_limit(
-    mut command: Command,
+    command: Command,
     timeout: Duration,
     max_output_bytes: usize,
     describe: &str,
 ) -> Result<Output, String> {
-    if timeout.is_zero() {
+    collect_output_with_optional_deadline_and_limit(
+        command,
+        Some(timeout),
+        max_output_bytes,
+        describe,
+    )
+}
+
+/// [`run_git_output_with_deadline_and_limit`] for a caller whose deadline is
+/// optional: `None` (for example `--git-timeout 0`) waits for Git without a
+/// deadline while still bounding captured output.
+pub(crate) fn run_git_output_with_optional_deadline_and_limit(
+    root: &Path,
+    args: &[&str],
+    timeout: Option<Duration>,
+    max_output_bytes: usize,
+) -> Result<Output, String> {
+    if max_output_bytes == 0 {
+        return Err("git output limit must be greater than zero".to_string());
+    }
+    let describe = format!("git -C {} {:?}", root.display(), args);
+    collect_output_with_optional_deadline_and_limit(
+        git_command(root, args),
+        timeout,
+        max_output_bytes,
+        &describe,
+    )
+}
+
+fn collect_output_with_optional_deadline_and_limit(
+    mut command: Command,
+    timeout: Option<Duration>,
+    max_output_bytes: usize,
+    describe: &str,
+) -> Result<Output, String> {
+    if timeout.is_some_and(|timeout| timeout.is_zero()) {
         return Err(format!(
             "{GIT_INVOCATION_TIMEOUT_PREFIX}: {describe} was given a zero deadline (not spawned)"
         ));
@@ -292,7 +327,7 @@ pub(crate) fn collect_output_with_deadline_and_limit(
         .take()
         .map(|pipe| spawn_bounded_pipe_reader(pipe, max_output_bytes));
 
-    let wait = poll_child(&mut child, Some(timeout), describe);
+    let wait = poll_child(&mut child, timeout, describe);
     let timed_out = !matches!(&wait, ChildWait::Exited(_));
     let drain_deadline = timed_out.then(|| Instant::now() + POST_KILL_DRAIN_GRACE);
     let stdout_result =

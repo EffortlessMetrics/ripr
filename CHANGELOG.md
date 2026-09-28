@@ -49,13 +49,10 @@ are scoped or reviewed.
   Individual operations can still overrun a checkpoint interval (#1778).
 - Cold LLM-agent walks of 0.11 no longer dead-end on four routes. Passing a
   `ripr check` finding ID (`probe:...`) to `ripr agent repair --seam-id` now
-  says it is not a seam ID and names `ripr pilot --root .`. The
-  uncommitted-changes note says test files outside the diff are still read
-  from disk, and `ripr check` warns on stderr when a file in the committed
-  diff also has uncommitted edits, since its probes can be misplaced or
-  missing. After a repair, the after phase and `ripr agent status` say the
-  repair receipt records no test run (`test_run.status: "not_recorded"`),
-  because a failing test can still show movement `improved`. The MCP
+  says it is not a seam ID and names `ripr pilot --root .`. After a repair,
+  the after phase and `ripr agent status` say the repair receipt records no
+  test run (`test_run.status: "not_recorded"`), because a failing test can
+  still show movement `improved`. The MCP
   server's instructions and tool description say it does not analyze the diff
   and name the CLI route that does; an unusable root and unknown tool or
   resource names now carry a recovery.
@@ -79,6 +76,16 @@ are scoped or reviewed.
 - In diff analysis, the generated-code skip limitation names up to three
   skipped files and lists the generated-code conventions and the
   `[languages.rust] generated_file_patterns` setting.
+- `ripr check` on committed history (the default, or `--base <rev>`) now reads
+  the committed version of every tracked file you have edited but not
+  committed, tests included, and leaves out new files that are not committed,
+  git-ignored ones included.
+  Before, an uncommitted edit that shifted lines in a changed file could
+  attach findings to the wrong function or expression, and an uncommitted test
+  edit already moved the counts while the note said uncommitted changes were
+  not analyzed. The note naming `--worktree` now appears only when a source or
+  test file has uncommitted changes, not for an edited README or workflow.
+  Tracked files deleted from the working tree are named on stderr.
 - An empty `ripr check --diff` result now leads with its true cause. A config
   whose `[languages].enabled` leaves out `rust` records a typed
   `language_adapter_unavailable` limitation for the Rust files it skipped

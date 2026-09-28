@@ -93,6 +93,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
             partial_scope: None,
             // No analysis ran, so no loader chose a base (#3940).
             effective_base: None,
+            uncommitted_source_paths: Vec::new(),
         },
     )
 }
@@ -713,6 +714,7 @@ mod tests {
             language_runs: Vec::new(),
             partial_scope: None,
             effective_base,
+            uncommitted_source_paths: Vec::new(),
         }
     }
 

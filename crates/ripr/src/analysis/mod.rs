@@ -2,6 +2,7 @@ pub(crate) mod cancellation;
 pub(crate) mod canonical_gap;
 mod classifier;
 mod classify;
+pub(crate) mod committed_source;
 mod diff;
 mod extract;
 mod facts;
@@ -34,8 +35,8 @@ pub use diff::records::{
     PathRecordError, StatusRecord, parse_git_path_records, parse_git_status_records,
 };
 pub(crate) use diff::{
-    committed_diff_files_with_uncommitted_edits, load_diff, load_worktree_diff, parse_unified_diff,
-    resolve_base_commit, resolve_effective_base, working_tree_has_tracked_changes,
+    load_diff, load_worktree_diff, parse_unified_diff, resolve_base_commit, resolve_effective_base,
+    working_tree_has_tracked_changes,
 };
 /// Shared RIPR-SPEC-0084 default-base authority and pinned analysis-range
 /// diff assembly (#4003): the one named owner for badge input base/diff,
@@ -690,6 +691,12 @@ pub struct AnalysisResult {
     /// otherwise, and `None` when no base was involved (diff-file/stdin
     /// inputs, repo-scope runs, subject-materialized runs).
     pub effective_base: Option<String>,
+    /// Tracked source and test files with uncommitted edits in a
+    /// committed-history run. The run read their `HEAD` content (or left a
+    /// staged addition out), so these are the edits a `--worktree` run would
+    /// add; they decide the uncommitted-edits note. Empty for every other
+    /// mode.
+    pub(crate) uncommitted_source_paths: Vec<String>,
 }
 
 /// Default language list when callers do not pass `[languages]` config.

@@ -81,9 +81,9 @@ before any test edit.
 
 ### Choose the change
 
-By default, `check` takes the changed lines from committed history; it reads
-test files as they are on disk. In this development build, include staged and
-unstaged edits to tracked files in the diff with:
+By default, `check` analyzes committed history and reads every source and
+test file as committed at `HEAD`. In this development build, include staged
+and unstaged edits to tracked files with:
 
 ```bash
 ripr check --worktree

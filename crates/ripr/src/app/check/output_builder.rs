@@ -22,7 +22,9 @@ pub(super) fn check_output_from_analysis(
         preview_language_advisories: analysis.preview_language_advisories,
         language_runs: analysis.language_runs,
         no_scope_provided: false,
-        unanalyzed_working_tree: false,
+        // RIPR-SPEC-0112: the note fires only when uncommitted edits touched
+        // a source or test file, i.e. when `--worktree` would differ.
+        unanalyzed_working_tree: !analysis.uncommitted_source_paths.is_empty(),
         suppression: None,
         partial_scope: analysis.partial_scope,
     }

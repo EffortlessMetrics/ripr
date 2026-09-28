@@ -482,9 +482,8 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         )?;
         return Ok(());
     }
-    // Capture root and diff_file before input is moved into the analysis call.
-    // These are needed for the RIPR-SPEC-0112 disclosure check after the analysis.
-    let input_root = input.root.clone();
+    // Capture diff_file before input is moved into the analysis call; the
+    // RIPR-SPEC-0112 disclosure gate after the analysis needs it.
     let input_diff_file_is_some = input.diff_file.is_some();
     let limited_check_input = input.clone();
     // #4319: `--diff -` reads the diff from stdin. On an attached terminal
@@ -582,33 +581,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
             suppression.warnings.len()
         );
     }
-    // RIPR-SPEC-0112: disclose when the analyzed diff was committed history (an
-    // explicit --base or the resolved default base; both run `git diff
-    // <base>...HEAD`) AND the working tree has uncommitted changes to tracked
-    // source files. Those changes were NOT analyzed. A zero-finding result in this
-    // state must NOT be read as a clean pass — the user's uncommitted edits were
-    // excluded from the diff. Fires independent of findings.is_empty() (honest
-    // whether or not committed diff had findings), but the false-clean risk is
-    // highest when findings are empty. Does NOT fire for --diff (file-based
-    // diff), --worktree (edits included), --candidate-tree (exact trees, no live
-    // worktree), or repo-scope formats (they read the live files).
+    // RIPR-SPEC-0112: the analysis sets `unanalyzed_working_tree` when a
+    // committed-history diff (an explicit --base or the resolved default base;
+    // both run `git diff <base>...HEAD`) read the HEAD content of tracked
+    // source or test files that have uncommitted edits. Those edits were NOT
+    // analyzed, so a zero-finding result must not read as a clean pass. It
+    // stays off for --diff, --worktree, --candidate-tree and repo-scope
+    // formats, none of which is a committed-history diff of the live tree.
     let committed_history_diff = !worktree_explicitly_provided
         && !input_diff_file_is_some
         && candidate_tree.is_none()
         && !format.is_repo_scope();
-    if committed_history_diff && analysis::working_tree_has_tracked_changes(&input_root) {
-        output.unanalyzed_working_tree = true;
-    }
-    // The committed diff's line numbers are applied to the on-disk file, so an
-    // edited diff file gets misplaced or missing probes. Name those files on
-    // stderr so every format (JSON included) carries the warning. This is not
-    // gated on the probe above: that probe sees only `--root`, while the
-    // analyzed diff covers the whole repository.
-    if committed_history_diff && let Some(base) = output.base.as_deref() {
-        let files = analysis::committed_diff_files_with_uncommitted_edits(&input_root, base);
-        if !files.is_empty() {
-            eprintln!("{}", edited_diff_files_warning(base, &files));
-        }
+    if !committed_history_diff {
+        output.unanalyzed_working_tree = false;
     }
     let navigation = if worktree_explicitly_provided && write_artifact.is_none() {
         None
@@ -626,27 +611,6 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         navigation.as_ref(),
     )?)?;
     Ok(())
-}
-
-/// Stderr warning for diff files that also carry uncommitted edits: their
-/// findings are unreliable until the edits are committed or `--worktree`
-/// diffs the edited content itself.
-fn edited_diff_files_warning(base: &str, files: &[String]) -> String {
-    let (verb, be) = if files.len() == 1 {
-        ("has", "is")
-    } else {
-        ("have", "are")
-    };
-    format!(
-        "ripr: warning: {} {verb} uncommitted edits and {be} also in the analyzed `{base}...HEAD` diff; \
-         findings there apply committed line numbers to edited content and can be misplaced or missing. \
-         Commit the edits, or rerun with `--worktree`.",
-        files
-            .iter()
-            .map(|file| format!("`{file}`"))
-            .collect::<Vec<_>>()
-            .join(", "),
-    )
 }
 
 /// The stderr hedge for an explicit `--diff` run that produced zero findings
@@ -1061,16 +1025,6 @@ mod tests {
             assert!(hedge.contains("not a valid unified diff"), "{hedge}");
         }
         Ok(())
-    }
-
-    #[test]
-    fn edited_diff_files_warning_agrees_in_number_and_names_the_recovery() {
-        let one = edited_diff_files_warning("origin/main", &["src/lib.rs".to_string()]);
-        assert!(one.contains("`src/lib.rs` has uncommitted edits and is also in the analyzed `origin/main...HEAD` diff"));
-        assert!(one.ends_with("Commit the edits, or rerun with `--worktree`."));
-        let two =
-            edited_diff_files_warning("origin/main", &["a.rs".to_string(), "b.rs".to_string()]);
-        assert!(two.contains("`a.rs`, `b.rs` have uncommitted edits and are also in"));
     }
 
     #[test]

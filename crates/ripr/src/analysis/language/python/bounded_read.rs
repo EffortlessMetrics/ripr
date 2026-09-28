@@ -238,7 +238,17 @@ pub(crate) fn read_workspace_sources_capped(
     let mut consumed = 0u64;
     for relative in files {
         let mut remaining = workspace_budget.saturating_sub(consumed);
-        let outcome = read_source_capped(&root.join(relative), file_limit, Some(&mut remaining));
+        let outcome = match crate::analysis::committed_source::lookup(root, relative) {
+            crate::analysis::committed_source::CommittedSourceRead::Worktree => {
+                read_source_capped(&root.join(relative), file_limit, Some(&mut remaining))
+            }
+            // A committed-history diff reads HEAD content for a dirty tracked
+            // file under the same caps; a path absent at HEAD is not source.
+            crate::analysis::committed_source::CommittedSourceRead::Committed(bytes) => {
+                committed_source_capped(&root.join(relative), bytes, file_limit, remaining)
+            }
+            crate::analysis::committed_source::CommittedSourceRead::AbsentAtHead => continue,
+        };
         if let Ok(source) = &outcome {
             consumed = consumed.saturating_add(source.len() as u64);
         }
@@ -264,6 +274,25 @@ pub(crate) fn read_workspace_sources_capped(
         limits,
         io_failures,
     }
+}
+
+/// Apply the per-file cap, the remaining aggregate budget, and UTF-8
+/// decoding to committed bytes, exactly as a working-tree read would.
+fn committed_source_capped(
+    path: &Path,
+    bytes: Vec<u8>,
+    file_limit: u64,
+    remaining: u64,
+) -> Result<String, CappedReadError> {
+    let len = bytes.len() as u64;
+    if len > file_limit {
+        return Err(CappedReadError::OverFileLimit { limit: file_limit });
+    }
+    if len > remaining {
+        return Err(CappedReadError::OverWorkspaceBudget { remaining });
+    }
+    String::from_utf8(bytes)
+        .map_err(|err| CappedReadError::Io(format!("decode {}: {err}", path.display())))
 }
 
 /// Bounded read mirroring `edit_cage.rs` and the TypeScript adapter:
@@ -653,5 +682,61 @@ mod tests {
         let (kept, refused) = truncate_workspace_files(Vec::new(), 3);
         assert!(kept.is_empty());
         assert_eq!(refused, 0);
+    }
+
+    #[test]
+    fn committed_history_overlay_supplies_head_bytes_under_the_same_caps() {
+        use crate::analysis::committed_source::{CommittedSourceOverlay, with_overlay};
+        let dir = TempDir::new("committed-overlay");
+        dir.write("dirty.py", b"worktree bytes\n");
+        dir.write("staged.py", b"staged only\n");
+        dir.write("clean.py", b"clean bytes\n");
+        dir.write("grown.py", b"small\n");
+        let overlay = CommittedSourceOverlay::from_entries(
+            &dir.0,
+            [
+                ("dirty.py", Some(&b"committed bytes\n"[..])),
+                ("staged.py", None),
+                ("grown.py", Some(&[b'g'; 200][..])),
+            ],
+        );
+        let files = vec![
+            PathBuf::from("dirty.py"),
+            PathBuf::from("staged.py"),
+            PathBuf::from("clean.py"),
+            PathBuf::from("grown.py"),
+        ];
+        let outcome = with_overlay(Some(std::sync::Arc::new(overlay)), || {
+            read_workspace_sources_capped(&dir.0, &files, 100, 1024)
+        });
+        assert_eq!(
+            outcome
+                .sources
+                .get(&PathBuf::from("dirty.py"))
+                .map(String::as_str),
+            Some("committed bytes\n"),
+            "a dirty python file reads its committed bytes"
+        );
+        assert!(
+            !outcome.sources.contains_key(&PathBuf::from("staged.py")),
+            "a path absent at HEAD is not committed source"
+        );
+        assert_eq!(
+            outcome
+                .sources
+                .get(&PathBuf::from("clean.py"))
+                .map(String::as_str),
+            Some("clean bytes\n")
+        );
+        assert!(
+            outcome
+                .limits
+                .iter()
+                .any(|(path, err)| path == &PathBuf::from("grown.py")
+                    && matches!(err, CappedReadError::OverFileLimit { .. })),
+            "committed bytes obey the per-file cap: {:?}",
+            outcome.limits
+        );
+        assert!(outcome.io_failures.is_empty(), "{:?}", outcome.io_failures);
     }
 }

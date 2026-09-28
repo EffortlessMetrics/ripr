@@ -14083,7 +14083,7 @@ fn check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosur
         .unwrap();
     let human = String::from_utf8_lossy(&output_human.stdout);
     assert!(
-        human.contains("uncommitted edits to tracked source are not in the analyzed diff"),
+        human.contains("uncommitted source and test changes were not analyzed"),
         "check --base HEAD with uncommitted edit must show Note in human output; got:\n{human}"
     );
     // The note must name the remedy that works. Staging does not change a
@@ -14099,15 +14099,17 @@ fn check_base_head_with_uncommitted_edit_shows_unanalyzed_working_tree_disclosur
     ignore_remove_dir_all(&root);
 }
 
-/// RIPR-SPEC-0112: a committed-history check reads each changed file from
-/// disk but places probes at the committed diff's line numbers. When a file in
-/// the diff also has uncommitted edits (an inline test is the common case),
-/// that file's findings can be misplaced or missing, so stderr names it. An
-/// edit only to a file outside the diff keeps the generic note alone.
+/// RIPR-SPEC-0112: a committed-history check reads every source and test file
+/// as committed at HEAD. An uncommitted test edit, or a new untracked test,
+/// must not move the counts while the note says the changes were not analyzed
+/// (0.11 RC walk: the summary moved 0 -> 1 while the note fired). `--worktree`
+/// must see the same edit, so the fixture discriminates. A README-only edit
+/// changes nothing an adapter reads and raises no note.
 #[test]
-fn check_base_names_diff_files_with_uncommitted_edits() -> Result<(), Box<dyn std::error::Error>> {
+fn check_base_reads_tests_as_committed_and_notes_only_source_changes()
+-> Result<(), Box<dyn std::error::Error>> {
     let root =
-        std::env::temp_dir().join(format!("ripr-0112-edited-diff-file-{}", std::process::id()));
+        std::env::temp_dir().join(format!("ripr-0112-committed-tests-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("src"))?;
     std::fs::create_dir_all(root.join("tests"))?;
@@ -14116,7 +14118,7 @@ fn check_base_names_diff_files_with_uncommitted_edits() -> Result<(), Box<dyn st
     run_git(&root, &["config", "user.name", "Test"])?;
     std::fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"edited-diff-file\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        "[package]\nname = \"committed-tests\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )?;
     std::fs::write(
         root.join("src/lib.rs"),
@@ -14124,86 +14126,61 @@ fn check_base_names_diff_files_with_uncommitted_edits() -> Result<(), Box<dyn st
     )?;
     std::fs::write(
         root.join("tests/ok.rs"),
-        "#[test]\nfn t() { assert!(edited_diff_file::ok(20)); }\n",
+        "#[test]\nfn t() { let _ = committed_tests::ok(20); }\n",
     )?;
+    std::fs::write(root.join("README.md"), "committed tests\n")?;
     run_git(&root, &["add", "."])?;
     run_git(&root, &["commit", "-q", "-m", "base"])?;
     std::fs::write(
         root.join("src/lib.rs"),
         "pub fn ok(n: u32) -> bool { n >= 10 }\n",
     )?;
-    std::fs::write(root.join("README.md"), "edited diff file\n")?;
-    std::fs::write(root.join("src/naïve.rs"), "pub fn naive() -> u32 { 1 }\n")?;
-    run_git(&root, &["add", "."])?;
-    run_git(&root, &["commit", "-q", "-m", "change"])?;
+    run_git(&root, &["commit", "-q", "-a", "-m", "change"])?;
     let root_str = root.to_string_lossy().into_owned();
-    let check = || run_ripr(&["check", "--root", &root_str, "--base", "HEAD~1", "--json"]);
+    let check = |extra: &[&str]| -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let mut args = vec!["check", "--root", root_str.as_str(), "--base", "HEAD~1"];
+        args.extend_from_slice(extra);
+        args.push("--json");
+        let output = run_ripr(&args);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(serde_json::from_slice(&output.stdout)?)
+    };
+    let noted = |json: &serde_json::Value| json["unanalyzed_working_tree"] == true;
+    let committed = check(&[])?;
+    assert!(!noted(&committed));
+    let discriminating_test =
+        "#[test]\nfn t() { assert!(committed_tests::ok(10)); assert!(!committed_tests::ok(9)); }\n";
 
-    // Edit outside the diff only: generic disclosure, no per-file warning.
-    std::fs::write(
-        root.join("tests/ok.rs"),
-        "#[test]\nfn t() { assert!(edited_diff_file::ok(10)); }\n",
-    )?;
-    let outside = check();
-    let stderr = String::from_utf8_lossy(&outside.stderr);
-    assert!(String::from_utf8_lossy(&outside.stdout).contains("\"unanalyzed_working_tree\": true"));
-    assert!(!stderr.contains("also in the analyzed"), "{stderr}");
-
-    // Edit files in the diff: stderr names the source files and the
-    // recovery, keeps a non-ASCII path readable, and skips the README, which
-    // no adapter analyzes.
-    std::fs::write(
-        root.join("src/lib.rs"),
-        "// moved\npub fn ok(n: u32) -> bool { n >= 10 }\n",
-    )?;
-    std::fs::write(root.join("README.md"), "edited again\n")?;
-    std::fs::write(root.join("src/naïve.rs"), "pub fn naive() -> u32 { 2 }\n")?;
-    let inside = check();
-    let stderr = String::from_utf8_lossy(&inside.stderr);
-    assert!(
-        stderr.contains(
-            "`src/lib.rs`, `src/naïve.rs` have uncommitted edits and are also in the analyzed `HEAD~1...HEAD` diff"
-        ),
-        "{stderr}"
+    // Uncommitted test edit: plain check keeps the committed result and notes
+    // the change; --worktree reads the edit and moves.
+    std::fs::write(root.join("tests/ok.rs"), discriminating_test)?;
+    let plain = check(&[])?;
+    assert_eq!(plain["summary"], committed["summary"]);
+    assert_eq!(plain["findings"], committed["findings"]);
+    assert!(noted(&plain));
+    let worktree = check(&["--worktree"])?;
+    assert_ne!(
+        worktree["summary"], committed["summary"],
+        "fixture must discriminate: the edited test changes a --worktree result"
     );
-    assert!(!stderr.contains("README.md"), "{stderr}");
-    assert!(stderr.contains("rerun with `--worktree`"), "{stderr}");
-    assert!(!stderr.contains("tests/ok.rs"), "{stderr}");
-    ignore_remove_dir_all(&root);
-    Ok(())
-}
+    run_git(&root, &["checkout", "-q", "--", "tests/ok.rs"])?;
 
-/// A source file name git would C-quote (here, one with a double quote) is
-/// still recognized by its extension and named in the edited-diff warning.
-#[cfg(unix)]
-#[test]
-fn check_base_names_edited_diff_files_git_would_quote() -> Result<(), Box<dyn std::error::Error>> {
-    let root =
-        std::env::temp_dir().join(format!("ripr-0112-quoted-diff-file-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(root.join("src"))?;
-    run_git(&root, &["init", "-q"])?;
-    run_git(&root, &["config", "user.email", "test@test.com"])?;
-    run_git(&root, &["config", "user.name", "Test"])?;
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"quoted-diff-file\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )?;
-    std::fs::write(root.join("src/lib.rs"), "mod quoted;\n")?;
-    run_git(&root, &["add", "."])?;
-    run_git(&root, &["commit", "-q", "-m", "base"])?;
-    let quoted = root.join("src/quo\"ted.rs");
-    std::fs::write(&quoted, "pub fn q(n: u32) -> bool { n > 1 }\n")?;
-    run_git(&root, &["add", "."])?;
-    run_git(&root, &["commit", "-q", "-m", "change"])?;
-    std::fs::write(&quoted, "// edited\npub fn q(n: u32) -> bool { n > 1 }\n")?;
-    let root_str = root.to_string_lossy().into_owned();
-    let output = run_ripr(&["check", "--root", &root_str, "--base", "HEAD~1", "--json"]);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("`src/quo\"ted.rs` has uncommitted edits"),
-        "{stderr}"
-    );
+    // A new untracked test is not committed content either.
+    std::fs::write(root.join("tests/new.rs"), discriminating_test)?;
+    let untracked = check(&[])?;
+    assert_eq!(untracked["summary"], committed["summary"]);
+    assert!(noted(&untracked));
+    std::fs::remove_file(root.join("tests/new.rs"))?;
+
+    // A README edit changes nothing an adapter reads: no note.
+    std::fs::write(root.join("README.md"), "edited\n")?;
+    let readme = check(&[])?;
+    assert_eq!(readme["summary"], committed["summary"]);
+    assert!(!noted(&readme));
     ignore_remove_dir_all(&root);
     Ok(())
 }
@@ -14268,7 +14245,7 @@ fn check_default_base_with_uncommitted_edit_shows_unanalyzed_working_tree_disclo
     let human = run_ripr(&["check", "--root", &root_str]);
     assert_success(&human);
     let human_stdout = String::from_utf8_lossy(&human.stdout);
-    if !human_stdout.contains("uncommitted edits to tracked source are not in the analyzed diff")
+    if !human_stdout.contains("uncommitted source and test changes were not analyzed")
         || !human_stdout.contains("add `--worktree`")
     {
         return Err(format!(
@@ -14529,7 +14506,7 @@ fn check_with_a_diff_file_does_not_show_unanalyzed_working_tree_disclosure() -> 
     let base_human_run = run_ripr(&["check", "--root", &root_str, "--base", "HEAD"]);
     assert_success(&base_human_run);
     let base_human = String::from_utf8_lossy(&base_human_run.stdout).into_owned();
-    if !base_human.contains("uncommitted edits to tracked source are not in the analyzed diff") {
+    if !base_human.contains("uncommitted source and test changes were not analyzed") {
         return Err(format!(
             "fixture precondition: a --base run on this dirty checkout must print the note:\n{base_human}"
         ));
@@ -14546,7 +14523,7 @@ fn check_with_a_diff_file_does_not_show_unanalyzed_working_tree_disclosure() -> 
     let human_run = run_ripr(&["check", "--root", &root_str, "--diff", &patch_str]);
     assert_success(&human_run);
     let human = String::from_utf8_lossy(&human_run.stdout).into_owned();
-    if human.contains("uncommitted edits to tracked source are not in the analyzed diff") {
+    if human.contains("uncommitted source and test changes were not analyzed") {
         return Err(format!(
             "a --diff run must not print the unanalyzed working tree note:\n{human}"
         ));

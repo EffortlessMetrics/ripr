@@ -123,7 +123,8 @@ that untracked source was analyzed.
 2. **Clean worktree**: `ripr check --base HEAD --worktree --json` emits no
    findings and no scope/unanalyzed-worktree disclosure.
 3. **Committed-history compatibility**: `ripr check --base HEAD --json` with a
-   dirty tracked worktree still emits `unanalyzed_working_tree: true`.
+   dirty tracked source or test file still emits
+   `unanalyzed_working_tree: true`.
 4. **File diff compatibility**: `ripr check --diff change.patch` keeps existing
    behavior; `ripr check --diff change.patch --worktree` returns an error.
 5. **Doctor**: dirty tracked-worktree guidance names

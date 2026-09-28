@@ -132,10 +132,14 @@ impl WorkspaceRootAuthority {
         }
         let valid = authority.valid
             && self.root.join(path).canonicalize().is_ok_and(|full| {
+                // Read through the committed-source seam: in committed-history
+                // mode the index holds `HEAD` bytes for dirty paths, so the
+                // working-tree bytes would never match its digest.
                 full.starts_with(&self.root)
-                    && std::fs::read(&full)
-                        .map(|bytes| source_digest(&bytes) == authority.source_digest)
-                        .unwrap_or(false)
+                    && crate::analysis::committed_source::read_source_bytes(&self.root, path)
+                        .ok()
+                        .flatten()
+                        .is_some_and(|bytes| source_digest(&bytes) == authority.source_digest)
                     && matches!(
                         resolve_package_identity(&self.root, path),
                         PackageIdentity::Known(ref identity)

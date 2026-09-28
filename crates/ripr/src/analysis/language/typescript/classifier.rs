@@ -760,7 +760,11 @@ fn ts_owner_module_constant_value(
         }
     }
     let root = workspace_root?;
-    let source = std::fs::read_to_string(root.join(&owner.file)).ok()?;
+    // Committed-history diffs read the owner module's HEAD content.
+    let source = String::from_utf8(
+        crate::analysis::committed_source::read_source_bytes(root, &owner.file).ok()??,
+    )
+    .ok()?;
     match scan_owner_module_constant(&source, name) {
         OwnerModuleConstant::Resolved(value) => Some(value),
         _ => None,

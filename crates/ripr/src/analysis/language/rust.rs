@@ -1688,11 +1688,18 @@ impl RustAdapter {
                 // of reading the whole working set. No-op without a token
                 // (CLI path).
                 cancellation::checkpoint()?;
-                let full = options.root.join(file);
-                let bytes = std::fs::read(&full)
-                    .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
-                Ok((file.clone(), bytes))
+                // Committed-history diffs read HEAD content for dirty
+                // tracked files; a path with no content at HEAD is skipped.
+                crate::analysis::committed_source::read_source_bytes(&options.root, file)
+                    .map(|bytes| bytes.map(|bytes| (file.clone(), bytes)))
+                    .map_err(|err| {
+                        format!(
+                            "failed to read {}: {err}",
+                            options.root.join(file).display()
+                        )
+                    })
             })
+            .filter_map(Result::transpose)
             .collect::<Result<Vec<_>, String>>()?;
         let cached = rust_index::build_index_from_loaded_files_with_cache_and_test_harnesses(
             &options.root,
