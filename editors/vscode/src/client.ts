@@ -1473,11 +1473,14 @@ export class RiprClientController {
       return;
     }
     if (message.startsWith('ripr analysis refresh failed')) {
+      const baseRefFailure = isUnresolvableBaseRefFailure(message);
       this.updateStatus({
         kind: 'analysisFailed',
         summary: 'ripr analysis refresh failed.',
         detail: message,
-        nextStep: 'Open ripr: Show Output, fix the reported issue, then run ripr: Restart Server.'
+        nextStep: baseRefFailure
+          ? 'Set ripr.baseRef to a ref this repository has (for example main), then run ripr: Refresh Diagnostics.'
+          : 'Open ripr: Show Output, fix the reported issue, then run ripr: Refresh Diagnostics.'
       });
     }
   }
@@ -1516,9 +1519,12 @@ export class RiprClientController {
     const failureMessage = typeof failure?.message === 'string'
       ? failure.message
       : 'The last analysis attempt failed.';
-    const retry = typeof status.retry_command === 'string'
-      ? status.retry_command
-      : 'ripr: Restart Server';
+    const retry = status.retry_command === 'ripr.refresh'
+      || status.retry_command === 'ripr.refreshDiagnostics'
+      ? 'ripr: Refresh Diagnostics'
+      : typeof status.retry_command === 'string' && status.retry_command.trim()
+        ? status.retry_command
+        : 'ripr: Refresh Diagnostics';
     const retained = status.snapshot_id ? ' The last completed snapshot remains available but is stale.' : '';
     switch (status.state) {
       case 'queued':
@@ -1542,7 +1548,9 @@ export class RiprClientController {
           kind: 'analysisFailed',
           summary: 'ripr analysis failed; last-known-good evidence is retained.',
           detail: `${analysisStatusDetail(status)}\n${failureMessage}${retained}`,
-          nextStep: `Run ${retry} to retry the saved-workspace analysis.`
+          nextStep: isUnresolvableBaseRefFailure(failureMessage)
+            ? 'Set ripr.baseRef to a ref this repository has (for example main), then run ripr: Refresh Diagnostics.'
+            : `Run ${retry} to retry the saved-workspace analysis.`
         });
         return;
       case 'cancelled':
@@ -3248,6 +3256,10 @@ function serverLogMessage(params: unknown): string | undefined {
   }
   const message = (params as { message?: unknown }).message;
   return typeof message === 'string' ? message : undefined;
+}
+
+function isUnresolvableBaseRefFailure(message: string): boolean {
+  return /the base `[^`]+` does not resolve to a commit/.test(message);
 }
 
 interface RiprAnalysisStatusPayload {
