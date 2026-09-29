@@ -754,6 +754,26 @@ fn git_preflight_recovery(root: &Path, options: &FirstPrOptions) -> Option<Selec
     }
 
     if let Err(message) = git_diff_range_valid(root, &options.base, &options.head) {
+        // #4538: a range with no merge base names its cause (shallow clone or
+        // unrelated histories) like `ripr check` does, and a shallow clone's
+        // next command is the unshallow repair, not the same failing diff.
+        if message.contains("no merge base") {
+            let (diagnosis, shallow) =
+                crate::analysis::no_merge_base_diagnosis(root, &options.base, &options.head, None);
+            let command = if shallow {
+                unshallow_command(options)
+            } else {
+                diff_range_command(options)
+            };
+            return Some(Selection::blocked(
+                "blocked_artifact",
+                format!(
+                    "The first-pr diff range `{}...{}` has no merge base: {diagnosis}",
+                    options.base, options.head
+                ),
+                Some(command),
+            ));
+        }
         return Some(Selection::blocked(
             "blocked_artifact",
             format!(
@@ -2451,6 +2471,13 @@ fn diff_range_command(options: &FirstPrOptions) -> String {
     )
 }
 
+fn unshallow_command(options: &FirstPrOptions) -> String {
+    format!(
+        "git -C {} fetch --unshallow",
+        shell_arg(&options.command_root())
+    )
+}
+
 fn doctor_command(root: &str) -> String {
     format!("ripr doctor --root {}", shell_arg(root))
 }
@@ -3596,6 +3623,65 @@ mod tests {
     }
 
     #[test]
+    fn shallow_range_without_merge_base_points_at_unshallow() -> Result<(), String> {
+        // #4538: a PR-style shallow fetch has both tips but no merge base.
+        // The next command must be the unshallow repair, not the same
+        // failing `git diff`.
+        let origin = temp_repo("first-pr-shallow-origin")?;
+        run_git_setup(&origin, &["checkout", "-q", "-b", "feature"])?;
+        run_git_setup(&origin, &["commit", "-q", "--allow-empty", "-m", "feature"])?;
+        run_git_setup(&origin, &["checkout", "-q", "-"])?;
+        run_git_setup(
+            &origin,
+            &["commit", "-q", "--allow-empty", "-m", "main moves"],
+        )?;
+        let shallow = write_temp_root(&env::temp_dir(), "first-pr-shallow-clone")?;
+        // `file://` keeps `--depth` honored (a plain path uses the local
+        // transport); a Windows drive path needs the third slash.
+        let origin_path = origin.display().to_string().replace('\\', "/");
+        let url = if origin_path.starts_with('/') {
+            format!("file://{origin_path}")
+        } else {
+            format!("file:///{origin_path}")
+        };
+        run_git_setup(&shallow, &["init", "-q"])?;
+        run_git_setup(&shallow, &["remote", "add", "origin", &url])?;
+        run_git_setup(
+            &shallow,
+            &[
+                "fetch",
+                "-q",
+                "--depth=1",
+                "origin",
+                "+refs/heads/feature:refs/remotes/origin/feature",
+                "+HEAD:refs/remotes/origin/main",
+            ],
+        )?;
+        run_git_setup(&shallow, &["checkout", "-q", "--detach", "origin/feature"])?;
+        write_json(
+            &shallow.join(DEFAULT_GAP_LEDGER),
+            ledger_with_repairable_gap(),
+        )?;
+        let options = FirstPrOptions::default();
+        write_first_pr(&shallow, &options)?;
+        let packet = read_packet(&shallow.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["selected"]["state"], "blocked_artifact");
+        let message = packet["selected"]["message"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("no merge base")
+                && message.contains("shallow clone")
+                && message.contains("fetch-depth: 0"),
+            "unexpected message: {message}"
+        );
+        assert_eq!(
+            packet["selected"]["next_command"],
+            format!("git -C {} fetch --unshallow", bound_arg("."))
+        );
+        cleanup(&shallow)?;
+        cleanup(&origin)
+    }
+
+    #[test]
     fn missing_git_head_writes_recovery_packet() -> Result<(), String> {
         let repo = temp_repo("first-pr-missing-head")?;
         write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_with_repairable_gap())?;
@@ -3637,9 +3723,13 @@ mod tests {
         assert_eq!(packet["status"], "blocked");
         assert_eq!(packet["selected"]["state"], "blocked_artifact");
         assert!(
-            packet["selected"]["message"]
-                .as_str()
-                .is_some_and(|message| message.contains("origin/main...unrelated"))
+            packet["selected"]["message"].as_str().is_some_and(
+                |message| message.contains("origin/main...unrelated")
+                    // #4538: the cause is named, and a full clone is not
+                    // diagnosed as shallow.
+                    && message.contains("unrelated histories")
+                    && !message.contains("shallow clone")
+            )
         );
         assert_eq!(
             packet["selected"]["next_command"],

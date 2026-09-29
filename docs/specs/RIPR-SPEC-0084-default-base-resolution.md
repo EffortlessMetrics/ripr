@@ -137,6 +137,19 @@ clone (repair: `git fetch --unshallow`, or `fetch-depth: 0` on
 history). An explicit base that does not resolve in a shallow clone names
 the unshallow repair instead of `git fetch origin`.
 
+Commands that take both revisions (`diff`, `review-comments`) verify the
+head the same way: an unresolvable `--head` fails with ripr's named message
+and a `--head <ref>` repair, never git's `ambiguous argument` advice. They
+load `<base>...<head>` through the same pinned diff presentation as
+`check`, so repository `color.diff` or `diff.submodule` settings cannot
+empty or widen the changed-line set (#4538). A symlink section (mode
+`120000`) is a link target, not source text: the parser records no changed
+file or changed lines for the link path, keeps the regular-file half of a
+type change, and resumes normal parsing at the next file boundary (#4577).
+`first-pr` names the same
+no-merge-base cause and, in a shallow clone, offers `git fetch --unshallow`
+as its next command.
+
 ### Honesty bar
 
 - A resolved base MUST genuinely exist (`git rev-parse --verify` must

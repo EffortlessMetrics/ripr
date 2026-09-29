@@ -346,6 +346,18 @@ are scoped or reviewed.
   the `Agent review packet` block already did. The stored artifacts keep
   their bound root; only the summary rendering rewrites the checkout path, and
   only where it is a whole path token.
+- `ripr review-comments` now reads its diff the way `ripr check` does. It ran
+  its own `git diff`, so `color.diff=always` in the repository's git config
+  produced zero guidance with exit 0, and `diff.submodule=diff` put guidance
+  on files inside a submodule. A base or head that does not resolve, and a
+  shallow clone with no merge base, now get the same named cause and repair
+  as `check` instead of git's `ambiguous argument` advice. `ripr first-pr`
+  names the shallow clone behind a missing merge base and offers
+  `git fetch --unshallow` as its next command (#4538).
+- A symlink in the diff no longer counts as changed source. Git shows a
+  symlink as a one-line file holding its target path, so `ripr check` built a
+  probe from that path and `ripr review-comments` annotated unchanged lines of
+  the file the link points at, under the link's name (#4577).
 
 - LSP: `ripr.collectRepairPacket` and `ripr.collectContext` now reject a
   `gap_id` that is present but not a string (such as `42` or `true`) with an

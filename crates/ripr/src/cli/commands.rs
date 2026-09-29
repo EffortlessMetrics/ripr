@@ -3262,21 +3262,22 @@ fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
     }
 }
 
+/// Review-comments diff through the shared range authority (#4538): the base
+/// and head are verified like `ripr check` verifies its base, and the range
+/// uses the pinned diff presentation, so ambient `color.diff` or
+/// `diff.submodule` config cannot empty or widen the changed-line set.
 fn load_review_comments_diff(root: &Path, base: &str, head: &str) -> Result<String, String> {
-    let range = format!("{base}...{head}");
-    let output = crate::git::run_git_output_with_deadline(
+    let base = analysis::resolve_effective_base(
         root,
-        &["diff", "--unified=0", "--no-ext-diff", &range],
+        Some(base),
         analysis::cancellation::remaining_budget(),
     )?;
-    if !output.status.success() {
-        return Err(format!(
-            "git diff for review-comments failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    String::from_utf8(output.stdout)
-        .map_err(|err| format!("git diff for review-comments was not UTF-8: {err}"))
+    analysis::load_diff_range_with_deadline(
+        root,
+        &base,
+        head,
+        analysis::cancellation::remaining_budget(),
+    )
 }
 
 fn review_comments_markdown_path(json_path: &Path) -> PathBuf {
@@ -6516,6 +6517,75 @@ language = "rust"
         };
         assert!(err.contains("is not a directory"));
         Ok(())
+    }
+
+    #[test]
+    fn review_comments_diff_uses_the_pinned_range_authority() -> Result<(), String> {
+        // #4538: the production review-comments loader must go through the
+        // shared range authority. The raw control proves the fixture
+        // discriminates: ambient `color.diff=always` colors a plain
+        // `git diff`, and the old private loader parsed that as zero changed
+        // lines. The same loader must name unresolvable revisions in ripr's
+        // own voice instead of git's `ambiguous argument` advice.
+        use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
+        let root = unique_command_test_dir("review-comments-pinned-diff");
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+        let lib = root.join("src/lib.rs");
+        fixture_git_ok(&root, &["init", "-q", "--initial-branch=main"])?;
+        for (key, value) in [
+            ("user.name", "Review Comments"),
+            ("user.email", "review-comments@example.com"),
+            ("commit.gpgsign", "false"),
+            ("color.diff", "always"),
+        ] {
+            fixture_git_ok(&root, &["config", "--local", key, value])?;
+        }
+        std::fs::write(&lib, "pub fn f(x: i32) -> bool { x > 1 }\n")
+            .map_err(|err| format!("write base lib: {err}"))?;
+        fixture_git_ok(&root, &["add", "."])?;
+        fixture_git_ok(&root, &["commit", "-q", "-m", "base"])?;
+        std::fs::write(&lib, "pub fn f(x: i32) -> bool { x >= 1 }\n")
+            .map_err(|err| format!("write head lib: {err}"))?;
+        fixture_git_ok(&root, &["commit", "-q", "-am", "head"])?;
+
+        let raw = crate::git::run_git_output_with_deadline(
+            &root,
+            &["diff", "--unified=0", "--no-ext-diff", "HEAD~1...HEAD"],
+            None,
+        )?;
+        let raw = String::from_utf8_lossy(&raw.stdout).into_owned();
+        assert!(
+            raw.contains('\u{1b}'),
+            "color.diff=always control did not color the raw diff, so the fixture does not discriminate:\n{raw}"
+        );
+        assert!(analysis::parse_unified_diff(&raw).is_empty());
+
+        let diff = load_review_comments_diff(&root, "HEAD~1", "HEAD")?;
+        assert!(
+            !diff.contains('\u{1b}'),
+            "pinned diff kept ANSI color:\n{diff}"
+        );
+        let changed = analysis::parse_unified_diff(&diff);
+        assert_eq!(changed.len(), 1, "expected one changed file: {diff}");
+
+        let Err(err) = load_review_comments_diff(&root, "no-such-base", "HEAD") else {
+            return Err("an unresolvable base must fail".to_string());
+        };
+        assert!(
+            err.contains("the base `no-such-base` does not resolve to a commit")
+                && !err.contains("ambiguous argument"),
+            "base failure must be named by ripr, got: {err}"
+        );
+        let Err(err) = load_review_comments_diff(&root, "HEAD~1", "no-such-head") else {
+            return Err("an unresolvable head must fail".to_string());
+        };
+        assert!(
+            err.contains("the head `no-such-head` does not resolve to a commit")
+                && err.contains("--head <ref>")
+                && !err.contains("ambiguous argument"),
+            "head failure must be named by ripr, got: {err}"
+        );
+        remove_fixture_tree(&root)
     }
 
     #[test]

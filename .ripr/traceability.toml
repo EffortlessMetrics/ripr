@@ -5703,11 +5703,18 @@ tests = [
   "crates/ripr/src/cli/commands/context.rs::tests::context_keeps_base_and_diff_as_from_artifact_assertions",
   "crates/ripr/tests/cli_smoke.rs::check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure",
   "crates/ripr/tests/cli_smoke.rs::stdin_probe_stalled_child_returns_bounded_timeout",
-  "crates/ripr/tests/cli_smoke.rs::stdin_probe_early_exit_returns_write_error"
+  "crates/ripr/tests/cli_smoke.rs::stdin_probe_early_exit_returns_write_error",
+  "crates/ripr/src/cli/commands.rs::tests::review_comments_diff_uses_the_pinned_range_authority",
+  "crates/ripr/src/output/first_pr.rs::tests::shallow_range_without_merge_base_points_at_unshallow",
+  "crates/ripr/src/output/first_pr.rs::tests::unrelated_git_range_writes_recovery_packet",
+  "crates/ripr/src/analysis/diff/parse.rs::tests::symlink_sections_record_no_changed_source_lines",
+  "crates/ripr/src/analysis/diff/parse.rs::tests::plain_file_boundary_after_symlink_section_keeps_source_lines"
 ]
 fixtures = []
 code = [
   "crates/ripr/src/analysis/diff/load.rs",
+  "crates/ripr/src/analysis/diff/parse.rs",
+  "crates/ripr/src/analysis/diff/parse/stream.rs",
   "crates/ripr/src/output/first_pr.rs",
   "crates/ripr/src/cli/parse.rs",
   "crates/ripr/src/cli/commands/check.rs",

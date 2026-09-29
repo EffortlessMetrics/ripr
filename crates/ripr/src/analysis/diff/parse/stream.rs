@@ -56,6 +56,8 @@ fn parse_lines<'a, E>(
             continue;
         }
 
+        state.note_symlink_header(raw);
+
         if state.handle_submodule_mode(raw) {
             continue;
         }

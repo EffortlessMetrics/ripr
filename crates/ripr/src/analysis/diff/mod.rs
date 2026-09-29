@@ -11,6 +11,7 @@ pub use load::{
     load_worktree_diff, load_worktree_diff_with_effective_base, resolve_base_commit,
     resolve_default_base_commit, resolve_effective_base, working_tree_has_tracked_changes,
 };
+pub(crate) use load::{load_diff_range_with_deadline, no_merge_base_diagnosis};
 #[allow(
     unused_imports,
     reason = "ChangedLine is re-exported for use by probes.rs and other external modules; not used within diff module itself."

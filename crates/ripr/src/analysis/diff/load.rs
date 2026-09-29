@@ -173,14 +173,7 @@ pub fn resolve_effective_base(
     match git_ref_output(root, &commit, git_timeout) {
         Some(output) if !output.status.success() => Err(not_a_work_tree(root, git_timeout)
             .unwrap_or_else(|| {
-                // `git fetch origin` never deepens a shallow clone, so an
-                // ancestor base like `HEAD~5` needs the unshallow repair.
-                let fetch = if is_shallow_repository(root, git_timeout) {
-                    "This is a shallow clone: fetch the missing history with `git fetch \
-                     --unshallow` (in GitHub Actions, set `fetch-depth: 0` on actions/checkout)"
-                } else {
-                    "Fetch the ref (for example `git fetch origin`)"
-                };
+                let fetch = missing_ref_repair(root, git_timeout);
                 format!(
                     "the base `{explicit}` does not resolve to a commit (the analysis did not \
                      run). {fetch} or pass `--base <ref>` for a ref this repository has."
@@ -470,16 +463,69 @@ pub fn resolve_base_commit(
     (!commit.is_empty()).then_some(commit)
 }
 
+/// Load `<base>...<head>` for the commands that name both revisions (`diff`,
+/// `review-comments`). Callers verify `base` through
+/// [`resolve_effective_base`] first; this verifies `head` the same way, so an
+/// unresolvable revision fails in ripr's own voice instead of git's
+/// `ambiguous argument` advice (#4538). The range then goes through the same
+/// pinned presentation as every analysis loader (#3850, #4086), including
+/// `--submodule=short`, so ambient `color.diff` or `diff.submodule` config
+/// cannot empty or widen the parsed change set.
 pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, String> {
-    // CLI-only range path (#1921 migration scope note): no deadline is
-    // threaded here yet, so the invocation stays unbounded like the
-    // pre-#2303 behavior.
+    // No deadline on the public CLI/xtask range path (#1921 migration scope
+    // note): the invocation stays unbounded like the pre-#2303 behavior.
+    load_diff_range_with_deadline(root, base, head, None)
+}
+
+/// [`load_diff_range`] under a caller's cooperative git deadline.
+pub(crate) fn load_diff_range_with_deadline(
+    root: &Path,
+    base: &str,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> Result<String, String> {
+    verify_head_revision(root, head, git_timeout)?;
     run_git_diff(
         root,
         &format!("{base}...{head}"),
         &["--unified=0", "--no-ext-diff", "--submodule=short"],
-        None,
+        git_timeout,
     )
+}
+
+/// Fail with a named message when `head` does not resolve to a commit. Like
+/// the base probe in [`resolve_effective_base`], only a `rev-parse` that ran
+/// and reported the revision absent produces the message; a probe that could
+/// not run leaves the decision to `git diff`.
+fn verify_head_revision(
+    root: &Path,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> Result<(), String> {
+    let commit = format!("{head}^{{commit}}");
+    match git_ref_output(root, &commit, git_timeout) {
+        Some(output) if !output.status.success() => Err(not_a_work_tree(root, git_timeout)
+            .unwrap_or_else(|| {
+                format!(
+                    "the head `{head}` does not resolve to a commit (the analysis did not \
+                     run). {} or pass `--head <ref>` for a ref this repository has.",
+                    missing_ref_repair(root, git_timeout)
+                )
+            })),
+        _ => Ok(()),
+    }
+}
+
+/// The repair for a revision that does not resolve. `git fetch origin` never
+/// deepens a shallow clone, so an ancestor such as `HEAD~5` needs the
+/// unshallow repair there.
+fn missing_ref_repair(root: &Path, git_timeout: Option<Duration>) -> &'static str {
+    if is_shallow_repository(root, git_timeout) {
+        "This is a shallow clone: fetch the missing history with `git fetch \
+         --unshallow` (in GitHub Actions, set `fetch-depth: 0` on actions/checkout)"
+    } else {
+        "Fetch the ref (for example `git fetch origin`)"
+    }
 }
 
 /// PR-evidence range path (issue #3930): the same pinned presentation as
@@ -773,18 +819,35 @@ fn run_git_diff_bytes(
 /// them was never fetched. Otherwise the two refs really are unrelated
 /// histories and only a different base helps.
 fn no_merge_base_hint(root: &Path, range: &str, git_timeout: Option<Duration>) -> String {
-    let base = range.split_once("...").map_or(range, |(base, _)| base);
+    let (base, head) = range.split_once("...").unwrap_or((range, "HEAD"));
+    format!(
+        ". {}",
+        no_merge_base_diagnosis(root, base, head, git_timeout).0
+    )
+}
+
+/// The cause and repair for a `<base>...<head>` range with no merge base, as
+/// one sentence, plus whether the repair is unshallowing. Shared with the
+/// first-pr range preflight (#4538) so both name the same cause.
+pub(crate) fn no_merge_base_diagnosis(
+    root: &Path,
+    base: &str,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> (String, bool) {
     if is_shallow_repository(root, git_timeout) {
-        format!(
-            ". This is a shallow clone, so `{base}` and HEAD share no fetched history \
+        let text = format!(
+            "This is a shallow clone, so `{base}` and `{head}` share no fetched history \
              (the analysis did not run). Fetch the full history with `git fetch --unshallow` \
              (in GitHub Actions, set `fetch-depth: 0` on actions/checkout), then re-run."
-        )
+        );
+        (text, true)
     } else {
-        format!(
-            ". `{base}` and HEAD share no commit (unrelated histories; the analysis did not \
-             run). Pass `--base <ref>` for a ref on HEAD's history."
-        )
+        let text = format!(
+            "`{base}` and `{head}` share no commit (unrelated histories; the analysis did \
+             not run). Pass `--base <ref>` for a ref on `{head}`'s history."
+        );
+        (text, false)
     }
 }
 
