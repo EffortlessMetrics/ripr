@@ -147,6 +147,16 @@ cargo xtask schema-producer-sweep \
 `ripr agent verify-execute --result-json FILE`, passed as
 `schemas/ripr/repair-assurance.schema.json#/$defs/execution_result=FILE#/result`.
 
+The `review-comments --gap-ledger` route (#3913) does not need a live artifact
+on the sweep. Two `cargo test -p xtask` tests in `xtask/src/reports/review_comments.rs`
+run `ripr reports gap-ledger` and `ripr review-comments --gap-ledger` in process
+on every tree and validate the bytes they write against the published schema:
+`gap_ledger_route_bytes_from_check_goldens_match_published_schema` covers the
+`--check-output` ledgers from the Rust and Python `boundary_gap` check goldens,
+and `eligible_gap_ledger_route_cards_match_published_schema` covers inline,
+summary-only and suppressed gap-record cards, with mutations the schema must
+reject.
+
 ## The inventory this table covers
 
 `cargo xtask check-verification-contracts --check` reads every

@@ -1947,4 +1947,294 @@ mod tests {
     fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
     }
+
+    // #3913: the `--gap-ledger` route was the one review-comments route whose
+    // real bytes no test validated against the published schema. These tests
+    // drive the production CLI in process (argument parsing, ledger producer,
+    // review-comments renderer, run receipt) and validate what it wrote with
+    // the same validator `check-verification-contracts` uses.
+
+    use crate::verification_contracts::validate_value_against_schema;
+
+    const GAP_LEDGER_ROUTE_SCHEMA: &str = "schemas/ripr/review-comments.schema.json";
+
+    fn run_ripr(args: &[&str]) -> Result<(), String> {
+        let mut cli_args = vec!["ripr".to_string()];
+        cli_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        ripr::cli::run(cli_args).map_err(|error| format!("ripr {}: {error}", args.join(" ")))
+    }
+
+    fn path_arg(path: &Path) -> Result<&str, String> {
+        path.to_str()
+            .ok_or_else(|| format!("non-UTF-8 scratch path {}", path.display()))
+    }
+
+    fn read_json_value(path: &Path) -> Result<Value, String> {
+        let text =
+            fs::read_to_string(path).map_err(|err| format!("read {}: {err}", path.display()))?;
+        serde_json::from_str(&text).map_err(|err| format!("parse {}: {err}", path.display()))
+    }
+
+    fn schema_violations(packet: &Value) -> Result<Vec<String>, String> {
+        let schema = read_json_value(&repo_root()?.join(GAP_LEDGER_ROUTE_SCHEMA))?;
+        let mut violations = Vec::new();
+        validate_value_against_schema(
+            packet,
+            &schema,
+            &schema,
+            "comments.json".to_string(),
+            &mut violations,
+        );
+        Ok(violations)
+    }
+
+    fn assert_schema_valid(packet: &Value, subject: &str) -> Result<(), String> {
+        let violations = schema_violations(packet)?;
+        if violations.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{subject} does not match {GAP_LEDGER_ROUTE_SCHEMA}:\n{}",
+                violations.join("\n")
+            ))
+        }
+    }
+
+    /// `ripr reports gap-ledger --check-output` over a committed `ripr check`
+    /// golden, then `ripr review-comments --gap-ledger` over that ledger.
+    /// Returns the ledger and the review-comments packet the CLI wrote.
+    fn gap_ledger_route_from_check_golden(
+        scratch: &Path,
+        check_golden: &str,
+    ) -> Result<(Value, Value), String> {
+        let root = scratch.join("root");
+        fs::create_dir_all(&root).map_err(|err| format!("create {}: {err}", root.display()))?;
+        let check = repo_root()?.join(check_golden);
+        let ledger = scratch.join("gap-decision-ledger.json");
+        run_ripr(&[
+            "reports",
+            "gap-ledger",
+            "--check-output",
+            path_arg(&check)?,
+            "--root",
+            path_arg(&root)?,
+            "--out",
+            path_arg(&ledger)?,
+            "--out-md",
+            path_arg(&scratch.join("gap-decision-ledger.md"))?,
+        ])?;
+        let comments = review_comments_over_ledger(scratch, &ledger, "comments.json")?;
+        Ok((read_json_value(&ledger)?, comments))
+    }
+
+    fn review_comments_over_ledger(
+        scratch: &Path,
+        ledger: &Path,
+        out_name: &str,
+    ) -> Result<Value, String> {
+        let root = scratch.join("root");
+        let out = scratch.join(out_name);
+        run_ripr(&[
+            "review-comments",
+            "--root",
+            path_arg(&root)?,
+            "--base",
+            "base-rev",
+            "--head",
+            "head-rev",
+            "--gap-ledger",
+            path_arg(ledger)?,
+            "--out",
+            path_arg(&out)?,
+        ])?;
+        read_json_value(&out)
+    }
+
+    fn array_len(value: &Value, key: &str) -> usize {
+        value.get(key).and_then(Value::as_array).map_or(0, Vec::len)
+    }
+
+    fn suppressed_reasons(packet: &Value) -> Vec<String> {
+        packet
+            .get("suppressed")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item.get("reason").and_then(Value::as_str))
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn gap_ledger_route_bytes_from_check_goldens_match_published_schema() -> Result<(), String> {
+        // Rust boundary_gap derives no PR-local GapRecord, so this is the
+        // zero-record envelope #3913 first reported (`inputs` rejected).
+        // Python boundary_gap derives one pr_comment-eligible record that
+        // review-comments suppresses, which exercises the suppressed row.
+        for (check_golden, expected_records, expected_suppressed) in [
+            ("fixtures/boundary_gap/expected/check.json", 0, 0),
+            ("fixtures/python_boundary_gap/expected/check.json", 1, 1),
+        ] {
+            let scratch = temp_repo("ripr-gap-ledger-route-check")?;
+            let result = gap_ledger_route_from_check_golden(&scratch, check_golden);
+            let _ = fs::remove_dir_all(&scratch);
+            let (ledger, packet) = result?;
+            if array_len(&ledger, "records") != expected_records
+                || array_len(&packet, "suppressed") != expected_suppressed
+                || array_len(&packet, "comments") != 0
+            {
+                return Err(format!(
+                    "{check_golden}: unexpected route subject: {} records, packet {packet}",
+                    array_len(&ledger, "records")
+                ));
+            }
+            if packet.pointer("/inputs/gap_ledger").is_none() || packet.get("run_receipt").is_none()
+            {
+                return Err(format!(
+                    "{check_golden}: packet is not gap-ledger route output: {packet}"
+                ));
+            }
+            assert_schema_valid(&packet, check_golden)?;
+        }
+        Ok(())
+    }
+
+    /// Real ledger records from the Python check golden, given producer seam
+    /// identity (the `--check-output` derivation carries none, so its cards
+    /// are suppressed), multiplied past both render caps, plus records each
+    /// eligibility gate rejects. Returns the rendered packet.
+    fn eligible_gap_ledger_route_packet(scratch: &Path) -> Result<Value, String> {
+        let (ledger, _) = gap_ledger_route_from_check_golden(
+            scratch,
+            "fixtures/python_boundary_gap/expected/check.json",
+        )?;
+        let Some(template) = ledger
+            .get("records")
+            .and_then(Value::as_array)
+            .and_then(|records| records.first())
+        else {
+            return Err(format!(
+                "the Python check golden derived no record: {ledger}"
+            ));
+        };
+        let variant = |suffix: &str| -> Result<Value, String> {
+            let mut record = template.clone();
+            for key in ["gap_id", "canonical_gap_id"] {
+                let id = record
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("template record has no {key}"))?;
+                record[key] = json!(format!("{id}:{suffix}"));
+            }
+            record["seam_id"] = json!(format!("seam:python:discount:{suffix}"));
+            let fingerprint = record
+                .pointer("/anchor/dedupe_fingerprint")
+                .and_then(Value::as_str)
+                .ok_or("template record has no dedupe fingerprint")?
+                .to_string();
+            record["anchor"]["dedupe_fingerprint"] = json!(format!("{fingerprint}:{suffix}"));
+            Ok(record)
+        };
+        let inline_cap = 3;
+        let summary_cap = 10;
+        let mut records = Vec::new();
+        for index in 0..inline_cap + summary_cap + 2 {
+            records.push(variant(&index.to_string())?);
+        }
+        let mut no_anchor = variant("no-anchor")?;
+        no_anchor["anchor"] = Value::Null;
+        records.push(no_anchor);
+        let mut waived = variant("waived")?;
+        waived["policy_state"] = json!("waived");
+        records.push(waived);
+        let mut duplicate = variant("duplicate")?;
+        duplicate["anchor"]["dedupe_fingerprint"] =
+            records[0]["anchor"]["dedupe_fingerprint"].clone();
+        records.push(duplicate);
+
+        let input = scratch.join("records.json");
+        fs::write(&input, json!({ "gap_records": records }).to_string())
+            .map_err(|err| format!("write {}: {err}", input.display()))?;
+        let ledger = scratch.join("eligible-gap-decision-ledger.json");
+        run_ripr(&[
+            "reports",
+            "gap-ledger",
+            "--records",
+            path_arg(&input)?,
+            "--root",
+            path_arg(&scratch.join("root"))?,
+            "--out",
+            path_arg(&ledger)?,
+            "--out-md",
+            path_arg(&scratch.join("eligible-gap-decision-ledger.md"))?,
+        ])?;
+        review_comments_over_ledger(scratch, &ledger, "eligible-comments.json")
+    }
+
+    #[test]
+    fn eligible_gap_ledger_route_cards_match_published_schema() -> Result<(), String> {
+        let scratch = temp_repo("ripr-gap-ledger-route-eligible")?;
+        let result = eligible_gap_ledger_route_packet(&scratch);
+        let _ = fs::remove_dir_all(&scratch);
+        let packet = result?;
+
+        // Assert the subject before the schema: inline cards, summary-only
+        // cards past the inline cap, and every suppression shape this route
+        // writes, so a validator pass cannot come from an empty packet.
+        let reasons = suppressed_reasons(&packet);
+        for reason in [
+            "summary_cap",
+            "missing_anchor",
+            "policy_state_not_commentable",
+            "duplicate_dedupe_fingerprint",
+        ] {
+            if !reasons.iter().any(|seen| seen == reason) {
+                return Err(format!("no `{reason}` suppression in {reasons:?}"));
+            }
+        }
+        if array_len(&packet, "comments") != 3 || array_len(&packet, "summary_only") != 10 {
+            return Err(format!("render caps not reached: {packet}"));
+        }
+        let card = &packet["comments"][0];
+        // The placement mode is left to the schema, which pins it for
+        // gap-record cards; asserting it here would pre-empt that check.
+        if card["source"] != "gap_decision_ledger" || card.get("repair_card").is_none() {
+            return Err(format!(
+                "first card is not a gap-record card: {}",
+                card["id"]
+            ));
+        }
+        if packet["summary_only"][0].get("summary_reason").is_none() {
+            return Err("summary-only card carries no summary_reason".to_string());
+        }
+        assert_schema_valid(&packet, "eligible gap-ledger route packet")?;
+
+        // Discriminating negatives: the schema must reject the shapes #3913
+        // reported, applied to these same real bytes.
+        type Mutation = (&'static str, fn(&mut Value));
+        let mutations: [Mutation; 4] = [
+            ("unknown placement mode", |packet| {
+                packet["comments"][0]["placement"]["mode"] = json!("gap_record");
+            }),
+            ("gap card without gap_id", |packet| {
+                if let Some(card) = packet["comments"][0].as_object_mut() {
+                    card.remove("gap_id");
+                }
+            }),
+            ("undeclared suppressed field", |packet| {
+                packet["suppressed"][0]["seam"] = json!("s");
+            }),
+            ("undeclared envelope field", |packet| {
+                packet["gap_ledger_inputs"] = json!({});
+            }),
+        ];
+        for (name, mutate) in mutations {
+            let mut mutated = packet.clone();
+            mutate(&mut mutated);
+            if schema_violations(&mutated)?.is_empty() {
+                return Err(format!("the schema accepted a mutated packet: {name}"));
+            }
+        }
+        Ok(())
+    }
 }
