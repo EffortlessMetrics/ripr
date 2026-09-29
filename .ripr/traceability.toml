@@ -6324,6 +6324,13 @@ tests = [
   "crates/ripr/src/analysis/classify/reveal.rs::tests::return_value_whole_object_without_token_still_emits_observation_unverified",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_sibling_qualifier_does_not_clear_observation_unverified",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_variant_token_match_keeps_discriminate_yes",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::mutating_collection_a_while_asserting_b_stays_unverified",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::asserting_affected_collection_retains_confirmation_in_either_order",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::sibling_effect_whole_object_without_collection_identity_still_confirms",
+  "crates/ripr/src/analysis/classify/propagation_witness.rs::tests::direct_collection_push_completes_effect_target_and_rejects_wrong_observer",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::direct_collection_state_write_requires_complete_witness",
+  "crates/ripr/src/analysis/classify/flow.rs::tests::cache_insert_call_deletion_keeps_legacy_syntax_propagation",
+  "crates/ripr/src/analysis/test_grip_evidence.rs::tests::direct_collection_mutation_discriminates_actual_observer_not_sibling_collection",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::name_only_test_cannot_supply_the_oracle_for_reach_from_another_test"
 ]
 fixtures = [

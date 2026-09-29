@@ -1,7 +1,7 @@
 use super::super::rust_index::FunctionSummary;
 use super::propagation_witness::{
-    PropagationWitnessV1, complete_direct_witness, normalize_semantic_text,
-    valid_owner_bound_partial_witness,
+    PropagationWitnessV1, complete_direct_witness, is_direct_collection_state_write,
+    normalize_semantic_text, valid_owner_bound_partial_witness,
 };
 use super::text::exact_error_variant;
 use crate::domain::*;
@@ -80,11 +80,7 @@ pub(in crate::analysis) fn propagation_evidence_with_witness(
         );
     };
 
-    let direct_sink = matches!(
-        sink.kind,
-        FlowSinkKind::ReturnValue | FlowSinkKind::ErrorVariant | FlowSinkKind::StructField
-    );
-    if direct_sink && integrated_direct_family(&probe.family) {
+    if requires_complete_direct_witness(probe, sink) {
         if sink.owner.as_ref() == probe.owner.as_ref()
             && complete_direct_witness(probe, witness)
             && witness.is_some_and(|witness| {
@@ -120,6 +116,14 @@ pub(in crate::analysis) fn propagation_evidence_with_witness(
     }
 
     propagation_evidence(probe, flow_sinks)
+}
+
+fn requires_complete_direct_witness(probe: &Probe, sink: &FlowSinkFact) -> bool {
+    let value_direct = matches!(
+        sink.kind,
+        FlowSinkKind::ReturnValue | FlowSinkKind::ErrorVariant | FlowSinkKind::StructField
+    ) && integrated_direct_family(&probe.family);
+    value_direct || is_direct_collection_state_write(probe, sink)
 }
 
 fn integrated_direct_family(family: &ProbeFamily) -> bool {
@@ -1621,6 +1625,81 @@ mod tests {
         assert_eq!(sinks.len(), 1);
         // `self` receiver is NOT considered local-dropped — stays StateWrite
         assert_eq!(sinks[0].kind, FlowSinkKind::StateWrite);
+    }
+
+    #[test]
+    fn direct_collection_state_write_requires_complete_witness() {
+        let probe = probe(ProbeFamily::SideEffect, "items.push(5)", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StateWrite,
+            text: "items.push(5)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, witness.as_ref());
+        assert_eq!(evidence.state, StageState::Yes);
+        assert!(evidence.summary.contains("Complete propagation witness"));
+
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &sinks, None).state,
+            StageState::Weak
+        );
+
+        let mut invalid = witness.clone();
+        if let Some(witness) = invalid.as_mut() {
+            witness.semantic_digest = "sha256:invalid".to_string();
+        }
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &sinks, invalid.as_ref()).state,
+            StageState::Weak
+        );
+    }
+
+    #[test]
+    fn event_call_side_effect_keeps_legacy_syntax_propagation() {
+        let probe = probe(ProbeFamily::SideEffect, "events.publish(score)", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::EventCall,
+            text: "events.publish(score)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, None);
+        assert_eq!(evidence.state, StageState::Yes);
+        assert!(
+            evidence
+                .summary
+                .contains("Changed behavior appears to influence")
+        );
+    }
+
+    #[test]
+    fn cache_insert_call_deletion_keeps_legacy_syntax_propagation() {
+        // observation_verified_call_deletion: `cache.insert` shares a method
+        // name with Vec::insert and must not enter the #4575 push family.
+        let probe = probe(
+            ProbeFamily::CallDeletion,
+            "cache.insert(\"result_key\", result)",
+            2,
+        );
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StateWrite,
+            text: "cache.insert(\"result_key\", result)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, None);
+        assert_eq!(evidence.state, StageState::Yes);
+        assert!(
+            evidence
+                .summary
+                .contains("Changed behavior appears to influence")
+        );
+        assert!(
+            !evidence.summary.contains("Complete propagation witness"),
+            "admitting cache.insert would drift delivered CallDeletion goldens"
+        );
     }
 
     fn probe(family: ProbeFamily, expression: &str, line: usize) -> Probe {
