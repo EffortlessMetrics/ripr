@@ -18737,6 +18737,53 @@ fn doctor_probes_language_runtimes_outside_the_checkout() -> Result<(), String> 
     result
 }
 
+/// An unusable cache directory fails every file-fact lookup the same way.
+/// The build reports that once, not once per source file (#4888).
+#[test]
+fn unusable_cache_directory_is_reported_once_per_build() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("unusable-cache-dir");
+    std::fs::create_dir_all(&workspace)?;
+    let not_a_directory = workspace.join("cache-is-a-file");
+    std::fs::write(&not_a_directory, "not a directory\n")?;
+    let fixture = workspace_root().join("fixtures/boundary_gap");
+    let fixture_input = fixture.join("input").to_string_lossy().into_owned();
+    let diff = fixture.join("diff.patch").to_string_lossy().into_owned();
+    let output = run_command_with_env(
+        env!("CARGO_BIN_EXE_ripr"),
+        &workspace,
+        &[
+            "check",
+            "--root",
+            &fixture_input,
+            "--diff",
+            &diff,
+            "--format",
+            "json",
+        ],
+        &[("RIPR_CACHE_DIR", &not_a_directory.to_string_lossy())],
+    )?;
+    assert_success(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let cache_lines: Vec<&str> = stderr
+        .lines()
+        .filter(|line| line.contains("repo file fact cache entr"))
+        .collect();
+    assert_eq!(
+        cache_lines.len(),
+        1,
+        "expected one cache warning line, got {cache_lines:#?}"
+    );
+    // The fixture has more than one source file, so a per-file warning
+    // would have printed several lines; the one line names the count.
+    assert!(
+        cache_lines[0].contains("entries ignored; first: ("),
+        "the warning must name the count and the first reason: {}",
+        cache_lines[0]
+    );
+    ignore_remove_dir_all(&workspace);
+    Ok(())
+}
+
 /// docs/EXIT_CODES.md: a reader that closes stdout early gets a quiet exit 2
 /// (#4728). The reader closes before ripr writes anything, so the JSON write
 /// always meets the closed pipe.

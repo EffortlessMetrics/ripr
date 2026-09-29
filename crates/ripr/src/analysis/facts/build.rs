@@ -66,6 +66,10 @@ fn build_index_with_file_fact_cache(
     // Initialize once during lookup, before this build parses or stores facts.
     let mut known_cached_file_paths: Option<HashSet<PathBuf>> = None;
     let mut stats = FileFactCacheStats::default();
+    // One stderr line per build, not one per file: an unusable cache
+    // directory makes every lookup fail the same way, and a line per file
+    // buried the analysis output under hundreds of repeats (#4888).
+    let mut first_corrupt_reason: Option<String> = None;
 
     // Phase 1 (sequential): cache lookups decide which files need a
     // fresh parse. Hit/miss/invalidation stats and the corrupt-entry stderr
@@ -76,7 +80,11 @@ fn build_index_with_file_fact_cache(
     }
     let mut pending: Vec<Pending> = Vec::with_capacity(files.len());
     for (file, bytes) in files {
-        cancellation::checkpoint()?;
+        if let Err(err) = cancellation::checkpoint() {
+            // A cancelled lookup still reports the corrupt entries it found.
+            emit_corrupt_entries_warning(stats.corrupt_ignored, first_corrupt_reason.as_deref());
+            return Err(err);
+        }
         let key = RepoFileFactCacheKey::new(file, bytes);
         match cache.load_file_facts(&key) {
             CacheLoad::Hit(facts) => {
@@ -95,11 +103,12 @@ fn build_index_with_file_fact_cache(
             }
             CacheLoad::CorruptIgnored { reason } => {
                 stats.corrupt_ignored += 1;
-                eprintln!("ripr: repo file fact cache entry ignored ({reason})");
+                first_corrupt_reason.get_or_insert(reason);
                 pending.push(Pending::Parse { key });
             }
         }
     }
+    emit_corrupt_entries_warning(stats.corrupt_ignored, first_corrupt_reason.as_deref());
 
     // Phase 2 (parallel): parse cache misses on the rayon pool. Each parse
     // is independent; collecting an indexed parallel iterator preserves
@@ -168,6 +177,22 @@ fn build_index_with_file_fact_cache(
         index,
         file_fact_cache: stats,
     })
+}
+
+fn emit_corrupt_entries_warning(count: usize, first_reason: Option<&str>) {
+    if let Some(reason) = first_reason {
+        eprintln!("{}", corrupt_entries_warning(count, reason));
+    }
+}
+
+/// The build's single corrupt-cache-entry warning. A lone entry keeps the
+/// message it always had; several name the count and the first reason.
+fn corrupt_entries_warning(count: usize, first_reason: &str) -> String {
+    if count == 1 {
+        format!("ripr: repo file fact cache entry ignored ({first_reason})")
+    } else {
+        format!("ripr: {count} repo file fact cache entries ignored; first: ({first_reason})")
+    }
 }
 
 fn build_index_with_adapters(
@@ -325,6 +350,25 @@ fn insert_file_summary(index: &mut RustIndex, file: PathBuf, summary: super::Fil
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn corrupt_entries_collapse_into_one_warning_line() {
+        let one = super::corrupt_entries_warning(1, "read failed");
+        assert_eq!(
+            one,
+            "ripr: repo file fact cache entry ignored (read failed)"
+        );
+        let many = super::corrupt_entries_warning(723, "read failed: Not a directory");
+        assert_eq!(many.lines().count(), 1);
+        assert!(
+            many.starts_with("ripr: 723 repo file fact cache entries ignored;"),
+            "{many}"
+        );
+        assert!(
+            many.ends_with("first: (read failed: Not a directory)"),
+            "{many}"
+        );
+    }
+
     use super::*;
     use crate::analysis::syntax::{SyntaxNodeFact, TextRange};
     use std::cell::Cell;

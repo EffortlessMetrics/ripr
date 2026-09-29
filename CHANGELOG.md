@@ -42,6 +42,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- An unusable cache directory no longer prints one `repo file fact cache entry
+  ignored` line per source file. With `RIPR_CACHE_DIR` pointing at a file,
+  `ripr check` on this repository printed 723 identical-shape lines before the
+  one warning that mattered. A build now prints one line naming the count and
+  the first reason; a single bad entry keeps its old message (#4888).
 - An unchanged Rust test file that the reference parser refuses is no longer
   a silent related-test hole. If a classified owner consults that
   lexical-fallback file (the file contributed a related test, or it calls the
