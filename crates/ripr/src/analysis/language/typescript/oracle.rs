@@ -133,83 +133,122 @@ pub(crate) fn weak_oracle_recommendation(
 /// discriminators are often guarded by setup branches or cleanup blocks, so
 /// this recurses through common control-flow bodies while still staying
 /// syntax-only and conservative.
+///
+/// This form recognises only the Jest/Vitest and AVA shapes; the test
+/// extractor uses [`collect_assertions_in_statements_with_bindings`] so a
+/// file's imported assertion libraries (#4547) are credited too.
+#[cfg(test)]
 pub(crate) fn collect_expect_assertions_in_statements(
     statements: &oxc_allocator::Vec<'_, Statement<'_>>,
     source: &SourceText<'_>,
     receiver: Option<&str>,
 ) -> Vec<TypeScriptAssertion> {
+    collect_assertions_in_statements_with_bindings(
+        statements,
+        source,
+        receiver,
+        &TypeScriptAssertionBindings::default(),
+    )
+}
+
+/// Like [`collect_expect_assertions_in_statements`], but also credits
+/// `node:assert` / chai calls made through the file's module-level
+/// assertion-library `bindings` (#4547).
+pub(crate) fn collect_assertions_in_statements_with_bindings(
+    statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+    source: &SourceText<'_>,
+    receiver: Option<&str>,
+    bindings: &TypeScriptAssertionBindings,
+) -> Vec<TypeScriptAssertion> {
+    let context = AssertionContext { receiver, bindings };
     let mut out = Vec::new();
     for stmt in statements {
-        collect_expect_assertions_in_statement(stmt, source, receiver, &mut out);
+        collect_expect_assertions_in_statement(stmt, source, &context, &mut out);
     }
     out
 }
 
-/// Try the Jest `expect(...).matcher(...)` shape, then — when the test exposes
-/// an AVA-style callback receiver (`t`) — the `t.is(...)` shape.
+/// What a test body's assertions may be made through: the AVA-style callback
+/// receiver (`t`) and the file's imported assertion libraries.
+pub(crate) struct AssertionContext<'a> {
+    receiver: Option<&'a str>,
+    bindings: &'a TypeScriptAssertionBindings,
+}
+
+/// Try chai's BDD `expect(...).to.equal(...)` shape (only when the file binds
+/// chai's `expect`), the Jest `expect(...).matcher(...)` shape, then — when the
+/// test exposes an AVA-style callback receiver (`t`) — the `t.is(...)` shape,
+/// and finally a `node:assert` / chai `assert` call through an imported
+/// binding.
 fn assertion_from_expression_any(
     expr: &Expression<'_>,
     source: &SourceText<'_>,
-    receiver: Option<&str>,
+    context: &AssertionContext<'_>,
 ) -> Option<TypeScriptAssertion> {
-    expect_assertion_from_expression(expr, source)
-        .or_else(|| receiver.and_then(|r| ava_assertion_from_expression(expr, source, r)))
+    chai_expect_assertion_from_expression(expr, source, context.bindings)
+        .or_else(|| expect_assertion_from_expression(expr, source))
+        .or_else(|| {
+            context
+                .receiver
+                .and_then(|r| ava_assertion_from_expression(expr, source, r))
+        })
+        .or_else(|| module_assert_assertion_from_expression(expr, source, context.bindings))
 }
 
 pub(crate) fn collect_expect_assertions_in_statement(
     stmt: &Statement<'_>,
     source: &SourceText<'_>,
-    receiver: Option<&str>,
+    context: &AssertionContext<'_>,
     out: &mut Vec<TypeScriptAssertion>,
 ) {
     match stmt {
         Statement::BlockStatement(block) => {
-            collect_expect_assertions_from_statement_vec(&block.body, source, receiver, out);
+            collect_expect_assertions_from_statement_vec(&block.body, source, context, out);
         }
         Statement::ExpressionStatement(expr_stmt) => {
             if let Some(assertion) =
-                assertion_from_expression_any(&expr_stmt.expression, source, receiver)
+                assertion_from_expression_any(&expr_stmt.expression, source, context)
             {
                 out.push(assertion);
             }
         }
         Statement::ReturnStatement(return_stmt) => {
             if let Some(argument) = &return_stmt.argument
-                && let Some(assertion) = assertion_from_expression_any(argument, source, receiver)
+                && let Some(assertion) = assertion_from_expression_any(argument, source, context)
             {
                 out.push(assertion);
             }
         }
         Statement::IfStatement(if_stmt) => {
-            collect_expect_assertions_in_statement(&if_stmt.consequent, source, receiver, out);
+            collect_expect_assertions_in_statement(&if_stmt.consequent, source, context, out);
             if let Some(alternate) = &if_stmt.alternate {
-                collect_expect_assertions_in_statement(alternate, source, receiver, out);
+                collect_expect_assertions_in_statement(alternate, source, context, out);
             }
         }
         Statement::DoWhileStatement(do_while) => {
-            collect_expect_assertions_in_statement(&do_while.body, source, receiver, out);
+            collect_expect_assertions_in_statement(&do_while.body, source, context, out);
         }
         Statement::WhileStatement(while_stmt) => {
-            collect_expect_assertions_in_statement(&while_stmt.body, source, receiver, out);
+            collect_expect_assertions_in_statement(&while_stmt.body, source, context, out);
         }
         Statement::ForStatement(for_stmt) => {
-            collect_expect_assertions_in_statement(&for_stmt.body, source, receiver, out);
+            collect_expect_assertions_in_statement(&for_stmt.body, source, context, out);
         }
         Statement::ForInStatement(for_in) => {
-            collect_expect_assertions_in_statement(&for_in.body, source, receiver, out);
+            collect_expect_assertions_in_statement(&for_in.body, source, context, out);
         }
         Statement::ForOfStatement(for_of) => {
-            collect_expect_assertions_in_statement(&for_of.body, source, receiver, out);
+            collect_expect_assertions_in_statement(&for_of.body, source, context, out);
         }
         Statement::LabeledStatement(labeled) => {
-            collect_expect_assertions_in_statement(&labeled.body, source, receiver, out);
+            collect_expect_assertions_in_statement(&labeled.body, source, context, out);
         }
         Statement::SwitchStatement(switch_stmt) => {
             for case in &switch_stmt.cases {
                 collect_expect_assertions_from_statement_vec(
                     &case.consequent,
                     source,
-                    receiver,
+                    context,
                     out,
                 );
             }
@@ -218,28 +257,23 @@ pub(crate) fn collect_expect_assertions_in_statement(
             collect_expect_assertions_from_statement_vec(
                 &try_stmt.block.body,
                 source,
-                receiver,
+                context,
                 out,
             );
             if let Some(handler) = &try_stmt.handler {
                 collect_expect_assertions_from_statement_vec(
                     &handler.body.body,
                     source,
-                    receiver,
+                    context,
                     out,
                 );
             }
             if let Some(finalizer) = &try_stmt.finalizer {
-                collect_expect_assertions_from_statement_vec(
-                    &finalizer.body,
-                    source,
-                    receiver,
-                    out,
-                );
+                collect_expect_assertions_from_statement_vec(&finalizer.body, source, context, out);
             }
         }
         Statement::WithStatement(with_stmt) => {
-            collect_expect_assertions_in_statement(&with_stmt.body, source, receiver, out);
+            collect_expect_assertions_in_statement(&with_stmt.body, source, context, out);
         }
         _ => {}
     }
@@ -248,11 +282,11 @@ pub(crate) fn collect_expect_assertions_in_statement(
 pub(crate) fn collect_expect_assertions_from_statement_vec(
     statements: &oxc_allocator::Vec<'_, Statement<'_>>,
     source: &SourceText<'_>,
-    receiver: Option<&str>,
+    context: &AssertionContext<'_>,
     out: &mut Vec<TypeScriptAssertion>,
 ) {
     for stmt in statements {
-        collect_expect_assertions_in_statement(stmt, source, receiver, out);
+        collect_expect_assertions_in_statement(stmt, source, context, out);
     }
 }
 
@@ -319,6 +353,7 @@ pub(crate) fn expect_assertion_from_expression(
         expected_value_or_variant,
         has_dynamic_matcher_arg,
         oracle_confidence,
+        rendered_call: None,
     })
 }
 
@@ -385,6 +420,508 @@ pub(crate) fn ava_assertion_from_expression(
         expected_value_or_variant,
         has_dynamic_matcher_arg,
         oracle_confidence,
+        rendered_call: None,
+    })
+}
+
+/// `node:assert` module specifiers whose exports are assertion functions.
+const NODE_ASSERT_MODULES: [&str; 4] = [
+    "assert",
+    "node:assert",
+    "assert/strict",
+    "node:assert/strict",
+];
+
+/// The chai module specifier.
+const CHAI_MODULE: &str = "chai";
+
+/// Which assertion API a binding reaches; it decides how an equality method
+/// is graded (#4638 review).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AssertFlavor {
+    /// `node:assert/strict`, `assert/strict`, or the `strict` export: `equal`
+    /// / `deepEqual` are the strict (`Object.is` / deep-strict) comparisons.
+    NodeStrict,
+    /// Legacy `node:assert`: `equal` / `deepEqual` compare with loose `==`.
+    NodeLegacy,
+    /// chai's TDD `assert`: `equal` is loose `==`, `deepEqual` is strict deep
+    /// equality.
+    Chai,
+}
+
+/// Module-level bindings through which a test file reaches an assertion
+/// library that is not a test-callback receiver (#4547): `node:assert` (and
+/// its `/strict` variant) and chai's `assert` / `expect`.
+///
+/// Only names the file IMPORTS from one of those modules are recorded — an
+/// ESM import or a top-level `require(...)` binding — so a locally declared
+/// `assert` / `strictEqual` helper is never credited as an oracle.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct TypeScriptAssertionBindings {
+    /// Identifiers bound to an assert object (`assert.strictEqual(...)`),
+    /// whether the binding is itself the callable `assert(value)`, and the
+    /// API it reaches.
+    assert_objects: Vec<(String, bool, AssertFlavor)>,
+    /// Identifiers bound to a single assert method (`strictEqual`), with the
+    /// method they name and the API it comes from.
+    assert_methods: Vec<(String, String, AssertFlavor)>,
+    /// Identifiers bound to chai's `expect`.
+    chai_expects: Vec<String>,
+    /// Identifiers bound to the chai module (`chai.expect`, `chai.assert`).
+    chai_modules: Vec<String>,
+}
+
+impl TypeScriptAssertionBindings {
+    /// Collect the assertion-library bindings of a file from its extracted
+    /// `imports` plus top-level `require('<module>').<member>` declarations
+    /// (`const expect = require('chai').expect`), which the import extractor
+    /// does not record.
+    pub(crate) fn from_program(
+        statements: &oxc_allocator::Vec<'_, Statement<'_>>,
+        imports: &[TypeScriptImport],
+    ) -> Self {
+        let mut bindings = Self::default();
+        for import in imports {
+            bindings.bind(
+                &import.source,
+                import.imported.as_deref(),
+                import.namespace,
+                &import.local,
+            );
+        }
+        for stmt in statements {
+            let Statement::VariableDeclaration(decl) = stmt else {
+                continue;
+            };
+            for declarator in &decl.declarations {
+                let Some(init) = &declarator.init else {
+                    continue;
+                };
+                let Expression::StaticMemberExpression(member) = init.get_inner_expression() else {
+                    continue;
+                };
+                let Some(module) = require_string_literal_source(&member.object) else {
+                    continue;
+                };
+                let Some(local) = super::owners::binding_identifier_name(&declarator.id) else {
+                    continue;
+                };
+                bindings.bind(&module, Some(member.property.name.as_str()), false, local);
+            }
+        }
+        bindings
+    }
+
+    /// Record one `local` name bound to `imported` (`None` for an ESM
+    /// namespace import) of `module`.
+    fn bind(&mut self, module: &str, imported: Option<&str>, namespace: bool, local: &str) {
+        let local = local.to_string();
+        if NODE_ASSERT_MODULES.contains(&module) {
+            let flavor = if module.ends_with("/strict") {
+                AssertFlavor::NodeStrict
+            } else {
+                AssertFlavor::NodeLegacy
+            };
+            match imported {
+                // `import * as assert from 'node:assert'` — an object, not callable.
+                None => self.assert_objects.push((local, false, flavor)),
+                // Default export / whole-module `require` are the callable
+                // `assert` function of the module.
+                Some("default") => self.assert_objects.push((local, true, flavor)),
+                // The `strict` export is strict mode from either module.
+                Some("strict") => {
+                    self.assert_objects
+                        .push((local, true, AssertFlavor::NodeStrict));
+                }
+                Some(method) if !namespace && assert_method_is_recognized(method, flavor) => {
+                    self.assert_methods
+                        .push((local, method.to_string(), flavor));
+                }
+                Some(_) => {}
+            }
+        } else if module == CHAI_MODULE {
+            match imported {
+                None | Some("default") => self.chai_modules.push(local),
+                Some("assert") => self.assert_objects.push((local, true, AssertFlavor::Chai)),
+                Some("expect") => self.chai_expects.push(local),
+                Some(_) => {}
+            }
+        }
+    }
+
+    /// These bindings minus every local name `is_shadowed` reports as
+    /// re-declared closer to the assertion (#4638 review): a test-body
+    /// declaration, a test or describe callback parameter, or an enclosing
+    /// describe-body declaration. A shadowed name no longer reaches the
+    /// imported library, so crediting it would credit a local helper.
+    pub(crate) fn without_shadowed(&self, is_shadowed: impl Fn(&str) -> bool) -> Self {
+        Self {
+            assert_objects: self
+                .assert_objects
+                .iter()
+                .filter(|(local, _, _)| !is_shadowed(local))
+                .cloned()
+                .collect(),
+            assert_methods: self
+                .assert_methods
+                .iter()
+                .filter(|(local, _, _)| !is_shadowed(local))
+                .cloned()
+                .collect(),
+            chai_expects: self
+                .chai_expects
+                .iter()
+                .filter(|local| !is_shadowed(local))
+                .cloned()
+                .collect(),
+            chai_modules: self
+                .chai_modules
+                .iter()
+                .filter(|local| !is_shadowed(local))
+                .cloned()
+                .collect(),
+        }
+    }
+
+    /// Whether `name` is the local name of any recorded binding.
+    pub(crate) fn binds_local(&self, name: &str) -> bool {
+        self.assert_objects
+            .iter()
+            .any(|(local, _, _)| local == name)
+            || self
+                .assert_methods
+                .iter()
+                .any(|(local, _, _)| local == name)
+            || self.chai_expects.iter().any(|local| local == name)
+            || self.chai_modules.iter().any(|local| local == name)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.assert_objects.is_empty()
+            && self.assert_methods.is_empty()
+            && self.chai_expects.is_empty()
+            && self.chai_modules.is_empty()
+    }
+
+    fn assert_object(&self, name: &str) -> Option<(bool, AssertFlavor)> {
+        self.assert_objects
+            .iter()
+            .find(|(local, _, _)| local == name)
+            .map(|(_, callable, flavor)| (*callable, *flavor))
+    }
+
+    fn assert_method(&self, name: &str) -> Option<(&str, AssertFlavor)> {
+        self.assert_methods
+            .iter()
+            .find(|(local, _, _)| local == name)
+            .map(|(_, method, flavor)| (method.as_str(), *flavor))
+    }
+
+    /// The rendered receiver text and API when `expression` is an assert
+    /// object: `assert` or `chai.assert`.
+    fn assert_object_text(&self, expression: &Expression<'_>) -> Option<(String, AssertFlavor)> {
+        match expression {
+            Expression::Identifier(ident) => self
+                .assert_object(ident.name.as_str())
+                .map(|(_, flavor)| (ident.name.to_string(), flavor)),
+            Expression::StaticMemberExpression(member)
+                if member.property.name.as_str() == "assert" =>
+            {
+                let Expression::Identifier(module) = &member.object else {
+                    return None;
+                };
+                self.chai_modules
+                    .iter()
+                    .any(|local| local == module.name.as_str())
+                    .then(|| (format!("{}.assert", module.name), AssertFlavor::Chai))
+            }
+            _ => None,
+        }
+    }
+
+    /// The rendered callee text when `callee` is chai's `expect`: `expect` or
+    /// `chai.expect`.
+    fn chai_expect_text(&self, callee: &Expression<'_>) -> Option<String> {
+        match callee {
+            Expression::Identifier(ident) => self
+                .chai_expects
+                .iter()
+                .any(|local| local == ident.name.as_str())
+                .then(|| ident.name.to_string()),
+            Expression::StaticMemberExpression(member)
+                if member.property.name.as_str() == "expect" =>
+            {
+                let Expression::Identifier(module) = &member.object else {
+                    return None;
+                };
+                self.chai_modules
+                    .iter()
+                    .any(|local| local == module.name.as_str())
+                    .then(|| format!("{}.expect", module.name))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Map a `node:assert` / chai `assert` method to an oracle kind + strength
+/// (#4547). Positive strict equality pins the exact value; loose (`==`)
+/// equality, negated equality and pattern/containment checks stay
+/// relational; truthiness and error assertions stay smoke / broad. Unknown
+/// methods — including a method the binding's API does not have — return
+/// `Unknown` (fail-closed) and are not credited.
+///
+/// `equal` / `deepEqual` depend on the API (#4638 review): strict under
+/// `node:assert/strict`, loose `==` under legacy `node:assert`; chai's
+/// `equal` is loose while its `deepEqual` is strict deep equality.
+pub(crate) fn oracle_for_assert_method(
+    method: &str,
+    flavor: AssertFlavor,
+) -> (OracleKind, OracleStrength) {
+    let exact = (OracleKind::ExactValue, OracleStrength::Strong);
+    let relational = (OracleKind::RelationalCheck, OracleStrength::Weak);
+    let smoke = (OracleKind::SmokeOnly, OracleStrength::Smoke);
+    let broad_error = (OracleKind::BroadError, OracleStrength::Weak);
+    let chai = flavor == AssertFlavor::Chai;
+    match method {
+        "strictEqual" | "deepStrictEqual" => exact,
+        "equal" if flavor == AssertFlavor::NodeStrict => exact,
+        "deepEqual" if flavor != AssertFlavor::NodeLegacy => exact,
+        "equal" | "deepEqual" | "notStrictEqual" | "notDeepStrictEqual" | "notEqual"
+        | "notDeepEqual" | "match" => relational,
+        "doesNotMatch" if !chai => relational,
+        "notMatch" | "include" | "notInclude" | "lengthOf" if chai => relational,
+        "ok" => smoke,
+        "isTrue" | "isFalse" | "isOk" | "isNotOk" | "isNull" | "isUndefined" | "isDefined"
+            if chai =>
+        {
+            smoke
+        }
+        "throws" | "doesNotThrow" => broad_error,
+        "rejects" | "doesNotReject" if !chai => broad_error,
+        _ => (OracleKind::Unknown, OracleStrength::Unknown),
+    }
+}
+
+fn assert_method_is_recognized(method: &str, flavor: AssertFlavor) -> bool {
+    !matches!(
+        oracle_for_assert_method(method, flavor).0,
+        OracleKind::Unknown
+    )
+}
+
+/// Match a `node:assert` / chai `assert` call made through an imported
+/// binding (#4547): `assert.strictEqual(actual, expected)`,
+/// `chai.assert.equal(...)`, a bare named method `strictEqual(actual,
+/// expected)`, or the callable `assert(value)` (smoke). The receiver or callee
+/// must be a binding [`TypeScriptAssertionBindings`] recorded from an import,
+/// so a same-named local helper is not credited.
+pub(crate) fn module_assert_assertion_from_expression(
+    expr: &Expression<'_>,
+    source: &SourceText<'_>,
+    bindings: &TypeScriptAssertionBindings,
+) -> Option<TypeScriptAssertion> {
+    if bindings.is_empty() {
+        return None;
+    }
+    let expr = match expr {
+        Expression::AwaitExpression(await_expr) => &await_expr.argument,
+        _ => expr,
+    };
+    let Expression::CallExpression(call) = expr else {
+        return None;
+    };
+    let (method, flavor, callee_text) = match &call.callee {
+        Expression::Identifier(ident) => {
+            let name = ident.name.as_str();
+            match bindings.assert_object(name) {
+                Some((true, flavor)) => ("ok", flavor, name.to_string()),
+                _ => {
+                    let (method, flavor) = bindings.assert_method(name)?;
+                    (method, flavor, name.to_string())
+                }
+            }
+        }
+        Expression::StaticMemberExpression(member) => {
+            let (receiver, flavor) = bindings.assert_object_text(&member.object)?;
+            let method = member.property.name.as_str();
+            (method, flavor, format!("{receiver}.{method}"))
+        }
+        _ => return None,
+    };
+    let (oracle_kind, oracle_strength) = oracle_for_assert_method(method, flavor);
+    if matches!(oracle_kind, OracleKind::Unknown) {
+        return None;
+    }
+    // Argument order is (actual, expected[, message]). Only equality and
+    // relational methods carry an expected argument; a truthiness or error
+    // assertion's second argument is a message or error matcher.
+    let observed_expression = call
+        .arguments
+        .first()
+        .and_then(|arg| source_text_for_argument(arg, source));
+    let takes_expected = matches!(
+        oracle_kind,
+        OracleKind::ExactValue | OracleKind::RelationalCheck
+    );
+    let expected_arg = call.arguments.get(1).filter(|_| takes_expected);
+    let (expected_value_or_variant, has_dynamic_matcher_arg) =
+        expected_argument_metadata(expected_arg, source);
+    let oracle_confidence =
+        derive_oracle_confidence(&oracle_strength, &expected_value_or_variant, method);
+    Some(TypeScriptAssertion {
+        matcher: method.to_string(),
+        argument_count: call.arguments.len(),
+        line: source.line_for_offset(call.span.start as usize),
+        oracle_kind,
+        oracle_strength,
+        mock_payload: None,
+        error_payload: None,
+        observed_expression,
+        expected_value_or_variant,
+        has_dynamic_matcher_arg,
+        oracle_confidence,
+        rendered_call: Some(format!("{callee_text}(...)")),
+    })
+}
+
+/// `(expected literal text, is dynamic)` for an optional expected argument.
+fn expected_argument_metadata(
+    expected_arg: Option<&Argument<'_>>,
+    source: &str,
+) -> (Option<String>, bool) {
+    match expected_arg {
+        Some(arg) if is_literal_argument(arg) => (source_text_for_argument(arg, source), false),
+        Some(_) => (None, true),
+        None => (None, false),
+    }
+}
+
+/// chai BDD language chains that carry no assertion of their own, plus the
+/// `deep` / `not` flags.
+const CHAI_CHAIN_WORDS: [&str; 20] = [
+    "to", "be", "been", "is", "that", "which", "and", "has", "have", "with", "at", "of", "same",
+    "but", "does", "still", "also", "deep", "strict", "not",
+];
+
+/// Map a chai BDD terminal assertion to an oracle (#4547). `is_call`
+/// distinguishes a method assertion (`.equal(y)`) from a property assertion
+/// (`.true`); `negated` is set when the chain contains `.not`.
+fn oracle_for_chai_terminal(
+    terminal: &str,
+    is_call: bool,
+    negated: bool,
+) -> (OracleKind, OracleStrength) {
+    match (terminal, is_call) {
+        ("equal" | "equals" | "eq" | "eql" | "eqls", true) if !negated => {
+            (OracleKind::ExactValue, OracleStrength::Strong)
+        }
+        ("equal" | "equals" | "eq" | "eql" | "eqls", true) => {
+            (OracleKind::RelationalCheck, OracleStrength::Weak)
+        }
+        ("throw" | "throws" | "Throw", true) => (OracleKind::BroadError, OracleStrength::Weak),
+        (
+            "include" | "includes" | "contain" | "contains" | "match" | "matches" | "above"
+            | "below" | "least" | "most" | "lengthOf",
+            true,
+        ) => (OracleKind::RelationalCheck, OracleStrength::Weak),
+        ("true" | "false" | "ok" | "null" | "undefined" | "exist", false) => {
+            (OracleKind::SmokeOnly, OracleStrength::Smoke)
+        }
+        _ => (OracleKind::Unknown, OracleStrength::Unknown),
+    }
+}
+
+/// Match chai's BDD `expect(actual).to.equal(expected)` shape (#4547),
+/// including `.to.deep.equal(...)` / `.to.eql(...)` method assertions and
+/// `.to.be.true` property assertions. The `expect` callee must be chai's,
+/// bound through an import, so a Jest/Vitest `expect` is never read as chai.
+/// Any chain word or terminal outside the recognised table fails closed.
+pub(crate) fn chai_expect_assertion_from_expression(
+    expr: &Expression<'_>,
+    source: &SourceText<'_>,
+    bindings: &TypeScriptAssertionBindings,
+) -> Option<TypeScriptAssertion> {
+    if bindings.chai_expects.is_empty() && bindings.chai_modules.is_empty() {
+        return None;
+    }
+    let expr = match expr {
+        Expression::AwaitExpression(await_expr) => &await_expr.argument,
+        _ => expr,
+    };
+    let (terminal_member, terminal_call) = match expr {
+        Expression::CallExpression(call) => match &call.callee {
+            Expression::StaticMemberExpression(member) => (member, Some(call)),
+            _ => return None,
+        },
+        Expression::StaticMemberExpression(member) => (member, None),
+        _ => return None,
+    };
+    let terminal = terminal_member.property.name.as_str();
+    // Walk the language chain back to the `expect(...)` call.
+    let mut chain = Vec::new();
+    let mut cursor = &terminal_member.object;
+    let expect_call = loop {
+        match cursor {
+            Expression::StaticMemberExpression(member) => {
+                let word = member.property.name.as_str();
+                if !CHAI_CHAIN_WORDS.contains(&word) {
+                    return None;
+                }
+                chain.push(word);
+                cursor = &member.object;
+            }
+            Expression::CallExpression(call) => break call,
+            _ => return None,
+        }
+    };
+    let expect_text = bindings.chai_expect_text(&expect_call.callee)?;
+    chain.reverse();
+    let negated = chain.contains(&"not");
+    let (oracle_kind, oracle_strength) =
+        oracle_for_chai_terminal(terminal, terminal_call.is_some(), negated);
+    if matches!(oracle_kind, OracleKind::Unknown) {
+        return None;
+    }
+    let observed_expression = expect_call
+        .arguments
+        .first()
+        .and_then(|arg| source_text_for_argument(arg, source));
+    let takes_expected = matches!(
+        oracle_kind,
+        OracleKind::ExactValue | OracleKind::RelationalCheck
+    );
+    let expected_arg = terminal_call
+        .and_then(|call| call.arguments.first())
+        .filter(|_| takes_expected);
+    let (expected_value_or_variant, has_dynamic_matcher_arg) =
+        expected_argument_metadata(expected_arg, source);
+    let oracle_confidence =
+        derive_oracle_confidence(&oracle_strength, &expected_value_or_variant, terminal);
+    let mut rendered = format!("{expect_text}(...)");
+    for word in &chain {
+        rendered.push('.');
+        rendered.push_str(word);
+    }
+    rendered.push('.');
+    rendered.push_str(terminal);
+    if terminal_call.is_some() {
+        rendered.push_str("(...)");
+    }
+    let span_start = terminal_call.map_or(terminal_member.span.start, |call| call.span.start);
+    Some(TypeScriptAssertion {
+        matcher: terminal.to_string(),
+        argument_count: terminal_call.map_or(0, |call| call.arguments.len()),
+        line: source.line_for_offset(span_start as usize),
+        oracle_kind,
+        oracle_strength,
+        mock_payload: None,
+        error_payload: None,
+        observed_expression,
+        expected_value_or_variant,
+        has_dynamic_matcher_arg,
+        oracle_confidence,
+        rendered_call: Some(rendered),
     })
 }
 
@@ -755,6 +1292,9 @@ pub(crate) fn assertion_oracle_text(assertion: &TypeScriptAssertion) -> String {
     }
     if let Some(error_payload) = &assertion.error_payload {
         return error_payload.oracle_text();
+    }
+    if let Some(rendered_call) = &assertion.rendered_call {
+        return rendered_call.clone();
     }
     if is_execution_context_assertion_matcher(&assertion.matcher) {
         return format!("t.{}(...)", assertion.matcher);

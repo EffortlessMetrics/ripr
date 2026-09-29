@@ -95,6 +95,15 @@ Owners the adapter must recognise:
 - arrow functions assigned to a `const`/`let` (`const name = (...) => { ... }`)
 - class declarations and class methods
 - exported and default-exported variants of the above
+- top-level CommonJS assignment exports whose value is a function or arrow
+  (#4545): `exports.NAME = ...` and `module.exports.NAME = ...` (owner
+  `NAME`), `module.exports = function NAME(...)` or an arrow (the module's
+  default-export owner, `NAME` or `default`), and static-identifier function
+  properties of `module.exports = { ... }`; non-function values, computed or
+  string-literal keys, compound or chained assignments, and nested
+  assignments yield no owner; a name that more than one CommonJS export in
+  the same file defines (`module.exports = { f }` then
+  `module.exports.f = ...`) yields no owner for any of them
 - React-ish component functions when obvious (named PascalCase function
   declarations or PascalCase arrow consts returning JSX)
 - module-scope `const` initializers that participate in changed behavior
@@ -111,6 +120,20 @@ Test discovery:
 
 - `test(...)`, `it(...)`, and `describe(...)` blocks, including nested
   `describe` for hierarchical naming
+- mocha BDD `specify(...)` and `context(...)`, and the mocha TDD / Vitest /
+  `node:test` `suite(...)`, as test and describe roots with the same active
+  modifiers (`.only`, `.concurrent`, `.sequential`); `.skip`, `xit`, and
+  `xcontext` register nothing (#4548)
+- an options object between the title and the callback
+  (`it(name, { timeout }, fn)`, `describe(name, { concurrency }, fn)`); a
+  trailing timeout (`test(name, fn, 5000)`) keeps argument 1 as the callback;
+  an options object (before or after the callback) whose `skip` / `todo` /
+  `fails` key holds anything but literal `false` / `undefined`, or that
+  holds a spread, computed key, or method, registers nothing, exactly like
+  `.skip`
+- a `describe` / `context` / `suite` whose title is not a string literal
+  (`describe(Div.name, fn)`, a template literal): its body is walked and the
+  suite is named by the computed-title placeholder `<computed title, line N>`
 - Jest/Vitest `test.each`, `it.each`, and table-driven variants when
   syntactically identifiable
 - `test(...)`, `it(...)`, and `describe(...)` registered inside a `for`,
@@ -157,6 +180,35 @@ Assertions / oracles the adapter must recognise:
   snapshot oracle (weak / static-limited)
 - bare `expect(actual).toBeTruthy()` / `toBeFalsy()` /
   `toBeDefined()` → smoke oracle
+- assertion libraries reached through a binding the test file imports from
+  `assert`, `node:assert`, `assert/strict`, `node:assert/strict`, or `chai`
+  (ESM import, top-level `require(...)`, or `require('chai').expect`; #4547):
+  `assert.strictEqual` / `deepStrictEqual` → exact-value oracle; `equal` /
+  `deepEqual` → exact-value only in strict mode (bound from `assert/strict`,
+  `node:assert/strict`, or the `strict` export) and relational under legacy
+  `node:assert`, whose `==` comparison is loose; chai `assert.equal` (loose
+  `==`) → relational and chai `assert.deepEqual` (strict deep equality) →
+  exact-value; `notStrictEqual` / `notDeepStrictEqual` / `notEqual` /
+  `notDeepEqual` / `match`, `node:assert` `doesNotMatch`, and chai `notMatch`
+  / `include` / `notInclude` / `lengthOf` → relational; `ok`, chai `isTrue` /
+  `isFalse` / `isOk` / `isNotOk` / `isNull` / `isUndefined` / `isDefined`,
+  and the bare callable `assert(value)` → smoke; `throws` / `doesNotThrow`
+  and `node:assert` `rejects` / `doesNotReject` → broad error-path oracle. A
+  method the bound API does not have (a chai-only method on `node:assert`, or
+  the reverse) is not credited. A named method import (`strictEqual(a, b)`)
+  maps the same way as the module it comes from. A binding re-declared in the
+  test body, as a test or describe callback parameter, or in an enclosing
+  describe body is shadowed and not credited; a first test-callback
+  parameter with that name is not read as an AVA / tape receiver either.
+  chai
+  `expect(x).to.equal(y)` / `.to.eql(y)` /
+  `.to.deep.equal(y)` → exact-value (relational under `.not`);
+  `.to.be.true` / `.false` / `.ok` / `.null` / `.undefined` → smoke;
+  `.to.throw(...)` → broad error; `.include` / `.contain` / `.match` /
+  `.above` / `.below` / `.lengthOf` → relational. The observed expression is
+  the first (actual) argument. A same-named local helper and a Jest/Vitest
+  `expect` are never read as these libraries, and unrecognised methods or
+  chain words are not credited
 
 The 0.8.1 Bun UB advisory lane also permits internal, evidence-only
 TypeScript facts for the configured Bun bridge calibration routes: syntactic

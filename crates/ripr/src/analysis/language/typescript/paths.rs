@@ -71,6 +71,17 @@ pub(crate) fn line_for_offset(source: &str, offset: usize) -> usize {
     line
 }
 
+/// Whether an import specifier is relative: `./x`, `../x`, or the bare
+/// current / parent directory `.` / `..` (`require('..')`, #4546). The one
+/// predicate every resolver and disclosure uses, so `.` / `..` cannot be
+/// relative to one site and a bare package or alias to another.
+pub(crate) fn is_relative_specifier(specifier: &str) -> bool {
+    specifier == "."
+        || specifier == ".."
+        || specifier.starts_with("./")
+        || specifier.starts_with("../")
+}
+
 pub(crate) fn normalized_path(path: &Path) -> String {
     let mut normalized = path.to_string_lossy().replace('\\', "/");
     while let Some(stripped) = normalized.strip_prefix("./") {

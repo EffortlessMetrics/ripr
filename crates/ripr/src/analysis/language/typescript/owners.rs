@@ -1,6 +1,7 @@
 //! Owner extraction for the TypeScript preview adapter.
 
 use super::*;
+use oxc_ast::ast::{AssignmentOperator, AssignmentTarget, PropertyKind, StaticMemberExpression};
 
 pub(crate) fn extract_owners(file: &Path, source: &str) -> Vec<TypeScriptOwner> {
     // Parse (and walk) on the dedicated large-stack worker behind the
@@ -16,10 +17,17 @@ pub(crate) fn extract_owners(file: &Path, source: &str) -> Vec<TypeScriptOwner> 
         // One line index per source; every owner line below is a binary
         // search against it rather than a rescan from byte 0.
         let source = &SourceText::new(source);
+        // `(owner, is a CommonJS assignment export)`, in source order.
         let mut owners = Vec::new();
         for stmt in &ret.program.body {
-            owners.extend(owners_from_statement(stmt, file, source, &imports));
+            let commonjs = matches!(stmt, Statement::ExpressionStatement(_));
+            owners.extend(
+                owners_from_statement(stmt, file, source, &imports)
+                    .into_iter()
+                    .map(|owner| (owner, commonjs)),
+            );
         }
+        let mut owners = without_reassigned_commonjs_exports(owners);
         let entries = module_entries_by_owner(&ret.program.body, source);
         for owner in &mut owners {
             if owner.class_name.is_none()
@@ -69,7 +77,190 @@ pub(crate) fn owners_from_statement(
     if let Statement::ExportDefaultDeclaration(export) = stmt {
         return owners_from_default_export(&export.declaration, file, source, imports);
     }
+    if let Statement::ExpressionStatement(expression) = stmt {
+        return owners_from_commonjs_export(&expression.expression, file, source, imports);
+    }
     owners_from_statement_declaration(stmt, file, source, imports)
+}
+
+/// Owners carved from a top-level CommonJS assignment export (#4545):
+///
+/// - `exports.NAME = function ... / arrow` and
+///   `module.exports.NAME = function ... / arrow` yield an owner named by the
+///   static property `NAME`;
+/// - `module.exports = function NAME(...) ... / arrow` yields the module's
+///   default-export owner (named by the function id, else `default`), the
+///   CommonJS mirror of `export default function`;
+/// - `module.exports = { NAME() {}, NAME: function () {}, NAME: () => ... }`
+///   yields one owner per static-identifier key whose value is a function.
+///
+/// Anything else — a non-function value, a computed or string-literal
+/// property, a compound operator, a chained assignment, a getter/setter or
+/// spread entry — yields no owner (fail-closed: no invented owner).
+fn owners_from_commonjs_export(
+    expression: &Expression<'_>,
+    file: &Path,
+    source: &SourceText<'_>,
+    imports: &[TypeScriptImport],
+) -> Vec<TypeScriptOwner> {
+    let Expression::AssignmentExpression(assign) = expression else {
+        return Vec::new();
+    };
+    if assign.operator != AssignmentOperator::Assign {
+        return Vec::new();
+    }
+    let AssignmentTarget::StaticMemberExpression(target) = &assign.left else {
+        return Vec::new();
+    };
+    let property = target.property.name.as_str();
+    let named_export_object = match &target.object {
+        // `exports.NAME = ...`
+        Expression::Identifier(object) => object.name == "exports",
+        // `module.exports.NAME = ...`
+        Expression::StaticMemberExpression(object) => is_module_exports(object),
+        _ => false,
+    };
+    if named_export_object {
+        return commonjs_function_owner(
+            &assign.right,
+            property,
+            assign.span.start,
+            file,
+            source,
+            imports,
+        )
+        .into_iter()
+        .collect();
+    }
+    if !is_module_exports(target) {
+        return Vec::new();
+    }
+    // `module.exports = ...`
+    match &assign.right {
+        Expression::FunctionExpression(func) => {
+            let name = func
+                .id
+                .as_ref()
+                .map(|id| id.name.as_str())
+                .unwrap_or("default");
+            commonjs_function_owner(
+                &assign.right,
+                name,
+                assign.span.start,
+                file,
+                source,
+                imports,
+            )
+            .map(|mut owner| {
+                owner.exported_as_default = true;
+                vec![owner]
+            })
+            .unwrap_or_default()
+        }
+        Expression::ArrowFunctionExpression(_) => commonjs_function_owner(
+            &assign.right,
+            "default",
+            assign.span.start,
+            file,
+            source,
+            imports,
+        )
+        .map(|mut owner| {
+            owner.exported_as_default = true;
+            vec![owner]
+        })
+        .unwrap_or_default(),
+        Expression::ObjectExpression(object) => object
+            .properties
+            .iter()
+            .filter_map(|property| {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return None;
+                };
+                if property.computed || property.kind != PropertyKind::Init {
+                    return None;
+                }
+                let name = property_key_name(&property.key)?;
+                commonjs_function_owner(
+                    &property.value,
+                    &name,
+                    property.span.start,
+                    file,
+                    source,
+                    imports,
+                )
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Drop every CommonJS export owner whose name another CommonJS export in
+/// the same file also defines (#4638 review). `module.exports = { f: fn }`
+/// followed by `module.exports.f = ...` leaves only the last value live, but
+/// which one runs depends on statement order and control flow the syntax
+/// walk does not model; crediting the dead one would report an exposure for
+/// code no test reaches. Fail-closed: no owner for a reassigned export.
+fn without_reassigned_commonjs_exports(
+    owners: Vec<(TypeScriptOwner, bool)>,
+) -> Vec<TypeScriptOwner> {
+    let commonjs_names: Vec<String> = owners
+        .iter()
+        .filter(|(_, commonjs)| *commonjs)
+        .map(|(owner, _)| owner.name.clone())
+        .collect();
+    owners
+        .into_iter()
+        .filter(|(owner, commonjs)| {
+            !*commonjs
+                || commonjs_names
+                    .iter()
+                    .filter(|name| **name == owner.name)
+                    .count()
+                    == 1
+        })
+        .map(|(owner, _)| owner)
+        .collect()
+}
+
+/// `module.exports` as a static member expression on the bare `module`
+/// identifier.
+fn is_module_exports(member: &StaticMemberExpression<'_>) -> bool {
+    member.property.name == "exports"
+        && matches!(&member.object, Expression::Identifier(object) if object.name == "module")
+}
+
+/// A function owner for a CommonJS export value: `function ...` or an arrow;
+/// any other value yields `None`.
+fn commonjs_function_owner(
+    value: &Expression<'_>,
+    name: &str,
+    owner_start: u32,
+    file: &Path,
+    source: &SourceText<'_>,
+    imports: &[TypeScriptImport],
+) -> Option<TypeScriptOwner> {
+    match value {
+        Expression::FunctionExpression(func) => Some(owner_from_function(
+            file,
+            source,
+            name,
+            func,
+            function_owner_kind(file, source, name, func.span.start, func.span.end),
+            false,
+            imports,
+        )),
+        Expression::ArrowFunctionExpression(arrow) => Some(owner_from_arrow(
+            file,
+            source,
+            name,
+            arrow,
+            owner_start,
+            false,
+            imports,
+        )),
+        _ => None,
+    }
 }
 
 pub(crate) fn owners_from_statement_declaration(

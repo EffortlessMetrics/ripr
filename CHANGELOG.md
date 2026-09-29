@@ -95,6 +95,57 @@ are scoped or reviewed.
   CLI route that analyzes the diff. Before, only `initialize` carried them.
   Workspace status no longer says a `ripr.toml` is detected when the root has
   none; that limitation now appears only when one was found.
+- TypeScript: when a test imports the changed function through an alias
+  ripr could not resolve, such as `@/lib/math` with
+  `[typescript] resolve_tsconfig_paths` unset, `ripr check` no longer says
+  no test references the function and asks for a new test. The missing
+  discriminator and next step now name the test, the import path and why it
+  was not resolved, with the same fix the limitation evidence gives. The
+  finding stays `no_static_path`. (#4550)
+- TypeScript: `[typescript] resolve_tsconfig_paths` now reads
+  `tsconfig.json` and `jsconfig.json` the way `tsc` does, with `//` and
+  `/* */` comments, trailing commas and a leading byte-order mark. Before, any comment (and
+  `tsc --init` output is mostly comments) made alias resolution give up, and
+  the finding told users to rewrite the file as strict JSON. Malformed
+  files, including an unclosed block comment, still resolve no aliases and
+  say the file could not be parsed. (#4549)
+- TypeScript/JavaScript preview: a test that loads its subject by directory,
+  such as `var mimeTypes = require('..')`, now relates to the owner. `.` and
+  `..` were not treated as relative specifiers, and a directory specifier did
+  not resolve to the module it loads, so ripr reported `no_static_path` for
+  code the test calls. A directory now resolves through its `package.json`
+  `main`, else its `index` file; a sibling file module still wins, and a
+  root-escaping or unresolvable `main` keeps the specifier unresolved.
+  (#4546)
+- TypeScript/JavaScript preview: a change inside a CommonJS export such as
+  `exports.thrice = function thrice(x) { ... }` now maps to an owner. These
+  assignments produced no owner, so the changed line yielded zero candidates
+  and `no_behavioral_candidates`. `exports.NAME` / `module.exports.NAME`
+  functions and arrows, `module.exports = function ...`, and function
+  properties of `module.exports = { ... }` are now owners that `require()`
+  tests relate to; non-function values and computed keys still produce none,
+  and an export name assigned twice in one file produces no owner. (#4545)
+- TypeScript/JavaScript preview: mocha, `node:test` and Vitest suites written
+  with `context`, `suite` or `specify`, with an options object before the
+  callback (`it(name, { timeout }, fn)`), or with a `describe` title that is
+  not a string literal (`describe(Div.name, fn)`) were skipped, so their tests
+  were never related to the code they cover. These forms are now walked like
+  `describe` / `it`; `.skip`, `xit` and `xcontext` stay uncredited, as does
+  a registration whose options object skips it (`{ skip: true }`,
+  `{ todo: true }`, Vitest `{ fails: true }`), and `test(name, fn, timeout)`
+  is unchanged (#4548).
+- TypeScript/JavaScript preview: tests that assert with `node:assert` or
+  chai now count as oracles. `assert.strictEqual(charset('text/html'),
+  'UTF-8')` in a mocha suite was read as an `unknown` oracle, and ripr
+  suggested adding `toBe`. Assertions made through an imported `assert`,
+  `node:assert`, `assert/strict` or chai binding now map to exact-value,
+  relational, smoke or broad-error evidence, including bare named imports
+  (`strictEqual(a, b)`) and chai `expect(x).to.equal(y)` chains. Loose
+  `==` equality (legacy `node:assert` `equal` / `deepEqual`, chai
+  `assert.equal`) counts as relational, not exact-value. A local helper
+  named `assert`, or an imported binding re-declared in the test or its
+  suite, is still not credited, and Jest/Vitest `expect` is unchanged
+  (#4547).
 - `ripr rerun --changed-test` with an unknown test node, an unparsed test
   file, or an ambiguous owner now returns the documented `limited` report
   (`changed_test_unresolved`, `changed_test_owner_unresolved`,

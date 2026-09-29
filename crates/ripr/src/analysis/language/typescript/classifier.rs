@@ -2382,7 +2382,7 @@ pub(crate) fn classify_change(
 
 /// Like [`classify_change`], but carries the typed flag-ON alias-map load gap
 /// (#4106-B) so the `typescript_path_alias_unresolved` advice names the real
-/// fail-closed cause (missing / unparseable / JSONC / `extends` / unreadable
+/// fail-closed cause (missing / unparseable / `extends` / unreadable
 /// config) instead of telling the user to enable a flag that is already on.
 #[allow(
     clippy::too_many_arguments,
@@ -2447,14 +2447,13 @@ pub(crate) fn classify_change_with_alias_state(
         .iter()
         .map(|c| c.test.file.clone())
         .collect();
-    let named_limitations_from_alias: Vec<TypeScriptNamedLimitation> =
-        named_limitations_for_alias_unresolved(
-            owner,
-            all_tests,
-            |test| credited_test_files.contains(&test.file),
-            alias_map,
-            alias_unavailable,
-        );
+    let alias_gap: Option<TsAliasGapDisclosure> = alias_gap_for_unresolved_import(
+        owner,
+        all_tests,
+        |test| credited_test_files.contains(&test.file),
+        alias_map,
+        alias_unavailable,
+    );
     // Ghost relative import disclosure (#4104-C): when an uncredited test
     // name-calls the owner through a relative specifier that resolves to no
     // workspace file, the exclusion is correct but was silent — name it.
@@ -2566,7 +2565,13 @@ pub(crate) fn classify_change_with_alias_state(
             StageState::No,
             StageState::No,
             StageState::No,
-            vec![no_static_path_missing(owner)],
+            // #4550: an uncredited owner import through an unresolved
+            // alias is the more specific no-reach cause; name it instead of
+            // claiming no test references the owner.
+            vec![match &alias_gap {
+                Some(gap) => gap.no_static_path_missing(&owner.name),
+                None => no_static_path_missing(owner),
+            }],
         )
     } else if !has_oracle_eligible_relation {
         (
@@ -2760,9 +2765,10 @@ pub(crate) fn classify_change_with_alias_state(
         ExposureClass::Exposed => {
             "TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.".to_string()
         }
-        ExposureClass::NoStaticPath => {
-            no_static_path_recommendation(owner)
-        }
+        ExposureClass::NoStaticPath => match &alias_gap {
+            Some(gap) => gap.no_static_path_recommendation(),
+            None => no_static_path_recommendation(owner),
+        },
         // Owner-call evidence with a named missing discriminator takes
         // precedence over the relation note: the oracle classification is
         // independent of relation credit, so the next step names the proof
@@ -2826,13 +2832,13 @@ pub(crate) fn classify_change_with_alias_state(
     }
     // Emit additive named limitation evidence lines (RIPR-SPEC-0085 §PR4/PR6).
     // These lines are ADDITIVE — they do not change any existing field value.
-    // `named_limitations_from_alias` fires on the always-on alias-gap disclosure
+    // `alias_gap` fires on the always-on alias-gap disclosure
     // (RIPR-SPEC-0099): non-relative name-matched imports that were not credited.
     for named_limit in named_limitations_from_static
         .iter()
         .chain(named_limitations_from_oracle.iter())
         .chain(named_limitations_from_ownership.iter())
-        .chain(named_limitations_from_alias.iter())
+        .chain(alias_gap.iter().map(|gap| &gap.limitation))
         .chain(named_limitations_from_spy.iter())
         .chain(named_limitations_from_relative_import.iter())
     {

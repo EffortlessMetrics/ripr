@@ -44,6 +44,7 @@ fn smoke_assertion() -> TypeScriptAssertion {
         expected_value_or_variant: None,
         has_dynamic_matcher_arg: false,
         oracle_confidence: OracleConfidence::Low,
+        rendered_call: None,
     }
 }
 
@@ -109,6 +110,7 @@ fn mock_interaction_test_for(owner_name: &str) -> TypeScriptTest {
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -149,6 +151,7 @@ fn direct_test_with_assertion(
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Unknown,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -183,6 +186,7 @@ fn heuristic_name_test_for(owner_name: &str) -> TypeScriptTest {
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -4282,6 +4286,7 @@ fn classify_change_returns_exposed_when_related_test_has_strong_oracle() -> Resu
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -4359,6 +4364,7 @@ fn classify_change_exposed_t_assertion_uses_execution_context_label() -> Result<
             expected_value_or_variant: Some("90".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -6259,6 +6265,7 @@ fn named_limitation_mock_only_observer_emitted_for_mocked_module_static_limit() 
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: vec!["./api".to_string()],
         scope_bindings: Vec::new(),
@@ -6350,6 +6357,7 @@ fn named_limitation_import_graph_unresolved_emitted_for_missing_import_graph() -
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Low,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -6598,6 +6606,7 @@ fn named_limitation_oracle_based_not_emitted_for_heuristic_only_relation() -> Re
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -6815,7 +6824,11 @@ fn ava_test_call_threads_callback_receiver() {
         });
     assert!(call.is_some(), "expected a test() call expression");
     let Some(call) = call else { return };
-    let result = test_name_and_assertions_from_call(call, &SourceText::new(source));
+    let result = test_name_and_assertions_from_call(
+        call,
+        &SourceText::new(source),
+        &TypeScriptAssertionBindings::default(),
+    );
     assert!(result.is_some(), "should recognize the AVA test call");
     let Some((name, assertions)) = result else {
         return;
@@ -7021,6 +7034,7 @@ fn named_limitation_dynamic_assertion_emitted_for_dynamic_matcher_arg() -> Resul
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: true,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -7088,6 +7102,7 @@ fn named_limitation_table_case_emitted_for_table_dynamic_matcher_arg() -> Result
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: true,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -7157,6 +7172,7 @@ fn named_limitation_dynamic_assertion_not_emitted_for_heuristic_only_relation() 
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: true,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -7509,6 +7525,7 @@ fn named_limitation_target_unresolved_emitted_for_cross_package_reference() -> R
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -7707,6 +7724,7 @@ fn ts_swallowed_console_log_exposed_downgrade() -> Result<(), String> {
                 expected_value_or_variant: Some("90".to_string()),
                 has_dynamic_matcher_arg: false,
                 oracle_confidence: OracleConfidence::High,
+                rendered_call: None,
             },
             TypeScriptAssertion {
                 matcher: "toBe".to_string(),
@@ -7720,6 +7738,7 @@ fn ts_swallowed_console_log_exposed_downgrade() -> Result<(), String> {
                 expected_value_or_variant: Some("45".to_string()),
                 has_dynamic_matcher_arg: false,
                 oracle_confidence: OracleConfidence::High,
+                rendered_call: None,
             },
         ],
         mocks_in_file: Vec::new(),
@@ -7814,6 +7833,7 @@ fn ts_returnvalue_genuinely_observed_control() -> Result<(), String> {
             expected_value_or_variant: Some("90".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -7899,6 +7919,7 @@ fn ts_returnvalue_unrelated_strong_assertion_downgrades() -> Result<(), String> 
             expected_value_or_variant: Some("'2024-01-01'".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -7984,6 +8005,7 @@ fn ts_returnvalue_owner_call_observation_stays_exposed() -> Result<(), String> {
             expected_value_or_variant: Some("88".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -8067,6 +8089,7 @@ fn ts_returnvalue_owner_aliased_local_observation_stays_exposed() -> Result<(), 
             expected_value_or_variant: Some("88".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -8150,6 +8173,7 @@ fn ts_returnvalue_unrelated_aliased_local_observation_downgrades() -> Result<(),
             expected_value_or_variant: Some("'2024-01-01'".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -8235,6 +8259,7 @@ fn ts_sibling_assertion_non_owner_prevents_downgrade() -> Result<(), String> {
                 expected_value_or_variant: Some("90".to_string()),
                 has_dynamic_matcher_arg: false,
                 oracle_confidence: OracleConfidence::High,
+                rendered_call: None,
             },
             TypeScriptAssertion {
                 matcher: "toBe".to_string(),
@@ -8249,6 +8274,7 @@ fn ts_sibling_assertion_non_owner_prevents_downgrade() -> Result<(), String> {
                 expected_value_or_variant: Some("true".to_string()),
                 has_dynamic_matcher_arg: false,
                 oracle_confidence: OracleConfidence::High,
+                rendered_call: None,
             },
         ],
         mocks_in_file: Vec::new(),
@@ -8328,6 +8354,7 @@ fn ts_field_construction_observed_control() -> Result<(), String> {
             expected_value_or_variant: Some("{ timeout: 5000 }".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -8412,6 +8439,7 @@ fn ts_fieldconstruction_unrelated_strong_assertion_downgrades() -> Result<(), St
             expected_value_or_variant: Some("'2024-01-01'".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -8566,6 +8594,7 @@ fn ts_side_effect_observed_by_mock_expectation_stays_exposed() -> Result<(), Str
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -8651,6 +8680,7 @@ fn ts_side_effect_includes_template_word_does_not_confirm() -> Result<(), String
             expected_value_or_variant: Some("true".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -8710,6 +8740,7 @@ fn strong_be_assertion() -> TypeScriptAssertion {
         expected_value_or_variant: Some("90".to_string()),
         has_dynamic_matcher_arg: false,
         oracle_confidence: OracleConfidence::High,
+        rendered_call: None,
     }
 }
 
@@ -8882,6 +8913,131 @@ fn tsconfig_alias_resolution_flag_off_stays_no_static_path_with_disclosure() -> 
     assert_evidence_contains(
         &finding,
         "typescript_limitation: typescript_path_alias_unresolved",
+    );
+    Ok(())
+}
+
+/// #4550: when the only test that plausibly reaches the owner imports it
+/// through an alias ripr did not resolve, the no-reach `missing` summary and
+/// next step name that import and the limitation's own recovery instead of
+/// claiming no test references the owner. A finding without the limitation
+/// keeps the generic text. The class stays `no_static_path` either way.
+#[test]
+fn unresolved_alias_import_names_the_import_in_no_reach_text() -> Result<(), String> {
+    let owner = TypeScriptOwner {
+        name: "applyDiscount".to_string(),
+        file: PathBuf::from("src/owner.ts"),
+        start_line: 1,
+        end_line: 1,
+        owner_kind: OwnerKind::Function,
+        class_name: None,
+        decorated: false,
+        exported_as_default: false,
+        class_default_export: false,
+        arity: None,
+        params: Vec::new(),
+        source_text: None,
+        imports: Vec::new(),
+        method_kind: TypeScriptMethodKind::Ordinary,
+        module_entries: Vec::new(),
+    };
+    let test_importing = |source: &str, imported: &str, body: &str| TypeScriptTest {
+        name: "discounts".to_string(),
+        local_name: "discounts".to_string(),
+        describe_names: Vec::new(),
+        file: PathBuf::from("src/owner.test.ts"),
+        line: 1,
+        body_text: body.to_string(),
+        assertions: vec![strong_be_assertion()],
+        mocks_in_file: Vec::new(),
+        scope_bindings: Vec::new(),
+        imports_in_file: vec![TypeScriptImport {
+            source: source.to_string(),
+            imported: Some(imported.to_string()),
+            local: imported.to_string(),
+            namespace: false,
+        }],
+    };
+    let all_owners = [owner];
+    let classify = |tests: &[TypeScriptTest]| {
+        classify_change(
+            Path::new("src/owner.ts"),
+            1,
+            "return a - b;",
+            &all_owners,
+            tests,
+            None,
+            &ReExportIndex::empty(),
+            None, // flag OFF
+        )
+        .ok_or_else(|| "expected a finding".to_string())
+    };
+
+    let finding = classify(&[test_importing(
+        "@/owner",
+        "applyDiscount",
+        "const result = applyDiscount(100, 10);\nexpect(result).toBe(90);",
+    )])?;
+    assert_eq!(finding.class, ExposureClass::NoStaticPath);
+    assert_evidence_contains(
+        &finding,
+        "typescript_limitation: typescript_path_alias_unresolved",
+    );
+    let missing = finding
+        .missing
+        .first()
+        .ok_or("expected a missing summary")?;
+    assert!(
+        missing.starts_with(
+            "Test `discounts` imports `applyDiscount` through non-relative specifier `@/owner`, which ripr did not resolve"
+        ) && missing.contains("`[typescript] resolve_tsconfig_paths` is unset or false"),
+        "missing must name the import and the typed cause, got: {missing}"
+    );
+    assert!(
+        !finding
+            .missing
+            .iter()
+            .any(|line| line.contains("add a test that calls the changed owner")),
+        "missing must not tell the user to add a test that already exists: {:?}",
+        finding.missing
+    );
+    let next = finding
+        .recommended_next_step
+        .as_deref()
+        .ok_or("expected a next step")?;
+    assert!(
+        next.contains("test `discounts` imports `applyDiscount` through `@/owner`")
+            && next.contains("set `[typescript] resolve_tsconfig_paths = true` for credit"),
+        "next step must name the import and the recovery, got: {next}"
+    );
+
+    // Negative control: a test that neither imports nor calls the owner
+    // carries no alias limitation, so the generic no-reach text stays.
+    let finding = classify(&[test_importing(
+        "lodash",
+        "debounce",
+        "expect(debounce(1)).toBe(1);",
+    )])?;
+    assert_eq!(finding.class, ExposureClass::NoStaticPath);
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|line| line.contains("typescript_path_alias_unresolved")),
+        "control must not carry the alias limitation: {:?}",
+        finding.evidence
+    );
+    assert_eq!(
+        finding.missing.first().map(String::as_str),
+        Some("No test references `applyDiscount(` — add a test that calls the changed owner.")
+    );
+    assert!(
+        finding
+            .recommended_next_step
+            .as_deref()
+            .is_some_and(|next| next.contains("no test references the changed owner")),
+        "control keeps the generic next step, got: {:?}",
+        finding.recommended_next_step
     );
     Ok(())
 }
@@ -9522,6 +9678,7 @@ fn spec_0104_repro_cross_family_error_oracle_does_not_promote_return_value_seam(
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Medium,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -9553,6 +9710,7 @@ fn spec_0104_repro_cross_family_error_oracle_does_not_promote_return_value_seam(
             expected_value_or_variant: None,
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::Low,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -9639,6 +9797,7 @@ fn spec_0104_no_over_correct_return_value_with_exact_value_stays_exposed() -> Re
             expected_value_or_variant: Some("90".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -9714,6 +9873,7 @@ fn spec_0104_no_over_correct_error_path_with_exact_error_variant_stays_exposed()
             expected_value_or_variant: Some("'Invalid amount'".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -9808,6 +9968,7 @@ fn spec_0104_single_test_both_assertions_retains_matching_family_assertion_stays
                 expected_value_or_variant: None,
                 has_dynamic_matcher_arg: false,
                 oracle_confidence: OracleConfidence::Medium,
+                rendered_call: None,
             },
             // Assertion 2: return-value observer (family-matching for ReturnValue seam).
             TypeScriptAssertion {
@@ -9822,6 +9983,7 @@ fn spec_0104_single_test_both_assertions_retains_matching_family_assertion_stays
                 expected_value_or_variant: Some("90".to_string()),
                 has_dynamic_matcher_arg: false,
                 oracle_confidence: OracleConfidence::High,
+                rendered_call: None,
             },
         ],
         mocks_in_file: Vec::new(),
@@ -10412,6 +10574,7 @@ fn parse_limit_owner_and_exact_value_test() -> (TypeScriptOwner, TypeScriptTest)
             expected_value_or_variant: Some("10".to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -10510,6 +10673,7 @@ fn exact_value_test(owner_name: &str, observed: &str, expected: &str) -> TypeScr
             expected_value_or_variant: Some(expected.to_string()),
             has_dynamic_matcher_arg: false,
             oracle_confidence: OracleConfidence::High,
+            rendered_call: None,
         }],
         mocks_in_file: Vec::new(),
         scope_bindings: Vec::new(),
@@ -14207,7 +14371,7 @@ fn alias_load_gap_types_distinguish_flag_on_failures() -> Result<(), String> {
     assert!(err.is_none());
     assert_eq!(gap, Some(TsAliasMapLoadGap::ConfigMissing));
 
-    // Invalid strict JSON (no comments) — parse failure without JSONC hint.
+    // Malformed JSON — parse failure.
     ts_write_file(
         &root.join("tsconfig.json"),
         "{ \"compilerOptions\": { INVALID }\n",
@@ -14215,31 +14379,23 @@ fn alias_load_gap_types_distinguish_flag_on_failures() -> Result<(), String> {
     let (map, err, gap) = load_alias_map_with_read_error(&root);
     assert!(map.is_none() && err.is_none());
     match gap {
-        Some(TsAliasMapLoadGap::ConfigUnparseable {
-            jsonc_comments: false,
-            ..
-        }) => {}
+        Some(TsAliasMapLoadGap::ConfigUnparseable { .. }) => {}
         other => {
-            return Err(format!("expected plain ConfigUnparseable, got {other:?}"));
+            return Err(format!("expected ConfigUnparseable, got {other:?}"));
         }
     }
 
-    // JSONC: comments make the strict parser fail and the gap names them.
+    // JSONC: comments are accepted like `tsc` accepts them (#4549), so a
+    // commented config yields the map and no gap.
     ts_write_file(
         &root.join("tsconfig.json"),
         "{\n  // compiler options\n  \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"./src/*\"] } }\n}\n",
     )?;
     let (map, err, gap) = load_alias_map_with_read_error(&root);
-    assert!(map.is_none() && err.is_none());
-    match gap {
-        Some(TsAliasMapLoadGap::ConfigUnparseable {
-            jsonc_comments: true,
-            ..
-        }) => {}
-        other => {
-            return Err(format!("expected JSONC ConfigUnparseable, got {other:?}"));
-        }
-    }
+    assert!(
+        map.is_some() && err.is_none() && gap.is_none(),
+        "JSONC comments must not fail the load, gap: {gap:?}"
+    );
 
     // extends is a distinct typed cause.
     ts_write_file(
@@ -14356,8 +14512,32 @@ fn alias_advice_names_the_real_cause_when_flag_is_on() -> Result<(), String> {
             )
         })?;
     assert!(
-        why.contains("could not be parsed as strict JSON"),
+        why.contains("could not be parsed as JSON with comments"),
         "the advice must name the parse failure, got: {why}"
+    );
+    assert!(
+        !why.contains("strict JSON"),
+        "the advice must not ask for strict JSON: tsc accepts JSONC (#4549), got: {why}"
+    );
+    // #4550: the no-reach text names the unresolved import and the parse
+    // failure, reusing the limitation's cause instead of "No test references".
+    let missing = finding
+        .missing
+        .first()
+        .ok_or("expected a missing summary")?;
+    assert!(
+        missing.contains("`@/util`")
+            && missing.contains("could not be parsed as JSON with comments"),
+        "missing must name the alias import and the parse failure, got: {missing}"
+    );
+    let next = finding
+        .recommended_next_step
+        .as_deref()
+        .ok_or("expected a next step")?;
+    assert!(
+        next.contains("fix the tsconfig.json syntax for credit")
+            && !next.contains("resolve_tsconfig_paths = true"),
+        "next step must name the config fix, not the already-enabled flag, got: {next}"
     );
     assert!(
         !why.contains("resolve_tsconfig_paths = true"),
@@ -14765,6 +14945,8 @@ fn undercredit_4103_owner_extraction_records_default_export_fact() {
     assert!(!plain[0].exported_as_default);
 }
 
+mod commonjs_export_tests;
+mod directory_specifier_tests;
 mod loop_declared_tests;
 mod mock_form_tests;
 mod module_entry_tests;

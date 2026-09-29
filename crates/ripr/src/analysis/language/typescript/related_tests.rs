@@ -2070,7 +2070,11 @@ pub(crate) fn import_source_matches_owner(
 /// Resolve an import specifier relative to `test_file` to a normalized module
 /// path string (no extension, forward-slash separated).
 ///
-/// For relative specifiers (`./` or `../`), performs the usual path-join.
+/// For relative specifiers (`./`, `../`, or exactly `.` / `..`), performs the
+/// usual path-join. When `workspace_root` is known and the joined path names
+/// an in-root directory with no sibling file module, the directory resolves
+/// through [`resolve_directory_module`] (package.json `main`, else `index`),
+/// mirroring the Node/TypeScript lookup order (#4546).
 ///
 /// For non-relative specifiers, consults `alias_map` when provided:
 /// - If the alias map successfully resolves the specifier to a unique workspace
@@ -2082,7 +2086,9 @@ pub(crate) fn normalized_relative_import_module(
     alias_map: Option<&TsAliasMap>,
     workspace_root: Option<&Path>,
 ) -> Option<String> {
-    if source.starts_with("./") || source.starts_with("../") {
+    // `.` and `..` name the current / parent directory module
+    // (`require('..')`, #4546) exactly like `./` and `../` prefixes do.
+    if is_relative_specifier(source) {
         // Standard relative resolution.
         let mut parts = normalized_path(test_file.parent().unwrap_or_else(|| Path::new("")))
             .split('/')
@@ -2090,16 +2096,29 @@ pub(crate) fn normalized_relative_import_module(
             .map(ToString::to_string)
             .collect::<Vec<_>>();
         let normalized_source = source.replace('\\', "/");
+        let mut escaped_root = false;
         for part in normalized_source.split('/') {
             match part {
                 "" | "." => {}
                 ".." => {
-                    parts.pop();
+                    escaped_root |= parts.pop().is_none();
                 }
                 _ => parts.push(part.to_string()),
             }
         }
-        return Some(strip_typescript_module_extension(&parts.join("/")));
+        let joined = parts.join("/");
+        let module = strip_typescript_module_extension(&joined);
+        // Directory resolution only for an extensionless specifier whose
+        // join stayed inside the workspace root; otherwise the historical
+        // lexical module is kept.
+        if let Some(root) = workspace_root
+            && !escaped_root
+            && module == joined
+            && let Some(resolved) = resolve_directory_module(root, &module)
+        {
+            return Some(resolved);
+        }
+        return Some(module);
     }
 
     // Non-relative specifier — consult alias map if available.
@@ -2110,6 +2129,189 @@ pub(crate) fn normalized_relative_import_module(
     // Normalize the resolved workspace-relative path to a module string.
     let normalized = normalized_path(&resolved_path);
     Some(strip_typescript_module_extension(&normalized))
+}
+
+/// Extensions probed for a file module, in the TypeScript/Node lookup order.
+const DIRECTORY_MODULE_EXTENSIONS: [&str; 8] =
+    ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"];
+
+/// Resolve a workspace-relative module path that names a DIRECTORY to the
+/// module the directory loads (#4546): the directory's `package.json` `main`
+/// when present, else its `index` file.
+///
+/// Returns `None` (the caller keeps the lexical module) when the path is not
+/// a real in-root directory (symlinks are not followed), when a sibling file
+/// module (`<module>.<ext>`) exists and wins the lookup, or when nothing in
+/// the directory resolves. A `package.json` that is unreadable (over the
+/// config cap, not a regular file), is not valid JSON, or names a `main`
+/// that is absolute, escapes the workspace root, or does not resolve to a
+/// supported source file also yields `None`: the specifier stays unresolved
+/// rather than being credited to a guessed module (fail-closed).
+///
+/// Memoized per analysis run by [`DirectoryModuleCacheScope`] (#4638
+/// review): the owners x tests x imports loop asks the same question for
+/// the same `(root, module)` many times, and each uncached answer costs
+/// several filesystem probes.
+fn resolve_directory_module(root: &Path, module: &str) -> Option<String> {
+    let key = (root.to_path_buf(), module.to_string());
+    let cached = DIRECTORY_MODULE_CACHE.with(|cache| {
+        cache
+            .try_borrow()
+            .ok()
+            .and_then(|cache| cache.as_ref().and_then(|map| map.get(&key).cloned()))
+    });
+    if let Some(resolved) = cached {
+        return resolved;
+    }
+    let resolved = resolve_directory_module_uncached(root, module);
+    DIRECTORY_MODULE_CACHE.with(|cache| {
+        if let Ok(mut cache) = cache.try_borrow_mut()
+            && let Some(map) = cache.as_mut()
+        {
+            map.insert(key, resolved.clone());
+        }
+    });
+    resolved
+}
+
+/// Directory-module answers keyed by `(workspace root, module)`, alive only
+/// while a [`DirectoryModuleCacheScope`] is open on this thread. Outside a
+/// scope nothing is cached, so no answer outlives the run that computed it
+/// (an LSP session sees filesystem changes on its next run).
+type DirectoryModuleCache = HashMap<(PathBuf, String), Option<String>>;
+
+thread_local! {
+    static DIRECTORY_MODULE_CACHE: std::cell::RefCell<Option<DirectoryModuleCache>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// One analysis run's directory-module memo: opening it installs a fresh,
+/// empty cache on this thread; dropping it restores whatever was there
+/// before (normally nothing). The cache is an explicit per-run scope rather
+/// than a parameter because `workspace_root` reaches the resolver through
+/// ~30 signatures in the related-test and classifier walks.
+pub(crate) struct DirectoryModuleCacheScope {
+    previous: Option<DirectoryModuleCache>,
+}
+
+impl DirectoryModuleCacheScope {
+    pub(crate) fn open() -> Self {
+        let previous = DIRECTORY_MODULE_CACHE.with(|cache| {
+            cache
+                .try_borrow_mut()
+                .ok()
+                .and_then(|mut cache| cache.replace(HashMap::new()))
+        });
+        Self { previous }
+    }
+}
+
+impl Drop for DirectoryModuleCacheScope {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        DIRECTORY_MODULE_CACHE.with(|cache| {
+            if let Ok(mut cache) = cache.try_borrow_mut() {
+                *cache = previous;
+            }
+        });
+    }
+}
+
+fn resolve_directory_module_uncached(root: &Path, module: &str) -> Option<String> {
+    let directory = if module.is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(module)
+    };
+    if !is_real_directory(&directory) || file_module_exists(root, module) {
+        return None;
+    }
+    let manifest = directory.join("package.json");
+    match std::fs::symlink_metadata(&manifest) {
+        // No package.json at all: plain directory index lookup.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return index_module(root, module);
+        }
+        Err(_) => return None,
+        Ok(_) => {}
+    }
+    let text = read_config_capped(&manifest).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    match value.get("main") {
+        Some(serde_json::Value::String(main)) => package_main_module(root, module, main),
+        // No `main`: the directory falls back to its index file.
+        None => index_module(root, module),
+        // A non-string `main` is not a path Node would honour.
+        Some(_) => None,
+    }
+}
+
+/// The module a directory `package.json` `main` names, resolved inside the
+/// workspace root: a file module (with or without a supported extension), or
+/// the `index` of a directory it names.
+fn package_main_module(root: &Path, module: &str, main: &str) -> Option<String> {
+    let main = main.replace('\\', "/");
+    if main.is_empty() || main.starts_with('/') || main.contains(':') {
+        return None;
+    }
+    let mut parts = module
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    for part in main.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                // Escaping the workspace root fails closed.
+                parts.pop()?;
+            }
+            _ => parts.push(part.to_string()),
+        }
+    }
+    let target = parts.join("/");
+    if target.is_empty() {
+        return None;
+    }
+    let stripped = strip_typescript_module_extension(&target);
+    if stripped != target {
+        // `main` carries a supported extension: it must name that file.
+        return is_real_file(&root.join(&target)).then_some(stripped);
+    }
+    if file_module_exists(root, &target) {
+        return Some(target);
+    }
+    if is_real_directory(&root.join(&target)) {
+        return index_module(root, &target);
+    }
+    None
+}
+
+/// `<module>/index` when the directory holds an index file module.
+fn index_module(root: &Path, module: &str) -> Option<String> {
+    let index = if module.is_empty() {
+        "index".to_string()
+    } else {
+        format!("{module}/index")
+    };
+    file_module_exists(root, &index).then_some(index)
+}
+
+/// Whether `<module>.<ext>` exists as a regular file for a supported
+/// extension.
+fn file_module_exists(root: &Path, module: &str) -> bool {
+    !module.is_empty()
+        && DIRECTORY_MODULE_EXTENSIONS
+            .iter()
+            .any(|extension| is_real_file(&root.join(format!("{module}.{extension}"))))
+}
+
+fn is_real_file(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+}
+
+fn is_real_directory(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }
 
 fn normalized_module_path(path: &Path) -> String {

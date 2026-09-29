@@ -1032,7 +1032,7 @@ The evidence-first fields are additive in schema `0.2`:
       test imports a symbol name-matched to the owner from a NON-RELATIVE
       specifier (`@/...`, `#...`, bare package name) that the adapter could not
       resolve to a unique workspace file, so no credit was given. The real
-      producer is `static_limit.rs::named_limitations_for_alias_unresolved`;
+      producer is `static_limit.rs::alias_gap_for_unresolved_import`;
       it requires all three conditions (non-relative import, imported name
       matches the owner name, and the import did not credit the owner) and is
       classification-neutral (additive disclosure only).

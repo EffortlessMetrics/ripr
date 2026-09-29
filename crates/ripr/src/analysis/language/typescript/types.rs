@@ -332,6 +332,11 @@ pub(crate) struct TypeScriptAssertion {
     /// Confidence derived from oracle_strength + literal concreteness
     /// (RIPR-SPEC-0085 §PR5).
     pub(crate) oracle_confidence: OracleConfidence,
+    /// Rendered oracle text for assertion libraries whose call shape is not
+    /// the Jest `expect(...).matcher(...)` form (`assert.strictEqual(...)`,
+    /// `expect(...).to.equal(...)`, #4547). `None` keeps the Jest/AVA
+    /// rendering in `assertion_oracle_text`.
+    pub(crate) rendered_call: Option<String>,
 }
 
 /// Oracle confidence level derived from `oracle_strength` plus whether the
