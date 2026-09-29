@@ -13,13 +13,16 @@ use super::diagnostics::{
     DiagnosticBatch, WorkspaceDiagnostics, add_canonical_group_data, canonical_finding_groups,
     canonical_group_has_mixed_classes, diagnostic_for_classified_seam, diagnostic_for_finding,
     diagnostic_refresh_plan, diagnostic_severity_for_class, finding_diagnostics_by_uri,
-    take_all_uris, workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
-    workspace_diagnostics_with_config,
+    finding_diagnostics_by_uri_with_profile, take_all_uris, workspace_diagnostic_batches,
+    workspace_diagnostic_batches_with_config, workspace_diagnostics_with_config,
 };
 use super::gap_artifacts::{
     GapArtifactIdentity, GapArtifactKind, GapArtifactRejection, ValidatedGapArtifact,
 };
-use super::hover::{classified_seam_hover_response, hover_response, hover_with_snapshot_status};
+use super::hover::{
+    classified_seam_hover_response, diagnostic_covers_position, hover_response,
+    hover_with_snapshot_status,
+};
 use super::input_identity::LspAnalysisInputIdentity;
 use super::lens::{code_lens_response, lens_title_is_static_language_clean, lens_view_identity};
 use super::progress::ProgressEvent;
@@ -6971,6 +6974,209 @@ fn diagnostic_for_finding_uses_one_character_range_for_empty_expression() {
 
     assert_eq!(diagnostic.range.start.character, 2);
     assert_eq!(diagnostic.range.end.character, 3);
+}
+
+/// Issue #4602 fixture: analyzer column 1 plus a tab and a CJK/astral prefix
+/// before the changed expression. UTF-16 start 36..42 covers `x >= 5`.
+const INDENTED_UNICODE_PROBE_LINE: &str = "\tlet s = \"日本語🎉\"; let _ = s; return x >= 5;";
+
+fn finding_on_saved_pricing_line(
+    root: &Path,
+    line_text: &str,
+    expression: &str,
+) -> Result<Finding, String> {
+    let src = root.join("src");
+    fs::create_dir_all(&src).map_err(|err| format!("create src: {err}"))?;
+    let body = format!("fn probe_line() {{\n{line_text}\n}}\n");
+    fs::write(src.join("pricing.rs"), body).map_err(|err| format!("write pricing.rs: {err}"))?;
+    let mut finding = sample_finding();
+    finding.probe.location.line = 2;
+    finding.probe.location.column = 1;
+    finding.probe.expression = expression.to_string();
+    Ok(finding)
+}
+
+fn assert_finding_range(
+    diagnostic: &Diagnostic,
+    start_character: u32,
+    end_character: u32,
+) -> Result<(), String> {
+    if diagnostic.range.start.line != 1 {
+        return Err(format!(
+            "expected LSP line 1, got {}",
+            diagnostic.range.start.line
+        ));
+    }
+    if diagnostic.range.start.character != start_character
+        || diagnostic.range.end.character != end_character
+    {
+        return Err(format!(
+            "expected characters {start_character}..{end_character}, got {}..{}",
+            diagnostic.range.start.character, diagnostic.range.end.character
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn diagnostic_for_finding_underlines_indented_expression_not_leading_whitespace()
+-> Result<(), String> {
+    let root = unique_lsp_test_root("finding-range-verbatim")?;
+    let finding =
+        finding_on_saved_pricing_line(root.path(), INDENTED_UNICODE_PROBE_LINE, "x >= 5")?;
+    let diagnostic = diagnostic_for_finding(root.path(), &finding);
+    assert_finding_range(&diagnostic, 36, 42)?;
+    if diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("source_range"))
+        .and_then(|range| range.get("column"))
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        return Err("analyzer source_range.column must stay 1".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn diagnostic_for_finding_hover_covers_expression_not_indentation() -> Result<(), String> {
+    let root = unique_lsp_test_root("finding-range-hover")?;
+    let finding =
+        finding_on_saved_pricing_line(root.path(), INDENTED_UNICODE_PROBE_LINE, "x >= 5")?;
+    let diagnostic = diagnostic_for_finding(root.path(), &finding);
+    if diagnostic_covers_position(
+        &diagnostic,
+        &Position {
+            line: 1,
+            character: 0,
+        },
+    ) {
+        return Err("hover must not match on the leading tab".to_string());
+    }
+    if !diagnostic_covers_position(
+        &diagnostic,
+        &Position {
+            line: 1,
+            character: 36,
+        },
+    ) {
+        return Err("hover must match on the changed expression".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn diagnostic_for_finding_falls_back_to_first_non_whitespace_when_expression_is_absent()
+-> Result<(), String> {
+    let root = unique_lsp_test_root("finding-range-missing-expr")?;
+    let finding = finding_on_saved_pricing_line(root.path(), "\t    return true;", "x >= 5")?;
+    let diagnostic = diagnostic_for_finding(root.path(), &finding);
+    // Tab (1) + four spaces, then `return true;` — width of `x >= 5` is 6.
+    assert_finding_range(&diagnostic, 5, 11)
+}
+
+#[test]
+fn diagnostic_for_finding_keeps_column_span_when_saved_file_cannot_be_read() {
+    let mut finding = sample_finding();
+    finding.probe.location.file = PathBuf::from("src/does-not-exist.rs");
+    finding.probe.location.column = 1;
+    finding.probe.expression = "x >= 5".to_string();
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    assert_eq!(diagnostic.range.start.character, 0);
+    assert_eq!(diagnostic.range.end.character, 6);
+}
+
+#[test]
+fn diagnostic_for_finding_keeps_column_span_when_line_is_past_eof() -> Result<(), String> {
+    let root = unique_lsp_test_root("finding-range-past-eof")?;
+    let mut finding = finding_on_saved_pricing_line(root.path(), "    x >= 5;", "x >= 5")?;
+    finding.probe.location.line = 99;
+    let diagnostic = diagnostic_for_finding(root.path(), &finding);
+    assert_eq!(diagnostic.range.start.character, 0);
+    assert_eq!(diagnostic.range.end.character, 6);
+    Ok(())
+}
+
+#[test]
+fn diagnostic_for_finding_keeps_column_span_when_saved_file_is_not_utf8() -> Result<(), String> {
+    let root = unique_lsp_test_root("finding-range-latin1")?;
+    let src = root.path().join("src");
+    fs::create_dir_all(&src).map_err(|err| format!("create src: {err}"))?;
+    fs::write(src.join("pricing.rs"), [0xffu8, b'\n', b'x'])
+        .map_err(|err| format!("write pricing.rs: {err}"))?;
+    let mut finding = sample_finding();
+    finding.probe.location.line = 2;
+    finding.probe.location.column = 1;
+    finding.probe.expression = "x >= 5".to_string();
+    let diagnostic = diagnostic_for_finding(root.path(), &finding);
+    assert_eq!(diagnostic.range.start.character, 0);
+    assert_eq!(diagnostic.range.end.character, 6);
+    Ok(())
+}
+
+#[test]
+fn diagnostic_for_finding_locates_expression_on_crlf_saved_line() -> Result<(), String> {
+    let root = unique_lsp_test_root("finding-range-crlf")?;
+    let src = root.path().join("src");
+    fs::create_dir_all(&src).map_err(|err| format!("create src: {err}"))?;
+    let body = format!("fn probe_line() {{\r\n{INDENTED_UNICODE_PROBE_LINE}\r\n}}\r\n");
+    fs::write(src.join("pricing.rs"), body).map_err(|err| format!("write pricing.rs: {err}"))?;
+    let mut finding = sample_finding();
+    finding.probe.location.line = 2;
+    finding.probe.location.column = 1;
+    finding.probe.expression = "x >= 5".to_string();
+    let diagnostic = diagnostic_for_finding(root.path(), &finding);
+    assert_finding_range(&diagnostic, 36, 42)
+}
+
+#[test]
+fn diagnostic_for_finding_measures_saved_prefix_in_negotiated_encoding() -> Result<(), String> {
+    let root = unique_lsp_test_root("finding-range-encoding")?;
+    let finding =
+        finding_on_saved_pricing_line(root.path(), INDENTED_UNICODE_PROBE_LINE, "x >= 5")?;
+    let width_start = |encoding: &PositionEncodingKind| -> Result<(u32, u32), String> {
+        let grouped = finding_diagnostics_by_uri_with_profile(
+            root.path(),
+            std::slice::from_ref(&finding),
+            &crate::config::SeverityConfig::default(),
+            true,
+            crate::config::LspDiagnosticProfile::Full,
+            None,
+            encoding,
+        )?;
+        let diagnostic = grouped
+            .values()
+            .flatten()
+            .next()
+            .ok_or_else(|| "expected a finding diagnostic".to_string())?;
+        Ok((
+            diagnostic.range.start.character,
+            diagnostic.range.end.character,
+        ))
+    };
+
+    if width_start(&PositionEncodingKind::UTF16)? != (36, 42) {
+        return Err(format!(
+            "UTF-16 start/end {:?}",
+            width_start(&PositionEncodingKind::UTF16)?
+        ));
+    }
+    if width_start(&PositionEncodingKind::UTF8)? != (44, 50) {
+        return Err(format!(
+            "UTF-8 start/end {:?}",
+            width_start(&PositionEncodingKind::UTF8)?
+        ));
+    }
+    if width_start(&PositionEncodingKind::UTF32)? != (35, 41) {
+        return Err(format!(
+            "UTF-32 start/end {:?}",
+            width_start(&PositionEncodingKind::UTF32)?
+        ));
+    }
+    Ok(())
 }
 
 #[test]

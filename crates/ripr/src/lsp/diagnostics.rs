@@ -2266,7 +2266,7 @@ fn diagnostic_for_finding_with_causal(
         }
     }
     Diagnostic {
-        range: diagnostic_range_for_finding(finding, position_encoding),
+        range: diagnostic_range_for_finding(root, finding, position_encoding),
         severity: lsp_severity(config.for_exposure(&finding.class)),
         code: Some(NumberOrString::String(
             super::diagnostic_catalog::finding_code(&finding.class),
@@ -2281,17 +2281,27 @@ fn diagnostic_for_finding_with_causal(
 }
 
 fn diagnostic_range_for_finding(
+    root: &Path,
     finding: &Finding,
     position_encoding: &PositionEncodingKind,
 ) -> Range {
     let line = finding.probe.location.line.saturating_sub(1) as u32;
     let column = finding.probe.location.column;
-    crate::lsp::position::expression_span_range(
+    let saved_line = saved_line_for_finding(root, finding);
+    crate::lsp::position::expression_span_range_on_saved_line(
         line,
         column,
         &finding.probe.expression,
         position_encoding,
+        saved_line.as_deref(),
     )
+}
+
+fn saved_line_for_finding(root: &Path, finding: &Finding) -> Option<String> {
+    let path = absolute_finding_path(root, finding);
+    let contents = std::fs::read_to_string(path).ok()?;
+    let line_index = finding.probe.location.line.saturating_sub(1);
+    contents.lines().nth(line_index).map(str::to_owned)
 }
 
 fn related_information_for_finding(
