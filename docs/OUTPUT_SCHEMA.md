@@ -1597,6 +1597,18 @@ subject and one dynamic-name limitation:
 An absent `test_harnesses` array means the repository has no harness
 registrations; it is never a claim that custom harnesses do not exist.
 
+### `source_subject` (top-level additive, #4544)
+
+When a gap ledger derived from this check output would name at least one
+workspace file, the JSON output carries a top-level `source_subject` with the
+content digests of exactly those files (each record's `anchor.file`,
+`repair_route.target_file`, and `repair_route.related_test` file), read by the
+same `ripr check` run. The shape is described under
+[Gap artifact source subject](#gap-artifact-source-subject). It is omitted
+when no such file is named or a named file cannot be read. `ripr reports
+gap-ledger --check-output` and `ripr first-pr --check-output` copy these
+digests into the ledger they write.
+
 ### `scope_disclosures` (top-level additive advisory, RIPR-SPEC-0083)
 
 Added as an additive optional top-level array. Emitted only when `ripr check`
@@ -2522,6 +2534,16 @@ and `agent receipt` compare the stable producer/version, base, mode, and
 profile fields separately, and reject unchanged identities when the declared
 repository commits differ. `analysis.command` and `analysis.profile` state the
 producer operation used.
+
+A producer-generated snapshot also carries an additive top-level
+`source_subject` (#4544) with the content digests, read in the same analysis
+run, of every workspace file a seam entry names under a `file`, `path`,
+`source_file`, `target_file`, `target_test`, `related_test`, `test`, or
+`related_test_or_observer` key at any depth. The shape is described under
+[Gap artifact source subject](#gap-artifact-source-subject). It is omitted when
+no seam names a file or a named file cannot be read. `content_sha256` covers it
+like any other member. The gap ledger and `actionable-gaps.json` derived from
+this snapshot copy their stamps from it.
 
 ### Repo Exposure Summary JSON
 
@@ -4311,6 +4333,13 @@ otherwise it uses the category fallback route.
       ]
     }
   ],
+  "source_subject": {
+    "digest_algorithm": "sha256",
+    "files": [
+      { "path": "src/pricing.rs", "digest": "sha256:3f5a..." },
+      { "path": "tests/pricing.rs", "digest": "sha256:9c1e..." }
+    ]
+  },
   "must_not_infer": [
     "raw findings are supporting evidence, not user work",
     "do not infer actionability from raw static class",
@@ -4342,6 +4371,20 @@ readable, but its typed command collections are omitted until a producer-owned
 spec is available. LSP gap-artifact validation accepts the object form and
 compatibility array form, but rejects non-object `command_specs` containers,
 malformed specs, and role-mismatched specs before projection.
+
+`source_subject` records which source contents the packets were computed
+from, in the shape described under
+[Gap artifact source subject](#gap-artifact-source-subject). The xtask writer
+copies, from the repo-exposure snapshot's own `source_subject`, the digest of
+every file a packet names: `source_file`, `target_test`, `target_file`,
+`primary_anchor.file`, and `related_test_or_observer` whether it is a
+`path::test` string, an object (`file`, `path`, `related_test`, `test`, or
+`target_file`), or an array of those. When the snapshot has no stamp or its
+stamp omits one of those files, the report carries
+`source_subject_unavailable` with the reason instead of a stamp. `ripr lsp` rejects an `actionable-gaps.json`
+whose stamp is missing, incomplete, or no longer matches the workspace, and the
+repair-packet command answers with a `stale_subject` or `unverifiable_subject`
+sentinel instead of the packet.
 
 This producer-owned projection boundary is distinct from the explicit
 `agent verify-execute` surface below. GapRecord packet rendering does not
@@ -15931,6 +15974,13 @@ JSON shape:
     "receipt_unchanged_after_attempt_total": 1,
     "missing_output_contract_total": 1
   },
+  "source_subject": {
+    "digest_algorithm": "sha256",
+    "files": [
+      { "path": "src/pricing.rs", "digest": "sha256:3f5a..." },
+      { "path": "tests/pricing.rs", "digest": null }
+    ]
+  },
   "records": [
     {
       "gap_id": "gap:pr:pricing:threshold-boundary",
@@ -15998,6 +16048,73 @@ JSON shape:
 when records are present but violate projection-safety checks, and `blocked`
 when no records can be read. The summary counts are projection inputs only;
 they are not gate authority.
+
+`source_subject` records which source contents the ledger was computed from
+(see [Gap artifact source subject](#gap-artifact-source-subject)). The ledger
+covers every record's `anchor.file`, `repair_route.target_file`, and
+`repair_route.related_test` file. `ripr reports gap-ledger` and
+`ripr first-pr --check-output` never read those files: they copy each digest
+from the `source_subject` of their input (the check JSON, the repo-exposure
+snapshot, or, with `--records`, an earlier ledger), rebasing paths from the
+input's `root` onto the selected `--root`. When the input has no stamp, or its
+stamp is malformed, uses another algorithm, or omits a file the records name,
+the ledger carries no `source_subject` and instead a top-level
+`source_subject_unavailable` naming the reason
+(`input_source_subject_missing`, `input_source_subject_malformed`,
+`input_source_subject_unsupported_digest`, or
+`input_source_subject_incomplete`); `ripr lsp` then treats it as
+`unverifiable_subject`. Re-rendering an unstamped ledger with `--records`
+stays unstamped. A ledger rendered in memory by another report is not
+stamped.
+
+### Gap artifact source subject
+
+Line numbers in a gap artifact describe one version of the workspace files.
+To keep an editor from placing a gap computed for other file contents (another
+branch, an earlier commit, or a since-saved edit) at its old
+lines, `gap-decision-ledger.json` and `actionable-gaps.json` carry an additive
+top-level `source_subject`:
+
+- `digest_algorithm`: always `"sha256"`.
+- `files[]`: one entry per workspace file the artifact's records name, sorted
+  by `path`. `path` is repo-relative with `/` separators and no `.` or `..`
+  segments; a `path::test_name` selector contributes its file part, and a
+  string whose last segment has no extension (a bare test or observer name) is
+  not a file. An absolute path counts when it lies under the root, which is
+  resolved to an absolute path first. `digest` is `"sha256:<hex>"` of the file
+  bytes, or `null` when the file did not exist.
+
+Only the analysis producers read files to stamp: `ripr check` JSON and
+`repo-exposure-json` hash the files their output names in the same run,
+after the analysis reads them, so an edit saved between the analysis read
+and the stamp is the one window a stamp cannot see. The artifacts derived
+from them (`gap-decision-ledger.json`, `actionable-gaps.json`) copy those
+digests and never hash the workspace, so a file edited after the analysis
+makes the derived artifact stale rather than stamping the new bytes as the
+analyzed ones.
+
+`ripr lsp` recomputes each digest from the current workspace before it
+projects any record from the artifact, and applies the result to the whole
+artifact:
+
+- every digest matches: the artifact is current and projects as before;
+- a stamped file changed, was deleted, or now exists where `null` was
+  stamped: the artifact is rejected as `stale_subject`, the run status becomes
+  `stale`, and the `cache` and `gap_ledger` component outcomes carry kind
+  `stale_subject`, the changed path, and the regeneration route;
+- the stamp is missing (an artifact from an older build), malformed, uses
+  another algorithm, or omits a file the records name: the artifact is
+  rejected as `unverifiable_subject` (reasons `source_subject_missing`,
+  `source_subject_malformed`, `source_subject_unsupported_digest`,
+  `source_subject_incomplete`, or `source_subject_unreadable`), the run status
+  becomes `cache_limited`, and nothing from it is projected.
+
+Rejected artifacts publish no gap diagnostics, and the repair-packet and
+gap-context commands return a `not_actionable_or_incomplete` sentinel whose
+`reason` starts with the rejection kind. Regenerate the ledger with
+`ripr reports gap-ledger` and `actionable-gaps.json` with
+`cargo xtask lane1-evidence-audit`. The stamp identifies file contents only; it
+does not make an artifact computed from an older check output current.
 
 ## Mutation Calibration Reports
 

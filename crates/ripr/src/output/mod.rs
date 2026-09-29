@@ -24,6 +24,7 @@ pub(crate) mod first_useful_action;
 pub(crate) mod format;
 pub(crate) mod gap_decision_ledger;
 pub(crate) mod gap_decision_ledger_live;
+pub(crate) mod gap_source_subject;
 pub(crate) mod gate;
 pub mod github;
 pub mod human;

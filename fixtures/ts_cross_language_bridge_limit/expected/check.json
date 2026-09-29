@@ -141,5 +141,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/bridge.ts","digest":"sha256:ff8e55095dd4ec5f2e3091a06251c536b3b066239809897ada390f44ff9bdfa7"}]}
 }

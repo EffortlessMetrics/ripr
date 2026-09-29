@@ -158,5 +158,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/clamp.ts","digest":"sha256:099d8f81e761df2ebb7f389bf8034a0f60efe7c077474926ba34572c54561b60"}]}
 }

@@ -33,6 +33,10 @@ mod evidence_audit;
 mod evidence_promotion;
 mod evidence_quality;
 mod fixture_contracts;
+// #4544: one definition of the gap `source_subject` contract, shared with the
+// ripr crate's LSP validator without widening ripr's public API.
+#[path = "../../crates/ripr/src/output/gap_source_subject/shared.rs"]
+mod gap_source_subject_shared;
 mod no_panic;
 mod output_enum_contracts;
 mod policy;
@@ -165,8 +169,9 @@ pub(crate) use evidence_audit::{
     lane1_runtime_status_limited_input, lane1_runtime_status_priority,
     lane1_runtime_status_push_markdown, lane1_runtime_status_with_input_path,
     lane1_static_limitation_backlog_sample_json, repo_exposure_latency_trace_json,
-    static_limitation_backlog_packet_non_claims, static_limitation_repair_route,
-    static_limitation_unlock_condition, static_limitation_why_not_actionable,
+    stamp_actionable_gaps_source_subject, static_limitation_backlog_packet_non_claims,
+    static_limitation_repair_route, static_limitation_unlock_condition,
+    static_limitation_why_not_actionable,
 };
 #[cfg(test)]
 pub(crate) use evidence_promotion::{

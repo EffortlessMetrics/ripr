@@ -1291,10 +1291,12 @@ pub(super) fn derive_run_status_with_outcome(
     component_outcomes: &[ComponentOutcome],
     analysis_outcome: Option<&AnalysisOutcome>,
 ) -> &'static str {
-    if rejections
-        .iter()
-        .any(|r| matches!(r, GapArtifactRejection::StaleArtifact))
-    {
+    if rejections.iter().any(|r| {
+        matches!(
+            r,
+            GapArtifactRejection::StaleArtifact | GapArtifactRejection::StaleSubject(_)
+        )
+    }) {
         return "stale";
     }
     if !rejections.is_empty() {
@@ -1333,28 +1335,72 @@ fn cache_component_outcome(rejections: &[GapArtifactRejection]) -> ComponentOutc
         .into_iter()
         .collect::<Vec<_>>()
         .join("|");
-    let kind = if rejections
+    let stale_subject = rejections.iter().find_map(|r| match r {
+        GapArtifactRejection::StaleSubject(path) => Some(path.as_str()),
+        _ => None,
+    });
+    let unverifiable_subject = rejections.iter().find_map(|r| match r {
+        GapArtifactRejection::UnverifiableSubject(reason) => Some(*reason),
+        _ => None,
+    });
+    if rejections
         .iter()
         .any(|r| matches!(r, GapArtifactRejection::StaleArtifact))
     {
-        "stale_artifact"
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "stale_artifact",
+            format!("gap artifact rejections: {kinds}"),
+            true,
+            "run ripr check to regenerate gap artifacts",
+        )
+    } else if let Some(path) = stale_subject {
+        // #4544: the artifact describes other file contents (a branch switch,
+        // edit, or commit since it was written); its gaps are withheld.
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "stale_subject",
+            format!(
+                "gap artifact rejections: {kinds}; {path} changed since the gap artifacts were written"
+            ),
+            true,
+            SOURCE_SUBJECT_RECOVERY,
+        )
+    } else if let Some(reason) = unverifiable_subject {
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "unverifiable_subject",
+            format!(
+                "gap artifact rejections: {kinds}; {reason}: the gap artifacts cannot be matched to the current source files"
+            ),
+            true,
+            SOURCE_SUBJECT_RECOVERY,
+        )
     } else {
-        "gap_artifact_rejected"
-    };
-    ComponentOutcome::limited(
-        AnalysisComponent::Cache,
-        kind,
-        format!("gap artifact rejections: {kinds}"),
-        true,
-        "run ripr check to regenerate gap artifacts",
-    )
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "gap_artifact_rejected",
+            format!("gap artifact rejections: {kinds}"),
+            true,
+            "run ripr check to regenerate gap artifacts",
+        )
+    }
 }
+
+/// Recovery route for a gap artifact whose `source_subject` stamp no longer
+/// matches, or cannot be matched to, the workspace files (#4544).
+const SOURCE_SUBJECT_RECOVERY: &str = "regenerate the gap artifacts for the current source: ripr reports gap-ledger (gap-decision-ledger.json) or cargo xtask lane1-evidence-audit (actionable-gaps.json)";
 
 /// Read, validate, and parse the gap decision ledger once per refresh so the
 /// typed component outcome and the diagnostic projection share a single
 /// interpretation (#1939, #1997). Returns the parsed records when the ledger
 /// is usable plus the outcome to record on the snapshot; an absent ledger is
 /// a normal state and records no outcome.
+/// Recovery route for a ledger whose `source_subject` stamp no longer
+/// matches, or cannot be matched to, the workspace files (#4544).
+const SOURCE_SUBJECT_LEDGER_RECOVERY: &str =
+    "regenerate the gap decision ledger for the current source with ripr reports gap-ledger";
+
 fn load_gap_ledger_records(
     root: &Path,
     enabled_languages: &[LanguageId],
@@ -1404,6 +1450,34 @@ fn load_gap_ledger_records(
             return failed(
                 "gap_ledger_wrong_kind",
                 "gap diagnostics skipped: artifact is not a gap decision ledger".to_string(),
+            );
+        }
+        Err(GapArtifactRejection::StaleSubject(path)) => {
+            return (
+                None,
+                Some(ComponentOutcome::failed(
+                    AnalysisComponent::GapLedger,
+                    "stale_subject",
+                    format!(
+                        "gap diagnostics withheld: {path} changed since the gap decision ledger was written"
+                    ),
+                    true,
+                    SOURCE_SUBJECT_LEDGER_RECOVERY,
+                )),
+            );
+        }
+        Err(GapArtifactRejection::UnverifiableSubject(reason)) => {
+            return (
+                None,
+                Some(ComponentOutcome::failed(
+                    AnalysisComponent::GapLedger,
+                    "unverifiable_subject",
+                    format!(
+                        "gap diagnostics withheld: {reason}: the gap decision ledger cannot be matched to the current source files"
+                    ),
+                    true,
+                    SOURCE_SUBJECT_LEDGER_RECOVERY,
+                )),
             );
         }
         Err(rejection) => {
@@ -3228,7 +3302,17 @@ mod seam_diagnostic_tests {
         }
     }
 
+    /// A ledger stamped as the producer stamps it (#4544). The fixture files
+    /// are absent under every test root, so the stamp records `null` digests
+    /// and stays current until a test creates one of them.
     fn gap_ledger_json(records: Vec<GapRecord>) -> serde_json::Value {
+        crate::output::gap_source_subject::with_source_subject_for_test(
+            Path::new("/ripr-absent-fixture-root"),
+            unstamped_gap_ledger_json(records),
+        )
+    }
+
+    fn unstamped_gap_ledger_json(records: Vec<GapRecord>) -> serde_json::Value {
         serde_json::json!({
             "schema_version": "0.1",
             "tool": "ripr",
@@ -3237,6 +3321,160 @@ mod seam_diagnostic_tests {
             "root": ".",
             "records": records,
         })
+    }
+
+    fn write_file(path: &Path, contents: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+        }
+        fs::write(path, contents).map_err(|err| format!("write {} failed: {err}", path.display()))
+    }
+
+    fn published_gap_diagnostics(root: &Path) -> usize {
+        let mut grouped = std::collections::BTreeMap::new();
+        append_gap_record_diagnostics(root, &[LanguageId::Rust], &mut grouped);
+        grouped.values().map(Vec::len).sum()
+    }
+
+    fn ledger_outcome(root: &Path) -> Result<ComponentOutcome, String> {
+        load_gap_ledger_records(root, &[LanguageId::Rust])
+            .1
+            .ok_or_else(|| "a present ledger must record an outcome".to_string())
+    }
+
+    /// #4544: the ledger's `source_subject` stamp gates projection. Unchanged
+    /// files publish the gap; an edited anchor file, a deleted related test,
+    /// or a ledger without a stamp publishes nothing and discloses a typed
+    /// outcome that names the regeneration command.
+    #[test]
+    fn gap_ledger_source_subject_gates_diagnostic_projection() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let result = (|| {
+            let anchor = root.join("src/pricing.rs");
+            let related_test = root.join("tests/pricing.rs");
+            write_file(&anchor, "pub fn discount(amount: u64) -> u64 { amount }\n")?;
+            write_file(&related_test, "#[test]\nfn discount_threshold() {}\n")?;
+            let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+            let stamped = crate::output::gap_source_subject::with_source_subject_for_test(
+                &root,
+                unstamped_gap_ledger_json(vec![gap_record(true)]),
+            );
+            let stamped_paths = stamped["source_subject"]["files"]
+                .as_array()
+                .map(|files| {
+                    files
+                        .iter()
+                        .map(|file| file["path"].as_str().unwrap_or_default().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if stamped_paths != ["src/pricing.rs", "tests/pricing.rs"] {
+                return Err(format!("unexpected stamped paths: {stamped_paths:?}"));
+            }
+            write_file(&ledger_path, &stamped.to_string())?;
+
+            // Unchanged files: the gap is still published.
+            if published_gap_diagnostics(&root) != 1 {
+                return Err("an unchanged workspace must publish the gap".to_string());
+            }
+            if ledger_outcome(&root)?.state.as_str() != "complete" {
+                return Err("an unchanged workspace must keep a complete outcome".to_string());
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if !report.rejections.is_empty() {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+
+            // Anchor file edited (a branch switch or edit): withheld as stale.
+            write_file(
+                &anchor,
+                "pub fn discount(amount: u64) -> u64 { amount + 1 }\n",
+            )?;
+            if published_gap_diagnostics(&root) != 0 {
+                return Err("an edited anchor file must withhold the gap".to_string());
+            }
+            let outcome = ledger_outcome(&root)?;
+            if outcome.kind != Some("stale_subject")
+                || !outcome.is_degraded()
+                || outcome.recovery != Some(SOURCE_SUBJECT_LEDGER_RECOVERY)
+                || !SOURCE_SUBJECT_LEDGER_RECOVERY.contains("ripr reports gap-ledger")
+            {
+                return Err(format!("unexpected stale-subject outcome: {outcome:?}"));
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if report.rejections
+                != vec![GapArtifactRejection::StaleSubject(
+                    "src/pricing.rs".to_string(),
+                )]
+            {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+            if derive_run_status(&[], &report.rejections, &[], false, false, &[]) != "stale" {
+                return Err("a stale subject must make the run stale".to_string());
+            }
+            let cache = cache_component_outcome(&report.rejections);
+            if cache.kind != Some("stale_subject")
+                || cache.recovery != Some(SOURCE_SUBJECT_RECOVERY)
+            {
+                return Err(format!("unexpected cache outcome: {cache:?}"));
+            }
+
+            // Restoring the stamped bytes makes the ledger current again, so
+            // the check is content identity, not a timestamp.
+            write_file(&anchor, "pub fn discount(amount: u64) -> u64 { amount }\n")?;
+            if published_gap_diagnostics(&root) != 1 {
+                return Err("restored stamped content must publish the gap again".to_string());
+            }
+
+            // Related test file deleted: withheld as stale.
+            fs::remove_file(&related_test)
+                .map_err(|err| format!("remove related test failed: {err}"))?;
+            if published_gap_diagnostics(&root) != 0 {
+                return Err("a deleted related test must withhold the gap".to_string());
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if report.rejections
+                != vec![GapArtifactRejection::StaleSubject(
+                    "tests/pricing.rs".to_string(),
+                )]
+            {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+
+            // A ledger from an older build carries no stamp: unverifiable.
+            write_file(&related_test, "#[test]\nfn discount_threshold() {}\n")?;
+            write_file(
+                &ledger_path,
+                &unstamped_gap_ledger_json(vec![gap_record(true)]).to_string(),
+            )?;
+            if published_gap_diagnostics(&root) != 0 {
+                return Err("an unstamped ledger must not be projected as current".to_string());
+            }
+            let outcome = ledger_outcome(&root)?;
+            if outcome.kind != Some("unverifiable_subject") || !outcome.is_degraded() {
+                return Err(format!("unexpected unstamped outcome: {outcome:?}"));
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if report.rejections
+                != vec![GapArtifactRejection::UnverifiableSubject(
+                    "source_subject_missing",
+                )]
+            {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+            if derive_run_status(&[], &report.rejections, &[], false, false, &[]) != "cache_limited"
+            {
+                return Err("an unverifiable subject must limit the run".to_string());
+            }
+            if cache_component_outcome(&report.rejections).kind != Some("unverifiable_subject") {
+                return Err("the cache outcome must name the unverifiable subject".to_string());
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        result
     }
 
     #[test]

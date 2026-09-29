@@ -283,5 +283,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/limiter.ts","digest":"sha256:02d7c96ba7b262a978d67ccc05adaf08e1b6de73edf9e2f0b30489ec19458ab8"}]}
 }

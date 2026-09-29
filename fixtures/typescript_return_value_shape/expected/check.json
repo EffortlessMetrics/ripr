@@ -157,5 +157,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/rounding.ts","digest":"sha256:79fab8d634629a1f8148a5c79e10fdce04c644c7af4bd9d0aa1a6e152139e769"}]}
 }

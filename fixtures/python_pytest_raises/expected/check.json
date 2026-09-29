@@ -143,5 +143,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/quantity.py","digest":"sha256:91244e00a43870aa4fe321e1640ae2b64827e97f4e1b7230c25621d87b1639a4"},{"path":"tests/test_quantity.py","digest":"sha256:d791ef8cf2f7dfcace4a698bc2f5e65076d20923c9d96f561e775f4aeb274539"}]}
 }

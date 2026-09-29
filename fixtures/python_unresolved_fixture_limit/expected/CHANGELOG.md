@@ -385,3 +385,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_unresolved_fixture_limit (7)
+
+Reason:
+RIPR-SPEC-0046 RIPR-SPEC-0047: check JSON now carries a top-level source_subject stamp with the analysis-time content digests of the files a derived gap ledger names (#4544); no finding, classification, or human output changed.
+
+Command:
+`cargo xtask goldens bless python_unresolved_fixture_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

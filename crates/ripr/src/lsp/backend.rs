@@ -6540,6 +6540,14 @@ fn workspace_status_rejection_repair(
             "regenerate_gap_artifacts",
             "gap artifacts are stale; rerun ripr check to refresh",
         ),
+        GapArtifactRejection::StaleSubject(_) => (
+            "regenerate_gap_artifacts",
+            "gap artifacts describe other source file contents; regenerate them with ripr reports gap-ledger or cargo xtask lane1-evidence-audit",
+        ),
+        GapArtifactRejection::UnverifiableSubject(_) => (
+            "regenerate_gap_artifacts",
+            "gap artifacts carry no usable source_subject stamp; regenerate them with ripr reports gap-ledger or cargo xtask lane1-evidence-audit",
+        ),
         GapArtifactRejection::WrongRoot(_) => (
             "verify_workspace_root",
             "gap artifact root does not match workspace root",
@@ -6599,7 +6607,9 @@ fn limitation_sample_sources(
         | GapArtifactRejection::UnsupportedKind(s)
         | GapArtifactRejection::UnsupportedSchema(s)
         | GapArtifactRejection::UnsupportedStaticLimitKind(s)
-        | GapArtifactRejection::WrongRoot(s) => vec![s.clone()],
+        | GapArtifactRejection::WrongRoot(s)
+        | GapArtifactRejection::StaleSubject(s) => vec![s.clone()],
+        GapArtifactRejection::UnverifiableSubject(reason) => vec![(*reason).to_string()],
         GapArtifactRejection::MalformedArtifact(_)
         | GapArtifactRejection::MissingIdentity
         | GapArtifactRejection::StaleArtifact => vec![],
@@ -6620,6 +6630,8 @@ fn limitation_non_claims(category: &str) -> Vec<&'static str> {
             "path resolution required before exposure can be assessed",
         ],
         "stale_artifact"
+        | "stale_subject"
+        | "unverifiable_subject"
         | "missing_identity"
         | "malformed_artifact"
         | "malformed_command_payload" => vec![
@@ -6674,8 +6686,49 @@ fn collect_gap_record_context_packet(
     let record = records
         .iter()
         .find(|record| gap_record_matches(record, gap_id))?;
+    if let Some(sentinel) = ledger_source_subject_sentinel(root, &contents) {
+        return Some(sentinel);
+    }
     let rendered = render_agent_gap_record_packet_json(&display_path(&ledger_path), record).ok()?;
     serde_json::from_str(&rendered).ok()
+}
+
+/// #4544: a command-time packet read re-checks the ledger's `source_subject`
+/// stamp through the shared validator, so a packet computed for other file
+/// contents is a typed stale disclosure instead of a current repair route.
+fn ledger_source_subject_sentinel(root: &Path, contents: &str) -> Option<LSPAny> {
+    let Ok(artifact) = serde_json::from_str::<serde_json::Value>(contents) else {
+        return Some(repair_packet_sentinel(MALFORMED_GAP_LEDGER_REASON));
+    };
+    source_subject_sentinel(
+        root,
+        &artifact,
+        super::gap_artifacts::GapArtifactKind::GapDecisionLedger,
+        "gap-decision-ledger.json",
+        "ripr reports gap-ledger",
+    )
+}
+
+fn source_subject_sentinel(
+    root: &Path,
+    artifact: &serde_json::Value,
+    kind: super::gap_artifacts::GapArtifactKind,
+    artifact_name: &str,
+    regenerate: &str,
+) -> Option<LSPAny> {
+    use super::gap_artifacts::GapArtifactRejection;
+    match super::gap_artifacts::validate_source_subject(artifact, kind, root) {
+        Ok(()) => None,
+        Err(GapArtifactRejection::StaleSubject(path)) => Some(repair_packet_sentinel(&format!(
+            "stale_subject: {path} changed since {artifact_name} was written; regenerate it for the current source with {regenerate}"
+        ))),
+        Err(GapArtifactRejection::UnverifiableSubject(reason)) => {
+            Some(repair_packet_sentinel(&format!(
+                "unverifiable_subject: {reason}: {artifact_name} cannot be matched to the current source files; regenerate it with {regenerate}"
+            )))
+        }
+        Err(other) => Some(repair_packet_sentinel(other.as_str())),
+    }
 }
 
 const DEFAULT_ACTIONABLE_GAPS_OUT: &str = "target/ripr/reports/actionable-gaps.json";
@@ -6699,7 +6752,9 @@ impl Backend {
 
         // Try actionable-gaps.json first (preferred: projection-validated).
         let actionable_path = absolute_join(&root, Path::new(DEFAULT_ACTIONABLE_GAPS_OUT));
-        if let Some(result) = collect_repair_packet_from_actionable_gaps(&actionable_path, gap_id) {
+        if let Some(result) =
+            collect_repair_packet_from_actionable_gaps(&root, &actionable_path, gap_id)
+        {
             return Some(result);
         }
 
@@ -7076,7 +7131,11 @@ fn workspace_receipt_status_report_paths() -> serde_json::Value {
     })
 }
 
-fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>) -> Option<LSPAny> {
+fn collect_repair_packet_from_actionable_gaps(
+    root: &Path,
+    path: &Path,
+    gap_id: Option<&str>,
+) -> Option<LSPAny> {
     let contents = match read_artifact_capped(path) {
         CappedArtifactRead::Contents(contents) => contents,
         // Absent artifact: falling back to the next packet source is honest.
@@ -7122,6 +7181,15 @@ fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>)
         return Some(repair_packet_sentinel(
             "gap is not actionable in actionable-gaps.json",
         ));
+    }
+    if let Some(sentinel) = source_subject_sentinel(
+        root,
+        &report,
+        super::gap_artifacts::GapArtifactKind::ActionableGaps,
+        "actionable-gaps.json",
+        "cargo xtask lane1-evidence-audit",
+    ) {
+        return Some(sentinel);
     }
 
     validate_and_render_actionable_gap_packet(packet)
@@ -7276,6 +7344,9 @@ fn collect_repair_packet_from_ledger(
     } else {
         records.iter().find(|r| r.gap_state == "actionable")?
     };
+    if let Some(sentinel) = ledger_source_subject_sentinel(root, &contents) {
+        return Some(sentinel);
+    }
 
     // Use the existing validator for completeness gate.
     if let Err(reason) = validate_agent_gap_record_packet(record) {
@@ -7663,10 +7734,77 @@ mod gap_record_context_tests {
         Ok(root)
     }
 
+    /// Writes the fixture ledger stamped against `root` as the producer does
+    /// (#4544); the fixture's source files are absent, so the stamp is current.
     fn write_gap_ledger(root: &Path) -> Result<(), String> {
         let path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
-        fs::write(path, gap_ledger_json())
+        let ledger = serde_json::from_str::<serde_json::Value>(gap_ledger_json())
+            .map_err(|err| format!("parse fixture ledger failed: {err}"))?;
+        let stamped = crate::output::gap_source_subject::with_source_subject_for_test(root, ledger);
+        fs::write(path, stamped.to_string())
             .map_err(|err| format!("write gap ledger in {} failed: {err}", root.display()))
+    }
+
+    /// #4544: the command-time context and repair packet readers re-check
+    /// the ledger stamp; an edited anchor file or a missing stamp returns a
+    /// typed sentinel instead of a current-looking packet.
+    #[test]
+    fn gap_packets_disclose_stale_or_unverifiable_ledger_subject() -> Result<(), String> {
+        let root = temp_root()?;
+        let result = (|| {
+            write_gap_ledger(&root)?;
+            let args_value = serde_json::json!({
+                "gap_id": "gap:pr:pricing:threshold-boundary",
+                "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+            });
+            let args = args_value
+                .as_object()
+                .ok_or_else(|| "expected object args".to_string())?;
+            let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+            let gap_id = "gap:pr:pricing:threshold-boundary";
+
+            let current = collect_gap_record_context_packet(&root, args, gap_id)
+                .ok_or_else(|| "expected a current packet".to_string())?;
+            if current["status"] == "not_actionable_or_incomplete" {
+                return Err(format!(
+                    "a current ledger must render its packet: {current}"
+                ));
+            }
+
+            // The anchor file appears after the ledger stamped it as absent.
+            fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+            fs::write(root.join("src/pricing.rs"), "pub fn price() {}\n")
+                .map_err(|err| err.to_string())?;
+            for packet in [
+                collect_gap_record_context_packet(&root, args, gap_id),
+                collect_repair_packet_from_ledger(&root, &ledger_path, Some(gap_id)),
+            ] {
+                let packet = packet.ok_or_else(|| "expected a stale sentinel".to_string())?;
+                let reason = packet["reason"].as_str().unwrap_or_default();
+                if packet["status"] != "not_actionable_or_incomplete"
+                    || !reason.starts_with("stale_subject: src/pricing.rs changed")
+                    || !reason.contains("ripr reports gap-ledger")
+                {
+                    return Err(format!("unexpected stale packet: {packet}"));
+                }
+            }
+
+            // A ledger without a stamp cannot be matched to the workspace.
+            fs::write(&ledger_path, gap_ledger_json()).map_err(|err| err.to_string())?;
+            let packet = collect_gap_record_context_packet(&root, args, gap_id)
+                .ok_or_else(|| "expected an unverifiable sentinel".to_string())?;
+            if !packet["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("unverifiable_subject: source_subject_missing")
+            {
+                return Err(format!("unexpected unstamped packet: {packet}"));
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        result
     }
 
     fn gap_ledger_json() -> &'static str {

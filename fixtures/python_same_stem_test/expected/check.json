@@ -95,5 +95,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/reconcile.py","digest":"sha256:21fa16e6840a4df64f04053ce75d991e7827e318b7efdad9b5e77d877f72f7eb"}]}
 }

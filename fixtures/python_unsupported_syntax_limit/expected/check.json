@@ -83,5 +83,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/mapper.py","digest":"sha256:31227ca472e9302afaeafb8d396739e550074c1c9e1de5c76f027d6e1849414a"}]}
 }

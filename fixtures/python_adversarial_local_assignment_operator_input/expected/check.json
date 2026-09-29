@@ -103,5 +103,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/calc.py","digest":"sha256:537821db0944bd9543df004d77c4327cc0d8f37a577a35759ba394b6b82784f0"}]}
 }

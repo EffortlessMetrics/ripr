@@ -14743,7 +14743,10 @@ fn write_actionable_gaps_report(
     std::fs::create_dir_all(&reports_dir)
         .map_err(|err| format!("create reports dir failed: {err}"))?;
     let path = reports_dir.join("actionable-gaps.json");
-    std::fs::write(&path, report.to_string())
+    // #4544: stamp the fixture as the producer does so the packet is current.
+    let stamped =
+        crate::output::gap_source_subject::with_source_subject_for_test(root, report.clone());
+    std::fs::write(&path, stamped.to_string())
         .map_err(|err| format!("write actionable-gaps.json failed: {err}"))?;
     Ok(())
 }
@@ -14755,7 +14758,11 @@ fn write_gap_decision_ledger(root: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(&reports_dir)
         .map_err(|err| format!("create reports dir failed: {err}"))?;
     let path = reports_dir.join("gap-decision-ledger.json");
-    std::fs::write(&path, complete_gap_decision_ledger_json())
+    // #4544: stamp the fixture as the producer does so the ledger is current.
+    let ledger = serde_json::from_str::<serde_json::Value>(complete_gap_decision_ledger_json())
+        .map_err(|err| format!("parse fixture ledger failed: {err}"))?;
+    let stamped = crate::output::gap_source_subject::with_source_subject_for_test(root, ledger);
+    std::fs::write(&path, stamped.to_string())
         .map_err(|err| format!("write gap-decision-ledger.json failed: {err}"))?;
     Ok(())
 }
@@ -15271,6 +15278,68 @@ fn execute_command_collect_repair_packet_never_substitutes_another_gaps_packet()
         assert_eq!(
             from_ledger["verify_command"],
             "cargo xtask fixtures boundary_gap"
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_repair_packet_discloses_stale_actionable_gaps_subject()
+-> Result<(), String> {
+    // #4544: after the packet's anchor file changes (an edit or a branch
+    // switch), the repair packet command returns a typed stale sentinel
+    // naming the regeneration command, not the old packet.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-stale-subject")?;
+        let report = complete_actionable_gaps_report();
+        let related_test = report["packets"][0]["primary_anchor"]["file"]
+            .as_str()
+            .ok_or_else(|| "fixture packet must name an anchor file".to_string())?
+            .to_string();
+        write_actionable_gaps_report(root.path(), &report)?;
+
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        let collect = || {
+            backend.execute_command(ExecuteCommandParams {
+                command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+                arguments: vec![serde_json::json!({ "gap_id": "gap:rust:pricing-boundary" })],
+                work_done_progress_params: Default::default(),
+            })
+        };
+        let current = collect()
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected full repair packet".to_string())?;
+        assert_ne!(
+            current["status"], "not_actionable_or_incomplete",
+            "a current actionable-gaps.json must render its packet: {current}"
+        );
+
+        let related_path = root.path().join(&related_test);
+        if let Some(parent) = related_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|err| format!("create dir failed: {err}"))?;
+        }
+        std::fs::write(&related_path, "pub fn price() {}\n")
+            .map_err(|err| format!("write anchor file failed: {err}"))?;
+        let stale = collect()
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected stale sentinel".to_string())?;
+        assert_eq!(stale["status"], "not_actionable_or_incomplete");
+        let reason = stale["reason"]
+            .as_str()
+            .ok_or_else(|| "sentinel must carry a string reason".to_string())?;
+        assert!(
+            reason.starts_with(&format!("stale_subject: {related_test} changed"))
+                && reason.contains("cargo xtask lane1-evidence-audit"),
+            "stale actionable-gaps.json must be disclosed, got {stale}"
         );
         Ok(())
     })

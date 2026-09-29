@@ -1210,6 +1210,25 @@ are scoped or reviewed.
   longer emit commands that silently analyze a different scope, and dynamic
   arguments are shell-safe (#2659, follow-up to #2598).
 
+- LSP: after `git checkout`, an edit, or a commit, `ripr lsp` no longer shows
+  gap diagnostics from `gap-decision-ledger.json` or `actionable-gaps.json`
+  that were computed for other file contents. Before, it placed the old
+  branch's gaps at their old lines on the new files and presented them as
+  current. Both reports now carry a `source_subject` stamp with a SHA-256
+  digest of each file their gaps name, taken from the analysis that produced
+  them: `ripr check` JSON and `repo-exposure-json` stamp the files they name in
+  the analysis run, and the ledger and `actionable-gaps.json` writers copy those
+  digests instead of reading the files again, so a file edited between the
+  analysis and the report write is not stamped as analyzed. A report built
+  from an unstamped input carries `source_subject_unavailable` instead. The
+  server recomputes the digests and withholds a report whose files changed
+  (`stale_subject`) or that has no usable stamp (`unverifiable_subject`,
+  which includes reports written by earlier builds). Every file a packet
+  names counts, including `target_test`, `target_file`, and each shape of
+  `related_test_or_observer`, and absolute paths under a relative `--root`
+  resolve. The status surfaces and the repair-packet command name the change
+  and the regeneration command (`ripr reports gap-ledger`, or
+  `cargo xtask lane1-evidence-audit` for `actionable-gaps.json`).
 - Windows LSP refreshes now isolate shared Git subprocesses from the JSON-RPC
   server stdin and terminate timed-out process trees with bounded pipe draining.
   Explicit refreshes therefore return trustworthy results within the ordinary

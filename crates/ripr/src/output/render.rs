@@ -30,7 +30,10 @@ pub(crate) fn render_check_with_config(
     match format {
         OutputFormat::Human => Ok(human::render_bounded_with_config(output, config)),
         OutputFormat::HumanFull => Ok(human::render_full_with_config(output, config)),
-        OutputFormat::Json => Ok(json::render_with_config(output, config)),
+        OutputFormat::Json => Ok(stamp_check_json(
+            json::render_with_config(output, config),
+            &output.root,
+        )),
         OutputFormat::Github => Ok(github::render_with_config(output, config)),
         OutputFormat::Sarif => {
             let suppressions = load_suppressions(output, config)?;
@@ -141,6 +144,18 @@ pub(crate) fn render_check_with_config(
                 ),
             )
         }
+    }
+}
+
+/// #4544: stamp the check JSON with the content digests of every file a gap
+/// ledger derived from it would name, read in this analysis run, so the
+/// ledger writer can copy them instead of hashing the workspace later.
+fn stamp_check_json(rendered: String, root: &std::path::Path) -> String {
+    match super::gap_decision_ledger::check_output_subject_paths(&rendered, root) {
+        Ok(paths) => {
+            super::gap_source_subject::append_source_subject_member(rendered, root, &paths)
+        }
+        Err(_) => rendered,
     }
 }
 

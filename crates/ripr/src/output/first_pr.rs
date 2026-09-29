@@ -582,7 +582,7 @@ fn materialize_check_output_gap_ledger(
             check_output_path.display()
         )
     })?;
-    let report = crate::output::gap_decision_ledger::build_gap_decision_ledger_report(
+    let mut report = crate::output::gap_decision_ledger::build_gap_decision_ledger_report(
         crate::output::gap_decision_ledger::GapDecisionLedgerInput {
             root: options.root.clone(),
             generated_at: "first-pr-check-output".to_string(),
@@ -592,6 +592,10 @@ fn materialize_check_output_gap_ledger(
             records_json: Ok(contents),
         },
     );
+    crate::output::gap_decision_ledger::stamp_gap_decision_ledger_source_subject(
+        &mut report,
+        root,
+    )?;
     let json = crate::output::gap_decision_ledger::render_gap_decision_ledger_json(&report)?;
     let markdown = crate::output::gap_decision_ledger::render_gap_decision_ledger_markdown(&report);
     let gap_ledger_path = resolve_path(root, &options.gap_ledger);

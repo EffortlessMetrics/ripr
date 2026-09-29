@@ -142,6 +142,7 @@ pub(crate) fn write_repo_exposure_json<W: io::Write>(
         ts_guidance,
         python_guidance,
         None,
+        None,
         out,
     )
 }
@@ -159,6 +160,7 @@ pub(crate) fn write_repo_exposure_json_with_context<W: io::Write>(
     out: &mut W,
 ) -> Result<(), String> {
     let placeholder = repo_exposure_artifact_metadata(context, CONTENT_SHA256_PLACEHOLDER)?;
+    let source_subject = repo_exposure_source_subject(classified, &context.root);
     let mut hasher = Sha256Writer::new();
     write_repo_exposure_json_document(
         classified,
@@ -166,6 +168,7 @@ pub(crate) fn write_repo_exposure_json_with_context<W: io::Write>(
         ts_guidance,
         python_guidance,
         Some(&placeholder),
+        source_subject.as_ref(),
         &mut hasher,
     )
     .map_err(|err| format!("hash repo exposure JSON failed: {err}"))?;
@@ -178,6 +181,7 @@ pub(crate) fn write_repo_exposure_json_with_context<W: io::Write>(
         ts_guidance,
         python_guidance,
         Some(&metadata),
+        source_subject.as_ref(),
         out,
     )
     .map_err(|err| format!("write repo exposure JSON failed: {err}"))
@@ -204,12 +208,37 @@ pub(crate) fn render_repo_exposure_json_with_context(
     String::from_utf8(bytes).map_err(|err| format!("repo exposure JSON was not UTF-8: {err}"))
 }
 
+/// #4544: the content digests of every workspace file the seam entries name,
+/// read in this analysis run. A gap ledger or actionable-gaps report derived
+/// from this artifact copies these digests; it never hashes the workspace
+/// itself. `None` when no seam names a file or a file cannot be read, so the
+/// derived reports disclose `unverifiable_subject` instead of a partial stamp.
+fn repo_exposure_source_subject(
+    classified: &[ClassifiedSeam],
+    root: &std::path::Path,
+) -> Option<serde_json::Value> {
+    let canonical_gaps = canonical_gap_identities(classified);
+    let mut files = std::collections::BTreeSet::new();
+    for entry in classified {
+        let mut seam_json = String::new();
+        push_classified_json(&mut seam_json, entry, canonical_gaps.get(entry.seam.id()));
+        let seam = serde_json::from_str::<serde_json::Value>(&seam_json).ok()?;
+        crate::output::gap_source_subject::named_files_in_value(root, &seam, &mut files);
+    }
+    if files.is_empty() {
+        return None;
+    }
+    let stamp = crate::output::gap_source_subject::stamp_source_subject(root, &files).ok()?;
+    serde_json::to_value(stamp).ok()
+}
+
 fn write_repo_exposure_json_document<W: io::Write>(
     classified: &[ClassifiedSeam],
     limit_info: Option<&SeamLimitInfo>,
     ts_guidance: Option<&TsFullRepoGuidance>,
     python_guidance: Option<&PythonRepoExposureGuidance>,
     artifact: Option<&serde_json::Value>,
+    source_subject: Option<&serde_json::Value>,
     out: &mut W,
 ) -> io::Result<()> {
     let metrics = ExposureMetrics::from(classified);
@@ -223,6 +252,9 @@ fn write_repo_exposure_json_document<W: io::Write>(
     )?;
     if let Some(artifact) = artifact {
         writeln!(out, "  \"artifact\": {},", artifact)?;
+    }
+    if let Some(source_subject) = source_subject {
+        writeln!(out, "  \"source_subject\": {},", source_subject)?;
     }
     writeln!(out, "  \"scope\": \"repo\",")?;
 

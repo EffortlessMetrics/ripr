@@ -705,7 +705,12 @@ fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
         records_path,
         records_json: read_optional_text_for_report(options.source.label(), options.source.path()),
     };
-    let report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
+    let selected_root = PathBuf::from(&input.root);
+    let mut report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
+    output::gap_decision_ledger::stamp_gap_decision_ledger_source_subject(
+        &mut report,
+        &selected_root,
+    )?;
     let rendered_json = output::gap_decision_ledger::render_gap_decision_ledger_json(&report)?;
     let rendered_md = output::gap_decision_ledger::render_gap_decision_ledger_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
@@ -4281,6 +4286,270 @@ mod tests {
         assert!(markdown.contains("gate candidates=`1`"));
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gap ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    fn read_json_file(path: &Path) -> Result<serde_json::Value, String> {
+        serde_json::from_str(
+            &std::fs::read_to_string(path)
+                .map_err(|err| format!("read {}: {err}", path.display()))?,
+        )
+        .map_err(|err| format!("parse {}: {err}", path.display()))
+    }
+
+    fn gap_ledger_from(
+        root: &str,
+        flag: &str,
+        input: &Path,
+        out: &Path,
+    ) -> Result<serde_json::Value, String> {
+        let out_md = out.with_extension("md");
+        reports(&args(&[
+            "gap-ledger",
+            "--root",
+            root,
+            flag,
+            &input.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+        read_json_file(out)
+    }
+
+    fn pricing_gap_record(anchor_file: &str) -> serde_json::Value {
+        serde_json::json!({
+            "gap_id": "gap:pr:pricing",
+            "canonical_gap_id": "gap:rust:pricing",
+            "kind": "MissingBoundaryAssertion",
+            "language": "rust",
+            "language_status": "stable",
+            "gap_state": "actionable",
+            "repair_route": {
+                "route_kind": "AddBoundaryAssertion",
+                "related_test": "tests/pricing.rs::discount_threshold"
+            },
+            "anchor": {"file": anchor_file, "line": 1}
+        })
+    }
+
+    /// #4544: the ledger writer never hashes the workspace. A records input
+    /// without an analysis stamp yields no usable stamp (the LSP then reports
+    /// `unverifiable_subject`), and re-rendering that unstamped ledger through
+    /// `--records` does not mint a fresh stamp for the current bytes.
+    #[test]
+    fn reports_gap_ledger_without_an_input_stamp_is_unavailable_and_stays_so() -> Result<(), String>
+    {
+        use crate::output::gap_source_subject::{SourceSubjectCheck, check_source_subject};
+        let dir = unique_command_test_dir("gap-ledger-source-subject-missing");
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::write(dir.join("src/pricing.rs"), "abc\n")
+            .map_err(|err| format!("write anchor: {err}"))?;
+        let records = dir.join("records.json");
+        std::fs::write(
+            &records,
+            serde_json::json!({"records": [pricing_gap_record("src/pricing.rs")]}).to_string(),
+        )
+        .map_err(|err| format!("write records: {err}"))?;
+        let root = dir.display().to_string();
+
+        let ledger = gap_ledger_from(&root, "--records", &records, &dir.join("ledger.json"))?;
+        assert_eq!(ledger.get("source_subject"), None);
+        assert_eq!(
+            ledger["source_subject_unavailable"],
+            serde_json::json!("input_source_subject_missing")
+        );
+        let required = std::collections::BTreeSet::from([
+            "src/pricing.rs".to_string(),
+            "tests/pricing.rs".to_string(),
+        ]);
+        assert!(matches!(
+            check_source_subject(&dir, ledger.get("source_subject"), &required),
+            SourceSubjectCheck::Unverifiable(_)
+        ));
+
+        let rerendered = gap_ledger_from(
+            &root,
+            "--records",
+            &dir.join("ledger.json"),
+            &dir.join("rerendered.json"),
+        )?;
+        assert_eq!(rerendered.get("source_subject"), None);
+        assert_eq!(
+            rerendered["source_subject_unavailable"],
+            serde_json::json!("input_source_subject_missing")
+        );
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
+        Ok(())
+    }
+
+    /// #4544: a stamped input's digests are copied, never recomputed: the
+    /// ledger carries the input's digest even though the file changed before
+    /// the ledger was written, so the LSP reports the ledger stale. The root is
+    /// relative and the record names the anchor by absolute path, which must
+    /// still resolve to the same repo-relative stamp entry.
+    #[test]
+    fn reports_gap_ledger_copies_the_input_stamp_for_absolute_paths_under_a_relative_root()
+    -> Result<(), String> {
+        use crate::output::gap_source_subject::{SourceSubjectCheck, check_source_subject};
+        let dir = unique_repo_relative_test_dir("gap-ledger-source-subject-copy");
+        assert!(dir.is_relative(), "{}", dir.display());
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::write(dir.join("src/pricing.rs"), "abc\n")
+            .map_err(|err| format!("write anchor: {err}"))?;
+        let absolute_anchor = std::env::current_dir()
+            .map_err(|err| format!("cwd: {err}"))?
+            .join(&dir)
+            .join("src/pricing.rs");
+        let root = dir.display().to_string();
+        let analysis_stamp = serde_json::json!({
+            "digest_algorithm": "sha256",
+            "files": [
+                {
+                    "path": "src/pricing.rs",
+                    "digest": "sha256:edeaaff3f1774ad2888673770c6d64097e391bc362d7d6fb34982ddf0efd18cb"
+                },
+                {"path": "tests/pricing.rs", "digest": null}
+            ]
+        });
+        let records = dir.join("records.json");
+        std::fs::write(
+            &records,
+            serde_json::json!({
+                "root": root,
+                "source_subject": analysis_stamp,
+                "records": [pricing_gap_record(&absolute_anchor.display().to_string())]
+            })
+            .to_string(),
+        )
+        .map_err(|err| format!("write records: {err}"))?;
+        // The workspace moves on after the analysis stamped it.
+        std::fs::write(dir.join("src/pricing.rs"), "abd\n")
+            .map_err(|err| format!("edit anchor: {err}"))?;
+
+        let ledger = gap_ledger_from(&root, "--records", &records, &dir.join("ledger.json"))?;
+        assert_eq!(ledger["source_subject"], analysis_stamp);
+        assert_eq!(ledger.get("source_subject_unavailable"), None);
+        let required = std::collections::BTreeSet::from([
+            "src/pricing.rs".to_string(),
+            "tests/pricing.rs".to_string(),
+        ]);
+        assert_eq!(
+            check_source_subject(&dir, ledger.get("source_subject"), &required),
+            SourceSubjectCheck::Stale("src/pricing.rs".to_string())
+        );
+
+        // Re-rendering the written ledger keeps the analysis stamp.
+        let rerendered = gap_ledger_from(
+            &root,
+            "--records",
+            &dir.join("ledger.json"),
+            &dir.join("rerendered.json"),
+        )?;
+        assert_eq!(rerendered["source_subject"], analysis_stamp);
+
+        // A stamp that omits a named file yields no usable stamp.
+        std::fs::write(
+            &records,
+            serde_json::json!({
+                "root": root,
+                "source_subject": {"digest_algorithm": "sha256", "files": [
+                    analysis_stamp["files"][0].clone()
+                ]},
+                "records": [pricing_gap_record("src/pricing.rs")]
+            })
+            .to_string(),
+        )
+        .map_err(|err| format!("rewrite records: {err}"))?;
+        let incomplete =
+            gap_ledger_from(&root, "--records", &records, &dir.join("incomplete.json"))?;
+        assert_eq!(incomplete.get("source_subject"), None);
+        assert_eq!(
+            incomplete["source_subject_unavailable"],
+            serde_json::json!("input_source_subject_incomplete")
+        );
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
+        Ok(())
+    }
+
+    /// #4544 regression: analysis, then an edit, then the ledger write. The
+    /// repo-exposure artifact stamps the bytes the analysis run read; the
+    /// ledger derived after the edit copies that stamp, so the LSP-side check
+    /// reports the edited file stale instead of vouching for the new bytes.
+    #[test]
+    fn reports_gap_ledger_after_an_edit_keeps_the_analysis_time_stamp() -> Result<(), String> {
+        use crate::output::gap_source_subject::{SourceSubjectCheck, check_source_subject};
+        let dir = unique_command_test_dir("gap-ledger-source-subject-analysis");
+        let fixture = repo_root().join("fixtures/boundary_gap/input");
+        for file in ["Cargo.toml", "src/lib.rs", "tests/pricing.rs"] {
+            let target = dir.join(file);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {}: {err}", parent.display()))?;
+            }
+            std::fs::copy(fixture.join(file), &target)
+                .map_err(|err| format!("copy {file}: {err}"))?;
+        }
+        let config = crate::config::RiprConfig::default();
+        let (classified, limit_info) =
+            crate::analysis::inventory_classified_seams_at_with_config(&dir, &config)?;
+        let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+            dir.clone(),
+            "draft".to_string(),
+            None,
+            &config,
+        )?;
+        let repo_exposure_json =
+            crate::output::repo_exposure::render_repo_exposure_json_with_context(
+                &classified,
+                limit_info.as_ref(),
+                None,
+                None,
+                &context,
+            )?;
+        let repo_exposure = dir.join("repo-exposure.json");
+        std::fs::write(&repo_exposure, &repo_exposure_json)
+            .map_err(|err| format!("write repo exposure: {err}"))?;
+        let analysis_stamp = read_json_file(&repo_exposure)?["source_subject"].clone();
+        let stamped_paths = analysis_stamp["files"]
+            .as_array()
+            .map(|files| {
+                files
+                    .iter()
+                    .filter_map(|file| file["path"].as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        assert_eq!(stamped_paths, ["src/lib.rs", "tests/pricing.rs"]);
+
+        std::fs::write(
+            dir.join("src/lib.rs"),
+            format!(
+                "{}\n// edited after analysis\n",
+                std::fs::read_to_string(dir.join("src/lib.rs"))
+                    .map_err(|err| format!("read lib: {err}"))?
+            ),
+        )
+        .map_err(|err| format!("edit lib: {err}"))?;
+
+        let ledger = gap_ledger_from(
+            &dir.display().to_string(),
+            "--repo-exposure",
+            &repo_exposure,
+            &dir.join("ledger.json"),
+        )?;
+        assert_eq!(ledger.get("source_subject_unavailable"), None);
+        assert_eq!(ledger["source_subject"], analysis_stamp);
+        let required = stamped_paths.into_iter().collect();
+        assert_eq!(
+            check_source_subject(&dir, ledger.get("source_subject"), &required),
+            SourceSubjectCheck::Stale("src/lib.rs".to_string())
+        );
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
         Ok(())
     }
 

@@ -487,5 +487,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/dispatch.ts","digest":"sha256:8cdd08df8164f1f33b5dfd8de740f759537b7ba6a4fb6675e562f29cb350f013"}]}
 }

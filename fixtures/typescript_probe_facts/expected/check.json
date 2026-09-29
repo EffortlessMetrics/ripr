@@ -1358,5 +1358,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/ambiguous.ts","digest":"sha256:3bb12757400c76de2832b344adb6092e051f5210006a1cbfdd4b95da997e95e0"},{"path":"src/errors.ts","digest":"sha256:68b5babc9527a75e4450f1bab88af595a81cae4b16b18ce40332022474e3c265"},{"path":"src/pricing.ts","digest":"sha256:1531a8f3f6bd8bd20066697f34994ef66c76be306734c9309f0d77ee733fe808"},{"path":"src/profile.ts","digest":"sha256:43cd69093b898a700aeddc9ae444e3af1d3bc045df025007fe49eecc088d4099"},{"path":"src/widget.tsx","digest":"sha256:fb97fda901494d46049fecb4fc3d23848eb7ac09cfdae33dfa985d47e76c9649"}]}
 }

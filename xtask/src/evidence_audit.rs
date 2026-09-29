@@ -397,6 +397,7 @@ pub(crate) struct Lane1EvidenceAuditFileDebt {
 /// data and write `target/ripr/reports/lane1-evidence-audit.{json,md}`.
 pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     ensure_reports_dir()?;
+    let mut repo_exposure_subject = None;
     let report = if let Some(limitation) =
         lane1_repo_exposure_large_cache_preflight_limitation(Path::new("."))?
     {
@@ -405,6 +406,7 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
         let repo_exposure_path = reports_dir().join("lane1-evidence-audit.repo-exposure.json");
         match write_lane1_evidence_audit_repo_exposure(&repo_exposure_path)? {
             Lane1EvidenceAuditRepoExposureOutcome::Complete(repo_exposure_generation) => {
+                repo_exposure_subject = repo_exposure_source_subject(&repo_exposure_path);
                 let report = lane1_evidence_audit_report_from_complete_repo_exposure(
                     ".",
                     &repo_exposure_path,
@@ -436,7 +438,12 @@ pub(crate) fn lane1_evidence_audit_report_impl() -> Result<(), String> {
     )?;
     write_report(
         "actionable-gaps.json",
-        &lane1_actionable_gap_packets_json(&report)?,
+        &stamp_actionable_gaps_source_subject(
+            &lane1_actionable_gap_packets_json(&report)?,
+            repo_exposure_subject.as_ref(),
+            Path::new("."),
+            Path::new("."),
+        )?,
     )?;
     write_report(
         "actionable-gaps.md",
@@ -6797,4 +6804,145 @@ fn audit_push_group_table(out: &mut String, groups: &[Lane1EvidenceAuditGroup]) 
 
 pub(crate) fn audit_markdown_cell(value: &str) -> String {
     value.replace('\n', " ").replace('|', "\\|")
+}
+
+/// Stamp an actionable-gaps report for the LSP's `source_subject` check
+/// (#4544). The packets are derived from a repo-exposure analysis, so their
+/// stamp is derived from the stamp that analysis wrote: every file a packet
+/// names (the shared `actionable_packet_subject_paths` definition, compiled
+/// from the ripr crate) must be in `input_stamp`, and its digest is copied.
+/// Nothing is hashed here, so a report written after a checkout or an edit
+/// cannot vouch for packets computed before it. Without a usable input stamp
+/// the report gets `source_subject_unavailable` instead, and the LSP reports
+/// `unverifiable_subject`.
+pub(crate) fn stamp_actionable_gaps_source_subject(
+    report_json: &str,
+    input_stamp: Option<&Value>,
+    input_root: &Path,
+    root: &Path,
+) -> Result<String, String> {
+    let mut report: Value = serde_json::from_str(report_json)
+        .map_err(|err| format!("parse actionable-gaps report failed: {err}"))?;
+    let required = report
+        .get("packets")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice)
+        .iter()
+        .flat_map(|packet| gap_source_subject_shared::actionable_packet_subject_paths(root, packet))
+        .collect::<BTreeSet<_>>();
+    let derived =
+        gap_source_subject_shared::derive_source_subject(input_stamp, input_root, root, &required);
+    if let Some(object) = report.as_object_mut() {
+        match derived {
+            Ok(subject) => {
+                let subject = serde_json::to_value(subject).map_err(|err| err.to_string())?;
+                object.insert("source_subject".to_string(), subject);
+            }
+            Err(reason) => {
+                object.insert(
+                    "source_subject_unavailable".to_string(),
+                    Value::String(reason.to_string()),
+                );
+            }
+        }
+    }
+    serde_json::to_string_pretty(&report).map_err(|err| err.to_string())
+}
+
+/// The `source_subject` stamp a repo-exposure artifact carries, read before
+/// the temporary artifact is removed.
+pub(crate) fn repo_exposure_source_subject(path: &Path) -> Option<Value> {
+    let text = fs::read_to_string(path).ok()?;
+    let mut value = serde_json::from_str::<Value>(&text).ok()?;
+    value.get_mut("source_subject").map(Value::take)
+}
+
+#[cfg(test)]
+mod source_subject_tests {
+    use super::*;
+
+    fn packet_report(observer: Value) -> Value {
+        serde_json::json!({
+            "report": "actionable-gaps",
+            "packets": [{
+                "source_file": "src/pricing.rs",
+                "primary_anchor": {"file": "./src/pricing.rs", "line": 1},
+                "target_test": "tests/pricing.rs::t",
+                "related_test_or_observer": observer
+            }]
+        })
+    }
+
+    fn input_stamp(files: &[&str]) -> Value {
+        serde_json::json!({
+            "digest_algorithm": "sha256",
+            "files": files
+                .iter()
+                .map(|path| serde_json::json!({"path": path, "digest": format!("sha256:{path}")}))
+                .collect::<Vec<_>>()
+        })
+    }
+
+    #[test]
+    fn actionable_gaps_stamp_copies_every_packet_file_from_the_analysis_stamp() -> Result<(), String>
+    {
+        let root = Path::new("/workspace");
+        for observer in [
+            serde_json::json!("tests/observer.rs::name"),
+            serde_json::json!({"file": "tests/observer.rs", "name": "name"}),
+            serde_json::json!([{"file": "tests/observer.rs"}, "tests/other.rs::t"]),
+        ] {
+            let is_array = observer.is_array();
+            let report = packet_report(observer).to_string();
+            let mut files = vec!["src/pricing.rs", "tests/pricing.rs", "tests/observer.rs"];
+            if is_array {
+                files.push("tests/other.rs");
+            }
+            let stamped: Value = serde_json::from_str(&stamp_actionable_gaps_source_subject(
+                &report,
+                Some(&input_stamp(&files)),
+                root,
+                root,
+            )?)
+            .map_err(|err| err.to_string())?;
+            let mut stamped_paths = stamped["source_subject"]["files"]
+                .as_array()
+                .ok_or_else(|| format!("expected a stamp: {stamped}"))?
+                .iter()
+                .filter_map(|file| file["path"].as_str())
+                .collect::<Vec<_>>();
+            stamped_paths.sort_unstable();
+            files.sort_unstable();
+            assert_eq!(stamped_paths, files);
+
+            // Missing the related-test file: no stamp, a named reason.
+            let without_observer = stamp_actionable_gaps_source_subject(
+                &report,
+                Some(&input_stamp(&["src/pricing.rs", "tests/pricing.rs"])),
+                root,
+                root,
+            )?;
+            let without_observer: Value =
+                serde_json::from_str(&without_observer).map_err(|err| err.to_string())?;
+            assert_eq!(without_observer.get("source_subject"), None);
+            assert_eq!(
+                without_observer["source_subject_unavailable"],
+                "input_source_subject_incomplete"
+            );
+        }
+
+        // No analysis stamp at all (the limited scorecard fallback).
+        let unstamped: Value = serde_json::from_str(&stamp_actionable_gaps_source_subject(
+            &packet_report(serde_json::json!("tests/observer.rs::name")).to_string(),
+            None,
+            root,
+            root,
+        )?)
+        .map_err(|err| err.to_string())?;
+        assert_eq!(
+            unstamped["source_subject_unavailable"],
+            "input_source_subject_missing"
+        );
+        Ok(())
+    }
 }
