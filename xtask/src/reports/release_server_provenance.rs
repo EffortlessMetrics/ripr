@@ -171,6 +171,100 @@ pub(crate) fn release_final_server_subjects(args: &[String]) -> Result<(), Strin
     Ok(())
 }
 
+
+pub(crate) fn release_final_server_attestation_fixture(args: &[String]) -> Result<(), String> {
+    let version = normalize_product_version(&required_release_arg(args, "version", "RAW_VERSION")?)?;
+    let expected_source_sha =
+        required_release_arg(args, "expected-source-sha", "EXPECTED_SOURCE_SHA")?;
+    let repository = required_github_identity("GITHUB_REPOSITORY")?;
+    let workflow_ref = required_github_identity("GITHUB_WORKFLOW_REF")?;
+    let candidate_sha = required_github_identity("GITHUB_SHA")?;
+    let git_ref = required_github_identity("GITHUB_REF")?;
+    let run_id = required_github_identity("GITHUB_RUN_ID")?;
+    let run_attempt = required_github_identity("GITHUB_RUN_ATTEMPT")?;
+    if candidate_sha != expected_source_sha {
+        return Err(format!(
+            "manual attestation fixture expected source SHA '{expected_source_sha}' but workflow checked out '{candidate_sha}'"
+        ));
+    }
+
+    let inventory_path = final_server_inventory_path(&version);
+    let inventory_text = fs::read_to_string(&inventory_path)
+        .map_err(|err| format!("failed to read {}: {err}", inventory_path.display()))?;
+    let inventory: serde_json::Value = serde_json::from_str(&inventory_text)
+        .map_err(|err| format!("malformed final server subject inventory: {err}"))?;
+    if inventory.get("disposition").and_then(serde_json::Value::as_str) != Some("inventoried") {
+        return Err("final server subject inventory is not terminal 'inventoried'".to_string());
+    }
+    let rows = inventory
+        .get("subjects")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "final server subject inventory has no subjects".to_string())?;
+    let subject_paths = final_server_subject_paths(Path::new("dist"), &version)?;
+    if subject_paths.len() != rows.len() {
+        return Err("final server subject path count differs from inventory rows".to_string());
+    }
+
+    let signer_workflow = format!("{repository}/{RELEASE_WORKFLOW_PATH}");
+    let subjects = rows
+        .iter()
+        .map(|row| {
+            serde_json::json!({
+                "name": row.get("name").cloned().unwrap_or(serde_json::Value::Null),
+                "sha256": row.get("sha256").cloned().unwrap_or(serde_json::Value::Null),
+                "verified": false,
+                "reason": "fixture_only_no_attestation_permission",
+                "verification_plan": {
+                    "repository": repository,
+                    "signer_workflow": signer_workflow,
+                    "signer_digest": candidate_sha,
+                    "source_digest": candidate_sha,
+                    "source_ref": git_ref,
+                    "predicate_type": "https://slsa.dev/provenance/v1",
+                    "attestation_action": ATTESTATION_ACTION,
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let receipt = serde_json::json!({
+        "schema_version": "release-server-attestation/1",
+        "producer": "xtask release-final-server-attestation-fixture",
+        "version": version,
+        "inventory": {
+            "path": inventory_path.file_name().and_then(|name| name.to_str()).unwrap_or_default(),
+            "sha256": sha256_file(&inventory_path)?,
+            "configured_target_set": inventory.get("configured_target_set").cloned().unwrap_or(serde_json::Value::Null),
+            "assembly_receipt": inventory.get("assembly_receipt").cloned().unwrap_or(serde_json::Value::Null),
+            "subject_state": inventory.get("subject_state").cloned().unwrap_or(serde_json::Value::Null),
+        },
+        "producer_identity": {
+            "repository": repository,
+            "workflow_ref": workflow_ref,
+            "candidate_sha": candidate_sha,
+            "git_ref": git_ref,
+            "run_id": run_id,
+            "run_attempt": run_attempt,
+            "attestation_action": ATTESTATION_ACTION,
+            "release_workflow_path": RELEASE_WORKFLOW_PATH,
+        },
+        "subjects": subjects,
+        "permission_requested": {
+            "id_token_write": false,
+            "attestations_write": false,
+        },
+        "permission_available": {
+            "id_token": false,
+            "attestations_write": false,
+        },
+        "release_upload_eligible": false,
+        "release_upload_attempted": false,
+        "publication_mutation_attempted": false,
+        "disposition": "not_authorized",
+        "reason": "manual fixture proves exact subject and verifier construction without attestation or publication authority",
+    });
+    write_attestation_receipt(&version, &receipt)
+}
+
 pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Result<(), String> {
     let version = normalize_product_version(&required_release_arg(args, "version", "RAW_VERSION")?)?;
     let verified_path = PathBuf::from(required_release_arg(
@@ -293,9 +387,13 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
             "no release asset has been uploaded by this receipt producer"
         ],
     });
-    let text = serde_json::to_string_pretty(&receipt)
+    write_attestation_receipt(&version, &receipt)
+}
+
+fn write_attestation_receipt(version: &str, receipt: &serde_json::Value) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(receipt)
         .map_err(|err| format!("failed to render server attestation receipt: {err}"))?;
-    let path = final_server_attestation_receipt_path(&version);
+    let path = final_server_attestation_receipt_path(version);
     fs::write(&path, format!("{text}\n"))
         .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
     eprintln!("wrote {}", path.display());
