@@ -111,7 +111,7 @@ analysis/rust-macro-assertion-oracle
 - `StaticLimitKind::RustMacroWrappedAssertionUnresolved` in
   `crates/ripr/src/domain/language.rs`.
 - Rust adapter post-classification selection in
-  `crates/ripr/src/analysis/language/rust.rs`.
+  `crates/ripr/src/analysis/language/rust/oracles.rs`.
 - Unit guards for custom assertion macros and known assertion macro
   non-matches.
 - Pure fixture golden for
@@ -124,8 +124,8 @@ analysis/rust-macro-assertion-oracle
 
 ## Test Mapping
 
-- `crates/ripr/src/analysis/language/rust.rs::tests::macro_wrapped_assertion_limit_names_reachable_unobserved_assertion_macro`
-- `crates/ripr/src/analysis/language/rust.rs::tests::macro_wrapped_assertion_limit_ignores_known_assertion_macros`
+- `crates/ripr/src/analysis/language/rust/oracles.rs::tests::macro_wrapped_assertion_limit_names_reachable_unobserved_assertion_macro`
+- `crates/ripr/src/analysis/language/rust/oracles.rs::tests::macro_wrapped_assertion_limit_ignores_known_assertion_macros`
 - `crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable`
 - `crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct`
 - `crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_macro_wrapped_assertion_static_limit_kind`
@@ -139,7 +139,7 @@ analysis/rust-macro-assertion-oracle
 | Component | Location |
 |---|---|
 | Static limit enum and text | `crates/ripr/src/domain/language.rs` |
-| Rust post-classification selection | `crates/ripr/src/analysis/language/rust.rs` |
+| Rust post-classification selection | `crates/ripr/src/analysis/language/rust/oracles.rs` |
 | LSP gap-artifact known-kind validation | `crates/ripr/src/lsp/gap_artifacts.rs` |
 | Output contract docs | `docs/OUTPUT_SCHEMA.md` |
 | Static limit docs | `docs/STATIC_LIMITS.md` |

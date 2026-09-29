@@ -268,7 +268,7 @@ recursive member globs), the fail-closed probe boundary, and the
 manifest-sourced `harness` flag.
 `analysis/facts/harness_registry` pins the conflict limitations and the
 degraded per-function behavior for misdeclared targets, and
-`analysis/language/rust.rs` pins the diff-path seeding flip alongside
+`analysis/language/rust/mod.rs` pins the diff-path seeding flip alongside
 diff seeding
 (bench gap regression, declared-target confirmation with a probeable
 helper, opt-in restore). `config/tests.rs` pins parsing, identity
@@ -310,7 +310,7 @@ verbatim scan instead of a second lexical authority.
 - `analysis/harness_projection.rs` — the typed harness projection.
 - `analysis/workspace/cargo_targets.rs` — manifest enumeration,
   workspace-root-anchored.
-- `analysis/language/rust.rs` — diff seeding and repo production set.
+- `analysis/language/rust/mod.rs` — diff seeding and repo production set.
 - `analysis/seam_inventory.rs` — inventory and count production sets.
 - `config.rs` + `config/model.rs` — the opt-in, its identity role, and
   the consumed-config list.

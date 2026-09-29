@@ -153,10 +153,10 @@ schema. No registry or external dependency resolution.
 - `crates/ripr/src/analysis/workspace/select.rs::tests::dependent_packages_enter_draft_and_fast_selection`
 - `crates/ripr/src/analysis/workspace/select.rs::tests::empty_dependent_roots_reproduce_the_unchanged_selection`
 - `crates/ripr/src/analysis/workspace/select.rs::tests::dependent_roots_do_not_change_non_narrowing_selections`
-- `crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_reaches_path_dependent_tests_through_the_dependency_edge`
-- `crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_stays_narrow_without_the_path_dependency_edge`
-- `crates/ripr/src/analysis/language/rust.rs::tests::instant_mode_does_not_expand_scope_through_path_dependencies`
-- `crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_expands_custom_target_files_to_their_path_dependents`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_reaches_path_dependent_tests_through_the_dependency_edge`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_stays_narrow_without_the_path_dependency_edge`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::instant_mode_does_not_expand_scope_through_path_dependencies`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_expands_custom_target_files_to_their_path_dependents`
 
 ## Implementation Mapping
 
@@ -168,7 +168,7 @@ schema. No registry or external dependency resolution.
   `PathDependencyScopeExpansion`, package-root/manifest identity mapping
 - `crates/ripr/src/analysis/workspace/select.rs` —
   `select_rust_files_for_mode_with_dependent_packages`
-- `crates/ripr/src/analysis/language/rust.rs` — Draft/Fast gating,
+- `crates/ripr/src/analysis/language/rust/mod.rs` — Draft/Fast gating,
   unattributed-file collection, disclosure emission, selection wiring
 
 ## Metrics

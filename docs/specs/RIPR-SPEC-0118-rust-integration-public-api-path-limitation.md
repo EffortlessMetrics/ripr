@@ -130,7 +130,7 @@ origin witnesses.
 
 - `StaticLimitKind::RustIntegrationPublicApiPathUnresolved` in
   `crates/ripr/src/domain/language.rs`.
-- Rust adapter selection in `crates/ripr/src/analysis/language/rust.rs`.
+- Rust adapter selection in `crates/ripr/src/analysis/language/rust/mod.rs`.
 - Unit guard proving integration paths and non-integration paths select
   different limitation kinds.
 - Pure fixture goldens for `fixtures/rust_transitive_reach_positive/` and
@@ -143,7 +143,7 @@ origin witnesses.
 
 ## Test Mapping
 
-- `crates/ripr/src/analysis/language/rust.rs::tests::transitive_reach_limit_kind_names_integration_test_path`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::transitive_reach_limit_kind_names_integration_test_path`
 - `crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable`
 - `crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct`
 - `crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_integration_public_api_static_limit_kind`
@@ -157,7 +157,7 @@ origin witnesses.
 | Component | Location |
 |---|---|
 | Static limit enum and text | `crates/ripr/src/domain/language.rs` |
-| Integration-vs-generic selection | `crates/ripr/src/analysis/language/rust.rs` |
+| Integration-vs-generic selection | `crates/ripr/src/analysis/language/rust/mod.rs` |
 | Path predicate reused by selection | `crates/ripr/src/analysis/rust_index.rs` |
 | LSP gap-artifact known-kind validation | `crates/ripr/src/lsp/gap_artifacts.rs` |
 | Output contract docs | `docs/OUTPUT_SCHEMA.md` |

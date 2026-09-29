@@ -94,7 +94,7 @@ exercised boundary from a missing one.
 `analysis/classify/value_transfer.rs` `tests`;
 `analysis/classify/activation.rs`
 `activation_evidence_resolves_computed_local_boundary_operands`;
-`analysis/language/rust.rs` end-to-end retarget+evaluation tests;
+`analysis/language/rust/mod.rs` end-to-end retarget+evaluation tests;
 fixtures `binding_predicate_equality_boundary` (re-blessed flip) and
 the #3295 family fixtures.
 

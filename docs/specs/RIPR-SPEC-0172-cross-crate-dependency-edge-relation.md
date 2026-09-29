@@ -177,7 +177,7 @@ call.
   `PathDependencyAdjacency::forward_dependency_declarations`
   (section-and-name declarations per pair)
 - `crates/ripr/src/analysis/classifier.rs` — `classify_probe` threading
-- `crates/ripr/src/analysis/language/rust.rs` — per-pass context
+- `crates/ripr/src/analysis/language/rust/mod.rs` — per-pass context
   construction (diff mode: whole-workspace index only; repo mode:
   always)
 

@@ -7000,7 +7000,7 @@ tests = [
 fixtures = []
 code = [
   "crates/ripr/src/analysis/mod.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/analysis/probes/ids.rs",
   "crates/ripr/src/output/path.rs",
 ]
@@ -7015,15 +7015,18 @@ id = "RIPR-SPEC-0150"
 name = "Rust bounded value-propagation limitation"
 spec = "docs/specs/RIPR-SPEC-0150-rust-value-propagation-limitation.md"
 tests = [
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_names_rfind_value_propagation_limitation",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_names_len_utf8_value_propagation_limitation",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_keeps_unbounded_value_shapes_fail_closed",
-  "crates/ripr/src/analysis/language/rust.rs::tests::value_propagation_predicate_ignores_non_entity_text_and_shadowing",
-  "crates/ripr/src/analysis/language/rust.rs::tests::value_propagation_predicate_rejects_map_or_else_shape",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_names_rfind_value_propagation_limitation",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_names_len_utf8_value_propagation_limitation",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_keeps_unbounded_value_shapes_fail_closed",
+  "crates/ripr/src/analysis/language/rust/probes.rs::tests::value_propagation_predicate_ignores_non_entity_text_and_shadowing",
+  "crates/ripr/src/analysis/language/rust/probes.rs::tests::value_propagation_predicate_rejects_map_or_else_shape",
+  "crates/ripr/src/analysis/language/rust/probes.rs::tests::changed_let_binding_rejects_patterns_types_and_non_let_forms",
+  "crates/ripr/src/analysis/language/rust/probes.rs::tests::mask_does_not_special_case_char_literal_quotes_unlike_extract_mask",
 ]
 fixtures = []
 code = [
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
+  "crates/ripr/src/analysis/language/rust/probes.rs",
   "crates/ripr/src/domain/language.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
 ]
@@ -7492,7 +7495,7 @@ code = [
   "crates/ripr/src/domain/probe.rs",
   "crates/ripr/src/analysis/classify/transitive_reach.rs",
   "crates/ripr/src/analysis/classify/mod.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/output/human/sections.rs",
 ]
 outputs = [
@@ -7516,8 +7519,8 @@ tests = [
   "crates/ripr/src/analysis/classify/transitive_reach.rs::tests::witness_pointer_reports_plural_other_tests",
   "crates/ripr/src/output/human.rs::tests::human_output_surfaces_transitive_reach_witness_as_where_to_look",
   "crates/ripr/src/output/human.rs::tests::human_output_omits_where_to_look_without_witness",
-  "crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_does_not_claim_no_tests_found",
-  "crates/ripr/src/analysis/language/rust.rs::tests::witnessed_no_path_limitation_preserves_other_infection_summaries",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::witnessed_no_path_limitation_does_not_claim_no_tests_found",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::witnessed_no_path_limitation_preserves_other_infection_summaries",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_missing_witness_projection",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_mismatched_witness_projection",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_human_no_tests_claim_with_witness",
@@ -7533,7 +7536,7 @@ fixtures = [
 code = [
   "crates/ripr/src/analysis/classify/transitive_reach.rs",
   "crates/ripr/src/analysis/classify/mod.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/domain/classification.rs",
   "crates/ripr/src/domain/mod.rs",
   "crates/ripr/src/output/human/sections.rs",
@@ -7607,7 +7610,7 @@ code = [
   "crates/ripr/src/domain/probe.rs",
   "crates/ripr/src/analysis/classify/transitive_reach.rs",
   "crates/ripr/src/analysis/classify/mod.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/output/human/sections.rs",
 ]
 outputs = [
@@ -7626,8 +7629,10 @@ id = "RIPR-SPEC-0120"
 name = "rust macro-wrapped assertion limitation"
 spec = "docs/specs/RIPR-SPEC-0120-rust-macro-wrapped-assertion-limitation.md"
 tests = [
-  "crates/ripr/src/analysis/language/rust.rs::tests::macro_wrapped_assertion_limit_names_reachable_unobserved_assertion_macro",
-  "crates/ripr/src/analysis/language/rust.rs::tests::macro_wrapped_assertion_limit_ignores_known_assertion_macros",
+  "crates/ripr/src/analysis/language/rust/oracles.rs::tests::macro_wrapped_assertion_limit_names_reachable_unobserved_assertion_macro",
+  "crates/ripr/src/analysis/language/rust/oracles.rs::tests::macro_wrapped_assertion_limit_ignores_known_assertion_macros",
+  "crates/ripr/src/analysis/language/rust/oracles.rs::tests::known_assertion_macros_are_not_unresolved_even_when_path_qualified",
+  "crates/ripr/src/analysis/language/rust/oracles.rs::tests::cross_language_guard_does_not_fire_for_exposed_or_no_static_path_even_with_ffi",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_macro_wrapped_assertion_static_limit_kind",
@@ -7639,7 +7644,8 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/domain/language.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
+  "crates/ripr/src/analysis/language/rust/oracles.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
 ]
 outputs = [
@@ -7658,8 +7664,8 @@ id = "RIPR-SPEC-0166"
 name = "rust subprocess binary reach limitation"
 spec = "docs/specs/RIPR-SPEC-0166-rust-subprocess-binary-reach-limitation.md"
 tests = [
-  "crates/ripr/src/analysis/language/rust.rs::tests::cargo_binary_invocation_shape_is_conservative_and_deterministic",
-  "crates/ripr/src/analysis/language/rust.rs::tests::subprocess_limit_only_applies_to_binary_source_paths_and_integration_tests",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::cargo_binary_invocation_shape_is_conservative_and_deterministic",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::subprocess_limit_only_applies_to_binary_source_paths_and_integration_tests",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_subprocess_binary_static_limit_kind",
@@ -7667,7 +7673,7 @@ tests = [
 fixtures = ["fixtures/benches_harness_evidence"]
 code = [
   "crates/ripr/src/domain/language.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
 ]
 outputs = [
@@ -7682,7 +7688,7 @@ id = "RIPR-SPEC-0118"
 name = "rust integration public-API path limitation"
 spec = "docs/specs/RIPR-SPEC-0118-rust-integration-public-api-path-limitation.md"
 tests = [
-  "crates/ripr/src/analysis/language/rust.rs::tests::transitive_reach_limit_kind_names_integration_test_path",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::transitive_reach_limit_kind_names_integration_test_path",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_integration_public_api_static_limit_kind",
@@ -7695,7 +7701,7 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/domain/language.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/analysis/rust_index.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
 ]
@@ -7716,7 +7722,7 @@ id = "RIPR-SPEC-0119"
 name = "rust direct test macro-call limitation"
 spec = "docs/specs/RIPR-SPEC-0119-rust-direct-test-macro-call-limitation.md"
 tests = [
-  "crates/ripr/src/analysis/language/rust.rs::tests::macro_reach_limit_kind_names_direct_test_body_macro_path",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::macro_reach_limit_kind_names_direct_test_body_macro_path",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
   "crates/ripr/src/domain/language.rs::tests::static_limit_kind_describe_is_present_and_distinct",
   "crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_rust_macro_wrapped_test_call_static_limit_kind",
@@ -7731,7 +7737,7 @@ code = [
   "crates/ripr/src/domain/language.rs",
   "crates/ripr/src/analysis/classify/transitive_reach.rs",
   "crates/ripr/src/analysis/classify/mod.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/lsp/gap_artifacts.rs",
 ]
 outputs = [
@@ -8313,8 +8319,8 @@ tests = [
   "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_wrong_typed_refresh_deadline_ms",
   "crates/ripr/src/lsp/config.rs::tests::session_value_sources_disclose_refresh_deadline_ms_origin",
   "crates/ripr/src/lsp/config.rs::tests::effective_settings_eq_compares_refresh_deadline",
-  "crates/ripr/src/analysis/language/rust.rs::tests::pre_cancelled_token_stops_the_diff_file_load_loop",
-  "crates/ripr/src/analysis/language/rust.rs::tests::pre_cancelled_token_stops_the_classify_loop",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::pre_cancelled_token_stops_the_diff_file_load_loop",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::pre_cancelled_token_stops_the_classify_loop",
   "crates/ripr/src/lsp/backend.rs::work_done_progress_guard_tests::deadline_expiry_drops_refresh_with_named_outcome_and_one_progress_end",
 ]
 fixtures = []
@@ -8669,7 +8675,7 @@ fixtures = [
 code = [
   "crates/ripr/src/domain/probe.rs",
   "crates/ripr/src/analysis/probes/diff.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/output/json/report.rs",
 ]
 outputs = [
@@ -8727,14 +8733,14 @@ tests = [
   "crates/ripr/src/analysis/workspace/source_role.rs::tests::cargo_autodiscovery_shapes_govern_benches_and_examples",
   "crates/ripr/src/analysis/workspace/source_role.rs::tests::declared_targets_and_opt_in_override_layout",
   "crates/ripr/src/analysis/workspace/cargo_targets.rs::tests::explicit_test_and_bench_paths_are_extracted",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_treats_cargo_benches_as_evidence_not_production",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_confirms_declared_test_targets_but_not_unconfirmed_names",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_opt_in_restores_production_like_analysis",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_seeds_probes_for_changed_repo_automation_files",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_treats_cargo_benches_as_evidence_not_production",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_confirms_declared_test_targets_but_not_unconfirmed_names",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_opt_in_restores_production_like_analysis",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_seeds_probes_for_changed_repo_automation_files",
   "crates/ripr/src/analysis/workspace/source_role.rs::tests::repo_automation_subjects_are_root_xtask_sources_only",
   "crates/ripr/src/analysis/workspace/source_role.rs::tests::changed_automation_and_loose_files_seed_diff_probes",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_seeds_probes_for_changed_build_scripts",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_skips_build_scripts_cargo_never_compiles",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_seeds_probes_for_changed_build_scripts",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_skips_build_scripts_cargo_never_compiles",
   "crates/ripr/src/analysis/workspace/cargo_targets.rs::context::context_for_files_records_only_build_scripts_cargo_compiles",
   "crates/ripr/src/lsp/tests.rs::workspace_diagnostics_keep_changed_automation_and_build_script_findings",
   "crates/ripr/src/config/tests.rs::parse_config_reads_production_like_targets",
@@ -8749,7 +8755,7 @@ tests = [
   "crates/ripr/src/analysis/facts/harness_registry/tests.rs::harness_enabled_target_records_conflict_and_keeps_executable_tests",
   "crates/ripr/src/analysis/facts/harness_registry/tests.rs::explicit_harness_false_declaration_on_conventional_layout_is_accepted",
   "crates/ripr/src/analysis/facts/harness_registry/tests.rs::unreadable_manifest_records_manifest_unavailable_and_grants_nothing",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_misdeclared_harness_target_keeps_seeding_and_records_the_conflict",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_misdeclared_harness_target_keeps_seeding_and_records_the_conflict",
   "crates/ripr/src/analysis/workspace/cargo_targets.rs::tests::edition_2015_with_manual_test_target_disables_test_autodiscovery",
   "crates/ripr/src/analysis/workspace/cargo_targets.rs::tests::edition_2015_manual_declaration_keeps_explicit_match_and_drops_discovery",
   "crates/ripr/src/analysis/workspace/cargo_targets.rs::tests::malformed_readable_manifest_is_manifest_unavailable",
@@ -8783,7 +8789,7 @@ fixtures = [
 code = [
   "crates/ripr/src/analysis/workspace/source_role.rs",
   "crates/ripr/src/analysis/workspace/cargo_targets.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/analysis/seam_inventory.rs",
   "crates/ripr/src/analysis/source_role_corpus.rs",
   "crates/ripr/src/analysis/facts/harness_registry.rs",
@@ -8887,10 +8893,10 @@ tests = [
   "crates/ripr/src/analysis/probes/diff.rs::tests::changed_binding_initializer_retargets_to_predicate_use",
   "crates/ripr/src/analysis/probes/diff.rs::tests::shadowed_binding_initializer_keeps_static_unknown",
   "crates/ripr/src/analysis/probes/diff.rs::tests::retarget_skips_predicate_lines_that_are_changed",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_retargets_changed_binding_to_predicate_use",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_retargets_len_utf8_binding_to_predicate_use",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_retargets_unbounded_initializer_naming_earliest_call",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_keeps_value_propagation_limitation_for_macro_guarded_use",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_retargets_changed_binding_to_predicate_use",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_retargets_len_utf8_binding_to_predicate_use",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_retargets_unbounded_initializer_naming_earliest_call",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_keeps_value_propagation_limitation_for_macro_guarded_use",
 ]
 fixtures = [
   "fixtures/binding_predicate_equality_boundary",
@@ -8901,7 +8907,8 @@ fixtures = [
 code = [
   "crates/ripr/src/analysis/probes/binding_predicate.rs",
   "crates/ripr/src/analysis/probes/diff.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
+  "crates/ripr/src/analysis/language/rust/probes.rs",
 ]
 outputs = []
 metrics = [
@@ -8916,7 +8923,7 @@ spec = "docs/specs/RIPR-SPEC-0158-bounded-value-transfer.md"
 tests = [
   "crates/ripr/src/analysis/classify/value_transfer.rs::tests",
   "crates/ripr/src/analysis/classify/activation.rs::tests::activation_evidence_resolves_computed_local_boundary_operands",
-  "crates/ripr/src/analysis/language/rust.rs::tests::diff_analysis_evaluates_exact_boundary_from_test_inputs",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_evaluates_exact_boundary_from_test_inputs",
 ]
 fixtures = [
   "fixtures/binding_predicate_equality_boundary",
@@ -9191,17 +9198,17 @@ tests = [
   "crates/ripr/src/analysis/workspace/select.rs::tests::dependent_packages_enter_draft_and_fast_selection",
   "crates/ripr/src/analysis/workspace/select.rs::tests::empty_dependent_roots_reproduce_the_unchanged_selection",
   "crates/ripr/src/analysis/workspace/select.rs::tests::dependent_roots_do_not_change_non_narrowing_selections",
-  "crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_reaches_path_dependent_tests_through_the_dependency_edge",
-  "crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_stays_narrow_without_the_path_dependency_edge",
-  "crates/ripr/src/analysis/language/rust.rs::tests::instant_mode_does_not_expand_scope_through_path_dependencies",
-  "crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_expands_custom_target_files_to_their_path_dependents",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_reaches_path_dependent_tests_through_the_dependency_edge",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_stays_narrow_without_the_path_dependency_edge",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::instant_mode_does_not_expand_scope_through_path_dependencies",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_expands_custom_target_files_to_their_path_dependents",
 ]
 fixtures = []
 code = [
   "crates/ripr/src/analysis/seam_cache.rs",
   "crates/ripr/src/analysis/workspace/path_dependencies.rs",
   "crates/ripr/src/analysis/workspace/select.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0171-path-dependency-diff-scope.md",
@@ -9244,7 +9251,7 @@ fixtures = []
 code = [
   "crates/ripr/src/analysis/classify/related_tests.rs",
   "crates/ripr/src/analysis/classifier.rs",
-  "crates/ripr/src/analysis/language/rust.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
   "crates/ripr/src/analysis/workspace/path_dependencies.rs",
 ]
 outputs = [

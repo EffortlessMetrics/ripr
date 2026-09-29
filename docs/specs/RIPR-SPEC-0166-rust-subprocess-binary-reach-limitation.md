@@ -47,8 +47,8 @@ nearby, is not accepted.
 
 ## Test Mapping
 
-- `crates/ripr/src/analysis/language/rust.rs::tests::cargo_binary_invocation_shape_is_conservative_and_deterministic`
-- `crates/ripr/src/analysis/language/rust.rs::tests::subprocess_limit_only_applies_to_binary_source_paths_and_integration_tests`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::cargo_binary_invocation_shape_is_conservative_and_deterministic`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::subprocess_limit_only_applies_to_binary_source_paths_and_integration_tests`
 - `crates/ripr/src/domain/language.rs` static-limit wire and description tests
 - `crates/ripr/src/lsp/gap_artifacts.rs` static-limit validation test
 
@@ -60,7 +60,7 @@ receipt-validity, coverage, or repair-success metric.
 
 ## Implementation Mapping
 
-- Rust adapter classification in `crates/ripr/src/analysis/language/rust.rs`
+- Rust adapter classification in `crates/ripr/src/analysis/language/rust/mod.rs`
 - Wire value and description in `crates/ripr/src/domain/language.rs`
 - LSP known-kind validation in `crates/ripr/src/lsp/gap_artifacts.rs`
 - Contract registration in `.ripr/traceability.toml`, `docs/STATIC_LIMITS.md`,

@@ -13085,7 +13085,7 @@ fn check_rust_source_role_authority() -> Result<(), String> {
         "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
         "crates/ripr/src/analysis/source_role_corpus.rs",
         "crates/ripr/src/analysis/mod.rs",
-        "crates/ripr/src/analysis/language/rust.rs",
+        "crates/ripr/src/analysis/language/rust/mod.rs",
     ];
 
     let files = tracked_files()?;

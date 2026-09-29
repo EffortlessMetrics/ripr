@@ -108,7 +108,7 @@ pub(crate) const TS_MAX_WORKSPACE_FILES_ENV: &str = "RIPR_TS_MAX_WORKSPACE_FILES
 const DEFAULT_TS_MAX_WORKSPACE_FILES: usize = 20_000;
 
 /// Parse a positive workspace file-count limit, failing closed to the error
-/// string on invalid input (mirrors `rust.rs::positive_limit_from_env`).
+/// string on invalid input (mirrors `rust/mod.rs::positive_limit_from_env`).
 pub(crate) fn ts_workspace_file_limit_from_env(
     value: Result<String, std::env::VarError>,
 ) -> Result<usize, String> {

@@ -147,7 +147,7 @@ transitive helper witnesses keep `rust_transitive_reach_unresolved`.
 - `StopReason::TransitiveReachUnresolved` added to `domain/probe.rs`.
 - `analysis/classify/transitive_reach.rs` module with BFS walk, bounded at depth 5, fail-closed on
   macros/externals.
-- Wired in `analysis/language/rust.rs` `analyze_diff` and `analyze_repo` post-classify guards.
+- Wired in `analysis/language/rust/mod.rs` `analyze_diff` and `analyze_repo` post-classify guards.
 - Positive fixture: `fixtures/rust_transitive_reach_positive/` — limitation fires.
 - Test-helper public API fixture: `fixtures/rust_transitive_reach_test_helper_chain/` — limitation fires.
 - Negative fixture: `fixtures/rust_transitive_reach_negative/` — limitation does NOT fire.
@@ -185,8 +185,8 @@ transitive helper witnesses keep `rust_transitive_reach_unresolved`.
 | `StopReason::TransitiveReachUnresolved` | `crates/ripr/src/domain/probe.rs` |
 | BFS walk module | `crates/ripr/src/analysis/classify/transitive_reach.rs` |
 | Module export | `crates/ripr/src/analysis/classify/mod.rs` |
-| Wiring (diff mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_diff` |
-| Wiring (repo mode) | `crates/ripr/src/analysis/language/rust.rs::analyze_repo` |
+| Wiring (diff mode) | `crates/ripr/src/analysis/language/rust/mod.rs::analyze_diff` |
+| Wiring (repo mode) | `crates/ripr/src/analysis/language/rust/mod.rs::analyze_repo` |
 | JSON evidence detail | `crates/ripr/src/analysis/classify/transitive_reach.rs::transitive_reach_limitation_detail_lines` |
 | Human renderer detail | `crates/ripr/src/output/human/sections.rs` |
 | Positive fixture | `fixtures/rust_transitive_reach_positive/` |

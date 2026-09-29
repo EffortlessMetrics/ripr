@@ -15,7 +15,7 @@ use super::path::{
 mod stream;
 
 /// Default file-count limit for parsed diffs. Same default as the Rust adapter
-/// (`analysis/language/rust.rs:DIFF_INDEX_FILE_LIMIT`); kept in sync so the
+/// (`analysis/language/rust/mod.rs:DIFF_INDEX_FILE_LIMIT`); kept in sync so the
 /// parser-level guard is consistent with the adapter-level guard (#2398).
 const DEFAULT_DIFF_FILE_LIMIT: usize = 800;
 const DIFF_FILE_LIMIT_ENV: &str = "RIPR_MAX_DIFF_INDEX_FILES";

@@ -2,6 +2,12 @@
 //!
 //! See `docs/specs/RIPR-SPEC-0026-language-adapter-contract.md`.
 //!
+//! `mod.rs` is the stable `analysis::language::rust` façade. Probe-family
+//! lexical extraction lives in [`probes`]; Rust-local oracle/assertion
+//! limitations live in [`oracles`]. Index, repository, and diff-pipeline
+//! extraction remain here until later RA slices. Call sites keep the
+//! `analysis::language::rust` path.
+//!
 //! This adapter hosts the existing Rust analysis pipeline behind the
 //! `LanguageAdapter` seam. The bodies of `analyze_diff` and `analyze_repo`
 //! are relocated from `analysis::pipeline` without behavior change; the
@@ -9,13 +15,18 @@
 //! diff, dispatches to this adapter, and applies sort + summary on the
 //! returned findings.
 
+pub(crate) mod oracles;
+pub(crate) mod probes;
+
+pub(crate) use probes::{changed_let_binding, mask_rust_comments_and_strings};
+
+use super::super::probes as analysis_probes;
 use super::super::{
-    AnalysisMode, AnalysisOptions, classifier, classify, diff::ChangedFile, probes, rust_index,
-    workspace,
+    AnalysisMode, AnalysisOptions, classifier, classify, diff::ChangedFile, rust_index, workspace,
 };
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::analysis::cancellation;
-use crate::analysis::facts::{FunctionSummary, RustIndex};
+use crate::analysis::facts::RustIndex;
 use crate::analysis::path_glob::{path_glob_matches, segment_glob_matches};
 use crate::config::OraclePolicy;
 use crate::domain::{
@@ -647,61 +658,6 @@ fn enforce_changed_rust_line_limit(
     ))
 }
 
-/// Returns `true` when the owner function carries an FFI or language-binding
-/// attribute that indicates its surface may be exercised by an external-language
-/// test oracle rather than a Rust test.
-///
-/// The markers checked are the standard attribute substrings used by the major
-/// Rust FFI and binding crates. `extern "C"` is intentionally excluded: it is
-/// an ABI qualifier on the `fn` keyword and is not captured in
-/// `FunctionFact.attrs`.
-fn owner_has_ffi_attr(owner_fn: &FunctionSummary) -> bool {
-    const FFI_MARKERS: &[&str] = &[
-        "no_mangle",
-        "export_name",
-        "wasm_bindgen",
-        "napi",
-        "pyo3",
-        "uniffi",
-        "cxx",
-    ];
-    owner_fn.attrs.iter().any(|attr| {
-        let lowered = attr.to_lowercase();
-        FFI_MARKERS.iter().any(|marker| lowered.contains(marker))
-    })
-}
-
-/// Resolve the probe's owner function from the index and check for FFI attrs.
-/// Returns `Some(StaticLimitKind::CrossLanguageOracleVisibilityUnresolved)` when
-/// the probe owner is FFI/binding-exposed and the finding class is an
-/// unrevealed gap; `None` otherwise. Pure-Rust owners (no FFI attrs) return
-/// `None` unconditionally.
-fn cross_language_limit_kind(
-    probe: &crate::domain::Probe,
-    index: &rust_index::RustIndex,
-    class: &ExposureClass,
-) -> Option<StaticLimitKind> {
-    let is_gap_class = matches!(
-        class,
-        ExposureClass::WeaklyExposed
-            | ExposureClass::ReachableUnrevealed
-            | ExposureClass::InfectionUnknown
-    );
-    if !is_gap_class {
-        return None;
-    }
-    let owner_id = probe.owner.as_ref()?;
-    let owner_fn = index
-        .functions
-        .iter()
-        .find(|function| &function.id == owner_id)?;
-    if owner_has_ffi_attr(owner_fn) {
-        Some(StaticLimitKind::CrossLanguageOracleVisibilityUnresolved)
-    } else {
-        None
-    }
-}
-
 /// Extract the bare function name from a probe's owner SymbolId for the
 /// transitive-reach walk. The SymbolId format is "path::fn_name" or
 /// "path::module::fn_name"; we return the last segment.
@@ -718,6 +674,24 @@ fn owner_name_from_id(
         None
     } else {
         Some(name.to_string())
+    }
+}
+
+/// Shared post-classify application of the extracted probe and oracle owners.
+/// `apply_rust_no_static_path_limit` stays at each pipeline because it is
+/// mixed reach/index work owned by later RA slices.
+fn apply_probe_and_oracle_limits(
+    finding: &mut Finding,
+    probe: &Probe,
+    index: &RustIndex,
+    binding_relation: Option<&crate::analysis::probes::ChangedBindingPredicateUse>,
+) {
+    oracles::apply_rust_macro_wrapped_assertion_limit(finding, index);
+    probes::apply_rust_value_propagation_limit(finding, probe, index);
+    oracles::apply_wrapper_error_binding_limit(finding, probe);
+    probes::attach_changed_binding_predicate_evidence(finding, binding_relation);
+    if let Some(limit) = oracles::cross_language_limit_kind(probe, index, &finding.class) {
+        finding.static_limit_kind = Some(limit);
     }
 }
 
@@ -823,573 +797,6 @@ fn is_cargo_binary_invocation(body: &str) -> bool {
             || compact.contains(".output(")
             || compact.contains(".status("));
     has_cargo_bin_env || has_assert_cmd_binary
-}
-
-fn apply_rust_macro_wrapped_assertion_limit(finding: &mut Finding, index: &RustIndex) {
-    if !(finding.class == ExposureClass::ReachableUnrevealed
-        && !finding.related_tests.is_empty()
-        && finding.static_limit_kind.is_none()
-        && finding.ripr.reveal.observe.state == crate::domain::StageState::No
-        && finding
-            .related_tests
-            .iter()
-            .all(|related| related.oracle.is_none()))
-    {
-        return;
-    }
-
-    let Some(witness) = find_unresolved_assertion_macro_witness(finding, index) else {
-        return;
-    };
-
-    finding.static_limit_kind = Some(StaticLimitKind::RustMacroWrappedAssertionUnresolved);
-    finding.evidence.push(
-        "A related Rust test uses an assertion-like macro that ripr does not classify as an oracle."
-            .to_string(),
-    );
-    finding
-        .evidence
-        .push(rust_macro_assertion_witness_pointer(&witness));
-    finding
-        .evidence
-        .extend(rust_macro_assertion_limitation_detail_lines(&witness));
-}
-
-/// Name the bounded value-propagation limitation from #3215 without
-/// pretending that syntax-first analysis proved the equality boundary.
-///
-/// This deliberately recognizes only a changed `let` binding whose value is
-/// produced by `find`/`rfind` or `len_utf8`, normalized through `map_or`, and
-/// whose same-owner body later compares that binding. Other helper, loop,
-/// coercion, and data-flow shapes remain unchanged and fail closed as before.
-fn apply_rust_value_propagation_limit(finding: &mut Finding, probe: &Probe, index: &RustIndex) {
-    if finding.class != ExposureClass::StaticUnknown
-        || finding.static_limit_kind.is_some()
-        || finding.related_tests.is_empty()
-    {
-        return;
-    }
-    let Some((binding, rhs)) = changed_let_binding(&probe.expression) else {
-        return;
-    };
-    let masked_rhs = mask_rust_comments_and_strings(rhs);
-    if !masked_rhs.contains(".map_or(")
-        || !(masked_rhs.contains(".find(")
-            || masked_rhs.contains(".rfind(")
-            || masked_rhs.contains(".len_utf8("))
-    {
-        return;
-    }
-    let Some(owner_id) = probe.owner.as_ref() else {
-        return;
-    };
-    let Some(owner) = index
-        .functions
-        .iter()
-        .find(|function| &function.id == owner_id)
-    else {
-        return;
-    };
-    let Some(predicate) = find_value_propagation_predicate(&owner.body, binding) else {
-        return;
-    };
-
-    finding.static_limit_kind = Some(StaticLimitKind::RustValuePropagationUnresolved);
-    finding
-        .stop_reasons
-        .push(StopReason::PropagationEvidenceUnknown);
-    finding.evidence.push(format!(
-        "limitation_last_established_edge: changed binding `{binding}` uses `{rhs}`"
-    ));
-    finding.evidence.push(format!(
-        "limitation_first_unresolved_edge: `{binding}` value propagation into equality predicate `{}`",
-        predicate.trim()
-    ));
-    finding
-        .evidence
-        .push("limitation_analyzer_route: analysis/rust-value-propagation".to_string());
-    finding.evidence.push(
-        "limitation_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"
-            .to_string(),
-    );
-}
-
-/// #3700 (final consolidation): a wrapper error seam — a `map_err`
-/// conversion whose changed expression carries no parseable error variant —
-/// carries the typed `wrapper_error_binding_unresolved` limitation. Whether
-/// the boxed conversion faithfully carries the converted callee's error
-/// variant (`Into`/`From` through `Box<dyn Error>`) is not statically
-/// establishable, so the seam stays below `exposed` and the limitation names
-/// what ripr could not resolve instead of prescribing an assertion the suite
-/// may already contain. Classification (already `weakly_exposed` via the
-/// unconfirmed-observation rule in reveal) is unchanged.
-fn apply_wrapper_error_binding_limit(finding: &mut Finding, probe: &Probe) {
-    if finding.class != ExposureClass::WeaklyExposed || finding.static_limit_kind.is_some() {
-        return;
-    }
-    if !matches!(
-        probe.family,
-        crate::domain::ProbeFamily::ErrorPath | crate::domain::ProbeFamily::ReturnValue
-    ) {
-        return;
-    }
-    if !crate::analysis::classify::wrapper_error_seam_expression(&[probe.expression.as_str()]) {
-        return;
-    }
-
-    finding.static_limit_kind = Some(StaticLimitKind::WrapperErrorBindingUnresolved);
-    finding.evidence.push(
-        "limitation_last_established_edge: changed wrapper conversion maps the converted callee's error into the boxed error channel".to_string(),
-    );
-    finding.evidence.push(
-        "limitation_first_unresolved_edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers".to_string(),
-    );
-    finding
-        .evidence
-        .push("limitation_analyzer_route: analysis/wrapper-error-binding".to_string());
-    finding.evidence.push(
-        "limitation_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"
-            .to_string(),
-    );
-}
-
-/// probe's finding. The probe is predicate-shaped and classifies through
-/// the normal predicate path; this only discloses the causal link (which
-/// binding and initializer fed the predicate) and the operand-value
-/// limitation. It never changes the class, adds a stop reason, or
-/// prescribes a repair — the operand values stay unresolved until a
-/// later slice evaluates them.
-fn attach_changed_binding_predicate_evidence(
-    finding: &mut Finding,
-    relation: &Option<probes::ChangedBindingPredicateUse>,
-) {
-    let Some(relation) = relation else {
-        return;
-    };
-    // The relation names both causal values when the diff carries the
-    // old initializer; the probe's before/after already hold them, and
-    // the relation line states them together.
-    let initializer_range = match finding.probe.before.as_deref() {
-        Some(before) if before != relation.initializer => {
-            format!("`{before}` -> `{}`", relation.initializer)
-        }
-        _ => format!("`{}`", relation.initializer),
-    };
-    finding.evidence.push(format!(
-        "binding_predicate_relation: changed binding `{}` initializer {initializer_range} flows into predicate operand at line {}",
-        relation.binding, relation.predicate_line
-    ));
-    if let probes::BindingValueResolution::Unresolved { earliest_operation } =
-        &relation.value_resolution
-    {
-        // Neutral prefixes: this is a value disclosure on a
-        // predicate-shaped finding, not a `static_limit_kind` record,
-        // so it deliberately stays outside the structured
-        // `limitation_*` evidence contract (#3294 review).
-        finding.evidence.push(format!(
-            "binding_predicate_value_unresolved: operand value of `{}` unresolved at earliest initializer operation `{}`",
-            relation.binding, earliest_operation
-        ));
-        finding.evidence.push(
-            "binding_predicate_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"
-                .to_string(),
-        );
-    }
-}
-
-/// Find an equality predicate that refers to the established binding after
-/// its declaration. Comments, strings, member names, and later shadowing are
-/// intentionally excluded so this limitation remains fail-closed.
-fn find_value_propagation_predicate<'a>(body: &'a str, binding: &str) -> Option<&'a str> {
-    let masked = mask_rust_comments_and_strings(body);
-    let mut established = false;
-    let mut shadowed = false;
-    for (line, masked_line) in body.lines().zip(masked.lines()) {
-        let trimmed = masked_line.trim();
-        if trimmed.starts_with("let ") {
-            let is_binding_declaration = trimmed
-                .split_once('=')
-                .is_some_and(|(lhs, _)| contains_identifier_token(lhs, binding));
-            if is_binding_declaration && established {
-                shadowed = true;
-            }
-            established = is_binding_declaration || established;
-            continue;
-        }
-        if shadowed || !established || !binding_equality_predicate(trimmed, binding) {
-            continue;
-        }
-        let mut search = 0;
-        while let Some(offset) = trimmed[search..].find(binding) {
-            let start = search + offset;
-            let before = trimmed[..start].chars().next_back();
-            let after = trimmed[start + binding.len()..].chars().next();
-            if !before.is_some_and(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-                && !after.is_some_and(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-                && !trimmed[..start].trim_end().ends_with('.')
-            {
-                return Some(line);
-            }
-            search = start.saturating_add(binding.len());
-        }
-    }
-    None
-}
-
-fn binding_equality_predicate(line: &str, binding: &str) -> bool {
-    if line.contains("!=") {
-        return false;
-    }
-    let Some((left, right)) = line.split_once("==") else {
-        return false;
-    };
-    let left = left
-        .rsplit_once("&&")
-        .or_else(|| left.rsplit_once("||"))
-        .map_or(left, |(_, operand)| operand);
-    let right = right
-        .split_once("&&")
-        .or_else(|| right.split_once("||"))
-        .map_or(right, |(operand, _)| operand);
-    [left, right].into_iter().any(|side| {
-        let Some(start) = side.find(binding) else {
-            return false;
-        };
-        let before = side[..start].chars().next_back();
-        let after = side[start + binding.len()..].chars().next();
-        !before.is_some_and(|ch| ch == '_' || ch.is_ascii_alphanumeric() || ch == '.')
-            && !after.is_some_and(|ch| ch == '_' || ch.is_ascii_alphanumeric())
-    })
-}
-
-/// A simple `let <ident> = <rhs>;` line. Shared by the #3271 limitation
-/// and the #3294 binding-predicate relation so both agree on what a
-/// changed binding is.
-pub(crate) fn changed_let_binding(expression: &str) -> Option<(&str, &str)> {
-    let text = expression.trim().trim_end_matches(';').trim();
-    let rest = text.strip_prefix("let ")?;
-    let (lhs, rhs) = rest.split_once('=')?;
-    let binding = lhs.trim().strip_prefix("mut ").unwrap_or(lhs.trim());
-    if binding.is_empty()
-        || !binding
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-    {
-        return None;
-    }
-    Some((binding, rhs.trim()))
-}
-
-fn contains_identifier_token(text: &str, ident: &str) -> bool {
-    text.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
-        .any(|token| token == ident)
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct RustMacroAssertionWitness {
-    test_name: String,
-    test_file: std::path::PathBuf,
-    test_line: usize,
-    macro_name: String,
-    macro_line: usize,
-}
-
-fn find_unresolved_assertion_macro_witness(
-    finding: &Finding,
-    index: &RustIndex,
-) -> Option<RustMacroAssertionWitness> {
-    let mut candidates = Vec::new();
-    for test in index
-        .tests
-        .iter()
-        .chain(index.files.values().flat_map(|file| file.tests.iter()))
-    {
-        if !finding
-            .related_tests
-            .iter()
-            .any(|related| related.name == test.name && related.file == test.file)
-        {
-            continue;
-        }
-        for (macro_name, macro_line) in
-            unresolved_assertion_macro_invocations(&test.body, test.start_line)
-        {
-            candidates.push(RustMacroAssertionWitness {
-                test_name: test.name.clone(),
-                test_file: test.file.clone(),
-                test_line: test.start_line,
-                macro_name,
-                macro_line,
-            });
-        }
-    }
-    candidates.sort();
-    candidates.dedup();
-    candidates.into_iter().next()
-}
-
-fn unresolved_assertion_macro_invocations(body: &str, start_line: usize) -> Vec<(String, usize)> {
-    let mut invocations = Vec::new();
-    let masked_body = mask_rust_comments_and_strings(body);
-    for (offset, line) in masked_body.lines().enumerate() {
-        let mut search_start = 0usize;
-        while let Some(relative_bang) = line[search_start..].find('!') {
-            let bang = search_start + relative_bang;
-            search_start = bang.saturating_add(1);
-            if line[bang + 1..].starts_with('=') {
-                continue;
-            }
-            if !line[bang + 1..]
-                .trim_start()
-                .chars()
-                .next()
-                .is_some_and(|ch| matches!(ch, '(' | '[' | '{'))
-            {
-                continue;
-            }
-            let Some(macro_name) = macro_name_before_bang(line, bang) else {
-                continue;
-            };
-            if !is_unresolved_assertion_like_macro(&macro_name) {
-                continue;
-            }
-            invocations.push((macro_name, start_line + offset));
-        }
-    }
-    invocations.sort();
-    invocations.dedup();
-    invocations
-}
-
-pub(crate) fn mask_rust_comments_and_strings(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut masked = bytes.to_vec();
-    let mut index = 0usize;
-    let mut block_depth = 0usize;
-
-    while index < bytes.len() {
-        if block_depth > 0 {
-            if starts_with_bytes(bytes, index, b"/*") {
-                mask_non_newline_bytes(&mut masked, index, index.saturating_add(2));
-                block_depth = block_depth.saturating_add(1);
-                index = index.saturating_add(2);
-            } else if starts_with_bytes(bytes, index, b"*/") {
-                mask_non_newline_bytes(&mut masked, index, index.saturating_add(2));
-                block_depth = block_depth.saturating_sub(1);
-                index = index.saturating_add(2);
-            } else {
-                mask_non_newline_bytes(&mut masked, index, index.saturating_add(1));
-                index = index.saturating_add(1);
-            }
-            continue;
-        }
-
-        if starts_with_bytes(bytes, index, b"//") {
-            let end = bytes[index..]
-                .iter()
-                .position(|byte| *byte == b'\n')
-                .map_or(bytes.len(), |offset| index + offset);
-            mask_non_newline_bytes(&mut masked, index, end);
-            index = end;
-            continue;
-        }
-
-        if starts_with_bytes(bytes, index, b"/*") {
-            mask_non_newline_bytes(&mut masked, index, index.saturating_add(2));
-            block_depth = 1;
-            index = index.saturating_add(2);
-            continue;
-        }
-
-        if let Some(end) = rust_raw_string_literal_end(bytes, index) {
-            mask_non_newline_bytes(&mut masked, index, end);
-            index = end;
-            continue;
-        }
-
-        if bytes[index] == b'"' {
-            let end = rust_string_literal_end(bytes, index);
-            mask_non_newline_bytes(&mut masked, index, end);
-            index = end;
-            continue;
-        }
-
-        index = index.saturating_add(1);
-    }
-
-    match String::from_utf8(masked) {
-        Ok(value) => value,
-        Err(_) => text.to_string(),
-    }
-}
-
-fn starts_with_bytes(bytes: &[u8], index: usize, needle: &[u8]) -> bool {
-    bytes
-        .get(index..index.saturating_add(needle.len()))
-        .is_some_and(|candidate| candidate == needle)
-}
-
-fn mask_non_newline_bytes(bytes: &mut [u8], start: usize, end: usize) {
-    let bounded_end = end.min(bytes.len());
-    for byte in bytes.iter_mut().take(bounded_end).skip(start) {
-        if *byte != b'\n' {
-            *byte = b' ';
-        }
-    }
-}
-
-fn rust_string_literal_end(bytes: &[u8], start: usize) -> usize {
-    let mut index = start.saturating_add(1);
-    let mut escaped = false;
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if escaped {
-            escaped = false;
-        } else if byte == b'\\' {
-            escaped = true;
-        } else if byte == b'"' {
-            return index.saturating_add(1);
-        }
-        index = index.saturating_add(1);
-    }
-    bytes.len()
-}
-
-fn rust_raw_string_literal_end(bytes: &[u8], start: usize) -> Option<usize> {
-    let prefix_len = if bytes.get(start) == Some(&b'r') {
-        1
-    } else if bytes.get(start) == Some(&b'b') && bytes.get(start.saturating_add(1)) == Some(&b'r') {
-        2
-    } else {
-        return None;
-    };
-
-    let mut delimiter = start.saturating_add(prefix_len);
-    let mut hashes = 0usize;
-    while bytes.get(delimiter) == Some(&b'#') {
-        hashes = hashes.saturating_add(1);
-        delimiter = delimiter.saturating_add(1);
-    }
-    if bytes.get(delimiter) != Some(&b'"') {
-        return None;
-    }
-
-    let mut index = delimiter.saturating_add(1);
-    while index < bytes.len() {
-        if bytes[index] == b'"' {
-            let suffix_start = index.saturating_add(1);
-            let suffix_end = suffix_start.saturating_add(hashes);
-            if suffix_end <= bytes.len()
-                && bytes[suffix_start..suffix_end]
-                    .iter()
-                    .all(|byte| *byte == b'#')
-            {
-                return Some(suffix_end);
-            }
-        }
-        index = index.saturating_add(1);
-    }
-
-    Some(bytes.len())
-}
-
-fn macro_name_before_bang(line: &str, bang: usize) -> Option<String> {
-    let prefix = line[..bang].trim_end();
-    let end = prefix.len();
-    if end == 0 {
-        return None;
-    }
-    let mut start = end;
-    for (idx, ch) in prefix.char_indices().rev() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == ':' {
-            start = idx;
-        } else {
-            break;
-        }
-    }
-    let name = prefix[start..end].trim_matches(':');
-    if name.is_empty() {
-        None
-    } else {
-        Some(name.to_string())
-    }
-}
-
-fn is_unresolved_assertion_like_macro(macro_name: &str) -> bool {
-    if is_known_rust_assertion_macro(macro_name) {
-        return false;
-    }
-    let base = macro_name.rsplit("::").next().unwrap_or(macro_name);
-    base == "assert" || base.starts_with("assert_")
-}
-
-fn is_known_rust_assertion_macro(macro_name: &str) -> bool {
-    let compact = macro_name.replace(' ', "");
-    let base = compact.rsplit("::").next().unwrap_or(compact.as_str());
-    matches!(
-        base,
-        "assert" | "assert_eq" | "assert_ne" | "assert_matches" | "matches"
-    ) || compact.starts_with("insta::assert")
-        || compact.contains("snapshot")
-}
-
-fn rust_macro_assertion_witness_pointer(witness: &RustMacroAssertionWitness) -> String {
-    let test_location = format!(
-        "{}:{}",
-        witness.test_file.display().to_string().replace('\\', "/"),
-        witness.test_line
-    );
-    let macro_location = format!(
-        "{}:{}",
-        witness.test_file.display().to_string().replace('\\', "/"),
-        witness.macro_line
-    );
-    format!(
-        "{}`{}` ({}) reaches the changed owner, then invokes assertion-like macro `{}!` at {}. ripr does not classify that macro as an oracle.",
-        crate::domain::TRANSITIVE_REACH_WITNESS_PREFIX,
-        witness.test_name,
-        test_location,
-        witness.macro_name,
-        macro_location
-    )
-}
-
-fn rust_macro_assertion_limitation_detail_lines(
-    witness: &RustMacroAssertionWitness,
-) -> [String; 4] {
-    let test_location = format!(
-        "{}:{}",
-        witness.test_file.display().to_string().replace('\\', "/"),
-        witness.test_line
-    );
-    let macro_location = format!(
-        "{}:{}",
-        witness.test_file.display().to_string().replace('\\', "/"),
-        witness.macro_line
-    );
-    [
-        format!(
-            "{}test `{}` ({}) -> assertion macro `{}!` at {}",
-            crate::domain::LIMITATION_LAST_ESTABLISHED_EDGE_PREFIX,
-            witness.test_name,
-            test_location,
-            witness.macro_name,
-            macro_location
-        ),
-        format!(
-            "{}assertion macro `{}!` semantics toward the changed owner",
-            crate::domain::LIMITATION_FIRST_UNRESOLVED_EDGE_PREFIX,
-            witness.macro_name
-        ),
-        format!(
-            "{}analysis/rust-macro-assertion-oracle",
-            crate::domain::LIMITATION_ANALYZER_ROUTE_PREFIX
-        ),
-        format!(
-            "{}named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change",
-            crate::domain::LIMITATION_NON_CLAIM_PREFIX
-        ),
-    ]
 }
 
 fn transitive_reach_limit_kind(test_file: &Path) -> StaticLimitKind {
@@ -1748,7 +1155,8 @@ impl RustAdapter {
             // and once per probe so a superseded or deadline-expired refresh
             // exits the classify loop promptly.
             cancellation::checkpoint()?;
-            let probes = probes::probes_for_file_with_relations(&options.root, changed, &index);
+            let probes =
+                analysis_probes::probes_for_file_with_relations(&options.root, changed, &index);
             for (probe, binding_relation) in probes {
                 candidate_lines.insert((probe.location.file.clone(), probe.location.line));
                 cancellation::checkpoint()?;
@@ -1765,7 +1173,7 @@ impl RustAdapter {
                 // Producer-owned source currentness (#3280): resolved from the diff
                 // evidence that seeded the probe, before any limitation shaping.
                 finding.source_currentness =
-                    probes::resolve_probe_source_currentness(changed, &probe);
+                    analysis_probes::resolve_probe_source_currentness(changed, &probe);
                 // `language_status` is omitted for Rust per RIPR-SPEC-0026.
                 // RIPR-SPEC-0114: when the direct-call classifier finds no related
                 // test (no_static_path + empty related_tests), run the bounded
@@ -1782,22 +1190,21 @@ impl RustAdapter {
                 // already been established and no recognized oracle observes
                 // the seam. This is an oracle limitation, not macro expansion
                 // or promotion.
-                apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
-                apply_rust_value_propagation_limit(&mut finding, &probe, &index);
-                apply_wrapper_error_binding_limit(&mut finding, &probe);
                 // #3294: a retargeted changed-binding probe keeps its
                 // predicate-shaped classification, but the finding still
                 // discloses the operand-value limitation it inherited from the
                 // changed initializer.
-                attach_changed_binding_predicate_evidence(&mut finding, &binding_relation);
                 // Fail closed on cross-language seams: when the probe owner
                 // carries an FFI/binding attribute, replace any Rust-gap
                 // static_limit_kind with the cross-language limitation so
                 // downstream consumers know to verify the external oracle
                 // rather than acting on a Rust repair packet. (#910)
-                if let Some(limit) = cross_language_limit_kind(&probe, &index, &finding.class) {
-                    finding.static_limit_kind = Some(limit);
-                }
+                apply_probe_and_oracle_limits(
+                    &mut finding,
+                    &probe,
+                    &index,
+                    binding_relation.as_ref(),
+                );
                 findings.push(finding);
             }
         }
@@ -1960,7 +1367,7 @@ impl RustAdapter {
         };
 
         for path in &production_files {
-            let probes = probes::probes_for_repo_file(&options.root, path, &index);
+            let probes = analysis_probes::probes_for_repo_file(&options.root, path, &index);
             for probe in probes {
                 let related_test_candidate_index = related_test_candidate_index
                     .get_or_insert_with(|| classify::RelatedTestCandidateIndex::new(&index));
@@ -1980,13 +1387,7 @@ impl RustAdapter {
                 // RIPR-SPEC-0114 + 0115 + 0117: no_static_path limitation
                 // disclosure for repo-mode (same logic as diff-mode).
                 apply_rust_no_static_path_limit(&mut finding, &probe, &index);
-                apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
-                apply_rust_value_propagation_limit(&mut finding, &probe, &index);
-                apply_wrapper_error_binding_limit(&mut finding, &probe);
-                // Fail closed on cross-language seams (#910).
-                if let Some(limit) = cross_language_limit_kind(&probe, &index, &finding.class) {
-                    finding.static_limit_kind = Some(limit);
-                }
+                apply_probe_and_oracle_limits(&mut finding, &probe, &index, None);
                 findings.push(finding);
             }
         }
@@ -2012,29 +1413,26 @@ mod tests {
         PARTIAL_DIFF_LINE_BUDGET_DEFAULT, PARTIAL_DIFF_LINE_BUDGET_ENV,
         PARTIAL_DIFF_SELECTION_VERSION, PartialDiffBudgets, PartialDiffScope,
         PartialDiffStopReason, REPO_INDEX_FILE_LIMIT_ENV, RustAdapter,
-        apply_rust_macro_wrapped_assertion_limit, changed_rust_line_count,
-        cross_language_limit_kind, diff_changed_rust_line_limit_from_env,
-        diff_identity_from_changed_files, diff_index_file_limit_from_env,
-        enforce_changed_rust_line_limit, enforce_repo_index_file_limit, is_binary_source_path,
-        is_cargo_binary_invocation, is_generated_rust_file, is_generated_rust_file_with_patterns,
-        macro_reach_limit_kind, owner_has_ffi_attr, partial_diff_budgets_from_env,
-        partition_canonical_form, replace_witnessed_no_path_infection_summary,
-        repo_index_file_limit_from_env, select_partial_diff_partition,
-        select_partial_diff_partition_with_identity, sha256_hex, transitive_reach_limit_kind,
+        apply_probe_and_oracle_limits, changed_rust_line_count,
+        diff_changed_rust_line_limit_from_env, diff_identity_from_changed_files,
+        diff_index_file_limit_from_env, enforce_changed_rust_line_limit,
+        enforce_repo_index_file_limit, is_binary_source_path, is_cargo_binary_invocation,
+        is_generated_rust_file, is_generated_rust_file_with_patterns, macro_reach_limit_kind,
+        partial_diff_budgets_from_env, partition_canonical_form,
+        replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
+        select_partial_diff_partition, select_partial_diff_partition_with_identity, sha256_hex,
+        transitive_reach_limit_kind,
     };
     use crate::analysis::cancellation;
     use crate::analysis::diff::{ChangedFile, ChangedLine};
-    use crate::analysis::facts::FunctionSourceRole;
-    use crate::analysis::facts::{
-        CallFact, FunctionSummary, LiteralFact, RustIndex, TestFact, TestSummary,
-    };
+    use crate::analysis::facts::{FunctionSourceRole, FunctionSummary, RustIndex, TestFact};
     use crate::analysis::language::{LanguageAdapter, LanguageId};
     use crate::analysis::{AnalysisMode, AnalysisOptions, diff};
     use crate::config::OraclePolicy;
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
-        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-        StageState, StaticLimitKind, SymbolId,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
+        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
+        SourceLocation, StageEvidence, StageState, StaticLimitKind, SymbolId,
     };
     use std::env::VarError;
     use std::fs;
@@ -2945,39 +2343,6 @@ fn absent_delimiter_boundary_returns_head() {
         );
         fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
         Ok(())
-    }
-
-    #[test]
-    fn value_propagation_predicate_ignores_non_entity_text_and_shadowing() {
-        let body = r#"
-    let end = input.rfind(delim).map_or(0, |idx| idx);
-    let copied = end;
-    // end == start is only documentation.
-    let text = "end == start";
-    if other.end == start { return 0; }
-    let end = 1;
-    if end == start { return 1; }
-"#;
-        assert!(super::find_value_propagation_predicate(body, "end").is_none());
-    }
-
-    #[test]
-    fn value_propagation_predicate_rejects_mixed_operator_line() {
-        let body = "    let end = input.rfind(delim).map_or(0, |idx| idx);\n    if end != start && other == marker { return 0; }\n";
-        assert!(super::find_value_propagation_predicate(body, "end").is_none());
-    }
-
-    #[test]
-    fn value_propagation_predicate_rejects_binding_outside_equality_operand() {
-        let body = "    let end = input.rfind(delim).map_or(0, |idx| idx);\n    if other == marker && end > 0 { return 0; }\n";
-        assert!(super::find_value_propagation_predicate(body, "end").is_none());
-    }
-
-    #[test]
-    fn value_propagation_predicate_rejects_map_or_else_shape() {
-        let rhs =
-            super::mask_rust_comments_and_strings("input.find(delim).map_or_else(|| 0, |idx| idx)");
-        assert!(!rhs.contains(".map_or("));
     }
 
     #[test]
@@ -4041,97 +3406,6 @@ fn absent_delimiter_boundary_returns_head() {
         );
     }
 
-    #[test]
-    fn macro_wrapped_assertion_limit_names_reachable_unobserved_assertion_macro() {
-        let mut finding = reachable_unrevealed_finding_with_related_test(
-            "test_inner_with_custom_assertion_macro",
-            "tests/it.rs",
-            4,
-        );
-        let index = RustIndex {
-            tests: vec![test_summary(
-                "test_inner_with_custom_assertion_macro",
-                "tests/it.rs",
-                4,
-                "let result = inner(10, 3);\nassert_result!(result, 7);",
-            )],
-            ..RustIndex::default()
-        };
-
-        apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
-
-        assert_eq!(
-            finding.static_limit_kind,
-            Some(StaticLimitKind::RustMacroWrappedAssertionUnresolved)
-        );
-        assert!(finding.evidence.iter().any(|line| {
-            line.contains("assertion-like macro `assert_result!` at tests/it.rs:5")
-        }));
-        assert!(finding.evidence.iter().any(|line| {
-            line == "limitation_last_established_edge: test `test_inner_with_custom_assertion_macro` (tests/it.rs:4) -> assertion macro `assert_result!` at tests/it.rs:5"
-        }));
-        assert!(finding.evidence.iter().any(|line| {
-            line == "limitation_first_unresolved_edge: assertion macro `assert_result!` semantics toward the changed owner"
-        }));
-        assert!(finding.evidence.iter().any(|line| {
-            line == "limitation_analyzer_route: analysis/rust-macro-assertion-oracle"
-        }));
-        assert!(finding.evidence.iter().any(|line| {
-            line == "limitation_non_claim: named limitation only; ripr cannot confirm or deny that the macro assertion discriminates the change"
-        }));
-    }
-
-    #[test]
-    fn macro_wrapped_assertion_limit_ignores_known_assertion_macros() {
-        let mut finding = reachable_unrevealed_finding_with_related_test(
-            "test_inner_with_known_assertion_macro",
-            "tests/it.rs",
-            4,
-        );
-        let index = RustIndex {
-            tests: vec![test_summary(
-                "test_inner_with_known_assertion_macro",
-                "tests/it.rs",
-                4,
-                "let result = inner(10, 3);\nassert_eq!(result, 7);",
-            )],
-            ..RustIndex::default()
-        };
-
-        apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
-
-        assert_eq!(finding.static_limit_kind, None);
-        assert!(finding.evidence.is_empty());
-    }
-
-    #[test]
-    fn macro_wrapped_assertion_limit_ignores_comments_and_string_literals() {
-        let mut finding = reachable_unrevealed_finding_with_related_test(
-            "test_inner_with_commented_assertion_macro",
-            "tests/it.rs",
-            4,
-        );
-        let index = RustIndex {
-            tests: vec![test_summary(
-                "test_inner_with_commented_assertion_macro",
-                "tests/it.rs",
-                4,
-                r##"let result = inner(10, 3);
-// assert_result!(result, 7);
-/* assert_block_result!(result, 7); */
-let note = "assert_string_result!(result, 7)";
-let raw = r#"assert_raw_result!(result, 7)"#;
-let _ = (result, note, raw);"##,
-            )],
-            ..RustIndex::default()
-        };
-
-        apply_rust_macro_wrapped_assertion_limit(&mut finding, &index);
-
-        assert_eq!(finding.static_limit_kind, None);
-        assert!(finding.evidence.is_empty());
-    }
-
     fn changed_file(path: &str, added: usize, removed: usize) -> ChangedFile {
         ChangedFile {
             path: PathBuf::from(path),
@@ -4263,65 +3537,6 @@ let _ = (result, note, raw);"##,
             .collect()
     }
 
-    fn reachable_unrevealed_finding_with_related_test(
-        test_name: &str,
-        test_file: &str,
-        test_line: usize,
-    ) -> Finding {
-        let mut finding = no_path_finding_with_infection_summary("stage", Vec::new());
-        let stage = |state| StageEvidence::new(state, Confidence::Medium, "stage");
-        finding.class = ExposureClass::ReachableUnrevealed;
-        finding.ripr.reach = stage(StageState::Yes);
-        finding.ripr.infect = stage(StageState::Yes);
-        finding.ripr.propagate = stage(StageState::Yes);
-        finding.ripr.reveal.observe = stage(StageState::No);
-        finding.ripr.reveal.discriminate = stage(StageState::No);
-        finding.related_tests = vec![RelatedTest {
-            name: test_name.to_string(),
-            file: PathBuf::from(test_file),
-            line: test_line,
-            oracle: None,
-            oracle_kind: crate::domain::OracleKind::Unknown,
-            oracle_strength: crate::domain::OracleStrength::None,
-            relation_reason: None,
-            relation_confidence: None,
-        }];
-        finding
-    }
-
-    fn test_summary(name: &str, file: &str, start_line: usize, body: &str) -> TestSummary {
-        TestSummary {
-            name: name.to_string(),
-            file: PathBuf::from(file),
-            start_line,
-            end_line: start_line + body.lines().count(),
-            body: body.to_string(),
-            calls: vec![CallFact {
-                line: start_line,
-                name: "inner".to_string(),
-                text: "inner(10, 3)".to_string(),
-            }],
-            assertions: Vec::new(),
-            literals: vec![
-                LiteralFact {
-                    line: start_line,
-                    value: "10".to_string(),
-                },
-                LiteralFact {
-                    line: start_line,
-                    value: "3".to_string(),
-                },
-                LiteralFact {
-                    line: start_line + 1,
-                    value: "7".to_string(),
-                },
-            ],
-            attrs: Vec::new(),
-            nested_fn_names: Vec::new(),
-            let_bindings: Vec::new(),
-        }
-    }
-
     fn no_path_finding_with_infection_summary(summary: &str, evidence: Vec<String>) -> Finding {
         let stage = |state| StageEvidence::new(state, Confidence::Low, "stage");
         Finding {
@@ -4367,146 +3582,6 @@ let _ = (result, note, raw);"##,
             alignment_reason: None,
             source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
         }
-    }
-
-    // --- FFI / cross-language guard tests (#910) ---
-
-    fn ffi_function(file: &str, name: &str, attrs: Vec<&str>) -> FunctionSummary {
-        FunctionSummary {
-            id: SymbolId(format!("{file}::{name}")),
-            name: name.to_string(),
-            file: PathBuf::from(file),
-            start_line: 1,
-            end_line: 5,
-            body: format!("pub fn {name}(x: i32) -> i32 {{ x }}"),
-            calls: vec![],
-            returns: vec![],
-            literals: vec![],
-            source_role: FunctionSourceRole::Production,
-            attrs: attrs.into_iter().map(|s| s.to_string()).collect(),
-            nested_fn_names: Vec::new(),
-            let_bindings: Vec::new(),
-        }
-    }
-
-    fn probe_for_owner(file: &str, name: &str, family: ProbeFamily) -> Probe {
-        Probe {
-            id: ProbeId(format!("probe:{file}::{name}")),
-            location: SourceLocation::new(file, 2, 1),
-            owner: Some(SymbolId(format!("{file}::{name}"))),
-            family,
-            delta: DeltaKind::Control,
-            before: None,
-            after: Some("x > 0".to_string()),
-            expression: "x > 0".to_string(),
-            expected_sinks: vec![],
-            required_oracles: vec![],
-        }
-    }
-
-    #[test]
-    fn owner_with_no_mangle_attr_is_ffi() {
-        let owner = ffi_function("src/lib.rs", "ffi_fn", vec!["#[no_mangle]"]);
-        assert!(owner_has_ffi_attr(&owner));
-    }
-
-    #[test]
-    fn owner_with_wasm_bindgen_attr_is_ffi() {
-        let owner = ffi_function("src/lib.rs", "wasm_fn", vec!["#[wasm_bindgen]"]);
-        assert!(owner_has_ffi_attr(&owner));
-    }
-
-    #[test]
-    fn owner_with_no_attrs_is_not_ffi() {
-        let owner = ffi_function("src/lib.rs", "pure_fn", vec![]);
-        assert!(!owner_has_ffi_attr(&owner));
-    }
-
-    #[test]
-    fn owner_with_plain_test_attr_is_not_ffi() {
-        let owner = ffi_function("src/lib.rs", "plain_fn", vec!["#[test]"]);
-        assert!(!owner_has_ffi_attr(&owner));
-    }
-
-    #[test]
-    fn cross_language_guard_fires_for_weakly_exposed_with_ffi_attr() {
-        let owner = ffi_function("src/lib.rs", "exported_fn", vec!["#[no_mangle]"]);
-        let probe = probe_for_owner("src/lib.rs", "exported_fn", ProbeFamily::Predicate);
-        let index = RustIndex {
-            functions: vec![owner],
-            ..RustIndex::default()
-        };
-        let result = cross_language_limit_kind(&probe, &index, &ExposureClass::WeaklyExposed);
-        assert_eq!(
-            result,
-            Some(StaticLimitKind::CrossLanguageOracleVisibilityUnresolved),
-            "FFI-marked owner with WeaklyExposed gap should set cross-language limit"
-        );
-    }
-
-    #[test]
-    fn cross_language_guard_fires_for_reachable_unrevealed_with_wasm_bindgen() {
-        let owner = ffi_function("src/lib.rs", "wasm_fn", vec!["#[wasm_bindgen]"]);
-        let probe = probe_for_owner("src/lib.rs", "wasm_fn", ProbeFamily::ReturnValue);
-        let index = RustIndex {
-            functions: vec![owner],
-            ..RustIndex::default()
-        };
-        let result = cross_language_limit_kind(&probe, &index, &ExposureClass::ReachableUnrevealed);
-        assert_eq!(
-            result,
-            Some(StaticLimitKind::CrossLanguageOracleVisibilityUnresolved),
-            "FFI-marked owner with ReachableUnrevealed gap should set cross-language limit"
-        );
-    }
-
-    #[test]
-    fn cross_language_guard_fires_for_infection_unknown_with_ffi_attr() {
-        let owner = ffi_function("src/lib.rs", "exported_fn", vec!["#[no_mangle]"]);
-        let probe = probe_for_owner("src/lib.rs", "exported_fn", ProbeFamily::Predicate);
-        let index = RustIndex {
-            functions: vec![owner],
-            ..RustIndex::default()
-        };
-        let result = cross_language_limit_kind(&probe, &index, &ExposureClass::InfectionUnknown);
-        assert_eq!(
-            result,
-            Some(StaticLimitKind::CrossLanguageOracleVisibilityUnresolved),
-            "FFI-marked owner with InfectionUnknown gap should set cross-language limit"
-        );
-    }
-
-    #[test]
-    fn cross_language_guard_does_not_fire_for_pure_rust_owner_weakly_exposed() {
-        // Pure-Rust control: no FFI attr — guard must NOT fire even for a gap class.
-        let owner = ffi_function("src/lib.rs", "pure_fn", vec![]);
-        let probe = probe_for_owner("src/lib.rs", "pure_fn", ProbeFamily::Predicate);
-        let index = RustIndex {
-            functions: vec![owner],
-            ..RustIndex::default()
-        };
-        let result = cross_language_limit_kind(&probe, &index, &ExposureClass::WeaklyExposed);
-        assert_eq!(
-            result, None,
-            "Pure-Rust owner must NOT receive cross-language static_limit_kind"
-        );
-    }
-
-    #[test]
-    fn cross_language_guard_does_not_fire_for_exposed_class_even_with_ffi() {
-        // Even an FFI-marked owner should not gain the limitation on Exposed
-        // (no gap = nothing to reclassify).
-        let owner = ffi_function("src/lib.rs", "exported_fn", vec!["#[no_mangle]"]);
-        let probe = probe_for_owner("src/lib.rs", "exported_fn", ProbeFamily::ReturnValue);
-        let index = RustIndex {
-            functions: vec![owner],
-            ..RustIndex::default()
-        };
-        let result = cross_language_limit_kind(&probe, &index, &ExposureClass::Exposed);
-        assert_eq!(
-            result, None,
-            "Exposed class must not receive cross-language static_limit_kind regardless of FFI"
-        );
     }
 
     fn changed_lib_rs_diff() -> Vec<ChangedFile> {
@@ -5456,5 +4531,90 @@ let _ = (result, note, raw);"##,
             result.findings
         );
         Ok(())
+    }
+
+    #[test]
+    fn façade_reexports_lexical_helpers_owned_by_probes() {
+        assert_eq!(
+            super::changed_let_binding("let end = input.len();"),
+            Some(("end", "input.len()"))
+        );
+        assert_eq!(
+            super::changed_let_binding("let end = input.len();"),
+            super::probes::changed_let_binding("let end = input.len();"),
+            "the façade must not keep a second changed_let_binding implementation"
+        );
+        let source = "// hidden\nkeep();";
+        let masked = super::mask_rust_comments_and_strings(source);
+        assert_eq!(
+            masked,
+            super::probes::mask_rust_comments_and_strings(source)
+        );
+        assert!(masked.contains("keep();"));
+        assert!(!masked.contains("hidden"));
+        assert_eq!(masked.len(), source.len());
+    }
+
+    #[test]
+    fn probe_and_oracle_limit_sequence_lets_ffi_replace_wrapper_error() {
+        let mut finding = no_path_finding_with_infection_summary("stage", Vec::new());
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.probe.family = ProbeFamily::ErrorPath;
+        finding.probe.expression = "try_parse(raw).map_err(Into::into)".to_string();
+        finding.probe.owner = Some(SymbolId("src/lib.rs::exported_fn".to_string()));
+        finding.related_tests = vec![RelatedTest {
+            name: "covers".to_string(),
+            file: PathBuf::from("tests/it.rs"),
+            line: 4,
+            oracle: None,
+            oracle_kind: OracleKind::Unknown,
+            oracle_strength: OracleStrength::None,
+            relation_reason: None,
+            relation_confidence: None,
+        }];
+
+        let rust_owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::exported_fn".to_string()),
+            name: "exported_fn".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "pub fn exported_fn(raw: &str) -> Result<(), Box<dyn std::error::Error>> { try_parse(raw).map_err(Into::into) }".to_string(),
+            calls: vec![],
+            returns: vec![],
+            literals: vec![],
+            source_role: FunctionSourceRole::Production,
+            attrs: vec![],
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let rust_index = RustIndex {
+            functions: vec![rust_owner.clone()],
+            ..RustIndex::default()
+        };
+        let probe = finding.probe.clone();
+        apply_probe_and_oracle_limits(&mut finding, &probe, &rust_index, None);
+        assert_eq!(
+            finding.static_limit_kind,
+            Some(StaticLimitKind::WrapperErrorBindingUnresolved),
+            "without FFI attrs the wrapper-error owner must win"
+        );
+
+        let mut ffi_finding = finding.clone();
+        ffi_finding.static_limit_kind = None;
+        ffi_finding.evidence.clear();
+        let mut ffi_owner = rust_owner;
+        ffi_owner.attrs = vec!["#[no_mangle]".to_string()];
+        let ffi_index = RustIndex {
+            functions: vec![ffi_owner],
+            ..RustIndex::default()
+        };
+        let probe = ffi_finding.probe.clone();
+        apply_probe_and_oracle_limits(&mut ffi_finding, &probe, &ffi_index, None);
+        assert_eq!(
+            ffi_finding.static_limit_kind,
+            Some(StaticLimitKind::CrossLanguageOracleVisibilityUnresolved),
+            "cross-language must replace a Rust-gap wrapper-error limitation"
+        );
     }
 }

@@ -272,7 +272,7 @@ fn analyze_related_assertions(
     // confirming signal is token coincidence by construction); it stays
     // below `exposed` and carries the typed
     // `wrapper_error_binding_unresolved` limitation attached by
-    // `apply_wrapper_error_binding_limit` (analysis/language/rust.rs).
+    // `apply_wrapper_error_binding_limit` (analysis/language/rust/oracles.rs).
     let wrapper_seam = error_construction_variant.is_none()
         && matches!(
             probe.family,

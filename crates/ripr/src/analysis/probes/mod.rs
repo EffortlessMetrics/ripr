@@ -7,6 +7,8 @@ mod ids;
 mod lexical;
 mod repo;
 
+#[cfg(test)]
+pub(crate) use binding_predicate::PredicateOperandSide;
 pub(crate) use binding_predicate::{
     BindingPredicateResolution, BindingValueResolution, ChangedBindingPredicateUse,
     resolve_changed_binding_uses,

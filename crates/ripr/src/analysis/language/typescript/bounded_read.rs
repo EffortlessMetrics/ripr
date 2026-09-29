@@ -71,7 +71,7 @@ impl CappedReadError {
 }
 
 /// Parse a positive byte limit from an env override, failing closed to the
-/// error string on invalid input (mirrors `rust.rs::positive_limit_from_env`).
+/// error string on invalid input (mirrors `rust/mod.rs::positive_limit_from_env`).
 pub(crate) fn ts_byte_limit_from_env(
     env_name: &str,
     default: u64,
