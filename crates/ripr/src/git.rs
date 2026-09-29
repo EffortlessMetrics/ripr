@@ -34,10 +34,23 @@ const POST_KILL_DRAIN_GRACE: Duration = Duration::from_secs(5);
 /// a committed limited snapshot instead of a dropped refresh.
 pub(crate) const GIT_INVOCATION_TIMEOUT_PREFIX: &str = "git_invocation_timeout";
 
+/// Cause and repair when the git program itself is missing (#4735).
+///
+/// Shared by the git spawn authority, `ripr check`, and the doctor `tool_git`
+/// line so a gitless environment is not handed the raw argv and then told to
+/// run a command that also needs git.
+pub(crate) const GIT_NOT_FOUND_ON_PATH_MESSAGE: &str =
+    "git was not found on PATH; install git, or pass a saved diff with `--diff PATH` / `--diff -`";
+
 /// True when `error` is the named git invocation timeout error (#2303).
 /// Matchable in the style of `analysis::cancellation::is_cancellation_error`.
 pub(crate) fn is_git_invocation_timeout(error: &str) -> bool {
     error.starts_with(GIT_INVOCATION_TIMEOUT_PREFIX)
+}
+
+/// True when `error` is the named missing-git spawn failure (#4735).
+pub(crate) fn is_git_not_found_on_path(error: &str) -> bool {
+    error == GIT_NOT_FOUND_ON_PATH_MESSAGE
 }
 
 /// Poll interval for the deadline/cancellation wait loop.
@@ -166,16 +179,43 @@ impl SpawnSite {
         let path_limit_error = err
             .raw_os_error()
             .is_some_and(|code| WINDOWS_PATH_LIMIT_ERRORS.contains(&code));
-        match self
+        if let Some(units) = self
             .working_directory
             .as_deref()
             .filter(|_| path_limit_error)
             .and_then(|dir| windows_overlong_working_directory(is_windows, dir))
         {
-            Some(units) => windows_path_limit_message(&self.program, units, err, describe),
-            None => format!("failed to run {describe}: {err}"),
+            return windows_path_limit_message(&self.program, units, err, describe);
         }
+        if git_spawn_failed_because_missing_on_path(
+            &self.program,
+            self.working_directory.as_deref(),
+            err,
+        ) {
+            return GIT_NOT_FOUND_ON_PATH_MESSAGE.to_string();
+        }
+        format!("failed to run {describe}: {err}")
     }
+}
+
+/// `NotFound` is also what a missing working directory produces, so only a
+/// missing git program with a usable cwd becomes the PATH diagnosis. A
+/// non-git program (the doctor Perl-exporter probe) keeps its own spawn text.
+fn git_spawn_failed_because_missing_on_path(
+    program: &str,
+    working_directory: Option<&Path>,
+    err: &std::io::Error,
+) -> bool {
+    program_is_git(program)
+        && err.kind() == std::io::ErrorKind::NotFound
+        && working_directory.is_none_or(Path::exists)
+}
+
+fn program_is_git(program: &str) -> bool {
+    program
+        .rsplit(['/', '\\'])
+        .next()
+        .is_some_and(|name| name == "git" || name == "git.exe")
 }
 
 /// The remedy leads so it survives the LSP's 240-character client bound
@@ -910,6 +950,106 @@ mod tests {
             unset.failure_message_on(true, &describe, &err),
             format!("failed to run {describe}: {err}")
         );
+    }
+
+    #[test]
+    fn spawn_failure_names_missing_git_on_path_without_dumping_argv() {
+        let root = std::env::temp_dir();
+        assert!(
+            root.exists(),
+            "the process temp dir must exist so NotFound is the program, not the cwd"
+        );
+        let site = SpawnSite {
+            program: "git".to_string(),
+            working_directory: Some(root.clone()),
+        };
+        let err = std::io::Error::from(std::io::ErrorKind::NotFound);
+        let describe = format!(
+            "git -C {} [\"-c\", \"core.quotePath=true\", \"diff\", \"main...HEAD\"]",
+            root.display()
+        );
+        let message = site.failure_message_on(false, &describe, &err);
+        assert_eq!(message, GIT_NOT_FOUND_ON_PATH_MESSAGE);
+        assert!(is_git_not_found_on_path(&message));
+        assert!(
+            !message.contains("core.quotePath") && !message.contains('['),
+            "the git argv must not reach the user: {message}"
+        );
+
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            site.failure_message_on(false, &describe, &denied),
+            format!("failed to run {describe}: {denied}"),
+            "a denied git is not a missing-PATH diagnosis"
+        );
+
+        let missing_root = SpawnSite {
+            program: "git".to_string(),
+            working_directory: Some(root.join(format!(
+                "ripr-missing-git-cwd-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_nanos())
+                    .unwrap_or(0)
+            ))),
+        };
+        assert_eq!(
+            missing_root.failure_message_on(false, &describe, &err),
+            format!("failed to run {describe}: {err}"),
+            "a missing working directory is not a missing-PATH diagnosis"
+        );
+
+        let perl = SpawnSite {
+            program: "perl-ripr-facts".to_string(),
+            working_directory: Some(std::env::temp_dir()),
+        };
+        assert_eq!(
+            perl.failure_message_on(false, "perl-ripr-facts --version", &err),
+            format!("failed to run perl-ripr-facts --version: {err}"),
+            "a missing non-git program must not steal the git PATH diagnosis"
+        );
+        assert!(program_is_git("git"));
+        assert!(program_is_git("git.exe"));
+        assert!(program_is_git(&format!(r"{DRIVE}\tools\git.exe")));
+        assert!(!program_is_git("git-lfs") && !program_is_git("perl-ripr-facts"));
+    }
+
+    /// Native control for #4735: spawning `git` with an empty PATH must name
+    /// the missing binary and the `--diff` route, not dump `core.quotePath`.
+    #[test]
+    fn native_git_spawn_with_empty_path_names_the_missing_binary() -> Result<(), String> {
+        let empty_path = std::env::temp_dir().join(format!(
+            "ripr-4735-empty-path-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&empty_path).map_err(|err| format!("create empty PATH: {err}"))?;
+        let mut command = git_command(&empty_path, &["--version"]);
+        command.env("PATH", &empty_path);
+        let result = collect_output_with_deadline(command, None, "git --version");
+        let _ = std::fs::remove_dir_all(&empty_path);
+        match result {
+            Err(message) => {
+                if message != GIT_NOT_FOUND_ON_PATH_MESSAGE {
+                    return Err(format!(
+                        "empty PATH must name the missing git binary, got: {message}"
+                    ));
+                }
+                if message.contains("core.quotePath") || message.contains('[') {
+                    return Err(format!("git argv leaked: {message}"));
+                }
+                Ok(())
+            }
+            Ok(output) => Err(format!(
+                "git spawned with PATH restricted to {empty_path:?} ({:?}); the \
+                 missing-binary premise of #4735 no longer holds on this host",
+                output.status
+            )),
+        }
     }
 
     /// Env flag that makes the re-executed test binary hang instead of

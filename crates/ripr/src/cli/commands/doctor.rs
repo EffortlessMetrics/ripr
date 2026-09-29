@@ -94,7 +94,7 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
         ok &= report_doctor_core_check(&report, &format!("tool_{tool}"));
     }
 
-    print_doctor_start_here_guidance(&root);
+    print_doctor_start_here_guidance(&root, &report);
 
     if ok && report.status == output::doctor::DoctorStatus::Pass {
         println!("✓ doctor checks passed");
@@ -154,7 +154,7 @@ fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -
     check.status != output::doctor::DoctorCheckStatus::Fail
 }
 
-fn print_doctor_start_here_guidance(root: &Path) {
+fn print_doctor_start_here_guidance(root: &Path, report: &output::doctor::DoctorReport) {
     // First-run honesty: name the packet only as present when it exists.
     // An unconditional path reads as an existing artifact on a fresh
     // workspace where `ripr first-pr` has never run (RIPR-SPEC-0051 names
@@ -193,18 +193,27 @@ fn print_doctor_start_here_guidance(root: &Path) {
     // silently exclude the user's draft (the RIPR-SPEC-0112 dirty-worktree case).
     // Route them to the command that actually covers their edits instead of the
     // one that looks clean while ignoring them. Reuses the same helper as the
-    // check-time disclosure (reuse, don't fork).
-    if analysis::working_tree_has_tracked_changes(root) {
-        println!("- Recommended first command: ripr check --base HEAD --worktree");
-        println!(
-            "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
-        );
-    } else {
-        // No `--base origin/main`: this screen is read in whatever repository
-        // the user has, and that ref does not exist in one whose default
-        // branch is not `main`. Without a base, the loader resolves the
-        // repository's own default (`analysis::diff::load::resolve_default_base`).
-        println!("- Recommended first command: ripr check");
+    // check-time disclosure (reuse, don't fork). When git cannot run, both
+    // `ripr check` and `--worktree` fail the same way; name the `--diff` route
+    // instead and do not probe the worktree (#4735).
+    let first = output::doctor::DoctorFirstCommand::resolve(
+        output::doctor::git_tool_can_run(report),
+        || analysis::working_tree_has_tracked_changes(root),
+    );
+    println!("- Recommended first command: {}", first.command_line());
+    match first {
+        output::doctor::DoctorFirstCommand::Worktree => {
+            println!(
+                "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
+            );
+        }
+        output::doctor::DoctorFirstCommand::DefaultCheck => {
+            // No `--base origin/main`: this screen is read in whatever repository
+            // the user has, and that ref does not exist in one whose default
+            // branch is not `main`. Without a base, the loader resolves the
+            // repository's own default (`analysis::diff::load::resolve_default_base`).
+        }
+        output::doctor::DoctorFirstCommand::SavedDiff => {}
     }
 }
 

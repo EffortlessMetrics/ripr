@@ -81,8 +81,8 @@ When `--worktree` is absent:
 
 ### Doctor guidance
 
-When `ripr doctor --root <repo>` sees staged or unstaged tracked changes, it
-recommends:
+When `ripr doctor --root <repo>` sees staged or unstaged tracked changes **and
+git is available**, it recommends:
 
 ```text
 ripr check --base HEAD --worktree
@@ -90,6 +90,14 @@ ripr check --base HEAD --worktree
 
 and names the boundary that untracked files remain out of scope until staged or
 provided via `--diff`.
+
+When git is not on PATH, both `ripr check` and `--worktree` fail the same way.
+That includes the zero-config path (`ripr check` with no `--base`): default-base
+search must not diagnose missing git as an unresolvable ref. Doctor's `!` line
+names the same repair as `ripr check` in that environment (install git, or pass
+a saved diff with `--diff PATH` / `--diff -`), and the recommended first
+command is `ripr check --diff PATH`. A dirty worktree does not override that:
+`--worktree` cannot run without git.
 
 ### LSP saved-workspace contract
 
@@ -128,7 +136,8 @@ that untracked source was analyzed.
 4. **File diff compatibility**: `ripr check --diff change.patch` keeps existing
    behavior; `ripr check --diff change.patch --worktree` returns an error.
 5. **Doctor**: dirty tracked-worktree guidance names
-   `ripr check --base HEAD --worktree`.
+   `ripr check --base HEAD --worktree` when git is available. When git is not
+   on PATH, doctor names the `--diff` route even if the tree is dirty.
 6. **LSP saved edit**: with an empty `HEAD...HEAD` committed diff and a tracked
    saved source edit in `git diff HEAD`, an interactive LSP diagnostic refresh
    emits diff-scoped findings while keeping the seam inventory deferred.
@@ -143,8 +152,10 @@ that untracked source was analyzed.
   resolution when no explicit base is supplied.
 - CLI parser accepts `--worktree`, rejects `--diff` plus `--worktree`, and keeps
   existing `--base` / `--diff` behavior unchanged.
-- Doctor dirty tracked-worktree guidance recommends the worktree command and
-  untracked-only files do not trigger the tracked-edit recommendation.
+- Doctor dirty tracked-worktree guidance recommends the worktree command when
+  git is available; untracked-only files do not trigger the tracked-edit
+  recommendation. When git is not on PATH, the `!` line and recommended first
+  command name the `--diff` route instead.
 - CLI smoke tests cover dirty worktree, clean worktree, and doctor guidance.
 - LSP interactive and explicit refreshes share the worktree diff producer;
   refresh scope continues to decide only whether seam inventory is deferred.
@@ -160,6 +171,22 @@ that untracked source was analyzed.
   disclosure.
 - `crates/ripr/tests/cli_smoke.rs::doctor_recommends_worktree_check_on_dirty_worktree`
   - dirty doctor guidance names the new command.
+- `crates/ripr/tests/cli_smoke.rs::doctor_without_git_names_the_fix_and_recommends_the_diff_route`
+  - a gitless doctor `!` line names install git and `--diff`, and recommends
+    `ripr check --diff PATH`.
+- `crates/ripr/tests/cli_smoke.rs::doctor_without_git_does_not_recommend_worktree_on_a_dirty_tree`
+  - a dirty tree cannot win over a missing git binary.
+- `crates/ripr/tests/cli_smoke.rs::check_without_git_names_path_and_diff_routes_without_dumping_argv`
+  - `check` names PATH and `--diff` instead of dumping git argv; `--diff` still
+    runs without git.
+- `crates/ripr/tests/cli_smoke.rs::check_without_git_omitted_base_names_path_not_unresolvable_base`
+  - a gitless `check` with no `--base` names PATH, not `Pass --base`.
+- `crates/ripr/src/analysis/diff/load.rs::tests::git_root_probe_prefers_missing_git_over_unresolved_base`
+  - the git-root probe maps a missing-git spawn to PATH, not default-base text.
+- `crates/ripr/src/analysis/diff/load.rs::tests::git_root_probe_names_a_non_repo_after_git_ran`
+  - a git that ran outside a work tree keeps the non-repo diagnosis.
+- `crates/ripr/src/analysis/diff/load.rs::tests::git_root_probe_does_not_invent_a_cause_when_git_ran_inside_a_work_tree`
+- `crates/ripr/src/analysis/diff/load.rs::tests::git_root_probe_does_not_invent_a_cause_on_timeout`
 - `crates/ripr/src/cli/commands.rs::tests::check_rejects_diff_file_plus_worktree_mode`
   - `--diff` and `--worktree` remain mutually exclusive.
 - `crates/ripr/src/analysis/diff/load.rs::tests::tracked_change_detector_ignores_untracked_only_files`
@@ -192,6 +219,9 @@ that untracked source was analyzed.
 | Component | Location |
 |---|---|
 | CLI flag parse and doctor guidance | `crates/ripr/src/cli/commands.rs` |
+| Doctor first-command owner | `crates/ripr/src/cli/commands/doctor.rs` |
+| Doctor git-unavailable first command | `crates/ripr/src/output/doctor.rs` |
+| Git spawn missing-PATH diagnosis | `crates/ripr/src/git.rs` |
 | User help | `crates/ripr/src/cli/help/core.rs` |
 | App-internal worktree check path | `crates/ripr/src/app/check.rs` |
 | Analysis worktree pipeline | `crates/ripr/src/analysis/mod.rs` |
@@ -204,6 +234,9 @@ that untracked source was analyzed.
 
 - `cargo test -p ripr --test cli_smoke worktree`
 - `cargo test -p ripr --test cli_smoke doctor_recommends_worktree_check_on_dirty_worktree`
+- `cargo test -p ripr --test cli_smoke doctor_without_git`
+- `cargo test -p ripr --test cli_smoke check_without_git_names_path_and_diff_routes_without_dumping_argv`
+- `cargo test -p ripr --test cli_smoke check_without_git_omitted_base_names_path_not_unresolvable_base`
 - `cargo test -p ripr --lib check_rejects_diff_file_plus_worktree_mode`
 - `cargo test -p ripr --lib tracked_change_detector`
 - `cargo test -p ripr --lib lsp::tests::lsp_saved_worktree_refresh_analyzes_uncommitted_tracked_edit -- --exact`

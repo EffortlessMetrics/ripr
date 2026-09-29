@@ -206,11 +206,13 @@ fn worktree_diff_origin(root: &Path, base: &str, git_timeout: Option<Duration>) 
 /// zero-config path (no `--base`) still resolves the repository's real default
 /// branch below.
 ///
-/// Both of those failures ask [`not_a_work_tree`] first, because neither
-/// names the right thing when the root is not a repository: no ref resolves
-/// there, so blaming the chosen ref or the default-base search sends the user
-/// to a repair that cannot work. When that probe answers, its message replaces
-/// theirs; otherwise they stand.
+/// Both of those failures ask the git-root probe first. Missing git is named
+/// ahead of "not a work tree", because the default-base search treats any
+/// spawn failure as "ref absent" and would otherwise tell the user to pass
+/// `--base` (#4735). A root that is not a repository is named next: no ref
+/// resolves there, so blaming the chosen ref or the default-base search sends
+/// the user to a repair that cannot work. When that probe answers, its
+/// message replaces theirs; otherwise they stand.
 ///
 /// The probe is evidence, not an assumption: only a `rev-parse` that actually
 /// ran and reported the ref absent produces the named failure above. When the
@@ -235,8 +237,9 @@ pub fn resolve_effective_base(
     git_timeout: Option<Duration>,
 ) -> Result<String, String> {
     let Some(explicit) = base else {
-        return resolve_default_base(root, git_timeout)
-            .map_err(|err| not_a_work_tree(root, git_timeout).unwrap_or(err));
+        return resolve_default_base(root, git_timeout).map_err(|err| {
+            message_for_git_root_probe(probe_git_root(root, git_timeout), root).unwrap_or(err)
+        });
     };
 
     // No revision starts with `-`, and `git diff` would parse one as an option
@@ -262,6 +265,61 @@ pub fn resolve_effective_base(
     }
 }
 
+/// What `rev-parse --is-inside-work-tree` established on a failed base path.
+///
+/// Default-base probes treat any git spawn failure as "ref absent". This
+/// classification is the single place that puts missing git, a non-repository
+/// root, and an unanswered probe back into distinct messages.
+#[derive(Debug, PartialEq, Eq)]
+enum GitRootProbe {
+    GitNotFoundOnPath,
+    NotAWorkTree,
+    Unanswered,
+}
+
+fn classify_git_root_probe(spawn: Result<bool, &str>) -> GitRootProbe {
+    match spawn {
+        Err(err) if crate::git::is_git_not_found_on_path(err) => GitRootProbe::GitNotFoundOnPath,
+        Ok(false) => GitRootProbe::NotAWorkTree,
+        Ok(true) | Err(_) => GitRootProbe::Unanswered,
+    }
+}
+
+fn not_a_work_tree_message(root: &Path) -> String {
+    format!(
+        "`{}` is not inside a Git work tree (the analysis did not run). ripr diffs \
+         committed history, so run it from inside your repository, or pass `--root <path>` \
+         pointing at one. For a repository-free scan of the current sources, use \
+         `ripr check --root . --format repo-exposure-md`.",
+        root.display()
+    )
+}
+
+fn message_for_git_root_probe(probe: GitRootProbe, root: &Path) -> Option<String> {
+    match probe {
+        GitRootProbe::GitNotFoundOnPath => {
+            Some(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.to_string())
+        }
+        GitRootProbe::NotAWorkTree => Some(not_a_work_tree_message(root)),
+        GitRootProbe::Unanswered => None,
+    }
+}
+
+fn probe_git_root(root: &Path, git_timeout: Option<Duration>) -> GitRootProbe {
+    match crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--is-inside-work-tree"],
+        git_timeout,
+    ) {
+        Err(err) => classify_git_root_probe(Err(err.as_str())),
+        Ok(output) => {
+            let inside =
+                output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true";
+            classify_git_root_probe(Ok(inside))
+        }
+    }
+}
+
 /// The accurate failure when no base could resolve because `root` is not a Git
 /// work tree, or `None` when it is one.
 ///
@@ -276,24 +334,14 @@ pub fn resolve_effective_base(
 /// directory is not a repository any more than it may assert a ref is absent.
 /// `--is-inside-work-tree` prints `true` only inside a work tree, so a run that
 /// printed anything else — or failed, which is what it does outside a
-/// repository — is the case this names.
+/// repository — is the case this names. Missing git is not this message; the
+/// omitted-`--base` path reads [`message_for_git_root_probe`] so PATH is named
+/// instead of "pass `--base`".
 fn not_a_work_tree(root: &Path, git_timeout: Option<Duration>) -> Option<String> {
-    let output = crate::git::run_git_output_with_deadline(
-        root,
-        &["rev-parse", "--is-inside-work-tree"],
-        git_timeout,
-    )
-    .ok()?;
-    if output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true" {
-        return None;
+    match probe_git_root(root, git_timeout) {
+        GitRootProbe::NotAWorkTree => Some(not_a_work_tree_message(root)),
+        GitRootProbe::GitNotFoundOnPath | GitRootProbe::Unanswered => None,
     }
-    Some(format!(
-        "`{}` is not inside a Git work tree (the analysis did not run). ripr diffs \
-         committed history, so run it from inside your repository, or pass `--root <path>` \
-         pointing at one. For a repository-free scan of the current sources, use \
-         `ripr check --root . --format repo-exposure-md`.",
-        root.display()
-    ))
 }
 
 /// Resolve the best available base ref for `ripr check` when none was
@@ -878,6 +926,7 @@ fn run_git_diff_bytes(
         Ok(output) => output,
         Err(err)
             if crate::git::is_git_invocation_timeout(&err)
+                || crate::git::is_git_not_found_on_path(&err)
                 || crate::analysis::cancellation::is_cancellation_error(&err) =>
         {
             return Err(err);
@@ -965,6 +1014,67 @@ mod tests {
     /// so a `#[must_use]` cleanup failure is an explicit ignore.
     fn ignore_remove_dir_all(path: &Path) {
         if let Ok(()) = fs::remove_dir_all(path) {}
+    }
+
+    #[test]
+    fn git_root_probe_prefers_missing_git_over_unresolved_base() {
+        let probe = classify_git_root_probe(Err(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE));
+        assert_eq!(probe, GitRootProbe::GitNotFoundOnPath);
+        assert_eq!(
+            message_for_git_root_probe(probe, Path::new("/repo")).as_deref(),
+            Some(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE)
+        );
+        assert!(
+            !crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.contains("could not resolve a default base"),
+            "PATH diagnosis must not fall through to the default-base text"
+        );
+        assert!(
+            !crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.contains("Pass `--base"),
+            "PATH diagnosis must not send the user to `--base`"
+        );
+    }
+
+    #[test]
+    fn git_root_probe_names_a_non_repo_after_git_ran() {
+        assert_eq!(
+            classify_git_root_probe(Ok(false)),
+            GitRootProbe::NotAWorkTree
+        );
+        let message =
+            message_for_git_root_probe(GitRootProbe::NotAWorkTree, Path::new("/tmp/not-a-repo"));
+        assert!(
+            message
+                .as_deref()
+                .is_some_and(|text| text.contains("is not inside a Git work tree")),
+            "expected the work-tree diagnosis, got: {message:?}"
+        );
+        assert!(
+            message
+                .as_deref()
+                .is_some_and(|text| !text.contains("git was not found on PATH")),
+            "a git that ran must not steal the PATH diagnosis: {message:?}"
+        );
+    }
+
+    #[test]
+    fn git_root_probe_does_not_invent_a_cause_when_git_ran_inside_a_work_tree() {
+        assert_eq!(classify_git_root_probe(Ok(true)), GitRootProbe::Unanswered);
+        assert!(
+            message_for_git_root_probe(GitRootProbe::Unanswered, Path::new("/repo")).is_none(),
+            "an answered work tree must keep the original default-base error"
+        );
+    }
+
+    #[test]
+    fn git_root_probe_does_not_invent_a_cause_on_timeout() {
+        let probe = classify_git_root_probe(Err(
+            "git_invocation_timeout: git -C /repo [\"rev-parse\"] exceeded 100ms",
+        ));
+        assert_eq!(probe, GitRootProbe::Unanswered);
+        assert!(
+            message_for_git_root_probe(probe, Path::new("/repo")).is_none(),
+            "a timeout must not be remapped to missing git or a non-repo"
+        );
     }
 
     #[test]

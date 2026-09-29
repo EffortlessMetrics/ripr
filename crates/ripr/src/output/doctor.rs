@@ -31,6 +31,49 @@ use std::time::{Duration, Instant};
 pub(crate) const DOCTOR_FAILED_LINE: &str =
     "! doctor checks failed; each `!` line above names the check and its fix\n";
 
+/// First command doctor prints after the checks. Git-backed routes are only
+/// recommended when the `tool_git` check actually passed (#4735).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DoctorFirstCommand {
+    SavedDiff,
+    Worktree,
+    DefaultCheck,
+}
+
+impl DoctorFirstCommand {
+    pub(crate) const SAVED_DIFF_LINE: &'static str = "ripr check --diff PATH";
+    pub(crate) const WORKTREE_LINE: &'static str = "ripr check --base HEAD --worktree";
+    pub(crate) const DEFAULT_LINE: &'static str = "ripr check";
+
+    /// `dirty_worktree` is only evaluated when git can run, so a gitless
+    /// environment is not probed (and not told to run `--worktree`).
+    pub(crate) fn resolve(git_can_run: bool, dirty_worktree: impl FnOnce() -> bool) -> Self {
+        if !git_can_run {
+            Self::SavedDiff
+        } else if dirty_worktree() {
+            Self::Worktree
+        } else {
+            Self::DefaultCheck
+        }
+    }
+
+    pub(crate) fn command_line(self) -> &'static str {
+        match self {
+            Self::SavedDiff => Self::SAVED_DIFF_LINE,
+            Self::Worktree => Self::WORKTREE_LINE,
+            Self::DefaultCheck => Self::DEFAULT_LINE,
+        }
+    }
+}
+
+/// Fail closed: only an explicit passing `tool_git` check means git can run.
+pub(crate) fn git_tool_can_run(report: &DoctorReport) -> bool {
+    report
+        .checks
+        .iter()
+        .any(|check| check.name == "tool_git" && check.status == DoctorCheckStatus::Pass)
+}
+
 /// The single source of truth for which tools doctor probes for availability.
 /// Both the evaluation (which actually spawns each tool to check it) and the
 /// human-readable projection (which reads the resulting checks back out of
@@ -950,7 +993,9 @@ impl DoctorToolCheckResult {
 fn doctor_spawn_failure(tool: &str, kind: std::io::ErrorKind) -> DoctorToolCheckResult {
     DoctorToolCheckResult {
         status: DoctorStatus::Fail,
-        evidence: if kind == std::io::ErrorKind::NotFound {
+        evidence: if kind == std::io::ErrorKind::NotFound && tool == "git" {
+            crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.to_string()
+        } else if kind == std::io::ErrorKind::NotFound {
             format!("{tool} not available")
         } else {
             format!("{tool} could not be launched: {kind:?}")
@@ -2416,7 +2461,83 @@ mod tests {
         Ok(())
     }
 
-    /// Deterministic missing-tool assertion: probing a guaranteed-absent
+    #[test]
+    fn doctor_spawn_failure_names_the_shared_git_path_fix() {
+        let git_missing = doctor_spawn_failure("git", std::io::ErrorKind::NotFound);
+        assert_eq!(git_missing.status, DoctorStatus::Fail);
+        assert_eq!(
+            git_missing.evidence,
+            crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE
+        );
+        assert!(git_missing.evidence.contains("`--diff PATH` / `--diff -`"));
+        assert!(
+            !git_missing.evidence.contains('['),
+            "git argv must not appear on the doctor ! line: {}",
+            git_missing.evidence
+        );
+
+        let cargo_missing = doctor_spawn_failure("cargo", std::io::ErrorKind::NotFound);
+        assert_eq!(cargo_missing.evidence, "cargo not available");
+        assert!(
+            !cargo_missing.evidence.contains("--diff"),
+            "cargo must not inherit git's saved-diff repair"
+        );
+
+        let denied = doctor_spawn_failure("git", std::io::ErrorKind::PermissionDenied);
+        assert!(
+            denied.evidence.contains("could not be launched"),
+            "permission denied is not a missing-PATH diagnosis: {}",
+            denied.evidence
+        );
+        assert!(!denied.evidence.contains("--diff"));
+    }
+
+    #[test]
+    fn doctor_first_command_prefers_saved_diff_when_git_cannot_run() {
+        let mut probed = false;
+        assert_eq!(
+            DoctorFirstCommand::resolve(false, || {
+                probed = true;
+                false
+            }),
+            DoctorFirstCommand::SavedDiff
+        );
+        assert!(!probed, "a gitless doctor must not probe the worktree");
+        assert_eq!(
+            DoctorFirstCommand::resolve(true, || true),
+            DoctorFirstCommand::Worktree
+        );
+        assert_eq!(
+            DoctorFirstCommand::resolve(true, || false),
+            DoctorFirstCommand::DefaultCheck
+        );
+        assert_eq!(
+            DoctorFirstCommand::SavedDiff.command_line(),
+            DoctorFirstCommand::SAVED_DIFF_LINE
+        );
+
+        let mut missing_git = DoctorReport::new(".");
+        missing_git.add_check(
+            "tool_git",
+            DoctorStatus::Fail,
+            Some(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.to_string()),
+        );
+        assert!(!git_tool_can_run(&missing_git));
+        assert_eq!(
+            DoctorFirstCommand::resolve(git_tool_can_run(&missing_git), || true),
+            DoctorFirstCommand::SavedDiff,
+            "a dirty tree cannot win over a missing git binary"
+        );
+
+        let mut git_ok = DoctorReport::new(".");
+        git_ok.add_check(
+            "tool_git",
+            DoctorStatus::Pass,
+            Some("git version 2.43.0".to_string()),
+        );
+        assert!(git_tool_can_run(&git_ok));
+        assert!(!git_tool_can_run(&DoctorReport::new(".")));
+    }
     /// absolute path must fail closed with actionable evidence, independent
     /// of what happens to be (or not be) on the host's PATH.
     #[test]
