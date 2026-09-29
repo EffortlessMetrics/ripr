@@ -349,7 +349,74 @@ pub(crate) struct DiagnosticDeliverySelection {
     pub(crate) outcome: DiagnosticDeliveryOutcome,
 }
 
+/// Delivery-only omission for one document. Counts exclude profile-filtered
+/// evidence; those items were never eligible for this diagnostic profile.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DocumentDeliveryOmission {
+    pub(crate) scope: &'static str,
+    pub(crate) selected_count: usize,
+    pub(crate) omitted_count: usize,
+    pub(crate) total_count: usize,
+    pub(crate) count_budget: usize,
+    pub(crate) byte_budget: usize,
+    pub(crate) snapshot_profile_budget_identity: String,
+    pub(crate) complete_evidence_identity: String,
+    pub(crate) retrieval_route: String,
+}
+
 impl DiagnosticDeliverySelection {
+    /// Project the evaluator's exact omission membership, without inferring
+    /// missing items from the size of a rendered or published diagnostic list.
+    pub(crate) fn document_omissions(&self) -> BTreeMap<String, DocumentDeliveryOmission> {
+        let DiagnosticDeliveryOutcome::Applied {
+            result,
+            document_by_canonical_id,
+            ..
+        } = &self.outcome
+        else {
+            return BTreeMap::new();
+        };
+        let mut by_document = BTreeMap::new();
+        for item in &result.omitted {
+            if item.reason == OmittedDiagnosticReason::ProfileFiltered {
+                continue;
+            }
+            let Some(document) = document_by_canonical_id.get(&item.canonical_id) else {
+                continue;
+            };
+            let entry =
+                by_document
+                    .entry(document.clone())
+                    .or_insert_with(|| DocumentDeliveryOmission {
+                        scope: "document",
+                        selected_count: 0,
+                        omitted_count: 0,
+                        total_count: 0,
+                        count_budget: self.budget.max_items_per_document,
+                        byte_budget: self.budget.max_serialized_bytes,
+                        snapshot_profile_budget_identity: result
+                            .snapshot_profile_budget_identity
+                            .clone(),
+                        complete_evidence_identity: result.complete_evidence_identity.clone(),
+                        retrieval_route: result.continuation_or_inspect_route.clone(),
+                    });
+            entry.omitted_count += 1;
+            if item.reason != OmittedDiagnosticReason::DocumentItemLimit {
+                entry.scope = "workspace";
+                entry.count_budget = self.budget.max_items_per_workspace_response;
+            }
+        }
+        for item in &result.selected {
+            if let Some(entry) = by_document.get_mut(&item.document) {
+                entry.selected_count += 1;
+            }
+        }
+        for entry in by_document.values_mut() {
+            entry.total_count = entry.selected_count + entry.omitted_count;
+        }
+        by_document
+    }
+
     /// Compute the delivery selection for one snapshot's complete diagnostics.
     ///
     /// `snapshot_profile_identity` binds the selection to the snapshot input

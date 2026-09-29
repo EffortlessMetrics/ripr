@@ -83,7 +83,11 @@ These bounds compose with, and do not duplicate, the existing authorities:
 - expensive analysis work is already funneled through the refresh scheduler
   (`lsp/refresh_scheduler.rs`: one active attempt plus coalesced pending);
 - egress payloads are already bounded by the diagnostic budget
-  (`lsp/diagnostic_budget.rs`);
+  (`lsp/diagnostic_budget.rs`); when push delivery omits eligible diagnostics,
+  it adds one informational `ripr-diagnostic-budget-omitted` summary for each
+  affected document. The summary is delivery metadata outside the selected
+  finding count and directs users to the governed retrieval route. Pull
+  diagnostic visibility remains follow-up work under #2596;
 - cancellation is the tower-lsp built-in `$/cancelRequest` plus the ripr
   cancellation substrate (`analysis/cancellation.rs`), both of which stay
   serviceable because request concurrency is above 1;

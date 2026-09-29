@@ -631,6 +631,7 @@ impl Backend {
                 }
             }
 
+            let document_omissions = selection.document_omissions();
             for batch in &plan.publish_batches {
                 if !self.refresh_request_is_current(request) {
                     self.rollback_refresh_transaction_if_authority_is_current(
@@ -649,8 +650,11 @@ impl Backend {
                 // analyzed identity is withdrawn instead (#1970): its
                 // saved-state line identity no longer matches the client's
                 // buffer.
-                let diagnostics_to_publish =
+                let mut diagnostics_to_publish =
                     selection.diagnostics_for_document(batch.uri.as_str(), &batch.diagnostics);
+                if let Some(omission) = document_omissions.get(batch.uri.as_str()) {
+                    diagnostics_to_publish.push(delivery_omission_diagnostic(omission));
+                }
                 self.publish_served_diagnostics_for_transaction(
                     &batch.uri,
                     diagnostics_to_publish,
@@ -960,8 +964,26 @@ impl Backend {
             .cloned()
             .collect::<BTreeSet<_>>();
         uris.extend(plan.current_uris.iter().cloned());
+        let previous_selection = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|snapshot| snapshot.as_ref()?.delivery_selection.clone());
+        let previous_omissions = previous_selection
+            .as_ref()
+            .map(|selection| selection.document_omissions())
+            .unwrap_or_default();
         for uri in uris {
-            let diagnostics = previous_diagnostics.get(&uri).cloned().unwrap_or_default();
+            let diagnostics = rollback_push_diagnostics(
+                &uri,
+                previous_diagnostics
+                    .get(&uri)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]),
+                previous_selection.as_deref(),
+                previous_omissions.get(uri.as_str()),
+                self.document_quarantine(&uri).is_some(),
+            );
             self.client
                 .publish_diagnostics(uri, diagnostics, None)
                 .await;
@@ -2551,7 +2573,15 @@ impl Backend {
             .lock()
             .ok()
             .and_then(|value| value.clone())
-            .map(|snapshot| snapshot.served_diagnostics_for_uri(uri))
+            .map(|snapshot| {
+                let mut diagnostics = snapshot.served_diagnostics_for_uri(uri);
+                if let Some(selection) = &snapshot.delivery_selection
+                    && let Some(omission) = selection.document_omissions().get(uri.as_str())
+                {
+                    diagnostics.push(delivery_omission_diagnostic(omission));
+                }
+                diagnostics
+            })
             .unwrap_or_default()
     }
 
@@ -5592,6 +5622,60 @@ fn push_budget_omission_disclosure(
     ))
 }
 
+/// One visible summary of the same budget omission the selection and log
+/// retain. This is a delivery limitation, never a source finding or action.
+fn delivery_omission_diagnostic(
+    omission: &crate::lsp::diagnostic_budget::DocumentDeliveryOmission,
+) -> Diagnostic {
+    Diagnostic {
+        severity: Some(tower_lsp_server::ls_types::DiagnosticSeverity::INFORMATION),
+        code: Some(tower_lsp_server::ls_types::NumberOrString::String(
+            super::diagnostic_catalog::DIAGNOSTIC_BUDGET_OMITTED_CODE.to_string(),
+        )),
+        source: Some("ripr".to_string()),
+        message: format!(
+            "Displayed diagnostics are a bounded subset: {} of {} current diagnostics were omitted. Narrow the diff or profile, or retrieve current details through {}. This document result is incomplete.",
+            omission.omitted_count, omission.total_count, omission.retrieval_route
+        ),
+        data: Some(serde_json::json!({
+            "kind": "delivery_limitation",
+            "scope": omission.scope,
+            "selected_count": omission.selected_count,
+            "omitted_count": omission.omitted_count,
+            "total_count": omission.total_count,
+            "count_budget": omission.count_budget,
+            "byte_budget": omission.byte_budget,
+            "snapshot_profile_budget_identity": omission.snapshot_profile_budget_identity,
+            "complete_evidence_identity": omission.complete_evidence_identity,
+            "retrieval_route": omission.retrieval_route,
+        })),
+        ..Default::default()
+    }
+}
+
+/// Restore the prior *served* publication during transaction rollback. The
+/// stored baseline contains raw diagnostics; publishing it directly would
+/// bypass the prior budget when a newer refresh is cancelled.
+fn rollback_push_diagnostics(
+    uri: &Uri,
+    raw: &[Diagnostic],
+    selection: Option<&crate::lsp::diagnostic_budget::DiagnosticDeliverySelection>,
+    omission: Option<&crate::lsp::diagnostic_budget::DocumentDeliveryOmission>,
+    quarantined: bool,
+) -> Vec<Diagnostic> {
+    if quarantined || raw.is_empty() {
+        return Vec::new();
+    }
+    let mut served = selection.map_or_else(
+        || raw.to_vec(),
+        |selection| selection.diagnostics_for_document(uri.as_str(), raw),
+    );
+    if let Some(omission) = omission {
+        served.push(delivery_omission_diagnostic(omission));
+    }
+    served
+}
+
 /// Disclosure for the budget-error fallback: every diagnostic is published
 /// unfiltered, so no delivery limit was enforced — a partial state that must
 /// be named rather than presented as a normal complete publication.
@@ -8315,6 +8399,190 @@ mod gap_record_context_tests {
 #[cfg(test)]
 mod push_budget_disclosure_tests {
     use super::*;
+
+    #[test]
+    fn omitted_diagnostics_are_visible_without_becoming_actionable() -> Result<(), String> {
+        let uri = push_test_uri()?;
+        let diagnostics = (0..51)
+            .map(|index| headline_diagnostic(&format!("diag:{index:02}"), true))
+            .collect::<Vec<_>>();
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(diagnostics.clone())?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "snapshot:one",
+            "evidence:one",
+        );
+        let omissions = selection.document_omissions();
+        let omission = omissions.get(uri.as_str()).ok_or("missing omission")?;
+        assert_eq!(
+            (
+                omission.selected_count,
+                omission.omitted_count,
+                omission.total_count
+            ),
+            (50, 1, 51)
+        );
+        let mut published = selection.diagnostics_for_document(uri.as_str(), &diagnostics);
+        published.push(delivery_omission_diagnostic(omission));
+        assert_eq!(published.len(), 51);
+        assert_eq!(
+            rollback_push_diagnostics(&uri, &diagnostics, Some(&selection), Some(omission), false),
+            published,
+            "rollback must restore the bounded publication, not 51 raw findings plus a summary"
+        );
+        assert!(
+            rollback_push_diagnostics(&uri, &diagnostics, Some(&selection), Some(omission), true)
+                .is_empty(),
+            "quarantined buffers remain withdrawn on rollback"
+        );
+        let limitation = published.last().ok_or("missing limitation")?;
+        assert_eq!(
+            limitation.code,
+            Some(tower_lsp_server::ls_types::NumberOrString::String(
+                "ripr-diagnostic-budget-omitted".to_string()
+            ))
+        );
+        assert_eq!(
+            limitation
+                .data
+                .as_ref()
+                .and_then(|data| data.get("omitted_count")),
+            Some(&serde_json::json!(1))
+        );
+        assert_eq!(
+            limitation
+                .data
+                .as_ref()
+                .and_then(|data| data.get("retrieval_route")),
+            Some(&serde_json::json!("ripr/listActionableItems"))
+        );
+        assert!(
+            limitation
+                .data
+                .as_ref()
+                .and_then(|data| data.get("headline_eligible"))
+                .is_none()
+        );
+
+        let complete = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(diagnostics[..50].to_vec())?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "snapshot:two",
+            "evidence:two",
+        );
+        assert!(
+            complete.document_omissions().is_empty(),
+            "a complete refresh retracts the limitation"
+        );
+        assert_eq!(
+            complete
+                .diagnostics_for_document(uri.as_str(), &diagnostics[..50])
+                .len(),
+            50
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn byte_omission_excludes_profile_filtered() -> Result<(), String> {
+        let uri = push_test_uri()?;
+        let diagnostics = vec![
+            headline_diagnostic("diag:eligible-a", true),
+            headline_diagnostic("diag:eligible-b", true),
+            headline_diagnostic("diag:filtered", false),
+        ];
+        let first_bytes = serde_json::to_vec(&diagnostics[0])
+            .map_err(|error| error.to_string())?
+            .len();
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(diagnostics)?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget {
+                max_serialized_bytes: first_bytes,
+                ..Default::default()
+            },
+            "snapshot:bytes",
+            "evidence:bytes",
+        );
+        let omissions = selection.document_omissions();
+        let omission = omissions.get(uri.as_str()).ok_or("missing byte omission")?;
+        assert_eq!(omission.scope, "workspace");
+        assert_eq!(
+            (
+                omission.selected_count,
+                omission.omitted_count,
+                omission.total_count,
+            ),
+            (1, 1, 2),
+            "profile-filtered evidence is not a delivery omission"
+        );
+        assert_eq!(omission.byte_budget, first_bytes);
+
+        let filtered_only = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(vec![headline_diagnostic("diag:filtered", false)])?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "snapshot:filtered",
+            "evidence:filtered",
+        );
+        assert!(filtered_only.document_omissions().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_budget_reports_document_with_zero_selected() -> Result<(), String> {
+        let first: Uri = "file:///workspace/src/a.rs"
+            .parse()
+            .map_err(|error| format!("parse first URI: {error}"))?;
+        let second: Uri = "file:///workspace/src/b.rs"
+            .parse()
+            .map_err(|error| format!("parse second URI: {error}"))?;
+        let by_uri = BTreeMap::from([
+            (first.clone(), vec![headline_diagnostic("diag:a", true)]),
+            (second.clone(), vec![headline_diagnostic("diag:b", true)]),
+        ]);
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &by_uri,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget {
+                max_items_per_document: 1,
+                max_items_per_workspace_response: 1,
+                ..Default::default()
+            },
+            "snapshot:workspace",
+            "evidence:workspace",
+        );
+        let omissions = selection.document_omissions();
+        let omission = omissions
+            .get(second.as_str())
+            .ok_or("missing zero-selected omission")?;
+        assert_eq!(
+            (
+                omission.selected_count,
+                omission.omitted_count,
+                omission.total_count
+            ),
+            (0, 1, 1)
+        );
+        assert_eq!(omission.scope, "workspace");
+        let mut published = selection.diagnostics_for_document(second.as_str(), &by_uri[&second]);
+        assert!(published.is_empty());
+        published.push(delivery_omission_diagnostic(omission));
+        assert_eq!(
+            published.len(),
+            1,
+            "omission is visible without a selected finding"
+        );
+        assert_eq!(
+            rollback_push_diagnostics(
+                &second,
+                &by_uri[&second],
+                Some(&selection),
+                Some(omission),
+                false
+            ),
+            published,
+            "rollback keeps the one visible limitation for a zero-selected document"
+        );
+        Ok(())
+    }
 
     fn push_test_uri() -> Result<tower_lsp_server::ls_types::Uri, String> {
         "file:///workspace/src/lib.rs"
