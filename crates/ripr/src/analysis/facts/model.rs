@@ -625,6 +625,40 @@ pub struct FunctionFact {
     /// empty.
     #[serde(default)]
     pub let_bindings: Vec<LetBindingFact>,
+    /// Where the definition sits for a type-path call `T::name(` (#4558).
+    /// Parser-backed only; the lexical fallback leaves it `Unknown`.
+    #[serde(default)]
+    pub impl_context: FunctionImplContext,
+}
+
+/// Which item a function is defined in, as far as a type-path call
+/// `T::name(` can reach it (#4558).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum FunctionImplContext {
+    /// Not established: lexical fallback, a trait body (a default method
+    /// is reachable as `T::name` for any implementor), or an impl whose
+    /// self type is not a plain named path (generic parameter, reference,
+    /// trait object, tuple).
+    #[default]
+    Unknown,
+    /// A module-level or function-local `fn`: never the target of `T::name`.
+    Free,
+    /// A method of an inherent or trait impl whose self type is the named
+    /// path ending in `self_type` (generic arguments dropped).
+    Impl { self_type: String },
+}
+
+impl FunctionImplContext {
+    /// Whether a call spelled `self_type::name(` could resolve to this
+    /// definition. Fails open (true) for `Unknown`: the caller treats every
+    /// such definition as a competing target.
+    pub fn may_be_target_of_type_path(&self, self_type: &str) -> bool {
+        match self {
+            Self::Unknown => true,
+            Self::Free => false,
+            Self::Impl { self_type: own } => own == self_type,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -97,6 +97,8 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 // emptiness, is the discriminator.
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
+                // No parser: where the `fn` sits is not established (#4558).
+                impl_context: crate::analysis::facts::FunctionImplContext::Unknown,
             };
             if pending_test {
                 tests.push(TestFact {

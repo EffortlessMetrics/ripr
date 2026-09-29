@@ -1,7 +1,7 @@
 use crate::domain::{OracleKind, OracleStrength, SymbolId};
 use ra_ap_syntax::{
     AstNode, Edition, SourceFile, TextSize,
-    ast::{self, HasAttrs, HasName},
+    ast::{self, HasAttrs, HasGenericParams, HasName},
 };
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -10,6 +10,7 @@ use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
 use super::super::extract::ShadowAuthority;
 use super::super::extract::extract_pattern_words;
 use super::super::facts::FileFacts;
+use super::super::facts::FunctionImplContext;
 use super::super::facts::FunctionSourceRole;
 use super::super::facts::LetBindingFact;
 use super::super::facts::ModuleDeclarationFact;
@@ -268,6 +269,7 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             impl_attrs: collect_impl_attr_syntax(&function),
             nested_fn_names: nested_fn_names.clone(),
             let_bindings: let_bindings.clone(),
+            impl_context: function_impl_context(&function),
         };
 
         if has_test_attribute {
@@ -569,6 +571,54 @@ fn parser_symbol_id(path: &Path, function: &ast::Fn, name: &str) -> SymbolId {
 
     segments.push(name.to_string());
     SymbolId(segments.join("::"))
+}
+
+/// The item a type-path call `T::name(` would find this `fn` in (#4558).
+/// The nearest enclosing `fn`, `impl` or `trait` decides; modules and the
+/// file root make it a free function.
+fn function_impl_context(function: &ast::Fn) -> FunctionImplContext {
+    for ancestor in function.syntax().ancestors().skip(1) {
+        if ast::Fn::can_cast(ancestor.kind())
+            || ast::BlockExpr::can_cast(ancestor.kind())
+            || ast::Const::can_cast(ancestor.kind())
+            || ast::Static::can_cast(ancestor.kind())
+        {
+            // A `fn` item local to a function, block, const or static
+            // initializer is not nameable through a type.
+            return FunctionImplContext::Free;
+        }
+        if ast::Trait::can_cast(ancestor.kind()) {
+            return FunctionImplContext::Unknown;
+        }
+        if let Some(impl_block) = ast::Impl::cast(ancestor) {
+            return impl_self_type_name(&impl_block)
+                .map_or(FunctionImplContext::Unknown, |self_type| {
+                    FunctionImplContext::Impl { self_type }
+                });
+        }
+    }
+    FunctionImplContext::Free
+}
+
+/// Last segment of an impl's self type when it is a plain named path that
+/// is not one of the impl's own generic parameters (`impl<T> Trait for T`
+/// reaches every type).
+fn impl_self_type_name(impl_block: &ast::Impl) -> Option<String> {
+    let ast::Type::PathType(path_type) = impl_block.self_ty()? else {
+        return None;
+    };
+    let segment = path_type.path()?.segment()?;
+    let name = segment.name_ref()?.text().to_string();
+    let is_generic_parameter = impl_block.generic_param_list().is_some_and(|params| {
+        params.type_or_const_params().any(|param| {
+            param
+                .syntax()
+                .children()
+                .filter_map(ast::Name::cast)
+                .any(|param_name| param_name.text() == name.as_str())
+        })
+    });
+    (!is_generic_parameter).then_some(name)
 }
 
 fn impl_owner_segment(impl_block: &ast::Impl) -> String {
@@ -1521,6 +1571,47 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// #4558: where each `fn` sits, as a type-path call `T::name(` sees it.
+    #[test]
+    fn impl_context_names_the_self_type_only_for_plain_named_impls() -> Result<(), Box<dyn Error>> {
+        let source = concat!(
+            "pub fn current() {}\n",
+            "pub struct LevelFilter;\n",
+            "impl LevelFilter { pub fn inherent() { fn local() {} } }\n",
+            "impl core::fmt::Display for crate::metadata::LevelFilter { fn fmt_like() {} }\n",
+            "impl<T> Wrapper<T> { fn generic_args() {} }\n",
+            "impl<T: Tr> Tr2 for T { fn blanket() {} }\n",
+            "impl Tr for &LevelFilter { fn by_ref() {} }\n",
+            "trait Tr { fn defaulted() {} }\n",
+            "mod nested { pub fn in_module() {} }\n",
+            "impl LevelFilter { const C: () = { fn in_const() {} }; }\n",
+        );
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        let context = |name: &str| {
+            facts
+                .functions
+                .iter()
+                .find(|function| function.name == name)
+                .map(|function| function.impl_context.clone())
+        };
+        let named = |self_type: &str| {
+            Some(FunctionImplContext::Impl {
+                self_type: self_type.to_string(),
+            })
+        };
+        assert_eq!(context("current"), Some(FunctionImplContext::Free));
+        assert_eq!(context("in_module"), Some(FunctionImplContext::Free));
+        assert_eq!(context("local"), Some(FunctionImplContext::Free));
+        assert_eq!(context("in_const"), Some(FunctionImplContext::Free));
+        assert_eq!(context("inherent"), named("LevelFilter"));
+        assert_eq!(context("fmt_like"), named("LevelFilter"));
+        assert_eq!(context("generic_args"), named("Wrapper"));
+        assert_eq!(context("blanket"), Some(FunctionImplContext::Unknown));
+        assert_eq!(context("by_ref"), Some(FunctionImplContext::Unknown));
+        assert_eq!(context("defaulted"), Some(FunctionImplContext::Unknown));
+        Ok(())
+    }
 
     #[test]
     fn impl_block_attrs_are_kept_apart_from_the_method_attrs() -> Result<(), String> {

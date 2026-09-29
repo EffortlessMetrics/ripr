@@ -2595,6 +2595,7 @@ fn demote_harness_target_functions_drops_differently_named_test_facts()
         impl_attrs: Vec::new(),
         nested_fn_names: Vec::new(),
         let_bindings: Vec::new(),
+        impl_context: Default::default(),
     };
     let test_fact = TestFact {
         name: "differently_named_test_case".to_string(),

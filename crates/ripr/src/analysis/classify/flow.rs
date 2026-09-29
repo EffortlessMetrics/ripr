@@ -1359,6 +1359,7 @@ mod tests {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount > 10", 2);
 
@@ -1393,6 +1394,7 @@ mod tests {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
 
@@ -1422,6 +1424,7 @@ mod tests {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
 
@@ -1451,6 +1454,7 @@ mod tests {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            impl_context: Default::default(),
         }
     }
 
@@ -1610,6 +1614,7 @@ mod tests {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::SideEffect, "items.push(x * 9);", 3);
         let sinks = local_flow_sinks(&probe, Some(&owner));

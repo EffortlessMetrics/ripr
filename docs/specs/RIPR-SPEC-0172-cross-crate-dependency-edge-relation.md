@@ -92,7 +92,38 @@ credit):
   fail closed, and an import naming a different dependency defeats the
   admit;
 - a `let` binding of the owner name in the test body (invisible to the
-  function index) defeats the admit unconditionally.
+  function index) defeats a bare-call admit.
+
+Type-path calls (#4558). A captured call spelled `T::owner(` (or
+`dependency_name::T::owner(`) where `T` is the owner's impl self type
+admits through the same edge, graph and attribution boundaries, with its
+own competitor rule instead of the local-shadow and competing-candidate
+rules above:
+
+- the owner must be a parser-backed method of an impl whose self type is
+  a plain named path ending in `T` (not a generic parameter, reference or
+  trait object); lexical-fallback owners never take this route;
+- `T` must be imported at file level from the edge's declared dependency
+  name (`use dependency_name::...::T;`), or the call spelled through it;
+  renamed and glob imports do not count, and a declared name with `-`
+  matches its `_` spelling;
+- the type path is read from the comment- and string-masked call line, so
+  a quoted `T::owner()` beside a real same-named call is not the call;
+- every other same-named definition that a `T::owner(` call could reach
+  refuses: a method of another impl of a type named `T`, a trait default
+  method, a blanket or non-path impl, and any lexical-fallback
+  definition. Free functions (module-level, or local to a function, block,
+  const or static) and methods of other types cannot be the target and do
+  not compete;
+- the owner's crate must not bring a type named `T` in from another crate,
+  or glob-import another crate, in its library source: then
+  `dependency_name::...::T` may name that type, and no re-export is
+  resolved here. A glob rooted at `std`, `core` or `alloc`, at a module
+  the same file declares, or at a name that file imports through a local
+  or standard path (`use core::{num};` then `use num::*;`) is local and
+  does not refuse;
+- a `let` binding of the owner name cannot shadow `T::owner(` and does not
+  defeat this route.
 
 Everything else about relation reporting — the reason/confidence tags,
 ordering, and the shared rendering surfaces — is unchanged.
@@ -139,6 +170,12 @@ call.
   only on `outer`: not admitted; an edge to `inner` admits.
 - A workspace with no captured edge between the packages, or a graph
   that is `limited` or `unavailable`: the #2971 filter stands.
+- tracing: `tracing-core` changes `impl LevelFilter { fn current() }`;
+  a `tracing-subscriber` test with `use tracing_core::LevelFilter;` asserts
+  `LevelFilter::current()`. `tracing-subscriber` defines its own
+  `SpanStack::current`, which cannot be the target, so the test relates.
+  The original test imports `tracing_subscriber::filter::LevelFilter`, a
+  re-export, and stays unrelated.
 
 ## Test Mapping
 
@@ -165,6 +202,11 @@ call.
 - `crates/ripr/src/analysis/classify/related_tests.rs::tests::given_limited_graph_when_cross_crate_test_calls_ambiguous_owner_then_stays_filtered`
 - `crates/ripr/src/analysis/classify/related_tests.rs::tests::given_unavailable_graph_when_cross_crate_test_calls_ambiguous_owner_then_stays_filtered`
 - `crates/ripr/src/analysis/workspace/path_dependencies.rs::tests::forward_dependency_declarations_keep_section_and_declared_name`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::type_path_call_imported_from_owner_crate_admits_across_crates`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::type_path_call_fails_closed_without_owner_identity`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::type_path_call_refuses_foreign_type_names_and_quoted_paths`
+- `crates/ripr/src/analysis/classify/related_tests.rs::tests::type_path_call_admits_past_local_and_standard_globs`
+- `crates/ripr/src/analysis/syntax/ra.rs::tests::impl_context_names_the_self_type_only_for_plain_named_impls`
 
 ## Implementation Mapping
 
@@ -172,7 +214,10 @@ call.
   `DependencyEdgeContext`, `dependency_edge_admits_owner_call`,
   `has_callable_forward_dependency`, `imports_owner_from_dependency`,
   `use_path_names_owner`, `nearest_manifest_identity`,
-  `body_binds_owner_name`, `strip_comments_and_strings`
+  `body_binds_owner_name`, `strip_comments_and_strings`,
+  `type_path_call_admits_owner`, `owner_crate_imports_type_name`
+- `crates/ripr/src/analysis/syntax/ra.rs` — `function_impl_context`
+  (`FunctionFact.impl_context`)
 - `crates/ripr/src/analysis/workspace/path_dependencies.rs` —
   `PathDependencyAdjacency::forward_dependency_declarations`
   (section-and-name declarations per pair)
