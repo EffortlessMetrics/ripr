@@ -693,6 +693,27 @@ pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
     {
         return Err("release upload is blocked until final subjects are attested and verified".to_string());
     }
+    let producer = attestation
+        .get("producer_identity")
+        .ok_or_else(|| "server attestation receipt has no producer_identity".to_string())?;
+    if let Ok(expected_repository) = std::env::var("GITHUB_REPOSITORY")
+        && producer.get("repository").and_then(serde_json::Value::as_str)
+            != Some(expected_repository.as_str())
+    {
+        return Err("server attestation receipt repository differs from the upload workflow".to_string());
+    }
+    if let Ok(expected_sha) = std::env::var("GITHUB_SHA")
+        && producer.get("candidate_sha").and_then(serde_json::Value::as_str)
+            != Some(expected_sha.as_str())
+    {
+        return Err("server attestation receipt candidate SHA differs from the upload workflow".to_string());
+    }
+    if let Ok(expected_ref) = std::env::var("GITHUB_REF")
+        && producer.get("git_ref").and_then(serde_json::Value::as_str)
+            != Some(expected_ref.as_str())
+    {
+        return Err("server attestation receipt ref differs from the upload workflow".to_string());
+    }
     let tag = format!("v{version}");
     if !command_success_owned(
         "gh",
