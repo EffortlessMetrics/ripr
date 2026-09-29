@@ -124,11 +124,11 @@
   "summary_only": [],
   "suppressed": [
     {
-      "gap_id": "gap:rust:pricing:discount:missing-seam",
-      "file": null,
-      "line": null,
-      "reason": "missing_seam_identity",
-      "message": "PR comments require producer-owned seam identity."
+      "gap_id": "gap:duplicate",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "reason": "duplicate_dedupe_fingerprint",
+      "message": "A GapRecord with producer-owned seam identity emits this PR comment dedupe key."
     },
     {
       "gap_id": "gap:rust:pricing:discount:threshold-boundary",

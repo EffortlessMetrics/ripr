@@ -1732,6 +1732,15 @@ mod tests {
             Value::String("exact_seam_line".to_string());
         assert!(!check(&wrong_placement).is_empty());
 
+        // A gap-record card is keyed by its GapRecord; seam identity is
+        // optional there (#4524) but stays required on working-set cards.
+        let mut seamless = packet.clone();
+        seamless["comments"][0]
+            .as_object_mut()
+            .ok_or("missing fixture comment")?
+            .remove("seam_id");
+        assert!(check(&seamless).is_empty(), "{:#?}", check(&seamless));
+
         let mut default_packet =
             read_json(root.join("tests/fixtures/verification/ripr/review-comments.valid.json"))?;
         assert!(
@@ -1754,6 +1763,15 @@ mod tests {
                 "working-set null {field} accepted"
             );
         }
+        let mut seamless_default = default_packet.clone();
+        seamless_default["comments"][0]
+            .as_object_mut()
+            .ok_or("missing default comment")?
+            .remove("seam_id");
+        assert!(
+            !check(&seamless_default).is_empty(),
+            "working-set card without seam_id accepted"
+        );
         default_packet["comments"][0]["placement"]["mode"] =
             Value::String("gap_record_anchor".to_string());
         assert!(!check(&default_packet).is_empty());

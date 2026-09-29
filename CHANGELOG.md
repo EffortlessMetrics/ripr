@@ -36,6 +36,13 @@ are scoped or reviewed.
   gate re-masked every related test file's source for every probe; one scan
   per file now serves the whole run. On a ripr commit, a warm check went from
   8.6 s to 6.6 s with byte-identical JSON.
+- `ripr review-comments --gap-ledger` now renders repair cards for gaps from
+  `ripr reports gap-ledger --check-output`, such as Python repair gaps. Those
+  ledger rows carry no seam ID, and every one was suppressed as
+  `missing_seam_identity` even though the ledger marked it eligible for a PR
+  comment, so the documented route produced no cards. A gap-ledger card is
+  keyed by its gap record and now omits `seam_id` when the row has none; the
+  schema requires `seam_id` only on diff-scoped cards (#4524).
 - LSP: the server now asks clients for `textDocument/didSave`. It advertised
   only the numeric full-sync kind, which under the LSP spec does not request
   save notifications, so a strictly conforming editor could save without ripr

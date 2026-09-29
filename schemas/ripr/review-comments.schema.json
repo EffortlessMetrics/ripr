@@ -828,7 +828,6 @@
       "additionalProperties": true,
       "required": [
         "id",
-        "seam_id",
         "canonical_gap_id",
         "dedupe_key",
         "kind",
@@ -852,6 +851,7 @@
           "minLength": 1
         },
         "seam_id": {
+          "description": "Seam source-locator identity. Required on diff-scoped cards. A gap-ledger card carries it only when its GapRecord has producer-owned seam identity; it is never synthesized from the gap, file or line.",
           "type": "string",
           "minLength": 1
         },
@@ -975,7 +975,7 @@
             }
           },
           "else": {
-            "required": ["owner", "seam"],
+            "required": ["seam_id", "owner", "seam"],
             "properties": {
               "suggested_test": {
                 "properties": {

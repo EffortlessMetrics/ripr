@@ -2069,9 +2069,9 @@ mod tests {
     fn gap_ledger_route_bytes_from_check_goldens_match_published_schema() -> Result<(), String> {
         // Rust boundary_gap derives no PR-local GapRecord, so this is the
         // zero-record envelope #3913 first reported (`inputs` rejected).
-        // Python boundary_gap derives one pr_comment-eligible record that
-        // review-comments suppresses, which exercises the suppressed row.
-        for (check_golden, expected_records, expected_suppressed) in [
+        // Python boundary_gap derives one pr_comment-eligible record with no
+        // seam identity, which renders as a gap-keyed card (#4524).
+        for (check_golden, expected_records, expected_comments) in [
             ("fixtures/boundary_gap/expected/check.json", 0, 0),
             ("fixtures/python_boundary_gap/expected/check.json", 1, 1),
         ] {
@@ -2080,8 +2080,8 @@ mod tests {
             let _ = fs::remove_dir_all(&scratch);
             let (ledger, packet) = result?;
             if array_len(&ledger, "records") != expected_records
-                || array_len(&packet, "suppressed") != expected_suppressed
-                || array_len(&packet, "comments") != 0
+                || array_len(&packet, "comments") != expected_comments
+                || array_len(&packet, "suppressed") != 0
             {
                 return Err(format!(
                     "{check_golden}: unexpected route subject: {} records, packet {packet}",
@@ -2100,9 +2100,9 @@ mod tests {
     }
 
     /// Real ledger records from the Python check golden, given producer seam
-    /// identity (the `--check-output` derivation carries none, so its cards
-    /// are suppressed), multiplied past both render caps, plus records each
-    /// eligibility gate rejects. Returns the rendered packet.
+    /// identity (the `--check-output` derivation carries none), multiplied
+    /// past both render caps, plus records each eligibility gate rejects.
+    /// Returns the rendered packet.
     fn eligible_gap_ledger_route_packet(scratch: &Path) -> Result<Value, String> {
         let (ledger, _) = gap_ledger_route_from_check_golden(
             scratch,

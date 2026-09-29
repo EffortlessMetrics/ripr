@@ -7475,8 +7475,9 @@ Field contract:
   items eligible for check annotations or inline review comments.
 - `comments[].id` - stable report-local ID derived from the seam when possible.
 - `comments[].seam_id` - static seam identifier from the existing exposure or
-  agent packet evidence. On `--gap-ledger`, the producer-owned seam ID is
-  required for a comment to be eligible.
+  agent packet evidence. Required on working-set cards. On `--gap-ledger` it
+  is present only when the GapRecord carries producer-owned seam identity; a
+  card without it is keyed by `gap_id` and `dedupe_key` (#4524).
 - `comments[].source` / `comments[].gap_id` - on `--gap-ledger`, the source is
   `gap_decision_ledger` and the gap ID identifies the supplied record. These
   cards do not invent the working-set `owner` or `seam` objects. The published
@@ -15778,9 +15779,16 @@ legacy record that omits either field remains readable but its normalized gate
 route is explicitly `incomplete_repair_route`. Multiple records for one
 canonical gap that contain duplicate, conflicting, or mixed seam identities
 fail closed as a named ledger input configuration error.
-Gap-ledger PR review cards likewise project only `GapRecord.seam_id`; a row
-without it is suppressed with `missing_seam_identity` rather than using
-`gap_id` as a seam substitute.
+Gap-ledger PR review cards likewise project only `GapRecord.seam_id`, and
+never use `gap_id` as a seam substitute. A card is keyed by its GapRecord
+(`gap_id`, `dedupe_key`), so a row without seam identity, such as every
+Python or TypeScript row derived by `reports gap-ledger --check-output`, still
+renders a card with `seam_id` omitted when the ledger marks it PR-comment
+eligible. When a seamless row and a row with
+seam identity share a dedupe key, the row with seam identity renders and the
+seamless row is suppressed as `duplicate_dedupe_fingerprint`; the winning
+card takes the earlier row's ledger position before the inline and summary
+caps apply, so the shared key keeps one card.
 
 Typed command specifications (additive `command_specs`): records may carry
 `command_specs.verify`, `command_specs.receipt`, and
