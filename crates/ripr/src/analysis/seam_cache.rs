@@ -58,6 +58,7 @@ use crate::config::{
 };
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 // The producer's layer names are also the only names cache maintenance may
 // inspect or remove. Defining both the typed names and inventory here makes a
@@ -1662,23 +1663,92 @@ impl FileFactCacheStats {
 }
 
 pub(crate) struct RepoFileFactCache {
+    /// Entry directory: `{cache_base}/repo-file-facts/{schema_version}`.
     dir: PathBuf,
+    /// The path whose existence as a directory gates every read below it:
+    /// the resolved cache base (`RIPR_CACHE_DIR`, or the default
+    /// `{workspace_root}/target/ripr/cache`) for `at`, and the handed-in
+    /// directory itself for `at_dir`.
+    base: PathBuf,
+    /// Positive discriminator for the Windows cache-warning gap (#4918).
+    /// Windows decodes `ERROR_PATH_NOT_FOUND` for a read routed through a
+    /// file component as `NotFound` — the same kind as an ordinary absent
+    /// entry — so matching the error kind cannot tell an unusable cache
+    /// base from a miss. The base is therefore probed positively, at most
+    /// once per cache instance (once per build for `at`); `Some` means the
+    /// base exists but is not a usable directory, and every lookup is then
+    /// corrupt-ignored with that reason so the once-per-build warning
+    /// fires while the build re-parses in memory.
+    unusable_base_reason: OnceLock<Option<String>>,
+}
+
+/// Positive probe of the cache base: `Some` with a reason naming the
+/// condition when the base exists but is not a directory. A missing base
+/// stays `None` — that is the ordinary cold cache whose lookups read as
+/// `NotFound` and must remain silent misses. A base that cannot be probed
+/// also stays `None`; the per-read corrupt path still reports the error
+/// kinds it can discriminate. Metadata follows symlinks so a base that
+/// resolves to a usable directory keeps its silent warm/cold behavior.
+fn cache_dir_not_a_directory_reason(base: &Path) -> Option<String> {
+    match std::fs::metadata(base) {
+        Ok(metadata) if !metadata.is_dir() => {
+            Some(format!("cache dir is not a directory: {}", base.display()))
+        }
+        _ => None,
+    }
 }
 
 impl RepoFileFactCache {
     pub(crate) fn at(workspace_root: &Path) -> Self {
+        let dir = cache_layer_dir(workspace_root, CacheLayer::FileFacts)
+            .join(FILE_FACT_CACHE_SCHEMA_VERSION);
+        // The registered shape is `{base}/repo-file-facts/{version}`, so the
+        // cache base — the `RIPR_CACHE_DIR` (or default) path whose
+        // directory-ness the #4918 probe checks — is exactly two components
+        // up. Derived lexically rather than re-resolved so `cache_base_dir`
+        // stays called only by `cache_layer_dir` (the producer guard in the
+        // tests counts its call sites).
+        let base = dir
+            .ancestors()
+            .nth(2)
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| dir.clone());
         Self {
-            dir: cache_layer_dir(workspace_root, CacheLayer::FileFacts)
-                .join(FILE_FACT_CACHE_SCHEMA_VERSION),
+            base,
+            dir,
+            unusable_base_reason: OnceLock::new(),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn at_dir(dir: PathBuf) -> Self {
-        Self { dir }
+        Self {
+            base: dir.clone(),
+            dir,
+            unusable_base_reason: OnceLock::new(),
+        }
+    }
+
+    /// `Some(reason)` when the cache base exists but is not a directory.
+    /// Evaluated at most once per cache instance and cached, so a build
+    /// pays one metadata probe, not one per file lookup.
+    fn unusable_base_reason(&self) -> Option<&str> {
+        self.unusable_base_reason
+            .get_or_init(|| cache_dir_not_a_directory_reason(&self.base))
+            .as_deref()
     }
 
     pub(crate) fn load_file_facts(&self, key: &RepoFileFactCacheKey) -> CacheLoad<FileFacts> {
+        // An unusable base fails every lookup the same way, but on Windows
+        // that failure is indistinguishable from `NotFound` (#4918). The
+        // positive base probe classifies the whole layer as corrupt-ignored
+        // so the once-per-build warning fires while the build continues
+        // with in-memory parses; the run itself never fails.
+        if let Some(reason) = self.unusable_base_reason() {
+            return CacheLoad::CorruptIgnored {
+                reason: reason.to_owned(),
+            };
+        }
         let path = self.entry_path(key);
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
@@ -6102,6 +6172,59 @@ mod tests {
         };
         ignore_remove_dir_all(&dir);
         result
+    }
+
+    // #4918: on Windows, a read routed through a file component decodes as
+    // `NotFound` — the same kind as an absent entry — so a cache base that
+    // is a regular file silenced the once-per-build warning entirely. These
+    // tests pin the positive base probe without depending on errno mapping,
+    // so they pass identically on every platform.
+    #[test]
+    fn given_cache_base_is_a_regular_file_when_loading_file_facts_then_reason_names_the_condition()
+    -> Result<(), String> {
+        let dir = isolated_dir("file-facts-base-is-file");
+        ignore_remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|err| format!("fixture setup failed: {err}"))?;
+        let base = dir.join("cache-is-a-file");
+        std::fs::write(&base, "not a directory\n")
+            .map_err(|err| format!("fixture setup failed: {err}"))?;
+        let cache = RepoFileFactCache::at_dir(base.clone());
+        let key = RepoFileFactCacheKey::new(Path::new("src/lib.rs"), b"fn main() {}");
+
+        let result = match cache.load_file_facts(&key) {
+            CacheLoad::CorruptIgnored { reason } => {
+                let expected = format!("cache dir is not a directory: {}", base.display());
+                if reason == expected {
+                    Ok(())
+                } else {
+                    Err(format!("unexpected unusable-base reason: {reason}"))
+                }
+            }
+            other => Err(format!(
+                "expected CorruptIgnored for a regular-file cache base, got {other:?}"
+            )),
+        };
+        ignore_remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn given_missing_cache_base_when_loading_file_facts_then_stays_silent_miss()
+    -> Result<(), String> {
+        // The discriminator must fire only for an existing non-directory
+        // base: the ordinary missing-directory case keeps the silent-Miss
+        // behavior and must not feed the cache warning.
+        let base = isolated_dir("file-facts-base-absent");
+        ignore_remove_dir_all(&base);
+        let cache = RepoFileFactCache::at_dir(base);
+        let key = RepoFileFactCacheKey::new(Path::new("src/lib.rs"), b"fn main() {}");
+
+        match cache.load_file_facts(&key) {
+            CacheLoad::Miss => Ok(()),
+            other => Err(format!(
+                "expected silent Miss on an absent cache base, got {other:?}"
+            )),
+        }
     }
 
     #[test]

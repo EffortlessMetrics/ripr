@@ -69,6 +69,12 @@ are scoped or reviewed.
   `ripr check` on this repository printed 723 identical-shape lines before the
   one warning that mattered. A build now prints one line naming the count and
   the first reason; a single bad entry keeps its old message (#4888).
+- That same warning no longer stays silent on native Windows. A cache base
+  that is a regular file makes every Windows file-fact read report `NotFound`
+  — the same kind as an ordinary miss — so the count-and-reason line never
+  printed and the run looked cleanly cached. A once-per-build probe of the
+  cache base now emits `cache dir is not a directory: <path>` and the build
+  re-parses in memory; a missing or usable cache base stays silent (#4918).
 - An unchanged Rust test file that the reference parser refuses is no longer
   a silent related-test hole. If a classified owner consults that
   lexical-fallback file (the file contributed a related test, or it calls the

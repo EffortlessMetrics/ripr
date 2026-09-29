@@ -7996,6 +7996,8 @@ spec = "docs/specs/RIPR-SPEC-0123-targeted-rerun.md"
 tests = [
   "crates/ripr/src/analysis/seam_cache.rs::tests::same_key_classified_payload_and_metadata_edits_are_corrupt",
   "crates/ripr/src/analysis/seam_cache.rs::tests::classified_integrity_rejects_whole_shard_set_and_never_hides_corrupt_single",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::given_cache_base_is_a_regular_file_when_loading_file_facts_then_reason_names_the_condition",
+  "crates/ripr/src/analysis/seam_cache.rs::tests::given_missing_cache_base_when_loading_file_facts_then_stays_silent_miss",
   "crates/ripr/src/analysis/seam_cache.rs::tests::same_key_valid_json_fingerprint_payload_edit_is_corrupt",
   "crates/ripr/src/analysis/seam_cache.rs::tests::integrity_policy_checks_current_digest_after_decoded_identity_and_excludes_invalid_inventory",
   "crates/ripr/src/analysis/seam_cache.rs::tests::integrity_missing_and_bad_digest_reject_all_classified_and_fingerprint_families",

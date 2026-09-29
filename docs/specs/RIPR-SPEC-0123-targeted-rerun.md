@@ -234,6 +234,12 @@ by serialization is recomputed. The checksum is not writer authentication:
 a replacement body with a recomputed correct digest can be admitted. See
 [Configuration](../CONFIGURATION.md) for field scope and generation transitions.
 
+A cache base that exists but is not a directory (for example
+`RIPR_CACHE_DIR` pointing at a regular file) is disclosed once per build
+through the same typed corruption warning naming the condition and path;
+every lookup degrades to a silent miss, the run never fails, and an
+ordinary missing base stays silent (#4918).
+
 ### Identity and receipt continuity
 
 For a resolved `--gap` selector, the result carries that exact
