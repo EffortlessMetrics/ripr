@@ -142,7 +142,10 @@ the change moves.
 A test can execute every branch of a function and assert almost nothing
 (`assert result is not None`, a smoke check, or a mock that never inspects the
 changed value). Execution alone does not establish a discriminator. A strong,
-aligned discriminator asks more of the test than line coverage does.
+aligned discriminator asks more of the test than line coverage does. For a
+predicate probe, reach plus a strong oracle is not `exposed` unless one test
+both feeds a boundary input to the owner and holds that discriminating oracle
+on that call's result (#4828).
 
 That distinction between evidence types is not a guarantee about analyzer
 output. Under the [badge projection](#public-badge-projection), `ripr 0` means

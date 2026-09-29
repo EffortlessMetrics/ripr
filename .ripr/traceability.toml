@@ -9990,3 +9990,40 @@ metrics = [
   "cli_progress_stage_events",
   "cli_progress_heartbeats",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0186"
+name = "Same-test pairing for boundary-class probes"
+spec = "docs/specs/RIPR-SPEC-0186-same-test-boundary-oracle-pairing.md"
+tests = [
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::split_tests_do_not_pair",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::same_call_assert_eq_pairs",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::same_test_split_calls_do_not_pair",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::let_bound_boundary_call_asserted_later_pairs",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::typed_let_bound_boundary_call_asserted_later_pairs",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::let_binding_name_requires_keyword_boundary_and_allows_type_ascription",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::two_parameter_equal_args_in_assert_eq_pair",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::weak_assertion_on_boundary_call_does_not_pair",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::activation_equality_fact_pairs_when_call_args_are_not_probe_literals",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::same_line_split_calls_do_not_pair",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::irrelevant_argument_does_not_pair",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::shadowed_boundary_binding_does_not_pair",
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs::tests::short_let_bound_name_pairs"
+]
+fixtures = [
+  "fixtures/split_test_boundary_oracle",
+  "fixtures/strong_boundary_oracle"
+]
+code = [
+  "crates/ripr/src/analysis/classify/boundary_pairing.rs",
+  "crates/ripr/src/analysis/classifier/evidence.rs",
+  "crates/ripr/src/analysis/classify/decision.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0186-same-test-boundary-oracle-pairing.md",
+  "fixtures/split_test_boundary_oracle/expected/check.json",
+  "fixtures/split_test_boundary_oracle/expected/human.txt"
+]
+metrics = [
+  "same_test_boundary_oracle_pairing",
+]

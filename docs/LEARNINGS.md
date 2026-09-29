@@ -3,6 +3,19 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-09-29: Boundary input and oracle from different tests is a false `exposed` (#4828)
+
+Infection ("related test input at the changed boundary") and discrimination
+("strong oracle") were independently Yes across the related-test set. One test
+called `gate(10)` with no assertion; another asserted `gate(100) == true`.
+The mutant `>=` → `>` passed both. `exposed` for a predicate now requires one
+test that both feeds a boundary input to the owner and holds a discriminating
+oracle on that call's result. The split names `same_test_pairing_missing`.
+Do not absorb helper credit (#4574), proximity-only oracles (#4486), or
+bare-name method relation (#4760) into this pairing gate. Pairing reuses
+activation's `==` facts so a same-test oracle that already infected through
+a named constant or helper hop stays `exposed`.
+
 ## 2026-09-29: Whole-object equality is not an effect observer of a different collection (#4575)
 
 A SideEffect `items.push(...)` on a passed collection can be confirmed by

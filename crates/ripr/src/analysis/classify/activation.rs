@@ -1466,7 +1466,7 @@ fn body_contains_direct_local_alias(body: &str, operand: &str, parameter: &str) 
     })
 }
 
-fn comparison_operands(expression: &str) -> Option<(String, String)> {
+pub(in crate::analysis) fn comparison_operands(expression: &str) -> Option<(String, String)> {
     for operator in [">=", "<=", "==", "!=", ">", "<"] {
         if let Some((left, right)) = expression.split_once(operator) {
             let left = clean_operand(left);
@@ -1680,7 +1680,10 @@ pub(in crate::analysis) fn owner_input_values(activation: &ActivationEvidence) -
 /// shared scan strips string contents, so a string binding is not an exact
 /// value here. Anything else (a computed expression, a non-literal
 /// initializer) yields nothing.
-fn owner_argument_values(test: &TestSummary, argument: &str) -> Vec<String> {
+pub(in crate::analysis) fn owner_argument_values(
+    test: &TestSummary,
+    argument: &str,
+) -> Vec<String> {
     let direct = scalar_values(argument);
     if !direct.is_empty() {
         return direct;
@@ -1727,7 +1730,7 @@ fn sort_value_facts(facts: &mut Vec<ValueFact>) {
     });
 }
 
-fn call_arguments(text: &str, name: &str) -> Option<Vec<String>> {
+pub(in crate::analysis) fn call_arguments(text: &str, name: &str) -> Option<Vec<String>> {
     let needle = format!("{name}(");
     let start = text.find(&needle)? + name.len();
     let contents = delimited_contents_at(text, start)?;

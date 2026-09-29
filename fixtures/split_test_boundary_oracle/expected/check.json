@@ -1,0 +1,261 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/split_test_boundary_oracle/input",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:ba30490dab60637d1c93f5a7fc6efc9dbe5ff718a73ed157ab0d2f3abf3433eb","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:fa1d51d0",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:fa1d51d0",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/split_test_boundary_oracle/input/src/lib.rs",
+        "line": 2,
+        "expression": "input >= 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach gate: boundary, far"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: input >= 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: boundary input and discriminating oracle come from different tests (same_test_pairing_missing); no test both feeds a boundary input to the owner and holds a discriminating oracle on that call's result"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach gate: boundary, far", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: input >= 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: boundary input and discriminating oracle come from different tests (same_test_pairing_missing); no test both feeds a boundary input to the owner and holds a discriminating oracle on that call's result", "local flow reaches returned value: input >= 10 (line 2)", "related test tests/split.rs:4 boundary uses none unknown oracle", "related test tests/split.rs:10 far uses strong exact value oracle: assert_eq!(gate(100), true);", "observed function argument value input = 10 at line 5", "observed function argument value input == 10 at line 5", "observed function argument value input = 9 at line 6", "observed assertion argument value true at line 11", "observed function argument value input = 100 at line 11"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"input >= 10","line":2}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: input >= 10", "Detected related test input at the changed boundary", "Discriminator unconfirmed: boundary input and discriminating oracle come from different tests (same_test_pairing_missing); no test both feeds a boundary input to the owner and holds a discriminating oracle on that call's result", "Related tests appear to reach gate: boundary, far"],
+      "missing": ["Discriminator unconfirmed: boundary input and discriminating oracle come from different tests (same_test_pairing_missing); no test both feeds a boundary input to the owner and holds a discriminating oracle on that call's result"],
+      "assertion_texts": {
+        "5": "let _ = gate(10);",
+        "6": "let _ = gate(9);",
+        "11": "assert_eq!(gate(100), true);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "input = 10",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "input == 10",
+            "context": "function_argument",
+            "provenance": "let _ = gate(10); | exact input input = 10; literal operand 10 = 10"
+          },
+          {
+            "line": 6,
+            "value": "input = 9",
+            "context": "function_argument"
+          },
+          {
+            "line": 11,
+            "value": "true",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 11,
+            "value": "input = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "input = 10",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "input == 10",
+          "context": "function_argument",
+          "provenance": "let _ = gate(10); | exact input input = 10; literal operand 10 = 10"
+        },
+        {
+          "line": 6,
+          "value": "input = 9",
+          "context": "function_argument"
+        },
+        {
+          "line": 11,
+          "value": "true",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 11,
+          "value": "input = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "boundary",
+          "file": "tests/split.rs",
+          "line": 4,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "far",
+          "file": "tests/split.rs",
+          "line": 10,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(gate(100), true);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:c71d52af",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:c71d52af",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/split_test_boundary_oracle/input/src/lib.rs",
+        "line": 2,
+        "expression": "input >= 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach gate: boundary, far"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: input >= 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach gate: boundary, far", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: input >= 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: input >= 10 (line 2)", "related test tests/split.rs:4 boundary uses none unknown oracle", "related test tests/split.rs:10 far uses strong exact value oracle: assert_eq!(gate(100), true);", "observed function argument value input = 10 at line 5", "observed function argument value input == 10 at line 5", "observed function argument value input = 9 at line 6", "observed assertion argument value true at line 11", "observed function argument value input = 100 at line 11"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"input >= 10","line":2}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: input >= 10", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach gate: boundary, far"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "let _ = gate(10);",
+        "6": "let _ = gate(9);",
+        "11": "assert_eq!(gate(100), true);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "input = 10",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "input == 10",
+            "context": "function_argument",
+            "provenance": "let _ = gate(10); | exact input input = 10; literal operand 10 = 10"
+          },
+          {
+            "line": 6,
+            "value": "input = 9",
+            "context": "function_argument"
+          },
+          {
+            "line": 11,
+            "value": "true",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 11,
+            "value": "input = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "input = 10",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "input == 10",
+          "context": "function_argument",
+          "provenance": "let _ = gate(10); | exact input input = 10; literal operand 10 = 10"
+        },
+        {
+          "line": 6,
+          "value": "input = 9",
+          "context": "function_argument"
+        },
+        {
+          "line": 11,
+          "value": "true",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 11,
+          "value": "input = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "boundary",
+          "file": "tests/split.rs",
+          "line": 4,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "far",
+          "file": "tests/split.rs",
+          "line": 10,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(gate(100), true);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

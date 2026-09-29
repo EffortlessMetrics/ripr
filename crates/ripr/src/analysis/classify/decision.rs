@@ -1,4 +1,5 @@
 use super::super::rust_index::{FunctionSummary, TestSummary};
+use super::boundary_pairing::SAME_TEST_PAIRING_MISSING;
 use super::reveal::wrapper_error_seam_expression;
 use crate::domain::*;
 
@@ -154,6 +155,8 @@ pub(in crate::analysis) fn missing_evidence(
             );
         } else if matches!(probe.family, ProbeFamily::ErrorPath) {
             missing.push("No exact error variant discriminator was detected".to_string());
+        } else if discriminate.summary.contains(SAME_TEST_PAIRING_MISSING) {
+            missing.push(discriminate.summary.clone());
         } else {
             missing.push("No strong discriminator was detected".to_string());
         }

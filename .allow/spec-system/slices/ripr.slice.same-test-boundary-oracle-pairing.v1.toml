@@ -1,0 +1,58 @@
+schema_version = "2.0"
+id = "ripr.slice.same-test-boundary-oracle-pairing.v1"
+generation = 1
+
+source_issue = "issue:4828"
+design_reference = "RIPR-SPEC-0186"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+For a predicate probe, exposed requires one test that both feeds a boundary
+input to the owner and holds a discriminating oracle on that call's result.
+A split (boundary call with no oracle in one test, exact far oracle in another)
+reads at most weakly_exposed and names same_test_pairing_missing. The
+assert_eq!(owner(boundary), ...) control stays exposed. Does not absorb
+#4486, #4760, #4574, or #4715.
+"""
+
+non_goals = [
+  "test-side helper assertion credit (#4574, #4715)",
+  "proximity-only oracle credit (#4486)",
+  "bare-name method relation (#4760)",
+  "schema bump",
+  "runtime mutation vocabulary",
+]
+
+return_conditions = [
+  "Return to root if a finding gains a class.",
+  "Return to root if helper credit or proximity-only oracle credit is rewritten.",
+  "Return to root if the same-call control stops reading exposed.",
+]
+
+owned_seams = [
+  "seam:ripr:analysis:classify:boundary-pairing",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:classify:infection",
+  "seam:ripr:analysis:classify:reveal",
+  "seam:ripr:analysis:classifier:evidence",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:facts:test-helpers",
+  "seam:ripr:analysis:classify:related-tests-name-only",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0186"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,8 +1,9 @@
 use crate::analysis::classify::{
     ProbeContext, PropagationWitnessV1, activation_evidence_with_value_facts, classify,
-    confidence_score, current_path_witness, infection_evidence, local_flow_sinks,
-    owner_may_be_reached_unseen, package_prefix, propagation_evidence_with_witness, reach_evidence,
-    reveal_evidence_with_expression,
+    confidence_score, current_path_witness, has_same_test_boundary_oracle_pairing,
+    infection_evidence, local_flow_sinks, owner_may_be_reached_unseen, package_prefix,
+    propagation_evidence_with_witness, reach_evidence, reveal_evidence_with_expression,
+    same_test_pairing_missing_summary,
 };
 use crate::domain::*;
 use std::cell::RefCell;
@@ -122,6 +123,30 @@ impl ClassifiedProbeEvidence {
 
         let discriminate =
             tuple_match::discrimination(context, &observe, &discriminate).unwrap_or(discriminate);
+        // #4828: a boundary-class probe may not read `exposed` by taking a
+        // boundary input from one test and a discriminating oracle from
+        // another. Infection and discrimination stay independently scored;
+        // only the combined `exposed` path requires same-test pairing on
+        // the owner call that sits on the boundary. Pairing reuses
+        // activation's `==` facts so named constants and helper hops that
+        // already infected stay paired when the same test holds the oracle.
+        let discriminate = if matches!(context.probe.family, ProbeFamily::Predicate)
+            && infect.state == StageState::Yes
+            && discriminate.state == StageState::Yes
+            && !has_same_test_boundary_oracle_pairing(
+                context.probe,
+                context.owner_fn,
+                &test_summaries,
+                &activation,
+            ) {
+            StageEvidence::new(
+                StageState::Weak,
+                Confidence::Medium,
+                same_test_pairing_missing_summary(),
+            )
+        } else {
+            discriminate
+        };
         // The missing-field fact is the authority on whether an assertion
         // observes the constructed field. A token that merely coincides with
         // the field value (`Box` in `downcast_ref::<Box<dyn E>>()`) must not

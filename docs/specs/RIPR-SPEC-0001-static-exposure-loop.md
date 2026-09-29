@@ -84,6 +84,10 @@ Static findings may use only these exposure classes:
 captured call, a helper chain, or assertion affinity. A test linked only by
 sharing the changed file, module, or a name token stays listed as the likely
 place to add a test, but reach is `weak` and the finding cannot be `exposed`.
+For a predicate probe, `exposed` also requires one test that both feeds a
+boundary input to the owner and holds a discriminating oracle on that call's
+result; otherwise the finding is at most `weakly_exposed` and names
+`same_test_pairing_missing` (#4828).
 
 ## Non-Goals
 

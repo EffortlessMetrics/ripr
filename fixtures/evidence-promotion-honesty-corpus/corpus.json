@@ -32,6 +32,18 @@
       ]
     },
     {
+      "id": "rust_split_test_boundary_oracle",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/split_test_boundary_oracle",
+      "vector": "boundary_input_and_discriminating_oracle_from_different_tests",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "py_multiline_docstring_interior_no_behavior",
       "language": "python",
       "tier": "pure",
