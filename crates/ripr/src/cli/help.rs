@@ -762,6 +762,36 @@ mod tests {
         }
     }
 
+    /// The Usage synopsis names every Record option, so a flag the parser
+    /// accepts is never documented only below the fold (#4391).
+    #[test]
+    fn pr_ledger_usage_names_every_record_option() {
+        let usage = PR_LEDGER_HELP
+            .lines()
+            .find(|line| line.starts_with("Usage: ripr pr-ledger record"))
+            .unwrap_or_default();
+        let options: Vec<&str> = PR_LEDGER_HELP
+            .split("Record options:")
+            .nth(1)
+            .unwrap_or_default()
+            .lines()
+            .skip(1)
+            .take_while(|line| !line.trim().is_empty())
+            .filter_map(|line| line.split_whitespace().next())
+            .filter(|flag| flag.starts_with("--"))
+            .collect();
+        assert!(
+            !options.is_empty(),
+            "Record options section must list flags"
+        );
+        for flag in options {
+            assert!(
+                usage.contains(&format!("{flag} ")) || usage.ends_with(flag),
+                "Usage line omits {flag}: {usage}"
+            );
+        }
+    }
+
     #[test]
     fn every_help_printer_executes_without_panic() {
         // Each wrapper is a `println!("{CONST}")` over the help-text

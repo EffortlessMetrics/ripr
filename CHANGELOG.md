@@ -1440,6 +1440,9 @@ are scoped or reviewed.
   become misses and are recomputed. A `ripr check` artifact from another
   build of the same version is refused for reuse, and the `analyzer_version`
   in a targeted-rerun input fingerprint carries the same build identity.
+- `ripr help pr-ledger` now shows `[--label LABEL]...` in the
+  `pr-ledger record` usage line. The option was accepted and listed under
+  Record options but missing from the synopsis (#4391).
 - Editors: the language server no longer drops the first-useful-action
   report that the generated CI workflow and `ripr reports first-action`
   write. Its verify command now saves its output where the receipt reads it
