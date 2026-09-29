@@ -14,19 +14,16 @@ Use:
 Manual dispatch is a **non-publishing rehearsal** by default:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.11.0
-```
-
-To exercise GitHub Artifact Attestations without creating or changing a GitHub
-Release, explicitly request the attestation lane:
-
-```bash
 gh workflow run release-server-binaries.yml \
   -f version=0.11.0 \
-  -f attest_final_subjects=true
+  -f expected_source_sha=<EXACT_SOURCE_SHA>
 ```
 
-Only the reviewed tag-push path can reach the public upload job. The workflow
+Manual dispatch has no OIDC or attestation-write permission. It emits an
+exact-SHA-bound `not_authorized` fixture that proves final-subject inventory and
+the exact verifier construction without creating a GitHub attestation or
+touching a public release. Only the reviewed tag-push path can reach the narrow
+attestation job or the later public upload job. The workflow
 builds:
 
 ```text
@@ -82,6 +79,7 @@ Packaging and manifest assembly intentionally live in Rust-first automation:
 cargo xtask release-server-archive --version <VERSION> --target <target> --executable <ripr-or-ripr.exe> --archive <zip-or-tar.gz>
 cargo xtask release-server-manifest --version <VERSION> --repository <owner/repo>
 cargo xtask release-final-server-subjects --version <VERSION> --repository <owner/repo>
+cargo xtask release-final-server-attestation-fixture --version <VERSION> --expected-source-sha <sha>
 cargo xtask release-final-server-attestation-receipt --version <VERSION> --verified-subjects <path>
 cargo xtask release-upload-assets --version <VERSION>
 ```
