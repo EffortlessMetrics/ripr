@@ -293,8 +293,12 @@ qualified as static analysis results; diagnostic codes and data remain stable.
 - `tests.rs::capabilities_advertise_code_lens_provider` plus
   `code_lens_refresh_is_not_attempted_for_unsupported_clients` and
   `code_lens_refresh_tracks_semantic_view_changes_for_supported_clients`
-  verify the advisory codeLens surface (display-only, `resolve_provider:
-  false`) and its refresh negotiation.
+  verify the cached advisory codeLens surface and its refresh negotiation.
+  `lens.rs::tests::code_lens_wire_advertises_an_honest_registered_refresh` and
+  `tests.rs::framed_code_lens_refresh_follows_semantic_lens_view_changes` verify
+  that clicking invokes the registered `ripr.refresh` saved-workspace action;
+  `resolve_provider: false` means no deferred lens resolution, not an inert
+  command. The action does not run tests or apply repairs (SPEC-0100).
 - `tests.rs` hover tests (`hover_response_keeps_current_guidance_text`,
   `hover_for_position_uses_latest_matching_diagnostic`,
   `hover_for_position_shows_snapshot_age_and_refresh_duration`,

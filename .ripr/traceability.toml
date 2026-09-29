@@ -6475,6 +6475,8 @@ spec = "docs/specs/RIPR-SPEC-0100-lsp-related-test-codelens.md"
 tests = [
   "crates/ripr/src/lsp/tests.rs::capabilities_advertise_code_lens_provider",
   "crates/ripr/src/lsp/tests.rs::backend_code_lens_handler_delegates_to_lens_helper",
+  "crates/ripr/src/lsp/lens.rs::tests::code_lens_wire_advertises_an_honest_registered_refresh",
+  "crates/ripr/src/lsp/tests.rs::framed_code_lens_refresh_follows_semantic_lens_view_changes",
   "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_no_snapshot_emits_nothing",
   "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_filters_to_requested_file",
   "crates/ripr/src/lsp/lens.rs::tests::code_lens_response_zero_related_tests_is_honest",

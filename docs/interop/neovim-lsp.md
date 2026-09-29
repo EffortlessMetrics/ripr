@@ -141,10 +141,16 @@ is a client presentation limit, not missing server evidence.
 :lua vim.lsp.buf.code_action({ filter = function(action, client_id) print(vim.inspect({ client_id = client_id, action = action })); return true end })
 ```
 
-Compare every executable command with `server_capabilities.executeCommandProvider.commands`. Zero unknown client-command
-IDs may be offered. RIPR's informational lenses use an empty command ID to carry
-their title; record these separately from executable routes. Their click behavior
-was not exercised by the rehearsal. VS Code-only actions may be absent or inert with a named disabled reason; they must not execute.
+Compare every executable command with
+`server_capabilities.executeCommandProvider.commands`. Zero unknown command IDs may be
+offered. Current RIPR lenses offer `ripr.refresh` and label the action "Refresh
+saved-workspace analysis" before the cached advisory. Invoke the real built-in lens action
+and record the resulting server request and response. This refresh does not execute tests
+or repair code.
+
+The earlier measured rehearsal used informational lenses with an empty command ID and did
+not exercise clicking them; it does not establish the current executable lens journey. VS
+Code-only actions may be absent or inert with a named disabled reason; they must not execute.
 Record unsupported or partial client presentation as `limited`.
 
 ### 4. Prove saved refresh and unchanged delivery

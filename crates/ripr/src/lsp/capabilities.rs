@@ -91,9 +91,9 @@ pub(super) fn initialize_result_for_client(
                 resolve_provider: Some(true),
                 ..CodeActionOptions::default()
             })),
-            // Advisory codeLens: resolve is disabled; lenses are display-only
-            // text hints citing the cached related-test count. No resolve
-            // round-trip is needed (RIPR-SPEC-0099).
+            // Advisory codeLens: resolved lenses offer registered saved-workspace
+            // refresh with the cached related-test count. No resolve
+            // round-trip is needed (RIPR-SPEC-0100).
             code_lens_provider: Some(CodeLensOptions {
                 resolve_provider: Some(false),
             }),

@@ -8,7 +8,7 @@ Created: 2026-06-14
 
 Linked issues:
 
-- None
+- [#4357](https://github.com/EffortlessMetrics/ripr-swarm/issues/4357)
 
 Linked PRs:
 
@@ -16,9 +16,9 @@ Linked PRs:
 
 Support-tier impact:
 
-- Adds an advisory, display-only LSP codeLens above each changed symbol citing
-  the static related-test count from the cached analysis snapshot. Informational
-  surface only; no new diagnostic, no gate, no tier change.
+- Adds an advisory LSP codeLens above each changed symbol with explicit saved-workspace
+  refresh and the static related-test count from the cached analysis snapshot.
+  No new diagnostic, no gate, no tier change.
   Claim boundaries and tier labels remain governed by the canonical ledger in
   [support tiers](../status/SUPPORT_TIERS.md).
 
@@ -36,7 +36,7 @@ Policy impact:
 The LSP cockpit surfaces diagnostics, hover, code actions, and commands but
 gives no inline summary of how many related tests ripr found for a changed
 symbol. Developers must open the repair-packet or read the JSON output to
-learn the count. A VSCode codeLens is a low-friction, display-only way to
+learn the count. A standard LSP codeLens is a low-friction way to
 surface that count directly above the symbol without adding a diagnostic or
 changing the gate posture.
 
@@ -44,7 +44,7 @@ changing the gate posture.
 
 ### Advisory-only contract
 
-The codeLens is strictly informational:
+The codeLens contains a cached informational advisory and an explicit refresh action:
 
 - It is **never** a diagnostic. Clients MUST NOT treat absence of a lens as an
   error or gate failure.
@@ -58,7 +58,8 @@ The codeLens is strictly informational:
 
 ### Honesty rules
 
-The lens title MUST comply with the static-language vocabulary:
+Every full title starts with `Refresh saved-workspace analysis · `. The cached advisory
+after that prefix MUST comply with the static-language vocabulary:
 
 | Condition | Required phrasing |
 |---|---|
@@ -104,9 +105,10 @@ of line) — the standard VS Code position for a codeLens.
 
 ### Command object
 
-Each `CodeLens` carries `command: Some(Command { title, command: String::new(), arguments: None })`.
-A `Command` with an empty `command` string is display-only in VS Code; the
-client shows the title as a read-only annotation without registering a handler.
+Each resolved lens carries the existing advertised server command `ripr.refresh` with no
+arguments. Its title is `Refresh saved-workspace analysis · {cached advisory}`. Explicit
+invocation uses the existing full saved-workspace refresh owner; requesting lenses never
+triggers analysis. No client extension or client-local command handler is required.
 `data: None` (resolve is disabled).
 
 ## Architecture
@@ -174,8 +176,8 @@ output is unchanged).
   server advertises the capability.
 - No live re-analysis on `textDocument/codeLens`; the handler reads the cached
   snapshot only.
-- No per-lens navigation: clicking a lens does nothing (empty command string).
-  A future PR may wire `OPEN_RELATED_TEST_COMMAND` to the lens data field.
+- No per-finding navigation, edits, test execution, or repair. Clicking offers the
+  existing global saved-workspace refresh.
 - No lens invalidation on file save; the existing snapshot-refresh model covers
   this transparently.
 - No aggregation lens: one lens per finding (matching the current diagnostics
@@ -198,21 +200,21 @@ result:   [] (empty array, not a 0-count lens)
 
 ```
 finding:  class=exposed, related_tests.len()=3, language_status=None
-title:    "ripr: 3 related tests (exposed) · static, cached"
+title:    "Refresh saved-workspace analysis · ripr: 3 related tests (exposed) · static, cached"
 ```
 
 ### Rust NoStaticPath, 0 related tests
 
 ```
 finding:  class=no_static_path, related_tests.len()=0, language_status=None
-title:    "ripr: no related tests found (no_static_path) · static, cached"
+title:    "Refresh saved-workspace analysis · ripr: no related tests found (no_static_path) · static, cached"
 ```
 
 ### TypeScript Preview, Exposed, 1 related test
 
 ```
 finding:  class=exposed, related_tests.len()=1, language_status=Some(Preview)
-title:    "preview: 1 related tests (preview, exposed) · static, cached"
+title:    "Refresh saved-workspace analysis · preview: 1 related tests (preview, exposed) · static, cached"
 ```
 
 ### URI mismatch — filter works
@@ -234,6 +236,9 @@ result:   [lens for a.rs only]
 - `crates/ripr/src/lsp/lens.rs::tests::code_lens_response_static_language_clean`
 - `crates/ripr/src/lsp/tests.rs::capabilities_advertise_code_lens_provider`
 - `crates/ripr/src/lsp/tests.rs::backend_code_lens_handler_delegates_to_lens_helper`
+
+- `crates/ripr/src/lsp/lens.rs::tests::code_lens_wire_advertises_an_honest_registered_refresh` — actual serialized nonempty lens has advertised refresh command and honest label.
+- `crates/ripr/src/lsp/tests.rs::framed_code_lens_refresh_follows_semantic_lens_view_changes` — executes the command returned by the real lens response; unchanged input coalesces, changed saved source refreshes the view.
 
 ## Implementation Mapping
 

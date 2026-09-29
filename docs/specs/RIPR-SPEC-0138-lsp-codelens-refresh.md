@@ -15,7 +15,7 @@ Linked issues:
 Support-tier impact:
 
 - No tier change. This spec adds one advisory lifecycle request so clients
-  re-pull the display-only lenses defined by
+  re-pull the cached advisory lenses with explicit saved-workspace refresh defined by
   [RIPR-SPEC-0100](RIPR-SPEC-0100-lsp-related-test-codelens.md). It does not
   change any classification, finding set, ExposureClass, probe family,
   confidence score, `repair_packet_ready` authority, output schema version,
@@ -31,11 +31,12 @@ Policy impact:
 
 Relationship to RIPR-SPEC-0100:
 
-- RIPR-SPEC-0100 owns lens *emission* (one display-only lens per finding from
+- RIPR-SPEC-0100 owns lens *emission* (one cached advisory lens per finding with
+  registered refresh from
   the cached snapshot; `resolve_provider: false`). This spec owns only the
   *refresh lifecycle* (when the server asks the client to re-request lenses).
-  RIPR-SPEC-0100 is not amended: no statement in it conflicts, and the
-  unconditional `code_lens_provider` advertisement is unchanged here.
+  RIPR-SPEC-0100 also owns explicit lens invocation. The refresh lifecycle
+  and unconditional `code_lens_provider` advertisement are unchanged.
 
 ## Problem
 

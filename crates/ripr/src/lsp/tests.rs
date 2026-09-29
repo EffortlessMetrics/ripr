@@ -1709,6 +1709,19 @@ fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), S
                 "fixture must produce at least one code lens, or the refresh counts pass vacuously: {lenses}"
             ));
         }
+        let emitted_lens_command = lenses
+            .pointer("/result/0/command/command")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("nonempty lens response omitted its command")?;
+        let advertised_commands = initialize
+            .pointer("/result/capabilities/executeCommandProvider/commands")
+            .and_then(serde_json::Value::as_array)
+            .ok_or("initialization omitted command advertisement")?;
+        if emitted_lens_command != "ripr.refresh"
+            || !advertised_commands.iter().any(|command| command.as_str() == Some(emitted_lens_command))
+        {
+            return Err(format!("actual lens command is not the advertised refresh: {emitted_lens_command:?}"));
+        }
 
         // Refresh 2: byte-identical inputs. A new snapshot commits with a
         // fresh wall-clock age (the rendered title suffix changes), but the
@@ -1720,7 +1733,7 @@ fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), S
                 "id": 3,
                 "method": "workspace/executeCommand",
                 "params": {
-                    "command": REFRESH_COMMAND,
+                    "command": emitted_lens_command,
                     "arguments": []
                 }
             }),
@@ -1766,7 +1779,7 @@ fn framed_code_lens_refresh_follows_semantic_lens_view_changes() -> Result<(), S
                 "id": 4,
                 "method": "workspace/executeCommand",
                 "params": {
-                    "command": REFRESH_COMMAND,
+                    "command": emitted_lens_command,
                     "arguments": []
                 }
             }),

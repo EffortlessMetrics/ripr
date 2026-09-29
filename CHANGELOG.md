@@ -383,6 +383,11 @@ are scoped or reviewed.
   corpus-fingerprint generations cold-recompute once; checksums do not
   authenticate writers able to recompute them (#4382).
 
+- LSP code lenses now offer the registered saved-workspace refresh command with an
+  explicit action label, avoiding unsupported empty-command clicks in standard clients.
+  Cached related-test advisories remain static; clicking does not run tests or repair code
+  (#4357).
+
 ### Added
 
 - Zed: a Zed extension in `editors/zed` starts `ripr lsp --stdio` from your
