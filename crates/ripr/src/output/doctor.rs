@@ -779,11 +779,20 @@ fn resolve_windows_batch_shim(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn doctor_tool_check(tool: &str) -> (DoctorStatus, String) {
     doctor_tool_check_with_timeout(tool, DOCTOR_TOOL_TIMEOUT)
 }
 
 fn doctor_tool_check_for_root(tool: &str, root: &Path) -> (DoctorStatus, String) {
+    if RUST_TOOLCHAIN_TOOLS.contains(&tool)
+        && let Some(file) = crate::config::repository_toolchain_path_pin(root)
+    {
+        return (
+            DoctorStatus::Fail,
+            crate::config::toolchain_path_pin_refusal(&file),
+        );
+    }
     doctor_tool_check_with_timeout_result_at(
         tool,
         DOCTOR_TOOL_TIMEOUT,
@@ -821,10 +830,12 @@ fn analysis_advisory_toolchain_evidence(tool: &str, evidence: &str) -> String {
     )
 }
 
+#[cfg(test)]
 fn doctor_tool_check_with_timeout(tool: &str, timeout: Duration) -> (DoctorStatus, String) {
     doctor_tool_check_with_timeout_result(tool, timeout).into_public()
 }
 
+#[cfg(test)]
 fn doctor_tool_check_with_timeout_result(tool: &str, timeout: Duration) -> DoctorToolCheckResult {
     doctor_tool_check_with_timeout_result_at(tool, timeout, None)
 }

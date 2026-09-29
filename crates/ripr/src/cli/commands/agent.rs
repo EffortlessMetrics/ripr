@@ -25,11 +25,8 @@ use crate::cli::commands_context::{ensure_command_root, load_root_input_and_conf
 use crate::config::load_for_root;
 use crate::output;
 use std::io::IsTerminal;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-};
 
 use super::agent_dispatch;
 use super::agent_gap_packet::render_agent_packet_from_gap_ledger;
@@ -1240,7 +1237,10 @@ fn write_agent_repo_exposure_snapshot(root: &Path, path: &Path) -> Result<(), St
     }
     let temporary_path = path.with_extension(format!("json.tmp-{}", std::process::id()));
     let write_result = (|| -> Result<(), String> {
-        let file = File::create(&temporary_path)
+        // An interrupted run can leave this pid-named file; removing a planted link
+        // removes only the link.
+        let _ = std::fs::remove_file(&temporary_path);
+        let file = output::file_write::create_exclusive(&temporary_path)
             .map_err(|err| format!("create {} failed: {err}", temporary_path.display()))?;
         let mut writer = BufWriter::new(file);
         output::repo_exposure::write_repo_exposure_json_with_context(

@@ -14,7 +14,6 @@ use crate::edit_cage::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -1856,7 +1855,10 @@ pub(crate) fn replace_file_atomically(path: &Path, bytes: &[u8]) -> Result<(), S
     let nonce = ATTEMPT_NONCE.fetch_add(1, Ordering::Relaxed);
     let temporary = path.with_extension(format!("tmp-{}-{nonce}", std::process::id()));
     let write_result = (|| -> Result<(), String> {
-        let mut file = File::create(&temporary)
+        // An interrupted run can leave this name behind (pids and the counter
+        // repeat across processes); removing a planted link removes only it.
+        let _ = std::fs::remove_file(&temporary);
+        let mut file = crate::output::file_write::create_exclusive(&temporary)
             .map_err(|error| format!("create {} failed: {error}", temporary.display()))?;
         file.write_all(bytes)
             .map_err(|error| format!("write {} failed: {error}", temporary.display()))?;
@@ -2170,6 +2172,7 @@ fn git_paths(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
     // validator rather than admitting a rewritten path.
     let output = Command::new("git")
         .current_dir(root)
+        .args(crate::git::UNTRUSTED_REPOSITORY_CONFIG)
         .args(args)
         .output()
         .map_err(|error| format!("run git {} failed: {error}", args.join(" ")))?;
@@ -2266,7 +2269,10 @@ fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let nonce = ATTEMPT_NONCE.fetch_add(1, Ordering::Relaxed);
     let temporary = path.with_extension(format!("tmp-{}-{nonce}", std::process::id()));
     let write_result = (|| -> Result<(), String> {
-        let mut file = File::create(&temporary)
+        // An interrupted run can leave this name behind (pids and the counter
+        // repeat across processes); removing a planted link removes only it.
+        let _ = std::fs::remove_file(&temporary);
+        let mut file = crate::output::file_write::create_exclusive(&temporary)
             .map_err(|error| format!("create {} failed: {error}", temporary.display()))?;
         file.write_all(bytes)
             .map_err(|error| format!("write {} failed: {error}", temporary.display()))?;

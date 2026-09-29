@@ -1845,7 +1845,8 @@ fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
     }
-    std::fs::write(path, rendered).map_err(|err| format!("write {} failed: {err}", path.display()))
+    crate::output::file_write::write(path, rendered.as_bytes())
+        .map_err(|err| format!("write {} failed: {err}", path.display()))
 }
 
 fn render_human(report: &TargetedRerunReport) -> String {

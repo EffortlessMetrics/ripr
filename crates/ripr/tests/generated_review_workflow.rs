@@ -1984,12 +1984,20 @@ fn generated_existing_comment_capture_reads_keys_with_spaces() -> Result<(), Box
     // fail the step.
     let unmarked_body = "LGTM, but see ripr:dedupe docs";
     let unclosed_body = "<!-- ripr:dedupe=ripr:seam-3:src/x.rs:1";
+    // Forged markers: a well-formed RIPR marker from a person, and one from
+    // another bot. The workflow posts only as github-actions[bot], so
+    // neither may suppress a card or become a PATCH target.
+    let forged_user_body = "<!-- ripr:dedupe=ripr:seam-4:src/lib.rs:5 -->";
+    let forged_bot_body = "<!-- ripr:dedupe=ripr:seam-5:src/lib.rs:6 -->";
+    let actions_bot = r#"{"login":"github-actions[bot]","type":"Bot"}"#;
     let raw = format!(
-        "[[{{\"id\":1,\"body\":{},\"path\":\"src/we ird/pricing.rs\",\"line\":12}},{{\"id\":2,\"body\":{},\"path\":\"src/lib.rs\",\"line\":3}},{{\"id\":3,\"body\":{},\"path\":\"src/lib.rs\",\"line\":4}},{{\"id\":4,\"body\":{},\"path\":\"src/x.rs\",\"line\":1}}]]",
+        "[[{{\"id\":1,\"user\":{actions_bot},\"body\":{},\"path\":\"src/we ird/pricing.rs\",\"line\":12}},{{\"id\":2,\"user\":{actions_bot},\"body\":{},\"path\":\"src/lib.rs\",\"line\":3}},{{\"id\":3,\"user\":{actions_bot},\"body\":{},\"path\":\"src/lib.rs\",\"line\":4}},{{\"id\":4,\"user\":{actions_bot},\"body\":{},\"path\":\"src/x.rs\",\"line\":1}}],[{{\"id\":5,\"user\":{{\"login\":\"mallory\",\"type\":\"User\"}},\"body\":{},\"path\":\"src/lib.rs\",\"line\":5}},{{\"id\":6,\"user\":{{\"login\":\"other-app[bot]\",\"type\":\"Bot\"}},\"body\":{},\"path\":\"src/lib.rs\",\"line\":6}}]]",
         json_string(&compact_body),
         json_string(&legacy_body),
         json_string(unmarked_body),
-        json_string(unclosed_body)
+        json_string(unclosed_body),
+        json_string(forged_user_body),
+        json_string(forged_bot_body)
     );
     fs::create_dir_all(root.join("target/ripr/review"))?;
     fs::write(
@@ -2017,6 +2025,79 @@ fn generated_existing_comment_capture_reads_keys_with_spaces() -> Result<(), Box
         .unwrap_or_default();
     assert_eq!(keys, vec![compact_key, legacy_key], "{captured}");
     assert_eq!(captured["comments"][0]["body"], "card", "{captured}");
+    Ok(())
+}
+
+/// A pull request can commit files under `target/ripr` or `target/ci`
+/// (`git add -f`) that later gate, ledger, and policy steps read when
+/// present. The generated cleanup step must remove them, and only them,
+/// before the first RIPR step.
+#[cfg(unix)]
+#[test]
+fn generated_cleanup_step_removes_checked_in_ripr_artifacts() -> Result<(), Box<dyn Error>> {
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-cleanup-forged-inputs-{}-{nonce}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root)?;
+    let output = run_ripr_init(&root)?;
+    if !output.status.success() {
+        let _ = fs::remove_dir_all(&root);
+        return Err(format!(
+            "ripr init failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
+    let marker = "      - name: Remove checked-in RIPR artifacts\n        run: ";
+    let at = workflow.find(marker).ok_or("missing cleanup step")?;
+    let script = workflow[at + marker.len()..]
+        .lines()
+        .next()
+        .ok_or("empty cleanup step")?
+        .to_string();
+    let first_ripr = workflow
+        .find("      - name: Generate RIPR pilot packet")
+        .ok_or("missing pilot step")?;
+    assert!(at < first_ripr, "cleanup must precede the first RIPR step");
+
+    let forged = [
+        "target/ripr/reports/sarif-policy.json",
+        "target/ripr/reports/agent-receipt.json",
+        "target/ripr/workflow/agent-verify.json",
+        "target/ci/labels.json",
+    ];
+    for path in forged {
+        let path = root.join(path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, "{}")?;
+    }
+    // Unrelated build output stays: the step is not a cache purge.
+    fs::create_dir_all(root.join("target/debug"))?;
+    fs::write(root.join("target/debug/keep"), "")?;
+
+    let run = run_sh(&script, &root)?;
+    let remaining = forged
+        .iter()
+        .filter(|path| root.join(path).exists())
+        .collect::<Vec<_>>();
+    let kept = root.join("target/debug/keep").exists();
+    let _ = fs::remove_dir_all(&root);
+    assert!(
+        run.status.success(),
+        "cleanup failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        remaining.is_empty(),
+        "forged inputs remained: {remaining:?}"
+    );
+    assert!(kept, "cleanup removed unrelated target output");
     Ok(())
 }
 

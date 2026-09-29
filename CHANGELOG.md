@@ -11,6 +11,51 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Security: Rust source discovery skips symlinked `.rs` entries, as the
+  Python and TypeScript readers already did. A cloned repository or pull
+  request that committed `src/zero.rs -> /dev/zero` made `ripr check` read
+  until it ran out of memory (#4751).
+- Security: ripr's git calls pass `-c core.fsmonitor=false`, so a
+  repository's own `core.fsmonitor` program (reachable from an extracted
+  archive or a planted nested repository) does not run on `git status`
+  (#4744).
+- Security: `[perl].cache_dir` must be a repository-relative path without
+  `..`. An absolute or escaping value is now a config error instead of a
+  directory ripr creates and writes outside the checkout. The cache directory
+  now resolves under the analyzed root rather than the working directory, so
+  `--root <checkout>` cannot place it elsewhere either (#4745).
+- Security: `ripr doctor` probes every language runtime (`node`, `bun`,
+  `pnpm`, `python3`, `pytest`) outside the checkout, as it already did for
+  `yarn`. Run inside it, pnpm fetched and ran the release a project's
+  `packageManager` named, and version managers read project files (#4742).
+- Security: ripr no longer runs `cargo` or `rustc` in a repository whose
+  nearest `rust-toolchain.toml` selects a toolchain by `path`. rustup would
+  execute that path, and `/proc/self/cwd/...` points it into the checkout, so
+  `ripr doctor` in a cloned repository ran the repository's own program.
+  Doctor now reports the check as not run and names the file, and the
+  test-harness `cargo metadata` probe fails closed. Setting
+  `RUSTUP_TOOLCHAIN` restores the probes (#4740).
+- Security: the workflow `ripr init --ci github` writes no longer consumes
+  gate inputs a pull request can commit under `target/ripr` or `target/ci`
+  (#4731), only treats ripr comments posted by `github-actions[bot]` as its
+  own (#4732), and no longer leaves the job token in `.git/config`, prints
+  unfolded repository paths to the log, or interpolates composite-action
+  inputs into shell (#4733). Regenerate the workflow with
+  `ripr init --ci github --force` to pick this up.
+- Security: `ripr lsp` no longer reads a whole client-named file to digest
+  an opened document. It digests only a regular file no larger than one LSP
+  message, so `didOpen` for `/dev/zero`, a FIFO or a multi-GB file can no
+  longer exhaust memory or hang the server (#4729).
+- Security: a base ref starting with `-` is refused before `git diff` runs,
+  including from LSP `baseRef` settings, so it can never be parsed as a diff
+  option such as `--output` (#4730).
+- Security: `ripr pilot` and other commands that write to default paths
+  inside the analyzed repository no longer write through a symlink committed
+  there. A cloned repository could commit
+  `target/ripr/pilot/pilot-summary.md` as a link to any file the user can
+  write, and `ripr pilot` replaced that file. Those writes, and ripr's
+  temporary files, now refuse a symlink, FIFO or directory at the output
+  path (#4719).
 - Nested `rerun --json` cache-identity versions in `docs/OUTPUT_SCHEMA.md`
   now track live `FILE_FACT_CACHE_SCHEMA_VERSION` (`1.10`) and
   `CACHE_SCHEMA_VERSION` (`1.16`). Producer-backed docs tests fail when those

@@ -424,10 +424,14 @@ jobs:
       # rejects the whole review when a line falls outside the PR diff.
       # upload-sarif detects the head checkout and reports it as
       # refs/pull/N/head. A manual run keeps the dispatched commit.
+      # No step pushes or fetches after checkout, so the job token is not
+      # left in .git/config where PR-controlled code (build scripts run by
+      # `cargo`, analyzed sources) could read it.
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       # Pinned to a commit SHA for the same reason as rust-cache below.
       # dtolnay/rust-toolchain stable branch = 6bed0761d98439e5a578e2877258200ad565ba87.
@@ -446,6 +450,16 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: ripr-install
+
+      # Every RIPR input under target/ripr and target/ci must come from this
+      # run. The gate, ledger, and policy steps read several files there only
+      # when present (sarif-policy, agent-verify, agent-receipt, calibration,
+      # coverage), and nothing in this workflow writes some of them, so a
+      # pull request could commit forged copies (`git add -f`) or the cache
+      # restored above could carry stale ones. Remove both directories before
+      # the first RIPR step; steps you add later that write there still work.
+      - name: Remove checked-in RIPR artifacts
+        run: rm -rf target/ripr target/ci
 
       # Pinned to the ripr that generated this workflow. The steps below use
       # that version's commands and flags; an unpinned install takes the
@@ -587,6 +601,11 @@ jobs:
             kind: "pr_inline_comment_existing_comments",
             comments: [
               .[]?[]?
+              # Only comments this workflow posted: it publishes with
+              # github.token, whose author is github-actions[bot]. Anyone can
+              # write the marker; a marked comment from another author must
+              # not suppress a RIPR card or be PATCHed by this job.
+              | select(.user.login == "github-actions[bot]" and .user.type == "Bot")
               | select((.body // "") | contains("<!-- ripr:dedupe="))
               | (.body // "") as $body
               | {
@@ -657,7 +676,9 @@ jobs:
           plan=target/ripr/review/comment-publish-plan.json
           if ! jq -e '.summary.safe_to_publish == true' "$plan" >/dev/null; then
             echo "RIPR inline comments were not published because the publish plan is not safe."
-            jq -r '.blocked[]? | "- \(.blocked_reason): \(.message)"' "$plan" || true
+            # Messages can quote repository paths; fold CR/LF so a path
+            # cannot start a new line that GitHub reads as a workflow command.
+            jq -r '.blocked[]? | "- \(.blocked_reason): \(.message)" | gsub("[\r\n]"; " ")' "$plan" || true
             exit 0
           fi
 
@@ -702,7 +723,7 @@ jobs:
           jq -c '.[] | select(.operation == "update")' "$publishable" \
             | while IFS= read -r operation; do
                 comment_id="$(jq -r '.existing_comment_id' <<< "$operation")"
-                dedupe_key="$(jq -r '.dedupe_key' <<< "$operation")"
+                dedupe_key="$(jq -r '.dedupe_key | tostring | gsub("[\r\n]"; " ")' <<< "$operation")"
                 body="$(jq -r '.published_body' <<< "$operation")"
                 payload="$(mktemp)"
                 jq -n --arg body "$body" '{body: $body}' > "$payload"
@@ -745,7 +766,7 @@ jobs:
             fi
           fi
 
-          jq -r '.[] | select(.operation == "keep") | .dedupe_key' "$publishable" \
+          jq -r '.[] | select(.operation == "keep") | .dedupe_key | tostring | gsub("[\r\n]"; " ")' "$publishable" \
             | while IFS= read -r dedupe_key; do
                 echo "RIPR inline comment already current: $dedupe_key"
               done

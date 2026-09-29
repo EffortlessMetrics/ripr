@@ -8,7 +8,7 @@ use crate::app::Mode;
 use crate::config::LspDiagnosticProfile;
 use crate::domain::Finding;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tower_lsp_server::ls_types::{
     Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
@@ -1268,10 +1268,30 @@ fn document_path(uri: &Uri) -> PathBuf {
 }
 
 /// Digest of the persisted bytes for an admitted local file URI.
-/// `None` when the decoder refuses the URI or the admitted path cannot be read.
+/// `None` when the decoder refuses the URI, the admitted path is not a regular
+/// file, or it cannot be read within the bound.
 fn read_saved_digest(uri: &Uri) -> Option<String> {
     let path = path_from_file_uri(uri)?;
-    std::fs::read(path).ok().map(|bytes| content_digest(&bytes))
+    read_saved_bytes(&path).map(|bytes| content_digest(&bytes))
+}
+
+/// A client names this path in `didOpen`, so it may be a device, FIFO or
+/// huge file (`/dev/zero`, `/dev/stdin`). Read only a regular file, and no
+/// more than one LSP message can carry: an open document never exceeds that.
+fn read_saved_bytes(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    let limit = crate::lsp::transport_bounds::MAX_MESSAGE_BYTES as u64;
+    let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .ok()?;
+    (bytes.len() as u64 <= limit).then_some(bytes)
 }
 
 pub(super) fn format_duration(duration: Duration) -> String {
@@ -1556,6 +1576,53 @@ mod tests {
             }
             if state.saved_digest.as_deref() == Some(digest_of("fn unsaved_buffer() {}").as_str()) {
                 return Err("saved identity must not be seeded from the didOpen text".to_string());
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn saved_digest_refuses_oversized_and_non_regular_paths() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-state-saved-bound-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir failed: {err}"))?;
+        let result = (|| {
+            let limit = crate::lsp::transport_bounds::MAX_MESSAGE_BYTES as u64;
+            let at_limit = dir.join("at_limit.rs");
+            std::fs::File::create(&at_limit)
+                .and_then(|file| file.set_len(limit))
+                .map_err(|err| format!("create at-limit file failed: {err}"))?;
+            let at_limit_uri = crate::lsp::uri::file_uri_for_path(&at_limit)
+                .map_err(|err| format!("file URI failed: {err}"))?;
+            if read_saved_digest(&at_limit_uri).is_none() {
+                return Err("a file within the message bound must still be digested".to_string());
+            }
+            // Sparse: a client-named multi-GB file must not be read whole.
+            let oversized = dir.join("oversized.rs");
+            std::fs::File::create(&oversized)
+                .and_then(|file| file.set_len(limit + 1))
+                .map_err(|err| format!("create oversized file failed: {err}"))?;
+            let oversized_uri = crate::lsp::uri::file_uri_for_path(&oversized)
+                .map_err(|err| format!("file URI failed: {err}"))?;
+            if read_saved_digest(&oversized_uri).is_some() {
+                return Err("a file larger than one LSP message must not be read".to_string());
+            }
+            let directory_uri = crate::lsp::uri::file_uri_for_path(&dir)
+                .map_err(|err| format!("file URI failed: {err}"))?;
+            if read_saved_digest(&directory_uri).is_some() {
+                return Err("a directory has no saved digest".to_string());
+            }
+            #[cfg(target_os = "linux")]
+            if read_saved_bytes(Path::new("/dev/zero")).is_some() {
+                return Err("a device must not be read as saved content".to_string());
             }
             Ok(())
         })();

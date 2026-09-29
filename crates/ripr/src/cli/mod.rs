@@ -112,7 +112,16 @@ fn lock_before_repair_attempt(root: &Path) -> Result<File, String> {
     std::fs::create_dir_all(&directory)
         .map_err(|error| format!("create {} failed: {error}", directory.display()))?;
     let lock_path = directory.join(".before.lock");
-    let lock = File::create(&lock_path)
+    // Refuse a planted symlink or other non-file, and never truncate: the
+    // no-follow writer's Windows share mode would turn a held lock into a
+    // sharing violation before `try_lock` could name it.
+    crate::output::file_write::validate_destination(&lock_path)
+        .map_err(|error| format!("create {} failed: {error}", lock_path.display()))?;
+    let lock = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
         .map_err(|error| format!("create {} failed: {error}", lock_path.display()))?;
     if let Err(error) = lock.try_lock() {
         if matches!(error, std::fs::TryLockError::WouldBlock) {

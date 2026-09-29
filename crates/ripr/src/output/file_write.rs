@@ -11,10 +11,17 @@ pub(crate) fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     {
         fs::create_dir_all(parent)?;
     }
-    // Never truncate during acquisition: validate the opened object first.
-    let mut file = open(path, false)?;
-    file.set_len(0)?;
+    let mut file = create(path)?;
     file.write_all(bytes)
+}
+
+/// Open `path` for a fresh write without following a leaf symlink. Parent
+/// directories must already exist.
+pub(crate) fn create(path: &Path) -> io::Result<File> {
+    // Never truncate during acquisition: validate the opened object first.
+    let file = open(path, false)?;
+    file.set_len(0)?;
+    Ok(file)
 }
 
 pub(crate) fn create_exclusive(path: &Path) -> io::Result<File> {
@@ -44,14 +51,18 @@ fn open(path: &Path, exclusive: bool) -> io::Result<File> {
     } else {
         options.create(true);
     }
-    #[cfg(all(
-        target_os = "linux",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    ))]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
         // O_NOFOLLOW | O_NONBLOCK: reject links; do not wait for a FIFO reader.
         options.custom_flags(0x0002_0000 | 0x0000_0800);
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        // aarch64 uses the asm-generic values: O_NOFOLLOW is 0o100000 there,
+        // and x86_64's 0x20000 would be O_LARGEFILE, which follows links.
+        options.custom_flags(0x0000_8000 | 0x0000_0800);
     }
     #[cfg(all(
         target_os = "macos",

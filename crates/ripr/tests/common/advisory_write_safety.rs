@@ -19,10 +19,12 @@ impl Drop for Case {
 fn case(surface: &str) -> Result<Case, Box<dyn std::error::Error>> {
     let directory = unique_temp_workspace(&format!("advisory-write-{surface}"));
     let root = directory.join("checkout");
-    let out = if surface == "index" {
-        root.join("target/ripr/reports/index.json")
-    } else {
-        root.join("report.json")
+    let out = match surface {
+        "index" => root.join("target/ripr/reports/index.json"),
+        // Pilot writes repository-default artifacts; a cloned repository can
+        // commit a symlink at one of them.
+        "pilot" => root.join("target/ripr/pilot/pilot-summary.json"),
+        _ => root.join("report.json"),
     };
     let mut fixture = Case {
         directory,
@@ -35,6 +37,18 @@ fn case(surface: &str) -> Result<Case, Box<dyn std::error::Error>> {
     std::fs::create_dir_all(root)?;
     let arguments = match surface {
         "index" => vec!["reports".into(), "index".into()],
+        "pilot" => {
+            std::fs::create_dir_all(root.join("src"))?;
+            std::fs::write(
+                root.join("Cargo.toml"),
+                "[package]\nname = \"pilot_fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            std::fs::write(
+                root.join("src/lib.rs"),
+                "pub fn over(a: i32) -> bool { a > 1 }\n#[test]\nfn over_three() { assert!(over(3)); }\n",
+            )?;
+            vec!["pilot".into()]
+        }
         "outcome" => {
             write_outcome_snapshots(root)?;
             vec![
@@ -141,7 +155,7 @@ fn successful_render(case: &Case) -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn advisory_write_fresh_and_regular_overwrite() -> Result<(), Box<dyn std::error::Error>> {
-    for surface in ["index", "outcome", "receipt", "calibrate"] {
+    for surface in ["index", "outcome", "receipt", "calibrate", "pilot"] {
         let case = case(surface)?;
         successful_render(&case)?;
         std::fs::write(&case.out, "old regular report")?;
@@ -216,6 +230,12 @@ fn outcome_rejects_planted_output_symlink() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn agent_receipt_rejects_planted_output_symlink() -> Result<(), Box<dyn std::error::Error>> {
     planted_symlink("receipt")
+}
+
+#[cfg(unix)]
+#[test]
+fn pilot_rejects_planted_output_symlink() -> Result<(), Box<dyn std::error::Error>> {
+    planted_symlink("pilot")
 }
 
 #[cfg(unix)]

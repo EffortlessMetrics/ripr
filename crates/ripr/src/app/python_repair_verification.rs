@@ -881,7 +881,7 @@ fn write_after_verification_snapshot(root: &Path) -> Result<(String, String), St
         "complete".to_string()
     };
     let write_result = (|| -> Result<(), String> {
-        let file = std::fs::File::create(&temporary)
+        let file = crate::output::file_write::create_exclusive(&temporary)
             .map_err(|error| format!("create {} failed: {error}", temporary.display()))?;
         let mut writer = std::io::BufWriter::new(file);
         crate::output::repo_exposure::write_repo_exposure_json_with_context(

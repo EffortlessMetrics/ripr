@@ -211,9 +211,18 @@ fn windows_overlong_working_directory(is_windows: bool, dir: &Path) -> Option<us
     (units > WINDOWS_MAX_WORKING_DIRECTORY_UNITS).then_some(units)
 }
 
+/// Config every ripr git invocation carries. A repository's own
+/// `core.fsmonitor` names a program git runs on index refresh (`status`,
+/// worktree `diff`); a clone cannot ship `.git/config`, but an extracted
+/// archive or a planted nested repository can.
+pub(crate) const UNTRUSTED_REPOSITORY_CONFIG: [&str; 2] = ["-c", "core.fsmonitor=false"];
+
 fn git_command(root: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
-    command.current_dir(root).args(args);
+    command
+        .current_dir(root)
+        .args(UNTRUSTED_REPOSITORY_CONFIG)
+        .args(args);
     command
 }
 
@@ -683,6 +692,49 @@ mod tests {
     fn windows_dir_of_units(units: usize) -> String {
         let prefix = format!(r"{DRIVE}\a\");
         format!("{prefix}{}", "x".repeat(units - prefix.len()))
+    }
+
+    /// A repository's `core.fsmonitor` names a program git runs on index
+    /// refresh. ripr's git calls must not run it.
+    #[cfg(unix)]
+    #[test]
+    fn repository_fsmonitor_program_does_not_run() -> Result<(), String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0);
+        let root =
+            std::env::temp_dir().join(format!("ripr-git-fsmonitor-{}-{stamp}", std::process::id()));
+        let marker = root.join("fsmonitor-ran");
+        let result = (|| {
+            std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+            let hook = format!("touch '{}'", marker.display());
+            for args in [
+                vec!["init", "-q"],
+                vec!["config", "core.fsmonitor", hook.as_str()],
+            ] {
+                let output = Command::new("git")
+                    .args(&args)
+                    .current_dir(&root)
+                    .env_remove("GIT_DIR")
+                    .env_remove("GIT_WORK_TREE")
+                    .output()
+                    .map_err(|err| format!("git {args:?}: {err}"))?;
+                if !output.status.success() {
+                    return Err(format!("git {args:?} failed: {output:?}"));
+                }
+            }
+            std::fs::write(root.join("lib.rs"), "fn a() {}\n")
+                .map_err(|err| format!("write: {err}"))?;
+            run_git(&root, &["add", "lib.rs"])?;
+            run_git(&root, &["status", "--porcelain"])?;
+            Ok(marker.exists())
+        })();
+        let _ = std::fs::remove_dir_all(&root);
+        if result? {
+            return Err("git ran the repository's core.fsmonitor program".to_string());
+        }
+        Ok(())
     }
 
     #[test]

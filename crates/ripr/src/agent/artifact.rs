@@ -631,6 +631,7 @@ fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
 /// process-policy gate allows exactly one command spawn here.
 fn git_spawn(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
     Command::new("git")
+        .args(crate::git::UNTRUSTED_REPOSITORY_CONFIG)
         .args(args)
         .current_dir(root)
         .output()

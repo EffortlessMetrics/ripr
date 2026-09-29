@@ -323,11 +323,11 @@ fn add_language_runtime_probes<F>(
     mut probe: F,
 ) -> bool
 where
-    F: FnMut(&str, bool) -> (output::doctor::DoctorStatus, String),
+    F: FnMut(&str) -> (output::doctor::DoctorStatus, String),
 {
     let mut ok = true;
     for (language, tool, hint) in language_runtime_probes_for(root, enabled) {
-        let (status, evidence) = probe(tool, tool == "yarn");
+        let (status, evidence) = probe(tool);
         // A language runtime is an analysis capability, not a prerequisite
         // for building RIPR from source: the source-build profile keeps the
         // probe visible but never lets it decide that profile's status.
@@ -344,14 +344,12 @@ where
     ok
 }
 
-fn probe_runtime(tool: &str, isolated: bool) -> (output::doctor::DoctorStatus, String) {
-    // yarn loads project config on --version; probe it isolated so a
-    // hostile checkout cannot execute code via doctor (#2183 review).
-    if isolated {
-        output::doctor::doctor_tool_check_isolated(tool)
-    } else {
-        output::doctor::doctor_tool_check(tool)
-    }
+fn probe_runtime(tool: &str) -> (output::doctor::DoctorStatus, String) {
+    // Probe every runtime outside the checkout. yarn loads project config on
+    // --version (#2183 review), and pnpm fetches and runs the release a
+    // project `packageManager` names; version managers read project files too.
+    // A hostile checkout must not choose what doctor executes.
+    output::doctor::doctor_tool_check_isolated(tool)
 }
 
 fn runtime_probe_is_required(language: &str, tool: &str, enabled: &[LanguageId]) -> bool {
@@ -1619,7 +1617,7 @@ mod tests {
             &[LanguageId::TypeScript],
             &mut required_report,
             false,
-            |tool, _isolated| {
+            |tool| {
                 if tool == "node" {
                     (
                         output::doctor::DoctorStatus::Fail,
@@ -1652,7 +1650,7 @@ mod tests {
             &[LanguageId::Rust],
             &mut optional_report,
             false,
-            |tool, _isolated| {
+            |tool| {
                 if tool == "node" {
                     (
                         output::doctor::DoctorStatus::Fail,
@@ -1690,7 +1688,7 @@ mod tests {
             &[LanguageId::Python],
             &mut configured_only_report,
             false,
-            |tool, _isolated| {
+            |tool| {
                 (
                     output::doctor::DoctorStatus::Fail,
                     format!("{tool} not available"),
@@ -1721,7 +1719,7 @@ mod tests {
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
         std::fs::write(root.join("package.json"), "{}")
             .map_err(|err| format!("write package marker: {err}"))?;
-        let missing_node = |tool: &str, _isolated: bool| {
+        let missing_node = |tool: &str| {
             if tool == "node" {
                 (
                     output::doctor::DoctorStatus::Fail,

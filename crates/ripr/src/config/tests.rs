@@ -1175,7 +1175,7 @@ proptest! {
         producer in any::<String>(),
         executable in any::<String>(),
         timeout_ms in any::<u64>(),
-        cache_dir in any::<String>(),
+        cache_dir in valid_repository_paths(),
     ) {
         let raw = RawConfig {
             analysis: Some(RawAnalysisConfig {
@@ -1248,6 +1248,33 @@ proptest! {
             "serialized valid config must parse: {effective:?}\n{serialized}"
         );
     }
+}
+
+#[test]
+fn perl_cache_dir_must_stay_within_the_repository() -> Result<(), String> {
+    for cache_dir in ["/etc/ripr-outside", "../outside", "target/../../x"] {
+        let text = format!("[perl]\ncache_dir = \"{cache_dir}\"\n");
+        let error = match tests_only_parse(&text) {
+            Ok(config) => {
+                return Err(format!(
+                    "perl.cache_dir `{cache_dir}` escaped the repository: {:?}",
+                    config.perl.cache_dir
+                ));
+            }
+            Err(error) => error,
+        };
+        if !error.contains("perl.cache_dir") {
+            return Err(format!("the error must name the field: {error}"));
+        }
+    }
+    let config = tests_only_parse("[perl]\ncache_dir = \"./target/ripr/perl-facts\"\n")?;
+    if config.perl.cache_dir.as_deref() != Some(std::path::Path::new("target/ripr/perl-facts")) {
+        return Err(format!(
+            "a relative cache dir must be kept: {:?}",
+            config.perl.cache_dir
+        ));
+    }
+    Ok(())
 }
 
 fn valid_oracle_strengths() -> Vec<String> {

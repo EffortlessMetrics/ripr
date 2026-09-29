@@ -683,7 +683,8 @@ fn write_parented_file(path: &Path, label: &str, contents: impl AsRef<[u8]>) -> 
         fs::create_dir_all(parent)
             .map_err(|err| format!("failed to create parent dir for {label}: {err}"))?;
     }
-    fs::write(path, contents).map_err(|err| format!("failed to write {label}: {err}"))
+    crate::output::file_write::write(path, contents.as_ref())
+        .map_err(|err| format!("failed to write {label}: {err}"))
 }
 
 #[cfg(test)]

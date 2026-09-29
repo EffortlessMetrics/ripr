@@ -468,6 +468,11 @@ fn run_workspace_cargo_metadata(
     if !manifest_path.is_file() {
         return None;
     }
+    // A repository toolchain `path` would make rustup run the repository's
+    // own `cargo`; fail closed like any other unavailable metadata.
+    if crate::config::repository_toolchain_path_pin(workspace_root).is_some() {
+        return None;
+    }
     let stdout_path = std::env::temp_dir().join(format!(
         "ripr-cargo-metadata-{}-{}-{}.json",
         std::process::id(),

@@ -497,9 +497,10 @@ fn write_outputs(repo: &Path, json_text: &str, markdown: &str) -> Result<(), Str
     if let Some(parent) = json_path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("create impacted evidence dir: {err}"))?;
     }
-    fs::write(&json_path, format!("{json_text}\n"))
+    crate::output::file_write::write(&json_path, format!("{json_text}\n").as_bytes())
         .map_err(|err| format!("failed to write {IMPACTED_JSON}: {err}"))?;
-    fs::write(&md_path, markdown).map_err(|err| format!("failed to write {IMPACTED_MD}: {err}"))?;
+    crate::output::file_write::write(&md_path, markdown.as_bytes())
+        .map_err(|err| format!("failed to write {IMPACTED_MD}: {err}"))?;
     println!("Wrote {IMPACTED_JSON}");
     println!("Wrote {IMPACTED_MD}");
     Ok(())

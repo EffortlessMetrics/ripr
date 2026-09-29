@@ -233,7 +233,7 @@ fn write_annotations(
     };
     fs::create_dir_all(parent)
         .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
-    fs::write(path, &generated.text)
+    crate::output::file_write::write(path, generated.text.as_bytes())
         .map_err(|err| format!("failed to write {}: {err}", options.out))?;
     if generated.comments_missing {
         println!("RIPR annotations skipped: {} is missing", options.comments);

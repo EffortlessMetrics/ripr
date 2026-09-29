@@ -8178,6 +8178,58 @@ language = "rust"
         assert_contains_all(&workflow, "artifact path", fixture.artifact_paths);
         assert_contains_all(&workflow, "summary section", fixture.summary_sections);
 
+        // Workflow hardening: the job token is not persisted into the
+        // checkout that PR-controlled code runs in.
+        assert!(
+            workflow.contains("          fetch-depth: 0\n          persist-credentials: false\n")
+        );
+        // Checked-in or cache-restored files under target/ripr and target/ci
+        // are removed after the cache restore and before any RIPR step, so
+        // gate inputs read "when present" come only from this run.
+        let cleanup = workflow_step(&workflow, "Remove checked-in RIPR artifacts");
+        assert!(cleanup.contains("run: rm -rf target/ripr target/ci"));
+        let cache_at = workflow.find("Swatinem/rust-cache@").unwrap_or(usize::MAX);
+        let cleanup_at = workflow
+            .find("      - name: Remove checked-in RIPR artifacts")
+            .unwrap_or(0);
+        assert!(
+            cache_at < cleanup_at,
+            "cleanup must follow the cache restore"
+        );
+        assert_step_before(
+            &workflow,
+            "Remove checked-in RIPR artifacts",
+            "Install ripr",
+        );
+        assert_step_before(
+            &workflow,
+            "Remove checked-in RIPR artifacts",
+            "Generate RIPR pilot packet",
+        );
+        // Only comments the workflow itself posted count as existing RIPR
+        // comments; a marker from another author cannot suppress or be
+        // PATCHed.
+        let capture = workflow_step(&workflow, "Capture existing RIPR inline comments");
+        assert!(
+            capture.contains(
+                r#"| select(.user.login == "github-actions[bot]" and .user.type == "Bot")"#
+            )
+        );
+        // Repository-derived text printed to the log folds CR/LF so it
+        // cannot open a line GitHub parses as a workflow command.
+        let publish = workflow_step(&workflow, "Publish RIPR inline comments");
+        assert!(publish.contains(
+            r#"jq -r '.blocked[]? | "- \(.blocked_reason): \(.message)" | gsub("[\r\n]"; " ")'"#
+        ));
+        assert!(publish.contains(
+            r#"dedupe_key="$(jq -r '.dedupe_key | tostring | gsub("[\r\n]"; " ")' <<< "$operation")""#
+        ));
+        assert!(publish.contains(
+            r#"select(.operation == "keep") | .dedupe_key | tostring | gsub("[\r\n]"; " ")'"#
+        ));
+        assert!(!publish.contains("jq -r '.dedupe_key' "));
+        assert!(!publish.contains(r#"| .dedupe_key' "$publishable""#));
+
         let prepare = workflow_step(&workflow, "Prepare RIPR editor-agent artifacts");
         assert!(prepare.contains("RIPR_TOP_SEAM_ID"));
         // first-pr checks the review cards were built for its base; the
