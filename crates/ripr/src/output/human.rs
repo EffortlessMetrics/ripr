@@ -369,14 +369,12 @@ fn render_partial_scope_disclosure(out: &mut String, output: &CheckOutput) {
     ));
     // RIPR-PROP-0019 decision 6: raising the explicit overrides is the only
     // continuation route; the budget has no off switch (zero is rejected).
-    // Both budgets are named: the next file can hit both, and the selector
-    // then reports only the file budget.
-    let (other_env, other_budget) = scope.other_budget();
+    // The widen wording is shared with JSON, LSP and the analysis outcome.
     out.push_str(&format!(
-        "  To widen the analyzed partition, raise {budget_env} above {budget} and re-run; the \
-         next file may also need {other_env} above {other_budget}. Overrides above the \
-         analysis-cost limit are clamped, the budget cannot be switched off, and named \
-         partition continuation is not available.\n  partition_identity: {}\n\n",
+        "  To widen the analyzed partition, {}. Overrides above the analysis-cost limit are \
+         clamped, the budget cannot be switched off, and named partition continuation is not \
+         available.\n  partition_identity: {}\n\n",
+        scope.widen_instruction(),
         scope.partition_identity,
     ));
 }
@@ -2112,6 +2110,7 @@ mod tests {
                 uninspected_files_lower_bound: 3,
                 uninspected_changed_lines_lower_bound: 180,
                 stop_reason: crate::analysis::PartialDiffStopReason::FileBudget,
+                next_file_changed_lines: Some(60),
                 partition_identity: "c".repeat(64),
             }),
         };
@@ -2164,10 +2163,10 @@ mod tests {
         // 30-line file; a line-budget stop (file budget 7) selected 35 lines
         // and the next file would overshoot; a first-file stop selected one
         // 60-line file alone.
-        let (file_budget, selected_changed_lines) = match stop_reason {
-            PartialDiffStopReason::FileBudget => (1, 30),
-            PartialDiffStopReason::LineBudget => (7, 35),
-            PartialDiffStopReason::LineBudgetExceededOnFirstFile => (7, 60),
+        let (file_budget, selected_changed_lines, next_file_changed_lines) = match stop_reason {
+            PartialDiffStopReason::FileBudget => (1, 30, Some(30)),
+            PartialDiffStopReason::LineBudget => (7, 35, Some(30)),
+            PartialDiffStopReason::LineBudgetExceededOnFirstFile => (7, 60, None),
         };
         CheckOutput {
             harness_projections: Vec::new(),
@@ -2195,6 +2194,7 @@ mod tests {
                 uninspected_files_lower_bound: uninspected_files,
                 uninspected_changed_lines_lower_bound: uninspected_lines,
                 stop_reason,
+                next_file_changed_lines,
                 partition_identity: "c".repeat(64),
             }),
         }
@@ -2214,8 +2214,8 @@ mod tests {
                     "Found 1 finding(s) before stopping.",
                     "NOT inspected: at least 3 changed file(s) and at least 90 changed line(s); \
                      more findings may exist beyond the budget.",
-                    "raise RIPR_PARTIAL_DIFF_FILE_BUDGET above 1 and re-run",
-                    "may also need RIPR_PARTIAL_DIFF_LINE_BUDGET above 40",
+                    "raise RIPR_PARTIAL_DIFF_FILE_BUDGET to at least 2 and \
+                     RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 60, then re-run.",
                 ],
             ),
             (
@@ -2227,8 +2227,7 @@ mod tests {
                      (RIPR_PARTIAL_DIFF_LINE_BUDGET=40)",
                     "Found 1 finding(s) before stopping.",
                     "more findings may exist beyond the budget.",
-                    "raise RIPR_PARTIAL_DIFF_LINE_BUDGET above 40 and re-run",
-                    "may also need RIPR_PARTIAL_DIFF_FILE_BUDGET above 7",
+                    "raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 65, then re-run.",
                 ],
             ),
             (
@@ -2242,8 +2241,7 @@ mod tests {
                     "Found 1 finding(s) before stopping.",
                     "Every changed file ripr's language adapters read was selected",
                     "this result stays partial and is not a complete-scope claim",
-                    "raise RIPR_PARTIAL_DIFF_LINE_BUDGET above 40 and re-run",
-                    "may also need RIPR_PARTIAL_DIFF_FILE_BUDGET above 7",
+                    "raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 60, then re-run.",
                 ],
             ),
         ];
@@ -2301,6 +2299,7 @@ mod tests {
                 uninspected_files_lower_bound: 1,
                 uninspected_changed_lines_lower_bound: 1,
                 stop_reason: crate::analysis::PartialDiffStopReason::FileBudget,
+                next_file_changed_lines: Some(60),
                 partition_identity: "c".repeat(64),
             }),
         };

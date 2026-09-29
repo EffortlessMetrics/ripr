@@ -235,7 +235,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             &mut out,
             2,
             "continuation",
-            crate::analysis::PartialDiffScope::CONTINUATION_DISCLOSURE,
+            &scope.continuation_disclosure(),
             false,
         );
         out.push_str("  }");

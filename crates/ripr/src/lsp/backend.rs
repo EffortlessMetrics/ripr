@@ -6136,17 +6136,27 @@ fn top_limitation_dto(
             "limited_partial_scope",
             "limited_partial_scope",
             "limited",
-            format!(
-                "analysis inspected {} changed file(s) ({} changed line(s)) of the diff; \
-                 at least {} changed file(s) and {} changed line(s) were not inspected \
-                 (stop reason: {}); raise RIPR_PARTIAL_DIFF_FILE_BUDGET and/or \
-                 RIPR_PARTIAL_DIFF_LINE_BUDGET to widen the analyzed partition",
-                scope.selected_files.len(),
-                scope.selected_changed_lines,
-                scope.uninspected_files_lower_bound,
-                scope.uninspected_changed_lines_lower_bound,
-                scope.stop_reason.as_str(),
-            ),
+            {
+                let uninspected = if scope.has_known_uninspected_scope() {
+                    format!(
+                        "at least {} changed file(s) and {} changed line(s) were not inspected",
+                        scope.uninspected_files_lower_bound,
+                        scope.uninspected_changed_lines_lower_bound,
+                    )
+                } else {
+                    "every changed file ripr's language adapters read was selected, but the budget was exceeded, so the \
+                     result stays partial"
+                        .to_string()
+                };
+                format!(
+                    "analysis inspected {} changed file(s) ({} changed line(s)) of the diff; \
+                     {uninspected} (stop reason: {}); to widen the analyzed partition, {}",
+                    scope.selected_files.len(),
+                    scope.selected_changed_lines,
+                    scope.stop_reason.as_str(),
+                    scope.widen_instruction(),
+                )
+            },
             "analysis/diff-scope-budget",
             scope.selected_files.iter().take(3).cloned().collect(),
             scope.selected_files.len(),
@@ -6382,6 +6392,7 @@ mod top_limitation_selection_tests {
             uninspected_files_lower_bound: 2,
             uninspected_changed_lines_lower_bound: 6,
             stop_reason: PartialDiffStopReason::FileBudget,
+            next_file_changed_lines: Some(3),
             partition_identity: "sha256:partition".to_string(),
         }
     }
@@ -6478,6 +6489,45 @@ mod top_limitation_selection_tests {
             value["why_not_actionable"]
                 .as_str()
                 .is_some_and(|text| text.contains("at least 2 changed file(s)"))
+        );
+        let why = value["why_not_actionable"].as_str().unwrap_or_default();
+        assert!(
+            why.contains("raise RIPR_PARTIAL_DIFF_FILE_BUDGET to at least 2, then re-run"),
+            "the LSP limitation must name the stopping budget and its size: {why}"
+        );
+        assert!(!why.contains("and/or"), "no generic budget wording: {why}");
+        Ok(())
+    }
+
+    #[test]
+    fn partial_scope_with_no_known_uninspected_files_never_says_at_least_zero() -> Result<(), String>
+    {
+        let mut scope = partial_scope_fixture();
+        scope.uninspected_files_lower_bound = 0;
+        scope.uninspected_changed_lines_lower_bound = 0;
+        scope.stop_reason = PartialDiffStopReason::LineBudgetExceededOnFirstFile;
+        scope.selected_changed_lines = 14;
+        scope.next_file_changed_lines = None;
+        let snapshot = snapshot_for_outcome(incomplete_outcome(0)?, Some(scope));
+        let health = AnalysisHealth {
+            snapshot_id: Some("snapshot:lsp-fixture".to_string()),
+            snapshot_run_status: Some(PartialDiffScope::RUN_STATUS.to_string()),
+            state: AnalysisAttemptState::Succeeded,
+            ..AnalysisHealth::default()
+        };
+        let authority = WorkspaceRootAuthority::selected(PathBuf::from("C:").join("repo"));
+        let value = top_limitation_dto(&health, Some(&snapshot), &authority).into_json();
+
+        assert_eq!(value["status"], "limited_partial_scope");
+        let why = value["why_not_actionable"].as_str().unwrap_or_default();
+        assert!(!why.contains("at least 0"), "{why}");
+        assert!(
+            why.contains("every changed file ripr's language adapters read was selected, but the budget was exceeded"),
+            "{why}"
+        );
+        assert!(
+            why.contains("raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 14, then re-run"),
+            "a first-file line stop names the line budget first: {why}"
         );
         Ok(())
     }

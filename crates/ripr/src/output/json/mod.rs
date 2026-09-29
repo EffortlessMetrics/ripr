@@ -285,6 +285,7 @@ mod tests {
             uninspected_files_lower_bound: 2,
             uninspected_changed_lines_lower_bound: 120,
             stop_reason: crate::analysis::PartialDiffStopReason::LineBudget,
+            next_file_changed_lines: Some(50),
             partition_identity: "b".repeat(64),
         }
     }
@@ -373,12 +374,13 @@ mod tests {
             scope["budget_disclosures"].as_array().map(Vec::len),
             Some(1)
         );
-        assert!(
-            scope["continuation"]
-                .as_str()
-                .unwrap_or("")
-                .contains("RIPR_PARTIAL_DIFF_FILE_BUDGET"),
-            "continuation must name the budget-override route: {scope}"
+        assert_eq!(
+            scope["continuation"].as_str(),
+            Some(
+                "partial result: raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 110, then re-run; \
+                 named partition continuation is not available"
+            ),
+            "continuation must lead with the budget that stopped selection: {scope}"
         );
         Ok(())
     }

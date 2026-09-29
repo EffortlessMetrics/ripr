@@ -263,6 +263,11 @@ pub struct PartialDiffScope {
     pub uninspected_changed_lines_lower_bound: usize,
     /// Which budget bound stopped selection.
     pub stop_reason: PartialDiffStopReason,
+    /// Changed-line count of the first enabled-language file left out of the
+    /// partition, or `None` when every such file was selected. The widen
+    /// instruction needs it: a line budget raised only just above its current
+    /// value can still reject that file.
+    pub next_file_changed_lines: Option<usize>,
     /// Lowercase hex sha256 of the canonical partition form (decision 7).
     pub partition_identity: String,
 }
@@ -273,12 +278,54 @@ impl PartialDiffScope {
     /// Gate eligibility marker for every partial result (decision 5): a
     /// downstream consumer must fail closed on this state.
     pub const GATE_ELIGIBILITY: &'static str = "ineligible";
+    /// The widen instruction every partial-result surface shares: the
+    /// smallest budget values that admit the next file, stopping budget
+    /// first. Raising a budget only just above its current value can select
+    /// the same partition again, so the minimums come from the selector:
+    /// one more file than was selected, and the selected line count plus the
+    /// next file's lines. When no enabled file was left out (an oversized
+    /// first file analyzed alone), the line minimum is the selected line
+    /// count, which makes the run complete.
+    pub(crate) fn widen_instruction(&self) -> String {
+        let next_lines = self.next_file_changed_lines.unwrap_or(0);
+        let file_min = self
+            .selected_files
+            .len()
+            .saturating_add(usize::from(self.next_file_changed_lines.is_some()));
+        let line_min = self.selected_changed_lines.saturating_add(next_lines);
+        let file_raise = (file_min > self.file_budget)
+            .then(|| format!("{PARTIAL_DIFF_FILE_BUDGET_ENV} to at least {file_min}"));
+        let line_raise = (line_min > self.line_budget)
+            .then(|| format!("{PARTIAL_DIFF_LINE_BUDGET_ENV} to at least {line_min}"));
+        let raises: Vec<String> = match self.stop_reason {
+            PartialDiffStopReason::FileBudget => [file_raise, line_raise],
+            PartialDiffStopReason::LineBudget
+            | PartialDiffStopReason::LineBudgetExceededOnFirstFile => [line_raise, file_raise],
+        }
+        .into_iter()
+        .flatten()
+        .collect();
+        if raises.is_empty() {
+            // Unreachable for a selector-built scope; keep a usable route.
+            return format!(
+                "raise {} above {}, then re-run",
+                self.stop_reason.budget_env(),
+                self.stopping_budget()
+            );
+        }
+        format!("raise {}, then re-run", raises.join(" and "))
+    }
+
     /// Disclosure naming the only continuation route (decision 6): raise the
-    /// explicit budget overrides. Named partition continuation is not
-    /// available in this contract revision.
-    pub const CONTINUATION_DISCLOSURE: &'static str = "partial result: raise RIPR_PARTIAL_DIFF_FILE_BUDGET and/or \
-         RIPR_PARTIAL_DIFF_LINE_BUDGET to widen the analyzed partition; named \
-         partition continuation is not available";
+    /// explicit budget overrides, starting with the one that stopped
+    /// selection. Named partition continuation is not available in this
+    /// contract revision.
+    pub(crate) fn continuation_disclosure(&self) -> String {
+        format!(
+            "partial result: {}; named partition continuation is not available",
+            self.widen_instruction()
+        )
+    }
 
     /// The effective (post-clamp) size of the budget that stopped selection:
     /// the file budget for [`PartialDiffStopReason::FileBudget`], otherwise
@@ -288,20 +335,6 @@ impl PartialDiffScope {
             PartialDiffStopReason::FileBudget => self.file_budget,
             PartialDiffStopReason::LineBudget
             | PartialDiffStopReason::LineBudgetExceededOnFirstFile => self.line_budget,
-        }
-    }
-
-    /// The env override and effective size of the budget that did NOT stop
-    /// selection. Raising only the stopping budget may not widen the
-    /// partition: when the next file hits both budgets the stop reason is the
-    /// file budget, and the unchanged line budget then rejects that file.
-    pub(crate) fn other_budget(&self) -> (&'static str, usize) {
-        match self.stop_reason {
-            PartialDiffStopReason::FileBudget => (PARTIAL_DIFF_LINE_BUDGET_ENV, self.line_budget),
-            PartialDiffStopReason::LineBudget
-            | PartialDiffStopReason::LineBudgetExceededOnFirstFile => {
-                (PARTIAL_DIFF_FILE_BUDGET_ENV, self.file_budget)
-            }
         }
     }
 
@@ -595,6 +628,13 @@ fn select_partial_diff_partition_with_identity(
     // budget the file rule fires, over the line budget some file must cross
     // the remaining budget (or the first-file exception fired).
     let stop_reason = stop_reason?;
+    // Selection is a prefix of the enabled candidates, so the next file the
+    // widen instruction must admit is the enabled candidate after it.
+    let next_file_changed_lines = candidates
+        .iter()
+        .filter(|candidate| candidate.enabled)
+        .nth(selected.len())
+        .map(|candidate| candidate.changed_lines);
 
     let selected_files: Vec<String> = selected
         .iter()
@@ -620,6 +660,7 @@ fn select_partial_diff_partition_with_identity(
         uninspected_files_lower_bound: total_files.saturating_sub(selected.len()),
         uninspected_changed_lines_lower_bound: total_lines.saturating_sub(selected_lines),
         stop_reason,
+        next_file_changed_lines,
         partition_identity: sha256_hex(canonical.as_bytes()),
     })
 }
@@ -2749,7 +2790,6 @@ fn absent_delimiter_boundary_returns_head() {
             file_stop.stop_reason.budget_env(),
             PARTIAL_DIFF_FILE_BUDGET_ENV
         );
-        assert_eq!(file_stop.other_budget(), (PARTIAL_DIFF_LINE_BUDGET_ENV, 40));
 
         let line_stop = require_partial(
             select_partial_diff_partition(
@@ -2770,7 +2810,26 @@ fn absent_delimiter_boundary_returns_head() {
             line_stop.stop_reason.budget_env(),
             PARTIAL_DIFF_LINE_BUDGET_ENV
         );
-        assert_eq!(line_stop.other_budget(), (PARTIAL_DIFF_FILE_BUDGET_ENV, 7));
+        // Every surface (human, JSON continuation, LSP, limitation recovery)
+        // shares this wording. It names the minimum values that admit the next
+        // file, stopping budget first: "above 40" alone would still reject a
+        // 30-line next file after 35 selected lines.
+        assert_eq!(file_stop.next_file_changed_lines, Some(30));
+        assert_eq!(
+            file_stop.widen_instruction(),
+            "raise RIPR_PARTIAL_DIFF_FILE_BUDGET to at least 2 and \
+             RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 60, then re-run"
+        );
+        assert_eq!(line_stop.next_file_changed_lines, Some(30));
+        assert_eq!(
+            line_stop.widen_instruction(),
+            "raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 65, then re-run"
+        );
+        assert_eq!(
+            line_stop.continuation_disclosure(),
+            "partial result: raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 65, then re-run; \
+             named partition continuation is not available"
+        );
 
         let first_file_stop = require_partial(
             select_partial_diff_partition(
@@ -2793,6 +2852,57 @@ fn absent_delimiter_boundary_returns_head() {
             "README.md is never a partition candidate, so no uninspected scope is known"
         );
         assert_eq!(first_file_stop.stopping_budget(), 40);
+        assert_eq!(first_file_stop.next_file_changed_lines, None);
+        assert_eq!(
+            first_file_stop.widen_instruction(),
+            "raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 60, then re-run"
+        );
+        Ok(())
+    }
+
+    /// The printed minimums must actually widen the partition when the run
+    /// is repeated with them, and one less must not (Codex review on #4870).
+    #[test]
+    fn partial_widen_minimums_admit_the_next_file_and_one_less_does_not() -> Result<(), String> {
+        let files = [
+            changed_file("src/a.rs", 35, 0),
+            changed_file("src/b.rs", 30, 0),
+            changed_file("src/c.rs", 30, 0),
+        ];
+        let stopped = require_partial(
+            select_partial_diff_partition(&files, &budgets(7, 40), ALL_LANGUAGES),
+            "line-budget stop",
+        )?;
+        assert_eq!(stopped.selected_files, vec!["src/a.rs"]);
+        assert_eq!(
+            stopped.widen_instruction(),
+            "raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 65, then re-run"
+        );
+        let widened = require_partial(
+            select_partial_diff_partition(&files, &budgets(7, 65), ALL_LANGUAGES),
+            "rerun at the printed minimum",
+        )?;
+        assert_eq!(widened.selected_files, vec!["src/a.rs", "src/b.rs"]);
+        let same = require_partial(
+            select_partial_diff_partition(&files, &budgets(7, 64), ALL_LANGUAGES),
+            "rerun one below the printed minimum",
+        )?;
+        assert_eq!(same.selected_files, stopped.selected_files);
+
+        let file_stopped = require_partial(
+            select_partial_diff_partition(&files, &budgets(1, 40), ALL_LANGUAGES),
+            "file-budget stop",
+        )?;
+        assert_eq!(
+            file_stopped.widen_instruction(),
+            "raise RIPR_PARTIAL_DIFF_FILE_BUDGET to at least 2 and \
+             RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 65, then re-run"
+        );
+        let file_widened = require_partial(
+            select_partial_diff_partition(&files, &budgets(2, 65), ALL_LANGUAGES),
+            "rerun at both printed minimums",
+        )?;
+        assert_eq!(file_widened.selected_files, vec!["src/a.rs", "src/b.rs"]);
         Ok(())
     }
 

@@ -3363,7 +3363,7 @@ const LIMITED_RUN_STATUS_PRESENTATIONS: Record<string, { summary: string; detail
   limited_partial_scope: {
     summary: 'ripr analysis completed on a bounded partition of the diff.',
     detail: 'The diff exceeded the analysis scope budget, so this run covered only part of it and the remainder was not evaluated.',
-    nextStep: `Raise RIPR_PARTIAL_DIFF_FILE_BUDGET or narrow the diff, then run ${REFRESH_DIAGNOSTICS_COMMAND_TITLE}.`
+    nextStep: `Run ripr: Show Top Limitation to see which budget stopped the run (RIPR_PARTIAL_DIFF_FILE_BUDGET or RIPR_PARTIAL_DIFF_LINE_BUDGET), raise it or narrow the diff, then run ${REFRESH_DIAGNOSTICS_COMMAND_TITLE}.`
   },
   limited_incomplete_input: {
     summary: 'ripr analysis completed with incomplete input.',
