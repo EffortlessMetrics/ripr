@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_parseint.py
   Suggested test: test_parse_ok
   Test node: tests/test_parseint.py::test_parse_ok
-  Verify command: pytest tests/test_parseint.py::test_parse_ok (high)
+  Verify command: python -m pytest tests/test_parseint.py::test_parse_ok (high)
   Next step: Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises KeyError matching "empty"`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `parse`

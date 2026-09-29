@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= threshold:","line":3}
       ],
-      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_discount_policy_apply", "suggested_test_node_id: tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command: pytest tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
+      "evidence": ["owner: DiscountPolicy.apply", "owner_kind: method", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_policy.py", "suggested_test_name: test_discount_policy_apply", "suggested_test_node_id: tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command: python -m pytest tests/test_policy.py::test_discount_policy_apply", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_discount_policy_apply)", "test_verify_command: python -m pytest tests/test_policy.py::test_discount_policy_apply (test_discount_policy_apply)", "related_test_relation: syntactic_call (test_discount_policy_apply)", "test_oracle_shape: reach_only (test_discount_policy_apply)"],
       "missing": ["Related Python test reaches `apply` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_policy.py",
         "suggested_test_name": "test_discount_policy_apply",
         "suggested_test_node_id": "tests/test_policy.py::test_discount_policy_apply",
-        "verify_command": "pytest tests/test_policy.py::test_discount_policy_apply",
+        "verify_command": "python -m pytest tests/test_policy.py::test_discount_policy_apply",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_policy.py::test_discount_policy_apply"
          },
         "verify": {
-          "command": "pytest tests/test_policy.py::test_discount_policy_apply",
+          "command": "python -m pytest tests/test_policy.py::test_discount_policy_apply",
           "confidence": "high"
          },
         "receipt": {

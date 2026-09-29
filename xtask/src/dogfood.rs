@@ -5422,9 +5422,7 @@ pub(crate) fn dogfood_python_real_repo_eval_run(
             errors.push("agent_packet_stop_if entries must be concrete".to_string());
         }
     }
-    if !scenario.verify_command.starts_with("pytest ")
-        && !scenario.verify_command.starts_with("python -m unittest ")
-    {
+    if !python_eval_verify_command_is_pytest_or_unittest(&scenario.verify_command) {
         errors.push(format!(
             "verify_command must be a pytest or unittest command, got {}",
             scenario.verify_command
@@ -6189,8 +6187,7 @@ pub(crate) fn dogfood_python_eval_top_1_actionable_usable(
 }
 
 pub(crate) fn dogfood_python_eval_verify_command_valid(run: &DogfoodPythonRealRepoEvalRun) -> bool {
-    (run.verify_command.starts_with("pytest ")
-        || run.verify_command.starts_with("python -m unittest "))
+    python_eval_verify_command_is_pytest_or_unittest(&run.verify_command)
         && run.verify_result == "pass"
 }
 
@@ -6355,8 +6352,16 @@ pub(crate) fn dogfood_python_ranked_finding_actionable_usable(
 pub(crate) fn dogfood_python_ranked_finding_verify_command_valid(
     finding: &DogfoodPythonRankedFinding,
 ) -> bool {
-    finding.verify_command.starts_with("pytest ")
-        || finding.verify_command.starts_with("python -m unittest ")
+    python_eval_verify_command_is_pytest_or_unittest(&finding.verify_command)
+}
+
+/// A Python verify command ripr generates (`python -m pytest ...`,
+/// `python -m unittest ...`) or the bare `pytest ...` form recorded evals
+/// captured before the module form.
+fn python_eval_verify_command_is_pytest_or_unittest(command: &str) -> bool {
+    ["python -m pytest ", "pytest ", "python -m unittest "]
+        .iter()
+        .any(|prefix| command.starts_with(prefix))
 }
 
 pub(crate) fn dogfood_python_ranked_finding_has_concrete_discriminator(

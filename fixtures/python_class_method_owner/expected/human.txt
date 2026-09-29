@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_factory.py
   Suggested test: test_price_rule_from_config
   Test node: tests/test_factory.py::test_price_rule_from_config
-  Verify command: pytest tests/test_factory.py::test_price_rule_from_config (high)
+  Verify command: python -m pytest tests/test_factory.py::test_price_rule_from_config (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `from_config`

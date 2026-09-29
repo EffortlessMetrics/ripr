@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"struct_field","text":"self.status = \"active\"","line":3}
       ],
-      "evidence": ["owner: Session.refresh", "owner_kind: method", "missing_discriminator: self.status == \"active\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_session.py", "suggested_test_name: test_session_refresh", "suggested_test_node_id: tests/test_session.py::test_session_refresh", "suggested_verify_command: pytest tests/test_session.py::test_session_refresh", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_session_refresh)", "test_verify_command: pytest tests/test_session.py::test_session_refresh (test_session_refresh)", "related_test_relation: syntactic_call (test_session_refresh)", "test_oracle: exact_value strong (test_session_refresh)", "test_oracle_shape: status_code_assertion (test_session_refresh)"],
+      "evidence": ["owner: Session.refresh", "owner_kind: method", "missing_discriminator: self.status == \"active\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_session.py", "suggested_test_name: test_session_refresh", "suggested_test_node_id: tests/test_session.py::test_session_refresh", "suggested_verify_command: python -m pytest tests/test_session.py::test_session_refresh", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_session_refresh)", "test_verify_command: python -m pytest tests/test_session.py::test_session_refresh (test_session_refresh)", "related_test_relation: syntactic_call (test_session_refresh)", "test_oracle: exact_value strong (test_session_refresh)", "test_oracle_shape: status_code_assertion (test_session_refresh)"],
       "missing": ["A strong Python oracle reaches `refresh`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_session.py",
         "suggested_test_name": "test_session_refresh",
         "suggested_test_node_id": "tests/test_session.py::test_session_refresh",
-        "verify_command": "pytest tests/test_session.py::test_session_refresh",
+        "verify_command": "python -m pytest tests/test_session.py::test_session_refresh",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_session.py::test_session_refresh"
          },
         "verify": {
-          "command": "pytest tests/test_session.py::test_session_refresh",
+          "command": "python -m pytest tests/test_session.py::test_session_refresh",
           "confidence": "high"
          },
         "receipt": {

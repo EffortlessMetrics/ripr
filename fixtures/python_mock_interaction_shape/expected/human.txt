@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_callbacks.py
   Suggested test: test_recording_callback_starts_idle
   Test node: tests/test_callbacks.py::test_recording_callback_starts_idle
-  Verify command: pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
+  Verify command: python -m pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
   Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `recording_callback`

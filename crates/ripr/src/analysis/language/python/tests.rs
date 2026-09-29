@@ -3101,7 +3101,7 @@ fn classify_click_output_change_as_repairable_cli_gap() -> Result<(), String> {
     );
     assert_eq!(
         evidence_value(&finding, "suggested_verify_command: "),
-        Some("pytest tests/test_commands.py::test_ship_smoke")
+        Some("python -m pytest tests/test_commands.py::test_ship_smoke")
     );
     Ok(())
 }
@@ -3395,7 +3395,7 @@ fn classify_change_emits_python_repair_placement_and_verify_command() -> Result<
     );
     assert_eq!(
         evidence_value(&pytest_finding, "suggested_verify_command: "),
-        Some("pytest tests/test_pricing.py::test_calculate_discount_smoke")
+        Some("python -m pytest tests/test_pricing.py::test_calculate_discount_smoke")
     );
     assert_eq!(
         evidence_value(&pytest_finding, "suggested_verify_command_confidence: "),

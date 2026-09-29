@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return payload.strip() == \"ok\"","line":2}
       ],
-      "evidence": ["owner: validate", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_checker.py", "suggested_test_name: test_checker_validate", "suggested_test_node_id: tests/test_checker.py::test_checker_validate", "suggested_verify_command: pytest tests/test_checker.py::test_checker_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_checker_validate)", "test_verify_command: pytest tests/test_checker.py::test_checker_validate (test_checker_validate)", "related_test_relation: syntactic_call (test_checker_validate)", "test_oracle: exact_value strong (test_checker_validate)"],
+      "evidence": ["owner: validate", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_checker.py", "suggested_test_name: test_checker_validate", "suggested_test_node_id: tests/test_checker.py::test_checker_validate", "suggested_verify_command: python -m pytest tests/test_checker.py::test_checker_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_checker_validate)", "test_verify_command: python -m pytest tests/test_checker.py::test_checker_validate (test_checker_validate)", "related_test_relation: syntactic_call (test_checker_validate)", "test_oracle: exact_value strong (test_checker_validate)"],
       "missing": ["A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_checker.py",
         "suggested_test_name": "test_checker_validate",
         "suggested_test_node_id": "tests/test_checker.py::test_checker_validate",
-        "verify_command": "pytest tests/test_checker.py::test_checker_validate",
+        "verify_command": "python -m pytest tests/test_checker.py::test_checker_validate",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_checker.py::test_checker_validate"
          },
         "verify": {
-          "command": "pytest tests/test_checker.py::test_checker_validate",
+          "command": "python -m pytest tests/test_checker.py::test_checker_validate",
           "confidence": "high"
          },
         "receipt": {

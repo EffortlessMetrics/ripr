@@ -43,7 +43,7 @@
     },
     "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
     "receipt_command": "ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json",
-    "receipt_path": "target/ripr/receipts/gap-pr-gap-python-app-pricing-py-calculate-discount-predicate-boundary-amount-threshold.targeted-test-outcome.json",
+    "receipt_path": ".ripr/receipts/python-threshold.json",
     "receipt_command_source": "gap_ledger.receipt_command",
     "receipt_state": null,
     "static_limit_kind": "python_preview",

@@ -1434,7 +1434,10 @@ fn command_program_is_allowed(tokens: &[String]) -> bool {
         Some("cargo" | "ripr" | "pytest") => true,
         Some("python") => {
             tokens.get(1).map(String::as_str) == Some("-m")
-                && tokens.get(2).map(String::as_str) == Some("unittest")
+                && matches!(
+                    tokens.get(2).map(String::as_str),
+                    Some("unittest" | "pytest")
+                )
         }
         _ => false,
     }
@@ -1446,6 +1449,7 @@ fn looks_like_command_payload(value: &str) -> bool {
         || trimmed.starts_with("ripr ")
         || trimmed.starts_with("pytest ")
         || trimmed.starts_with("python -m unittest ")
+        || trimmed.starts_with("python -m pytest ")
 }
 
 fn command_tokens(command: &str) -> Vec<String> {
@@ -2923,6 +2927,21 @@ mod tests {
         assert!(command_payload_is_safe(
             &workspace,
             "python -m unittest tests.test_pricing.TestDiscount.test_boundary"
+        ));
+        assert!(command_payload_is_safe(
+            &workspace,
+            "python -m pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(looks_like_command_payload(
+            "python -m pytest tests/test_pricing.py::test_discount_boundary"
+        ));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "python -m pip install anything"
+        ));
+        assert!(!command_payload_is_safe(
+            &workspace,
+            "python -m pytest ../outside/test_pricing.py"
         ));
         assert!(!command_payload_is_safe(
             &workspace,

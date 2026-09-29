@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"BASE_DISCOUNT = 12","line":1}
       ],
-      "evidence": ["owner: <module>", "owner_kind: module_function", "test_framework: pytest (test_base_discount)", "test_verify_command: pytest tests/test_constants.py::test_base_discount (test_base_discount)", "related_test_relation: same_stem (test_base_discount)", "related_test_uncertain: same_stem (test_base_discount)"],
+      "evidence": ["owner: <module>", "owner_kind: module_function", "test_framework: pytest (test_base_discount)", "test_verify_command: python -m pytest tests/test_constants.py::test_base_discount (test_base_discount)", "related_test_relation: same_stem (test_base_discount)", "related_test_uncertain: same_stem (test_base_discount)"],
       "missing": ["Only heuristic Python test links were found for `<module>`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
       "assertion_texts": {
       },

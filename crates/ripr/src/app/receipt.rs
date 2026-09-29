@@ -285,7 +285,7 @@ const MAX_RECEIPT_FILENAME_STEM_LEN: usize =
     MAX_RECEIPT_FILENAME_COMPONENT_LEN - RECEIPT_FILENAME_EXTENSION_LEN;
 const RECEIPT_FILENAME_HASH_HEX_LEN: usize = 64;
 
-fn receipt_default_path(canonical_gap_id: &str) -> PathBuf {
+pub(crate) fn receipt_default_path(canonical_gap_id: &str) -> PathBuf {
     PathBuf::from(RECEIPT_DEFAULT_DIRECTORY).join(format!(
         "{}.json",
         bounded_receipt_file_stem(canonical_gap_id)

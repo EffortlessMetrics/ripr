@@ -12079,7 +12079,12 @@ Field contract:
   gap ledger omits a receipt command, `ripr first-pr` may provide a deterministic
   canonical `ripr receipt write` command (RIPR-SPEC-0079) under the configured
   receipts directory; `receipt_command_source` is then
-  `first_pr.default_receipt_write_command`. A missing
+  `first_pr.default_receipt_write_command`. `selected.receipt_path` is the
+  file that `receipt_command` writes: the command's `--out` value (or the
+  receipt writer's default for its `--gap` when it has no `--out`), else a
+  path the ledger record names, else the default path the synthesized command is
+  built with, so the printed path and the printed command never disagree.
+  A missing
   receipt is not failure, merge approval, mutation proof, or runtime adequacy.
   `selected.receipt_state` uses the canonical receipt lifecycle vocabulary:
   `receipt_missing`, `receipt_found`, `receipt_stale`,
@@ -13377,7 +13382,7 @@ The queue envelope is:
       },
       "suggested_test_file": "tests/test_pricing.py",
       "suggested_test_name": "test_calculate_discount_smoke",
-      "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+      "verify_command": "python -m pytest tests/test_pricing.py::test_calculate_discount_smoke",
       "conflict_group": "file:tests/test_pricing.py",
       "conflict_group_size": 2,
       "allowed_edit_surface": ["tests/test_pricing.py"],
@@ -14383,7 +14388,7 @@ is populated:
     "missing_discriminator": "amount == threshold",
     "suggested_test_file": "tests/test_pricing.py",
     "suggested_test_name": "test_calculate_discount_smoke",
-    "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_smoke",
+    "verify_command": "python -m pytest tests/test_pricing.py::test_calculate_discount_smoke",
     "receipt_command": null,
     "receipt_status": "unavailable_until_python_gap_ledger",
     "receipt_guidance": "Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.",
@@ -14759,8 +14764,9 @@ Seam diagnostics also drive editor code actions:
   request.
 
 Validated GapRecord diagnostics use the same code-action surface for
-repair-routing records. Python preview GapRecords accept bounded `pytest ...`
-and `python -m unittest ...` verification commands, expose verify and receipt
+repair-routing records. Python preview GapRecords accept bounded
+`python -m pytest ...` (and the earlier bare `pytest ...` form) and
+`python -m unittest ...` verification commands, expose verify and receipt
 copy actions when those commands are safe, expose `Agent handoff: copy Python
 packet` to copy the same GapRecord-backed agent packet as `ripr agent packet
 --gap-ledger ... --gap-id ...`, expose `Copy Python repair card` to copy a
@@ -15067,7 +15073,7 @@ JSON shape:
         "state": "top_gap",
         "output_state": "preview_limited",
         "top_gap_kind": "MissingBoundaryAssertion",
-        "verify_command": "pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
+        "verify_command": "python -m pytest tests/test_pricing.py::test_calculate_discount_threshold_boundary",
         "next_command": null,
         "expected_status": "actionable",
         "expected_state": "top_gap",
@@ -15348,7 +15354,7 @@ JSON shape:
         "agent_packet_stop_if": ["import cannot be resolved", "expected status code is ambiguous", "production code edit appears necessary"],
         "missing_discriminator": "response.status_code == 422",
         "suggested_test_file": "tests/test_checkout.py",
-        "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+        "verify_command": "python -m pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
         "verify_result": "pass",
         "receipt_result": "pass",
         "gap_movement": "closed",
@@ -15361,7 +15367,7 @@ JSON shape:
             "usability": "usable",
             "missing_discriminator": "response.status_code == 422",
             "suggested_test_file": "tests/test_checkout.py",
-            "verify_command": "pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
+            "verify_command": "python -m pytest tests/test_checkout.py::test_expired_coupon_response_smoke",
             "false_positive_notes": "none observed",
             "reason": "Rank 1 repair card matched the closed Python receipt."
           }

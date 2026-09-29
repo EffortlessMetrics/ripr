@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_discounts.py
   Suggested test: test_bulk_discount_large_order
   Test node: tests/test_discounts.py::test_bulk_discount_large_order
-  Verify command: pytest tests/test_discounts.py::test_bulk_discount_large_order (high)
+  Verify command: python -m pytest tests/test_discounts.py::test_bulk_discount_large_order (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `quantity == 100`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `bulk_discount`

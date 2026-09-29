@@ -383,3 +383,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_no_projectable_owner (6)
+
+Reason:
+RIPR-SPEC-0122: Python pytest verify commands now emit python -m pytest so a flat-layout package imports from the repository root; wording only, no exposure class change
+
+Command:
+`cargo xtask goldens bless python_no_projectable_owner --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

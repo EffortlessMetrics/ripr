@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_policy.py
   Suggested test: test_discount_policy_apply
   Test node: tests/test_policy.py::test_discount_policy_apply
-  Verify command: pytest tests/test_policy.py::test_discount_policy_apply (high)
+  Verify command: python -m pytest tests/test_policy.py::test_discount_policy_apply (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `apply`

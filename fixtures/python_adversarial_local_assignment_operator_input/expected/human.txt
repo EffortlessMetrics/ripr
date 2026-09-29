@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_calc.py
   Suggested test: test_base_unchanged
   Test node: tests/test_calc.py::test_base_unchanged
-  Verify command: pytest tests/test_calc.py::test_base_unchanged (high)
+  Verify command: python -m pytest tests/test_calc.py::test_base_unchanged (high)
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `compute`
     - infection yes: Changed Python expression can alter preview-classified predicate behavior: `total = base - bonus`

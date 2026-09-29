@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_discount.py
   Suggested test: test_calculate_discount_smoke
   Test node: tests/test_discount.py::test_calculate_discount_smoke
-  Verify command: pytest tests/test_discount.py::test_calculate_discount_smoke (high)
+  Verify command: python -m pytest tests/test_discount.py::test_calculate_discount_smoke (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `calculate_discount`

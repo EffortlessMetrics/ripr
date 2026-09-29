@@ -432,3 +432,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_mocked_module_limit (6)
+
+Reason:
+RIPR-SPEC-0122: Python pytest verify commands now emit python -m pytest so a flat-layout package imports from the repository root; wording only, no exposure class change
+
+Command:
+`cargo xtask goldens bless python_mocked_module_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

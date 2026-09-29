@@ -16,7 +16,7 @@ State: actionable
 - Focused proof intent: Strengthen the existing related test in `tests/test_pricing.py`: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`.
 - Verify after the test edit: `pytest tests/test_pricing.py::test_calculate_discount_smoke`
 - Receipt after verify: `ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`
-- Receipt path: `target/ripr/receipts/gap-pr-gap-python-app-pricing-py-calculate-discount-predicate-boundary-amount-threshold.targeted-test-outcome.json`
+- Receipt path: `.ripr/receipts/python-threshold.json`
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 
 Evidence boundary:

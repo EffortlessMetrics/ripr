@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_checker.py
   Suggested test: test_checker_validate
   Test node: tests/test_checker.py::test_checker_validate
-  Verify command: pytest tests/test_checker.py::test_checker_validate (high)
+  Verify command: python -m pytest tests/test_checker.py::test_checker_validate (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `validate`

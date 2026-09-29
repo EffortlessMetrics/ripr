@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"total = base - bonus","line":2}
       ],
-      "evidence": ["owner: compute", "owner_kind: function", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_calc.py", "suggested_test_name: test_base_unchanged", "suggested_test_node_id: tests/test_calc.py::test_base_unchanged", "suggested_verify_command: pytest tests/test_calc.py::test_base_unchanged", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_base_unchanged)", "test_verify_command: pytest tests/test_calc.py::test_base_unchanged (test_base_unchanged)", "related_test_relation: syntactic_call (test_base_unchanged)", "test_oracle: exact_value strong (test_base_unchanged)"],
+      "evidence": ["owner: compute", "owner_kind: function", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_calc.py", "suggested_test_name: test_base_unchanged", "suggested_test_node_id: tests/test_calc.py::test_base_unchanged", "suggested_verify_command: python -m pytest tests/test_calc.py::test_base_unchanged", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_base_unchanged)", "test_verify_command: python -m pytest tests/test_calc.py::test_base_unchanged (test_base_unchanged)", "related_test_relation: syntactic_call (test_base_unchanged)", "test_oracle: exact_value strong (test_base_unchanged)"],
       "missing": ["A strong Python oracle reaches `compute`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -75,7 +75,7 @@
         "suggested_test_file": "tests/test_calc.py",
         "suggested_test_name": "test_base_unchanged",
         "suggested_test_node_id": "tests/test_calc.py::test_base_unchanged",
-        "verify_command": "pytest tests/test_calc.py::test_base_unchanged",
+        "verify_command": "python -m pytest tests/test_calc.py::test_base_unchanged",
         "verify_command_confidence": "high"
        },
       "stop_reasons": [],

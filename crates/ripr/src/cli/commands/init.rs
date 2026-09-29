@@ -1370,6 +1370,31 @@ jobs:
             markdown_inline() {
               printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
             }
+            # Artifacts bind commands to this runner's absolute checkout
+            # (#3999), but a summary reader copies them on another machine.
+            # Rewrite the checkout path, where it is a whole path token, to
+            # the repository root `.`, like the Agent review packet block.
+            repo_relative() {
+              RIPR_CHECKOUT_PHYSICAL="$(pwd -P)" RIPR_CHECKOUT_LOGICAL="$PWD" awk '
+                function rel(s, root,   out, i, pre, rest, before, after) {
+                  out = ""
+                  while (root != "" && (i = index(s, root)) > 0) {
+                    pre = substr(s, 1, i - 1)
+                    rest = substr(s, i + length(root))
+                    before = substr(pre, length(pre), 1)
+                    after = substr(rest, 1, 1)
+                    if ((before == "" || before ~ /[ \047"`=(]/) && (after == "" || after ~ /[\/ \047"`):]/)) {
+                      out = out pre "."
+                    } else {
+                      out = out pre root
+                    }
+                    s = rest
+                  }
+                  return out s
+                }
+                { print rel(rel($0, ENVIRON["RIPR_CHECKOUT_PHYSICAL"]), ENVIRON["RIPR_CHECKOUT_LOGICAL"]) }
+              '
+            }
 
             echo '## RIPR advisory summary'
             echo
@@ -1692,10 +1717,10 @@ jobs:
                 panel_missing="$(markdown_inline "$panel_missing")"
                 panel_related="$(markdown_inline "$panel_related")"
                 panel_suggested="$(markdown_inline "$panel_suggested")"
-                panel_verify="$(markdown_inline "$panel_verify")"
-                panel_agent="$(markdown_inline "$panel_agent")"
-                panel_repair="$(markdown_inline "$panel_repair")"
-                panel_receipt="$(markdown_inline "$panel_receipt")"
+                panel_verify="$(markdown_inline "$(printf '%s\n' "$panel_verify" | repo_relative)")"
+                panel_agent="$(markdown_inline "$(printf '%s\n' "$panel_agent" | repo_relative)")"
+                panel_repair="$(markdown_inline "$(printf '%s\n' "$panel_repair" | repo_relative)")"
+                panel_receipt="$(markdown_inline "$(printf '%s\n' "$panel_receipt" | repo_relative)")"
                 panel_gate_mode="$(markdown_inline "$panel_gate_mode")"
                 panel_gate_decision="$(markdown_inline "$panel_gate_decision")"
                 panel_warning_count="$(markdown_inline "$panel_warning_count")"
@@ -1735,7 +1760,7 @@ jobs:
               if [ -f target/ripr/reports/pr-review-front-panel.md ]; then
                 echo '<details><summary>Full report: target/ripr/reports/pr-review-front-panel.md</summary>'
                 echo
-                cat target/ripr/reports/pr-review-front-panel.md
+                repo_relative < target/ripr/reports/pr-review-front-panel.md
                 echo
                 echo '</details>'
               fi
@@ -1765,9 +1790,9 @@ jobs:
                 action_why="$(markdown_inline "$action_why")"
                 action_seam="$(markdown_inline "$action_seam")"
                 action_target="$(markdown_inline "$action_target")"
-                action_repair="$(markdown_inline "$action_repair")"
-                action_verify="$(markdown_inline "$action_verify")"
-                action_receipt="$(markdown_inline "$action_receipt")"
+                action_repair="$(markdown_inline "$(printf '%s\n' "$action_repair" | repo_relative)")"
+                action_verify="$(markdown_inline "$(printf '%s\n' "$action_verify" | repo_relative)")"
+                action_receipt="$(markdown_inline "$(printf '%s\n' "$action_receipt" | repo_relative)")"
                 action_fallback="$(markdown_inline "$action_fallback")"
                 action_warning_count="$(markdown_inline "$action_warning_count")"
                 echo '#### Recommended next test at a glance'
@@ -1800,7 +1825,7 @@ jobs:
               if [ -f target/ripr/reports/first-useful-action.md ]; then
                 echo '<details><summary>Full report: target/ripr/reports/first-useful-action.md</summary>'
                 echo
-                cat target/ripr/reports/first-useful-action.md
+                repo_relative < target/ripr/reports/first-useful-action.md
                 echo
                 echo '</details>'
               fi

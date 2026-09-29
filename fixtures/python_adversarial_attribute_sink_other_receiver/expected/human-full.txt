@@ -55,7 +55,7 @@ Python repair card (preview/advisory)
   suggested file: tests/test_session.py
   suggested test: test_session_refresh
   pytest node: tests/test_session.py::test_session_refresh
-  verify: pytest tests/test_session.py::test_session_refresh (high)
+  verify: python -m pytest tests/test_session.py::test_session_refresh (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:

@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return count - 1","line":2}
       ],
-      "evidence": ["owner: next_value", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_counter.py", "suggested_test_name: test_next", "suggested_test_node_id: tests/test_counter.py::test_next", "suggested_verify_command: pytest tests/test_counter.py::test_next", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_next)", "test_verify_command: pytest tests/test_counter.py::test_next (test_next)", "related_test_relation: syntactic_call (test_next)", "test_oracle: exact_value strong (test_next)"],
+      "evidence": ["owner: next_value", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_counter.py", "suggested_test_name: test_next", "suggested_test_node_id: tests/test_counter.py::test_next", "suggested_verify_command: python -m pytest tests/test_counter.py::test_next", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_next)", "test_verify_command: python -m pytest tests/test_counter.py::test_next (test_next)", "related_test_relation: syntactic_call (test_next)", "test_oracle: exact_value strong (test_next)"],
       "missing": ["A strong Python oracle reaches `next_value`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_counter.py",
         "suggested_test_name": "test_next",
         "suggested_test_node_id": "tests/test_counter.py::test_next",
-        "verify_command": "pytest tests/test_counter.py::test_next",
+        "verify_command": "python -m pytest tests/test_counter.py::test_next",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_counter.py::test_next"
          },
         "verify": {
-          "command": "pytest tests/test_counter.py::test_next",
+          "command": "python -m pytest tests/test_counter.py::test_next",
           "confidence": "high"
          },
         "receipt": {

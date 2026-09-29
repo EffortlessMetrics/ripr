@@ -240,7 +240,7 @@ fn non_underscore_names_preserve_selectors_and_owner_relations() -> Result<(), S
     for (name, expected) in [
         (
             "testPytestPrice",
-            "pytest tests/test_collection.py::testPytestPrice",
+            "python -m pytest tests/test_collection.py::testPytestPrice",
         ),
         (
             "testUnittestPrice",

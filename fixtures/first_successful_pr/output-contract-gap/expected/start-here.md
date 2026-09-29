@@ -16,6 +16,7 @@ State: actionable
 - Focused proof intent: Add or update the output proof in `fixtures/device-labels/expected/human.txt` so `golden output contains APPLE_M3_AIR_DEVICE_LABELS_TEXT`.
 - Verify after the test edit: `cargo xtask goldens check`
 - Receipt after verify: `ripr receipt write --gap gap:rust:output:device-label --verify-command 'cargo xtask goldens check' --status not_run --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
+- Receipt status: the command records `--status not_run` as printed; after the verify command runs, change it to `--status passed` if verify exited 0 or `--status failed` if it did not.
 - Receipt path: `target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json`
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 

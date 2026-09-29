@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_session.py
   Suggested test: test_session_refresh
   Test node: tests/test_session.py::test_session_refresh
-  Verify command: pytest tests/test_session.py::test_session_refresh (high)
+  Verify command: python -m pytest tests/test_session.py::test_session_refresh (high)
   Next step: Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `self.status == "active"`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `refresh`

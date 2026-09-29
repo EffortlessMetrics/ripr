@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"struct_field","text":"self.status = \"paid\"","line":6}
       ],
-      "evidence": ["owner: Invoice.mark_paid", "owner_kind: method", "test_framework: pytest (test_mark_paid_sets_status)", "test_verify_command: pytest tests/test_invoice.py::test_mark_paid_sets_status (test_mark_paid_sets_status)", "related_test_relation: syntactic_call (test_mark_paid_sets_status)", "test_oracle: exact_value strong (test_mark_paid_sets_status)", "test_oracle_shape: status_code_assertion (test_mark_paid_sets_status)"],
+      "evidence": ["owner: Invoice.mark_paid", "owner_kind: method", "test_framework: pytest (test_mark_paid_sets_status)", "test_verify_command: python -m pytest tests/test_invoice.py::test_mark_paid_sets_status (test_mark_paid_sets_status)", "related_test_relation: syntactic_call (test_mark_paid_sets_status)", "test_oracle: exact_value strong (test_mark_paid_sets_status)", "test_oracle_shape: status_code_assertion (test_mark_paid_sets_status)"],
       "missing": ["Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "assertion_texts": {
       },

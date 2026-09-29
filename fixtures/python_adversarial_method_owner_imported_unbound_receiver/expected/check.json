@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return token.strip() in self._valid","line":6}
       ],
-      "evidence": ["owner: TokenValidator.validate", "owner_kind: method", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_billing.py", "suggested_test_name: test_billing_validate", "suggested_test_node_id: tests/test_billing.py::test_billing_validate", "suggested_verify_command: pytest tests/test_billing.py::test_billing_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_billing_validate)", "test_verify_command: pytest tests/test_billing.py::test_billing_validate (test_billing_validate)", "related_test_relation: syntactic_call (test_billing_validate)", "test_oracle: exact_value strong (test_billing_validate)"],
+      "evidence": ["owner: TokenValidator.validate", "owner_kind: method", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_billing.py", "suggested_test_name: test_billing_validate", "suggested_test_node_id: tests/test_billing.py::test_billing_validate", "suggested_verify_command: python -m pytest tests/test_billing.py::test_billing_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_billing_validate)", "test_verify_command: python -m pytest tests/test_billing.py::test_billing_validate (test_billing_validate)", "related_test_relation: syntactic_call (test_billing_validate)", "test_oracle: exact_value strong (test_billing_validate)"],
       "missing": ["A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_billing.py",
         "suggested_test_name": "test_billing_validate",
         "suggested_test_node_id": "tests/test_billing.py::test_billing_validate",
-        "verify_command": "pytest tests/test_billing.py::test_billing_validate",
+        "verify_command": "python -m pytest tests/test_billing.py::test_billing_validate",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_billing.py::test_billing_validate"
          },
         "verify": {
-          "command": "pytest tests/test_billing.py::test_billing_validate",
+          "command": "python -m pytest tests/test_billing.py::test_billing_validate",
           "confidence": "high"
          },
         "receipt": {

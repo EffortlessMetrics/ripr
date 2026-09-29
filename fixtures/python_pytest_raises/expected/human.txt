@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_quantity.py
   Suggested test: test_rejects_zero_quantity
   Test node: tests/test_quantity.py::test_rejects_zero_quantity
-  Verify command: pytest tests/test_quantity.py::test_rejects_zero_quantity (high)
+  Verify command: python -m pytest tests/test_quantity.py::test_rejects_zero_quantity (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `value == 0`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `normalize_quantity`

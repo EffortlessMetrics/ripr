@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_notifier.py
   Suggested test: test_send_alert_calls_post
   Test node: tests/test_notifier.py::test_send_alert_calls_post
-  Verify command: pytest tests/test_notifier.py::test_send_alert_calls_post (high)
+  Verify command: python -m pytest tests/test_notifier.py::test_send_alert_calls_post (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `send_alert`

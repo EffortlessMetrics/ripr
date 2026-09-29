@@ -16,6 +16,7 @@ State: actionable
 - Focused proof intent: Add a focused boundary assertion in `tests/pricing.rs`: `assert_eq!(discount(100, 100), 90)`.
 - Verify after the test edit: `cargo xtask fixtures boundary_gap`
 - Receipt after verify: `ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
+- Receipt status: the command records `--status not_run` as printed; after the verify command runs, change it to `--status passed` if verify exited 0 or `--status failed` if it did not.
 - Receipt path: `target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json`
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 

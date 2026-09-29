@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_validation.py
   Suggested test: test_rejects_zero_value
   Test node: tests/test_validation.py::test_rejects_zero_value
-  Verify command: pytest tests/test_validation.py::test_rejects_zero_value (high)
+  Verify command: python -m pytest tests/test_validation.py::test_rejects_zero_value (high)
   Next step: Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises ValueError matching "positive required"`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `require_positive`

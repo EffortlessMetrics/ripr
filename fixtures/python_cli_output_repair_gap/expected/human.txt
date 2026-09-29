@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_commands.py
   Suggested test: test_ship_smoke
   Test node: tests/test_commands.py::test_ship_smoke
-  Verify command: pytest tests/test_commands.py::test_ship_smoke (high)
+  Verify command: python -m pytest tests/test_commands.py::test_ship_smoke (high)
   Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `output contains "shipment queued"`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `ship`

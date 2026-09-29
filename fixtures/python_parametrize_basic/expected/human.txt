@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_tax.py
   Suggested test: test_tax_band
   Test node: tests/test_tax.py::test_tax_band
-  Verify command: pytest tests/test_tax.py::test_tax_band (high)
+  Verify command: python -m pytest tests/test_tax.py::test_tax_band (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `tax_band`

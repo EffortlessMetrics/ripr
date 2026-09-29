@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if quantity > 100:","line":2}
       ],
-      "evidence": ["owner: bulk_discount", "owner_kind: function", "missing_discriminator: quantity == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discounts.py", "suggested_test_name: test_bulk_discount_large_order", "suggested_test_node_id: tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_bulk_discount_large_order)", "test_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order (test_bulk_discount_large_order)", "related_test_relation: syntactic_call (test_bulk_discount_large_order)", "test_oracle: exact_value strong (test_bulk_discount_large_order)"],
+      "evidence": ["owner: bulk_discount", "owner_kind: function", "missing_discriminator: quantity == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discounts.py", "suggested_test_name: test_bulk_discount_large_order", "suggested_test_node_id: tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command: python -m pytest tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_bulk_discount_large_order)", "test_verify_command: python -m pytest tests/test_discounts.py::test_bulk_discount_large_order (test_bulk_discount_large_order)", "related_test_relation: syntactic_call (test_bulk_discount_large_order)", "test_oracle: exact_value strong (test_bulk_discount_large_order)"],
       "missing": ["A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test call places quantity equal to 100; observed quantity values: 101."],
       "assertion_texts": {
         "5": "assert bulk_discount(101) == 0.15"
@@ -96,7 +96,7 @@
         "suggested_test_file": "tests/test_discounts.py",
         "suggested_test_name": "test_bulk_discount_large_order",
         "suggested_test_node_id": "tests/test_discounts.py::test_bulk_discount_large_order",
-        "verify_command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+        "verify_command": "python -m pytest tests/test_discounts.py::test_bulk_discount_large_order",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -119,7 +119,7 @@
           "pytest_node_id": "tests/test_discounts.py::test_bulk_discount_large_order"
          },
         "verify": {
-          "command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+          "command": "python -m pytest tests/test_discounts.py::test_bulk_discount_large_order",
           "confidence": "high"
          },
         "receipt": {
@@ -181,7 +181,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if quantity > 50:","line":2}
       ],
-      "evidence": ["owner: bulk_discount", "owner_kind: function", "missing_discriminator: quantity == 50", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discounts.py", "suggested_test_name: test_bulk_discount_large_order", "suggested_test_node_id: tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_bulk_discount_large_order)", "test_verify_command: pytest tests/test_discounts.py::test_bulk_discount_large_order (test_bulk_discount_large_order)", "related_test_relation: syntactic_call (test_bulk_discount_large_order)", "test_oracle: exact_value strong (test_bulk_discount_large_order)"],
+      "evidence": ["owner: bulk_discount", "owner_kind: function", "missing_discriminator: quantity == 50", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discounts.py", "suggested_test_name: test_bulk_discount_large_order", "suggested_test_node_id: tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command: python -m pytest tests/test_discounts.py::test_bulk_discount_large_order", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_bulk_discount_large_order)", "test_verify_command: python -m pytest tests/test_discounts.py::test_bulk_discount_large_order (test_bulk_discount_large_order)", "related_test_relation: syntactic_call (test_bulk_discount_large_order)", "test_oracle: exact_value strong (test_bulk_discount_large_order)"],
       "missing": ["A strong Python oracle reaches `bulk_discount`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
         "5": "assert bulk_discount(101) == 0.15"
@@ -231,7 +231,7 @@
         "suggested_test_file": "tests/test_discounts.py",
         "suggested_test_name": "test_bulk_discount_large_order",
         "suggested_test_node_id": "tests/test_discounts.py::test_bulk_discount_large_order",
-        "verify_command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+        "verify_command": "python -m pytest tests/test_discounts.py::test_bulk_discount_large_order",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -254,7 +254,7 @@
           "pytest_node_id": "tests/test_discounts.py::test_bulk_discount_large_order"
          },
         "verify": {
-          "command": "pytest tests/test_discounts.py::test_bulk_discount_large_order",
+          "command": "python -m pytest tests/test_discounts.py::test_bulk_discount_large_order",
           "confidence": "high"
          },
         "receipt": {

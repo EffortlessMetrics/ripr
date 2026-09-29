@@ -98,8 +98,13 @@ Test discovery:
   and `*_test.py`; the configured pattern is part of the repo config
   cross-spec contract)
 - framework-shaped verify commands for related tests when the static selector
-  is known: `pytest path::node` for pytest and
-  `python -m unittest module.Class.test_method` for unittest
+  is known: `python -m pytest path::node` for pytest and
+  `python -m unittest module.Class.test_method` for unittest. The pytest form
+  runs through `python -m` so the working directory is on `sys.path` and a
+  flat-layout package at the repository root imports without a `pythonpath`
+  setting; bare `pytest path::node` fails collection there with
+  `ModuleNotFoundError`. Both forms spell the interpreter `python`, which names
+  the virtual environment's interpreter on every platform
 
 The default name prefix is case-sensitive and does not require an underscore:
 `test`, `testCamelCase`, and `test_with_underscore` all qualify. `_test_private`,
@@ -581,7 +586,8 @@ Python repair card. The repo-ops PR summary also projects the top eligible
 Python preview repair card from `actionable-gaps.json` so local reviewer
 packets preserve the same canonical gap, missing discriminator, verify command,
 receipt command, and advisory boundary. Editor projection accepts bounded
-`pytest ...` and `python -m unittest ...` verify commands from Python
+`python -m pytest ...` (and the bare `pytest ...` form earlier artifacts
+carry) and `python -m unittest ...` verify commands from Python
 GapRecords, can copy a bounded Python agent packet from current actionable
 GapRecords, can copy a full repair card with a current validated GapRecord
 freshness cue, can copy a fail-fast pytest skeleton, and can open the

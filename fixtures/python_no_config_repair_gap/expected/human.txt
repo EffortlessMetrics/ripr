@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_promotions.py
   Suggested test: test_trial_extension_long_smoke
   Test node: tests/test_promotions.py::test_trial_extension_long_smoke
-  Verify command: pytest tests/test_promotions.py::test_trial_extension_long_smoke (high)
+  Verify command: python -m pytest tests/test_promotions.py::test_trial_extension_long_smoke (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `days == minimum_days`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `trial_extension`

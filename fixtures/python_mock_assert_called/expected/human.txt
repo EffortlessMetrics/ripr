@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_notify.py
   Suggested test: test_send_receipt_notifies_callback
   Test node: tests/test_notify.py::test_send_receipt_notifies_callback
-  Verify command: pytest tests/test_notify.py::test_send_receipt_notifies_callback (high)
+  Verify command: python -m pytest tests/test_notify.py::test_send_receipt_notifies_callback (high)
   Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `send_receipt`

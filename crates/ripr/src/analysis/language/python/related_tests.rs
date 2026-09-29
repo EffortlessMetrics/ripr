@@ -154,7 +154,11 @@ pub(super) fn verify_command_for_test(test: &PythonTest) -> Option<String> {
     match test.framework {
         "pytest" => {
             let node = test.qualified_name.replace('.', "::");
-            Some(format!("pytest {}::{node}", shell_quote_file_arg(&path)))
+            Some(format!(
+                "{} {}::{node}",
+                crate::domain::PYTEST_VERIFY_PROGRAM,
+                shell_quote_file_arg(&path)
+            ))
         }
         "unittest" => {
             let module = shell_quote_file_arg(&unittest_module_for_path(&path));

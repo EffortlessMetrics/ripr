@@ -8734,7 +8734,7 @@ language = "rust"
         assert!(summary.contains(".top_issue.receipt.artifact // \"not_available\""));
         assert!(summary.contains(".policy.mode // \"not_available\""));
         assert!(summary.contains(".policy.decision // \"not_available\""));
-        assert!(summary.contains("cat target/ripr/reports/pr-review-front-panel.md"));
+        assert!(summary.contains("repo_relative < target/ripr/reports/pr-review-front-panel.md"));
         assert!(summary.contains("PR review summary was not generated"));
         assert!(summary.contains("### Recommended next test"));
         assert!(summary.contains("#### Recommended next test at a glance"));
@@ -8787,7 +8787,7 @@ language = "rust"
         assert!(summary.contains(".commands.verify // \"not_available\""));
         assert!(summary.contains(".commands.receipt // \"not_available\""));
         assert!(summary.contains(".fallback.kind // \"none\""));
-        assert!(summary.contains("cat target/ripr/reports/first-useful-action.md"));
+        assert!(summary.contains("repo_relative < target/ripr/reports/first-useful-action.md"));
         assert!(summary.contains("Recommended next test was not generated"));
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));

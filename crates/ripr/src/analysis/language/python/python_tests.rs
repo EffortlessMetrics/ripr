@@ -822,7 +822,7 @@ class CheckoutTests(unittest.TestCase):
     assert_eq!(pytest_test.qualified_name, "TestCheckout.test_pytest_route");
     assert_eq!(
         verify_command_for_test(pytest_test).as_deref(),
-        Some("pytest tests/test_checkout.py::TestCheckout::test_pytest_route")
+        Some("python -m pytest tests/test_checkout.py::TestCheckout::test_pytest_route")
     );
     assert_eq!(
         unittest_test.qualified_name,
@@ -846,7 +846,7 @@ fn verify_command_quotes_shell_metacharacters_and_leaves_plain_paths_raw() -> Re
         .ok_or_else(|| "missing hostile pytest".to_string())?;
     assert_eq!(
         verify_command_for_test(hostile_test).as_deref(),
-        Some("pytest 'tests/foo$(id).py'::test_ok")
+        Some("python -m pytest 'tests/foo$(id).py'::test_ok")
     );
     let placement = python_repair_placement(
         &ExposureClass::WeaklyExposed,
@@ -867,7 +867,7 @@ fn verify_command_quotes_shell_metacharacters_and_leaves_plain_paths_raw() -> Re
     );
     assert_eq!(
         placement.verify_command,
-        "pytest 'tests/foo$(id).py'::test_ok"
+        "python -m pytest 'tests/foo$(id).py'::test_ok"
     );
 
     let spaced = extract_tests(Path::new("tests/my file.py"), pytest_source);
@@ -877,7 +877,7 @@ fn verify_command_quotes_shell_metacharacters_and_leaves_plain_paths_raw() -> Re
         .ok_or_else(|| "missing spaced pytest".to_string())?;
     assert_eq!(
         verify_command_for_test(spaced_test).as_deref(),
-        Some("pytest 'tests/my file.py'::test_ok")
+        Some("python -m pytest 'tests/my file.py'::test_ok")
     );
 
     let quoted = extract_tests(Path::new("tests/o'brien.py"), pytest_source);
@@ -887,7 +887,7 @@ fn verify_command_quotes_shell_metacharacters_and_leaves_plain_paths_raw() -> Re
         .ok_or_else(|| "missing quoted pytest".to_string())?;
     assert_eq!(
         verify_command_for_test(quoted_test).as_deref(),
-        Some("pytest 'tests/o'\\''brien.py'::test_ok")
+        Some("python -m pytest 'tests/o'\\''brien.py'::test_ok")
     );
 
     let plain = extract_tests(Path::new("tests/test_checkout.py"), pytest_source);
@@ -897,7 +897,7 @@ fn verify_command_quotes_shell_metacharacters_and_leaves_plain_paths_raw() -> Re
         .ok_or_else(|| "missing plain pytest".to_string())?;
     assert_eq!(
         verify_command_for_test(plain_test).as_deref(),
-        Some("pytest tests/test_checkout.py::test_ok"),
+        Some("python -m pytest tests/test_checkout.py::test_ok"),
         "a plain relative path must stay unquoted"
     );
 

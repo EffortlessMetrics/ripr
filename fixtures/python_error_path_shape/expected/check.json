@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"error_variant","text":"raise ValueError(\"positive required\")","line":3}
       ],
-      "evidence": ["owner: require_positive", "owner_kind: function", "missing_discriminator: raises ValueError matching \"positive required\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_validation.py", "suggested_test_name: test_rejects_zero_value", "suggested_test_node_id: tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command: pytest tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_rejects_zero_value)", "test_verify_command: pytest tests/test_validation.py::test_rejects_zero_value (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)", "test_oracle_shape: exception_assertion (test_rejects_zero_value)"],
+      "evidence": ["owner: require_positive", "owner_kind: function", "missing_discriminator: raises ValueError matching \"positive required\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_validation.py", "suggested_test_name: test_rejects_zero_value", "suggested_test_node_id: tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command: python -m pytest tests/test_validation.py::test_rejects_zero_value", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_rejects_zero_value)", "test_verify_command: python -m pytest tests/test_validation.py::test_rejects_zero_value (test_rejects_zero_value)", "related_test_relation: syntactic_call (test_rejects_zero_value)", "test_oracle: broad_error weak (test_rejects_zero_value)", "test_oracle_shape: exception_assertion (test_rejects_zero_value)"],
       "missing": ["Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the exact exception type/message."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_validation.py",
         "suggested_test_name": "test_rejects_zero_value",
         "suggested_test_node_id": "tests/test_validation.py::test_rejects_zero_value",
-        "verify_command": "pytest tests/test_validation.py::test_rejects_zero_value",
+        "verify_command": "python -m pytest tests/test_validation.py::test_rejects_zero_value",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_validation.py::test_rejects_zero_value"
          },
         "verify": {
-          "command": "pytest tests/test_validation.py::test_rejects_zero_value",
+          "command": "python -m pytest tests/test_validation.py::test_rejects_zero_value",
           "confidence": "high"
          },
         "receipt": {

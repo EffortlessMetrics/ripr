@@ -315,6 +315,22 @@ fn generated_workflow_replay_prints_only_runnable_next_steps() -> Result<(), Box
         );
     }
 
+    // The PR review summary and Recommended next test blocks print commands
+    // a reader copies on another machine, so they never name this runner's
+    // checkout. `generated_summary_prints_repository_relative_commands`
+    // holds the rewrite to artifacts that do carry the checkout path.
+    for heading in ["### PR review summary\n", "### Recommended next test\n"] {
+        let block = summary
+            .split(heading)
+            .nth(1)
+            .and_then(|rest| rest.split("\n### ").next())
+            .ok_or_else(|| format!("summary has no {heading:?} block"))?;
+        assert!(
+            !block.contains(root_text),
+            "{heading:?} prints the runner checkout path:\n{block}"
+        );
+    }
+
     let commands = replay::printed_commands(&summary);
     let runnable = commands
         .iter()
@@ -2265,6 +2281,156 @@ fn jq_program_between(workflow: &str, open: &str, close: &str) -> Result<String,
         .find(close)
         .ok_or_else(|| format!("missing jq program closing {close:?}"))?;
     Ok(rest[..end].to_string())
+}
+
+/// The CI summary's PR review summary and Recommended next test blocks,
+/// collapsed full reports included, print commands a reader copies on
+/// another machine. When `ripr agent start` bound them to the runner's
+/// absolute checkout (#3999), the summary names the repository root `.`
+/// instead, like the Agent review packet block; a sibling path that only
+/// shares the checkout's prefix is left alone.
+#[cfg(unix)]
+#[test]
+fn generated_summary_prints_repository_relative_commands() -> Result<(), Box<dyn Error>> {
+    let tools = run_sh(
+        "command -v bash >/dev/null && command -v jq >/dev/null && command -v awk >/dev/null",
+        std::env::temp_dir().as_path(),
+    )?;
+    if !tools.status.success() {
+        if std::env::var_os("GITHUB_ACTIONS").is_some() {
+            return Err("bash, jq or awk is missing under GitHub Actions".into());
+        }
+        eprintln!(
+            "skipping generated_summary_prints_repository_relative_commands: bash, jq or awk missing"
+        );
+        return Ok(());
+    }
+
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let root = std::env::temp_dir()
+        .join(format!(
+            "ripr-summary-relative-{}-{nonce}",
+            std::process::id()
+        ))
+        .join("my repo");
+    fs::create_dir_all(root.join("target/ripr/reports"))?;
+    let root = root.canonicalize()?;
+    let output = run_ripr_init(&root)?;
+    if !output.status.success() {
+        return Err(format!(
+            "ripr init failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    let workflow = fs::read_to_string(root.join(".github/workflows/ripr.yml"))?;
+    let script = summary_run_script(&workflow)?;
+
+    let checkout = root.to_str().ok_or("non-utf8 temp path")?;
+    let sibling = format!("{checkout}-other/notes.md");
+    let verify = format!(
+        "ripr agent verify --root '{checkout}' --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > '{checkout}/target/ripr/workflow/agent-verify.json'"
+    );
+    let receipt = format!(
+        "ripr agent receipt --root '{checkout}' --verify-json target/ripr/workflow/agent-verify.json --seam-id s1 --json"
+    );
+    let agent = format!("ripr agent brief --root '{checkout}' --seam-id s1 --json");
+    fs::write(
+        root.join("target/ripr/reports/pr-review-front-panel.json"),
+        serde_json::json!({
+            "status": "ready",
+            "top_issue": {"verify_command": verify, "agent_command": agent},
+        })
+        .to_string(),
+    )?;
+    fs::write(
+        root.join("target/ripr/reports/pr-review-front-panel.md"),
+        format!("- Verify after the test edit: `{verify}`\n- Notes: `{sibling}`\n"),
+    )?;
+    fs::write(
+        root.join("target/ripr/reports/first-useful-action.json"),
+        serde_json::json!({
+            "status": "ready",
+            "commands": {"verify": verify, "receipt": receipt},
+        })
+        .to_string(),
+    )?;
+    fs::write(
+        root.join("target/ripr/reports/first-useful-action.md"),
+        format!("- Verify after the test edit: `{verify}`\n- Receipt after verify: `{receipt}`\n"),
+    )?;
+
+    let summary_path = root.join("step-summary.md");
+    let summary_text = summary_path.to_str().ok_or("non-utf8 temp path")?;
+    let run = run_sh(
+        &format!("export GITHUB_STEP_SUMMARY='{summary_text}'\n{script}"),
+        &root,
+    )?;
+    assert!(
+        run.status.success(),
+        "summary step failed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let summary = fs::read_to_string(&summary_path)?;
+    let relative_verify = "ripr agent verify --root '.' --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > './target/ripr/workflow/agent-verify.json'";
+    for heading in ["### PR review summary\n", "### Recommended next test\n"] {
+        let block = summary
+            .split(heading)
+            .nth(1)
+            .and_then(|rest| rest.split("\n### ").next())
+            .ok_or_else(|| format!("summary has no {heading:?} block:\n{summary}"))?;
+        let without_sibling = block.replace(&sibling, "");
+        assert!(
+            !without_sibling.contains(checkout),
+            "{heading:?} prints the runner checkout path:\n{block}"
+        );
+        // The at-a-glance line and the collapsed full report both rewrite.
+        assert_eq!(
+            block.matches(relative_verify).count(),
+            2,
+            "{heading:?} must print verify at the repository root twice:\n{block}"
+        );
+    }
+    assert!(
+        summary.contains("ripr agent receipt --root '.' --verify-json"),
+        "{summary}"
+    );
+    assert!(
+        summary.contains("ripr agent brief --root '.' --seam-id s1 --json"),
+        "{summary}"
+    );
+    assert!(
+        summary.contains(&format!("- Notes: `{sibling}`")),
+        "a path that only shares the checkout prefix must stay as written:\n{summary}"
+    );
+
+    if let Some(parent) = root.parent() {
+        fs::remove_dir_all(parent)?;
+    }
+    Ok(())
+}
+
+/// Unix-only like its callers (see `annotation_run_script`).
+#[cfg(unix)]
+fn summary_run_script(workflow: &str) -> Result<String, String> {
+    let marker = "- name: Add RIPR advisory summary";
+    let start = workflow.find(marker).ok_or("missing summary step")?;
+    let rest = &workflow[start..];
+    let run_marker = "\n        run: |\n";
+    let run_at = rest.find(run_marker).ok_or("missing summary run")?;
+    let body = &rest[run_at + run_marker.len()..];
+    let end = body
+        .find("\n      - name:")
+        .ok_or("summary step does not end")?;
+    let script = body[..end].trim_end();
+    if !script.contains("repo_relative()") {
+        return Err("summary script has no repo_relative rewrite".to_string());
+    }
+    Ok(script
+        .lines()
+        .map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n"))
 }
 
 /// Unix-only like its callers: the shell-backed tests that use this

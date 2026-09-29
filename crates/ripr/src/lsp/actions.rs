@@ -1491,7 +1491,7 @@ fn python_pytest_skeleton_target(snapshot: &AnalysisSnapshot, data: &Value) -> O
     }
     let verify_command =
         first_safe_command_at(snapshot.root.as_path(), data, &["verification_commands"])?;
-    if !verify_command.starts_with("pytest ") {
+    if !crate::domain::is_pytest_verify_command(&verify_command) {
         return None;
     }
     let test_name = python_test_name_for_skeleton(data, route, &verify_command);
@@ -2509,6 +2509,37 @@ mod tests {
         data["repair_route"]["target_file"] = serde_json::json!("../outside/test_pricing.py");
 
         assert!(python_pytest_skeleton_target(&snapshot, &data).is_none());
+    }
+
+    #[test]
+    fn python_pytest_skeleton_accepts_the_module_form_verify_command() -> Result<(), String> {
+        let snapshot = python_snapshot();
+        let mut data = serde_json::json!({
+            "language": "python",
+            "canonical_gap_id": "gap:python:pricing",
+            "missing_discriminator": "amount == DISCOUNT_THRESHOLD",
+            "repair_route": {
+                "route_kind": "existing_test_strengthening",
+                "target_file": "tests/test_pricing.py",
+                "assertion_shape": "assert result == expected"
+            },
+            "verification_commands": ["python -m pytest tests/test_pricing.py::test_boundary"]
+        });
+        let target = python_pytest_skeleton_target(&snapshot, &data).ok_or_else(|| {
+            "the generated `python -m pytest` verify command must enable the skeleton".to_string()
+        })?;
+        let brief = target["brief"]
+            .as_str()
+            .ok_or_else(|| "skeleton target must contain a text brief".to_string())?;
+        if !brief.contains("def test_boundary") {
+            return Err(format!("skeleton must name the node-id test: {brief}"));
+        }
+        data["verification_commands"] =
+            serde_json::json!(["python -m unittest tests.test_pricing.TestPricing.test_boundary"]);
+        if python_pytest_skeleton_target(&snapshot, &data).is_some() {
+            return Err("a unittest verify command must not get a pytest skeleton".to_string());
+        }
+        Ok(())
     }
 
     #[test]

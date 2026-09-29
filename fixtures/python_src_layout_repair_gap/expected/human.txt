@@ -24,7 +24,7 @@ Start here:
   Suggested test file: tests/test_pricing.py
   Suggested test: test_loyalty_discount_high_value_smoke
   Test node: tests/test_pricing.py::test_loyalty_discount_high_value_smoke
-  Verify command: pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke (high)
+  Verify command: python -m pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `subtotal == loyalty_threshold`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `loyalty_discount`

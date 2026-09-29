@@ -55,7 +55,7 @@ Python repair card (preview/advisory)
   suggested file: tests/test_counter.py
   suggested test: test_next
   pytest node: tests/test_counter.py::test_next
-  verify: pytest tests/test_counter.py::test_next (high)
+  verify: python -m pytest tests/test_counter.py::test_next (high)
   receipt: unavailable_until_python_gap_ledger
   receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
   stop conditions:

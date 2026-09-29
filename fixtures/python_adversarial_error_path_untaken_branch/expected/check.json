@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"error_variant","text":"raise KeyError(\"empty\")","line":3}
       ],
-      "evidence": ["owner: parse", "owner_kind: function", "missing_discriminator: raises KeyError matching \"empty\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_parseint.py", "suggested_test_name: test_parse_ok", "suggested_test_node_id: tests/test_parseint.py::test_parse_ok", "suggested_verify_command: pytest tests/test_parseint.py::test_parse_ok", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_parse_ok)", "test_verify_command: pytest tests/test_parseint.py::test_parse_ok (test_parse_ok)", "related_test_relation: syntactic_call (test_parse_ok)", "test_oracle: exact_value strong (test_parse_ok)"],
+      "evidence": ["owner: parse", "owner_kind: function", "missing_discriminator: raises KeyError matching \"empty\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_parseint.py", "suggested_test_name: test_parse_ok", "suggested_test_node_id: tests/test_parseint.py::test_parse_ok", "suggested_verify_command: python -m pytest tests/test_parseint.py::test_parse_ok", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_parse_ok)", "test_verify_command: python -m pytest tests/test_parseint.py::test_parse_ok (test_parse_ok)", "related_test_relation: syntactic_call (test_parse_ok)", "test_oracle: exact_value strong (test_parse_ok)"],
       "missing": ["A strong Python oracle reaches `parse`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_parseint.py",
         "suggested_test_name": "test_parse_ok",
         "suggested_test_node_id": "tests/test_parseint.py::test_parse_ok",
-        "verify_command": "pytest tests/test_parseint.py::test_parse_ok",
+        "verify_command": "python -m pytest tests/test_parseint.py::test_parse_ok",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_parseint.py::test_parse_ok"
          },
         "verify": {
-          "command": "pytest tests/test_parseint.py::test_parse_ok",
+          "command": "python -m pytest tests/test_parseint.py::test_parse_ok",
           "confidence": "high"
          },
         "receipt": {

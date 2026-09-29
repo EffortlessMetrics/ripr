@@ -311,3 +311,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_same_line_duplicate_collapse (6)
+
+Reason:
+RIPR-SPEC-0122: Python pytest verify commands now emit python -m pytest so a flat-layout package imports from the repository root; wording only, no exposure class change
+
+Command:
+`cargo xtask goldens bless python_same_line_duplicate_collapse --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

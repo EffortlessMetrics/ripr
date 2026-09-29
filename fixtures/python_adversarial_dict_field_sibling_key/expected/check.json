@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"struct_field","text":"return {\"host\": \"localhost\", \"port\": 9090}","line":2}
       ],
-      "evidence": ["owner: build_config", "owner_kind: function", "missing_discriminator: host == \"localhost\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_conf.py", "suggested_test_name: test_host", "suggested_test_node_id: tests/test_conf.py::test_host", "suggested_verify_command: pytest tests/test_conf.py::test_host", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_host)", "test_verify_command: pytest tests/test_conf.py::test_host (test_host)", "related_test_relation: syntactic_call (test_host)", "test_oracle: exact_value strong (test_host)", "test_oracle_shape: field_assertion (test_host)"],
+      "evidence": ["owner: build_config", "owner_kind: function", "missing_discriminator: host == \"localhost\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_conf.py", "suggested_test_name: test_host", "suggested_test_node_id: tests/test_conf.py::test_host", "suggested_verify_command: python -m pytest tests/test_conf.py::test_host", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_host)", "test_verify_command: python -m pytest tests/test_conf.py::test_host (test_host)", "related_test_relation: syntactic_call (test_host)", "test_oracle: exact_value strong (test_host)", "test_oracle_shape: field_assertion (test_host)"],
       "missing": ["A strong Python oracle reaches `build_config`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -85,7 +85,7 @@
         "suggested_test_file": "tests/test_conf.py",
         "suggested_test_name": "test_host",
         "suggested_test_node_id": "tests/test_conf.py::test_host",
-        "verify_command": "pytest tests/test_conf.py::test_host",
+        "verify_command": "python -m pytest tests/test_conf.py::test_host",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -108,7 +108,7 @@
           "pytest_node_id": "tests/test_conf.py::test_host"
          },
         "verify": {
-          "command": "pytest tests/test_conf.py::test_host",
+          "command": "python -m pytest tests/test_conf.py::test_host",
           "confidence": "high"
          },
         "receipt": {

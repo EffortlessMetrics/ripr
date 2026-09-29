@@ -52,6 +52,7 @@ pub(crate) use language::PERL_FACT_EXPORTER;
 #[cfg(feature = "lang-perl")]
 pub(crate) use language::perl_fact_packet_guidance;
 pub use language::{LanguageId, LanguageStatus, OwnerKind, StaticLimitKind};
+pub(crate) use language::{PYTEST_VERIFY_PROGRAM, is_pytest_verify_command};
 pub use probe::{
     ActivationEvidence, DeltaKind, Finding, FindingCanonicalGap, FlowSinkFact, FlowSinkKind,
     MissingDiscriminatorFact, ORACLE_ALIGNMENT_VALUES, Probe, ProbeFamily, RelatedTest,

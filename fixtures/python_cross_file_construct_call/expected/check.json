@@ -46,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if any(c < \" \" for c in key):","line":4}
       ],
-      "evidence": ["owner: Formatter.__call__", "owner_kind: method", "boundary_activation_unresolved: no strong related test call to `__call__` binds a literal argument, so static evidence cannot place an input at the changed boundary of `any(c < \" \" for c in key)`", "test_framework: pytest (test_rejects_space_in_key)", "test_verify_command: pytest tests/test_render.py::test_rejects_space_in_key (test_rejects_space_in_key)", "related_test_relation: construct_call (test_rejects_space_in_key)", "test_oracle: exact_error_variant strong (test_rejects_space_in_key)", "test_oracle_shape: exception_assertion (test_rejects_space_in_key)"],
+      "evidence": ["owner: Formatter.__call__", "owner_kind: method", "boundary_activation_unresolved: no strong related test call to `__call__` binds a literal argument, so static evidence cannot place an input at the changed boundary of `any(c < \" \" for c in key)`", "test_framework: pytest (test_rejects_space_in_key)", "test_verify_command: python -m pytest tests/test_render.py::test_rejects_space_in_key (test_rejects_space_in_key)", "related_test_relation: construct_call (test_rejects_space_in_key)", "test_oracle: exact_error_variant strong (test_rejects_space_in_key)", "test_oracle_shape: exception_assertion (test_rejects_space_in_key)"],
       "missing": ["Related Python test reaches `__call__` with a `exact_error_variant` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "assertion_texts": {
       },

@@ -1,6 +1,6 @@
 use super::{
-    ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP, STATIC_EVIDENCE_BOUNDARY,
-    string_path,
+    ProofPathLabels, RECEIPT_STATUS_LABEL, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP,
+    STATIC_EVIDENCE_BOUNDARY, receipt_status_step, string_path,
 };
 use crate::agent::loop_commands::display_path;
 use crate::output::markdown::{PowershellForm, powershell_command, powershell_form};
@@ -119,6 +119,9 @@ pub(super) fn start_here_cli_summary(
             }
             if let Some(command) = string_path(selected, &["receipt_command"]) {
                 out.push_str(&format!("{}: `{command}`\n", labels.receipt));
+                if let Some(step) = receipt_status_step(&command) {
+                    out.push_str(&format!("{RECEIPT_STATUS_LABEL}: {step}\n"));
+                }
             }
             out.push_str(&format!(
                 "Receipt path: `{}`\n",
@@ -366,6 +369,9 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
     }
     if let Some(command) = selected.get("receipt_command").and_then(Value::as_str) {
         out.push_str(&format!("- {}: `{command}`\n", labels.receipt));
+        if let Some(step) = receipt_status_step(command) {
+            out.push_str(&format!("- {RECEIPT_STATUS_LABEL}: {step}\n"));
+        }
     }
     if let Some(path) = selected.get("receipt_path").and_then(Value::as_str) {
         out.push_str(&format!("- Receipt path: `{path}`\n"));

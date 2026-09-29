@@ -44,7 +44,7 @@ Repair placement
   suggested file: tests/test_calc.py
   suggested test: test_base_unchanged
   pytest node: tests/test_calc.py::test_base_unchanged
-  verify: pytest tests/test_calc.py::test_base_unchanged (high)
+  verify: python -m pytest tests/test_calc.py::test_base_unchanged (high)
 Drill in:
   ripr explain --root fixtures/python_adversarial_local_assignment_operator_input/input --diff fixtures/python_adversarial_local_assignment_operator_input/diff.patch --mode fast probe:src_calc.py:python_preview:3ddbe784
   ripr context --root fixtures/python_adversarial_local_assignment_operator_input/input --diff fixtures/python_adversarial_local_assignment_operator_input/diff.patch --mode fast --at probe:src_calc.py:python_preview:3ddbe784

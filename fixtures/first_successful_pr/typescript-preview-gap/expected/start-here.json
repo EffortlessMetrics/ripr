@@ -43,7 +43,7 @@
     },
     "verify_command": "jest tests/discount.test.ts",
     "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
-    "receipt_path": "target/ripr/receipts/gap-pr-gap-typescript-typescript-preview-2396aec1.targeted-test-outcome.json",
+    "receipt_path": "target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
     "receipt_command_source": "gap_ledger.receipt_command",
     "receipt_state": null,
     "static_limit_kind": "typescript_preview",
