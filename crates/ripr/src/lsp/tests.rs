@@ -15200,6 +15200,83 @@ fn execute_command_collect_repair_packet_complete_gap_returns_full_packet() -> R
 }
 
 #[test]
+fn execute_command_collect_repair_packet_never_substitutes_another_gaps_packet()
+-> Result<(), String> {
+    // A diagnostic published before actionable-gaps.json was rewritten can
+    // name a gap the new artifact no longer lists. The answer must not be the
+    // artifact's first packet: that is another gap's edit surface, verify
+    // command and receipt command.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-unknown-gap")?;
+        write_actionable_gaps_report(root.path(), &complete_actionable_gaps_report())?;
+
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        let collect = |gap_id: &str| ExecuteCommandParams {
+            command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+            arguments: vec![serde_json::json!({ "gap_id": gap_id })],
+            work_done_progress_params: Default::default(),
+        };
+
+        // Seed sanity: the listed gap still returns its own packet.
+        let listed = backend
+            .execute_command(collect("gap:rust:pricing-boundary"))
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected the listed gap's packet".to_string())?;
+        assert_eq!(listed["canonical_gap_id"], "gap:rust:pricing-boundary");
+
+        let result = backend
+            .execute_command(collect("gap:rust:no-longer-listed"))
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected a sentinel, not null".to_string())?;
+        assert_ne!(
+            result["canonical_gap_id"], "gap:rust:pricing-boundary",
+            "another gap's packet was returned for an unlisted gap: {result}"
+        );
+        assert!(
+            result.get("verify_command").is_none() && result.get("receipt_command").is_none(),
+            "an unlisted gap must carry no commands, got {result}"
+        );
+        assert_eq!(result["kind"], "repair_packet");
+        assert_eq!(result["status"], "not_actionable_or_incomplete");
+        let reason = result["reason"]
+            .as_str()
+            .ok_or_else(|| format!("sentinel must carry a string reason, got {result}"))?;
+        assert!(
+            reason.contains("gap:rust:no-longer-listed"),
+            "the sentinel must name the requested gap, got {reason}"
+        );
+
+        // actionable-gaps.json is bounded (`packet_limit`), so a gap it does
+        // not list may still be an actionable ledger record. That record's
+        // own packet is the answer, never the artifact's first packet.
+        write_gap_decision_ledger(root.path())?;
+        let from_ledger = backend
+            .execute_command(collect("gap:rust:pricing:threshold-boundary"))
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected the ledger record's packet".to_string())?;
+        assert_eq!(
+            from_ledger["canonical_gap_id"], "gap:rust:pricing:threshold-boundary",
+            "a gap past the projection bound must resolve to its own ledger packet: {from_ledger}"
+        );
+        assert_eq!(
+            from_ledger["verify_command"],
+            "cargo xtask fixtures boundary_gap"
+        );
+        Ok(())
+    })
+}
+
+#[test]
 fn execute_command_collect_repair_packet_malformed_actionable_gaps_returns_sentinel()
 -> Result<(), String> {
     // A present-but-unparseable actionable-gaps.json must surface a typed

@@ -6985,15 +6985,13 @@ fn read_latest_attempt_outcome(
     let entry = if canonical_gap_id.is_empty() {
         attempts.first()
     } else {
-        attempts
-            .iter()
-            .find(|entry| {
-                entry
-                    .get("canonical_gap_id")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|cid| cid == canonical_gap_id)
-            })
-            .or_else(|| attempts.first())
+        // Another gap's attempt is not this gap's outcome.
+        attempts.iter().find(|entry| {
+            entry
+                .get("canonical_gap_id")
+                .and_then(|v| v.as_str())
+                .is_some_and(|cid| cid == canonical_gap_id)
+        })
     };
 
     entry
@@ -7504,6 +7502,65 @@ mod gap_record_context_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static TEMP_ROOT_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
+
+    fn top_gap_named(canonical_gap_id: &str) -> super::super::gap_artifacts::ValidatedGapArtifact {
+        use super::super::gap_artifacts::{
+            GapArtifactIdentity, GapArtifactKind, ValidatedGapArtifact,
+        };
+        ValidatedGapArtifact {
+            kind: GapArtifactKind::ActionableGaps,
+            root: None,
+            identities: vec![GapArtifactIdentity {
+                canonical_gap_id: Some(canonical_gap_id.to_string()),
+                seam_id: None,
+                finding_id: None,
+            }],
+            language: None,
+            language_status: None,
+            gap_state: None,
+            related_paths: Vec::new(),
+            verify_commands: Vec::new(),
+            receipt_commands: Vec::new(),
+            verify_command_specs: Vec::new(),
+            receipt_command_specs: Vec::new(),
+            static_limit_kinds: Vec::new(),
+            has_text_static_limit: false,
+        }
+    }
+
+    #[test]
+    fn latest_attempt_outcome_never_borrows_another_gaps_attempt() -> Result<(), String> {
+        let root = temp_root()?;
+        let ledger = root.join("target/ripr/reports/swarm-attempt-ledger.json");
+        fs::write(
+            &ledger,
+            serde_json::json!({
+                "latest_attempts": [
+                    { "canonical_gap_id": "gap:rust:other", "outcome": "evidence_improved" },
+                    { "canonical_gap_id": "gap:rust:top", "outcome": "no_movement" }
+                ]
+            })
+            .to_string(),
+        )
+        .map_err(|err| format!("write attempt ledger failed: {err}"))?;
+
+        // The top gap's own attempt is found even when it is not first.
+        let top = top_gap_named("gap:rust:top");
+        assert_eq!(
+            read_latest_attempt_outcome(&ledger, Some(&top)),
+            serde_json::json!("no_movement")
+        );
+        // A gap with no attempt of its own has no outcome; the first entry
+        // belongs to another gap.
+        let unattempted = top_gap_named("gap:rust:never-attempted");
+        assert_eq!(
+            read_latest_attempt_outcome(&ledger, Some(&unattempted)),
+            serde_json::json!("not_available")
+        );
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
 
     #[test]
     fn collect_context_packet_for_gap_id_reads_explicit_ledger() -> Result<(), String> {
