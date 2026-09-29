@@ -206,10 +206,21 @@ comments, strings, and docstrings:
   `constructor_call`, an oracle-eligible relation; for any other dunder it
   relates as `dunder_protocol`, which stays uncertain because syntax cannot
   bind `obj[key] = value` or `a == b` to the constructed instance. A dunder
-  owner with no related test, in a workspace whose tests import its class or
-  module, reads `static_unknown` with the `dynamic_dispatch` limit instead of
-  `no_static_path`: the adapter cannot bind a unittest mixin's `self.Cache` or
-  a test-local subclass to the owner class;
+  owner with no related test, in a workspace whose tests import its class,
+  its module, or anything from a package above it, reads `static_unknown`
+  with the `dynamic_dispatch` limit instead of `no_static_path`: the adapter
+  cannot bind a unittest mixin's `self.Cache`, a test-local subclass, or a
+  public API that builds a private subclass (a descriptor's `__get__` behind
+  a decorator) to the owner class. A nested class (`Outer.Inner`) is reached
+  through its outermost class, `Outer.Inner(...)` after importing `Outer`;
+- a changed or new default on a parameter line inside a multi-line `def`
+  header is read like a one-line header change: each name on the line must
+  be a declared parameter of the owner with a default, and when every strong
+  related call binds that parameter the default is never reached and the
+  line is not credited `exposed`. A keyword argument never binds a
+  positional-only parameter. Methods, constructors included, fail open:
+  subclasses and `cls(...)` factories construct through receivers the
+  adapter does not see;
 - module-level owner: a local bound by an import of, or from, the owner
   module.
 

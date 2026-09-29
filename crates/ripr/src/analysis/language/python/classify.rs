@@ -71,6 +71,9 @@ pub(super) struct PythonNoBehaviorContext {
     /// The changed line only names parameters or opens/closes a multi-line
     /// `def` header (`no_behavior::multi_line_def_header_span`).
     pub(super) structural_def_header_line: bool,
+    /// The changed line lies inside a multi-line `def` header, so any
+    /// parameter default on it is the owner's own default.
+    pub(super) multi_line_def_header_line: bool,
 }
 
 /// Classify a change from producer-owned owner, relation, and oracle facts.
@@ -185,8 +188,13 @@ pub(super) fn classify_change_with_context(
     // `verbose=True` default change — the changed default is never exercised, so a
     // strong observing oracle does not discriminate it (#1289 trap 45). Block
     // `exposed` in that case and name the parameter(s) to test by omission.
-    let changed_default_override =
-        changed_default_overridden_params(old_line_text, line_text, owner, &related_candidates);
+    let changed_default_override = changed_default_overridden_params(
+        old_line_text,
+        line_text,
+        no_behavior.multi_line_def_header_line,
+        owner,
+        &related_candidates,
+    );
     let changed_default_exercised_ok = changed_default_override.is_none();
 
     // A changed relational predicate (`qty > on_hand` -> `qty >= on_hand`) only

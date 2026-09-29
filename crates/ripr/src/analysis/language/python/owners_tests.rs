@@ -69,11 +69,15 @@ pub(super) fn collect_owners_from_statements(
                 ));
             }
             Stmt::ClassDef(class) => {
+                let class_path = class_context.map_or_else(
+                    || class.name.to_string(),
+                    |outer| format!("{outer}.{}", class.name),
+                );
                 collect_owners_from_statements(
                     file,
                     source,
                     &class.body,
-                    Some(class.name.as_str()),
+                    Some(class_path.as_str()),
                     imports,
                     module_constants,
                     out,
@@ -94,6 +98,11 @@ pub(super) fn collect_owners_from_statements(
             _ => {}
         }
     }
+}
+
+/// The innermost class of a dotted class path (`Inner` for `Outer.Inner`).
+fn innermost_class(class_path: &str) -> &str {
+    class_path.rsplit('.').next().unwrap_or(class_path)
 }
 
 #[derive(Clone, Copy)]
@@ -127,7 +136,7 @@ fn owner_from_function(
     };
     let qualified_name = context
         .class_context
-        .map(|class| format!("{class}.{name}"))
+        .map(|class| format!("{}.{name}", innermost_class(class)))
         .unwrap_or_else(|| name.to_string());
     let route_paths = collect_static_route_paths(context.source, decorators);
     let dynamic_route_decorators = collect_dynamic_route_decorators(context.source, decorators);
@@ -156,25 +165,32 @@ fn owner_from_function(
             body,
             &text_for_range(context.source, range),
         ),
+        class_path: context.class_context.unwrap_or_default().to_string(),
     }
 }
 
 /// Declared parameters in binding order: positional-only, then regular, then
 /// keyword-only. `*args` / `**kwargs` are not bindable names and are omitted.
 fn function_parameters(source: &str, args: &ast::Arguments) -> Vec<PythonParameter> {
-    let parameter = |arg: &ast::ArgWithDefault, keyword_only: bool| PythonParameter {
-        name: arg.def.arg.to_string(),
-        default: arg
-            .default
-            .as_ref()
-            .map(|default| text_for_range(source, default.range()).trim().to_string()),
-        keyword_only,
-    };
+    let parameter =
+        |arg: &ast::ArgWithDefault, keyword_only: bool, positional_only: bool| PythonParameter {
+            name: arg.def.arg.to_string(),
+            default: arg
+                .default
+                .as_ref()
+                .map(|default| text_for_range(source, default.range()).trim().to_string()),
+            keyword_only,
+            positional_only,
+        };
     args.posonlyargs
         .iter()
-        .chain(args.args.iter())
-        .map(|arg| parameter(arg, false))
-        .chain(args.kwonlyargs.iter().map(|arg| parameter(arg, true)))
+        .map(|arg| parameter(arg, false, true))
+        .chain(args.args.iter().map(|arg| parameter(arg, false, false)))
+        .chain(
+            args.kwonlyargs
+                .iter()
+                .map(|arg| parameter(arg, true, false)),
+        )
         .collect()
 }
 
@@ -186,7 +202,7 @@ fn owner_from_class(
 ) -> PythonOwner {
     let qualified_name = context
         .class_context
-        .map(|class| format!("{class}.{name}"))
+        .map(|class| format!("{}.{name}", innermost_class(class)))
         .unwrap_or_else(|| name.to_string());
     PythonOwner {
         name: name.to_string(),
@@ -204,6 +220,7 @@ fn owner_from_class(
         reexport_modules: Vec::new(),
         ambiguous_src_modules: Vec::new(),
         module_constants: Vec::new(),
+        class_path: String::new(),
     }
 }
 
@@ -229,6 +246,7 @@ pub(super) fn module_owner(
         reexport_modules: Vec::new(),
         ambiguous_src_modules: Vec::new(),
         module_constants: Vec::new(),
+        class_path: String::new(),
     }
 }
 

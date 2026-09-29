@@ -293,7 +293,8 @@ pub(super) fn related_test_relation(
 }
 
 /// The class of a dunder method owner (`LowerBound` for
-/// `LowerBound.__init__`), or `None` for any other owner.
+/// `LowerBound.__init__`, `Outer.Inner` for a nested class), or `None` for
+/// any other owner.
 pub(super) fn dunder_method_class(owner: &PythonOwner) -> Option<&str> {
     if !matches!(
         owner.owner_kind,
@@ -301,6 +302,9 @@ pub(super) fn dunder_method_class(owner: &PythonOwner) -> Option<&str> {
     ) || !is_dunder_name(&owner.name)
     {
         return None;
+    }
+    if !owner.class_path.is_empty() {
+        return Some(owner.class_path.as_str());
     }
     owner
         .qualified_name
@@ -407,15 +411,20 @@ fn test_uses_owner_class(
     uses_member: fn(&str, &str, &str) -> bool,
 ) -> bool {
     let body = &test.body_text;
+    // A nested class is reached through its outermost class:
+    // `from pkg.shapes import Outer` then `Outer.Inner(...)`.
+    let (top, nested) = class
+        .split_once('.')
+        .map_or((class, ""), |(top, _)| (top, &class[top.len()..]));
     test.imports.iter().any(|import| {
-        if imports_owner_class(import, owner, class) {
+        if imports_owner_class(import, owner, top) {
             // `from pkg.cache import *` binds the class under its own name.
             let local = if import.imported == "*" {
-                class
+                top
             } else {
                 import.alias.as_str()
             };
-            return !test_binds_local(test, local) && uses_name(body, local);
+            return !test_binds_local(test, local) && uses_name(body, &format!("{local}{nested}"));
         }
         imports_owner_module(import, owner)
             && !test_binds_local(test, &import.alias)
@@ -451,8 +460,8 @@ fn imports_owner_module(import: &PythonImport, owner: &PythonOwner) -> bool {
 }
 
 /// Whether dotted `module` names the owner's module or a package above it.
-/// Only the owner's own module paths count (repository root, or below
-/// `src`): a trailing part of one (`collections` for
+/// Only the owner's own module paths count (repository root, below `src`,
+/// or below a root `lib`): a trailing part of one (`collections` for
 /// `src/mylib/collections.py`, `util.cache` for `src/pkg/util/cache.py`)
 /// can name an unrelated module, such as the standard library's. A bare `src`
 /// layout root is not a package. Empty never matches.
@@ -470,17 +479,23 @@ fn module_contains_owner(module: &str, owner: &PythonOwner) -> bool {
 /// Whether a test may reach the dunder owner's class in a shape this adapter
 /// cannot bind: its module imports the class or the owner module
 /// (`self.Cache(...)` through a unittest mixin attribute, or a test-local
-/// subclass), or its body names the class through an import this adapter
-/// does not read (`try: from pkg.cache import Cache`). Such a test makes the
-/// owner a dynamic-dispatch limit rather than `no_static_path`.
+/// subclass), imports anything from the owner module or a package above it
+/// (`from cachetools import cachedmethod` builds a subclass of the private
+/// `_DescriptorBase`, whose `__get__` runs on attribute access), or its body
+/// names the class through an import this adapter does not read
+/// (`try: from pkg.cache import Cache`). Such a test makes the owner a
+/// dynamic-dispatch limit rather than `no_static_path`.
 pub(super) fn test_may_reach_owner_class(
     test: &PythonTest,
     owner: &PythonOwner,
     class: &str,
 ) -> bool {
+    let top = class.split_once('.').map_or(class, |(top, _)| top);
     contains_name_reference(&test.body_text, class)
         || test.imports.iter().any(|import| {
-            imports_owner_module(import, owner) || imports_owner_class(import, owner, class)
+            imports_owner_module(import, owner)
+                || imports_owner_class(import, owner, top)
+                || module_contains_owner(&import.source_module, owner)
         })
 }
 
@@ -788,7 +803,10 @@ pub(super) fn owner_module_paths(file: &Path) -> Vec<String> {
     // itself (`src.py` / `src/__init__.py` is a module named `src`).
     let directory_count = parts.len().saturating_sub(1);
     for (idx, part) in parts.iter().enumerate().take(directory_count) {
-        if *part == "src" {
+        // `src/` is a layout root at any depth (`packages/x/src/pkg`); `lib/`
+        // only at the repository root, since a nested `lib` is usually a
+        // package of its own (`pkg/lib/util.py` is `pkg.lib.util`).
+        if *part == "src" || (idx == 0 && *part == "lib") {
             let below = parts.get(idx + 1..).unwrap_or_default().join(".");
             if !below.is_empty() && !paths.contains(&below) {
                 paths.push(below);

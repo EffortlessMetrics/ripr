@@ -5434,3 +5434,310 @@ fn module_owner_needs_a_local_imported_from_the_owner_module() -> Result<(), Str
     );
     Ok(())
 }
+
+#[test]
+fn header_param_line_defaults_reads_defaults_on_one_header_line() {
+    let names = super::no_behavior::header_param_line_defaults;
+    assert_eq!(
+        names("        alias_is_default=None,"),
+        Some(vec!["alias_is_default".to_string()])
+    );
+    assert_eq!(
+        names("    key: str = \"k\", *, strict=False,"),
+        Some(vec!["key".to_string(), "strict".to_string()])
+    );
+    assert_eq!(
+        names("    limit=10) -> int:"),
+        Some(vec!["limit".to_string()])
+    );
+    assert_eq!(names("def f(a, b=1,"), Some(vec!["b".to_string()]));
+    assert_eq!(
+        names("    options=dict(a=1),"),
+        Some(vec!["options".to_string()])
+    );
+    // No default, a comment, or text that is not a parameter list.
+    assert_eq!(names("        self,"), None);
+    assert_eq!(names("    x=1,  # was 2"), None);
+    assert_eq!(names("    return f(x=1)"), None);
+    assert_eq!(names("    ):"), None);
+}
+
+/// Classifies `line` of a multi-line header with the diff producer's flag.
+fn classify_multi_line_header_line(
+    file: &Path,
+    source: &str,
+    def_line: usize,
+    line: usize,
+    tests: &[PythonTest],
+) -> Result<Finding, String> {
+    let owners = extract_owners(file, source);
+    let text = source
+        .lines()
+        .nth(line - 1)
+        .ok_or_else(|| format!("fixture has no line {line}"))?;
+    let span = super::no_behavior::multi_line_def_header_span(source, def_line);
+    if !span.is_some_and(|(start, end)| (start..=end).contains(&line)) {
+        return Err(format!(
+            "line {line} must sit inside the header span {span:?}"
+        ));
+    }
+    let context = PythonNoBehaviorContext {
+        multi_line_def_header_line: true,
+        ..PythonNoBehaviorContext::default()
+    };
+    classify_change_with_context(file, line, text, None, &owners, tests, context)
+        .ok_or_else(|| format!("line {line} should classify"))
+}
+
+#[test]
+fn multi_line_header_default_bound_by_every_call_is_not_exposed() -> Result<(), String> {
+    // attrs 862696a shape: a new `name=default,` line inside a multi-line
+    // header. The one-line guard never read it, so a strong test that always
+    // passes the parameter credited `exposed` for a default it never reaches.
+    let file = Path::new("src/render.py");
+    let source = "def render(\n    name,\n    verbose=True,\n):\n    return f\"[debug] {name}\" if verbose else name\n";
+    let tests = extract_tests(
+        Path::new("tests/test_render.py"),
+        "from src.render import render\n\n\ndef test_render_quiet():\n    assert render(\"Sam\", verbose=False) == \"Sam\"\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 1, 3, &tests)?;
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+    assert!(
+        finding
+            .activation
+            .missing_discriminators
+            .iter()
+            .any(|fact| fact.value == "call `render` without `verbose`"),
+        "the downgrade names the parameter to omit: {:?}",
+        finding.activation.missing_discriminators
+    );
+
+    // A positional argument at the declared position binds it too.
+    let positional = extract_tests(
+        Path::new("tests/test_render.py"),
+        "from src.render import render\n\n\ndef test_render_quiet():\n    assert render(\"Sam\", False) == \"Sam\"\n",
+    );
+    let finding = classify_multi_line_header_line(file, source, 1, 3, &positional)?;
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+
+    let omitting = extract_tests(
+        Path::new("tests/test_render.py"),
+        "from src.render import render\n\n\ndef test_render_default():\n    assert render(\"Sam\") == \"[debug] Sam\"\n",
+    );
+    let finding = classify_multi_line_header_line(file, source, 1, 3, &omitting)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a call that omits `verbose` reaches the default"
+    );
+    Ok(())
+}
+
+#[test]
+fn constructor_default_fails_open_because_constructions_hide_behind_subclasses()
+-> Result<(), String> {
+    // Every visible `Widget(...)` passes `label`, but `Small(size=3)` builds
+    // a subclass through the same `__init__` and reaches the default. The
+    // scanner cannot see such constructions (subclasses, `cls(...)`
+    // factories), so a constructor never downgrades on binding evidence.
+    let file = Path::new("src/widget.py");
+    let source = "class Widget:\n    def __init__(\n        self,\n        size,\n        label=None,\n    ):\n        self.label = label or str(size)\n";
+    let tests = extract_tests(
+        Path::new("tests/test_widget.py"),
+        "from src.widget import Widget\n\n\nclass Small(Widget):\n    pass\n\n\ndef test_label():\n    assert Widget(size=1, label=\"x\").label == \"x\"\n    assert Small(size=3).label == \"3\"\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 2, 5, &tests)?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    Ok(())
+}
+
+#[test]
+fn multi_line_header_default_reads_only_declared_parameters() -> Result<(), String> {
+    // `total=3,` sits inside the default call of `retry`; it is not a
+    // parameter of `request`, so a call binding `total=` (into `**kwargs`)
+    // says nothing about `retry`'s default.
+    let file = Path::new("src/client.py");
+    let source = "def request(\n    url,\n    retry=dict(\n        total=3,\n    ),\n    **kwargs,\n):\n    return (url, retry, kwargs)\n";
+    let tests = extract_tests(
+        Path::new("tests/test_client.py"),
+        "from src.client import request\n\n\ndef test_request():\n    assert request(\"u\", total=1) == (\"u\", {\"total\": 3}, {\"total\": 1})\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 1, 4, &tests)?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    Ok(())
+}
+
+#[test]
+fn positional_only_default_is_not_bound_by_a_keyword() -> Result<(), String> {
+    // `f(a=5)` against `def f(a=1, /, **kw)` puts `a` in `kw`; the default
+    // of the positional-only `a` still runs.
+    let file = Path::new("src/pos.py");
+    let source = "def f(\n    a=1, /,\n    **kw,\n):\n    return (a, kw)\n";
+    let tests = extract_tests(
+        Path::new("tests/test_pos.py"),
+        "from src.pos import f\n\n\ndef test_f():\n    assert f(a=5) == (1, {\"a\": 5})\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 1, 2, &tests)?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+
+    // The one-line guard follows the same rule.
+    let owners = extract_owners(file, "def f(a=2, /, **kw):\n    return (a, kw)\n");
+    let finding = classify_change_with_old(
+        file,
+        1,
+        "def f(a=2, /, **kw):",
+        Some("def f(a=1, /, **kw):"),
+        &owners,
+        &tests,
+    )
+    .ok_or("a default-value change should classify")?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    Ok(())
+}
+
+#[test]
+fn diff_mode_reads_a_default_added_inside_a_multi_line_header() -> Result<(), String> {
+    let root = unique_test_root("diff-multi-line-default");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(
+        &root.join("render.py"),
+        "def render(\n    name,\n    verbose=True,\n):\n    return f\"[debug] {name}\" if verbose else name\n",
+    )?;
+    write_repo_file(
+        &root.join("test_render.py"),
+        "from render import render\n\n\ndef test_render_quiet():\n    assert render(\"Sam\", verbose=False) == \"Sam\"\n",
+    )?;
+    let changed_files = vec![ChangedFile {
+        path: PathBuf::from("render.py"),
+        added_lines: vec![ChangedLine {
+            line: 3,
+            text: "    verbose=True,".to_string(),
+            new_side_line: 3,
+        }],
+        removed_lines: Vec::new(),
+    }];
+    let result = PythonAdapter::analyze_diff_with_limits(
+        &repo_options(&root),
+        &changed_files,
+        generous_walk_limits(),
+    )?;
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    let [finding] = result.findings.as_slice() else {
+        return Err(format!(
+            "expected one finding, got {}",
+            result.findings.len()
+        ));
+    };
+    assert_eq!(finding.probe.location.line, 3);
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+    assert!(
+        missing_discriminator_values(finding).contains(&"call `render` without `verbose`"),
+        "{:?}",
+        missing_discriminator_values(finding)
+    );
+    Ok(())
+}
+
+#[test]
+fn nested_class_dunder_relates_through_its_outer_class() -> Result<(), String> {
+    let owners = extract_owners(
+        Path::new("src/pkg/shapes.py"),
+        "class Outer:\n    class Inner:\n        def __init__(self, size):\n            self.size = size\n\n\nclass Inner:\n    def __init__(self, size):\n        self.size = -size\n",
+    );
+    let nested = owners
+        .iter()
+        .find(|owner| owner.name == "__init__" && owner.start_line == 3)
+        .ok_or("nested __init__ owner")?;
+    assert_eq!(
+        nested.qualified_name, "Inner.__init__",
+        "qualified name is unchanged"
+    );
+    assert_eq!(nested.class_path, "Outer.Inner");
+    let tests = extract_tests(
+        Path::new("tests/test_shapes.py"),
+        "from pkg.shapes import Outer\nfrom pkg import shapes\n\n\ndef test_outer_member():\n    assert Outer.Inner(3).size == 3\n\n\ndef test_module_member():\n    assert shapes.Outer.Inner(4).size == 4\n\n\ndef test_top_level_inner():\n    from pkg.shapes import Inner\n    assert Inner(5).size == -5\n",
+    );
+    assert_eq!(tests.len(), 3);
+    assert_eq!(
+        candidate_relations(nested, &tests),
+        vec![
+            ("test_module_member".to_string(), "constructor_call"),
+            ("test_outer_member".to_string(), "constructor_call"),
+        ],
+        "only constructions through `Outer` reach the nested class"
+    );
+    Ok(())
+}
+
+#[test]
+fn private_descriptor_dunder_reached_through_its_package_is_a_limit() -> Result<(), String> {
+    // cachetools 57d2e48: `_DescriptorBase.__get__` runs whenever a test
+    // reads a `@cachedmethod` attribute. No test names the private base, but
+    // the suite imports `cachedmethod` from the package, and it detected the
+    // mutant of the changed line while ripr said `no_static_path`.
+    let owner_file = Path::new("src/cachetools/_cachedmethod.py");
+    let owner_source = "class _DescriptorBase:\n    def __get__(self, obj, objtype=None):\n        if obj is None:\n            return self\n        return self.bind(obj)\n";
+    let owners = extract_owners(owner_file, owner_source);
+    let get = flat_owner(&owners, "_DescriptorBase.__get__")?;
+    let classify = |tests: &[PythonTest]| {
+        classify_change(owner_file, 3, "        if obj is None:", &owners, tests)
+            .ok_or("the changed line must produce a finding")
+    };
+    let package_tests = extract_tests(
+        Path::new("tests/test_cachedmethod.py"),
+        "from cachetools import cachedmethod\n\n\nclass Cached:\n    @cachedmethod(lambda self: {})\n    def get(self, value):\n        return value\n\n\ndef test_get():\n    assert Cached().get(1) == 1\n",
+    );
+    assert_eq!(package_tests.len(), 1);
+    assert!(candidate_relations(get, &package_tests).is_empty());
+    let finding = classify(&package_tests)?;
+    assert_eq!(finding.class, ExposureClass::StaticUnknown);
+    assert!(
+        finding
+            .missing
+            .iter()
+            .any(|line| line.contains("dynamic_dispatch") && line.contains("its package")),
+        "{:?}",
+        finding.missing
+    );
+
+    // A sibling package that only shares a trailing name is not the owner's.
+    let other_package = extract_tests(
+        Path::new("tests/test_other.py"),
+        "from othertools.cachetools import cachedmethod\n\n\ndef test_get():\n    assert cachedmethod is not None\n",
+    );
+    assert_eq!(other_package.len(), 1);
+    assert_eq!(classify(&other_package)?.class, ExposureClass::NoStaticPath);
+    Ok(())
+}
+
+#[test]
+fn a_root_lib_directory_is_an_import_root() -> Result<(), String> {
+    let paths = |file: &str| super::related_tests::owner_module_paths(Path::new(file));
+    assert_eq!(
+        paths("lib/pkg/cache.py"),
+        vec!["lib.pkg.cache", "pkg.cache"]
+    );
+    // A nested `lib` is a package of its own, not a layout root.
+    assert_eq!(paths("pkg/lib/util.py"), vec!["pkg.lib.util"]);
+    // `lib.py` at the root is a module named `lib`.
+    assert_eq!(paths("lib.py"), vec!["lib"]);
+
+    let owners = extract_owners(
+        Path::new("lib/pkg/cache.py"),
+        "class Cache:\n    def __init__(self, size):\n        self.size = size\n",
+    );
+    let init = flat_owner(&owners, "Cache.__init__")?;
+    let tests = extract_tests(
+        Path::new("tests/test_cache.py"),
+        "from pkg.cache import Cache\n\n\ndef test_size():\n    assert Cache(2).size == 2\n",
+    );
+    assert_eq!(
+        candidate_relations(init, &tests),
+        vec![("test_size".to_string(), "constructor_call")]
+    );
+    Ok(())
+}

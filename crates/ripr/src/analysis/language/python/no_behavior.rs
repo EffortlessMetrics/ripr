@@ -468,6 +468,10 @@ pub(super) struct ChangedDefaultParam {
     /// Whether a positional argument at `index` can bind this parameter. False for
     /// a keyword-only parameter, which a positional argument can never reach.
     pub(super) positionally_bindable: bool,
+    /// Whether a keyword argument can bind this parameter. False for a
+    /// positional-only parameter: `f(a=5)` against `def f(a=1, /, **kw)` puts
+    /// `a` in `kw` and leaves the default in place.
+    pub(super) keyword_bindable: bool,
 }
 
 /// The parameters whose default VALUE changed between two `def` headers, when the
@@ -508,6 +512,7 @@ pub(super) fn changed_default_value_params(
                     name: new_param.0.clone(),
                     index,
                     positionally_bindable: index < positional_capacity,
+                    keyword_bindable: index >= new_pos,
                 });
             }
             (Some(_), Some(_)) | (None, None) => {}
@@ -527,7 +532,7 @@ pub(super) struct CallArgShape {
 
 impl CallArgShape {
     fn binds(&self, param: &ChangedDefaultParam) -> bool {
-        if self.keywords.iter().any(|name| name == &param.name) {
+        if param.keyword_bindable && self.keywords.iter().any(|name| name == &param.name) {
             return true;
         }
         param.positionally_bindable && param.index < self.positional_count
@@ -762,22 +767,36 @@ pub(super) fn call_arglists_with_offsets<'a>(
 /// block) when the change is not a pure default-value change, when no owner call
 /// can be analyzed, or when at least one strong call omits a changed parameter.
 /// Fails open: any untracked shape yields None so a genuine exposure is never
-/// suppressed. Scoped to free-function owners — a method/classmethod has an
-/// implicit `self`/`cls` that shifts positional binding, so those fail open.
+/// suppressed.
+///
+/// A one-line header compares the old and new signatures. A parameter line
+/// inside a multi-line header (`multi_line_header_line`) carries its own
+/// defaults: whether the line is new or its value changed, the defaults on it
+/// are what an omitting call reaches. Each name on the line must be a declared
+/// parameter of the owner with a default, which rejects a keyword inside a
+/// nested default call (`retry=dict(\n    total=3,`) and gives the parameter
+/// its real position and binding kind. Scoped to free-function owners: a
+/// method, constructor included, is also reached through receivers,
+/// subclasses and factories (`cls(...)`) this scanner does not see, so
+/// methods fail open.
 pub(super) fn changed_default_overridden_params(
     old_line_text: Option<&str>,
     new_line_text: &str,
+    multi_line_header_line: bool,
     owner: &PythonOwner,
     related_candidates: &[PythonRelatedCandidate<'_>],
 ) -> Option<Vec<String>> {
-    let old_line = old_line_text?;
     if matches!(
         owner.owner_kind,
         Some(OwnerKind::Method | OwnerKind::ClassMethod)
     ) {
         return None;
     }
-    let changed = changed_default_value_params(old_line, new_line_text)?;
+    let changed = if multi_line_header_line {
+        declared_line_defaults(owner, new_line_text)?
+    } else {
+        changed_default_value_params(old_line_text?, new_line_text)?
+    };
     let mut saw_strong = false;
     for candidate in related_candidates {
         if !candidate.relation.uses_oracle() {
@@ -811,6 +830,113 @@ pub(super) fn changed_default_overridden_params(
         return None; // no strong oracle -> the exposed branch is unreachable anyway
     }
     Some(changed.into_iter().map(|param| param.name).collect())
+}
+
+/// The defaults on one multi-line header line, each bound to the owner's
+/// declared parameter of that name. None when any name is not a declared
+/// parameter with a default.
+fn declared_line_defaults(owner: &PythonOwner, text: &str) -> Option<Vec<ChangedDefaultParam>> {
+    header_param_line_defaults(text)?
+        .into_iter()
+        .map(|name| {
+            let (index, declared) = owner
+                .parameters
+                .iter()
+                .enumerate()
+                .find(|(_, declared)| declared.name == name)?;
+            declared.default.as_ref()?;
+            Some(ChangedDefaultParam {
+                name,
+                index,
+                positionally_bindable: !declared.keyword_only,
+                keyword_bindable: !declared.positional_only,
+            })
+        })
+        .collect()
+}
+
+/// The parameters with a default on one line of a multi-line `def` header
+/// (`alias_is_default=None,`, `key: str = "k", *, strict=False,`, or a
+/// closing `limit=10) -> int:`). None when the line holds no default or is
+/// not a plain parameter list (a comment, a nested call spanning lines).
+pub(super) fn header_param_line_defaults(text: &str) -> Option<Vec<String>> {
+    let trimmed = text.trim();
+    if trimmed.contains('#') {
+        return None;
+    }
+    let header = trimmed.strip_prefix("async ").unwrap_or(trimmed);
+    let params = match header
+        .strip_prefix("def ")
+        .and_then(|rest| rest.split_once('('))
+    {
+        Some((name, rest)) if is_simple_python_identifier(name.trim()) => rest,
+        Some(_) => return None,
+        None => trimmed,
+    };
+    let params = match header_params_close(params) {
+        Some(close) => {
+            let rest = params[close + 1..].trim();
+            if !(rest.is_empty() || rest == ":" || rest == "," || rest.starts_with("->")) {
+                return None;
+            }
+            &params[..close]
+        }
+        None => params,
+    };
+    let mut defaults = Vec::new();
+    for segment in split_top_level_args(params) {
+        let segment = segment.trim();
+        if segment.is_empty() || matches!(segment, "*" | "/") || segment.starts_with('*') {
+            continue;
+        }
+        let (declaration, default) = match segment.split_once('=') {
+            Some((declaration, default)) => (declaration, Some(default.trim())),
+            None => (segment, None),
+        };
+        let name = declaration
+            .split_once(':')
+            .map_or(declaration, |(name, _)| name)
+            .trim();
+        if !is_simple_python_identifier(name) {
+            return None;
+        }
+        if default.is_some_and(|default| !default.is_empty()) {
+            defaults.push(name.to_string());
+        }
+    }
+    (!defaults.is_empty()).then_some(defaults)
+}
+
+/// The byte index of the first `)` at bracket depth zero, outside quotes: the
+/// close of a `def` header's parameter list.
+fn header_params_close(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' if depth == 0 => return Some(idx),
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Backtick-quotes and comma-joins parameter names for a `missing` message.
