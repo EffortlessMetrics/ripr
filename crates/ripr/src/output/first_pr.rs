@@ -240,8 +240,7 @@ fn write_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
         None => render_start_here_packet(&root, options),
     };
     let out_dir = resolve_path(output_root, &options.out_dir);
-    fs::create_dir_all(&out_dir)
-        .map_err(|err| format!("failed to create {}: {err}", out_dir.display()))?;
+    crate::output::file_write::create_output_dir(&out_dir, "--out-dir")?;
     let json_path = out_dir.join(START_HERE_JSON);
     let markdown_path = out_dir.join(START_HERE_MD);
     let json_text = serde_json::to_string_pretty(&packet)
@@ -5843,5 +5842,64 @@ mod tests {
             .and_then(Path::parent)
             .map(Path::to_path_buf)
             .ok_or_else(|| "failed to resolve fixture repo root".to_string())
+    }
+
+    fn first_pr_args(root: &str, out: &str) -> Vec<String> {
+        vec![
+            "--root".to_string(),
+            root.to_string(),
+            "--base".to_string(),
+            "HEAD".to_string(),
+            "--out-dir".to_string(),
+            out.to_string(),
+        ]
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_out_dir_names_out_dir_not_out() -> Result<(), String> {
+        use crate::testing::unwritable_output::OutputDirFixture;
+
+        let env = OutputDirFixture::unwritable("first-pr-ro", "reports")?;
+        let root = OutputDirFixture::path_arg(&env.root)?;
+        let out = OutputDirFixture::path_arg(&env.target)?;
+        let error = match first_pr(&first_pr_args(root, out)) {
+            Err(error) => error,
+            Ok(()) => {
+                return Err(
+                    "unwritable --out-dir must fail while creating the output directory"
+                        .to_string(),
+                );
+            }
+        };
+        assert!(error.contains(&format!("create {out} failed:")), "{error}");
+        assert!(
+            error.contains("write elsewhere with --out-dir PATH"),
+            "first-pr must name --out-dir PATH, got {error}"
+        );
+        assert!(
+            !error.contains("write elsewhere with --out PATH"),
+            "first-pr must not name pilot's flag, got {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn occupying_file_out_dir_does_not_name_the_relocate_flag() -> Result<(), String> {
+        use crate::testing::unwritable_output::OutputDirFixture;
+
+        let env = OutputDirFixture::occupying_file("first-pr-file", "reports")?;
+        let root = OutputDirFixture::path_arg(&env.root)?;
+        let out = OutputDirFixture::path_arg(&env.target)?;
+        let error = match first_pr(&first_pr_args(root, out)) {
+            Err(error) => error,
+            Ok(()) => return Err("file occupying --out-dir must fail".to_string()),
+        };
+        assert!(error.contains(&format!("create {out} failed:")), "{error}");
+        assert!(
+            !error.contains("write elsewhere"),
+            "a file occupying --out-dir is not a not-writable tree: {error}"
+        );
+        Ok(())
     }
 }

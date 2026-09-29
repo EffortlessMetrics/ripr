@@ -100,8 +100,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     apply_to_check_input(&mut input, &config, options.explicit);
 
     let artifacts = pilot_artifacts(&options.out_dir);
-    std::fs::create_dir_all(&options.out_dir)
-        .map_err(|err| format!("create {} failed: {err}", options.out_dir.display()))?;
+    output::file_write::create_output_dir(&options.out_dir, "--out")?;
 
     let analysis_root = input.root.clone();
     let analysis_config = config.clone();
@@ -463,5 +462,48 @@ mod tests {
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
         assert_eq!(cancelled_rx.recv_timeout(Duration::from_secs(1)), Ok(()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_out_dir_names_out_not_out_dir() -> Result<(), String> {
+        use crate::testing::unwritable_output::OutputDirFixture;
+
+        let env = OutputDirFixture::unwritable("pilot-ro", "pilot")?;
+        let root = OutputDirFixture::path_arg(&env.root)?;
+        let out = OutputDirFixture::path_arg(&env.target)?;
+        let error = match pilot(&args(&["--root", root, "--out", out])) {
+            Err(error) => error,
+            Ok(()) => return Err("unwritable --out must fail before analysis".to_string()),
+        };
+        assert!(error.contains(&format!("create {out} failed:")), "{error}");
+        assert!(
+            error.contains("write elsewhere with --out PATH"),
+            "pilot must name --out PATH, got {error}"
+        );
+        assert!(
+            !error.contains("--out-dir"),
+            "pilot must not name first-pr's flag, got {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn occupying_file_out_dir_does_not_name_the_relocate_flag() -> Result<(), String> {
+        use crate::testing::unwritable_output::OutputDirFixture;
+
+        let env = OutputDirFixture::occupying_file("pilot-file", "pilot")?;
+        let root = OutputDirFixture::path_arg(&env.root)?;
+        let out = OutputDirFixture::path_arg(&env.target)?;
+        let error = match pilot(&args(&["--root", root, "--out", out])) {
+            Err(error) => error,
+            Ok(()) => return Err("file occupying --out must fail".to_string()),
+        };
+        assert!(error.contains(&format!("create {out} failed:")), "{error}");
+        assert!(
+            !error.contains("write elsewhere"),
+            "a file occupying --out is not a not-writable tree: {error}"
+        );
+        Ok(())
     }
 }

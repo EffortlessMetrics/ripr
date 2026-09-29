@@ -104,3 +104,131 @@ fn open(path: &Path, exclusive: bool) -> io::Result<File> {
     }
     Ok(file)
 }
+
+/// Create a command output directory. When the tree is not writable, name the
+/// flag that relocates the write so the raw OS error is not the only clue
+/// (#4774).
+pub(crate) fn create_output_dir(path: &Path, relocate_flag: &str) -> Result<(), String> {
+    fs::create_dir_all(path).map_err(|err| create_output_dir_error(path, &err, relocate_flag))
+}
+
+fn create_output_dir_error(path: &Path, err: &io::Error, relocate_flag: &str) -> String {
+    let message = format!("create {} failed: {err}", path.display());
+    if is_unwritable_output_dir(err) {
+        format!("{message}; write elsewhere with {relocate_flag} PATH")
+    } else {
+        message
+    }
+}
+
+fn is_unwritable_output_dir(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::PermissionDenied | io::ErrorKind::ReadOnlyFilesystem
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::unwritable_output::OutputDirFixture;
+
+    const PILOT_HINT: &str = "write elsewhere with --out PATH";
+    const FIRST_PR_HINT: &str = "write elsewhere with --out-dir PATH";
+
+    #[test]
+    fn permission_denied_names_the_relocate_flag() {
+        let err = io::Error::new(io::ErrorKind::PermissionDenied, "permission denied");
+        let message = create_output_dir_error(Path::new("target/ripr/pilot"), &err, "--out");
+        assert!(
+            message.contains("create target/ripr/pilot failed:"),
+            "{message}"
+        );
+        assert!(message.contains(PILOT_HINT), "{message}");
+        assert!(!message.contains(FIRST_PR_HINT), "{message}");
+    }
+
+    #[test]
+    fn read_only_filesystem_names_the_relocate_flag() {
+        let err = io::Error::new(io::ErrorKind::ReadOnlyFilesystem, "Read-only file system");
+        let message = create_output_dir_error(Path::new("target/ripr/reports"), &err, "--out-dir");
+        assert!(message.contains(FIRST_PR_HINT), "{message}");
+        assert!(!message.contains(PILOT_HINT), "{message}");
+    }
+
+    #[test]
+    fn already_exists_does_not_name_the_relocate_flag() {
+        let err = io::Error::new(io::ErrorKind::AlreadyExists, "File exists");
+        let message = create_output_dir_error(Path::new("target/ripr/pilot"), &err, "--out");
+        assert!(
+            message.contains("create target/ripr/pilot failed: File exists"),
+            "{message}"
+        );
+        assert!(!message.contains("write elsewhere"), "{message}");
+    }
+
+    #[test]
+    fn not_a_directory_does_not_name_the_relocate_flag() {
+        let err = io::Error::new(io::ErrorKind::NotADirectory, "Not a directory");
+        let message = create_output_dir_error(Path::new("target/ripr/reports"), &err, "--out-dir");
+        assert!(!message.contains("write elsewhere"), "{message}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_erofs_keeps_the_os_error_and_names_pilot_out() {
+        let err = io::Error::from_raw_os_error(30);
+        assert_eq!(err.kind(), io::ErrorKind::ReadOnlyFilesystem);
+        let message = create_output_dir_error(Path::new("target/ripr/pilot"), &err, "--out");
+        assert!(message.contains("(os error 30)"), "{message}");
+        assert!(message.contains(PILOT_HINT), "{message}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unwritable_parent_create_names_the_flag() -> Result<(), String> {
+        let env = OutputDirFixture::unwritable("helper", "pilot")?;
+        let error = match create_output_dir(&env.target, "--out") {
+            Err(error) => error,
+            Ok(()) => return Err("unwritable parent must fail".to_string()),
+        };
+        assert!(
+            error.contains(&format!("create {} failed:", env.target.display())),
+            "{error}"
+        );
+        assert!(error.contains(PILOT_HINT), "{error}");
+        assert!(!error.contains(FIRST_PR_HINT), "{error}");
+        Ok(())
+    }
+
+    #[test]
+    fn occupying_file_create_does_not_name_the_flag() -> Result<(), String> {
+        let env = OutputDirFixture::occupying_file("helper-file", "pilot")?;
+        let error = match create_output_dir(&env.target, "--out") {
+            Err(error) => error,
+            Ok(()) => return Err("file path must fail".to_string()),
+        };
+        assert!(
+            error.contains(&format!("create {} failed:", env.target.display())),
+            "{error}"
+        );
+        assert!(
+            !error.contains("write elsewhere"),
+            "a file occupying the path is not a not-writable tree: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn writable_path_creates_the_directory() -> Result<(), String> {
+        let env = OutputDirFixture::writable("helper-ok", "pilot")?;
+        create_output_dir(&env.target, "--out")?;
+        if !env.target.is_dir() {
+            return Err(format!(
+                "writable create_output_dir must create {}",
+                env.target.display()
+            ));
+        }
+        Ok(())
+    }
+}
