@@ -113,6 +113,16 @@ are scoped or reviewed.
   packaging and cachetools bug fixes moved 25 false `no_static_path` or
   wrongly related findings; each flagged line's mutants were killed by the
   project's own suite.
+- `ripr doctor` in a TypeScript repository no longer recommends `ripr check`
+  without saying TypeScript is off: it names the enable step beside the
+  first command, because `check` skips files of a language that is not
+  enabled. In a mixed Python and TypeScript repository the enable tip now
+  keeps the languages already enabled (`["rust", "python", "typescript"]`)
+  instead of offering `["rust", "typescript"]`, which switched Python off and
+  made the next doctor run suggest the opposite edit. In a JavaScript-only
+  repository the tip offered `["rust", "javascript"]`, which configuration
+  loading rejects; it now offers the `typescript` entry, which analyzes
+  JavaScript.
 - Rust: the bounded transitive-reach walk behind `no_static_path` disclosures
   now follows every function sharing a callee's name. It followed only the
   first one indexed, so jiter's `decode_to_tape`, reached through one of two

@@ -233,6 +233,26 @@ fn print_doctor_start_here_guidance(root: &Path, report: &output::doctor::Doctor
         }
         output::doctor::DoctorFirstCommand::SavedDiff => {}
     }
+    // A detected preview language that is not enabled is skipped by `ripr
+    // check`, so in a TypeScript-only repository the recommended command is a
+    // guaranteed no-op. Name the enable step next to the command.
+    if let Some(line) = enable_before_first_command_line(root) {
+        println!("{line}");
+    }
+}
+
+fn enable_before_first_command_line(root: &Path) -> Option<String> {
+    // Name the config entries here: this line says what to write in
+    // ripr.toml, while the Tip names the detected source.
+    let names = preview_languages_to_enable(root)?
+        .missing
+        .iter()
+        .map(|id| id.as_str())
+        .collect::<Vec<_>>()
+        .join(" and ");
+    Some(format!(
+        "- Before that: enable {names} in ripr.toml (see the Tip above); until then `ripr check` skips those files"
+    ))
 }
 
 /// Language-to-status mapping used by the doctor first-run diagnosis.
@@ -614,46 +634,122 @@ fn suggest_preview_language_enablement(root: &Path) {
 /// Returns an empty vec when there is nothing to suggest. Separated from the
 /// printing logic so it can be covered by unit tests without stdout capture.
 fn preview_language_enable_suggestions(root: &Path) -> Vec<String> {
-    let detected = detect_languages(root);
-    let preview_detected: Vec<LanguageId> = detected
-        .into_iter()
-        .filter(|id| matches!(language_status(*id), LanguageStatus::Preview))
-        .collect();
-    if preview_detected.is_empty() {
+    let Some(PreviewEnablement {
+        enabled,
+        missing,
+        labels,
+    }) = preview_languages_to_enable(root)
+    else {
         return Vec::new();
-    }
-    let config = match load_for_root(root) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
     };
-    let enabled = config.languages().enabled();
-    let mut suggestions = Vec::new();
-    for id in &preview_detected {
-        if id.is_available() && !enabled.contains(id) {
-            // Perl detects as a preview language (see language_status). In a
-            // default build, `LanguageId::Perl.is_available()` is
-            // `cfg!(feature="lang-perl")` == false, so the Tip never fires for
-            // Perl anyway. This guard is defense-in-depth for the
-            // `--features lang-perl` build: even when the Cargo feature is ON,
-            // the adapter is still scaffold-only (#[cfg(test)] mod perl; not
-            // production-routable, pipeline fail-closed stub). Suggesting
-            // `enabled = ["rust", "perl"]` in that build would mislead: the
-            // user would enable it and get zero analysis plus an explicit
-            // error. Detection at detect_languages() stays honest; only the
-            // enablement Tip is suppressed for Perl until Campaign 31 (#1379)
-            // lands the production bridge. TypeScript/Python are real preview
-            // adapters and remain Tip-eligible.
-            if matches!(id, LanguageId::Perl) {
-                continue;
-            }
-            suggestions.push(format!(
-                "- Tip: {} files detected but the adapter is not enabled. To analyze them, add to ripr.toml:\n\n  [languages]\n  enabled = [\"rust\", \"{}\"]",
-                id.as_str(),
-                id.as_str(),
-            ));
+    // One snippet for every missing language, built on the languages already
+    // enabled: a per-language `["rust", "<lang>"]` snippet would disable the
+    // other preview language in a mixed repository, so following one tip
+    // would produce the other.
+    let mut target: Vec<&str> = enabled.iter().map(|id| id.as_str()).collect();
+    for id in &missing {
+        if !target.contains(&id.as_str()) {
+            target.push(id.as_str());
         }
     }
-    suggestions
+    let names = labels.join(" and ");
+    let quoted = target
+        .iter()
+        .map(|name| format!("\"{name}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let javascript_note = if labels.iter().any(|label| label == "javascript") {
+        " (the `typescript` entry also analyzes JavaScript)"
+    } else {
+        ""
+    };
+    vec![format!(
+        "- Tip: {names} files detected but not enabled, so `ripr check` does not analyze them. To analyze them, set in ripr.toml{javascript_note}:\n\n  [languages]\n  enabled = [{quoted}]"
+    )]
+}
+
+/// The enabled languages and the detected, compiled-in preview languages that
+/// are not enabled. `None` when there is nothing to suggest or the config
+/// cannot be loaded (fail closed: no tip).
+fn preview_languages_to_enable(root: &Path) -> Option<PreviewEnablement> {
+    let detected = detect_languages(root);
+    // JavaScript is analyzed by the TypeScript adapter and has no config
+    // entry of its own (`parse_languages_enabled` accepts only `typescript`),
+    // so a detected JavaScript source maps to the `typescript` entry. Using
+    // the scanner id would print `"javascript"`, which config loading rejects.
+    let mut preview_detected: Vec<LanguageId> = Vec::new();
+    for id in detected
+        .iter()
+        .copied()
+        .filter(|id| matches!(language_status(*id), LanguageStatus::Preview))
+    {
+        let entry = config_entry(id);
+        if !preview_detected.contains(&entry) {
+            preview_detected.push(entry);
+        }
+    }
+    if preview_detected.is_empty() {
+        return None;
+    }
+    let config = load_for_root(root).ok()?;
+    let enabled = config.languages().enabled().to_vec();
+    let missing: Vec<LanguageId> = preview_detected
+        .into_iter()
+        // Perl detects as a preview language (see language_status). In a
+        // default build, `LanguageId::Perl.is_available()` is
+        // `cfg!(feature="lang-perl")` == false, so the Tip never fires for
+        // Perl anyway. This guard is defense-in-depth for the
+        // `--features lang-perl` build: even when the Cargo feature is ON,
+        // the adapter is still scaffold-only (#[cfg(test)] mod perl; not
+        // production-routable, pipeline fail-closed stub). Suggesting
+        // `perl` in that build would mislead: the user would enable it and
+        // get zero analysis plus an explicit error. Detection at
+        // detect_languages() stays honest; only the enablement Tip is
+        // suppressed for Perl until Campaign 31 (#1379) lands the production
+        // bridge. TypeScript/Python are real preview adapters and remain
+        // Tip-eligible.
+        .filter(|id| id.is_available() && !enabled.contains(id) && !matches!(id, LanguageId::Perl))
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let labels = missing
+        .iter()
+        .map(|id| {
+            let javascript_only = *id == LanguageId::TypeScript
+                && !detected.contains(&LanguageId::TypeScript)
+                && detected.contains(&LanguageId::JavaScript);
+            if javascript_only {
+                "javascript".to_string()
+            } else {
+                id.as_str().to_string()
+            }
+        })
+        .collect();
+    Some(PreviewEnablement {
+        enabled,
+        missing,
+        labels,
+    })
+}
+
+/// The `[languages].enabled` entries a doctor tip may add, and how to name
+/// them to the user.
+struct PreviewEnablement {
+    /// Languages already enabled in `ripr.toml` (or the default).
+    enabled: Vec<LanguageId>,
+    /// Config entries to add, each a value `parse_languages_enabled` accepts.
+    missing: Vec<LanguageId>,
+    /// One user-facing name per `missing` entry, naming the detected source.
+    labels: Vec<String>,
+}
+
+/// The `[languages].enabled` entry that turns on analysis of `id`.
+fn config_entry(id: LanguageId) -> LanguageId {
+    match id {
+        LanguageId::JavaScript => LanguageId::TypeScript,
+        other => other,
+    }
 }
 
 /// Detect test-framework markers per detected language.
@@ -2308,10 +2404,17 @@ mod tests {
             .map_err(|err| format!("write ts: {err}"))?;
         // No ripr.toml → defaults to enabled = ["rust"] only.
         let suggestions = preview_language_enable_suggestions(&dir);
+        let before = enable_before_first_command_line(&dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(
             !suggestions.is_empty(),
             "expected a suggestion when TS detected and not enabled"
+        );
+        assert!(
+            before
+                .as_deref()
+                .is_some_and(|line| line.contains("enable typescript in ripr.toml")),
+            "the first command must name the enable step; got {before:?}"
         );
         let joined = suggestions.join("\n");
         assert!(
@@ -2322,6 +2425,106 @@ mod tests {
             joined.contains(r#"enabled = ["rust", "typescript"]"#),
             "suggestion must contain copy-paste TOML block; got:\n{joined}"
         );
+        Ok(())
+    }
+
+    /// A mixed repository must get one snippet that keeps the languages
+    /// already enabled: a `["rust", "typescript"]` snippet would switch off
+    /// Python, and the next doctor run would then suggest `["rust",
+    /// "python"]`, undoing the first edit.
+    #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]
+    #[test]
+    fn doctor_enable_tip_keeps_already_enabled_languages() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-mixed-keeps-enabled");
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("src/index.ts"), "export const x = 1;\n")
+            .map_err(|err| format!("write ts: {err}"))?;
+        std::fs::write(dir.join("src/calc.py"), "def a():\n    return 1\n")
+            .map_err(|err| format!("write py: {err}"))?;
+        std::fs::write(
+            dir.join("ripr.toml"),
+            "[languages]\nenabled = [\"rust\", \"python\"]\n",
+        )
+        .map_err(|err| format!("write ripr.toml: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let before = enable_before_first_command_line(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(suggestions.len(), 1, "one combined tip: {suggestions:?}");
+        assert!(
+            suggestions[0].contains(r#"enabled = ["rust", "python", "typescript"]"#),
+            "the snippet must keep python enabled; got:\n{}",
+            suggestions[0]
+        );
+        assert_eq!(
+            before.as_deref(),
+            Some(
+                "- Before that: enable typescript in ripr.toml (see the Tip above); until then `ripr check` skips those files"
+            )
+        );
+        Ok(())
+    }
+
+    /// JavaScript has no `[languages].enabled` entry of its own: the
+    /// TypeScript adapter analyzes it. A JavaScript-only root must get a
+    /// snippet that config loading accepts, and JavaScript with `typescript`
+    /// already enabled needs no tip at all.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn doctor_enable_tip_maps_javascript_to_the_typescript_entry() -> Result<(), String> {
+        let dir = unique_command_test_dir("suggest-javascript-only");
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(dir.join("src/index.js"), "export const x = 1;\n")
+            .map_err(|err| format!("write js: {err}"))?;
+        let suggestions = preview_language_enable_suggestions(&dir);
+        let before = enable_before_first_command_line(&dir);
+        assert_eq!(suggestions.len(), 1, "one tip: {suggestions:?}");
+        assert!(
+            suggestions[0].starts_with("- Tip: javascript files detected")
+                && suggestions[0].contains(r#"enabled = ["rust", "typescript"]"#)
+                && !suggestions[0].contains(r#""javascript""#),
+            "the snippet must name the typescript entry; got:\n{}",
+            suggestions[0]
+        );
+        assert_eq!(
+            before.as_deref(),
+            Some(
+                "- Before that: enable typescript in ripr.toml (see the Tip above); until then `ripr check` skips those files"
+            )
+        );
+        // The printed snippet must load, and after it the tip goes away.
+        std::fs::write(
+            dir.join("ripr.toml"),
+            "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+        )
+        .map_err(|err| format!("write ripr.toml: {err}"))?;
+        let loaded = load_for_root(&dir).map(|config| config.languages().enabled().to_vec());
+        let after = preview_language_enable_suggestions(&dir);
+        let after_before = enable_before_first_command_line(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            loaded,
+            Ok(vec![LanguageId::Rust, LanguageId::TypeScript]),
+            "the suggested snippet must load"
+        );
+        assert!(after.is_empty(), "typescript covers javascript: {after:?}");
+        assert_eq!(after_before, None);
+        Ok(())
+    }
+
+    /// Without a detected-but-disabled preview language there is no enable
+    /// step to name beside the first command.
+    #[test]
+    fn doctor_first_command_has_no_enable_step_for_rust_only() -> Result<(), String> {
+        let dir = unique_command_test_dir("first-command-rust-only");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        let before = enable_before_first_command_line(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(before, None);
         Ok(())
     }
 
