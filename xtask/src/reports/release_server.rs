@@ -644,6 +644,16 @@ fn validate_final_server_staging_entries(
         .collect::<std::collections::BTreeSet<_>>();
     let inventory_name = format!("ripr-server-final-subjects-v{version}.json");
     let attestation_name = format!("ripr-server-attestation-v{version}.receipt.json");
+    let mut allowed_internal = std::collections::BTreeSet::new();
+    allowed_internal.insert(format!("ripr-server-assembly-v{version}.receipt.json"));
+    allowed_internal.insert(inventory_name.clone());
+    allowed_internal.insert(attestation_name.clone());
+    for subject in subjects.iter().filter(|subject| subject.kind == "server_archive") {
+        allowed_internal.insert(format!("{}.sha256", subject.name));
+    }
+    for target in release_server_target_set() {
+        allowed_internal.insert(format!("ripr-server-v{version}-{target}.receipt.json"));
+    }
     for entry in fs::read_dir(dist_dir)
         .map_err(|err| format!("failed to read {}: {err}", dist_dir.display()))?
     {
@@ -659,14 +669,7 @@ fn validate_final_server_staging_entries(
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| format!("non-UTF8 final server staging entry '{}'", path.display()))?;
-        if subject_names.contains(name)
-            || name == inventory_name
-            || name == attestation_name
-            || name == format!("ripr-server-assembly-v{version}.receipt.json")
-            || name.ends_with(".sha256")
-            || (name.starts_with(&format!("ripr-server-v{version}-"))
-                && name.ends_with(".receipt.json"))
-        {
+        if subject_names.contains(name) || allowed_internal.contains(name) {
             continue;
         }
         return Err(format!("unexpected final server staging entry '{name}'"));
