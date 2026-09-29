@@ -34,6 +34,11 @@ Version plumbing is a single source of truth again: `crates/ripr`
 inherits the workspace package version, so the released binary
 identity matches the release metadata.
 
+Release distribution now inventories the exact final server archive/manifest/checksum
+subject set, provenance-attests and independently verifies each subject before
+GitHub Release upload becomes reachable, and keeps manual release-workflow
+dispatch non-publishing by default.
+
 ## 0.10.1 - Bounded subprocess adapter analysis
 
 Release date: staged (unreleased).
