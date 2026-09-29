@@ -440,7 +440,7 @@ fn parse_budget_limitation(
             AnalysisStage::LanguageAdapter,
             AnalysisRecovery::new(
                 AnalysisRecoveryKind::Retry,
-                "Split or simplify the deeply nested Python expression, then re-run the analysis.",
+                "Split or simplify the deeply nested Python expression, operator chain, or elif chain, then re-run the analysis.",
             )?,
         )
         .with_path(normalized_path(relative))?
