@@ -112,9 +112,11 @@ pub(crate) fn run_git_output_with_deadline(
 }
 
 /// Longest working directory, in UTF-16 units and without the trailing
-/// separator, that `CreateProcessW` accepts from a process without a
-/// `longPathAware` manifest (`MAX_PATH` minus the terminator and the
-/// separator `SetCurrentDirectoryW` appends).
+/// separator, that `CreateProcessW` accepts (`MAX_PATH` minus the terminator
+/// and the separator `SetCurrentDirectoryW` appends). A `longPathAware`
+/// manifest does not lift it: on a host with `LongPathsEnabled=1`, a
+/// manifested Rust binary and PowerShell 7 both got error 267 for a
+/// 361-unit working directory (#4350 probe, 2026-09-29).
 const WINDOWS_MAX_WORKING_DIRECTORY_UNITS: usize = 258;
 
 /// Win32 codes `CreateProcessW` returns for a working directory it cannot
@@ -148,8 +150,12 @@ impl SpawnSite {
     /// Keeps the `failed to run …` family every caller and contract matches
     /// on. When Windows refuses a working directory past `MAX_PATH` (#4350)
     /// the raw `The directory name is invalid. (os error 267)` names neither
-    /// the cause nor a way out, and a newer Git cannot help: `git.exe`
-    /// refuses the same directory through `-C`. So that one case leads with
+    /// the cause nor a way out, and no other spawn shape helps: Git for
+    /// Windows refuses the same root through `-C` (even with
+    /// `core.longpaths`), through `GIT_DIR` (`'$GIT_DIR' too big`), and
+    /// through a short junction, because it resolves the junction back to the
+    /// long root before its work-tree commands (probe table on #4350,
+    /// issuecomment-5881212067). So that one case leads with
     /// the limit and the remedy, ahead of the long invocation text that
     /// bounded LSP status messages would otherwise truncate it behind.
     fn failure_message(&self, describe: &str, err: &std::io::Error) -> String {
@@ -739,10 +745,10 @@ mod tests {
 
     /// Native control for #4350: the shared git authority, spawning under a
     /// real directory past `MAX_PATH`, reports the limit and the remedy
-    /// instead of `The directory name is invalid. (os error 267)`. The test
-    /// binary, like `ripr.exe`, carries no `longPathAware` manifest, so the
-    /// spawn is refused whatever the host's `LongPathsEnabled` policy says;
-    /// if a manifest is ever added this fails and names that change.
+    /// instead of `The directory name is invalid. (os error 267)`.
+    /// `CreateProcessW` refuses the working directory whatever the host's
+    /// `LongPathsEnabled` policy or the binary's manifest says; if Windows or
+    /// std ever lifts that, this fails and names the change.
     #[cfg(windows)]
     #[test]
     fn native_git_spawn_under_an_overlong_root_names_the_path_limit() -> Result<(), String> {
