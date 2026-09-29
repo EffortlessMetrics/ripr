@@ -527,7 +527,11 @@ fn detect_framework_signals(pkg_json: &str) -> Vec<TsFramework> {
     if has_dep("mocha") || has_dep("@types/mocha") {
         push_framework_signal(&mut signals, TsFramework::Mocha);
     }
-    if has_dep("@types/node") {
+    // `@types/node` is typings, not a runner: nearly every jest/vitest/mocha
+    // project carries it, so it counts only when no runner dependency does.
+    // Counting it beside `vitest` reported most projects as ambiguous and
+    // capped their confidence (#4762).
+    if signals.is_empty() && has_dep("@types/node") {
         push_framework_signal(&mut signals, TsFramework::NodeTest);
     }
     if !signals.is_empty() {
@@ -939,6 +943,19 @@ mod tests {
     fn detect_framework_node_test() {
         let result = detect_framework(r#"{"devDependencies":{"@types/node":"^20.0.0"}}"#);
         assert_eq!(result, Some(TsFramework::NodeTest));
+    }
+
+    #[test]
+    fn detect_framework_signals_types_node_beside_a_runner_is_not_a_second_signal() {
+        // zustand / date-fns shape: vitest plus the ubiquitous `@types/node`.
+        let signals = detect_framework_signals(
+            r#"{"devDependencies":{"@types/node":"^25.0.0","vitest":"^4.0.0"}}"#,
+        );
+        assert_eq!(signals, vec![TsFramework::Vitest]);
+        let signals = detect_framework_signals(
+            r#"{"devDependencies":{"@types/node":"^25.0.0","jest":"^29.0.0","vitest":"^4.0.0"}}"#,
+        );
+        assert_eq!(signals, vec![TsFramework::Jest, TsFramework::Vitest]);
     }
 
     #[test]

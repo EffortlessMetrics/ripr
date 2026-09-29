@@ -1030,10 +1030,102 @@ fn find_owner_extraction_gap(
                     return Some(gap);
                 }
             }
+            Statement::ExpressionStatement(statement) => {
+                if let Some(gap) =
+                    expression_statement_function_gap(&statement.expression, source, changed)
+                {
+                    return Some(gap);
+                }
+            }
             _ => {}
         }
     }
     None
+}
+
+/// A function value carried by a top-level expression statement that the
+/// extractor never turns into an owner (#4754):
+///
+/// - `res.send = function send() {...}` / `Foo.prototype.bar = () => ...`
+///   (a member-assigned function on an object other than the CommonJS
+///   `exports` / `module.exports` targets, which are export shapes);
+/// - a function inside a top-level call: an IIFE (`(function () {...})()`,
+///   `(function () {...}.call(this))`, `!function () {...}()`) or a wrapper
+///   argument (`define([...], function () {...})`).
+fn expression_statement_function_gap(
+    expression: &Expression<'_>,
+    source: &SourceText<'_>,
+    changed: &std::collections::HashSet<usize>,
+) -> Option<(usize, &'static str, (usize, usize))> {
+    let hit = |function: &Expression<'_>, shape: &'static str| {
+        let span = function.span();
+        span_hits_changed_line(span, source, changed)
+            .map(|line| (line, shape, (span.start as usize, span.end as usize)))
+    };
+    match expression.without_parentheses() {
+        Expression::AssignmentExpression(assign) => {
+            let oxc_ast::ast::AssignmentTarget::StaticMemberExpression(target) = &assign.left
+            else {
+                return None;
+            };
+            if is_commonjs_export_target(target) {
+                return None;
+            }
+            let value = assign.right.without_parentheses();
+            is_function_value(value)
+                .then(|| hit(value, "member-assigned function"))
+                .flatten()
+        }
+        Expression::UnaryExpression(unary) => {
+            expression_statement_function_gap(&unary.argument, source, changed)
+        }
+        Expression::CallExpression(call) => {
+            let callee = match call.callee.without_parentheses() {
+                // `(function () {...}).call(this)` / `.apply(...)`
+                Expression::StaticMemberExpression(member)
+                    if matches!(member.property.name.as_str(), "call" | "apply") =>
+                {
+                    member.object.without_parentheses()
+                }
+                callee => callee,
+            };
+            if is_function_value(callee)
+                && let Some(gap) = hit(callee, "function inside a top-level call")
+            {
+                return Some(gap);
+            }
+            call.arguments
+                .iter()
+                .filter_map(|argument| argument.as_expression())
+                .map(Expression::without_parentheses)
+                .filter(|argument| is_function_value(argument))
+                .find_map(|argument| hit(argument, "function inside a top-level call"))
+        }
+        _ => None,
+    }
+}
+
+fn is_function_value(expression: &Expression<'_>) -> bool {
+    matches!(
+        expression,
+        Expression::FunctionExpression(_) | Expression::ArrowFunctionExpression(_)
+    )
+}
+
+/// `exports.NAME`, `module.exports`, or `module.exports.NAME`: CommonJS
+/// export targets, owned as export shapes rather than disclosed here.
+fn is_commonjs_export_target(target: &oxc_ast::ast::StaticMemberExpression<'_>) -> bool {
+    match target.object.without_parentheses() {
+        Expression::Identifier(object) => {
+            object.name == "exports"
+                || (object.name == "module" && target.property.name == "exports")
+        }
+        Expression::StaticMemberExpression(object) => {
+            object.property.name == "exports"
+                && matches!(&object.object, Expression::Identifier(module) if module.name == "module")
+        }
+        _ => false,
+    }
 }
 
 /// Scan class body elements for the unsupported member shapes the extractor

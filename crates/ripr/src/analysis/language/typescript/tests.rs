@@ -13732,6 +13732,87 @@ fn owner_extraction_gap_discloses_static_block() -> Result<(), String> {
 }
 
 #[test]
+fn owner_extraction_gap_discloses_member_assigned_function() -> Result<(), String> {
+    // express `lib/response.js` shape (#4754).
+    assert_owner_extraction_gap_disclosed(
+        "owner-gap-member-fn",
+        "lib/response.js",
+        "var res = Object.create(null);\nmodule.exports = res;\n\nres.send = function send(body) {\n  if (body >= 1) {\n    return 1;\n  }\n  return 0;\n};\n",
+        (5, "  if (body >= 1) {"),
+        "member-assigned function",
+    )?;
+    assert_owner_extraction_gap_disclosed(
+        "owner-gap-prototype-fn",
+        "lib/ledger.js",
+        "function Ledger() {}\nLedger.prototype.adjust = (amount) => {\n  return amount - 5;\n};\n",
+        (3, "  return amount - 5;"),
+        "member-assigned function",
+    )
+}
+
+#[test]
+fn owner_extraction_gap_discloses_function_inside_top_level_call() -> Result<(), String> {
+    // lodash `;(function() { ... }.call(this))` shape (#4754).
+    assert_owner_extraction_gap_disclosed(
+        "owner-gap-iife-call",
+        "lodash.js",
+        ";(function() {\n  function clamp(n) {\n    return n > 9 ? 9 : n;\n  }\n  this.clamp = clamp;\n}.call(this));\n",
+        (3, "    return n > 9 ? 9 : n;"),
+        "function inside a top-level call",
+    )?;
+    assert_owner_extraction_gap_disclosed(
+        "owner-gap-umd-define",
+        "src/umd.js",
+        "define([\"dep\"], function (dep) {\n  return dep.rate * 2;\n});\n",
+        (2, "  return dep.rate * 2;"),
+        "function inside a top-level call",
+    )
+}
+
+#[test]
+fn no_owner_extraction_gap_for_commonjs_exports_or_plain_expression_statements()
+-> Result<(), String> {
+    // CommonJS export targets are export shapes (#4545), and statements that
+    // hold no changed function body are not owner gaps.
+    for (label, src, added) in [
+        (
+            "owner-gap-neg-exports",
+            "exports.rate = function (amount) {\n  return amount * 2;\n};\n",
+            (2, "  return amount * 2;"),
+        ),
+        (
+            "owner-gap-neg-module-exports",
+            "module.exports = function rate(amount) {\n  return amount * 2;\n};\n",
+            (2, "  return amount * 2;"),
+        ),
+        (
+            "owner-gap-neg-plain",
+            "var config = {};\nconfig.rate = 3;\ninit(config);\n",
+            (2, "config.rate = 3;"),
+        ),
+    ] {
+        let root = ts_unique_tempdir(label)?;
+        ts_write_file(&root.join("lib/rate.js"), src)?;
+        let result = TypeScriptAdapter.analyze_diff(
+            &ts_analysis_options(root.clone()),
+            &OraclePolicy::default(),
+            &[changed_with_lines("lib/rate.js", &[added])],
+        )?;
+        assert!(
+            !result.limitations.iter().any(|limitation| {
+                limitation
+                    .bounded_detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("typescript_owner_extraction_partial"))
+            }),
+            "{label}: unexpected typescript_owner_extraction_partial, got {:?}",
+            result.limitations
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn no_owner_extraction_gap_for_supported_owner_shape() -> Result<(), String> {
     let root = ts_unique_tempdir("owner-gap-negative")?;
     ts_write_file(
