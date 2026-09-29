@@ -18,12 +18,12 @@
 //! contract aimed at coding agents rather than reviewers.
 
 use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
-#[cfg(test)]
 use crate::agent::loop_commands::anchored_redirect_target;
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
-    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command,
-    agent_verify_command, check_repo_exposure_command, shell_arg,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command, agent_verify_command,
+    check_analysis_outcome_command, check_repo_exposure_command, shell_arg,
 };
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::repair_route::{
@@ -139,6 +139,7 @@ fn push_analysis_outcome_projection(
 ///
 /// When `limit_info` is `Some`, the artifact carries a `limitations[]` block
 /// so consumers know the output is bounded and can opt out via the env var.
+#[cfg(test)]
 pub(crate) fn render_agent_seam_packets_json(
     classified: &[ClassifiedSeam],
     limit_info: Option<&SeamLimitInfo>,
@@ -166,6 +167,37 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
     causal_projection: Option<&CausalDeltaArtifact>,
     analysis_outcome: Option<&AnalysisOutcome>,
     analysis_outcome_required: bool,
+) -> String {
+    render_agent_seam_packets_json_with_root(
+        classified,
+        limit_info,
+        causal_projection,
+        analysis_outcome,
+        analysis_outcome_required,
+        PacketCommandContext::Portable,
+    )
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum PacketCommandContext<'a> {
+    Portable,
+    Standalone {
+        root: &'a str,
+    },
+    Prepared {
+        root: &'a str,
+        attempt_id: &'a str,
+        authorization_suffix: Option<&'a str>,
+    },
+}
+
+fn render_agent_seam_packets_json_with_root(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    causal_projection: Option<&CausalDeltaArtifact>,
+    analysis_outcome: Option<&AnalysisOutcome>,
+    analysis_outcome_required: bool,
+    context: PacketCommandContext<'_>,
 ) -> String {
     let canonical_gaps = canonical_gap_identities(classified);
     let mut out = String::new();
@@ -243,7 +275,38 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
         out.push_str("  ");
     }
     out.push(']');
-    match repair_loop_commands(&actionable) {
+    if let PacketCommandContext::Prepared {
+        root,
+        attempt_id,
+        authorization_suffix,
+    } = context
+    {
+        if actionable
+            .iter()
+            .any(|entry| task_for(entry) == TASK_WRITE_TARGETED_TEST)
+        {
+            out.push_str(",\n");
+            let command = format!(
+                "ripr agent repair --root {} --attempt {} --phase after{}",
+                shell_arg(root),
+                shell_arg(attempt_id),
+                authorization_suffix.unwrap_or_default(),
+            );
+            out.push_str(&format!(
+                "  \"next\": {{\n    \"before_snapshot_command\": null,\n    \"after_snapshot_command\": null,\n    \"analysis_outcome_command\": null,\n    \"verify_after_edit\": null,\n    \"receipt_after_verify\": null,\n    \"repair_after_command\": \"{}\"\n  }}\n",
+                json_escape(&command),
+            ));
+        } else {
+            out.push('\n');
+        }
+        out.push_str("}\n");
+        return out;
+    }
+    let selected_root = match context {
+        PacketCommandContext::Standalone { root } => Some(root),
+        _ => None,
+    };
+    match repair_loop_commands(&actionable, selected_root) {
         Some(commands) => {
             out.push_str(",\n");
             push_repair_loop_json(&mut out, &commands);
@@ -264,6 +327,7 @@ struct RepairLoopCommands {
     before_snapshot: String,
     after_snapshot: String,
     verify: String,
+    analysis_outcome: Option<String>,
     /// `ripr agent receipt` names one seam, so this is only knowable when the
     /// envelope resolves to a single actionable packet — the
     /// `ripr agent packet --seam-id` shape. Repo-wide envelopes leave it
@@ -275,13 +339,26 @@ struct RepairLoopCommands {
 /// Render the loop commands only when the envelope actually asks for a
 /// targeted test. An envelope of `inspect_static_limitation` packets has no
 /// repair to verify, so it keeps its current shape.
-fn repair_loop_commands(actionable: &[&ClassifiedSeam]) -> Option<RepairLoopCommands> {
+fn repair_loop_commands(
+    actionable: &[&ClassifiedSeam],
+    selected_root: Option<&str>,
+) -> Option<RepairLoopCommands> {
     let first = actionable
         .iter()
         .find(|entry| task_for(entry) == TASK_WRITE_TARGETED_TEST)?;
+    let root = selected_root.unwrap_or(REPAIR_LOOP_ROOT);
+    let prepare = selected_root
+        .map(|root| {
+            format!(
+                "mkdir -p {} {}",
+                shell_arg(&anchored_redirect_target(root, "target/ripr/workflow")),
+                shell_arg(&anchored_redirect_target(root, "target/ripr/reports")),
+            )
+        })
+        .unwrap_or_else(|| WORKFLOW_PREPARE_COMMAND.to_string());
     let receipt = (actionable.len() == 1).then(|| {
         agent_receipt_command(
-            REPAIR_LOOP_ROOT,
+            root,
             WORKFLOW_AGENT_VERIFY_ARTIFACT,
             first.seam.id().as_str(),
             Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
@@ -289,26 +366,29 @@ fn repair_loop_commands(actionable: &[&ClassifiedSeam]) -> Option<RepairLoopComm
     });
     Some(RepairLoopCommands {
         before_snapshot: format!(
-            "{WORKFLOW_PREPARE_COMMAND} && {}",
-            check_repo_exposure_command(
-                REPAIR_LOOP_ROOT,
-                REPAIR_LOOP_MODE,
-                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
-            )
+            "{prepare} && {}",
+            check_repo_exposure_command(root, REPAIR_LOOP_MODE, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,)
         ),
         after_snapshot: check_repo_exposure_command(
-            REPAIR_LOOP_ROOT,
+            root,
             REPAIR_LOOP_MODE,
             WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
         ),
         // Redirected into the verify artifact the receipt command reads, so
         // the two steps compose instead of naming a file nothing wrote.
         verify: agent_verify_command(
-            REPAIR_LOOP_ROOT,
+            root,
             WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
             WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
             Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
         ),
+        analysis_outcome: selected_root.map(|root| {
+            check_analysis_outcome_command(
+                root,
+                REPAIR_LOOP_MODE,
+                WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+            )
+        }),
         receipt,
     })
 }
@@ -327,6 +407,12 @@ fn push_repair_loop_json(out: &mut String, commands: &RepairLoopCommands) {
         "    \"verify_after_edit\": \"{}\",\n",
         json_escape(&commands.verify)
     ));
+    if let Some(command) = &commands.analysis_outcome {
+        out.push_str(&format!(
+            "    \"analysis_outcome_command\": \"{}\",\n",
+            json_escape(command)
+        ));
+    }
     match commands.receipt.as_deref() {
         Some(receipt) => out.push_str(&format!(
             "    \"receipt_after_verify\": \"{}\"\n",
@@ -339,8 +425,24 @@ fn push_repair_loop_json(out: &mut String, commands: &RepairLoopCommands) {
 
 /// Render the existing agent seam packet JSON envelope for one seam.
 /// Single-seam packets are always unbounded — no limit_info.
+#[cfg(test)]
 pub(crate) fn render_agent_seam_packet_json(entry: &ClassifiedSeam) -> String {
     render_agent_seam_packets_json(std::slice::from_ref(entry), None)
+}
+
+/// Explicit CLI root authority; portable bulk wrappers retain their contract.
+pub(crate) fn render_agent_seam_packet_json_with_context(
+    entry: &ClassifiedSeam,
+    context: PacketCommandContext<'_>,
+) -> String {
+    render_agent_seam_packets_json_with_root(
+        std::slice::from_ref(entry),
+        None,
+        None,
+        None,
+        false,
+        context,
+    )
 }
 
 /// Render one explicit GapRecord as an agent packet. This is the same
@@ -6065,6 +6167,51 @@ mod tests {
             packet["suggested_test_command_status"],
             "runnable_after_the_suggested_test_exists"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_packet_continuation_preserves_required_python_authorization() -> Result<(), String>
+    {
+        let entry = weakly_gripped_classified();
+        let suffix = crate::agent::PYTHON_REPAIR_AUTHORIZATION_SUFFIX;
+        for authorization_suffix in [None, Some(suffix)] {
+            let rendered = render_agent_seam_packet_json_with_context(
+                &entry,
+                PacketCommandContext::Prepared {
+                    root: "/selected root",
+                    attempt_id: "repair-attempt-selected",
+                    authorization_suffix,
+                },
+            );
+            let value: serde_json::Value =
+                serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+            let command = value
+                .pointer("/next/repair_after_command")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "missing prepared continuation".to_string())?;
+            if !command.contains("--root '/selected root'")
+                || !command.contains("--attempt repair-attempt-selected")
+                || command.contains("--seam-id")
+                || !command.contains("--phase after")
+                || command.ends_with(suffix) != authorization_suffix.is_some()
+            {
+                return Err(format!(
+                    "incorrect prepared authorization continuation: {command}"
+                ));
+            }
+            for field in [
+                "before_snapshot_command",
+                "after_snapshot_command",
+                "analysis_outcome_command",
+                "verify_after_edit",
+                "receipt_after_verify",
+            ] {
+                if value.pointer(&format!("/next/{field}")) != Some(&serde_json::Value::Null) {
+                    return Err(format!("prepared packet retained incompatible {field}"));
+                }
+            }
+        }
         Ok(())
     }
 

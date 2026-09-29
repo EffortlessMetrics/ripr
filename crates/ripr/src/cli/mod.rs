@@ -93,9 +93,18 @@ pub fn run(mut args: Vec<String>) -> Result<(), CommandError> {
         .as_ref()
         .map(|options| lock_before_repair_attempt(&options.root))
         .transpose()?;
-    execute::execute(parse::parse_args(args)?)?;
     if let Some(options) = before_attempt {
-        persist_before_repair_attempt(&options)?;
+        let seam_id = options.seam_id.as_deref().ok_or_else(|| {
+            "before-phase repair attempt is missing its seam identity".to_string()
+        })?;
+        let identity = crate::app::repair_attempt::BeforeRepairAttemptIdentity::prepare(
+            &options.root,
+            seam_id,
+        )?;
+        commands::run_before_repair_with_identity(options.clone(), &identity)?;
+        persist_before_repair_attempt(&options, &identity)?;
+    } else {
+        execute::execute(parse::parse_args(args)?)?;
     }
     Ok(())
 }
@@ -151,7 +160,10 @@ fn before_repair_attempt(args: &[String]) -> Result<Option<agent::AgentRepairOpt
     }
 }
 
-fn persist_before_repair_attempt(options: &agent::AgentRepairOptions) -> Result<(), String> {
+fn persist_before_repair_attempt(
+    options: &agent::AgentRepairOptions,
+    identity: &crate::app::repair_attempt::BeforeRepairAttemptIdentity,
+) -> Result<(), String> {
     let root = &options.root;
     let seam_id = options
         .seam_id
@@ -226,7 +238,7 @@ fn persist_before_repair_attempt(options: &agent::AgentRepairOptions) -> Result<
             path: &binding.record_path,
         });
     }
-    let result = crate::app::repair_attempt::begin_repair_attempt_with(
+    let result = crate::app::repair_attempt::begin_repair_attempt_with_identity(
         crate::app::repair_attempt::BeginRepairAttemptOptions {
             root,
             root_argument: root,
@@ -241,8 +253,9 @@ fn persist_before_repair_attempt(options: &agent::AgentRepairOptions) -> Result<
             // driver never persists a granted authorization.
             next_command_suffix: binding
                 .as_ref()
-                .map(|_| " --edit-authorized --edit-authority <operator-or-agent-identity>"),
+                .map(|_| crate::agent::PYTHON_REPAIR_AUTHORIZATION_SUFFIX),
         },
+        identity,
     )?;
     if let Some(binding) = &binding {
         eprintln!(

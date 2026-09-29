@@ -883,6 +883,45 @@ fn clean_test_only_edit_binds_prepare_and_apply() -> Result<(), String> {
             ));
         }
     }
+    let packet_path = fixture
+        .root
+        .join("target/ripr/repair-attempts")
+        .join(&attempt_id)
+        .join("artifacts/agent-packet.json");
+    let packet_text = std::fs::read_to_string(&packet_path)
+        .map_err(|error| format!("read retained prepared packet: {error}"))?;
+    let packet = parse_json(&packet_text, "retained prepared packet")?;
+    let continuation = packet
+        .pointer("/next/repair_after_command")
+        .and_then(Value::as_str)
+        .ok_or("prepared packet carries no durable continuation")?;
+    let selected_root_prefix = next_command
+        .split_once(" --attempt ")
+        .map(|(prefix, _)| prefix)
+        .ok_or("published command carries no exact attempt selector")?;
+    if continuation != next_command
+        || !continuation.starts_with(&format!("{selected_root_prefix} --attempt {attempt_id} "))
+        || !continuation
+            .ends_with(" --edit-authorized --edit-authority <operator-or-agent-identity>")
+        || !continuation.contains(" --phase after")
+    {
+        return Err(format!(
+            "retained Python packet lost selected root or required authorization: {continuation}"
+        ));
+    }
+    for field in [
+        "before_snapshot_command",
+        "after_snapshot_command",
+        "analysis_outcome_command",
+        "verify_after_edit",
+        "receipt_after_verify",
+    ] {
+        if packet.pointer(&format!("/next/{field}")) != Some(&Value::Null) {
+            return Err(format!(
+                "prepared Python packet advertises incompatible {field}"
+            ));
+        }
+    }
     let record = prepare_record(&fixture, &attempt_id)?;
     assert_prepare_record_identity(&record)?;
     if record
@@ -1499,11 +1538,12 @@ fn tampered_retained_binding_fails_closed() -> Result<(), String> {
 }
 
 #[test]
-fn deterministic_preparation_is_byte_identical() -> Result<(), String> {
+fn distinct_prepared_attempts_bind_their_exact_packet_inputs() -> Result<(), String> {
     let fixture = build_fixture("deterministic")?;
     let seam_id = find_seam_for_target(&fixture.root, TARGET_TEST_FILE)?;
-    // Two durable preparations binding the SAME selection: the row identity
-    // is fixed, and each prepare publishes its own durable attempt.
+    // The selection is identical, but each durable attempt owns a different
+    // exact continuation in its sealed packet. Those are different inputs,
+    // not telemetry that the binding may omit or normalize.
     let first = run_prepare(&fixture, &seam_id, "att-det")?;
     require_success(&first, "first bound before phase")?;
     let second = run_prepare(&fixture, &seam_id, "att-det")?;
@@ -1516,18 +1556,119 @@ fn deterministic_preparation_is_byte_identical() -> Result<(), String> {
             ids.len()
         ));
     }
-    if ids[0] == ids[1] {
+    let first_id = ids.first().ok_or("missing first durable attempt")?;
+    let second_id = ids.get(1).ok_or("missing second durable attempt")?;
+    if first_id == second_id {
         return Err("two preparations collided on one durable attempt identity".to_string());
     }
-    let first_record = std::fs::read(binding_artifact_path(&fixture, &ids[0])?)
-        .map_err(|error| format!("read first binding: {error}"))?;
-    let second_record = std::fs::read(binding_artifact_path(&fixture, &ids[1])?)
+    let packet_path = |id: &str| {
+        fixture
+            .root
+            .join("target/ripr/repair-attempts")
+            .join(id)
+            .join("artifacts/agent-packet.json")
+    };
+    let first_packet = std::fs::read(packet_path(first_id))
+        .map_err(|error| format!("read first sealed packet: {error}"))?;
+    let second_packet = std::fs::read(packet_path(second_id))
+        .map_err(|error| format!("read second sealed packet: {error}"))?;
+    if first_packet == second_packet || sha256_hex(&first_packet) == sha256_hex(&second_packet) {
+        return Err("distinct attempt continuations produced identical packet inputs".to_string());
+    }
+    let mut records = Vec::new();
+    for (id, bytes) in [(first_id, &first_packet), (second_id, &second_packet)] {
+        let packet: Value = serde_json::from_slice(bytes)
+            .map_err(|error| format!("parse sealed packet: {error}"))?;
+        let command = packet
+            .pointer("/next/repair_after_command")
+            .and_then(Value::as_str)
+            .ok_or("sealed packet lost continuation")?;
+        let manifest = attempt_manifest(&fixture, id)?;
+        if !command.contains(&format!(" --attempt {id} "))
+            || manifest.get("next_command").and_then(Value::as_str) != Some(command)
+        {
+            return Err(
+                "sealed packet continuation does not identify its own manifest".to_string(),
+            );
+        }
+        let mut record = prepare_record(&fixture, id)?;
+        let digest = sha256_hex(bytes);
+        if record
+            .pointer("/input/packet_sha256")
+            .and_then(Value::as_str)
+            != Some(digest.as_str())
+        {
+            return Err("binding does not pin its own sealed packet bytes".to_string());
+        }
+        // Only this explicitly different accepted input may differ. Every
+        // other field remains compared, including any unexpected nonce.
+        record
+            .get_mut("input")
+            .and_then(Value::as_object_mut)
+            .ok_or("binding input is not an object")?
+            .remove("packet_sha256")
+            .ok_or("binding input lost packet digest")?;
+        records.push(record);
+    }
+    if records.first() != records.get(1) {
+        return Err("equal non-packet inputs produced different binding fields".to_string());
+    }
+    let second_manifest = std::fs::read(
+        fixture
+            .root
+            .join("target/ripr/repair-attempts")
+            .join(second_id)
+            .join("attempt.json"),
+    )
+    .map_err(|error| format!("read second manifest: {error}"))?;
+    let second_binding = std::fs::read(binding_artifact_path(&fixture, second_id)?)
         .map_err(|error| format!("read second binding: {error}"))?;
-    if first_record != second_record {
-        return Err(
-            "equivalent preparations produced different binding records; only declared telemetry may differ and the record carries none"
-                .to_string(),
-        );
+    let first_binding = std::fs::read(binding_artifact_path(&fixture, first_id)?)
+        .map_err(|error| format!("read first binding before refusal: {error}"))?;
+    let authored_before = [PRODUCTION_FILE, TARGET_TEST_FILE]
+        .into_iter()
+        .map(|path| {
+            std::fs::read(fixture.root.join(path))
+                .map(|bytes| (path, bytes))
+                .map_err(|error| format!("read {path} before refusal: {error}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    // Do not reseal: an actual B packet cannot replace A's committed packet.
+    // The attempt artifact seal may refuse before Python binding validation.
+    std::fs::write(packet_path(first_id), &second_packet)
+        .map_err(|error| format!("substitute foreign-attempt packet: {error}"))?;
+    let refused = run_apply(&fixture, first_id, Some(AUTHORITY))?;
+    require_failure(
+        &refused,
+        "apply A with B's sealed packet",
+        "artifact binding failed",
+    )?;
+    for (path, before) in authored_before {
+        if std::fs::read(fixture.root.join(path)).map_err(|error| error.to_string())? != before {
+            return Err(format!("refusing the substituted packet changed {path}"));
+        }
+    }
+    if std::fs::read(binding_artifact_path(&fixture, first_id)?)
+        .map_err(|error| error.to_string())?
+        != first_binding
+    {
+        return Err("refusing the substituted packet changed A's retained binding".to_string());
+    }
+    if std::fs::read(packet_path(second_id)).map_err(|error| error.to_string())? != second_packet
+        || std::fs::read(binding_artifact_path(&fixture, second_id)?)
+            .map_err(|error| error.to_string())?
+            != second_binding
+        || std::fs::read(
+            fixture
+                .root
+                .join("target/ripr/repair-attempts")
+                .join(second_id)
+                .join("attempt.json"),
+        )
+        .map_err(|error| error.to_string())?
+            != second_manifest
+    {
+        return Err("refusing the substituted packet changed the second attempt".to_string());
     }
     Ok(())
 }

@@ -397,8 +397,70 @@ pub(crate) struct BeginRepairAttemptOptions<'a> {
     pub(crate) next_command_suffix: Option<&'a str>,
 }
 
+/// Private before-phase identity, allocated before the packet is rendered.
+/// Allocation publishes nothing; the original transaction still owns
+/// reservation, artifact commitments and final HEAD admission.
+pub(crate) struct BeforeRepairAttemptIdentity {
+    canonical_root: PathBuf,
+    seam_id: String,
+    repository_head: String,
+    created_unix_ms: u64,
+    repair_attempt_id: RepairAttemptId,
+}
+
+impl BeforeRepairAttemptIdentity {
+    pub(crate) fn prepare(root: &Path, seam_id: &str) -> Result<Self, String> {
+        if seam_id.trim().is_empty() {
+            return Err("repair attempt requires a non-empty seam ID".to_string());
+        }
+        let canonical_root = root
+            .canonicalize()
+            .map_err(|error| format!("canonicalize repair attempt root failed: {error}"))?;
+        let repository_head =
+            crate::agent::artifact::current_git_head(&canonical_root).map_err(|error| {
+                format!("repair attempt requires a concrete repository HEAD: {error}")
+            })?;
+        let created_unix_ms = current_unix_ms()?;
+        let nonce = ATTEMPT_NONCE.fetch_add(1, Ordering::Relaxed);
+        let repair_attempt_id = repair_attempt_id_from_parts(
+            &display_path(&canonical_root),
+            seam_id,
+            &repository_head,
+            created_unix_ms,
+            std::process::id(),
+            nonce,
+        )?;
+        Ok(Self {
+            canonical_root,
+            seam_id: seam_id.to_owned(),
+            repository_head,
+            created_unix_ms,
+            repair_attempt_id,
+        })
+    }
+
+    pub(crate) fn attempt_id(&self) -> &str {
+        self.repair_attempt_id.as_str()
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn begin_repair_attempt_with(
     options: BeginRepairAttemptOptions<'_>,
+) -> Result<BeginRepairAttemptResult, String> {
+    if options.seam_id.trim().is_empty() {
+        return Err("repair attempt requires a non-empty seam ID".to_string());
+    }
+    if options.sources.is_empty() {
+        return Err("repair attempt requires at least one before-phase artifact".to_string());
+    }
+    let identity = BeforeRepairAttemptIdentity::prepare(options.root, options.seam_id)?;
+    begin_repair_attempt_with_identity(options, &identity)
+}
+
+pub(crate) fn begin_repair_attempt_with_identity(
+    options: BeginRepairAttemptOptions<'_>,
+    identity: &BeforeRepairAttemptIdentity,
 ) -> Result<BeginRepairAttemptResult, String> {
     let BeginRepairAttemptOptions {
         root,
@@ -418,6 +480,11 @@ pub(crate) fn begin_repair_attempt_with(
     let canonical_root = root
         .canonicalize()
         .map_err(|error| format!("canonicalize repair attempt root failed: {error}"))?;
+    if canonical_root != identity.canonical_root || seam_id != identity.seam_id {
+        return Err(
+            "prepared repair attempt identity does not match its root and seam".to_string(),
+        );
+    }
     let repository_head = crate::agent::artifact::current_git_head(&canonical_root)
         .map_err(|error| format!("repair attempt requires a concrete repository HEAD: {error}"))?;
     // Pre-publication head gate: compare the caller's verified pin against
@@ -430,16 +497,14 @@ pub(crate) fn begin_repair_attempt_with(
             "python repair-trust binding head moved during attempt publication; the binding pins head `{expected}` but the repository HEAD is now `{repository_head}`; re-run the before phase to prepare a fresh binding"
         ));
     }
-    let created_unix_ms = current_unix_ms()?;
-    let nonce = ATTEMPT_NONCE.fetch_add(1, Ordering::Relaxed);
-    let repair_attempt_id = repair_attempt_id_from_parts(
-        &display_path(&canonical_root),
-        seam_id,
-        &repository_head,
-        created_unix_ms,
-        std::process::id(),
-        nonce,
-    )?;
+    if repository_head != identity.repository_head {
+        return Err(format!(
+            "repository HEAD moved after repair attempt identity preparation; the packet pins head `{}` but the repository HEAD is now `{repository_head}`; re-run the before phase to prepare a fresh attempt",
+            identity.repository_head,
+        ));
+    }
+    let created_unix_ms = identity.created_unix_ms;
+    let repair_attempt_id = identity.repair_attempt_id.clone();
     let attempt_directory = reserve_attempt_directory(&canonical_root, &repair_attempt_id)?;
     complete_repair_attempt(
         &canonical_root,

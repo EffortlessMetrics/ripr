@@ -654,6 +654,11 @@ are scoped or reviewed.
   one), and a loop variable or `describe` parameter that reuses an imported
   owner's name shadows it.
 
+- Explicit per-seam agent packets bind their `packet.next` commands and
+  artifact paths to the selected root. Prepared repair packets advertise the
+  exact published attempt's after-phase continuation instead of an incompatible
+  manual receipt recipe; standalone packets include the outcome producer needed by receipts
+  (#4000).
 - Python pytest verify commands now run as `python -m pytest path::node`
   instead of bare `pytest path::node`. `-m` puts the repository root on
   `sys.path`, so a flat-layout package such as `pricing/__init__.py` imports

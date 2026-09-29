@@ -52,9 +52,10 @@
     }
   ],
   "next": {
-    "before_snapshot_command": "mkdir -p target/ripr/workflow target/ripr/reports && ripr check --root . --mode draft --format repo-exposure-json > <cwd>/target/ripr/workflow/before.repo-exposure.json",
-    "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > <cwd>/target/ripr/workflow/after.repo-exposure.json",
-    "verify_after_edit": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json",
-    "receipt_after_verify": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/reports/agent-receipt.json"
+    "before_snapshot_command": "mkdir -p <cwd>/fixtures/boundary_gap/input/target/ripr/workflow <cwd>/fixtures/boundary_gap/input/target/ripr/reports && ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/before.repo-exposure.json",
+    "after_snapshot_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/after.repo-exposure.json",
+    "verify_after_edit": "ripr agent verify --root <cwd>/fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-verify.json",
+    "analysis_outcome_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/analysis-outcome.json",
+    "receipt_after_verify": "ripr agent receipt --root <cwd>/fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/reports/agent-receipt.json"
   }
 }

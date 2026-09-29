@@ -39,7 +39,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[path = "common/mod.rs"]
 mod common;
 
-use common::fixture_git::fixture_git_ok;
+use common::fixture_git::{fixture_git_ok, fixture_git_output};
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -684,6 +684,363 @@ impl Drop for ReviewCardFixture {
     fn drop(&mut self) {
         cleanup(&self.0);
     }
+}
+
+/// Execute the actual prepared packet continuation from a competing root.
+#[test]
+fn prepared_packet_next_commands_stay_in_selected_root_from_foreign_cwd() -> Result<(), String> {
+    rooted_packet_next_journey(true)
+}
+
+#[test]
+fn standalone_packet_next_commands_stay_in_selected_root_from_foreign_cwd() -> Result<(), String> {
+    rooted_packet_next_journey(false)
+}
+
+#[test]
+fn prepared_packet_continuation_cannot_resume_a_later_attempt_for_the_same_seam()
+-> Result<(), String> {
+    let Some(bash) = shell_prerequisite()? else {
+        return Ok(());
+    };
+    let base = unique_temp_workspace("prepared-attempt-identity");
+    std::fs::create_dir(&base).map_err(|error| format!("claim fixture: {error}"))?;
+    let owned = ReviewCardFixture(base);
+    let selected = owned.0.join("dépôt selected root");
+    let (mut journey, _) = start_journey_at_root(&selected, &bash)?;
+    // Literal command scripts belong outside the edit cage, as on the
+    // existing rooted packet journey. The default helper's launch directory
+    // is under the selected repo and would introduce an unauthorized file.
+    let foreign = owned.0.join("foreign attempt continuation");
+    std::fs::create_dir(&foreign).map_err(|error| format!("claim foreign launch: {error}"))?;
+    journey.launch_dir = foreign;
+    std::fs::write(selected.join(".gitignore"), "/target/\n")
+        .map_err(|error| format!("declare build ignore: {error}"))?;
+    let before_args = [
+        "agent",
+        "repair",
+        "--root",
+        &journey.root_arg,
+        "--seam-id",
+        &journey.seam_id,
+        "--phase",
+        "before",
+    ];
+    let first = run_ripr(&journey.launch_dir, &before_args)?;
+    assert_success(&first, "prepare actual attempt A")?;
+    let packet_a: Value = serde_json::from_slice(&first.stdout)
+        .map_err(|error| format!("parse actual A stdout packet: {error}"))?;
+    let command_a = packet_a
+        .pointer("/next/repair_after_command")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "A packet omitted continuation".to_owned())?;
+    let mut manifests = prepared_attempt_manifests(&selected)?;
+    if manifests.len() != 1 {
+        return Err(format!(
+            "expected one actual A attempt, found {}",
+            manifests.len()
+        ));
+    }
+    let (manifest_a_path, manifest_a) = manifests
+        .pop()
+        .ok_or_else(|| "actual A manifest disappeared".to_owned())?;
+    let id_a = manifest_a
+        .get("repair_attempt_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "A manifest omitted attempt identity".to_owned())?;
+    let next_a = manifest_a
+        .get("next_command")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "A manifest omitted exact continuation".to_owned())?;
+    let retained_packet = manifest_a
+        .get("artifacts")
+        .and_then(Value::as_array)
+        .and_then(|artifacts| {
+            artifacts.iter().find(|artifact| {
+                artifact.get("role").and_then(Value::as_str) == Some("agent_packet")
+            })
+        })
+        .and_then(|artifact| artifact.get("path"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "A manifest omitted retained packet authority".to_owned())?;
+    if read_json(&selected.join(retained_packet))? != packet_a {
+        return Err("printed A packet differs from sealed A packet".to_owned());
+    }
+    let second = run_ripr(&journey.launch_dir, &before_args)?;
+    assert_success(&second, "prepare actual competing attempt B")?;
+    let manifests = prepared_attempt_manifests(&selected)?;
+    if manifests.len() != 2 {
+        return Err(format!(
+            "expected two actual attempts, found {}",
+            manifests.len()
+        ));
+    }
+    let (manifest_b_path, manifest_b) = manifests
+        .into_iter()
+        .find(|(_, manifest)| {
+            manifest.get("repair_attempt_id").and_then(Value::as_str) != Some(id_a)
+        })
+        .ok_or_else(|| "second Before did not publish a distinct attempt B".to_owned())?;
+    if manifest_b.get("seam_id") != manifest_a.get("seam_id")
+        || manifest_b.get("repository_head") != manifest_a.get("repository_head")
+        || manifest_b
+            .get("repair_attempt_id")
+            .and_then(Value::as_str)
+            .is_none_or(|id| id.is_empty() || id == id_a)
+        || manifest_b.get("state").and_then(Value::as_str) != Some("awaiting_edit")
+    {
+        return Err("B is not an actual awaiting attempt for A's seam".to_owned());
+    }
+    observe_selected_boundary(&selected)?;
+    assert_success(
+        &run_in_shell(&journey, next_a)?,
+        "complete A through its exact published authority",
+    )?;
+    let receipt = read_json(&selected.join("target/ripr/reports/agent-receipt.json"))?;
+    if receipt.get("status").and_then(Value::as_str) != Some("advisory")
+        || receipt
+            .get("analysis_outcome_status")
+            .and_then(Value::as_str)
+            != Some("complete")
+    {
+        return Err(format!(
+            "A did not produce a real complete advisory receipt: {receipt}"
+        ));
+    }
+    let completed_a = read_json(&manifest_a_path)?;
+    if completed_a.get("state").and_then(Value::as_str) != Some("ready_to_finish")
+        || completed_a.get("after").is_none_or(Value::is_null)
+    {
+        return Err("actual A continuation did not finish its durable attempt".to_owned());
+    }
+    if read_json(&manifest_b_path)? != manifest_b {
+        return Err("completing A changed awaiting B".to_owned());
+    }
+    let attempt_b = manifest_b_path
+        .parent()
+        .ok_or_else(|| "B manifest has no directory".to_owned())?;
+    let before_inventory = prepared_attempt_inventory(attempt_b)?;
+    let production = sha256_file(&selected.join("src/lib.rs"))?;
+    let focused_test = sha256_file(&selected.join("tests/pricing.rs"))?;
+    let stale = run_in_shell(&journey, command_a)?;
+    if stale.status.success() {
+        return Err(
+            "retained A packet continuation consumed awaiting B instead of refusing finished A"
+                .to_owned(),
+        );
+    }
+    let stderr = String::from_utf8_lossy(&stale.stderr);
+    if !stderr.contains(id_a)
+        || !stderr.contains("already finished")
+        || !stderr.contains("ready_to_finish")
+    {
+        return Err(format!(
+            "retained A continuation did not name A's terminal-state refusal: {stderr}"
+        ));
+    }
+    if prepared_attempt_inventory(attempt_b)? != before_inventory
+        || sha256_file(&selected.join("src/lib.rs"))? != production
+        || sha256_file(&selected.join("tests/pricing.rs"))? != focused_test
+    {
+        return Err("retained A continuation altered B custody or selected source".to_owned());
+    }
+    Ok(())
+}
+
+fn prepared_attempt_manifests(root: &Path) -> Result<Vec<(PathBuf, Value)>, String> {
+    let directory = root.join("target/ripr/repair-attempts");
+    let mut manifests = Vec::new();
+    for entry in std::fs::read_dir(&directory).map_err(|error| format!("list attempts: {error}"))? {
+        let entry = entry.map_err(|error| format!("read attempt entry: {error}"))?;
+        if entry
+            .file_type()
+            .map_err(|error| format!("inspect attempt entry: {error}"))?
+            .is_dir()
+        {
+            let path = entry.path().join("attempt.json");
+            manifests.push((path.clone(), read_json(&path)?));
+        }
+    }
+    manifests.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(manifests)
+}
+
+fn prepared_attempt_inventory(root: &Path) -> Result<Vec<(PathBuf, String)>, String> {
+    fn visit(
+        root: &Path,
+        directory: &Path,
+        entries: &mut Vec<(PathBuf, String)>,
+    ) -> Result<(), String> {
+        for entry in
+            std::fs::read_dir(directory).map_err(|error| format!("list B custody: {error}"))?
+        {
+            let entry = entry.map_err(|error| format!("read B custody entry: {error}"))?;
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|error| format!("B containment: {error}"))?
+                .to_path_buf();
+            let kind = entry
+                .file_type()
+                .map_err(|error| format!("inspect B custody: {error}"))?;
+            if kind.is_dir() {
+                entries.push((relative, "directory".to_owned()));
+                visit(root, &path, entries)?;
+            } else if kind.is_file() {
+                entries.push((relative, sha256_file(&path)?));
+            } else {
+                return Err("B custody contains an unexpected non-file entry".to_owned());
+            }
+        }
+        Ok(())
+    }
+    let mut entries = Vec::new();
+    visit(root, root, &mut entries)?;
+    entries.sort();
+    Ok(entries)
+}
+
+fn rooted_packet_next_journey(prepared_repair: bool) -> Result<(), String> {
+    let Some(bash) = shell_prerequisite()? else {
+        return Ok(());
+    };
+    let base = unique_temp_workspace("rooted-packet-next");
+    std::fs::create_dir(&base).map_err(|error| format!("claim fixture: {error}"))?;
+    let owned = ReviewCardFixture(base);
+    let selected = owned.0.join("dépôt selected root");
+    let (mut journey, _) = start_journey_at_root(&selected, &bash)?;
+    std::fs::write(selected.join(".gitignore"), "/target/\n")
+        .map_err(|error| format!("declare build ignore: {error}"))?;
+    let foreign = owned.0.join("foreign decoy root");
+    std::fs::create_dir(&foreign).map_err(|error| format!("claim decoy: {error}"))?;
+    init_producer_fixture_repo(&foreign)?;
+    fixture_git_ok(&foreign, &["branch", "-M", "main"])
+        .map_err(|error| format!("declare decoy default base: {error}"))?;
+    journey.launch_dir = foreign;
+    let selected_source = sha256_file(&selected.join("src/lib.rs"))?;
+    let decoy_source = sha256_file(&journey.launch_dir.join("src/lib.rs"))?;
+    let mut packet_args = vec![
+        "agent",
+        "packet",
+        "--root",
+        &journey.root_arg,
+        "--seam-id",
+        &journey.seam_id,
+        "--json",
+    ];
+    if prepared_repair {
+        packet_args = vec![
+            "agent",
+            "repair",
+            "--root",
+            &journey.root_arg,
+            "--seam-id",
+            &journey.seam_id,
+            "--phase",
+            "before",
+        ];
+    }
+    let prepared = run_ripr(&journey.launch_dir, &packet_args)?;
+    assert_success(&prepared, "prepare actual rooted repair packet")?;
+    let packet = if prepared_repair {
+        read_json(&workflow_artifact(&selected, "agent-packet.json"))?
+    } else {
+        serde_json::from_slice::<Value>(&prepared.stdout)
+            .map_err(|error| format!("parse standalone packet: {error}"))?
+    };
+    // Execute actual advertised alternatives, not the separately correct
+    // durable --attempt continuation. The decoy is a valid competing repo.
+    let manual_fields = [
+        "before_snapshot_command",
+        "after_snapshot_command",
+        "analysis_outcome_command",
+        "verify_after_edit",
+        "receipt_after_verify",
+    ];
+    let fields: &[&str] = if prepared_repair {
+        for field in manual_fields {
+            if packet.pointer(&format!("/next/{field}")) != Some(&Value::Null) {
+                return Err(format!("prepared packet advertises incompatible {field}"));
+            }
+        }
+        observe_selected_boundary(&selected)?;
+        &["repair_after_command"]
+    } else {
+        &manual_fields
+    };
+    for field in fields {
+        let command = packet
+            .pointer(&format!("/next/{field}"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("packet omitted {field}"))?;
+        let output = run_in_shell(&journey, command)?;
+        assert_success(&output, &format!("actual packet.next.{field}"))?;
+        if journey.launch_dir.join("target").exists() {
+            return Err(format!("packet.next.{field} wrote into foreign decoy root"));
+        }
+        if *field == "before_snapshot_command" {
+            // The advertised recipe brackets a real test edit; verify refuses
+            // two snapshots of the same repository revision.
+            observe_selected_boundary(&selected)?;
+        }
+    }
+    let receipt = read_json(&selected.join("target/ripr/reports/agent-receipt.json"))?;
+    if receipt.get("status").and_then(Value::as_str) != Some("advisory")
+        || receipt
+            .get("analysis_outcome_status")
+            .and_then(Value::as_str)
+            != Some("complete")
+    {
+        return Err(format!(
+            "packet recipe did not produce a complete advisory receipt: {receipt}"
+        ));
+    }
+    if receipt
+        .pointer("/provenance/movement")
+        .and_then(Value::as_str)
+        != Some("improved")
+    {
+        return Err(format!(
+            "packet receipt does not report real selected-seam improvement: {receipt}"
+        ));
+    }
+    for (name, file) in [
+        ("verify_artifact", "agent-verify.json"),
+        ("before_artifact", "before.repo-exposure.json"),
+        ("after_artifact", "after.repo-exposure.json"),
+    ] {
+        let expected = sha256_file(&workflow_artifact(&selected, file))?;
+        if receipt
+            .pointer(&format!("/provenance/{name}/sha256"))
+            .and_then(Value::as_str)
+            != Some(expected.as_str())
+        {
+            return Err(format!("packet receipt did not consume selected {name}"));
+        }
+    }
+    if sha256_file(&journey.launch_dir.join("src/lib.rs"))? != decoy_source {
+        return Err("packet commands changed foreign source".to_string());
+    }
+    if sha256_file(&selected.join("src/lib.rs"))? != selected_source {
+        return Err("packet recipe changed selected production source".to_string());
+    }
+    Ok(())
+}
+
+fn observe_selected_boundary(selected: &Path) -> Result<(), String> {
+    let test_path = selected.join("tests/pricing.rs");
+    let mut source = std::fs::read_to_string(&test_path)
+        .map_err(|error| format!("read test for focused edit: {error}"))?;
+    source.push_str("\n#[test]\nfn selected_boundary_is_observed() { assert_eq!(discounted_total(100, 100), 90); }\n");
+    std::fs::write(&test_path, &source)
+        .map_err(|error| format!("write focused test edit: {error}"))?;
+    fixture_git_ok(selected, &["add", "tests/pricing.rs"])?;
+    commit_fixture(selected, "observe the selected boundary")?;
+    let committed = fixture_git_output(selected, &["show", "HEAD:tests/pricing.rs"])?;
+    if committed != source {
+        return Err("focused test edit was not committed in HEAD:tests/pricing.rs".to_owned());
+    }
+    Ok(())
 }
 
 /// Execute commands obtained from the actual review-card and inherited gate

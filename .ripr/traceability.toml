@@ -228,6 +228,10 @@ id = "RIPR-SPEC-0005"
 name = "repo seam inventory and test grip"
 spec = "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md"
 tests = [
+  "crates/ripr/tests/agent_command_journey.rs::standalone_packet_next_commands_stay_in_selected_root_from_foreign_cwd",
+  "crates/ripr/tests/agent_command_journey.rs::prepared_packet_next_commands_stay_in_selected_root_from_foreign_cwd",
+  "crates/ripr/tests/agent_command_journey.rs::prepared_packet_continuation_cannot_resume_a_later_attempt_for_the_same_seam",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::prepared_packet_continuation_preserves_required_python_authorization",
   "crates/ripr/src/analysis/seams.rs::tests::seam_id_is_deterministic_for_identical_inputs",
   "crates/ripr/src/analysis/seams.rs::tests::seam_id_differs_when_any_canonical_field_differs",
   "crates/ripr/src/analysis/seams.rs::tests::seam_ids_do_not_depend_on_construction_order",
@@ -9509,7 +9513,8 @@ tests = [
   "crates/ripr/tests/python_repair_attempt.rs::failed_apply_record_publication_stays_retryable",
   "crates/ripr/tests/python_repair_attempt.rs::cage_escape_production_and_generated_edits_fail_closed_and_are_retained",
   "crates/ripr/tests/python_repair_attempt.rs::tampered_retained_binding_fails_closed",
-  "crates/ripr/tests/python_repair_attempt.rs::deterministic_preparation_is_byte_identical",
+  "crates/ripr/tests/python_repair_attempt.rs::distinct_prepared_attempts_bind_their_exact_packet_inputs",
+  "crates/ripr/src/app/python_repair_binding.rs::tests::identical_record_inputs_serialize_identically",
   "crates/ripr/tests/python_repair_attempt.rs::driver_claims_no_verification_movement_or_closure",
   "crates/ripr/tests/python_repair_attempt.rs::states_remain_distinct_across_one_repository",
   "crates/ripr/tests/python_repair_attempt.rs::verification_phase_records_execution_and_movement_separately",

@@ -277,6 +277,22 @@ types.
 8. `context/agent-seam-packets-v1`: agent packets carry seam + grip + missing
 discriminator.
 
+Explicit per-seam CLI `packet.next` instructions bind commands and artifact
+writes to the selected repository root. Standalone packets include the static outcome
+producer before verify and receipt. Prepared repair packets instead advertise
+the durable after-phase continuation and leave incompatible manual steps null;
+the existing edit cage and authorization checks remain authoritative. The
+prepared command pins the published exact attempt selector; a finished attempt
+cannot resume a later attempt for the same seam. Explicit seam-based continuation
+still refuses ambiguous awaiting attempts. Portable bulk packets retain their local
+compatibility recipe. The standalone manual recipe assumes no retained durable
+workflow. Resume a matching awaiting attempt by its published exact selector;
+otherwise begin a fresh durable Before route for the selected seam, preserving
+retained attempts and receipt binding.
+Per-packet canonical/evidence commands remain outside this bounded claim.
+See `docs/OUTPUT_SCHEMA.md` for the additive fields and
+static evidence boundaries (#4000).
+
 ## Metrics
 
 Proposed metrics to track as the implementation lands:

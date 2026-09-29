@@ -1776,6 +1776,65 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn identical_record_inputs_serialize_identically() -> Result<(), String> {
+        // This is deterministic construction proof, not selection admission.
+        // The packet bytes are a committed producer snapshot, not a digest
+        // placeholder. Neither call creates or publishes a durable attempt.
+        let packet = include_bytes!(
+            "../../../../fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json"
+        );
+        serde_json::from_slice::<Value>(packet)
+            .map_err(|error| format!("producer packet fixture is invalid: {error}"))?;
+        let packet_sha256 = sha256_hex(packet);
+        let before_snapshot_sha256 = sha256_hex(b"identical before snapshot bytes");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap");
+        let row = sample_row()?;
+        let verified = verify_row_binding(as_object(&row, "selection row")?, "att-test-1")?;
+        let target = crate::edit_cage::CagePathRule::exact(&verified.target_path)?;
+        let policy = EditCagePolicy {
+            selected_target: target.clone(),
+            allowed_edit_surface: vec![target],
+            forbidden_paths: Vec::new(),
+            expected_operational_writes: Vec::new(),
+            ignored_build_output: None,
+            untracked_build_lockfile: None,
+        };
+        let render = || {
+            render_record(
+                &root,
+                RecordIdentity {
+                    seam_id: "identical-seam",
+                    repository_head: &verified.head,
+                    phase: "prepare",
+                    durable_attempt_id: None,
+                    binding_artifact_sha256: None,
+                    verified: &verified,
+                    authority: AUTHORITY_IDENTITY,
+                    packet_sha256: &packet_sha256,
+                    before_snapshot_sha256: &before_snapshot_sha256,
+                    policy: &policy,
+                },
+                None,
+            )
+        };
+        let first = render()?;
+        let second = render()?;
+        if first
+            .pointer("/input/packet_sha256")
+            .and_then(Value::as_str)
+            != Some(packet_sha256.as_str())
+        {
+            return Err("record lost the identical producer packet digest".to_string());
+        }
+        let first_bytes = serde_json::to_vec(&first).map_err(|error| error.to_string())?;
+        let second_bytes = serde_json::to_vec(&second).map_err(|error| error.to_string())?;
+        if first_bytes != second_bytes {
+            return Err("identical accepted record inputs serialized differently".to_string());
+        }
+        Ok(())
+    }
+
     /// A minimal retained prepare record whose early re-verification checks
     /// pass, so the bounded value validation of the nested blocks is the first
     /// stage under test. The trust block is a stub: value tampering fails
