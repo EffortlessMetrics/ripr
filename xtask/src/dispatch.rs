@@ -139,16 +139,16 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::release_server::release_server_manifest(&args)
         }
         XtaskCommand::ReleaseFinalServerSubjects(args) => {
-            super::reports::release_server::release_final_server_subjects(&args)
+            super::reports::release_server_provenance::release_final_server_subjects(&args)
         }
         XtaskCommand::ReleaseFinalServerAttestationReceipt(args) => {
-            super::reports::release_server::release_final_server_attestation_receipt(&args)
+            super::reports::release_server_provenance::release_final_server_attestation_receipt(&args)
         }
         XtaskCommand::ReleaseDistributionCatalog(args) => {
             super::reports::distribution_catalog::release_distribution_catalog(&args)
         }
         XtaskCommand::ReleaseUploadAssets(args) => {
-            super::reports::release_server::release_upload_assets(&args)
+            super::reports::release_server_provenance::release_upload_assets(&args)
         }
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
