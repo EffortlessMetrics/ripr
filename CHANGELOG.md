@@ -269,6 +269,21 @@ are scoped or reviewed.
   every changed line read `no_static_path` although mutating those lines
   fails the projects' own tests. Renamed re-exports, `_private` names under a
   star import, and names a declared `__all__` omits are not followed.
+- TypeScript preview: a test that imports a changed function through a barrel
+  now reaches it. On unjs/ufo, `import { withoutBase } from "../src"` names
+  the directory whose `src/index.ts` does `export * from "./utils"`; ripr
+  resolved `../src` to a module that matched no barrel, so every changed line
+  of `withBase`/`withoutBase` read `no_static_path` with 0 related tests. A
+  directory specifier now resolves to its `index` module when no file module
+  of that name exists, and `export *` / `export { N } from` chains are
+  followed for up to 4 hops inside the repository. A star hop forwards a name
+  only when the target module exports it; a name two star sources export, a
+  cycle, a longer chain, a test-local or `describe`-scoped redeclaration of
+  the imported name, or a mock of any module on the chain gives no credit,
+  and a test that imports only another name from the same barrel stays
+  unrelated. (ufo's own `withBase` tests are still missed: they
+  register from a `for` loop with computed titles, which test extraction does
+  not index and discloses as partial.)
 
 - Python pytest verify commands now run as `python -m pytest path::node`
   instead of bare `pytest path::node`. `-m` puts the repository root on

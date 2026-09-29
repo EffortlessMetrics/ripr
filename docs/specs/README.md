@@ -111,7 +111,7 @@ explicitly corrected, rejected, superseded, or deprecated.
 | [RIPR-SPEC-0092](RIPR-SPEC-0092-python-judged-pr-panel.md) | proposed | Python Tier B judged-diff panel schema |
 | [RIPR-SPEC-0093](RIPR-SPEC-0093-match-arm-blind-reach-downgrade.md) | proposed | Match-arm blind-reach downgrade (arm_observation_unverified) |
 | [RIPR-SPEC-0094](RIPR-SPEC-0094-observation-unverified-guard-generalization.md) | proposed | observation_unverified guard generalization to ReturnValue/FieldConstruction/SideEffect/CallDeletion + MatchArm variant-scope fix |
-| [RIPR-SPEC-0095](RIPR-SPEC-0095-typescript-reexport-test-discovery.md) | accepted | TypeScript single-hop re-export test discovery |
+| [RIPR-SPEC-0095](RIPR-SPEC-0095-typescript-reexport-test-discovery.md) | accepted | TypeScript bounded re-export test discovery |
 | [RIPR-SPEC-0096](RIPR-SPEC-0096-infect-propagate-fail-closed.md) | proposed | INFECT/PROPAGATE fail-closed: wildcard discard, swallowed tails, stdout macros (parts A/B/C of #1219) |
 | [RIPR-SPEC-0097](RIPR-SPEC-0097-typescript-tothrow-exact-payload-oracle.md) | accepted | TypeScript toThrow exact-payload oracle upgrade: string/object/class → ExactErrorVariant/strong; bare toThrow stays weak |
 | [RIPR-SPEC-0098](RIPR-SPEC-0098-typescript-exposed-observation-guard.md) | accepted | TypeScript exposed observation guard: downgrade exposed→weakly_exposed when no strong assertion's observed_expression flows from the changed sub-expression (console.log repro fix) |

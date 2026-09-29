@@ -1,6 +1,6 @@
 ripr static RIPR exposure analysis
 mode: fast
-root: fixtures/typescript_reexport_two_hop_limit/input
+root: fixtures/typescript_reexport_directory_star_barrel/input
 
 Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
@@ -12,22 +12,22 @@ Analysis outcome: complete_with_findings (analysis complete).
 Start here:
   State: preview_limited
   Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.
-  File: src/util.ts:4
+  File: src/utils.ts:4
   Language: typescript
   Language status: preview
   Static exposure: exposed (info, confidence 0.60)
-  Changed behavior: return false;
-  Discriminator (observed, advisory): Related test reaches `isRawNetworkError` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant…
-  Related test: test/util.test.ts:7 isRawNetworkError via two-hop chain
+  Changed behavior: return input;
+  Discriminator (observed, advisory): Related test reaches `withoutBase` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
+  Related test: test/base.test.ts:7 withoutBase strips the base prefix
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
   Evidence:
-    - reach yes: 1 related test(s) found for owner `isRawNetworkError`
+    - reach yes: 2 related test(s) found for owner `withoutBase`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 5 more evidence line(s) hidden
+    - 6 more evidence line(s) hidden
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/typescript_reexport_two_hop_limit/input --diff fixtures/typescript_reexport_two_hop_limit/diff.patch --mode fast probe:src_util.ts:typescript_preview:5a933676
-  ripr context --root fixtures/typescript_reexport_two_hop_limit/input --diff fixtures/typescript_reexport_two_hop_limit/diff.patch --mode fast --at probe:src_util.ts:typescript_preview:5a933676
+  ripr explain --root fixtures/typescript_reexport_directory_star_barrel/input --diff fixtures/typescript_reexport_directory_star_barrel/diff.patch --mode fast probe:src_utils.ts:typescript_preview:a6254543
+  ripr context --root fixtures/typescript_reexport_directory_star_barrel/input --diff fixtures/typescript_reexport_directory_star_barrel/diff.patch --mode fast --at probe:src_utils.ts:typescript_preview:a6254543
 
 More:
   Full evidence: rerun with --format human-full

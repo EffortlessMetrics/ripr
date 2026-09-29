@@ -6,32 +6,60 @@ use std::collections::{HashMap, HashSet};
 
 // ── Re-export index ───────────────────────────────────────────────────────────
 
-/// Single-hop re-export index built during Phase 1 of the adapter.
+/// Maximum number of re-export hops followed from the test's import source
+/// toward the owner module (RIPR-SPEC-0095). A chain longer than this is left
+/// unresolved (fail-closed): the test is not credited through it.
+pub(crate) const MAX_REEXPORT_HOPS: usize = 4;
+
+/// Bounded in-repo re-export index built during Phase 1 of the adapter.
 ///
-/// Maps `(intermediate_normalized_module, exported_name)` to
-/// `(original_name, owner_normalized_module)`.
+/// Records, per normalized non-test module:
+/// - explicit named re-exports `export { N [as M] } from './A'`
+///   as `(module, M) -> (N, A_module)`, plus the module's own rename exports
+///   `export { local as M }` as a self-hop `(module, M) -> (local, module)`;
+/// - star re-exports `export * from './A'` as `(module, A_module)` edges;
+/// - the names the module exports from its OWN declarations
+///   (`export function N`, `export const N`, `export { N }`,
+///   `export default ...` as `default`);
+/// - the set of known workspace modules, so a directory specifier
+///   (`import { N } from '../src'`) resolves to `src/index` only when no
+///   `src.ts`-style file module exists (the TypeScript/Node lookup order).
 ///
-/// A test that imports `N` from intermediate file B is credited when:
-/// 1. `(b_module, N)` resolves in the index to `(orig, owner_module)`, AND
-/// 2. `owner_module` matches the normalized owner file, AND
-/// 3. `orig` matches the owner function name.
-///
-/// Only ONE hop is followed; deeper transitive chains stay uncredited
-/// (fail-closed). The index is empty when no re-exports are present, which
-/// makes all callers that pass `ReExportIndex::empty()` behave identically
-/// to the pre-fix behaviour.
+/// A test that imports `N` from module B is credited when resolving `N`
+/// through B's re-export chain, at most [`MAX_REEXPORT_HOPS`] hops, lands on
+/// the changed owner's own export in the owner module. A star hop forwards a
+/// name only when the target module actually exports it, a name exported by
+/// more than one star source is ambiguous, and cycles or over-deep chains
+/// stay unresolved — every uncertain case fails closed (no credit). The index
+/// is empty when no re-exports are present, which makes all callers that pass
+/// `ReExportIndex::empty()` behave identically to the pre-fix behaviour.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct ReExportIndex {
     /// key: (intermediate_module_norm, exported_name)
     /// value: (original_name, source_module_norm)
     entries: HashMap<(String, String), (String, String)>,
     /// `export * from './source'` hops: (intermediate_module, star_source_module).
-    /// A star re-export forwards every named export of the source module under
-    /// its original name, so a test importing `owner.name` from `intermediate`
-    /// reaches the owner when a star hop leads to the owner's module
-    /// (#4103 under-credit: the star barrel was invisible and the emitted
-    /// guidance claimed no test referenced the owner at all).
+    /// A star re-export forwards every named export (never `default`) of the
+    /// source module under its original name (#4103 under-credit: the star
+    /// barrel was invisible and the emitted guidance claimed no test
+    /// referenced the owner at all).
     star_edges: HashSet<(String, String)>,
+    /// Names each module exports from its own declarations.
+    local_exports: HashMap<String, HashSet<String>>,
+    /// Normalized module paths of every workspace file seen by the index.
+    modules: HashSet<String>,
+}
+
+/// Outcome of resolving one exported name through the re-export graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExportResolution {
+    /// The module (and its bounded star closure) does not export the name.
+    NotFound,
+    /// The name resolves to `(module, local_name)` — the module whose own
+    /// declaration (or own rename export) binds it.
+    Found(String, String),
+    /// The chain is too deep, ambiguous, or otherwise not decidable.
+    Unknown,
 }
 
 impl ReExportIndex {
@@ -46,31 +74,45 @@ impl ReExportIndex {
         Self::default()
     }
 
-    /// Test-only constructor from raw entries and star edges, so re-export
-    /// resolution can be exercised without a real filesystem.
+    /// Test-only constructor from raw entries, star edges, and the modules'
+    /// own exported names `(module, name)`, so re-export resolution can be
+    /// exercised without a real filesystem. Every module named anywhere in
+    /// the parts is recorded as a known workspace module.
     #[cfg(test)]
     pub(crate) fn from_parts(
         entries: Vec<((String, String), (String, String))>,
         star_edges: Vec<(String, String)>,
+        local_exports: Vec<(String, String)>,
     ) -> Self {
-        Self {
-            entries: entries.into_iter().collect(),
-            star_edges: star_edges.into_iter().collect(),
+        let mut index = Self::default();
+        for ((module, exported), (original, source)) in entries {
+            index.modules.insert(module.clone());
+            index.modules.insert(source.clone());
+            index.entries.insert((module, exported), (original, source));
         }
+        for (module, source) in star_edges {
+            index.modules.insert(module.clone());
+            index.modules.insert(source.clone());
+            index.star_edges.insert((module, source));
+        }
+        for (module, name) in local_exports {
+            index.modules.insert(module.clone());
+            index.local_exports.entry(module).or_default().insert(name);
+        }
+        index
     }
 
     /// Build a re-export index from all non-test source files in the workspace.
     ///
-    /// For each file that contains `export { N [as M] } from './A'` statements,
-    /// records the single hop from `(intermediate_file, M)` → `(N, A_module)`.
-    /// Only explicit named re-exports from relative paths are indexed;
-    /// star-re-exports (`export * from`) and non-relative sources are ignored
-    /// (fail-closed).
+    /// Indexes explicit named re-exports and star re-exports from relative
+    /// (or tsconfig-aliased) in-repo specifiers, plus each module's own
+    /// exported names. `export * as ns from`, type-only re-exports and
+    /// non-relative package specifiers are ignored (fail-closed).
     ///
     /// `sources` is the Phase-1 workspace source cache: every file is read at
     /// most once per analysis run. Files absent from the cache (unreadable or
-    /// over the read caps) are skipped here; their limitation disclosure is
-    /// owned by the read pipeline.
+    /// over the read caps) contribute no export facts; their limitation
+    /// disclosure is owned by the read pipeline.
     ///
     /// `alias_map` is forwarded to `normalized_relative_import_module` so that
     /// tsconfig.json-aliased sources (e.g. `@/owner`) can be followed through
@@ -86,6 +128,11 @@ impl ReExportIndex {
 
         let mut entries: HashMap<(String, String), (String, String)> = HashMap::new();
         let mut star_edges: HashSet<(String, String)> = HashSet::new();
+        let mut local_exports: HashMap<String, HashSet<String>> = HashMap::new();
+        let modules: HashSet<String> = workspace_files
+            .iter()
+            .map(|file| normalized_module_path(file))
+            .collect();
         for relative in workspace_files {
             if is_test(relative) {
                 continue;
@@ -104,115 +151,169 @@ impl ReExportIndex {
                 move |relative, source, allocator| {
                     let ret = Parser::new(allocator, source, source_type_for(relative)).parse();
                     if !ret.errors.is_empty() {
-                        return (Vec::new(), Vec::new());
+                        return ModuleExportFacts::default();
                     }
-                    // intermediate module path (normalized, no extension)
-                    let intermediate_module = normalized_module_path(relative);
-                    let mut file_entries = Vec::new();
-                    let mut file_star_edges = Vec::new();
-                    for stmt in &ret.program.body {
-                        if let Statement::ExportAllDeclaration(export_all) = stmt {
-                            // `export * from './owner'` — record the star hop.
-                            // `export * as ns from './owner'` namespaces the
-                            // module value, so the named-forwarding contract a
-                            // star hop carries does not apply; it stays
-                            // unindexed (fail-closed).
-                            if export_all.exported.is_some() {
-                                continue;
-                            }
-                            let star_source = export_all.source.value.to_string();
-                            if let Some(resolved) = normalized_relative_import_module(
-                                relative,
-                                &star_source,
-                                worker_alias.as_ref(),
-                                Some(worker_root.as_path()),
-                            ) {
-                                file_star_edges.push((intermediate_module.clone(), resolved));
-                            }
-                            continue;
-                        }
-                        let Statement::ExportNamedDeclaration(export) = stmt else {
-                            continue;
-                        };
-                        if export.declaration.is_some() {
-                            continue;
-                        }
-                        let Some(re_source) = &export.source else {
-                            // Owner-file RENAME export (#4104-B):
-                            // `export { computeTotals as totals }` with no
-                            // `from` re-binds the file's OWN local binding
-                            // under `exported_name`. Record the self-hop so
-                            // `import { totals } from './owner-file'`
-                            // resolves back to the original owner name.
-                            for specifier in &export.specifiers {
-                                if specifier.export_kind == ImportOrExportKind::Type {
-                                    continue;
-                                }
-                                let Some(local_name) = module_export_name_text(&specifier.local)
-                                else {
-                                    continue;
-                                };
-                                let exported_name = module_export_name_text(&specifier.exported)
-                                    .unwrap_or_else(|| local_name.clone());
-                                if exported_name == local_name {
-                                    // Plain re-export of the same name needs no index.
-                                    continue;
-                                }
-                                let key = (intermediate_module.clone(), exported_name);
-                                file_entries.push((key, (local_name, intermediate_module.clone())));
-                            }
-                            continue;
-                        };
-                        let source_str = re_source.value.to_string();
-                        // Resolve the source module relative to the intermediate file's dir.
-                        // Pass alias_map so tsconfig-aliased paths can be followed.
-                        let Some(resolved) = normalized_relative_import_module(
-                            relative,
-                            &source_str,
-                            worker_alias.as_ref(),
-                            Some(worker_root.as_path()),
-                        ) else {
-                            continue;
-                        };
-                        for specifier in &export.specifiers {
-                            if specifier.export_kind == ImportOrExportKind::Type {
-                                continue;
-                            }
-                            let Some(original_name) = module_export_name_text(&specifier.local)
-                            else {
-                                continue;
-                            };
-                            let exported_name = module_export_name_text(&specifier.exported)
-                                .unwrap_or_else(|| original_name.clone());
-                            // key: what the test would import from the intermediate file
-                            let key = (intermediate_module.clone(), exported_name);
-                            // value: what the owner file exports under its original name
-                            file_entries.push((key, (original_name, resolved.clone())));
-                        }
-                    }
-                    (file_entries, file_star_edges)
+                    module_export_facts(
+                        relative,
+                        &ret.program.body,
+                        worker_alias.as_ref(),
+                        worker_root.as_path(),
+                    )
                 },
             ) else {
                 continue;
             };
-            let (file_entries, file_star_edges) = file_facts;
-            for (key, value) in file_entries {
+            for (key, value) in file_facts.entries {
                 entries.entry(key).or_insert_with(|| value);
             }
-            star_edges.extend(file_star_edges);
+            star_edges.extend(file_facts.star_edges);
+            if !file_facts.local_exports.is_empty() {
+                local_exports
+                    .entry(normalized_module_path(relative))
+                    .or_default()
+                    .extend(file_facts.local_exports);
+            }
         }
         Self {
             entries,
             star_edges,
+            local_exports,
+            modules,
         }
     }
 
-    /// If `test_file` imports `imported_name` from `intermediate_module` and
-    /// the index resolves that to the owner, return the original name in the
-    /// owner file.  Returns `None` when no single-hop chain leads to the owner.
+    /// Resolve a normalized module specifier path to the workspace module it
+    /// names. A file module (`src.ts` → `src`) wins; otherwise a directory
+    /// with an index file (`src/index.ts` → `src/index`) is used. When
+    /// neither is known the path is returned unchanged (it then matches no
+    /// indexed module and nothing is credited through it).
+    fn canonical_module(&self, module: &str) -> String {
+        if self.modules.contains(module) {
+            return module.to_string();
+        }
+        let index_module = if module.is_empty() {
+            "index".to_string()
+        } else {
+            format!("{module}/index")
+        };
+        if self.modules.contains(&index_module) {
+            return index_module;
+        }
+        module.to_string()
+    }
+
+    /// Resolve `name` as exported by `module` through the bounded re-export
+    /// graph. `stack` holds the `(module, name)` pairs being resolved on the
+    /// current path (cycle guard).
+    fn resolve_export(
+        &self,
+        module: &str,
+        name: &str,
+        hops: usize,
+        stack: &mut Vec<(String, String)>,
+        mocked: &dyn Fn(&str) -> bool,
+    ) -> ExportResolution {
+        let module = self.canonical_module(module);
+        if mocked(&module) {
+            // A mocked barrel or intermediate module replaces every binding
+            // it forwards, so the chain no longer reaches the owner.
+            return ExportResolution::Unknown;
+        }
+        let frame = (module.clone(), name.to_string());
+        if stack.contains(&frame) {
+            // A re-export cycle contributes no binding (ECMAScript
+            // ResolveExport returns null for a revisited pair).
+            return ExportResolution::NotFound;
+        }
+        stack.push(frame);
+        let resolution = self.resolve_export_frame(&module, name, hops, stack, mocked);
+        stack.pop();
+        resolution
+    }
+
+    fn resolve_export_frame(
+        &self,
+        module: &str,
+        name: &str,
+        hops: usize,
+        stack: &mut Vec<(String, String)>,
+        mocked: &dyn Fn(&str) -> bool,
+    ) -> ExportResolution {
+        if let Some((original, source)) = self.entries.get(&(module.to_string(), name.to_string()))
+        {
+            if source == module {
+                // Own rename export `export { local as name }` (#4104-B).
+                return ExportResolution::Found(module.to_string(), original.clone());
+            }
+            if hops >= MAX_REEXPORT_HOPS {
+                return ExportResolution::Unknown;
+            }
+            return match self.resolve_export(source, original, hops + 1, stack, mocked) {
+                // An explicit `export { N } from './A'` asserts that A
+                // exports N; when A records no deeper fact for it, A's own
+                // binding is the named target.
+                ExportResolution::NotFound => {
+                    ExportResolution::Found(self.canonical_module(source), original.clone())
+                }
+                resolved => resolved,
+            };
+        }
+        if self
+            .local_exports
+            .get(module)
+            .is_some_and(|names| names.contains(name))
+        {
+            return ExportResolution::Found(module.to_string(), name.to_string());
+        }
+        // `export *` never forwards the default export.
+        if name == "default" {
+            return ExportResolution::NotFound;
+        }
+        let mut star_sources: Vec<&String> = self
+            .star_edges
+            .iter()
+            .filter(|(from, _)| from == module)
+            .map(|(_, to)| to)
+            .collect();
+        if star_sources.is_empty() {
+            return ExportResolution::NotFound;
+        }
+        if hops >= MAX_REEXPORT_HOPS {
+            return ExportResolution::Unknown;
+        }
+        star_sources.sort();
+        let mut found: Option<(String, String)> = None;
+        for star_source in star_sources {
+            match self.resolve_export(star_source, name, hops + 1, stack, mocked) {
+                ExportResolution::NotFound => {}
+                ExportResolution::Unknown => return ExportResolution::Unknown,
+                ExportResolution::Found(target_module, target_name) => {
+                    let target = (target_module, target_name);
+                    match &found {
+                        None => found = Some(target),
+                        Some(existing) if existing == &target => {}
+                        // Two star sources export the same name with
+                        // different bindings: ambiguous, not forwarded.
+                        Some(_) => return ExportResolution::Unknown,
+                    }
+                }
+            }
+        }
+        match found {
+            Some((target_module, target_name)) => {
+                ExportResolution::Found(target_module, target_name)
+            }
+            None => ExportResolution::NotFound,
+        }
+    }
+
+    /// Return whether `test` importing `imported_name` from `import_source`
+    /// reaches `owner` through the bounded re-export chain (or through a
+    /// directory specifier that resolves to the owner's `index` module). A
+    /// mock of any module on the chain breaks it.
     fn resolve_to_owner(
         &self,
-        test_file: &Path,
+        test: &TypeScriptTest,
         import_source: &str,
         imported_name: &str,
         owner: &TypeScriptOwner,
@@ -220,44 +321,188 @@ impl ReExportIndex {
         workspace_root: Option<&Path>,
     ) -> bool {
         // Resolve the import source to a normalized module path.
-        let Some(intermediate_module) =
-            normalized_relative_import_module(test_file, import_source, alias_map, workspace_root)
+        let Some(import_module) =
+            normalized_relative_import_module(&test.file, import_source, alias_map, workspace_root)
         else {
             return false;
         };
         let owner_module = normalized_module_path(&owner.file);
-        // The import targets the owner module directly. A plain same-name
-        // import is handled by the other relations; only an owner-file
-        // RENAME export (`export { ownerName as alias }`) needs the index
-        // here, because the test imports `alias`, not the owner name
-        // (#4104-B).
-        if intermediate_module == owner_module {
-            let key = (intermediate_module, imported_name.to_string());
+        // The import names the owner module directly. A plain same-name
+        // import is owned by the direct/imported-call relations (with their
+        // own identity guards); only an owner-file RENAME export
+        // (`export { ownerName as alias }`) needs the index here, because the
+        // test imports `alias`, not the owner name (#4104-B).
+        if import_module == owner_module {
+            let key = (import_module, imported_name.to_string());
             let Some((original_name, source_module)) = self.entries.get(&key) else {
                 return false;
             };
             return source_module == &owner_module && original_name == &owner.name;
         }
-        let key = (intermediate_module.clone(), imported_name.to_string());
-        let Some((original_name, source_module)) = self.entries.get(&key) else {
-            // Star-hop fallback (#4103): `export * from './owner'` forwards
-            // every named export under its original name, so importing
-            // `owner.name` from a barrel that star-exports the owner's module
-            // reaches the owner. The imported name must equal the owner's own
-            // name — a star hop invents no aliases.
-            return imported_name == owner.name
-                && self
-                    .star_edges
-                    .contains(&(intermediate_module, owner_module.clone()));
+        if test
+            .mocks_in_file
+            .iter()
+            .any(|source| source == UNRESOLVED_MOCK_SPECIFIER)
+        {
+            return false;
+        }
+        let mocked_modules: Vec<String> = test
+            .mocks_in_file
+            .iter()
+            .filter_map(|source| {
+                normalized_relative_import_module(&test.file, source, alias_map, workspace_root)
+            })
+            .map(|module| self.canonical_module(&module))
+            .collect();
+        let mocked = |module: &str| {
+            mocked_modules.iter().any(|mocked| mocked == module)
+                || test
+                    .mocks_in_file
+                    .iter()
+                    .any(|source| root_relative_mock_names_module(source, module))
         };
-        // The chain must resolve to the owner's file and the owner's name.
-        // `export { default as X } from './owner'` records the original name
-        // `default`; it resolves to THIS owner exactly when the owner is the
-        // owner module's default export (#4103 under-credit: that chain was
-        // silently indexed but could never match a named owner).
-        source_module == &owner_module
-            && (original_name == &owner.name
-                || (original_name == "default" && owner.exported_as_default))
+        let mut stack = Vec::new();
+        let ExportResolution::Found(target_module, target_name) =
+            self.resolve_export(&import_module, imported_name, 0, &mut stack, &mocked)
+        else {
+            return false;
+        };
+        // The chain must land on the owner's file and the owner's name.
+        // `export { default as X } from './owner'` lands on `default`; it
+        // resolves to THIS owner exactly when the owner is the owner module's
+        // default export (#4103 under-credit).
+        target_module == owner_module
+            && (target_name == owner.name
+                || (target_name == "default" && owner.exported_as_default))
+    }
+}
+
+/// Export facts of one parsed module, collected on the parse worker.
+#[derive(Debug, Default)]
+struct ModuleExportFacts {
+    entries: Vec<((String, String), (String, String))>,
+    star_edges: Vec<(String, String)>,
+    local_exports: Vec<String>,
+}
+
+fn module_export_facts(
+    relative: &Path,
+    body: &oxc_allocator::Vec<'_, Statement<'_>>,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: &Path,
+) -> ModuleExportFacts {
+    // intermediate module path (normalized, no extension)
+    let module = normalized_module_path(relative);
+    let mut facts = ModuleExportFacts::default();
+    for stmt in body {
+        match stmt {
+            Statement::ExportAllDeclaration(export_all) => {
+                // `export * from './owner'` — record the star hop.
+                // `export * as ns from './owner'` namespaces the module value,
+                // so the named-forwarding contract a star hop carries does not
+                // apply; it stays unindexed (fail-closed), as does a
+                // type-only `export type * from`.
+                if export_all.exported.is_some()
+                    || export_all.export_kind == ImportOrExportKind::Type
+                {
+                    continue;
+                }
+                let star_source = export_all.source.value.to_string();
+                if let Some(resolved) = normalized_relative_import_module(
+                    relative,
+                    &star_source,
+                    alias_map,
+                    Some(workspace_root),
+                ) {
+                    facts.star_edges.push((module.clone(), resolved));
+                }
+            }
+            Statement::ExportDefaultDeclaration(_) => {
+                facts.local_exports.push("default".to_string());
+            }
+            Statement::ExportNamedDeclaration(export) => {
+                if export.export_kind == ImportOrExportKind::Type {
+                    continue;
+                }
+                if let Some(declaration) = &export.declaration {
+                    push_declaration_export_names(declaration, &mut facts.local_exports);
+                    continue;
+                }
+                let Some(re_source) = &export.source else {
+                    // Own export list `export { a, b as c }` (no `from`).
+                    // A same-name entry exports the module's own binding; a
+                    // RENAME (#4104-B) re-binds the file's OWN local binding
+                    // under `exported_name` — recorded as a self-hop so
+                    // `import { c } from './owner-file'` resolves back to the
+                    // original owner name.
+                    for specifier in &export.specifiers {
+                        if specifier.export_kind == ImportOrExportKind::Type {
+                            continue;
+                        }
+                        let Some(local_name) = module_export_name_text(&specifier.local) else {
+                            continue;
+                        };
+                        let exported_name = module_export_name_text(&specifier.exported)
+                            .unwrap_or_else(|| local_name.clone());
+                        if exported_name == local_name {
+                            facts.local_exports.push(local_name);
+                            continue;
+                        }
+                        let key = (module.clone(), exported_name);
+                        facts.entries.push((key, (local_name, module.clone())));
+                    }
+                    continue;
+                };
+                let source_str = re_source.value.to_string();
+                // Resolve the source module relative to the intermediate
+                // file's dir. Pass alias_map so tsconfig-aliased paths can be
+                // followed.
+                let Some(resolved) = normalized_relative_import_module(
+                    relative,
+                    &source_str,
+                    alias_map,
+                    Some(workspace_root),
+                ) else {
+                    continue;
+                };
+                for specifier in &export.specifiers {
+                    if specifier.export_kind == ImportOrExportKind::Type {
+                        continue;
+                    }
+                    let Some(original_name) = module_export_name_text(&specifier.local) else {
+                        continue;
+                    };
+                    let exported_name = module_export_name_text(&specifier.exported)
+                        .unwrap_or_else(|| original_name.clone());
+                    // key: what the test would import from the intermediate file
+                    let key = (module.clone(), exported_name);
+                    // value: what the source file exports under its original name
+                    facts.entries.push((key, (original_name, resolved.clone())));
+                }
+            }
+            _ => {}
+        }
+    }
+    facts
+}
+
+/// Value names bound by an exported declaration. Type-only declarations
+/// (`interface`, `type`) bind no runtime value and are skipped.
+fn push_declaration_export_names(declaration: &Declaration<'_>, names: &mut Vec<String>) {
+    match declaration {
+        Declaration::VariableDeclaration(variables) => {
+            for declarator in &variables.declarations {
+                for identifier in declarator.id.get_binding_identifiers() {
+                    names.push(identifier.name.as_str().to_string());
+                }
+            }
+        }
+        Declaration::TSTypeAliasDeclaration(_) | Declaration::TSInterfaceDeclaration(_) => {}
+        other => {
+            if let Some(identifier) = other.id() {
+                names.push(identifier.name.as_str().to_string());
+            }
+        }
     }
 }
 
@@ -333,9 +578,9 @@ pub(crate) fn same_package_root(
 /// file in `packages/a/`.  Pass `None` to preserve the previous behaviour
 /// (used in unit tests that do not have a real filesystem).
 ///
-/// `reexport_index` enables single-hop re-export tracing: tests that import
-/// the owner through an intermediate barrel file are credited when the chain
-/// can be resolved in-source in a single hop.  Pass `&ReExportIndex::empty()`
+/// `reexport_index` enables bounded re-export tracing: tests that import
+/// the owner through a barrel file are credited when the chain resolves
+/// in-source within `MAX_REEXPORT_HOPS` hops.  Pass `&ReExportIndex::empty()`
 /// to disable re-export tracing (backward-compatible default for unit tests).
 ///
 /// `alias_map` enables tsconfig.json path alias resolution for non-relative
@@ -500,11 +745,13 @@ pub(crate) fn owner_call_relation(
     if dynamic_import_member_call(test, owner, alias_map, workspace_root) {
         return Some(TypeScriptRelationKind::ImportedOwnerCall);
     }
-    // Single-hop re-export tracing (RIPR-SPEC-0095):
-    // If the test imports a name from an intermediate file that re-exports it
-    // from the owner file, credit the test via re_export_chain_followed.
-    // Only one hop is followed; deeper chains stay uncredited (fail-closed).
-    // The index also carries the owner file's OWN rename exports
+    // Bounded re-export tracing (RIPR-SPEC-0095):
+    // If the test imports a name from a barrel (named `export { N } from` or
+    // `export * from` hops, including a directory specifier that resolves to
+    // its `index` module) whose chain lands on the owner's own export, credit
+    // the test via re_export_chain_followed. At most `MAX_REEXPORT_HOPS` hops
+    // are followed; deeper, cyclic or ambiguous chains stay uncredited
+    // (fail-closed). The index also carries the owner file's OWN rename exports
     // (`export { ownerName as alias }`), so `import { alias } from
     // './owner-file'` resolves back to the owner name (#4104-B).
     if test.imports_in_file.iter().any(|import| {
@@ -515,15 +762,29 @@ pub(crate) fn owner_call_relation(
             return false;
         };
         if imported_name == "default" {
-            return false; // default imports are out of scope for single-hop re-export
+            return false; // default imports are out of scope for re-export tracing
         }
         // The local alias in the test is what gets called; check the call site.
         let local = &import.local;
         if !contains_call_name(&test.body_text, local) {
             return false;
         }
+        // Shadow guard (#4102): a test-body declaration of the local name
+        // reaches the shadow, not the re-exported owner.
+        if local_identifier_declared_in_test_body(&test.body_text, local) {
+            return false;
+        }
+        // An enclosing `describe`/`beforeEach` binding of the local name
+        // shadows the import for every test in that scope.
+        if test
+            .scope_bindings
+            .iter()
+            .any(|binding| &binding.name == local)
+        {
+            return false;
+        }
         reexport_index.resolve_to_owner(
-            &test.file,
+            test,
             &import.source,
             imported_name,
             owner,
@@ -1491,7 +1752,7 @@ fn heuristic_owner_supported(owner: &TypeScriptOwner) -> bool {
 /// tests in different packages are excluded from the candidate set.
 /// Pass `None` to preserve the previous behaviour (used in unit tests).
 ///
-/// `reexport_index` enables single-hop re-export tracing.
+/// `reexport_index` enables bounded re-export tracing.
 /// Pass `&ReExportIndex::empty()` to disable (backward-compatible default).
 ///
 /// `alias_map` enables tsconfig.json path alias resolution for non-relative

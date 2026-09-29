@@ -6274,17 +6274,20 @@ metrics = [
 
 [[behavior]]
 id = "RIPR-SPEC-0095"
-name = "TypeScript single-hop re-export test discovery"
+name = "TypeScript bounded re-export test discovery"
 spec = "docs/specs/RIPR-SPEC-0095-typescript-reexport-test-discovery.md"
 tests = [
   "crates/ripr/src/analysis/language/typescript/tests.rs",
+  "crates/ripr/src/analysis/language/typescript/tests/reexport_chain_tests.rs",
   "crates/ripr/src/domain/evidence.rs"
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",
   "fixtures/typescript_reexport_single_hop",
   "fixtures/typescript_reexport_no_false_credit",
-  "fixtures/typescript_reexport_two_hop_limit"
+  "fixtures/typescript_reexport_two_hop_limit",
+  "fixtures/typescript_reexport_directory_star_barrel",
+  "fixtures/typescript_reexport_barrel_other_name"
 ]
 code = [
   "crates/ripr/src/analysis/language/typescript/related_tests.rs",
@@ -6297,12 +6300,16 @@ outputs = [
   "docs/specs/RIPR-SPEC-0095-typescript-reexport-test-discovery.md",
   "fixtures/typescript_reexport_single_hop/expected/check.json",
   "fixtures/typescript_reexport_no_false_credit/expected/check.json",
-  "fixtures/typescript_reexport_two_hop_limit/expected/check.json"
+  "fixtures/typescript_reexport_two_hop_limit/expected/check.json",
+  "fixtures/typescript_reexport_directory_star_barrel/expected/check.json",
+  "fixtures/typescript_reexport_barrel_other_name/expected/check.json"
 ]
 metrics = [
   "typescript_reexport_single_hop_credits_via_barrel",
   "typescript_reexport_no_false_credit_stays_no_path",
-  "typescript_reexport_two_hop_stays_no_path"
+  "typescript_reexport_two_hop_credits_within_bound",
+  "typescript_reexport_directory_star_barrel_credits",
+  "typescript_reexport_barrel_other_name_stays_no_path"
 ]
 
 [[behavior]]
@@ -6777,6 +6784,7 @@ fixtures = [
   "fixtures/evidence-promotion-honesty-corpus/reports/perl_sink_aligned_positive_control.json",
   "fixtures/evidence-promotion-honesty-corpus/reports/perl_direct_owner_advisory_positive.json",
   "fixtures/typescript_adversarial_owner_module_mock",
+  "fixtures/typescript_adversarial_mocked_barrel",
 ]
 code = [
   "xtask/src/main.rs",

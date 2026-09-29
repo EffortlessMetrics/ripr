@@ -1,0 +1,14 @@
+diff --git a/src/utils.ts b/src/utils.ts
+index 0000000..1111111 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -1,8 +1,8 @@
+ /** Remove `base` from the start of `input` (unjs/ufo `withoutBase` shape). */
+ export function withoutBase(input: string, base: string): string {
+     if (!input.startsWith(base)) {
+-        return base;
++        return input;
+     }
+     const trimmed = input.slice(base.length);
+     return trimmed[0] === '/' ? trimmed : '/' + trimmed;
+ }

@@ -2,40 +2,40 @@
   "schema_version": "0.2",
   "tool": "ripr",
   "mode": "fast",
-  "root": "fixtures/typescript_reexport_two_hop_limit/input",
+  "root": "fixtures/typescript_reexport_directory_star_barrel/input",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:e21999d49ea4ced2049f8371b7855a7acae13095033d8e3e69946f871ee07cc8","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:24103544aa1bd1b96e6f0ef5d01d8909fd52aef7a55e00f637532ba2a0a916b5","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
-      "id": "probe:src_util.ts:typescript_preview:5a933676",
+      "id": "probe:src_utils.ts:typescript_preview:a6254543",
       "classification": "exposed",
       "severity": "info",
       "confidence": 0.60,
       "probe": {
-        "id": "probe:src_util.ts:typescript_preview:5a933676",
+        "id": "probe:src_utils.ts:typescript_preview:a6254543",
         "family": "return_value",
         "delta": "value",
-        "file": "src/util.ts",
+        "file": "src/utils.ts",
         "line": 4,
-        "expression": "        return false;",
-        "owner": "typescript:src/util.ts::isRawNetworkError"
+        "expression": "        return input;",
+        "owner": "typescript:src/utils.ts::withoutBase"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"low","summary":"1 related test(s) found for owner `isRawNetworkError`"},
+        "reach": {"state":"yes","confidence":"low","summary":"2 related test(s) found for owner `withoutBase`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
         "observe": {"state":"yes","confidence":"low","summary":"Strongest extracted oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"yes","confidence":"low","summary":"Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."}
        },
-      "evidence_path": ["reach yes: 1 related test(s) found for owner `isRawNetworkError`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return false; (line 4)", "related test test/util.test.ts:7 isRawNetworkError via two-hop chain uses strong exact value oracle: expect(...).toBe(...)"],
+      "evidence_path": ["reach yes: 2 related test(s) found for owner `withoutBase`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation yes: Strongest extracted oracle kind: `exact_value` (rank 5)", "discriminator yes: Related test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated.", "local flow reaches returned value: return input; (line 4)", "related test test/base.test.ts:7 withoutBase strips the base prefix uses strong exact value oracle: expect(...).toBe(...)", "related test test/base.test.ts:11 withoutBase keeps input outside the base uses strong exact value oracle: expect(...).toBe(...)"],
       "flow_sinks": [
-        {"kind":"return_value","text":"return false;","line":4}
+        {"kind":"return_value","text":"return input;","line":4}
       ],
-      "evidence": ["owner: isRawNetworkError", "typescript_oracle_observed: isRawNetworkError(err)", "typescript_oracle_expected: true", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: test/util.test.ts:9", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/util.ts;line=4;kind=typescript_preview_probe;source_id=probe:src_util.ts:typescript_preview:5a933676;owner=isRawNetworkError", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
-      "missing": ["Related test reaches `isRawNetworkError` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
+      "evidence": ["owner: withoutBase", "typescript_oracle_observed: withoutBase('/other', '/base')", "typescript_oracle_expected: '/other'", "typescript_oracle_confidence: high", "typescript_oracle_evidence_ref: test/base.test.ts:12", "gap_state: already_observed", "actionability_category: strong_oracle_observed", "why_not_actionable: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted", "repair_route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior", "evidence_needed_to_promote: none for a repair packet; retain strong related-test evidence as non-actionable context", "raw_evidence_ref: file=src/utils.ts;line=4;kind=typescript_preview_probe;source_id=probe:src_utils.ts:typescript_preview:a6254543;owner=withoutBase", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["Related test reaches `withoutBase` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.", "TypeScript preview actionability `already_observed` / `strong_oracle_observed`: related Jest/Vitest evidence already has a strong exact oracle; no repair packet should be emitted. Repair route: keep the finding advisory preview and verify the existing assertion still targets the changed behavior"],
       "assertion_texts": {
       },
       "activation": {
@@ -48,12 +48,22 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 1,
+      "related_tests_total": 2,
       "related_tests": [
         {
-          "name": "isRawNetworkError via two-hop chain",
-          "file": "test/util.test.ts",
+          "name": "withoutBase strips the base prefix",
+          "file": "test/base.test.ts",
           "line": 7,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "expect(...).toBe(...)",
+          "relation_reason": "re_export_chain_followed",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "withoutBase keeps input outside the base",
+          "file": "test/base.test.ts",
+          "line": 11,
           "oracle_strength": "strong",
           "oracle_kind": "exact_value",
           "oracle": "expect(...).toBe(...)",
@@ -65,7 +75,7 @@
         "authority_boundary": "preview_advisory_only",
         "bun_cross_language_grip": null,
         "card_version": "typescript_preview_card.v1",
-        "changed_behavior": "return_value changed at src/util.ts:4: `return false;`",
+        "changed_behavior": "return_value changed at src/utils.ts:4: `return input;`",
         "language": "typescript",
         "language_status": "preview",
         "limits": [
@@ -76,13 +86,13 @@
         "missing_discriminator": null,
         "oracle_kind": "exact_value",
         "oracle_strength": "strong",
-        "owner": "isRawNetworkError",
+        "owner": "withoutBase",
         "owner_kind": "function",
         "probe_family": "return_value",
         "related_test": {
-          "file": "test/util.test.ts",
-          "line": 7,
-          "name": "isRawNetworkError via two-hop chain"
+          "file": "test/base.test.ts",
+          "line": 11,
+          "name": "withoutBase keeps input outside the base"
         },
         "repair_packet_ready": false,
         "repair_route": "keep the finding advisory preview and verify the existing assertion still targets the changed behavior",
@@ -103,14 +113,14 @@
         "missing_graph_legs": [],
         "raw_evidence_refs": [
           {
-            "file": "src/util.ts",
+            "file": "src/utils.ts",
             "kind": "typescript_preview_probe",
             "leg": null,
             "line": 4,
-            "owner": "isRawNetworkError",
-            "raw": "file=src/util.ts;line=4;kind=typescript_preview_probe;source_id=probe:src_util.ts:typescript_preview:5a933676;owner=isRawNetworkError",
+            "owner": "withoutBase",
+            "raw": "file=src/utils.ts;line=4;kind=typescript_preview_probe;source_id=probe:src_utils.ts:typescript_preview:a6254543;owner=withoutBase",
             "sample": null,
-            "source_id": "probe:src_util.ts:typescript_preview:5a933676"
+            "source_id": "probe:src_utils.ts:typescript_preview:a6254543"
           }
         ],
         "repair_packet_ready": false,
@@ -133,7 +143,7 @@
     {
       "language": "typescript",
       "file_count": 1,
-      "sample_paths": ["src/util.ts"],
+      "sample_paths": ["src/utils.ts"],
       "enabled": true,
       "analyzed": true,
       "category": "preview_language_advisory",

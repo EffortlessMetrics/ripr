@@ -239,9 +239,9 @@ impl LanguageAdapter for TypeScriptAdapter {
             };
         let alias_map_ref: Option<&TsAliasMap> = alias_map.as_ref();
 
-        // Build the single-hop re-export index from all non-test workspace files
+        // Build the bounded re-export index from all non-test workspace files
         // (RIPR-SPEC-0095). The index enables crediting tests that reach the owner
-        // via an explicit `export { N } from './owner'` barrel-file re-export.
+        // through `export { N } from` / `export * from` barrel chains.
         // Sources come from the Phase-1 cache so each file is read once per run.
         let reexport_index = ReExportIndex::build(
             &workspace_files,

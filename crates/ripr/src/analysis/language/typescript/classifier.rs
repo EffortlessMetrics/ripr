@@ -2343,7 +2343,7 @@ pub(crate) fn strongest_family_matching_oracle(
 /// `packages/a/`.  Pass `None` to preserve the previous single-package
 /// behaviour (used in unit tests).
 ///
-/// `reexport_index` enables single-hop re-export tracing for test discovery.
+/// `reexport_index` enables bounded re-export tracing for test discovery.
 /// Pass `&ReExportIndex::empty()` to disable (backward-compatible for unit tests).
 // 8 parameters — all are structurally distinct context tokens required by the
 // TypeScript classifier pipeline; bundling them would force a heap allocation
