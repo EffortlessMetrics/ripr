@@ -723,9 +723,232 @@ fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
                 // A parameter, fixture or assignment named like the module
                 // alias (`def test_one(pkg): pkg.one(...)`) calls a local
                 // value, not the imported module.
-                && !test_binds_local(test, &import.alias)
+                && !test_rebinds_import_alias(test, &import.alias)
                 && contains_attribute_call(&test.body_text, &import.alias, &owner.name))
+            || (!is_method_owner
+                && !test_rebinds_import_alias(test, &import.alias)
+                && submodule_receivers(import, owner, &test.file)
+                    .iter()
+                    .any(|receiver| {
+                        contains_attribute_call(&test.body_text, receiver, &owner.name)
+                    }))
     })
+}
+
+/// Callee spellings with which `test` calls a free-function owner with module
+/// identity (#4567): the local bound by `from <owner module> import owner [as
+/// alias]` (including a package re-export), and `receiver.owner` for every
+/// receiver that reaches the owner's module by its dotted path
+/// ([`submodule_receivers`]), or a re-exporting package alias. A local that
+/// shadows the import is not a spelling. Methods have none.
+pub(super) fn owner_module_callees(test: &PythonTest, owner: &PythonOwner) -> Vec<String> {
+    if matches!(
+        owner.owner_kind,
+        Some(OwnerKind::Method | OwnerKind::ClassMethod)
+    ) || owner.is_module_owner()
+    {
+        return Vec::new();
+    }
+    let mut callees = Vec::new();
+    for import in &test.imports {
+        if test_rebinds_import_alias(test, &import.alias) {
+            continue;
+        }
+        if import.imported == owner.name
+            && import_source_module_matches_owner(import, owner, &test.file)
+        {
+            callees.push(import.alias.clone());
+        }
+        let reexporting_package =
+            import.source_module.is_empty() && owner.reexport_modules.contains(&import.imported);
+        let receivers = submodule_receivers(import, owner, &test.file)
+            .into_iter()
+            .chain(reexporting_package.then(|| import.alias.clone()));
+        for receiver in receivers {
+            callees.push(format!("{receiver}.{}", owner.name));
+        }
+    }
+    callees.sort();
+    callees.dedup();
+    callees
+}
+
+/// Locals the test body binds exactly once to the result of an owner call
+/// through one of `callees` (`result = utils.sign(0)`), so an assertion on the
+/// local observes the owner's output (#4567).
+pub(super) fn owner_result_locals(test: &PythonTest, callees: &[String]) -> Vec<String> {
+    let body = test.body_text.as_str();
+    let mut locals = Vec::new();
+    let mut line_start = 0usize;
+    for line in body.split_inclusive('\n') {
+        let start = line_start;
+        line_start += line.len();
+        let Some(eq) = line.find('=') else {
+            continue;
+        };
+        let (target, value) = (line[..eq].trim(), &line[eq + 1..]);
+        let value_start = start + eq + 1 + (value.len() - value.trim_start().len());
+        let value = value.trim_start();
+        // The whole assigned value must be the owner call, so the local holds
+        // its result on every path (`r = sign(0)`, not `r = sign(0) or 1`).
+        let is_whole_call = callees.iter().any(|callee| {
+            value.strip_prefix(callee.as_str()).is_some_and(|rest| {
+                let open = value_start + callee.len() + (rest.len() - rest.trim_start().len());
+                rest.trim_start().starts_with('(')
+                    && super::no_behavior::matching_call_paren(body, open).is_some_and(|close| {
+                        let after = body[close + 1..].split('\n').next().unwrap_or_default();
+                        let after = after.trim();
+                        after.is_empty() || after.starts_with('#')
+                    })
+            })
+        });
+        if super::static_limits::is_simple_python_identifier(target)
+            && !value.starts_with('=')
+            && is_whole_call
+            && !python_text_hides_code(body, start + (line.len() - line.trim_start().len()))
+            && bracket_depth_at(body, start) == 0
+            && assignment_count(body, target) == 1
+            && !binds_other_than_assignment(test, target)
+            && !test.fixtures.iter().any(|fixture| fixture == target)
+        {
+            locals.push(target.to_string());
+        }
+    }
+    locals.sort();
+    locals.dedup();
+    locals
+}
+
+/// Open-bracket depth at byte `idx` of `text`, skipping quoted strings, so a
+/// `name=value` line inside a multi-line call reads as a keyword argument,
+/// not an assignment.
+fn bracket_depth_at(text: &str, idx: usize) -> usize {
+    let bytes = &text.as_bytes()[..idx];
+    let mut depth = 0usize;
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'#' => {
+                cursor += bytes[cursor..]
+                    .iter()
+                    .position(|&byte| byte == b'\n')
+                    .unwrap_or(bytes.len() - cursor);
+            }
+            quote @ (b'\'' | b'"') => {
+                let triple = bytes[cursor..].starts_with(&[quote; 3]);
+                let delimiter: &[u8] = if triple { &[quote; 3] } else { &[quote] };
+                cursor += delimiter.len();
+                while cursor < bytes.len() && !bytes[cursor..].starts_with(delimiter) {
+                    cursor += if bytes[cursor] == b'\\' { 2 } else { 1 };
+                }
+                cursor += delimiter.len();
+            }
+            b'(' | b'[' | b'{' => {
+                depth += 1;
+                cursor += 1;
+            }
+            b')' | b']' | b'}' => {
+                depth = depth.saturating_sub(1);
+                cursor += 1;
+            }
+            _ => cursor += 1,
+        }
+    }
+    depth
+}
+
+/// Bracket depth of an asserted operand in an assertion's text: `0` in an
+/// `assert` statement, `1` inside an assertion call's arguments
+/// (`self.assertEqual(...)`). `None` when the text is neither shape.
+fn oracle_operand_depth(text: &str) -> Option<usize> {
+    if text
+        .strip_prefix("assert")
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(char::is_whitespace)
+    {
+        return Some(0);
+    }
+    let (callee, _) = text.split_once('(')?;
+    (!callee.is_empty()
+        && callee
+            .chars()
+            .all(|ch| ch == '.' || is_python_identifier_char(ch))
+        && text.trim_end().ends_with(')'))
+    .then_some(1)
+}
+
+/// Whether an assertion's text calls `callee` (with an identifier boundary:
+/// `utils.sign(`, not `myutils.sign(`) as an asserted operand, not nested
+/// inside another call (`always_true(utils.sign(0))` asserts the
+/// wrapper's result, which may ignore the owner's output).
+pub(super) fn oracle_operand_calls(text: &str, callee: &str) -> bool {
+    let Some(depth) = oracle_operand_depth(text) else {
+        return false;
+    };
+    let needle = format!("{callee}(");
+    text.match_indices(&needle).any(|(idx, _)| {
+        python_callee_start_has_boundary(text, idx)
+            && !line_prefix_looks_like_comment_or_string(text, idx)
+            && bracket_depth_at(text, idx) == depth
+    })
+}
+
+/// Whether an assertion's text names the local `name` as an asserted operand
+/// (`assert rate == 0.15`), not as an argument of another call or an
+/// attribute of something else.
+pub(super) fn oracle_operand_names(text: &str, name: &str) -> bool {
+    let Some(depth) = oracle_operand_depth(text) else {
+        return false;
+    };
+    !name.is_empty()
+        && text.match_indices(name).any(|(idx, _)| {
+            let end = idx + name.len();
+            !text[..idx]
+                .chars()
+                .next_back()
+                .is_some_and(|prev| prev == '.' || is_python_identifier_char(prev))
+                && !next_char_is_identifier(text, end)
+                && !python_text_hides_code(text, idx)
+                && bracket_depth_at(text, idx) == depth
+        })
+}
+
+/// Receivers that reach the owner's module through an import, by its full
+/// dotted module path (#4560). The import binds module path `P`
+/// (`import P [as A]`, or `from S import m [as A]` with `P = S.m`). When `P`
+/// is the owner's module the receiver is `A`; this covers a package
+/// `__init__.py` owner (`from dateutil import zoneinfo` for
+/// `src/dateutil/zoneinfo/__init__.py`), whose file stem `__init__` never
+/// matches. When the owner's module is `P.<rest>` the receiver is `A.<rest>`:
+/// `import click` reaches `click.utils._expand_args(`. Only exact dotted
+/// paths match, never a file stem. A module name another workspace project
+/// also produces reaches nothing from outside the owner's project (#4566).
+pub(super) fn submodule_receivers(
+    import: &PythonImport,
+    owner: &PythonOwner,
+    test_file: &Path,
+) -> Vec<String> {
+    if !import_module_may_be_owners(import, owner, test_file) {
+        return Vec::new();
+    }
+    let bound = if import.source_module.is_empty() {
+        import.imported.clone()
+    } else {
+        format!("{}.{}", import.source_module, import.imported)
+    };
+    let prefix = format!("{bound}.");
+    owner_module_paths(&owner.file)
+        .iter()
+        .filter_map(|path| {
+            if *path == bound {
+                Some(import.alias.clone())
+            } else {
+                path.strip_prefix(&prefix)
+                    .filter(|rest| !rest.is_empty())
+                    .map(|rest| format!("{}.{rest}", import.alias))
+            }
+        })
+        .collect()
 }
 
 pub(super) fn imported_module_matches_owner(
@@ -1334,9 +1557,12 @@ fn test_references_module_symbol(test: &PythonTest, owner: &PythonOwner, symbol:
             return !test_binds_local(test, &import.alias)
                 && contains_name_reference(body, &import.alias);
         }
-        imported_module_matches_owner(import, owner, &test.file)
-            && !test_binds_local(test, &import.alias)
-            && contains_member_reference(body, &import.alias, symbol)
+        !test_binds_local(test, &import.alias)
+            && ((imported_module_matches_owner(import, owner, &test.file)
+                && contains_member_reference(body, &import.alias, symbol))
+                || submodule_receivers(import, owner, &test.file)
+                    .iter()
+                    .any(|receiver| contains_member_reference(body, receiver, symbol)))
     })
 }
 
@@ -1357,20 +1583,70 @@ fn test_references_owner_module(test: &PythonTest, owner: &PythonOwner) -> bool 
 /// nested `def`/`class`. Such a local shadows the imported owner, so bare uses
 /// of `name` are not owner references.
 fn test_binds_local(test: &PythonTest, name: &str) -> bool {
-    test.fixtures.iter().any(|fixture| fixture == name)
-        || assignment_count(&test.body_text, name) > 0
-        || walrus_binds(&test.body_text, name)
+    test.fixtures.iter().any(|fixture| fixture == name) || test_body_binds_local(test, name)
+}
+
+/// Whether the test BODY binds `name` (every [`test_binds_local`] form except
+/// a parameter), so a parameter of that name no longer holds its argument.
+pub(super) fn test_body_binds_local(test: &PythonTest, name: &str) -> bool {
+    assignment_count(&test.body_text, name) > 0 || binds_other_than_assignment(test, name)
+}
+
+/// Every binding form of [`test_body_binds_local`] except a plain `name =`
+/// assignment, plus an augmented assignment (`name += 1`).
+fn binds_other_than_assignment(test: &PythonTest, name: &str) -> bool {
+    keyword_or_operator_binds(test, name, true)
+}
+
+/// [`test_binds_local`] for an imported alias: the test body's own
+/// `import pkg.mod as alias` statement is the import being checked (#4567
+/// records it among the test's imports), not a rebinding of it.
+fn test_rebinds_import_alias(test: &PythonTest, alias: &str) -> bool {
+    test.fixtures.iter().any(|fixture| fixture == alias)
+        || assignment_count(&test.body_text, alias) > 0
+        || keyword_or_operator_binds(test, alias, false)
+}
+
+fn keyword_or_operator_binds(test: &PythonTest, name: &str, import_as_binds: bool) -> bool {
+    let body = test.body_text.as_str();
+    augmented_assignment(body, name)
+        || walrus_binds(body, name)
         || ["def ", "class ", "for ", "as "]
             .into_iter()
             .any(|keyword| {
                 let needle = format!("{keyword}{name}");
-                test.body_text.match_indices(&needle).any(|(idx, _)| {
+                body.match_indices(&needle).any(|(idx, _)| {
                     let end = idx + needle.len();
-                    python_callee_start_has_boundary(&test.body_text, idx)
-                        && !next_char_is_identifier(&test.body_text, end)
-                        && !python_text_hides_code(&test.body_text, idx)
+                    let line_start = body[..idx].rfind('\n').map_or(0, |offset| offset + 1);
+                    let line = body[line_start..].trim_start();
+                    let import_line = line.starts_with("import ") || line.starts_with("from ");
+                    python_callee_start_has_boundary(body, idx)
+                        && !next_char_is_identifier(body, end)
+                        && !python_text_hides_code(body, idx)
+                        && (import_as_binds || keyword != "as " || !import_line)
                 })
             })
+}
+
+/// A line that starts with `name <op>=` (`total += 1`, `x //= 2`).
+fn augmented_assignment(body_text: &str, name: &str) -> bool {
+    body_text.lines().any(|line| {
+        let Some(rest) = line.trim_start().strip_prefix(name) else {
+            return false;
+        };
+        if rest.chars().next().is_some_and(is_python_identifier_char) {
+            return false;
+        }
+        let op_len = rest
+            .trim_start()
+            .find('=')
+            .filter(|len| (1..=3).contains(len));
+        op_len.is_some_and(|len| {
+            rest.trim_start()[..len]
+                .chars()
+                .all(|ch| "+-*/%@&|^<>".contains(ch))
+        })
+    })
 }
 
 /// `name :=` with identifier boundaries, outside comments and strings.
@@ -1453,7 +1729,7 @@ fn is_dotted_python_identifier(name: &str) -> bool {
 /// Whether `idx` sits in a comment or string: a `#` or an open quote earlier on
 /// the same line, or an open triple-quoted string (docstring) from an earlier
 /// line.
-fn python_text_hides_code(text: &str, idx: usize) -> bool {
+pub(super) fn python_text_hides_code(text: &str, idx: usize) -> bool {
     python_prefix_hides_code(line_prefix_before(text, idx))
         || inside_triple_quoted_string(text, idx)
 }
@@ -1562,4 +1838,32 @@ pub(super) fn similarity_key_contains(haystack: &str, needle: &str) -> bool {
             .strip_suffix(needle)
             .is_some_and(|head| head.ends_with('_'))
         || haystack.contains(&format!("_{needle}_"))
+}
+
+#[cfg(test)]
+mod oracle_operand_tests {
+    use super::{oracle_operand_calls, oracle_operand_names};
+
+    #[test]
+    fn owner_call_or_local_must_be_an_asserted_operand() {
+        for (text, expected) in [
+            ("assert utils.sign(0) == 0", true),
+            ("assert utils.sign(0)[\"k\"] == 0", true),
+            ("self.assertEqual(utils.sign(0), 0)", true),
+            ("assert always_true(utils.sign(0)) == True", false),
+            ("self.assertTrue(always_true(utils.sign(0)))", false),
+            ("assert myutils.sign(0) == 0", false),
+        ] {
+            assert_eq!(oracle_operand_calls(text, "utils.sign"), expected, "{text}");
+        }
+        for (text, expected) in [
+            ("assert rate == 0.15", true),
+            ("self.assertEqual(rate, 0.15)", true),
+            ("assert always_true(rate)", false),
+            ("assert self.rate == 0.15", false),
+            ("assert rated == 0.15", false),
+        ] {
+            assert_eq!(oracle_operand_names(text, "rate"), expected, "{text}");
+        }
+    }
 }

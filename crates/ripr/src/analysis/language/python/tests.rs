@@ -259,6 +259,182 @@ class Policy:
     assert_eq!(owners[4].owner_kind, Some(OwnerKind::ClassMethod));
 }
 
+/// #4562, the dateutil `test_tz.py` shape: a `TestCase` subclass reached
+/// through a same-file base, and a mixin whose test methods run through a
+/// `TestCase` subclass, are collected; an uninherited mixin is not. Mixin
+/// members are recorded under each subclass that runs them, the node id the
+/// runner accepts, not under the uncollected mixin.
+#[test]
+fn extract_tests_follows_same_file_unittest_bases_and_mixins() {
+    let tests = extract_tests(
+        Path::new("tests/test_tz.py"),
+        r#"
+import unittest
+
+class TzFoldMixin(object):
+    def testFoldPositiveUTCOffset(self):
+        self.assertEqual(self.gettz("A"), 1)
+
+class GettzTest(unittest.TestCase, TzFoldMixin):
+    def testGettz(self):
+        self.assertEqual(gettz("A"), 1)
+
+class ZoneInfoGettzTest(GettzTest):
+    def testZoneInfoNewInstance(self):
+        self.assertIsNot(get_zonefile_instance(), get_zonefile_instance(new_instance=True))
+
+class UnusedMixin(object):
+    def test_never_runs(self):
+        helper()
+
+class Helper:
+    def test_not_a_test_class(self):
+        helper()
+
+class CheckMixin:
+    def test_shared(self):
+        helper()
+    def test_overridden(self):
+        helper()
+
+class TestFirst(CheckMixin):
+    def test_overridden(self):
+        pass
+
+class TestWithInit(CheckMixin):
+    def __init__(self):
+        pass
+    def test_never_collected(self):
+        helper()
+
+class TestInheritsInit(TestWithInit):
+    def test_not_collected_either(self):
+        helper()
+
+@dataclass
+class TestData:
+    def test_dataclass_not_collected(self):
+        helper()
+
+class UnitMixin:
+    def test_unit_overridden(self):
+        helper()
+    def test_unit_assigned_away(self):
+        helper()
+
+class UnitCase(unittest.TestCase, UnitMixin):
+    def test_unit_overridden(self):
+        pass
+    test_unit_assigned_away = None
+
+class FirstMixin:
+    def test_shadow(self):
+        helper()
+
+class SecondMixin:
+    def test_shadow(self):
+        helper()
+    def test_second_only(self):
+        helper()
+
+class TestShadowed(FirstMixin, SecondMixin):
+    pass
+
+class SharedMixin:
+    def test_kept_by_one(self):
+        helper()
+
+class TestOverrides(SharedMixin):
+    def test_kept_by_one(self):
+        pass
+
+class TestInherits(SharedMixin):
+    pass
+"#,
+    );
+    let collected: Vec<(&str, &str)> = tests
+        .iter()
+        .map(|test| (test.qualified_name.as_str(), test.framework))
+        .collect();
+    assert_eq!(
+        collected,
+        vec![
+            ("GettzTest.testGettz", "unittest"),
+            ("GettzTest.testFoldPositiveUTCOffset", "unittest"),
+            ("ZoneInfoGettzTest.testZoneInfoNewInstance", "unittest"),
+            ("ZoneInfoGettzTest.testFoldPositiveUTCOffset", "unittest"),
+            ("TestFirst.test_overridden", "pytest"),
+            ("TestFirst.test_shared", "pytest"),
+            ("UnitCase.test_unit_overridden", "unittest"),
+            ("TestShadowed.test_shadow", "pytest"),
+            ("TestShadowed.test_second_only", "pytest"),
+            ("TestOverrides.test_kept_by_one", "pytest"),
+            ("TestInherits.test_kept_by_one", "pytest"),
+        ]
+    );
+}
+
+/// Mixin members resolve along Python's C3 order, and only the last
+/// definition of a class name counts; a base defined later or twice is
+/// unknown, so its members are not collected.
+#[test]
+fn extract_tests_resolves_mixins_by_c3_order_and_last_definition() {
+    let tests = extract_tests(
+        Path::new("tests/test_mro.py"),
+        r#"
+class Base:
+    def test_limit(self):
+        helper()
+
+class Left(Base):
+    pass
+
+class Right(Base):
+    def test_limit(self):
+        pass
+
+class TestDiamond(Left, Right):
+    pass
+
+class Mixin:
+    def test_first(self):
+        pass
+
+class TestUsesFirstMixin(Mixin):
+    pass
+
+class Mixin:
+    def test_redefined(self):
+        helper()
+
+class TestForward(LaterBase):
+    pass
+
+class LaterBase:
+    def test_later(self):
+        helper()
+
+class TestTwice:
+    def __init__(self):
+        pass
+    def test_hidden_by_init(self):
+        helper()
+
+class TestTwice:
+    def test_last(self):
+        helper()
+"#,
+    );
+    let collected: Vec<&str> = tests
+        .iter()
+        .map(|test| test.qualified_name.as_str())
+        .collect();
+    assert_eq!(
+        collected,
+        vec!["TestDiamond.test_limit", "TestTwice.test_last"]
+    );
+}
+
 #[test]
 fn extract_tests_recognizes_pytest_parametrize_and_unittest() {
     let tests = extract_tests(

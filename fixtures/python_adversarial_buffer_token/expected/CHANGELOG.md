@@ -295,3 +295,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — python_adversarial_buffer_token (10)
+
+Reason:
+RIPR-SPEC-0028 RIPR-SPEC-0046: #4567 fixture input (oracle local wraps the owner call) combined with main's source_subject digest; classification and alignment unchanged
+
+Command:
+`cargo xtask goldens bless python_adversarial_buffer_token --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

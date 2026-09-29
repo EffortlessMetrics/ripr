@@ -1,3 +1,6 @@
+use super::related_tests::{
+    oracle_operand_calls, oracle_operand_names, owner_module_callees, owner_result_locals,
+};
 use super::{
     PythonOwner, PythonTest, has_identifier_boundary, import_module_may_be_owners,
     import_source_module_matches_owner, parse_attribute_assignment,
@@ -632,6 +635,30 @@ pub(super) fn classify_sink_alignment_with_old(
     // identity-bearing — the false-`exposed` guard for free functions.
     let free_fn_module_identity =
         !is_method_owner && strong_test_imports_owner_from_module(&strong_tests, all_tests, owner);
+    // Owner output observed through a module-identified call (#4567): the
+    // strong oracle calls the owner through its module (`utils.sign(0) == 0`,
+    // `pkg.utils.sign(0)`, an imported name), or asserts a local the same test
+    // bound once to such a call (`result = utils.sign(0)`, `assert result == 0`).
+    // The call or local must be an asserted operand: nested in another call
+    // (`always_true(utils.sign(0))`) it is not the value the oracle compares.
+    let module_call_observed = !is_method_owner
+        && strong_tests.iter().any(|related| {
+            let Some(text) = related.oracle.as_deref() else {
+                return false;
+            };
+            all_tests
+                .iter()
+                .filter(|test| test.name == related.name && test.file == related.file)
+                .any(|test| {
+                    let callees = owner_module_callees(test, owner);
+                    callees
+                        .iter()
+                        .any(|callee| oracle_operand_calls(text, callee))
+                        || owner_result_locals(test, &callees)
+                            .iter()
+                            .any(|local| oracle_operand_names(text, local))
+                })
+        });
     // Method-owner identity is class and method name; a test whose imports
     // name a same-named module of another project uses that project's class.
     let method_owner_identity =
@@ -738,6 +765,8 @@ pub(super) fn classify_sink_alignment_with_old(
         && fstring_credit_ok
     {
         ("alias", "strong_oracle_observes_import_alias")
+    } else if module_call_observed && field_construction_credit_ok && fstring_credit_ok {
+        ("direct", "strong_oracle_observes_owner_call_through_module")
     } else if any_strong_observes(&delta_tokens)
         && change_only_credit_ok
         && field_construction_credit_ok

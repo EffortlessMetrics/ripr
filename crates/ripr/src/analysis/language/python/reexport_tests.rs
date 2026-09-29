@@ -600,6 +600,124 @@ fn repo_mode_initializer_assignment_that_replaces_the_name_is_not_credited() -> 
     )
 }
 
+const UTILS_PY: &str = "def _expand(args, env=True):\n    if env:\n        return [a.upper() for a in args]\n    return list(args)\n";
+
+/// #4560, the click shape: `import click` then `click.utils._expand_args(...)`.
+/// The package `__init__.py` does not re-export the helper; the test reaches
+/// it through the submodule attribute path.
+#[test]
+fn package_import_reaches_owner_through_submodule_attribute_path() -> Result<(), String> {
+    for (label, test_source) in [
+        (
+            "submodule-plain",
+            "import click\n\n\ndef test_expand():\n    assert click.utils._expand([\"a\"]) == [\"A\"]\n",
+        ),
+        (
+            "submodule-alias",
+            "import click as c\n\n\ndef test_expand():\n    assert c.utils._expand([\"a\"]) == [\"A\"]\n",
+        ),
+        (
+            "submodule-from",
+            "from click import _internal\n\n\ndef test_expand():\n    assert _internal.utils._expand([\"a\"]) == [\"A\"]\n",
+        ),
+    ] {
+        let internal = label == "submodule-from";
+        let owner_path = if internal {
+            "src/click/_internal/utils.py"
+        } else {
+            "src/click/utils.py"
+        };
+        let finding = analyze_one_line(
+            label,
+            &[
+                (owner_path, UTILS_PY),
+                ("src/click/__init__.py", "from .core import main\n"),
+                ("src/click/core.py", "def main():\n    return 0\n"),
+                ("tests/test_utils.py", test_source),
+            ],
+            owner_path,
+            2,
+        )?;
+        if related_names(&finding) != ["test_expand"] {
+            return Err(format!(
+                "{label}: the submodule attribute call must relate the test, got {:?} ({:?})",
+                related_names(&finding),
+                finding.class
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// #4560, the dateutil shape: the owner lives in a package initializer
+/// (`src/dateutil/zoneinfo/__init__.py`) and the test calls it through
+/// `from dateutil import zoneinfo`. The file stem is `__init__`, so only the
+/// dotted module path identifies it.
+#[test]
+fn package_initializer_owner_is_reached_through_its_module_import() -> Result<(), String> {
+    let finding = analyze_one_line(
+        "init-owner",
+        &[
+            (
+                "src/dateutil/zoneinfo/__init__.py",
+                "def get_zonefile_instance(new_instance=False):\n    if new_instance:\n        return 1\n    return 0\n",
+            ),
+            ("src/dateutil/__init__.py", ""),
+            (
+                "tests/test_tz.py",
+                "from dateutil import zoneinfo\n\n\ndef test_new_instance():\n    assert zoneinfo.get_zonefile_instance(new_instance=True) == 1\n",
+            ),
+        ],
+        "src/dateutil/zoneinfo/__init__.py",
+        2,
+    )?;
+    if related_names(&finding) != ["test_new_instance"] {
+        return Err(format!(
+            "the package initializer owner must relate its module-import caller, got {:?} ({:?})",
+            related_names(&finding),
+            finding.class
+        ));
+    }
+    Ok(())
+}
+
+/// Discriminating negative for #4560: the dotted path must equal the owner's
+/// module path. `click.other._expand(` names a different module, and a local
+/// that shadows the package alias is not the import.
+#[test]
+fn submodule_attribute_path_to_another_module_stays_unreached() -> Result<(), String> {
+    for (label, test_source) in [
+        (
+            "submodule-other",
+            "import click\n\n\ndef test_expand():\n    assert click.other._expand([\"a\"]) == [\"A\"]\n",
+        ),
+        (
+            "submodule-shadow",
+            "import click\n\n\ndef test_expand(click):\n    assert click.utils._expand([\"a\"]) == [\"A\"]\n",
+        ),
+    ] {
+        let finding = analyze_one_line(
+            label,
+            &[
+                ("src/click/utils.py", UTILS_PY),
+                ("src/click/other.py", UTILS_PY),
+                ("src/click/__init__.py", ""),
+                ("tests/test_utils.py", test_source),
+            ],
+            "src/click/utils.py",
+            2,
+        )?;
+        if finding.class != ExposureClass::NoStaticPath {
+            return Err(format!(
+                "{label}: expected no_static_path, got {:?} with {:?}",
+                finding.class,
+                related_names(&finding)
+            ));
+        }
+    }
+    Ok(())
+}
+
 const SHARED_CALC_PY: &str = "def price(amount):\n    return amount - 1\n\n\nclass Calculator:\n    def total(self, amount):\n        return amount * 2\n";
 
 /// #4566 end to end: `a/src/shared` and `b/src/shared` both import as
@@ -608,7 +726,7 @@ const SHARED_CALC_PY: &str = "def price(amount):\n    return amount - 1\n\n\ncla
 /// `exposed` nor supply the module-identity relation. One row per import shape
 /// that carries module identity: `from M import f`, `from M import Class` +
 /// method call, `import M as m` + `m.f(`, `from P import m` + `m.f(` or
-/// `m.Class()`, and a package re-export `from shared import f`. A module
+/// `m.Class()`, `import P` + `P.m.f(` (#4560), and a package re-export `from shared import f`. A module
 /// binding never reaches `exposed` for a free function (its identity rule
 /// wants `from M import f`), so those rows check their
 /// `import_alias_call` relation instead. `syntactic_call` is a name-level
@@ -616,7 +734,7 @@ const SHARED_CALC_PY: &str = "def price(amount):\n    return amount - 1\n\n\ncla
 #[test]
 fn same_named_src_package_in_another_project_lends_no_exposure() -> Result<(), String> {
     let reexport_init = "from .calc import price\n";
-    let rows: [(&str, &str, usize, &str); 6] = [
+    let rows: [(&str, &str, usize, &str); 7] = [
         (
             "from-module",
             "from shared.calc import price\n\n\ndef test_price():\n    assert price(10) == 9\n",
@@ -638,6 +756,12 @@ fn same_named_src_package_in_another_project_lends_no_exposure() -> Result<(), S
         (
             "package-submodule",
             "from shared import calc\n\n\ndef test_price():\n    assert calc.price(10) == 9\n",
+            2,
+            "import_alias_call",
+        ),
+        (
+            "package-dotted-path",
+            "import shared\n\n\ndef test_price():\n    assert shared.calc.price(10) == 9\n",
             2,
             "import_alias_call",
         ),
@@ -675,7 +799,11 @@ fn same_named_src_package_in_another_project_lends_no_exposure() -> Result<(), S
                     line.starts_with(&format!("related_test_relation: {identity_relation} "))
                 });
             let ok = if own_project {
-                (exposed || matches!(label, "module-alias" | "package-submodule"))
+                (exposed
+                    || matches!(
+                        label,
+                        "module-alias" | "package-submodule" | "package-dotted-path"
+                    ))
                     && (identity_relation.is_empty() || identity_related)
             } else {
                 !exposed && !identity_related

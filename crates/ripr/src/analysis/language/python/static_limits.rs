@@ -363,15 +363,36 @@ pub(super) fn is_simple_python_identifier(value: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+/// `patch.object` and `patch.multiple` substitute attributes the same way as
+/// `patch` and `monkeypatch.setattr`, so they are the same runtime
+/// substitution limit (#4565).
 pub(super) fn test_has_mocked_module(test: &PythonTest) -> bool {
-    test.decorators
-        .iter()
-        .any(|decorator| decorator == "patch" || decorator.ends_with(".patch"))
-        || test.body_text.contains("patch(")
-        || test.body_text.contains(".patch(")
-        || test.body_text.contains("monkeypatch.setattr(")
-        || test.body_text.contains("monkeypatch.setitem(")
-        || test.body_text.contains("monkeypatch.delattr(")
+    test.decorators.iter().any(|decorator| {
+        ["patch", "patch.object", "patch.multiple"]
+            .iter()
+            .any(|form| decorator == form || decorator.ends_with(&format!(".{form}")))
+    }) || [
+        "patch(",
+        "patch.object(",
+        "patch.multiple(",
+        "monkeypatch.setattr(",
+        "monkeypatch.setitem(",
+        "monkeypatch.delattr(",
+    ]
+    .iter()
+    .any(|call| body_calls_at_name_boundary(&test.body_text, call))
+}
+
+/// Whether `body` contains `call` where the name starts at an identifier
+/// boundary: `mock.patch(` and `patch.object(`, not `dispatch(` or
+/// `dispatch.object(`.
+fn body_calls_at_name_boundary(body: &str, call: &str) -> bool {
+    body.match_indices(call).any(|(idx, _)| {
+        !body[..idx]
+            .chars()
+            .next_back()
+            .is_some_and(is_python_identifier_char)
+    })
 }
 
 fn related_candidates_have_property_based_test_limit(

@@ -1769,6 +1769,7 @@ fn same_stem_related_handles_missing_stems() {
         decorators: Vec::new(),
         fixtures: Vec::new(),
         parametrized: false,
+        parametrize: None,
         framework: "pytest",
         assertions: Vec::new(),
     };
@@ -2755,6 +2756,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
         decorators: vec!["mock.patch".to_string()],
         fixtures: Vec::new(),
         parametrized: false,
+        parametrize: None,
         framework: "pytest",
         assertions: Vec::new(),
     };
@@ -2770,6 +2772,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
         decorators: vec!["patch".to_string()],
         fixtures: Vec::new(),
         parametrized: false,
+        parametrize: None,
         framework: "pytest",
         assertions: Vec::new(),
     };
@@ -2785,6 +2788,7 @@ fn test_has_mocked_module_recognizes_dotted_patch_decorator() {
         decorators: vec!["pytest.mark.skip".to_string()],
         fixtures: Vec::new(),
         parametrized: false,
+        parametrize: None,
         framework: "pytest",
         assertions: Vec::new(),
     };
@@ -3284,6 +3288,7 @@ fn strong_oracle_observes_owner_resolves_import_alias() {
         decorators: Vec::new(),
         fixtures: Vec::new(),
         parametrized: false,
+        parametrize: None,
         framework: "pytest",
         assertions: Vec::new(),
     };
@@ -3349,6 +3354,7 @@ fn align_importing_test(imported: &str, module: &str) -> PythonTest {
         decorators: Vec::new(),
         fixtures: Vec::new(),
         parametrized: false,
+        parametrize: None,
         framework: "pytest",
         assertions: Vec::new(),
     }
@@ -3391,6 +3397,7 @@ fn sink_alignment_is_alias_when_oracle_uses_import_alias() {
         decorators: Vec::new(),
         fixtures: Vec::new(),
         parametrized: false,
+        parametrize: None,
         framework: "pytest",
         assertions: Vec::new(),
     };

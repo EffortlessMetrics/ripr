@@ -90,7 +90,22 @@ Test discovery:
 
 - `pytest` test functions with the default `test` name prefix at module level
 - pytest test methods with the same prefix under `class Test*`
-- `unittest.TestCase` subclasses and their default `test`-prefixed methods
+- `unittest.TestCase` subclasses and their default `test`-prefixed methods,
+  including classes that reach `TestCase` through a base defined in the same
+  file, and the `test`-prefixed methods of a same-file mixin that a collected
+  test class inherits (#4562), directly or through another same-file mixin.
+  A mixin member is collected only when some collected subclass resolves it
+  to that mixin along Python's C3 method resolution order: the subclass's
+  own definition (a method or a `test_x = None` assignment) or an earlier
+  class in that order wins, and an imported base, a base defined after the
+  subclass or a redefined class name is unknown, so a member behind it is
+  not collected. A collected mixin member is recorded under the subclass
+  that runs it (`TestConsumer.test_shared`), the node id the runner accepts,
+  once per such subclass. Only the last definition of a class name is
+  collected.
+  An uninherited mixin is not collected, nor a `Test*` class that pytest
+  skips because it or a same-file ancestor defines `__init__` or `__new__`
+  or is a dataclass
 - parametrized tests via `@pytest.mark.parametrize` (recognised
   syntactically)
 - pytest fixture and parameter names captured from test function signatures
@@ -176,6 +191,15 @@ the package, so a test that only calls a sibling name from the same package
 stays unrelated, and a test that binds a local named like the package alias
 (a parameter, fixture or assignment) calls that local, not the package. Diff
 mode and repo mode apply the same rule.
+A package import also reaches a free-function owner through the remaining
+submodule path (#4560): `import click` binds `click`, so
+`click.utils._expand_args(...)` calls `src/click/utils.py::_expand_args`, and
+`from click import _internal` reaches `_internal.utils.f(...)`. The receiver
+must spell the owner's full dotted module path below the imported module; a
+different submodule (`click.other.f(`) or a local shadowing the alias does not
+match. An import of the owner's own module path reaches it the same way, which
+covers an owner in a package `__init__.py` (`from dateutil import zoneinfo`
+then `zoneinfo.get_zonefile_instance(...)`), whose file stem never matches.
 Test-name and fixture-name proximity may provide a suggested repair location,
 but these links must be marked uncertain, must keep weak reachability, and must
 not promote unrelated assertions to strong revealability.
@@ -279,7 +303,7 @@ values defined in RIPR-SPEC-0026:
   `@app.get(...)`, `@api.post(...)`, or `@router.api_route(...)` may be treated
   as static route metadata when the changed behavior itself is a supported
   repair shape)
-- `mocked_module` (e.g., `@patch(...)` or `monkeypatch.setattr(...)`
+- `mocked_module` (e.g., `@patch(...)`, `patch.object(...)` (#4565) or `monkeypatch.setattr(...)`
   observed at the related-test call site)
 - `opaque_custom_assertion_helper` (e.g., a related test observes the changed
   owner only through an `assert_*(...)` helper body the adapter does not
@@ -366,7 +390,24 @@ namespace writer (`exec`, `globals`, `vars`, `locals`, `setattr`,
 `sys.modules`, `__dict__`), a non-literal value, a parameter or local binding
 of the same name in the owner, a nested `def`/`class`/`lambda` in the owner,
 or a related test file that assigns the attribute (`pricing.DISCOUNT_THRESHOLD
-= 5`). When no strong related call binds a literal
+= 5`). A call inside a `@pytest.mark.parametrize` (or `@mark.parametrize`)
+test whose argument is a
+parametrize argname (`bulk_discount(quantity)`) expands into one call per
+generated case, binding each case's literal argvalue (#4559). Cases are
+recorded only when statically certain: string or list/tuple argnames, a
+list/tuple argvalues literal with rows of the right arity (`pytest.param(...)`
+unwrapped), stacked decorators as a product of at most 256 cases. A
+single-name list/tuple argnames takes tuple rows, as pytest unpacks them.
+Another decorator named `parametrize` (a plugin or project helper) records
+no cases. Argvalues named by a variable, `indirect=`, starred rows, a `pytest.param`
+with any keyword but `id=` (a `marks=` skip or xfail case may never run), a
+unittest method (pytest does not parametrize it), and an argname the test
+body may rebind leave the call unresolved. A rebinding is read from the
+parsed test body: any assignment, tuple, loop, `with` or `except` target, an
+import or `del` of the argname drops it from the cases, and a nested `def` or
+`class`, a `match` or a star import drops all cases. Any `lambda` in the test,
+or a comprehension whose `for` target names the argname, also leaves the call
+unresolved. When no strong related call binds a literal
 argument (test locals, `*args`, a construct-call passing a dict), static
 evidence cannot see the activating input either way: the oracle verdict stands
 and an `exposed` finding carries a `boundary_activation_unresolved` evidence
@@ -421,6 +462,16 @@ read-out: the boolean the classifier uses is derived from the surfaced
   finding (no strong oracle, or a `<module>` owner with no usable token).
 - `alignment_reason` — a stable snake_case token explaining the value
   (e.g. `strong_oracle_observes_different_sink`).
+  `strong_oracle_observes_owner_call_through_module` (`direct`) credits a free
+  function whose strong oracle calls it through a module-identified spelling
+  (`utils.sign(0) == 0`, `pkg.utils.sign(...)`, a function-local import) or
+  asserts a local the same test bound once to such a call as its whole value
+  (`result = utils.sign(0)`, not `result = utils.sign(0) or 1`; #4567). The
+  call or local must be an asserted operand: nested in another call
+  (`always_true(utils.sign(0))`) it is not the compared value. A later import
+  of the same name inside the test replaces the earlier binding, and the
+  test's own `import pkg.mod as alias` is not a rebinding of `alias`. Those calls also bind boundary activation, so the
+  relational-boundary gate still applies to them.
 
 These fields are advisory preview evidence; they do not change the
 classification and do not claim runtime maturity. The contract does not bump the

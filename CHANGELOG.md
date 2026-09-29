@@ -1666,6 +1666,39 @@ are scoped or reviewed.
   (enable_language) — ...`. Before, the kind, stage and recovery were bare
   snake_case tokens (#4323).
 
+- Python: a parametrized test whose cases never reach a changed comparison
+  boundary no longer makes the finding `exposed`. `sign(x)` under
+  `@pytest.mark.parametrize("x", [5, -3])` bound no literal input, so a
+  `x > 0` -> `x >= 0` change kept the oracle's `exposed` verdict although the
+  mutant survives both cases. Each statically certain parametrize case now
+  binds its literal argvalue, so the finding is `weakly_exposed` and names
+  `x == 0` as the missing boundary (#4559). A case marked skip or xfail, or
+  an argname a lambda, loop or tuple target may shadow, binds nothing.
+- Python: a test that imports a package and calls the owner through its
+  submodule attribute (`import click` then `click.utils._expand_args(...)`)
+  is now related to the owner, and so is an owner in a package
+  `__init__.py` called through its module import (`from dateutil import
+  zoneinfo` then `zoneinfo.get_zonefile_instance(...)`). On pallets/click and
+  dateutil such changes were `no_static_path` although the calling tests kill
+  the mutants (#4560).
+- Python: `unittest` classes that inherit `TestCase` through another class in
+  the same file (`class ZoneInfoGettzTest(GettzTest)`), and test methods on a
+  mixin such a class inherits, are now collected, under the subclass that
+  runs them. On dateutil a change killed by
+  `ZoneInfoGettzTest.testZoneInfoNewInstance` was `no_static_path` (#4562).
+- Python: a related test that replaces the owner with `patch.object(...)`
+  (context manager or decorator) now gives the same `mocked_module`
+  static limit as `patch(...)` and `monkeypatch.setattr(...)`. It was
+  `weakly_exposed` although the test calls the mock, not the owner (#4565).
+- Python: an exact assertion on the owner's own output now counts as
+  observing it when the call goes through the owner's module
+  (`assert utils.sign(0) == 0`), through a result local
+  (`result = sign(0)` then `assert result == 0`), or through an import inside
+  the test function. These findings said the assertion "does not observe the
+  changed owner's output" and stayed `weakly_exposed` although the tests kill
+  the mutants. The comparison-boundary check still applies to these calls
+  (#4567).
+
 ### Added
 
 - Zed: a Zed extension in `editors/zed` starts `ripr lsp --stdio` from your

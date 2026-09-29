@@ -15,11 +15,17 @@ different identifier** (`buffered_output`), and which does **not** exercise the
 if len(buffer) <= limit:     # changed from `<`
 
 # tests/test_pack.py
-buffered_output = pack([1, 2], 5)
+buffered_output = list(pack([1, 2], 5))
 assert buffered_output == [1, 2]
 ```
 
 The fixture workspace enables the Python preview adapter (`input/ripr.toml`).
+
+The oracle local is `list(pack(...))`, not `pack(...)` itself. Since #4567 a
+local bound once directly from the owner call (`result = pack(...)`) is the
+owner's output and aligns `direct`; wrapping the call keeps this fixture on its
+subject, a changed-sink token that appears only as a substring of an unrelated
+identifier.
 
 ## When
 

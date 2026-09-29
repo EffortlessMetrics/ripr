@@ -182,6 +182,15 @@ pub(super) fn with_module_rebinding(source: &str, statements: &[Stmt], tests: &m
     }
 }
 
+/// Names a function body binds in its own scope (not its parameters), or
+/// None when the body binds names the walk cannot enumerate or defines a
+/// nested function or class (#4612 review).
+pub(super) fn body_bound_names(body: &[Stmt]) -> Option<Vec<String>> {
+    let mut bindings = ScopeBindings::default();
+    collect_scope_bindings(body, &mut bindings);
+    (!bindings.opaque && !contains_nested_scope(body)).then_some(bindings.names)
+}
+
 /// Parameters plus every name bound in a function's own scope, or None when
 /// the scope binds names the walk cannot enumerate.
 fn function_scope_names(args: &ast::Arguments, body: &[Stmt]) -> Option<Vec<String>> {

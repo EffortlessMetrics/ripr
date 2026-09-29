@@ -60,6 +60,7 @@ mod module_constants;
 mod no_behavior;
 mod oracles;
 mod owners_tests;
+mod parametrize;
 mod parse_budget;
 mod probe_shape;
 mod reexports;
@@ -265,6 +266,8 @@ struct PythonTest {
     decorators: Vec<String>,
     fixtures: Vec<String>,
     parametrized: bool,
+    /// Literal `@pytest.mark.parametrize` cases, when statically certain (#4559).
+    parametrize: Option<parametrize::PythonParametrizeCases>,
     framework: &'static str,
     assertions: Vec<PythonAssertion>,
     /// How the test and its module can rebind names and attributes; guards

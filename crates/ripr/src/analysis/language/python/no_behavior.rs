@@ -655,7 +655,7 @@ pub(super) fn analyze_call_args(args: &str) -> Option<CallArgShape> {
 
 /// The byte index of the `)` that closes the `(` at `open_idx`, respecting quotes
 /// and nesting. None if unbalanced.
-fn matching_call_paren(text: &str, open_idx: usize) -> Option<usize> {
+pub(super) fn matching_call_paren(text: &str, open_idx: usize) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote: Option<char> = None;
     let mut escaped = false;

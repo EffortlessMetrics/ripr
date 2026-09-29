@@ -49,7 +49,7 @@
       "evidence": ["owner: pack", "owner_kind: function", "missing_discriminator: buffer == limit", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_pack.py", "suggested_test_name: test_pack_returns_list", "suggested_test_node_id: tests/test_pack.py::test_pack_returns_list", "suggested_verify_command: python -m pytest tests/test_pack.py::test_pack_returns_list", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_pack_returns_list)", "test_verify_command: python -m pytest tests/test_pack.py::test_pack_returns_list (test_pack_returns_list)", "related_test_relation: syntactic_call (test_pack_returns_list)", "test_oracle: exact_value strong (test_pack_returns_list)"],
       "missing": ["A strong Python oracle reaches `pack`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
-        "5": "buffered_output = pack([1, 2], 5)"
+        "5": "buffered_output = list(pack([1, 2], 5))"
       },
       "activation": {
         "observed_values": [
@@ -156,5 +156,5 @@
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
   ],
-  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/pack.py","digest":"sha256:3ebfe9632ea6fb079623d025a1ed5f0588dafa87dcc36c8cca32f5848ee396ac"},{"path":"tests/test_pack.py","digest":"sha256:82f96db7f92f27e6327dddbfbe573caf39d179a19437434e1d24db2e8ba8b908"}]}
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/pack.py","digest":"sha256:3ebfe9632ea6fb079623d025a1ed5f0588dafa87dcc36c8cca32f5848ee396ac"},{"path":"tests/test_pack.py","digest":"sha256:de89f4ce6e62726fc14b267c631f7a822143d9702d0b2b2aa8403257b5e4d121"}]}
 }

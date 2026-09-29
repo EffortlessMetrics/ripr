@@ -419,3 +419,247 @@ fn predicate_boundary_follows_import_alias_calls() -> Result<(), String> {
     assert_eq!(finding.class, ExposureClass::Exposed, "{finding:?}");
     Ok(())
 }
+
+/// #4559: a parametrized test whose cases never sit on the changed boundary
+/// is not `exposed`. Before the fix `bulk_discount(quantity)` bound nothing,
+/// activation stayed unresolved and the exact oracle credited `exposed`,
+/// while the `>` -> `>=` mutant survives both cases.
+#[test]
+fn parametrize_cases_off_boundary_are_weakly_exposed() -> Result<(), String> {
+    let finding = classify_case(
+        DISCOUNT_SOURCE,
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity, rate\", [(50, 0.0), pytest.param(150, 0.15, id=\"bulk\")])\ndef test_bulk_discount(quantity, rate):\n    assert bulk_discount(quantity) == rate\n",
+        2,
+        "    if quantity > 100:",
+        "    if quantity >= 100:",
+    )?;
+    assert_owner(&finding, "bulk_discount");
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed, "{finding:?}");
+    assert_eq!(
+        missing_boundary(&finding, "quantity == 100"),
+        Some(
+            "No strong related test call places quantity equal to 100; observed quantity values: 150, 50"
+        )
+    );
+    assert!(observed(&finding, "quantity = 50"), "{finding:?}");
+    assert!(observed(&finding, "quantity = 150"), "{finding:?}");
+    Ok(())
+}
+
+/// Positive control for #4559: one case on the boundary keeps `exposed`, also
+/// through a stacked decorator (the cases are the product).
+#[test]
+fn parametrize_case_on_boundary_stays_exposed() -> Result<(), String> {
+    let finding = classify_case(
+        DISCOUNT_SOURCE,
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity, rate\", [(50, 0.0), (100, 0.15)])\n@pytest.mark.parametrize(\"unused\", [\"a\", \"b\"])\ndef test_bulk_discount(quantity, rate, unused):\n    assert bulk_discount(quantity) == rate\n",
+        2,
+        "    if quantity > 100:",
+        "    if quantity >= 100:",
+    )?;
+    assert_owner(&finding, "bulk_discount");
+    assert_eq!(finding.class, ExposureClass::Exposed, "{finding:?}");
+    assert!(observed(&finding, "quantity == 100"), "{finding:?}");
+    assert!(finding.activation.missing_discriminators.is_empty());
+    Ok(())
+}
+
+/// Shapes whose cases are not statically certain keep the pre-#4559
+/// unresolved verdict: argvalues named by a variable, `indirect=`, and an
+/// argname the test body rebinds before the call.
+#[test]
+fn uncertain_parametrize_cases_stay_unresolved() -> Result<(), String> {
+    for tests in [
+        "import pytest\nfrom src.subject import bulk_discount\n\nCASES = [(50, 0.0)]\n\n@pytest.mark.parametrize(\"quantity, rate\", CASES)\ndef test_bulk_discount(quantity, rate):\n    assert bulk_discount(quantity) == rate\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [50], indirect=True)\ndef test_bulk_discount(quantity):\n    assert bulk_discount(quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [50])\ndef test_bulk_discount(quantity):\n    quantity = quantity * 2\n    assert bulk_discount(quantity) == 0.0\n",
+    ] {
+        let finding = classify_case(
+            DISCOUNT_SOURCE,
+            tests,
+            2,
+            "    if quantity > 100:",
+            "    if quantity >= 100:",
+        )?;
+        assert_owner(&finding, "bulk_discount");
+        assert_eq!(finding.class, ExposureClass::Exposed, "{tests}");
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|line| line.starts_with("boundary_activation_unresolved: ")),
+            "{tests}: {:?}",
+            finding.evidence
+        );
+    }
+    Ok(())
+}
+
+/// #4612 review: an on-boundary case does not count as observed when the
+/// case may never run (`marks=` skip), when the name reaching the owner call
+/// may be another binding (a lambda parameter, a tuple or loop target), or
+/// when the test is a unittest method, which pytest does not parametrize.
+#[test]
+fn shadowed_or_unrun_parametrize_cases_are_not_observed() -> Result<(), String> {
+    for tests in [
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [50, pytest.param(100, marks=pytest.mark.skip)])\ndef test_bulk_discount(quantity):\n    assert bulk_discount(quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    check = lambda quantity: bulk_discount(quantity) == 0.0\n    assert check(50)\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    for _, quantity in [(0, 50)]:\n        assert bulk_discount(quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    _, quantity = (0, 50)\n    assert bulk_discount(quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    tags[\"#\"], quantity = \"x\", 50\n    assert bulk_discount(quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    with ctx() as (_, quantity):\n        assert bulk_discount(quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    for (\n        _, quantity\n    ) in [(0, 50)]:\n        assert bulk_discount(quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    assert all(bulk_discount(quantity) == 0.0 for quantity in [50])\n",
+        "import pytest\nimport unittest\nfrom src.subject import bulk_discount\n\nclass TestBulk(unittest.TestCase):\n    @pytest.mark.parametrize(\"quantity\", [100])\n    def test_bulk_discount(self, quantity):\n        self.assertEqual(bulk_discount(quantity), 0.0)\n",
+    ] {
+        let finding = classify_case(
+            DISCOUNT_SOURCE,
+            tests,
+            2,
+            "    if quantity > 100:",
+            "    if quantity >= 100:",
+        )?;
+        assert!(
+            !observed(&finding, "quantity == 100"),
+            "{tests}: {finding:?}"
+        );
+    }
+    // Positive controls: a keyword argument passing the case name, and an
+    // `=` inside the assertion message, are not rebindings, so the
+    // on-boundary case is still observed.
+    for tests in [
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    assert bulk_discount(quantity=quantity) == 0.0\n",
+        "import pytest\nfrom src.subject import bulk_discount\n\n@pytest.mark.parametrize(\"quantity\", [100])\ndef test_bulk_discount(quantity):\n    assert bulk_discount(quantity) == 0.0, \"rate=0\"\n",
+    ] {
+        let finding = classify_case(
+            DISCOUNT_SOURCE,
+            tests,
+            2,
+            "    if quantity > 100:",
+            "    if quantity >= 100:",
+        )?;
+        assert!(
+            observed(&finding, "quantity == 100"),
+            "{tests}: {finding:?}"
+        );
+    }
+    Ok(())
+}
+
+/// #4565: `patch.object(module, "owner")` replaces the owner, so the call in
+/// the test hits the mock. It is the same runtime substitution limit as
+/// `monkeypatch.setattr`, in context-manager and decorator form; the same
+/// test without the patch is not limited.
+#[test]
+fn patch_object_on_the_owner_is_a_mocked_module_limit() -> Result<(), String> {
+    let cases = [
+        (
+            "from unittest import mock\nfrom src import subject\n\ndef test_bulk():\n    with mock.patch.object(subject, \"bulk_discount\", return_value=0.15):\n        assert subject.bulk_discount(100) == 0.15\n",
+            ExposureClass::StaticUnknown,
+        ),
+        (
+            "from unittest.mock import patch\nfrom src import subject\n\n@patch.object(subject, \"bulk_discount\", return_value=0.15)\ndef test_bulk(mocked):\n    assert subject.bulk_discount(100) == 0.15\n",
+            ExposureClass::StaticUnknown,
+        ),
+        (
+            "from src import subject\n\ndef test_bulk():\n    assert subject.bulk_discount(100) == 0.15\n",
+            ExposureClass::Exposed,
+        ),
+        // `dispatch.object(` is not `patch.object(`.
+        (
+            "from src import subject\n\ndef test_bulk():\n    dispatch.object(subject)\n    dispatch(subject)\n    assert subject.bulk_discount(100) == 0.15\n",
+            ExposureClass::Exposed,
+        ),
+    ];
+    for (tests, expected) in cases {
+        let finding = classify_case(
+            DISCOUNT_SOURCE,
+            tests,
+            2,
+            "    if quantity > 100:",
+            "    if quantity >= 100:",
+        )?;
+        assert_owner(&finding, "bulk_discount");
+        assert_eq!(finding.class, expected, "{tests}");
+    }
+    Ok(())
+}
+
+/// #4567: an exact assertion on the owner's own output credits `exposed`
+/// whether the call goes through the owner's module, a result local bound
+/// once from the call, or a function-local import. Before the fix these read
+/// as "does not observe the changed owner's output" and stayed weak.
+#[test]
+fn module_qualified_and_result_local_owner_output_is_observed() -> Result<(), String> {
+    for tests in [
+        "from src import subject\n\ndef test_bulk():\n    assert subject.bulk_discount(100) == 0.15\n",
+        "import src.subject as s\n\ndef test_bulk():\n    assert s.bulk_discount(100) == 0.15\n",
+        "import src\n\ndef test_bulk():\n    assert src.subject.bulk_discount(100) == 0.15\n",
+        "from src.subject import bulk_discount\n\ndef test_bulk():\n    rate = bulk_discount(100)\n    assert rate == 0.15\n",
+        "from src import subject\n\ndef test_bulk():\n    rate = subject.bulk_discount(100)\n    assert rate == 0.15\n",
+        "def test_bulk():\n    from src.subject import bulk_discount\n    assert bulk_discount(100) == 0.15\n",
+        "from src.subject import bulk_discount\n\ndef test_bulk():\n    rate = bulk_discount(\n        100,\n    )  # whole call\n    assert rate == 0.15\n",
+        "def test_bulk():\n    import src.subject as s\n    assert s.bulk_discount(100) == 0.15\n",
+    ] {
+        let finding = classify_case(
+            DISCOUNT_SOURCE,
+            tests,
+            2,
+            "    if quantity > 100:",
+            "    if quantity >= 100:",
+        )?;
+        assert_owner(&finding, "bulk_discount");
+        assert_eq!(finding.class, ExposureClass::Exposed, "{tests}");
+        assert!(
+            observed(&finding, "quantity == 100"),
+            "{tests}: {finding:?}"
+        );
+    }
+    Ok(())
+}
+
+/// Discriminating negatives for #4567. The boundary gate still applies to a
+/// module-qualified call (off-boundary input stays weak and names the
+/// boundary), a result local that is rebound is not the owner's output, and a
+/// same-named function from another module carries no identity.
+#[test]
+fn module_call_credit_keeps_boundary_and_identity_guards() -> Result<(), String> {
+    let off_boundary = classify_case(
+        DISCOUNT_SOURCE,
+        "from src import subject\n\ndef test_bulk():\n    assert subject.bulk_discount(150) == 0.15\n",
+        2,
+        "    if quantity > 100:",
+        "    if quantity >= 100:",
+    )?;
+    assert_eq!(off_boundary.class, ExposureClass::WeaklyExposed);
+    assert!(
+        missing_boundary(&off_boundary, "quantity == 100").is_some(),
+        "{off_boundary:?}"
+    );
+    for tests in [
+        "from src.subject import bulk_discount\n\ndef test_bulk():\n    rate = bulk_discount(100)\n    rate += 0\n    assert rate == 0.15\n",
+        "from src import other\n\ndef test_bulk():\n    assert other.bulk_discount(100) == 0.15\n",
+        // The local holds the owner's result only on some paths.
+        "from src.subject import bulk_discount\n\ndef test_bulk():\n    rate = bulk_discount(100) or 0.15\n    assert rate == 0.15\n",
+        "from src.subject import bulk_discount\n\ndef test_bulk():\n    rate = bulk_discount(100) if FLAG else 0.15\n    assert rate == 0.15\n",
+        // A keyword argument inside a multi-line call is not an assignment,
+        // also after a docstring with an odd count of one quote character.
+        "from src.subject import bulk_discount\n\ndef test_bulk():\n    check(\n        rate=bulk_discount(100)\n    )\n    assert rate == 0.15\n",
+        "from src.subject import bulk_discount\n\ndef test_bulk():\n    \"\"\"It's the rate.\"\"\"\n    check(\n        rate=bulk_discount(100)\n    )\n    assert rate == 0.15\n",
+        // The asserted value is a wrapper's result, not the owner's.
+        "from src import subject\n\ndef test_bulk():\n    assert always_true(subject.bulk_discount(100)) == True\n",
+        "from src import subject\n\ndef test_bulk():\n    rate = subject.bulk_discount(100)\n    assert always_true(rate) == True\n",
+        // A later local import of the same name is the one the call uses.
+        "def test_bulk():\n    from src.subject import bulk_discount\n    from src.other import bulk_discount\n    assert bulk_discount(100) == 0.15\n",
+    ] {
+        let finding = classify_case(
+            DISCOUNT_SOURCE,
+            tests,
+            2,
+            "    if quantity > 100:",
+            "    if quantity >= 100:",
+        )?;
+        assert_ne!(finding.class, ExposureClass::Exposed, "{tests}");
+    }
+    Ok(())
+}

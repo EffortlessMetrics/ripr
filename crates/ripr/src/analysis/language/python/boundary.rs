@@ -24,6 +24,11 @@
 //! argument that names the constant imported from the owner's module binds to
 //! the same value (#4227, `module_constants.rs`).
 //!
+//! A parametrized test's call (`sign(x)` under `@pytest.mark.parametrize("x",
+//! [5, -3])`) expands into one call per statically certain case, binding the
+//! case's literal argvalue (#4559, `parametrize.rs`). Without the expansion the
+//! call binds nothing and a boundary no case reaches would keep `exposed`.
+//!
 //! When no strong call binds a literal argument (`Formatter()({...})`,
 //! `reserve(item, qty)` with test locals), the rule cannot see the inputs in
 //! either direction; the verdict stays with the existing oracle rules and the
@@ -32,11 +37,13 @@
 use super::discriminators::{is_literal_python_model_field_value, python_string_literal_value};
 use super::module_constants::PythonModuleConstant;
 use super::no_behavior::{
-    call_arglists_with_offsets, call_segment_keyword_name, split_top_level_args,
+    call_arglists_with_offsets, call_segment_keyword_name, matching_call_paren,
+    split_top_level_args,
 };
 use super::related_tests::{
-    PythonRelatedCandidate, import_source_module_matches_owner, owner_module_paths,
-    strongest_assertion,
+    PythonRelatedCandidate, import_source_module_matches_owner, is_python_identifier_char,
+    owner_module_callees, owner_module_paths, python_text_hides_code, strongest_assertion,
+    test_body_binds_local,
 };
 use super::{PythonOwner, PythonTest};
 use crate::domain::{OracleStrength, OwnerKind, ValueContext, ValueFact};
@@ -460,6 +467,9 @@ fn starts_with_keyword(text: &str, keyword: &str) -> bool {
         .is_some_and(|after| after.is_empty() || after.starts_with(char::is_whitespace))
 }
 
+/// Owner parameters paired with the parametrize argname their argument names.
+type CaseArguments = Vec<(String, String)>;
+
 /// A literal binding for one owner parameter in one test call.
 #[derive(Clone, Debug)]
 struct Binding {
@@ -512,15 +522,25 @@ fn strong_owner_call_rows(
             for (offset, arglist) in
                 call_arglists_with_offsets(&candidate.test.body_text, &name, method_call)
             {
-                if let Some(bindings) =
+                let Some((bindings, case_arguments)) =
                     bind_call_arguments(owner, constants, candidate.test, skip, arglist)
-                {
-                    rows.push(CallRow {
-                        line: candidate.test.line
-                            + candidate.test.body_text[..offset].matches('\n').count(),
-                        text: call_line_text(&candidate.test.body_text, offset),
+                else {
+                    continue;
+                };
+                let line =
+                    candidate.test.line + candidate.test.body_text[..offset].matches('\n').count();
+                let text = call_line_text(&candidate.test.body_text, offset);
+                match (&candidate.test.parametrize, case_arguments.is_empty()) {
+                    (Some(parametrize), false) => {
+                        rows.extend(parametrize.cases.iter().map(|case| {
+                            parametrize_case_row(line, &text, &bindings, &case_arguments, case)
+                        }));
+                    }
+                    _ => rows.push(CallRow {
+                        line,
+                        text,
                         bindings,
-                    });
+                    }),
                 }
             }
         }
@@ -528,8 +548,10 @@ fn strong_owner_call_rows(
     rows
 }
 
-/// The owner's own name plus any `from M import owner as alias` alias; a
-/// method is only called through its own attribute name.
+/// The owner's own name plus any `from M import owner as alias` alias and
+/// module-qualified spelling (`utils.sign`, #4567); a method is only called
+/// through its own attribute name. Module-qualified calls must bind here too,
+/// or a call the alignment credits would skip the boundary gate.
 fn owner_call_names(owner: &PythonOwner, test: &PythonTest, method_call: bool) -> Vec<String> {
     let mut names = vec![owner.name.clone()];
     if !method_call {
@@ -539,7 +561,14 @@ fn owner_call_names(owner: &PythonOwner, test: &PythonTest, method_call: bool) -
                 .filter(|import| import.imported == owner.name && import.alias != owner.name)
                 .map(|import| import.alias.clone()),
         );
+        names.extend(
+            owner_module_callees(test, owner)
+                .into_iter()
+                .filter(|callee| callee.contains('.')),
+        );
     }
+    names.sort();
+    names.dedup();
     names
 }
 
@@ -558,13 +587,18 @@ fn call_line_text(body: &str, offset: usize) -> String {
 /// imports binds to that constant's literal. Returns None for a `*args` /
 /// `**kwargs` unpack, whose binding is undecidable. Other non-literal
 /// arguments stay unbound (unresolved).
+///
+/// The second value pairs each owner parameter whose argument is a bare
+/// parametrize argname of the test (`sign(x)` under `parametrize("x", ...)`)
+/// with that argname, for per-case expansion (#4559). An argname the test body
+/// rebinds is not paired.
 fn bind_call_arguments(
     owner: &PythonOwner,
     constants: &[PythonModuleConstant],
     test: &PythonTest,
     skip: usize,
     arglist: &str,
-) -> Option<BTreeMap<String, Binding>> {
+) -> Option<(BTreeMap<String, Binding>, CaseArguments)> {
     let positional: Vec<&str> = owner
         .parameters
         .iter()
@@ -574,6 +608,7 @@ fn bind_call_arguments(
         .collect();
     let mut bound_names = Vec::new();
     let mut bindings = BTreeMap::new();
+    let mut case_arguments = Vec::new();
     let mut position = 0usize;
     for segment in split_top_level_args(arglist) {
         let segment = segment.trim();
@@ -611,6 +646,14 @@ fn bind_call_arguments(
                     from_default: false,
                 },
             );
+        } else if test
+            .parametrize
+            .as_ref()
+            .is_some_and(|parametrize| parametrize.binds(value))
+            && !test_body_binds_local(test, value)
+            && !case_name_may_be_rebound(&test.body_text, value)
+        {
+            case_arguments.push((name, value.to_string()));
         }
     }
     for parameter in owner.parameters.iter().skip(skip) {
@@ -627,7 +670,40 @@ fn bind_call_arguments(
             );
         }
     }
-    Some(bindings)
+    Some((bindings, case_arguments))
+}
+
+/// One call row per parametrize case: each paired owner parameter binds the
+/// case's argvalue when it is a literal and stays unresolved otherwise.
+fn parametrize_case_row(
+    line: usize,
+    text: &str,
+    bindings: &BTreeMap<String, Binding>,
+    case_arguments: &[(String, String)],
+    case: &BTreeMap<String, String>,
+) -> CallRow {
+    let mut bindings = bindings.clone();
+    let mut shown = Vec::new();
+    for (parameter, argname) in case_arguments {
+        let Some(value) = case.get(argname) else {
+            continue;
+        };
+        shown.push(format!("{argname}={value}"));
+        if let Some(value) = literal_value(value) {
+            bindings.insert(
+                parameter.clone(),
+                Binding {
+                    value,
+                    from_default: false,
+                },
+            );
+        }
+    }
+    CallRow {
+        line,
+        text: format!("{text} [parametrize {}]", shown.join(", ")),
+        bindings,
+    }
 }
 
 /// The literal of an owner-module constant that a test-call argument names
@@ -747,4 +823,55 @@ fn canonical_decimal(text: &str) -> Option<String> {
     } else {
         magnitude
     })
+}
+
+/// Whether a parametrize argname may name something other than the case
+/// value where the owner call reads it, beyond the statement bindings the
+/// recorded cases already exclude (`parametrize.rs`, #4612 review): a
+/// `lambda` may shadow it with a parameter, and a comprehension's `for`
+/// target may name it. Textual and fail-closed: any live `lambda`, or any
+/// live `for ... in` whose target (across lines) mentions the name, counts.
+fn case_name_may_be_rebound(test_text: &str, name: &str) -> bool {
+    let Some(body) = test_body_after_header(test_text) else {
+        return true;
+    };
+    let live_words = |word: &str| -> Vec<usize> {
+        body.match_indices(word)
+            .map(|(idx, _)| idx)
+            .filter(|&idx| {
+                let end = idx + word.len();
+                !body[..idx]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|ch| ch == '.' || is_python_identifier_char(ch))
+                    && !body[end..]
+                        .chars()
+                        .next()
+                        .is_some_and(is_python_identifier_char)
+                    && !python_text_hides_code(body, idx)
+            })
+            .collect()
+    };
+    if !live_words("lambda").is_empty() {
+        return true;
+    }
+    let mentions = live_words(name);
+    live_words("for").into_iter().any(|for_idx| {
+        let target_start = for_idx + "for".len();
+        let target_end = body[target_start..]
+            .find(" in ")
+            .map_or(body.len(), |offset| target_start + offset);
+        mentions
+            .iter()
+            .any(|&idx| idx > target_start && idx < target_end)
+    })
+}
+
+/// The test function's text after its `def ...(...):` header.
+fn test_body_after_header(text: &str) -> Option<&str> {
+    let def = text.find("def ")?;
+    let open = def + text[def..].find('(')?;
+    let close = matching_call_paren(text, open)?;
+    let colon = close + text[close..].find(':')?;
+    text.get(colon + 1..)
 }
