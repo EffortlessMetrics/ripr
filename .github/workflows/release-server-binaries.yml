@@ -68,7 +68,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -88,7 +88,90 @@ jobs:
           RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: cargo run --locked -p xtask -- release-server-manifest --version "$RIPR_RELEASE_VERSION" --repository "${{ github.repository }}"
 
-      - name: Upload release assets
+      - name: Admit exact final server subjects
+        shell: bash
+        env:
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: cargo run --locked -p xtask -- release-server-final-subjects --version "$RIPR_RELEASE_VERSION"
+
+      - name: Retain admitted subject bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-server-final-subjects
+          path: |
+            dist/*
+            target/ripr/release-server-final-subjects/**
+
+  attest:
+    needs: manifest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ripr-server-final-subjects
+          path: .
+
+      - name: Attest archives and manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+      - name: Attest checksum manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/SHA256SUMS
+
+      - name: Verify exact server subject attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ripr/release-server-attestations
+          while read -r digest name; do
+            test -n "$digest"
+            test -n "$name"
+            gh attestation verify "dist/$name" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-server-binaries.yml" \
+              --source-digest "$GITHUB_SHA" \
+              --format json > "target/ripr/release-server-attestations/$name.json"
+          done < dist/SHA256SUMS
+          gh attestation verify dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-server-binaries.yml" \
+            --source-digest "$GITHUB_SHA" \
+            --format json > target/ripr/release-server-attestations/SHA256SUMS.json
+
+      - name: Retain attestation verification
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-server-attestation-verification
+          path: target/ripr/release-server-attestations
+
+  publish:
+    needs: attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ripr-server-final-subjects
+          path: .
+
+      - name: Upload admitted and attested release assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
