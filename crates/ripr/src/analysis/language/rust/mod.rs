@@ -1129,6 +1129,24 @@ impl RustAdapter {
                     index: &index,
                 });
 
+        // #4722: a changed file the reference parser refused was indexed
+        // through lexical fallback, which loses its probe shapes and its own
+        // tests. The findings it still yields are not a complete analysis of
+        // that file, so the run discloses a typed producer limitation instead
+        // of presenting the degraded result as complete.
+        let limitations = lexical_fallback_limitations(
+            &index,
+            analyzable_changed_files
+                .iter()
+                .filter(|file| self.accepts_path(&file.path))
+                .filter(|file| {
+                    partial_scope
+                        .as_ref()
+                        .is_none_or(|scope| scope.selects(&file.path))
+                })
+                .map(|file| file.path.as_path()),
+        )?;
+
         for changed in analyzable_changed_files
             .iter()
             .filter(|file| self.accepts_path(&file.path))
@@ -1226,9 +1244,69 @@ impl RustAdapter {
                     is_generated_rust_file_with_patterns(&file.path, generated_file_patterns)
                 })
                 .count(),
-            limitations: Vec::new(),
+            limitations,
         })
     }
+}
+
+/// One typed limitation per changed Rust file whose facts came from the
+/// lexical fallback adapter (#4722). The detail names the nesting budget
+/// when that refused the parse, otherwise the parse failure.
+fn lexical_fallback_limitations<'a>(
+    index: &RustIndex,
+    changed_paths: impl Iterator<Item = &'a Path>,
+) -> Result<Vec<crate::analysis_outcome::AnalysisLimitation>, String> {
+    use crate::analysis_outcome::{
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage,
+    };
+    let mut limitations = Vec::new();
+    for path in changed_paths {
+        let Some(facts) =
+            rust_index::find_file_facts(index, path).filter(|facts| facts.used_lexical_fallback)
+        else {
+            continue;
+        };
+        let portable = path.to_string_lossy().replace('\\', "/");
+        // A file that is not UTF-8 always takes lexical fallback; its fix is
+        // re-encoding, not syntax, so name that cause and recovery instead.
+        let (reason, recovery) = if index.non_utf8_sources.contains(&facts.path) {
+            (
+                crate::analysis::facts::RUST_SOURCE_NOT_UTF8_REASON.to_string(),
+                "Save the file as UTF-8, then re-run the analysis.",
+            )
+        } else {
+            (
+                crate::analysis::syntax::rust_nesting_refusal(&facts.source).unwrap_or_else(|| {
+                    "the Rust parser reported syntax errors, so the file was read lexically"
+                        .to_string()
+                }),
+                "Fix the file so it parses as Rust, then re-run the analysis.",
+            )
+        };
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::ProducerFailure,
+            AnalysisStage::LanguageAdapter,
+            AnalysisRecovery::new(AnalysisRecoveryKind::InspectFailure, recovery)?,
+        )
+        .with_detail(
+            format!(
+                "{portable}: {reason}; lexical fallback emits no probe shapes and can lose \
+                 this file's related tests, so its findings are incomplete."
+            )
+            .chars()
+            .take(crate::analysis_outcome::MAX_ANALYSIS_LIMITATION_DETAIL_CHARS)
+            .collect::<String>(),
+        )?;
+        // A path the portable-path rules reject still gets the limitation;
+        // the detail already names it.
+        let limitation = match limitation.clone().with_path(&portable) {
+            Ok(with_path) => with_path,
+            Err(_) => limitation,
+        };
+        limitations.push(limitation);
+    }
+    Ok(limitations)
 }
 
 impl LanguageAdapter for RustAdapter {

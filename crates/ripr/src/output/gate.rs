@@ -1128,12 +1128,25 @@ fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
         .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
 }
 
+/// Statuses `ripr review-comments` writes (or its schema admits) at the
+/// top level of a guidance document. `advisory` is the healthy producer run;
+/// `incomplete` / `error` / `timeout` are recognized failure states that
+/// [`pr_guidance_producer_error`] then fails closed on with a specific
+/// message. Any other value means the document did not come from the
+/// review-comments producer.
+const PR_GUIDANCE_KNOWN_STATUSES: [&str; 4] = ["advisory", "incomplete", "error", "timeout"];
+
 /// Returns `Some(defect_description)` if `value` is not a recognized
 /// `ripr review-comments` guidance document, or `None` if it is valid.
 ///
 /// A valid guidance document must have:
 /// - `schema_version`: a non-empty string (the ripr schema marker)
+/// - `tool`: exactly `"ripr"` (the producer marker)
+/// - `status`: one of [`PR_GUIDANCE_KNOWN_STATUSES`]
 /// - `comments`: a JSON array (the primary findings list consumed by the gate)
+///
+/// `analysis_outcome` is deliberately not required: the gap-ledger
+/// review-comments path emits none.
 ///
 /// A valid document with an empty `comments` array is accepted — that is a
 /// legitimate "zero findings" result and must still produce `status=advisory`.
@@ -1143,15 +1156,42 @@ fn pr_guidance_document_defect(value: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .is_some_and(|s| !s.is_empty());
     let has_comments_array = value.get("comments").is_some_and(|v| v.is_array());
-    match (has_schema_version, has_comments_array) {
-        (false, false) => {
-            Some("missing required fields `schema_version` and `comments`".to_string())
+    let mut missing = Vec::new();
+    if !has_schema_version {
+        missing.push("`schema_version`");
+    }
+    if !has_comments_array {
+        missing.push("`comments` (expected a JSON array)");
+    }
+    if !missing.is_empty() {
+        let noun = if missing.len() == 1 {
+            "field"
+        } else {
+            "fields"
+        };
+        return Some(format!("missing required {noun} {}", missing.join(" and ")));
+    }
+    match value.get("tool") {
+        Some(Value::String(tool)) if tool == "ripr" => {}
+        Some(other) => {
+            return Some(format!(
+                "field `tool` is {other}, expected \"ripr\" (not a ripr review-comments document)"
+            ));
         }
-        (false, true) => Some("missing required field `schema_version`".to_string()),
-        (true, false) => {
-            Some("missing required field `comments` (expected a JSON array)".to_string())
+        None => return Some("missing required field `tool` (expected \"ripr\")".to_string()),
+    }
+    match value.get("status") {
+        Some(Value::String(status)) if PR_GUIDANCE_KNOWN_STATUSES.contains(&status.as_str()) => {
+            None
         }
-        (true, true) => None,
+        Some(other) => Some(format!(
+            "field `status` is {other}, expected one of {}",
+            PR_GUIDANCE_KNOWN_STATUSES.join(", ")
+        )),
+        None => Some(format!(
+            "missing required field `status` (expected one of {})",
+            PR_GUIDANCE_KNOWN_STATUSES.join(", ")
+        )),
     }
 }
 

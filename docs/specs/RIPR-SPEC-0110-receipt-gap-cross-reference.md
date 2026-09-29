@@ -67,17 +67,24 @@ against the live gap set and classified:
 
 | Result | Meaning | Exit |
 |---|---|---|
-| `not_available` | No ledger provided or unreadable. Default fail-closed sentinel. | 0 |
+| `not_available` | No ledger provided. Default fail-closed sentinel. | 0 |
 | `receipt_ok` | `canonical_gap_id` found in the live gap set. | 0 |
 | `orphan_receipt` | `canonical_gap_id` NOT in the live gap set (gap disappeared / never existed). | non-zero |
 | `receipt_gap_mismatch` | `canonical_gap_id` found but dedupe fingerprint differs (gap moved / changed identity). | non-zero |
 
 ### Fail-closed honesty rule
 
-When `--ledger` is **ABSENT or UNREADABLE**, the cross-reference result is
+When `--ledger` is **ABSENT**, the cross-reference result is
 **`not_available`** — NEVER `receipt_ok`. Absence of the ledger must NEVER be
 interpreted as "the receipt is valid/fresh." The structural check still runs
 independently (exit 0 for structural-only when no `--ledger`).
+
+When `--ledger` is **named but unreadable or unparsable**, the requested
+cross-reference could not be completed, so the command exits 2 with no
+verdict (#4727). Reporting `not_available` with exit 0 there would let a
+mistyped ledger path read as a completed check. Likewise, when `--gap` is
+given, a receipt whose `canonical_gap_id` differs from it exits 2 rather than
+passing as a check of the named gap.
 
 ### Implementation
 

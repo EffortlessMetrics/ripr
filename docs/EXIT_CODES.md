@@ -36,17 +36,26 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
 ## When you see exit code 2
 
 - **Analysis error**: the diff could not be read (a missing or unreadable
-  `--diff` path, or a directory), the diff exceeded its scope limits
-  (`diff_scope_oversized`), the base ref could not be resolved, or the
-  workspace root could not be determined. A diff that is read but does not
-  parse (no file headers or hunks) is not an exit-2 error: `ripr check` exits
-  `0` with the typed outcome `unsupported_input (analysis incomplete)`.
+  `--diff` path, or a directory), the diff exceeded the hard
+  `RIPR_MAX_DIFF_*` guards (`diff_scope_oversized` with no analysis run), the
+  base ref could not be resolved, or the workspace root could not be
+  determined. A diff that is read but does not parse (no file headers or
+  hunks) is not an exit-2 error: `ripr check` exits `0` with the typed
+  outcome `unsupported_input (analysis incomplete)`. A run that analyzed only
+  part of its scope also exits `0`, with `partial_with_limitations`: a diff
+  over the smaller partial budget (its limitation is also named
+  `diff_scope_oversized`), a changed Rust file the parser refused and read
+  lexically, or a changed file whose language adapter is unavailable. The
+  parser follows stable Rust, so a changed file using nightly-only syntax it
+  cannot parse (guard patterns, never patterns) also makes the run partial.
 - **User error**: unknown command, missing required argument, or invalid
   config.
 - **Internal error**: a panic occurred (with a `ripr: internal error` message).
 - **Closed output pipe**: the reader of stdout went away early (for example
   `ripr doctor | head`). ripr stops quietly with `2`, not `0`, because its
-  output was cut short; it never turns a would-be `3` into a pass.
+  output was cut short; it never turns a would-be `3` into a pass. Output
+  small enough to be written in full before the reader closes never meets
+  the closed pipe, so that run keeps its own exit code.
 
 ## When you see exit code 3
 
@@ -57,7 +66,7 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
   rendered the typed refusal JSON on stdout; `ripr agent repair --phase
   after` refused with a named cause after selecting its attempt — a diverged
   HEAD, drifted analysis inputs, a no-movement verify refusal, or a replaced
-  trust-binding manifest — with the recovery narrated on stderr, the refusal
+  trust-binding manifest — with the cause named on stderr, the refusal
   recorded on the attempt, and one JSON document on stdout (the
   `repair_after_refusal` document naming the cause and recovery when the
   refusal came before the verify render, otherwise the bare agent verify
@@ -75,6 +84,14 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
 
 These are findings- and policy-driven exits, not operational failures; a
 monitoring system should page on `2`, not on `3`.
+
+Some refusals still exit `2` because the command could not do what was asked:
+`ripr receipt check` when the receipt is orphaned or its gap does not match
+the ledger (the verdict is in the `--json` document), when a named `--ledger`
+cannot be read, or when `--gap` names a different gap than the receipt;
+`ripr agent receipt` when the attempt is not receipt-ready; `ripr agent
+repair --phase verify` without its explicit authorization or on a moved
+tree; and a repair `--phase after` whose edit cage recorded a violation.
 
 ## `ripr doctor` exit codes
 
@@ -116,3 +133,8 @@ step, so downstream review-comments and gate steps can consume the
 output even when the analysis failed. Because `check` exits `0` on findings,
 a non-zero `check_status` here means the analysis itself did not complete
 (code `2`; a gate step consumes code `3` as its blocking signal).
+
+A `check` that exits `0` can still be incomplete. `review-comments` carries
+the check's analysis outcome, and `ripr gate evaluate` treats an
+incomplete, partial, or unsupported outcome as a `config_error` in every
+mode and exits `2`, so a gate never passes on a partial denominator.

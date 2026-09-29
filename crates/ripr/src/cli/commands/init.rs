@@ -382,6 +382,11 @@ pub(super) fn generated_github_actions_workflow() -> String {
 
 on:
   pull_request:
+    # `labeled` and `unlabeled` re-run the gate when a waiver label such as
+    # `ripr-waive` is added or removed, since labels are read from the event.
+    # Any label change re-runs the job; the concurrency group below cancels
+    # the superseded run.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -2906,6 +2911,47 @@ mod tests {
         assert!(!workflow.contains("@RIPR_"), "unsubstituted placeholder");
         assert!(workflow.contains(&format!("='{MANUAL_VERIFY_LABEL}'")));
         assert!(workflow.contains(&format!("echo '- Receipt: {NO_RECEIPT_BEFORE_REPAIR}'")));
+    }
+
+    /// #4726: the gate reads PR labels from `$GITHUB_EVENT_PATH`, so a run
+    /// only sees a waiver label that exists when its event fires. Without
+    /// `labeled`/`unlabeled` triggers, adding `ripr-waive` never re-evaluates
+    /// an `acknowledgeable` gate and removing it leaves a stale green.
+    #[test]
+    fn generated_workflow_reruns_when_pull_request_labels_change() -> Result<(), String> {
+        let workflow = generated_github_actions_workflow();
+        assert!(
+            workflow.contains("\"$GITHUB_EVENT_PATH\" > target/ci/labels.json"),
+            "labels are no longer read from the event payload; revisit #4726"
+        );
+        let on_block: Vec<&str> = workflow
+            .lines()
+            .skip_while(|line| *line != "on:")
+            .skip(1)
+            .take_while(|line| line.starts_with(' ') || line.is_empty())
+            .collect();
+        let pull_request = on_block
+            .iter()
+            .position(|line| *line == "  pull_request:")
+            .ok_or_else(|| format!("no pull_request trigger in {on_block:?}"))?;
+        let types = on_block
+            .iter()
+            .skip(pull_request + 1)
+            .take_while(|line| line.starts_with("    "))
+            .find_map(|line| line.trim().strip_prefix("types:"))
+            .ok_or_else(|| format!("pull_request trigger has no types: {on_block:?}"))?;
+        let types: Vec<&str> = types
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .split(',')
+            .map(str::trim)
+            .collect();
+        assert_eq!(
+            types,
+            ["opened", "synchronize", "reopened", "labeled", "unlabeled"]
+        );
+        Ok(())
     }
 
     /// W5: an unpinned `cargo install ripr` installs whatever release is

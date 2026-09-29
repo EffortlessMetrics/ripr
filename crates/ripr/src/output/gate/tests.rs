@@ -167,6 +167,7 @@ fn gate_fails_closed_on_limited_partial_scope_pr_guidance() -> Result<(), String
         "comments.json",
         r#"{
           "schema_version": "0.1",
+          "tool": "ripr",
           "status": "advisory",
           "comments": [],
           "analysis_scope": {
@@ -206,6 +207,7 @@ fn gate_fails_closed_on_typed_incomplete_analysis_outcome() -> Result<(), String
         "comments.json",
         r#"{
           "schema_version": "0.1",
+          "tool": "ripr",
           "status": "advisory",
           "comments": [],
           "analysis_outcome": {
@@ -471,6 +473,88 @@ fn gate_calibrated_mode_blocks_new_supported_candidate() -> Result<(), String> {
     Ok(())
 }
 
+// -- #4724 regression: a baseline must be a recognized baseline shape --
+
+#[test]
+fn given_baseline_of_unrecognized_kind_when_gate_evaluated_then_config_error() -> Result<(), String>
+{
+    let cases = [
+        ("empty-object.json", "{}", "no identity array found"),
+        ("array.json", "[]", "expected a JSON object"),
+        (
+            "other-kind.json",
+            r#"{"schema_version":"0.1","kind":"gap_ledger","entries":[]}"#,
+            "field `kind` is \"gap_ledger\"",
+        ),
+        (
+            "kind-without-entries.json",
+            r#"{"schema_version":"0.1","kind":"gate_baseline"}"#,
+            "requires an `entries` array",
+        ),
+        (
+            "no-identity-array.json",
+            r#"{"schema_version":"0.1","records":[{"seam_id":"8f7fa8644fd12280"}]}"#,
+            "no identity array found",
+        ),
+    ];
+    for mode in [GateMode::BaselineCheck, GateMode::CalibratedGate] {
+        for (name, contents, expected_defect) in cases {
+            let dir = temp_dir("gate-baseline-kind")?;
+            let baseline = write_temp_json(&dir, name, contents)?;
+            let mut input = fixture_input(mode)?;
+            input.baseline = Some(baseline);
+            let report = build_gate_decision_report(&input)?;
+            assert_eq!(
+                report.status,
+                "config_error",
+                "{} {name}: an unrecognized baseline must be config_error, got {:?}",
+                mode.as_str(),
+                report.status,
+            );
+            assert!(
+                report.config_errors.iter().any(|error| error.contains(name)
+                    && error.contains("is not a recognized gate baseline")
+                    && error.contains(expected_defect)),
+                "{} {name}: config_errors must name `{expected_defect}`, got {:?}",
+                mode.as_str(),
+                report.config_errors,
+            );
+            ignore_remove_dir_all(dir);
+        }
+    }
+
+    // Documented compatibility shapes stay accepted (docs/CI.md): a
+    // `gate_baseline` ledger, a hand-built `decisions` baseline, and a
+    // review-comments document whose ids are indexed.
+    for (name, contents) in [
+        (
+            "ledger.json",
+            r#"{"schema_version":"0.1","kind":"gate_baseline","entries":[]}"#,
+        ),
+        (
+            "decisions.json",
+            r#"{"schema_version":"0.1","decisions":[]}"#,
+        ),
+        (
+            "comments.json",
+            r#"{"schema_version":"0.1","tool":"ripr","status":"advisory","comments":[]}"#,
+        ),
+    ] {
+        let dir = temp_dir("gate-baseline-kind-ok")?;
+        let baseline = write_temp_json(&dir, name, contents)?;
+        let mut input = fixture_input(GateMode::BaselineCheck)?;
+        input.baseline = Some(baseline);
+        let report = build_gate_decision_report(&input)?;
+        assert!(
+            report.config_errors.is_empty(),
+            "{name}: a recognized baseline shape must not be a config error, got {:?}",
+            report.config_errors,
+        );
+        ignore_remove_dir_all(dir);
+    }
+    Ok(())
+}
+
 #[test]
 fn gate_calibrated_mode_uses_imported_mutation_support() -> Result<(), String> {
     let dir = temp_dir("gate-mutation-calibrated")?;
@@ -628,6 +712,8 @@ fn gate_baseline_check_matches_canonical_gap_id_from_evidence_record() -> Result
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -2513,6 +2599,8 @@ fn given_guidance_with_recommended_file_only_then_recommended_test_is_file_path(
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -2897,6 +2985,8 @@ fn given_class_not_policy_eligible_with_concrete_guidance_then_reason_cites_clas
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -3016,6 +3106,79 @@ fn given_non_guidance_json_object_when_gate_evaluated_then_config_error_not_advi
     Ok(())
 }
 
+// -- #4723 regression: guidance must come from `ripr review-comments` --
+
+#[test]
+fn given_guidance_without_ripr_producer_marker_or_known_status_when_gate_evaluated_then_config_error()
+-> Result<(), String> {
+    let cases = [
+        (
+            "stub.json",
+            r#"{"schema_version":"x","comments":[]}"#,
+            "missing required field `tool`",
+        ),
+        (
+            "other-tool.json",
+            r#"{"schema_version":"0.1","tool":"not-ripr","status":"advisory","comments":[]}"#,
+            "field `tool` is \"not-ripr\"",
+        ),
+        (
+            "unknown-status.json",
+            r#"{"schema_version":"0.1","tool":"ripr","status":"passed","comments":[]}"#,
+            "field `status` is \"passed\"",
+        ),
+        (
+            "no-status.json",
+            r#"{"schema_version":"0.1","tool":"ripr","comments":[]}"#,
+            "missing required field `status`",
+        ),
+    ];
+    for (name, contents, expected_defect) in cases {
+        let dir = temp_dir("gate-non-ripr-guidance")?;
+        let guidance = write_temp_json(&dir, name, contents)?;
+        let input = GateEvaluateInput {
+            root: dir.clone(),
+            repo_exposure: None,
+            pr_guidance: Some(
+                guidance
+                    .strip_prefix(&dir)
+                    .map_err(|err| err.to_string())?
+                    .to_path_buf(),
+            ),
+            gap_ledger: None,
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::Acknowledgeable,
+            acknowledgement_labels: Vec::new(),
+            exception_policy: None,
+        };
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(
+            report.status, "config_error",
+            "{name}: a document that is not ripr review-comments output must be config_error, got {:?}",
+            report.status,
+        );
+        assert!(gate_decision_should_fail(&report), "{name}: must fail");
+        assert!(
+            report.config_errors.iter().any(|error| error.contains(name)
+                && error.contains("not a recognized review-comments guidance document")
+                && error.contains(expected_defect)),
+            "{name}: config_errors must name the file and `{expected_defect}`, got {:?}",
+            report.config_errors,
+        );
+        ignore_remove_dir_all(dir);
+    }
+    Ok(())
+}
+
 #[test]
 fn given_valid_guidance_doc_with_zero_findings_when_gate_evaluated_then_advisory_not_config_error()
 -> Result<(), String> {
@@ -3025,6 +3188,8 @@ fn given_valid_guidance_doc_with_zero_findings_when_gate_evaluated_then_advisory
         "comments.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [],
               "summary_only": [],
@@ -3170,6 +3335,8 @@ fn given_cap_demoted_summary_only_gap_when_gate_evaluated_then_blocking_not_advi
         "cap-demoted.json",
         r#"{
               "schema_version": "0.1",
+              "tool": "ripr",
+              "status": "advisory",
               "summary": {"unchanged_tests": true},
               "comments": [
                 {
@@ -3641,6 +3808,8 @@ fn assert_repo_fixture(path: &Path, rendered: &str, label: &str) -> Result<(), S
 
 const PR_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": true},
       "comments": [
         {
@@ -3662,6 +3831,8 @@ const PR_GUIDANCE_JSON: &str = r#"{
 
 const SUMMARY_AND_SUPPRESSED_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": true},
       "comments": [],
       "summary_only": [
@@ -3689,6 +3860,8 @@ const SUMMARY_AND_SUPPRESSED_JSON: &str = r#"{
 
 const NO_TEST_REACHES_OWNER_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": false},
       "comments": [
         {
@@ -3718,6 +3891,8 @@ const NO_TEST_REACHES_OWNER_GUIDANCE_JSON: &str = r#"{
 
 const INELIGIBLE_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": false},
       "comments": [
         {
@@ -3742,6 +3917,8 @@ const INELIGIBLE_GUIDANCE_JSON: &str = r#"{
 
 const MISSING_GUIDANCE_JSON: &str = r#"{
       "schema_version": "0.1",
+      "tool": "ripr",
+      "status": "advisory",
       "summary": {"unchanged_tests": true},
       "comments": [
         {

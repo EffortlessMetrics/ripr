@@ -64,7 +64,7 @@ fn install_panic_hook() {
 /// (109) on Windows.
 fn is_closed_stdout_panic(message: &str) -> bool {
     message.starts_with("failed printing to stdout")
-        && ["Broken pipe", "(os error 232)", "(os error 109)"]
+        && CLOSED_PIPE_MARKERS
             .iter()
             .any(|marker| message.contains(marker))
 }
@@ -77,8 +77,32 @@ fn format_panic_report(message: &str, location: Option<(&str, u32)>) -> String {
 }
 
 fn report_failure(err: &CommandError) {
+    // A reader that closed stdout early (`ripr check --json | head`) is not
+    // a failure worth a message; the exit stays 2 (docs/EXIT_CODES.md).
+    if is_closed_stdout_error(err.message()) {
+        return;
+    }
     eprintln!("ripr: {err}");
 }
+
+/// A typed stdout write error whose cause is a closed pipe, as produced by
+/// the chunked stdout writers and the streamed repo-exposure JSON writer.
+fn is_closed_stdout_error(message: &str) -> bool {
+    CLOSED_STDOUT_WRITE_PREFIXES
+        .iter()
+        .any(|prefix| message.starts_with(prefix))
+        && CLOSED_PIPE_MARKERS
+            .iter()
+            .any(|marker| message.contains(marker))
+}
+
+const CLOSED_STDOUT_WRITE_PREFIXES: [&str; 3] = [
+    "write to stdout failed",
+    "flush stdout failed",
+    "write repo exposure JSON failed",
+];
+
+const CLOSED_PIPE_MARKERS: [&str; 3] = ["Broken pipe", "(os error 232)", "(os error 109)"];
 
 /// The panic-boundary exit code. A main-thread panic is an internal error,
 /// indistinguishable operationally from any other "could not complete"
@@ -146,6 +170,18 @@ mod tests {
             || super::is_closed_stdout_panic("Broken pipe")
         {
             return Err("closed-stdout detection must match only EPIPE on stdout".to_owned());
+        }
+        if !super::is_closed_stdout_error("write to stdout failed: Broken pipe (os error 32)")
+            || !super::is_closed_stdout_error(
+                "write repo exposure JSON failed: Broken pipe (os error 32)",
+            )
+            || !super::is_closed_stdout_error(
+                "flush stdout failed: The pipe is being closed. (os error 232)",
+            )
+            || super::is_closed_stdout_error("write to stdout failed: Permission denied")
+            || super::is_closed_stdout_error("git stdin write failed: Broken pipe (os error 32)")
+        {
+            return Err("closed-stdout error detection must match only stdout EPIPE".to_owned());
         }
         if super::exit_code() != 2 {
             return Err(format!("unexpected exit code: {}", super::exit_code()));

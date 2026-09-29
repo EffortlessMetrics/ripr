@@ -572,26 +572,14 @@ fn rerun_gap(
         selected_test_count: 0,
         direct_call_names: Vec::new(),
     };
-    let contents = match crate::bounded_input::read_to_string(&gap_ledger) {
-        Ok(contents) => contents,
-        Err(err) => {
-            return Ok(limited_report(
-                selector,
-                "canonical_gap_unresolved",
-                format!("read gap ledger {} failed: {err}", gap_ledger.display()),
-            ));
-        }
-    };
-    let source = match parse_gap_record_source_json(&contents) {
-        Ok(source) => source,
-        Err(err) => {
-            return Ok(limited_report(
-                selector,
-                "canonical_gap_unresolved",
-                format!("parse gap ledger {} failed: {err}", gap_ledger.display()),
-            ));
-        }
-    };
+    // A named ledger that cannot be read or parsed is an input the command
+    // could not use, like an unreadable `--changed-test`: exit 2, not a
+    // `limited` report with exit 0 (#4727). A readable ledger that does not
+    // resolve the gap stays a named `limited` outcome below.
+    let contents = crate::bounded_input::read_to_string(&gap_ledger)
+        .map_err(|err| format!("read gap ledger {} failed: {err}", gap_ledger.display()))?;
+    let source = parse_gap_record_source_json(&contents)
+        .map_err(|err| format!("parse gap ledger {} failed: {err}", gap_ledger.display()))?;
     if let Some(ledger_root) = source
         .root
         .as_deref()
@@ -3112,6 +3100,39 @@ mod tests {
             return Err("two failed root canonicalizations compared equal".to_string());
         }
         Ok(())
+    }
+
+    /// #4727: an explicitly named `--gap-ledger` that cannot be read or
+    /// parsed is an input failure (exit 2), not a `limited` report that
+    /// exits 0 the way an unresolved gap in a readable ledger does.
+    #[test]
+    fn rerun_gap_fails_when_named_ledger_is_unreadable_or_unparsable() -> Result<(), String> {
+        let root = unique_temp_root("rerun-unreadable-ledger")?;
+        let config = crate::config::RiprConfig::default();
+        let missing = root.join("nope.json");
+        let garbage = root.join("garbage.json");
+        std::fs::write(&garbage, "not json").map_err(|err| format!("write garbage: {err}"))?;
+        let missing_result = rerun_gap(&root, &config, "gap:example", &missing);
+        let garbage_result = rerun_gap(&root, &config, "gap:example", &garbage);
+        let _ = std::fs::remove_dir_all(&root);
+        match missing_result {
+            Err(err) if err.starts_with("read gap ledger") => {}
+            Err(err) => return Err(format!("unexpected read error: {err}")),
+            Ok(report) => {
+                return Err(format!(
+                    "unreadable ledger produced a report: state={}",
+                    report.state
+                ));
+            }
+        }
+        match garbage_result {
+            Err(err) if err.starts_with("parse gap ledger") => Ok(()),
+            Err(err) => Err(format!("unexpected parse error: {err}")),
+            Ok(report) => Err(format!(
+                "unparsable ledger produced a report: state={}",
+                report.state
+            )),
+        }
     }
 
     #[test]

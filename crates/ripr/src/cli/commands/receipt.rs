@@ -349,6 +349,8 @@ Options:
                     filename-unsafe characters (`:`, etc.) percent-encoded. The
                     complete relative default path is capped at 260 bytes;
                     long IDs use the same bounded prefix and digest.
+                    With --path, the receipt's canonical_gap_id must equal
+                    ID; a receipt for another gap exits non-zero.
   --ledger PATH     Path to a gap-decision-ledger JSON file.  When provided,
                     cross-references the receipt's canonical_gap_id against the
                     live gap set and classifies the result as:
@@ -357,6 +359,7 @@ Options:
                       receipt_gap_mismatch — gap moved/changed identity (exits non-zero).
                     When omitted, cross-reference result is not_available.
                     IMPORTANT: absence of --ledger is NOT interpreted as "receipt ok".
+                    A named ledger that cannot be read or parsed exits non-zero.
   --json            Emit one machine-readable JSON document instead of the
                     human sentence:
                       {"schema_version": "0.1", "ok": <bool>,
@@ -368,14 +371,17 @@ Options:
                     cross-reference must assert kind != "not_available" —
                     `ok` alone does not prove a check ran.
                     Exit codes are unchanged: non-zero still means a structural
-                    error or an orphan_receipt / receipt_gap_mismatch verdict.
+                    error, an unreadable --ledger, a --gap mismatch, or an
+                    orphan_receipt / receipt_gap_mismatch verdict.
 
 When --gap is provided without --path, the path is resolved from the canonical
 location.
 
 Exits 0 when structural validation passes and the cross-reference (if run) is
-receipt_ok or not_available.  Exits non-zero on structural errors or when the
-cross-reference reveals orphan_receipt or receipt_gap_mismatch.
+receipt_ok or not_available (no --ledger given).  Exits non-zero on structural
+errors, when a named --ledger cannot be read or parsed, when --gap names a
+different gap than the receipt, or when the cross-reference reveals
+orphan_receipt or receipt_gap_mismatch.
 "#;
 
 // ── tests ─────────────────────────────────────────────────────────────────────

@@ -55,11 +55,24 @@ pub(crate) fn run_ripr_plus(args: &[String]) -> Result<(), String> {
     let options = parse_options(args)?;
     let repo = repo_root()?;
     let head = git_head(&repo);
-    match ripr_plus_receipt_from_options(&options, &head) {
-        Ok(receipt) => write_receipt(&repo, &receipt),
+    compose_and_write_receipt(&repo, &options, &head)
+}
+
+/// Writes the receipt for `options`. When the named artifact cannot be read
+/// or composed, the `indeterminate` receipt is still written so CI keeps a
+/// record, and the error is returned so the command exits 2 (could not
+/// complete) rather than 0 (#4727).
+fn compose_and_write_receipt(
+    repo: &Path,
+    options: &RiprPlusOptions,
+    head: &str,
+) -> Result<(), String> {
+    match ripr_plus_receipt_from_options(options, head) {
+        Ok(receipt) => write_receipt(repo, &receipt),
         Err(err) => {
-            let receipt = error_ripr_plus_receipt(&head, &err);
-            write_receipt(&repo, &receipt)
+            let receipt = error_ripr_plus_receipt(head, &err);
+            write_receipt(repo, &receipt)?;
+            Err(err)
         }
     }
 }
@@ -130,6 +143,9 @@ Options:
   --repo-exposure-summary <path>  Compose the receipt from a repo-exposure-summary-json artifact (pure composition).
   --gap-ledger <path>             Compose the receipt from a gap decision ledger (ledger-only composition; no repo scan).
   --check                         Accepted for xtask parity (no-op).
+
+Exit status: 0 when the receipt was composed; 2 when the named artifact
+cannot be read or composed (an `indeterminate` receipt is still written).
 
 Outputs:
   target/ripr/reports/ripr-plus.json
@@ -858,6 +874,40 @@ mod tests {
             Err(msg) if msg.contains("canonical actionable or gap decision ledger basis") => Ok(()),
             other => Err(format!("expected basis error, got {other:?}")),
         }
+    }
+
+    /// #4727: a named `--gap-ledger` that cannot be read must not exit 0.
+    /// The indeterminate receipt is still written for CI, and the error is
+    /// returned so the process exits 2.
+    #[test]
+    fn unreadable_gap_ledger_writes_indeterminate_receipt_and_fails() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-unreadable-ledger-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&repo).map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+        let options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(repo.join("nope.json")),
+        };
+        let result = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let written = fs::read_to_string(repo.join(RIPR_PLUS_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        match result {
+            Err(msg) if msg.contains("failed to read gap ledger") => {}
+            other => return Err(format!("expected read failure, got {other:?}")),
+        }
+        let receipt: Value = serde_json::from_str(
+            &written.map_err(|err| format!("indeterminate receipt was not written: {err}"))?,
+        )
+        .map_err(|err| format!("receipt is not JSON: {err}"))?;
+        assert_eq!(receipt["status"], "indeterminate");
+        assert_eq!(receipt["machine_readable_cause"], "evaluation_error");
+        Ok(())
     }
 
     #[test]

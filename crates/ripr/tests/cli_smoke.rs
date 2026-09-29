@@ -1969,6 +1969,8 @@ fn check_suppression_policy_rejects_unsupported_formats() -> Result<(), String> 
 
 const SMOKE_PR_GUIDANCE_JSON: &str = r#"{
   "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
   "summary": {"unchanged_tests": true},
   "comments": [],
   "summary_only": [],
@@ -18690,4 +18692,31 @@ fn doctor_probes_language_runtimes_outside_the_checkout() -> Result<(), String> 
         });
     ignore_remove_dir_all(&workspace);
     result
+}
+
+/// docs/EXIT_CODES.md: a reader that closes stdout early gets a quiet exit 2
+/// (#4728). The reader closes before ripr writes anything, so the JSON write
+/// always meets the closed pipe.
+#[test]
+fn check_json_into_closed_stdout_exits_two_quietly() -> Result<(), std::io::Error> {
+    let sample = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sample");
+    let mut child = probe_command(env!("CARGO_BIN_EXE_ripr"))
+        .args(["check", "--root"])
+        .arg(&sample)
+        .arg("--diff")
+        .arg(sample.join("example.diff"))
+        .args(["--format", "json"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    drop(child.stdout.take());
+    let output = child.wait_with_output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "stderr: {stderr}");
+    assert!(
+        !stderr.contains("stdout failed") && !stderr.contains("Broken pipe"),
+        "a closed reader must not produce an error report: {stderr}"
+    );
+    Ok(())
 }
