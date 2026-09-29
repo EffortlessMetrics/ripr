@@ -36,6 +36,7 @@ mod recommendation;
 pub(crate) mod release;
 mod release_control;
 mod release_denominator;
+mod release_final_subjects;
 mod release_negative;
 mod release_scope;
 pub(crate) mod release_server;
