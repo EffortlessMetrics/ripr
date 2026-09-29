@@ -855,6 +855,7 @@ fn doctor_tool_check_with_command(
     root: Option<&Path>,
 ) -> DoctorToolCheckResult {
     command.arg("--version");
+    crate::process_owner::forbid_rustup_auto_install(&mut command);
     if let Some(root) = root {
         command.current_dir(root);
     }
@@ -868,6 +869,7 @@ fn doctor_tool_run_result(
 ) -> DoctorToolCheckResult {
     match run {
         Ok(output) if output.status.success() => doctor_tool_check_success(tool, &output.stdout),
+        Ok(output) => DoctorToolCheckResult::failure(doctor_exit_failure_evidence(tool, &output)),
         Err(DoctorToolRunError::TimedOut) => {
             DoctorToolCheckResult::failure(doctor_timeout_evidence(tool, timeout))
         }
@@ -883,6 +885,24 @@ fn doctor_tool_run_result(
         }
         Err(DoctorToolRunError::Spawn(kind)) => doctor_spawn_failure(tool, kind),
         _ => DoctorToolCheckResult::failure(format!("{tool} not available")),
+    }
+}
+
+/// Evidence for a probe that ran and exited non-zero. The tool exists, so
+/// "not available" would be false; its stderr carries the real cause, such
+/// as rustup's "toolchain ... is not installed" (#4734). The first `error:`
+/// line wins, because rustup can print a `warn:` line first (duplicate
+/// toolchain files); otherwise the first nonempty line.
+fn doctor_exit_failure_evidence(tool: &str, output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut lines = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+    let first = lines.clone().next();
+    match lines.find(|line| line.starts_with("error:")).or(first) {
+        Some(line) => format!("{tool} --version failed ({}): {line}", output.status),
+        None => format!("{tool} --version failed ({})", output.status),
     }
 }
 
@@ -2415,6 +2435,40 @@ mod tests {
         assert!(
             evidence.ends_with("not available"),
             "unexpected evidence for missing tool: {evidence:?}"
+        );
+    }
+
+    /// A doctor probe runs with rustup auto-install off (#4734), even when
+    /// the caller's environment turned it on: `cargo --version` in a
+    /// checkout pinning a missing toolchain must not download it.
+    #[cfg(unix)]
+    #[test]
+    fn doctor_tool_probe_forbids_rustup_auto_install() {
+        let mut command = doctor_tool_command("sh");
+        command
+            .args(["-c", "echo \"auto=${RUSTUP_AUTO_INSTALL-unset}\""])
+            .env("RUSTUP_AUTO_INSTALL", "1");
+        let result = doctor_tool_check_with_command("cargo", command, DOCTOR_TOOL_TIMEOUT, None);
+        assert_eq!(result.status, DoctorStatus::Pass);
+        assert_eq!(result.evidence, "auto=0");
+    }
+
+    /// A tool that runs and exits non-zero is present, so doctor names the
+    /// exit and the tool's own `error:` line, skipping a leading `warn:`,
+    /// instead of "not available" (#4734).
+    #[cfg(unix)]
+    #[test]
+    fn doctor_tool_nonzero_exit_names_the_tool_error() {
+        let mut command = doctor_tool_command("sh");
+        command.args([
+            "-c",
+            "printf '\\nwarn: both rust-toolchain and rust-toolchain.toml exist\\nerror: toolchain 1.81.0 is not installed\\nhelp: run rustup\\n' >&2; exit 1",
+        ]);
+        let result = doctor_tool_check_with_command("rustc", command, DOCTOR_TOOL_TIMEOUT, None);
+        assert_eq!(result.status, DoctorStatus::Fail);
+        assert_eq!(
+            result.evidence,
+            "rustc --version failed (exit status: 1): error: toolchain 1.81.0 is not installed"
         );
     }
 

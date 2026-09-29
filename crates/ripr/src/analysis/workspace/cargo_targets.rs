@@ -452,6 +452,42 @@ static METADATA_PROBE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic
 /// pathological workspace.
 const CARGO_METADATA_PROBE_DEADLINE: std::time::Duration = std::time::Duration::from_mins(2);
 
+/// The bounded `cargo metadata` probe command for `workspace_root`, before
+/// its output wiring. Split out so its environment is testable (#4734).
+fn cargo_metadata_command(workspace_root: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new("cargo");
+    command
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--offline",
+        ])
+        .arg("--manifest-path")
+        // Bare `Cargo.toml`: the process directory below is the
+        // workspace root, and a root-prefixed `manifest_path`
+        // would be re-resolved against that new directory — a
+        // relative analysis root (`some/dir`) would probe
+        // `some/dir/some/dir/Cargo.toml` and fail every
+        // registration's premise (#3637 review). An absolute path
+        // would work, but canonicalize emits `\\?\` verbatim
+        // paths on Windows that would leak into the inventory
+        // keys.
+        .arg("Cargo.toml")
+        // Cargo resolves the workspace from the process directory
+        // too: without this anchor, a probe for a bare-package
+        // root inherits the caller's enclosing workspace and cargo
+        // rejects the manifest as "believes it's in a workspace
+        // when it's not" (#3634).
+        .current_dir(workspace_root)
+        .stdin(std::process::Stdio::null());
+    // `--offline` is a cargo flag; it does not stop the rustup proxy from
+    // downloading a toolchain a `rust-toolchain.toml` pins (#4734).
+    crate::process_owner::forbid_rustup_auto_install(&mut command);
+    command
+}
+
 /// Run `cargo metadata --no-deps --offline` against the analysis root and
 /// extract the workspace test-target inventory (#3634). `None` on any
 /// unresolvable state: no root manifest, a cargo binary that cannot be
@@ -485,33 +521,8 @@ fn run_workspace_cargo_metadata(
     let parsed = std::fs::File::create(&stdout_path)
         .ok()
         .and_then(|stdout_file| {
-            let mut command = std::process::Command::new("cargo");
+            let mut command = cargo_metadata_command(workspace_root);
             command
-                .args([
-                    "metadata",
-                    "--no-deps",
-                    "--format-version",
-                    "1",
-                    "--offline",
-                ])
-                .arg("--manifest-path")
-                // Bare `Cargo.toml`: the process directory below is the
-                // workspace root, and a root-prefixed `manifest_path`
-                // would be re-resolved against that new directory — a
-                // relative analysis root (`some/dir`) would probe
-                // `some/dir/some/dir/Cargo.toml` and fail every
-                // registration's premise (#3637 review). An absolute path
-                // would work, but canonicalize emits `\\?\` verbatim
-                // paths on Windows that would leak into the inventory
-                // keys.
-                .arg("Cargo.toml")
-                // Cargo resolves the workspace from the process directory
-                // too: without this anchor, a probe for a bare-package
-                // root inherits the caller's enclosing workspace and cargo
-                // rejects the manifest as "believes it's in a workspace
-                // when it's not" (#3634).
-                .current_dir(workspace_root)
-                .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::from(stdout_file))
                 .stderr(std::process::Stdio::null());
             // The owned-subprocess authority (#3803) keeps the bounded
@@ -1218,6 +1229,19 @@ mod harness_verdict {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
         std::fs::write(path, contents).map_err(|error| error.to_string())
+    }
+
+    /// The metadata probe must not let rustup install a toolchain a
+    /// `rust-toolchain.toml` pins (#4734): `--offline` binds cargo, not the
+    /// rustup proxy in front of it.
+    #[test]
+    fn cargo_metadata_probe_forbids_rustup_auto_install() {
+        let command = super::cargo_metadata_command(Path::new("."));
+        let auto_install = command
+            .get_envs()
+            .find(|(key, _)| *key == "RUSTUP_AUTO_INSTALL")
+            .and_then(|(_, value)| value);
+        assert_eq!(auto_install, Some(std::ffi::OsStr::new("0")));
     }
 
     /// #3608: the verdict discriminates declared-harness-false targets from

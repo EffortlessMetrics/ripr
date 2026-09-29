@@ -280,6 +280,17 @@ impl OwnedProcess {
     }
 }
 
+/// Stop a rustup proxy (`cargo`, `rustc`) from installing a toolchain while
+/// ripr probes it (#4734). rustup 1.28.1+ auto-installs the toolchain a
+/// `rust-toolchain.toml` pins when it is missing, so a bare `cargo --version`
+/// or `cargo metadata --offline` in such a checkout downloads a whole
+/// toolchain. With auto-install off, rustup fails fast and names the missing
+/// toolchain; the probe then reports that instead of installing software.
+/// Older rustup releases ignore the variable.
+pub(crate) fn forbid_rustup_auto_install(command: &mut Command) {
+    command.env("RUSTUP_AUTO_INSTALL", "0");
+}
+
 impl Drop for OwnedProcess {
     fn drop(&mut self) {
         // Kill-on-close semantics live at this boundary: whichever path

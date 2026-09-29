@@ -1241,6 +1241,15 @@ are scoped or reviewed.
   focused test with the missing discriminator next to the nearest related
   test", matching the new test `pilot` names, where it used to say "extend
   the nearest related test".
+- With rustup 1.28.1 or later, `ripr doctor` no longer installs a Rust
+  toolchain. In a checkout whose `rust-toolchain.toml` pins a toolchain that
+  is not installed, its `cargo --version` and `rustc --version` probes made
+  rustup download and install that toolchain, then reported "cargo timed
+  out" and "rustc not available". The `cargo metadata` probe behind
+  `[[analysis.test_harnesses]]` did the same during `ripr check`. Probes now
+  run with `RUSTUP_AUTO_INSTALL=0` (older rustup ignores it), and a probe
+  that exits non-zero names the tool's own error, such as rustup's
+  "toolchain ... is not installed" (#4734).
 - A deeply nested Rust file anywhere in the workspace no longer aborts
   `ripr check`, `ripr pilot`, or the LSP with a stack overflow. A lexical scan
   now refuses a source file before parsing when its estimated nesting depth
