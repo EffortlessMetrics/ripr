@@ -3047,16 +3047,12 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                 entries.len()
             ));
         }
-        let cache_file = &entries[0];
-        let bytes = std::fs::read(cache_file)
-            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
-        let mut envelope: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|err| format!("parse compact cache: {err}"))?;
-        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
-        let rewritten =
-            serde_json::to_vec(&envelope).map_err(|err| format!("encode compact cache: {err}"))?;
-        std::fs::write(cache_file, rewritten)
-            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+        // Seed a valid alternate payload through the actual writer. Integrity is not authenticity:
+        // an authorized writer can recompute a checksum; this remains an observable cache-hit control.
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let cache = RepoSeamFactCache::at_compact_classified(&root);
+        cache.store_classified_seams_with_limit(&key, &[], None, 10)?;
 
         let warm =
             inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())?;
@@ -3124,6 +3120,68 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
     }
 
     #[test]
+    fn integrity_invalid_classified_payload_recomputes_full_and_compact_consumers()
+    -> Result<(), String> {
+        for compact in [false, true] {
+            let root = make_tempdir("integrity-consumer")?;
+            write_file(
+                &root.join("src/foo.rs"),
+                "pub fn discount(amount: i32) -> bool { amount >= 5 }\n",
+            )?;
+            let read = || {
+                if compact {
+                    inventory_compact_classified_seams_at_with_config(&root, &RiprConfig::default())
+                } else {
+                    inventory_classified_seams_at(&root)
+                }
+            };
+            let cold = read()?;
+            if cold.is_empty() {
+                return Err("consumer fixture must contain classified seams".to_owned());
+            }
+            let entries = if compact {
+                list_compact_cache_entries(&root)?
+            } else {
+                list_cache_entries(&root)?
+            };
+            if entries.len() != 1 {
+                return Err("expected one actual writer entry".to_owned());
+            }
+            let path = entries.first().ok_or("missing seeded entry")?;
+            let original = std::fs::read(path).map_err(|err| err.to_string())?;
+            let mut edited: serde_json::Value =
+                serde_json::from_slice(&original).map_err(|err| err.to_string())?;
+            let seams = edited
+                .get_mut("classified_seams")
+                .and_then(|value| value.as_array_mut())
+                .ok_or("missing seams")?;
+            let summary = seams
+                .first_mut()
+                .and_then(|seam| seam.get_mut("evidence"))
+                .and_then(|evidence| evidence.get_mut("reach"))
+                .and_then(|reach| reach.get_mut("summary"))
+                .ok_or("missing observed summary")?;
+            *summary = serde_json::Value::String("fabricated evidence".to_owned());
+            std::fs::write(
+                path,
+                serde_json::to_vec(&edited).map_err(|err| err.to_string())?,
+            )
+            .map_err(|err| err.to_string())?;
+            let recovered = read()?;
+            let expected = serde_json::to_vec(&cold).map_err(|err| err.to_string())?;
+            if serde_json::to_vec(&recovered).map_err(|err| err.to_string())? != expected {
+                return Err("integrity recovery must preserve every cold evidence field".to_owned());
+            }
+            let warm = read()?;
+            if serde_json::to_vec(&warm).map_err(|err| err.to_string())? != expected {
+                return Err("corrected entry must warm-hit original evidence".to_owned());
+            }
+            let _ = std::fs::remove_dir_all(&root);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn given_cached_classified_seams_when_inventory_runs_then_cached_seams_are_returned()
     -> Result<(), String> {
         let root = make_tempdir("warm-hit")?;
@@ -3149,16 +3207,12 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                 entries.len()
             ));
         }
-        let cache_file = &entries[0];
-        let bytes = std::fs::read(cache_file)
-            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
-        let mut envelope: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
-        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
-        let rewritten =
-            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
-        std::fs::write(cache_file, rewritten)
-            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+        // Seed a valid alternate payload through the actual writer. Integrity is not authenticity:
+        // an authorized writer can recompute a checksum; this remains an observable cache-hit control.
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let cache = RepoSeamFactCache::at(&root);
+        cache.store_classified_seams_with_limit(&key, &[], None, 10)?;
 
         let warm = inventory_classified_seams_at(&root)?;
         if !warm.is_empty() {
@@ -3216,16 +3270,12 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                 entries.len()
             ));
         }
-        let cache_file = &entries[0];
-        let bytes = std::fs::read(cache_file)
-            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
-        let mut envelope: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
-        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
-        let rewritten =
-            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
-        std::fs::write(cache_file, rewritten)
-            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+        // Seed a valid alternate payload through the actual writer. Integrity is not authenticity:
+        // an authorized writer can recompute a checksum; this remains an observable cache-hit control.
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let cache = RepoSeamFactCache::at(&root);
+        cache.store_classified_seams_with_limit(&key, &[], None, 10)?;
 
         // Swap the bytes for same-length different content and restore the
         // original mtime, keeping the (path, mtime, size) signature intact.
@@ -3297,16 +3347,12 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
                 entries.len()
             ));
         }
-        let cache_file = &entries[0];
-        let bytes = std::fs::read(cache_file)
-            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
-        let mut envelope: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
-        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
-        let rewritten =
-            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
-        std::fs::write(cache_file, rewritten)
-            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+        // Seed a valid alternate payload through the actual writer. Integrity is not authenticity:
+        // an authorized writer can recompute a checksum; this remains an observable cache-hit control.
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let cache = RepoSeamFactCache::at(&root);
+        cache.store_classified_seams_with_limit(&key, &[], None, 10)?;
 
         // Same-size rewrite with the mtime explicitly restored — what
         // `rsync -a` / `cp --preserve=timestamps` do. On unix the ctime
@@ -4003,6 +4049,117 @@ marker = "libtest_mimic::Trial"
 
     #[cfg(unix)]
     #[test]
+    fn same_key_fingerprint_payload_edit_declines_and_rehashes_source_truth() -> Result<(), String>
+    {
+        let root = std::env::temp_dir().join(format!("ripr-inv-integrity-{}", unique_suffix()));
+        std::fs::create_dir(&root).map_err(|err| err.to_string())?;
+        struct OwnedRoot(PathBuf);
+        impl Drop for OwnedRoot {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _owned = OwnedRoot(root.clone());
+        no_impact_layout(&root)?;
+        let config = RiprConfig::default();
+        let changed = vec![PathBuf::from("docs/notes.md")];
+        let cold = inventory_diff_scoped_classified_seams_inner(
+            &root,
+            &config,
+            &changed,
+            &[],
+            false,
+            None,
+        )?;
+        if cold.total_rust_files == 0 || cold.total_production_files == 0 {
+            return Err(
+                "fingerprint consumer fixture must contain production Rust source".to_owned(),
+            );
+        }
+        // Scoped cold inventory does not write fingerprint mappings; seed its actual producer.
+        let produced_key = workspace_cache_key_at_with_config(&root, &config)?;
+        if produced_key != cold.workspace_cache_key {
+            return Err("actual fingerprint producer must match cold source identity".to_owned());
+        }
+        if !matches!(
+            try_no_impact_fast_path(&root, &config, &changed, &[])?,
+            NoImpactOutcome::Fast(_)
+        ) {
+            return Err(
+                "actual-writer mapping must yield a warm canonical hit before tamper".to_owned(),
+            );
+        }
+        let entries = no_impact_fingerprint_entries(&root)?;
+        if entries.len() != 1 {
+            return Err("expected one actual-writer fingerprint entry".to_owned());
+        }
+        let entry = entries.first().ok_or("missing mapping")?;
+        let mut edited: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(entry).map_err(|err| err.to_string())?)
+                .map_err(|err| err.to_string())?;
+        let original = edited.clone();
+        *edited
+            .get_mut("files_content_hash")
+            .ok_or("missing aggregate hash")? =
+            serde_json::Value::String("fabricated-content-hash".to_owned());
+        for (key, value) in original.as_object().ok_or("mapping must be object")? {
+            if key != "files_content_hash" && edited.get(key) != Some(value) {
+                return Err("must preserve mapping identity/digest".to_owned());
+            }
+        }
+        std::fs::write(
+            entry,
+            serde_json::to_vec(&edited).map_err(|err| err.to_string())?,
+        )
+        .map_err(|err| err.to_string())?;
+        if !matches!(
+            try_no_impact_fast_path(&root, &config, &changed, &[])?,
+            NoImpactOutcome::Declined(NoImpactFallbackReason::CorruptMetadata)
+        ) {
+            return Err(
+                "valid-JSON mapping corruption must decline canonical fast path".to_owned(),
+            );
+        }
+        let recovered = inventory_diff_scoped_classified_seams_inner(
+            &root,
+            &config,
+            &changed,
+            &[],
+            true,
+            None,
+        )?;
+        if recovered.workspace_cache_key != cold.workspace_cache_key
+            || recovered.total_rust_files != cold.total_rust_files
+            || recovered.total_production_files != cold.total_production_files
+            || serde_json::to_vec(&recovered.classified).map_err(|err| err.to_string())?
+                != serde_json::to_vec(&cold.classified).map_err(|err| err.to_string())?
+        {
+            return Err(
+                "fallback must rehash actual source and preserve complete cold evidence".to_owned(),
+            );
+        }
+        let repaired_key = workspace_cache_key_at_with_config(&root, &config)?;
+        if repaired_key != cold.workspace_cache_key
+            || !matches!(
+                try_no_impact_fast_path(&root, &config, &changed, &[])?,
+                NoImpactOutcome::Fast(_)
+            )
+        {
+            return Err(
+                "actual producer must repair the mapping for a subsequent warm hit".to_owned(),
+            );
+        }
+        eprintln!(
+            "fingerprint consumer stimulus: rust_files={} production_files={} mappings={}",
+            cold.total_rust_files,
+            cold.total_production_files,
+            entries.len()
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn no_impact_foreign_root_mapping_falls_back_incompatible() -> Result<(), String> {
         let root = make_tempdir("no-impact-foreign")?;
         no_impact_layout(&root)?;
@@ -4147,16 +4304,12 @@ marker = "libtest_mimic::Trial"
                 entries.len()
             ));
         }
-        let cache_file = &entries[0];
-        let bytes = std::fs::read(cache_file)
-            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
-        let mut envelope: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
-        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
-        let rewritten =
-            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
-        std::fs::write(cache_file, rewritten)
-            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+        // Seed a valid alternate payload through the actual writer. Integrity is not authenticity:
+        // an authorized writer can recompute a checksum; this remains an observable cache-hit control.
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let cache = RepoSeamFactCache::at(&root);
+        cache.store_classified_seams_with_limit(&key, &[], None, 10)?;
 
         // Change the content and force a distinct mtime so the new
         // signature cannot collide with the old one through mtime
@@ -4423,16 +4576,9 @@ marker = "libtest_mimic::Trial"
                 entries.len()
             ));
         }
-        let cache_file = &entries[0];
-        let bytes = std::fs::read(cache_file)
-            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
-        let mut envelope: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
-        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
-        let rewritten =
-            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
-        std::fs::write(cache_file, rewritten)
-            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        RepoSeamFactCache::at(&root).store_classified_seams_with_limit(&key, &[], None, 10)?;
 
         // Edit only the test file — production untouched, no .ripr/*
         // files involved. This must change the cache key so the

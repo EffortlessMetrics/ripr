@@ -349,6 +349,11 @@ are scoped or reviewed.
   `actionable-gaps.json` does not hold no longer gets that report's first
   packet: the gap ledger is tried, then a status packet naming the gap.
 
+- Rust cache entries now reject same-key semantic payload edits before serving
+  facts or classified evidence. File-fact, full/compact classified, shard and
+  corpus-fingerprint generations cold-recompute once; checksums do not
+  authenticate writers able to recompute them (#4382).
+
 ### Added
 
 - Zed: a Zed extension in `editors/zed` starts `ripr lsp --stdio` from your

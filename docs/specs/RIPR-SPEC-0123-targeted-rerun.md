@@ -216,6 +216,22 @@ invalidates the affected facts. A corrupt or mismatched cache entry is ignored
 and named; it must never be rendered as a hit. A targeted result must not reuse
 a whole-workspace classification whose test evidence is stale.
 
+### Stored payload integrity
+
+File-fact, full/compact classified, classified-shard and corpus-fingerprint
+entries require a matching domain-separated SHA-256 digest of their unsigned
+typed serialized body, including every served completeness/provenance field.
+Matching current entries with missing or invalid digests are corruption;
+decoded identity mismatches invalidate first. Undecodable JSON remains decode
+corruption. Previous unsigned generations cold-recompute. Invalid file facts
+must not contribute known-file inventory; an invalid shard rejects the whole
+set, and corrupt monolithic entries must not select a sharded substitute.
+
+JSON formatting is not part of this semantic digest. Composer state skipped
+by serialization is recomputed. The checksum is not writer authentication:
+a replacement body with a recomputed correct digest can be admitted. See
+[Configuration](../CONFIGURATION.md) for field scope and generation transitions.
+
 ### Identity and receipt continuity
 
 For a resolved `--gap` selector, the result carries that exact

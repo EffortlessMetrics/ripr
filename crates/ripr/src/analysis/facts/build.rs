@@ -933,6 +933,107 @@ pub fn check(x: i32) -> bool {
     }
 
     #[test]
+    fn same_key_valid_json_payload_edit_recomputes_actual_index() -> Result<(), Box<dyn Error>> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let root = std::env::temp_dir().join(format!("ripr-integrity-index-{stamp}"));
+        fs::create_dir(&root)?;
+        let fixture = CacheInventoryFixture {
+            cache: RepoFileFactCache::at_dir(root.join("cache")),
+            root,
+        };
+        fs::create_dir(fixture.root.join("src"))?;
+        write_manifest(&fixture.root)?;
+        let files = [(
+            PathBuf::from("src/lib.rs"),
+            b"pub fn value() -> i32 { 1 }\n#[test]\nfn actual_test() { let _ = value(); }\n"
+                .to_vec(),
+        )];
+        let build = || {
+            build_index_with_file_fact_cache(
+                &fixture.root,
+                &files,
+                &RaRustSyntaxAdapter,
+                &LexicalRustSyntaxAdapter,
+                &fixture.cache,
+                || fixture.cache.known_file_paths(),
+            )
+        };
+        let cold = build()?;
+        if cold.index.functions.is_empty() || cold.index.tests.is_empty() {
+            return Err("integrity fixture must produce functions and tests".into());
+        }
+        let entries = fs::read_dir(fixture.root.join("cache"))?.collect::<Result<Vec<_>, _>>()?;
+        if entries.len() != 1 {
+            return Err("expected exactly one seeded entry".into());
+        }
+        let entry = entries.first().ok_or("missing seeded entry")?.path();
+        let original = fs::read(&entry)?;
+        let mut edited: serde_json::Value = serde_json::from_slice(&original)?;
+        fs::write(&entry, serde_json::to_vec(&edited)?)?;
+        let reformatted = build()?;
+        if reformatted.file_fact_cache.hits != 1 || reformatted.index.tests != cold.index.tests {
+            return Err("semantic-preserving JSON formatting must remain a warm hit".into());
+        }
+        let changed_source_key = RepoFileFactCacheKey::new(
+            &PathBuf::from("src/lib.rs"),
+            b"pub fn changed_source() {}\n",
+        );
+        if !matches!(
+            fixture.cache.load_file_facts(&changed_source_key),
+            CacheLoad::Miss
+        ) {
+            return Err("ordinary changed-source identity must remain a miss".into());
+        }
+        let original_keys = edited
+            .as_object()
+            .ok_or("envelope must be object")?
+            .iter()
+            .filter(|(key, _)| key.as_str() != "file_facts")
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Vec<_>>();
+        let facts = edited.get_mut("file_facts").ok_or("missing facts")?;
+        let encoded_facts = serde_json::to_string(facts)?;
+        let changed_facts = encoded_facts.replace("actual_test", "forged_test");
+        if encoded_facts == changed_facts {
+            return Err("test-name edit must change real facts".into());
+        }
+        *facts = serde_json::from_str(&changed_facts)?;
+        for (key, value) in original_keys {
+            if edited.get(&key) != Some(&value) {
+                return Err("identity or digest changed".into());
+            }
+        }
+        let altered = serde_json::to_vec(&edited)?;
+        if altered == original {
+            return Err("payload edit must change bytes".into());
+        }
+        fs::write(&entry, altered)?;
+        let recovered = build()?;
+        if recovered.file_fact_cache.hits != 0
+            || recovered.file_fact_cache.corrupt_ignored != 1
+            || recovered.file_fact_cache.stores != 1
+            || recovered.file_fact_cache.misses != 0
+        {
+            return Err(format!(
+                "same-key semantic corruption must reparse: {:?}",
+                recovered.file_fact_cache
+            )
+            .into());
+        }
+        if recovered.index.files != cold.index.files
+            || recovered.index.functions != cold.index.functions
+            || recovered.index.tests != cold.index.tests
+        {
+            return Err("recovered complete index must equal cold source truth".into());
+        }
+        let warm = build()?;
+        if warm.file_fact_cache.hits != 1 || warm.index.tests != cold.index.tests {
+            return Err("corrected entry must warm-hit original evidence".into());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn cache_inventory_observes_cancellation_before_directory_scan() -> Result<(), Box<dyn Error>> {
         use crate::analysis::cancellation::{
             AnalysisAbortKind, AnalysisCancellationToken, with_token,

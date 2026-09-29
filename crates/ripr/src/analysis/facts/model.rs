@@ -447,8 +447,8 @@ pub struct FileFacts {
     pub role_provenance: SourceRoleProvenance,
     /// Original file source text. Held so `analysis/value-extraction-v2`
     /// can scan for top-level `const`/`static` declarations without
-    /// re-reading the file at evidence-build time. Not part of any
-    /// cached envelope (the cache stores `ClassifiedSeam` only).
+    /// re-reading the file at evidence-build time. Serialized in the file-fact
+    /// cache and bound by its semantic payload digest.
     pub source: String,
 }
 
