@@ -9797,3 +9797,45 @@ outputs = [
 metrics = [
   "identity_registry_kinds",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0183"
+name = "Executed-control obligation and result contract"
+spec = "docs/specs/RIPR-SPEC-0183-executed-control-obligation.md"
+tests = [
+  "crates/ripr/src/domain/executed_control.rs::tests::executed_removal_control_fails_before_and_passes_after_the_repair",
+  "crates/ripr/src/domain/executed_control.rs::tests::ordinary_positive_test_cannot_silently_satisfy_the_obligation",
+  "crates/ripr/src/domain/executed_control.rs::tests::prose_claim_without_artifact_cannot_pass",
+  "crates/ripr/src/domain/executed_control.rs::tests::control_run_on_another_head_cannot_pass",
+  "crates/ripr/src/domain/executed_control.rs::tests::command_success_without_named_wrong_implementation_cannot_pass",
+  "crates/ripr/src/domain/executed_control.rs::tests::unavailable_instrument_with_declared_substitute_is_explicit_and_satisfying",
+  "crates/ripr/src/domain/executed_control.rs::tests::unavailable_instrument_without_substitute_stays_explicit_and_non_satisfying",
+  "crates/ripr/src/domain/executed_control.rs::tests::duplicated_obligation_ids_are_rejected",
+  "crates/ripr/src/domain/executed_control.rs::tests::result_for_unknown_obligation_is_rejected",
+  "crates/ripr/src/domain/executed_control.rs::tests::issue_3858_documentation_fixture_stays_not_proven",
+  "crates/ripr/src/domain/executed_control.rs::tests::foreign_source_identity_cannot_satisfy",
+  "crates/ripr/src/domain/executed_control.rs::tests::unexecuted_substitute_cannot_satisfy",
+  "crates/ripr/src/domain/executed_control.rs::tests::passed_result_requires_an_artifact_backed_acceptable_form",
+  "crates/ripr/src/domain/executed_control.rs::tests::same_head_pass_and_fail_are_rejected",
+  "crates/ripr/src/output/executed_control.rs::tests::json_and_human_projections_agree_on_satisfaction_and_are_deterministic",
+  "crates/ripr/src/output/executed_control.rs::tests::json_and_markdown_projections_reject_the_same_invalid_packet",
+  "crates/ripr/src/output/executed_control.rs::tests::human_projection_keeps_issue_3858_not_proven",
+  "crates/ripr/src/output/executed_control.rs::tests::corpus_covers_required_negative_and_documentation_cases",
+]
+fixtures = [
+  "fixtures/executed-control-contract",
+]
+code = [
+  "crates/ripr/src/domain/executed_control.rs",
+  "crates/ripr/src/output/executed_control.rs",
+  "schemas/ripr/executed-control.schema.json",
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+  "schemas/ripr/executed-control.schema.json",
+]
+metrics = [
+  "executed_control_obligation_vocabulary_closed",
+  "executed_control_pass_requires_executed_evidence",
+  "executed_control_projections_deterministic",
+]

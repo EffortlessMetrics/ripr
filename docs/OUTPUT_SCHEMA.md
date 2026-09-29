@@ -69,6 +69,7 @@ records that distinction.
 | Published schema | Current version | Version owner and rationale |
 | --- | --- | --- |
 | `schemas/ripr/check.schema.json` | `0.2` | `crates/ripr/src/app.rs`; check envelope |
+| `schemas/ripr/executed-control.schema.json` | `1` | `crates/ripr/src/domain/executed_control.rs` and `crates/ripr/src/output/executed_control.rs`; executed-control obligation/result/packet vocabulary (#4641) |
 | `schemas/ripr/gate-decision.schema.json` | `0.1` | `crates/ripr/src/output/gate.rs`; gate decision envelope |
 | `schemas/ripr/pr-evidence.schema.json` | `0.1` | `crates/ripr/src/app/pr_evidence.rs` (installed `ripr pr-evidence`) and `xtask/src/reports/pr_evidence.rs` (xtask compatibility); PR evidence envelope |
 | `schemas/ripr/repair-assurance.schema.json` | `1` | `crates/ripr/src/domain/verification_result.rs`; reserved assurance vocabulary and execution result |
@@ -82,6 +83,52 @@ records that distinction.
 
 Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
+
+## Executed-control packet (`executed_control_packet`, schema `1`)
+
+This is a repository-owned contract for acceptance items that require an
+**executed discriminating control**. It is not a GitHub client, merge gate, or
+mutation-testing engine. Human Markdown and machine JSON derive from the same
+packet. `passed` is not inferred from ordinary tests or review prose.
+
+Fields:
+
+- `schema_version` — `1`
+- `kind` — `executed_control_packet`, `executed_control_obligation`, or
+  `executed_control_result`
+- `source_identity` — repository identity bound by the packet
+- `obligation_id` / `owning_claim` — stable claim keys, not issue-body prose
+- `control_class` — `removed_guard`, `wrong_implementation`, or `named_mutation`
+- `intended_wrong_implementation` — the named wrong implementation or removed
+  guard
+- `required_execution_subject` — `command_or_instrument_id`,
+  `named_wrong_implementation`, and `required_head`
+- `expected_discriminating_outcome` — `fails_before_passes_after` or
+  `rejects_wrong_implementation`
+- `acceptable_evidence_forms` — `retained_artifact`, `bounded_log_commitment`,
+  `declared_substitute`
+- `permitted_substitute` — explicit substitute, or `null`; never inferred
+- `requiredness` — `required` or `advisory`
+- `invalidators` — `source_head_moved`, `control_contract_changed`,
+  `artifact_missing`, `command_identity_changed`
+- `offered_evidence_kind` — `executed_discriminating_control`,
+  `ordinary_positive_test`, `review_prose`,
+  `structural_discrimination_claim`, or `declared_substitute`
+- `observed_outcome` — including `failed_before_passed_after`,
+  `rejected_wrong_implementation`,
+  `command_succeeded_without_exercising_subject`, and `not_executed`
+- `state` — `passed`, `failed`, `not_run`, `not_proven`, `substituted`,
+  `instrument_failure`
+- `artifact` — logical id plus `sha256:` digest; machine paths are not identity
+- `obligation_digest` — digest of the obligation contract; a stale digest
+  cannot satisfy a moved implementation
+
+`passed` requires `offered_evidence_kind` `executed_discriminating_control`
+plus retained artifact identity, matching packet `source_identity`, and an
+artifact-backed form listed on the obligation. JSON and Markdown both reject
+invalid packets. #3858 / #4063 is documented as `not_proven` and must not be
+rewritten as `passed`. Closeout enforcement is a later slice.
+
 
 `ripr doctor --json` top-level `status` and `runtime_probes[].status` are
 `pass` or `fail`. The `profile` is `analysis` by default or `source-build`

@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "kind": "executed_control_packet",
+  "source_identity": "EffortlessMetrics/ripr-swarm",
+  "obligations": [
+    {
+      "schema_version": "1",
+      "kind": "executed_control_obligation",
+      "obligation_id": "issue:3858:eager-file-count-removal-control",
+      "owning_claim": "issue:3858",
+      "control_class": "removed_guard",
+      "intended_wrong_implementation": "eager parse / removed lazy file-count guard (admit_file_count)",
+      "required_execution_subject": {
+        "command_or_instrument_id": "cargo test -- removed_guard_or_eager_file_count_control",
+        "named_wrong_implementation": "eager_admit_file_count",
+        "required_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expected_discriminating_outcome": "fails_before_passes_after",
+      "acceptable_evidence_forms": [
+        "retained_artifact",
+        "bounded_log_commitment"
+      ],
+      "permitted_substitute": null,
+      "requiredness": "required",
+      "invalidators": [
+        "source_head_moved",
+        "control_contract_changed",
+        "artifact_missing",
+        "command_identity_changed"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "schema_version": "1",
+      "kind": "executed_control_result",
+      "obligation_id": "issue:3858:eager-file-count-removal-control",
+      "source_identity": "EffortlessMetrics/ripr-swarm",
+      "candidate_id": "pr:4063",
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "command_or_instrument_id": "cargo test -- removed_guard_or_eager_file_count_control",
+      "observed_outcome": "not_executed",
+      "offered_evidence_kind": "review_prose",
+      "state": "not_proven",
+      "limitation": "Issue #3858 / PR #4063 recorded no retained eager or removed-guard execution artifact. Execution is not_proven and must not be rewritten as passed."
+    }
+  ]
+}

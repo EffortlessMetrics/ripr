@@ -54,6 +54,14 @@ const VERSION_AUTHORITIES: &[(&str, &[VersionProducer])] = &[
         )],
     ),
     (
+        "executed-control",
+        &[producer(
+            "crates/ripr/src/domain/executed_control.rs",
+            "pub(crate) const EXECUTED_CONTROL_SCHEMA_VERSION: &str = \"",
+            1,
+        )],
+    ),
+    (
         "gate-decision",
         &[producer(
             "crates/ripr/src/output/gate.rs",
@@ -409,6 +417,25 @@ const CONTRACTS: &[VerificationContract] = &[
             "cases",
             "exclusions",
             "observations",
+        ],
+    },
+    VerificationContract {
+        schema_path: "schemas/ripr/executed-control.schema.json",
+        schema_pointer: Some("/$defs/packet"),
+        fixture_path: "fixtures/executed-control-contract/corpus.json",
+        subject: ContractSubject::EachItem {
+            array: "/cases",
+            item: Some("/packet"),
+        },
+        doc_path: "docs/OUTPUT_SCHEMA.md",
+        doc_markers: &[
+            "schema_version",
+            "kind",
+            "obligation_id",
+            "offered_evidence_kind",
+            "executed_discriminating_control",
+            "ordinary_positive_test",
+            "not_proven",
         ],
     },
     // `command_specs.verify` in a generated agent packet is producer output

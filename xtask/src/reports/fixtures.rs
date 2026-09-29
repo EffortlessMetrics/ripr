@@ -406,6 +406,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "editor_adoption_assurance"
                     | "editor_actionable_gap_queue"
                     | "evidence-promotion-honesty-corpus"
+                    | "executed-control-contract"
                     | "evidence-quality-benchmark"
                     | "first_successful_pr"
                     | "finding-alignment-dogfood"

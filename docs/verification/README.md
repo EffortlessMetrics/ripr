@@ -41,6 +41,7 @@ Machine-readable schemas live under `schemas/`:
 | [`schemas/ripr/ripr-agent-request.schema.json`](../../schemas/ripr/ripr-agent-request.schema.json) | Reserved `riprAgent` request envelope; no live producer. |
 | [`schemas/ripr/ripr-agent-success.schema.json`](../../schemas/ripr/ripr-agent-success.schema.json) | Reserved `riprAgent` success envelope; no live producer. |
 | [`schemas/ripr/ripr-agent-error.schema.json`](../../schemas/ripr/ripr-agent-error.schema.json) | Reserved `riprAgent` error envelope; no live producer. |
+| [`schemas/ripr/executed-control.schema.json`](../../schemas/ripr/executed-control.schema.json) | Executed-control obligation, result, and packet vocabulary. |
 
 The schema set and valid fixture packets are checked by:
 

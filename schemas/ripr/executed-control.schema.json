@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/executed-control.schema.json",
+  "title": "RIPR Executed Control V1",
+  "description": "Closed obligation/result vocabulary that distinguishes an executed discriminating control from an ordinary positive test or review argument. Domain validation owns satisfaction laws; this schema closes the wire shape.",
+  "type": "object",
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "const": "1" }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/packet" },
+    { "$ref": "#/$defs/obligation" },
+    { "$ref": "#/$defs/result" }
+  ],
+  "$defs": {
+    "packet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "source_identity",
+        "obligations",
+        "results"
+      ],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "kind": { "const": "executed_control_packet" },
+        "source_identity": { "type": "string", "minLength": 1 },
+        "obligations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/obligation" }
+        },
+        "results": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/result" }
+        }
+      }
+    },
+    "obligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "obligation_id",
+        "owning_claim",
+        "control_class",
+        "intended_wrong_implementation",
+        "required_execution_subject",
+        "expected_discriminating_outcome",
+        "acceptable_evidence_forms",
+        "permitted_substitute",
+        "requiredness",
+        "invalidators"
+      ],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "kind": { "const": "executed_control_obligation" },
+        "obligation_id": { "type": "string", "minLength": 1 },
+        "owning_claim": { "type": "string", "minLength": 1 },
+        "control_class": {
+          "enum": ["removed_guard", "wrong_implementation", "named_mutation"]
+        },
+        "intended_wrong_implementation": { "type": "string", "minLength": 1 },
+        "required_execution_subject": { "$ref": "#/$defs/execution_subject" },
+        "expected_discriminating_outcome": {
+          "enum": ["fails_before_passes_after", "rejects_wrong_implementation"]
+        },
+        "acceptable_evidence_forms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "retained_artifact",
+              "bounded_log_commitment",
+              "declared_substitute"
+            ]
+          }
+        },
+        "permitted_substitute": {
+          "anyOf": [{ "$ref": "#/$defs/permitted_substitute" }, { "type": "null" }]
+        },
+        "requiredness": { "enum": ["required", "advisory"] },
+        "invalidators": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "source_head_moved",
+              "control_contract_changed",
+              "artifact_missing",
+              "command_identity_changed"
+            ]
+          }
+        }
+      }
+    },
+    "execution_subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_or_instrument_id",
+        "named_wrong_implementation",
+        "required_head"
+      ],
+      "properties": {
+        "command_or_instrument_id": { "type": "string", "minLength": 1 },
+        "named_wrong_implementation": { "type": "string", "minLength": 1 },
+        "required_head": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" }
+      }
+    },
+    "permitted_substitute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["substitute_id", "instrument_id", "evidence_form"],
+      "properties": {
+        "substitute_id": { "type": "string", "minLength": 1 },
+        "instrument_id": { "type": "string", "minLength": 1 },
+        "evidence_form": {
+          "enum": [
+            "retained_artifact",
+            "bounded_log_commitment",
+            "declared_substitute"
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "obligation_id",
+        "source_identity",
+        "head",
+        "command_or_instrument_id",
+        "observed_outcome",
+        "offered_evidence_kind",
+        "state"
+      ],
+      "properties": {
+        "schema_version": { "const": "1" },
+        "kind": { "const": "executed_control_result" },
+        "obligation_id": { "type": "string", "minLength": 1 },
+        "source_identity": { "type": "string", "minLength": 1 },
+        "candidate_id": { "type": "string", "minLength": 1 },
+        "head": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+        "command_or_instrument_id": { "type": "string", "minLength": 1 },
+        "artifact": { "$ref": "#/$defs/artifact_identity" },
+        "observed_outcome": {
+          "enum": [
+            "failed_before_passed_after",
+            "rejected_wrong_implementation",
+            "command_succeeded_without_exercising_subject",
+            "ordinary_positive_tests_passed",
+            "review_argument_only",
+            "structural_discrimination_only",
+            "instrument_unavailable",
+            "not_executed"
+          ]
+        },
+        "offered_evidence_kind": {
+          "enum": [
+            "executed_discriminating_control",
+            "ordinary_positive_test",
+            "review_prose",
+            "structural_discrimination_claim",
+            "declared_substitute"
+          ]
+        },
+        "state": {
+          "enum": [
+            "passed",
+            "failed",
+            "not_run",
+            "not_proven",
+            "substituted",
+            "instrument_failure"
+          ]
+        },
+        "limitation": { "type": "string", "minLength": 1 },
+        "substitute_id": { "type": "string", "minLength": 1 },
+        "obligation_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "artifact_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["logical_id", "digest"],
+      "properties": {
+        "logical_id": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

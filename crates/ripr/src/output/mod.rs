@@ -17,6 +17,7 @@ pub(crate) mod doctor;
 pub(crate) mod doctor_binary;
 pub(crate) mod evidence_health;
 pub(crate) mod evidence_record;
+pub(crate) mod executed_control;
 pub(crate) mod feedback;
 pub(crate) mod file_write;
 pub(crate) mod first_pr;
@@ -78,6 +79,10 @@ pub(crate) mod workflow_escape;
 // keeps the catalog compile-checked outside #[cfg(test)] while live producers
 // continue to own serialization. Optimized binary retention is not claimed.
 const _: usize = schemas::AGENT_ARTIFACT_SCHEMAS.len();
+const _: fn(&crate::domain::ExecutedControlPacketV1) -> Result<String, String> =
+    executed_control::render_packet_json;
+const _: fn(&crate::domain::ExecutedControlPacketV1) -> Result<String, String> =
+    executed_control::render_packet_markdown;
 
 #[cfg(test)]
 pub(crate) mod test_support {
