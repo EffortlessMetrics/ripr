@@ -26,6 +26,13 @@ export interface InstallReceiptV1 {
    */
   readonly manifestSha256?: string;
   /**
+   * Exact manifest location observed when these bytes were admitted.
+   * This is provenance/observation evidence only: cache currentness remains
+   * bound to distributionIdentity + manifestSha256, so identical RC bytes are
+   * not redownloaded merely to relabel them as stable.
+   */
+  readonly selectedManifestUrl?: string;
+  /**
    * Placement-neutral identity of the distribution descriptor that produced
    * this install. Absent on legacy receipts; a distribution-bound request
    * never accepts those, so a binary verified against a different producer
@@ -71,6 +78,11 @@ export interface ResolvedArchive {
    * the resolved distribution; the staged receipt binds to it below.
    */
   readonly admittedManifestSha256?: string;
+  /**
+   * Exact manifest URL used to select this archive. Observation only; it is
+   * retained in the completed receipt but is deliberately not a cache key.
+   */
+  readonly selectedManifestUrl?: string;
 }
 
 export interface ManagedServerInstallOperations {
@@ -278,6 +290,9 @@ async function stageAndPromote(
         : {}),
       ...(resolved.admittedManifestSha256 !== undefined
         ? { manifestSha256: resolved.admittedManifestSha256 }
+        : {}),
+      ...(resolved.selectedManifestUrl !== undefined
+        ? { selectedManifestUrl: resolved.selectedManifestUrl }
         : {})
     };
     await fs.promises.rm(archivePath, { force: true });
