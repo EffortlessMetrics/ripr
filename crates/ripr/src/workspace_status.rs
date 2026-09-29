@@ -186,14 +186,26 @@ impl WorkspaceStatus {
                 "execute verification or mutation, load project-local provider configuration, ",
                 "or claim runtime correctness."
             ),
-            limitations: vec![
-                "workspace identity is host-local and not a portable repository identifier",
-                "project-local ripr.toml is detected but not loaded by workspace discovery",
-                "client launch does not establish project-configuration trust",
-                "status does not run analysis or refresh evidence",
-            ],
+            limitations: limitations(resolved.project_config_state),
         }
     }
+}
+
+/// The `ripr.toml` line is a fact about this root, not a constant: a cold
+/// agent on a Python or TypeScript repository without `ripr.toml` read
+/// "ripr.toml is detected" and went looking for a file that was not there.
+fn limitations(project_config_state: ProjectConfigState) -> Vec<&'static str> {
+    let mut limitations =
+        vec!["workspace identity is host-local and not a portable repository identifier"];
+    if project_config_state == ProjectConfigState::DetectedNotLoaded {
+        limitations
+            .push("project-local ripr.toml is detected but not loaded by workspace discovery");
+    }
+    limitations.extend([
+        "client launch does not establish project-configuration trust",
+        "status does not run analysis or refresh evidence",
+    ]);
+    limitations
 }
 
 struct ResolvedRoot {
@@ -414,6 +426,54 @@ mod tests {
         }
 
         std::fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    /// The `ripr.toml` limitation must follow detection: present only when the
+    /// root has a `ripr.toml`, absent for a root without one and for an
+    /// unavailable root.
+    #[test]
+    fn ripr_toml_limitation_is_reported_only_when_detected() -> Result<(), String> {
+        const DETECTED: &str =
+            "project-local ripr.toml is detected but not loaded by workspace discovery";
+        let root = temporary_root("limitation");
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        std::fs::write(root.join("pyproject.toml"), "[project]\nname = \"p\"\n")
+            .map_err(|error| error.to_string())?;
+
+        let without = WorkspaceStatus::resolve(Some(root.clone()));
+        if without.configuration.project_config_state != ProjectConfigState::BuiltInDefaultsOnly {
+            return Err("a root without ripr.toml must use built-in defaults".to_string());
+        }
+        if without.limitations.contains(&DETECTED) {
+            return Err(format!(
+                "a root without ripr.toml must not claim one is detected: {:?}",
+                without.limitations
+            ));
+        }
+
+        std::fs::write(root.join("ripr.toml"), "mode = \"draft\"\n")
+            .map_err(|error| error.to_string())?;
+        let with = WorkspaceStatus::resolve(Some(root.clone()));
+        if with.configuration.project_config_state != ProjectConfigState::DetectedNotLoaded
+            || !with.limitations.contains(&DETECTED)
+        {
+            return Err(format!(
+                "a root with ripr.toml must report it detected and not loaded: {:?}",
+                with.limitations
+            ));
+        }
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+
+        let missing = WorkspaceStatus::resolve(Some(root));
+        if missing.workspace_state != WorkspaceState::Unavailable
+            || missing.limitations.contains(&DETECTED)
+        {
+            return Err(format!(
+                "an unavailable root must not claim ripr.toml is detected: {:?}",
+                missing.limitations
+            ));
+        }
+        Ok(())
     }
 
     #[test]

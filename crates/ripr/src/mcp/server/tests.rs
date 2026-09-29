@@ -508,3 +508,32 @@ fn initialize_instructions_and_tool_description_name_the_analysis_route() -> Res
     }
     Ok(())
 }
+
+/// A client on the 2026-07-28 lifecycle opens with `server/discover` and never
+/// sends `initialize`, so the analysis route must reach it through the
+/// `DiscoverResult.instructions` field too, or that client's model stops at
+/// workspace status.
+#[test]
+fn discover_result_carries_the_same_instructions_as_initialize() -> Result<(), String> {
+    let response = request(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "server/discover",
+        "params": {
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": protocol::CURRENT_PROTOCOL_VERSION,
+                "io.modelcontextprotocol/clientCapabilities": {}
+            }
+        }
+    }))?;
+    if response
+        .pointer("/result/instructions")
+        .and_then(Value::as_str)
+        != Some(protocol::INSTRUCTIONS)
+    {
+        return Err(format!(
+            "discover result must carry instructions: {response}"
+        ));
+    }
+    Ok(())
+}

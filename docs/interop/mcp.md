@@ -58,7 +58,8 @@ a static snapshot, not a live view, and nothing re-resolves it:
   It is detected, not loaded;
 - `trust` and `authority`: `read_only_status` access, with source edit,
   verification execution, mutation execution, and model provider all `none`;
-- `claim_boundary` and `limitations`, as plain text;
+- `claim_boundary` and `limitations`, as plain text. The `ripr.toml`
+  limitation appears only when a `ripr.toml` was detected;
 - the transport, tool, resource, and byte bounds under `mcp`.
 
 Supported protocol versions are `2024-11-05`, `2025-03-26`, `2025-06-18`,
@@ -80,7 +81,8 @@ An invalid root does not stop the server. Status reports
 adds a second text content item that names the cause and the recovery
 (restart with `--root <repository>`). An unknown tool or resource name is
 rejected with the one valid name in the message and in `error.data.available`.
-The `initialize` instructions and the tool description say that this server
+The instructions (returned by both `initialize` and `server/discover`) and the
+tool description say that this server
 does not analyze the diff and name the CLI route that does
 (`ripr check --format json`, `ripr pilot --root .`); naming a route executes
 nothing. Protocol errors keep

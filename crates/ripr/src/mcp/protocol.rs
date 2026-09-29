@@ -67,6 +67,7 @@ pub(super) fn discover_result() -> Value {
         "capabilities": server_capabilities(),
         "ttlMs": 0,
         "cacheScope": "private",
+        "instructions": INSTRUCTIONS,
         "_meta": {
             "io.modelcontextprotocol/serverInfo": server_info()
         }
