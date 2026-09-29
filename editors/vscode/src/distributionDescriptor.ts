@@ -9,6 +9,11 @@ export interface DistributionPlacement {
   readonly releaseRef: string;
 }
 
+export interface DistributionProducer {
+  readonly tool: 'xtask release-distribution-catalog';
+  readonly schema: 'distribution-catalog/1';
+}
+
 /** Describes the installed extension's server generation and allowed placements. */
 export interface DistributionDescriptor {
   readonly schema: 1 | 2;
@@ -29,6 +34,7 @@ export interface DistributionDescriptor {
   readonly distributionGeneration?: string;
   readonly manifestSha256?: string;
   readonly targetSetDigest?: string;
+  readonly producer?: DistributionProducer;
 }
 
 export type DistributionRequestOrigin = 'embedded_descriptor' | 'explicit_legacy_override' | 'development_fixture';
@@ -72,7 +78,8 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
     'sourceRepository',
     'distributionGeneration',
     'manifestSha256',
-    'targetSetDigest'
+    'targetSetDigest',
+    'producer'
   ]);
   const unknownField = Object.keys(value).find((key) => !allowedFields.has(key));
   if (unknownField) {
@@ -102,6 +109,7 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
     manifestSha256: value.manifestSha256,
     targetSetDigest: value.targetSetDigest
   });
+  const producer = parseProducer(value.schema, value.channel, value.producer);
   if (!isChannel(channel)) {
     throw new Error(`unsupported release descriptor channel: ${channel}`);
   }
@@ -155,7 +163,8 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
     fallbackPlacements,
     manifestFile,
     sourceRepository,
-    ...releaseIdentity
+    ...releaseIdentity,
+    ...(producer ? { producer } : {})
   };
 }
 
@@ -205,7 +214,8 @@ export function distributionDescriptorIdentity(descriptor: DistributionDescripto
       ? [
           descriptor.distributionGeneration,
           descriptor.manifestSha256,
-          descriptor.targetSetDigest
+          descriptor.targetSetDigest,
+          descriptor.producer ? JSON.stringify(descriptor.producer) : undefined
         ].filter((field): field is string => field !== undefined)
       : [];
   const canonical = JSON.stringify([
@@ -322,6 +332,30 @@ function validateReleaseIdentity(
       throw new Error(`release descriptor field ${name} must be a 64-character lowercase hex digest`);
     }
   }
+}
+
+function parseProducer(schema: unknown, channel: unknown, value: unknown): DistributionProducer | undefined {
+  if (schema === 1 || channel === 'development') {
+    if (value !== undefined) {
+      throw new Error('development/schema 1 catalog must not carry producer identity');
+    }
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error('schema 2 release catalog requires producer identity');
+  }
+  const allowed = new Set(['tool', 'schema']);
+  const unknown = Object.keys(value).find((key) => !allowed.has(key));
+  if (unknown) {
+    throw new Error(`unsupported producer field: ${unknown}`);
+  }
+  if (value.tool !== 'xtask release-distribution-catalog' || value.schema !== 'distribution-catalog/1') {
+    throw new Error('unsupported distribution catalog producer identity');
+  }
+  return {
+    tool: 'xtask release-distribution-catalog',
+    schema: 'distribution-catalog/1'
+  };
 }
 
 function validatePlacement(productVersion: string, placement: DistributionPlacement, role: string): void {
