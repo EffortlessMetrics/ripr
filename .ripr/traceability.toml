@@ -5646,7 +5646,12 @@ tests = [
   "crates/ripr/src/output/diff_report.rs::tests::diff_report_includes_preview_languages_when_ts_files_in_scope",
   "crates/ripr/src/output/diff_report.rs::tests::diff_report_omits_preview_languages_for_pure_rust_scope",
   "crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_names_count_and_extensions",
-  "crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_silent_for_source_or_empty_diffs"
+  "crates/ripr/src/analysis/pipeline.rs::tests::non_source_disclosure_message_silent_for_source_or_empty_diffs",
+  "crates/ripr/src/analysis/pipeline.rs::tests::enabled_typescript_advisory_excludes_detectable_excluded_paths",
+  "crates/ripr/src/analysis/pipeline.rs::tests::not_enabled_typescript_advisory_keeps_raw_routed_count",
+  "crates/ripr/src/analysis/pipeline.rs::tests::enabled_python_advisory_excludes_detectable_excluded_paths",
+  "crates/ripr/src/app/tests/preview_analyzed_outcome.rs::excluded_only_typescript_diff_discloses_skipped_scope_in_human_and_json",
+  "crates/ripr/src/app/tests/preview_analyzed_outcome.rs::mixed_typescript_diff_counts_only_accepted_files_and_discloses_the_skipped"
 ]
 fixtures = []
 code = [

@@ -266,3 +266,127 @@ fn disabled_preview_run_is_not_enabled_or_analyzed_in_every_renderer() -> Result
     proof?;
     cleanup
 }
+
+/// #4372 / RIPR-SPEC-0082: a changed file that the enabled TypeScript adapter
+/// refuses (#3743 excluded path, or a generated name) is not counted as
+/// analyzed, and is still disclosed as a typed skipped-scope limitation so the
+/// outcome is never a silently complete result.
+#[cfg(feature = "lang-typescript")]
+fn typescript_output_for_paths(
+    name: &str,
+    paths: &[&str],
+) -> Result<(std::path::PathBuf, crate::CheckOutput), String> {
+    let root = temp_root(name)?;
+    let diff = root.join("typescript.diff");
+    let text = paths
+        .iter()
+        .map(|path| {
+            format!(
+                "diff --git a/{path} b/{path}\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n\
+                 +export const discount = (amount: number) => amount > 10 ? amount - 1 : amount;\n"
+            )
+        })
+        .collect::<String>();
+    write(&diff, &text)?;
+    let config =
+        crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"typescript\"]\n")?;
+    let output = crate::app::check_workspace_with_config(
+        crate::CheckInput {
+            root: root.clone(),
+            base: None,
+            diff_file: Some(diff),
+            mode: crate::Mode::Draft,
+            format: crate::OutputFormat::Json,
+            include_unchanged_tests: false,
+            perl_facts_path: None,
+            suppression_policy: None,
+            git_timeout: None,
+            git_candidate: None,
+        },
+        &config,
+    )?;
+    Ok((root, output))
+}
+
+#[cfg(feature = "lang-typescript")]
+fn skipped_scope_limitation(json: &str) -> Result<(String, Value), String> {
+    let value: Value =
+        serde_json::from_str(json).map_err(|error| format!("parse check JSON: {error}"))?;
+    let outcome = &value["analysis_outcome"]["outcome"];
+    let kind = outcome["kind"].as_str().unwrap_or_default().to_string();
+    let limitation = outcome["limitations"]
+        .as_array()
+        .and_then(|limitations| {
+            limitations
+                .iter()
+                .find(|limitation| limitation["kind"] == "language_scope_unsupported")
+        })
+        .cloned()
+        .ok_or_else(|| format!("missing language_scope_unsupported limitation: {json}"))?;
+    Ok((kind, limitation))
+}
+
+#[cfg(feature = "lang-typescript")]
+#[test]
+fn excluded_only_typescript_diff_discloses_skipped_scope_in_human_and_json() -> Result<(), String> {
+    let (root, output) =
+        typescript_output_for_paths("preview-typescript-excluded-only", &["vendor/lib.ts"])?;
+    let proof = (|| -> Result<(), String> {
+        let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+        let (kind, limitation) = skipped_scope_limitation(&json)?;
+        if kind != "partial_with_limitations"
+            || limitation["producer_stage"] != "language_adapter"
+            || limitation["affected_items"] != 1
+            || !limitation["recovery"]["detail"]
+                .as_str()
+                .is_some_and(|detail| detail.contains("vendor/lib.ts"))
+        {
+            return Err(format!("excluded file not disclosed as skipped: {json}"));
+        }
+        let human = crate::render_check(&output, &crate::OutputFormat::Human)?;
+        if !human.contains("(analysis incomplete)")
+            || !human.contains("Limitation: language_scope_unsupported at language_adapter")
+            || !human.contains("vendor/lib.ts")
+            || human.contains("analyzed under preview support")
+        {
+            return Err(format!("human output hides the skipped file: {human}"));
+        }
+        Ok(())
+    })();
+    let cleanup =
+        fs::remove_dir_all(&root).map_err(|error| format!("remove {}: {error}", root.display()));
+    proof?;
+    cleanup
+}
+
+#[cfg(feature = "lang-typescript")]
+#[test]
+fn mixed_typescript_diff_counts_only_accepted_files_and_discloses_the_skipped() -> Result<(), String>
+{
+    let (root, output) = typescript_output_for_paths(
+        "preview-typescript-mixed-excluded",
+        &["src/discount.ts", "vendor/lib.ts"],
+    )?;
+    let proof = (|| -> Result<(), String> {
+        let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+        let preview = preview_entry(&json, "check JSON")?;
+        if preview["file_count"] != 1 || preview["sample_paths"][0] != "src/discount.ts" {
+            return Err(format!(
+                "analyzed count includes the excluded file: {preview}"
+            ));
+        }
+        let (_, limitation) = skipped_scope_limitation(&json)?;
+        if limitation["affected_items"] != 1 {
+            return Err(format!("skipped count wrong: {limitation}"));
+        }
+        let human = crate::render_check(&output, &crate::OutputFormat::Human)?;
+        if !human.contains("Note: 1 TypeScript file analyzed under preview support") {
+            return Err(format!("control file lost its preview note: {human}"));
+        }
+        Ok(())
+    })();
+    let cleanup =
+        fs::remove_dir_all(&root).map_err(|error| format!("remove {}: {error}", root.display()));
+    proof?;
+    cleanup
+}

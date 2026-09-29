@@ -86,8 +86,13 @@ changes. The remaining non-analyzable files (`.md`, `.yaml`, etc.) never
 trigger an advisory. Each advisory carries:
 
 - `language`: stable wire string (e.g. `"typescript"`, `"python"`)
-- `file_count`: number of files in scope that routed to this adapter
-- `sample_paths`: up to three normalized file paths (forward-slash)
+- `file_count`: when `enabled` is `true`, the number of routed files the
+  adapter accepts for analysis — a changed file its own generated/excluded-path
+  authority refuses before counting (TypeScript/JavaScript #3743, Python #3672)
+  is not counted (#4372); when `enabled` is `false`, the raw number of files in
+  scope that routed to this adapter
+- `sample_paths`: up to three normalized file paths (forward-slash), drawn from
+  the same set `file_count` counts
 - `enabled`: whether this preview adapter was configured and available for
   this analysis
 
@@ -95,6 +100,29 @@ Advisories are propagated through `AnalysisResult` → `CheckOutput`. Adapter
 completion is producer-owned by `language_runs`: successful runs are omitted,
 while a matching non-success record means the routed files were not analyzed
 to completion.
+
+### Skipped generated/excluded files (enabled adapters)
+
+An enabled preview adapter skips changed files under its excluded directories
+(for TypeScript/JavaScript: `vendor/`, `node_modules/`, `dist/`, `build/`,
+`coverage/`, `out/`, `.next/`, `.cache/`, `.direnv/`, `__generated__/`; for
+Python: the `PYTHON_EXCLUDED_DIRS` set plus `vendor/`) and generated names
+(`*.generated.*`, generated Python such as `*_pb2.py`). Those files are not
+counted in `file_count` and are never presented as analyzed. They are still
+changed files in scope, so the diff pipeline records one typed limitation per
+language on the shared analysis outcome (#4372):
+
+- `kind`: `language_scope_unsupported`, `producer_stage`: `language_adapter`
+- `affected_items`: number of skipped changed files for that language
+- `recovery`: `retry`, naming up to three skipped paths ("Not analyzed by the
+  <Language> preview adapter: <paths>. ...")
+
+This is the same shape the Rust adapter uses for skipped generated Rust files.
+The outcome therefore becomes `partial_with_limitations` (analysis incomplete),
+so an excluded-only diff is never a silently complete result. When the
+adapter is not enabled, no skip limitation is emitted: the not-enabled
+advisory already discloses every routed file with its raw count. No new JSON
+field is introduced.
 
 ### Three honesty cases
 

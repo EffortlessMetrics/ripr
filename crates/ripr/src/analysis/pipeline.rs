@@ -499,25 +499,7 @@ fn run_pipeline_for_diff_text(
                 })
                 .map(|path| path.to_string_lossy().replace('\\', "/"))
                 .collect::<Vec<_>>();
-            let shown = skipped
-                .iter()
-                .take(3)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ");
-            let more = skipped.len().saturating_sub(3);
-            let listed = if more > 0 {
-                format!("{shown} and {more} more")
-            } else {
-                shown
-            };
-            // The recovery and detail texts are bounded; a long path must
-            // shorten the listing, never fail the analysis.
-            let listed = if listed.chars().count() > 160 {
-                format!("{}…", listed.chars().take(159).collect::<String>())
-            } else {
-                listed
-            };
+            let listed = bounded_path_listing(&skipped);
             limitations.push(
                 AnalysisLimitation::new(
                     AnalysisLimitationKind::LanguageScopeUnsupported,
@@ -650,6 +632,40 @@ fn run_pipeline_for_diff_text(
                 ))?,
             );
         }
+    }
+
+    // An enabled preview adapter skips generated and excluded-path files
+    // before counting (#3743, #3672), so the advisory above no longer counts
+    // them as analyzed (#4372). They are still changed files in scope: record
+    // a typed skipped-scope limitation, as the Rust adapter does for generated
+    // Rust files, so an excluded-only diff is never a silently complete result
+    // (RIPR-SPEC-0082).
+    for (language, skipped) in
+        detect_preview_skipped_paths(languages, analysis_changed_files.iter())
+    {
+        let listed = bounded_path_listing(&skipped);
+        let name = language.display_name();
+        limitations.push(
+            AnalysisLimitation::new(
+                AnalysisLimitationKind::LanguageScopeUnsupported,
+                AnalysisStage::LanguageAdapter,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::Retry,
+                    format!(
+                        "Not analyzed by the {name} preview adapter: {listed}. It skips \
+                         generated files and vendored, dependency, build-output and cache \
+                         directories; if one of these is hand-written, its changes stay \
+                         outside this analysis."
+                    ),
+                )?,
+            )
+            .with_affected_items(skipped.len() as u64)?
+            .with_detail(format!(
+                "{} changed {name} file(s) were skipped by the preview adapter's generated \
+                 or excluded-path rules: {listed}",
+                skipped.len()
+            ))?,
+        );
     }
 
     // Disclose when the diff contains only non-source files (docs/config-only
@@ -1032,9 +1048,16 @@ fn detect_repo_preview_advisories(
         if !language.is_available() && *language != LanguageId::Perl {
             continue;
         }
+        // An enabled advisory reports files "analyzed under preview support",
+        // so it drops what the adapter's own authority refuses, as the diff
+        // advisory does (#4372). A not-enabled advisory discloses presence.
+        let analyzed_only = enabled.contains(language) && language.is_available();
         let files: Vec<String> = discovered
             .iter()
-            .filter(|(lang, _)| lang == language)
+            .filter(|(lang, path)| {
+                lang == language
+                    && !(analyzed_only && is_excluded_from_preview_analysis(*lang, path))
+            })
             .map(|(_, path)| path.to_string_lossy().replace('\\', "/"))
             .collect();
         if files.is_empty() {
@@ -1046,7 +1069,7 @@ fn detect_repo_preview_advisories(
             language: language.as_str().to_string(),
             file_count,
             sample_paths,
-            enabled: enabled.contains(language) && language.is_available(),
+            enabled: analyzed_only,
         });
     }
     advisories
@@ -1093,6 +1116,16 @@ where
         {
             continue;
         }
+        // An enabled advisory reports files "analyzed under preview support",
+        // so it counts only what the adapter's own authority lets it analyze
+        // (#4372). A not-enabled advisory discloses routed presence and keeps
+        // the raw count.
+        if enabled.contains(&language)
+            && language.is_available()
+            && is_excluded_from_preview_analysis(language, &changed.path)
+        {
+            continue;
+        }
         let normalized = changed.path.to_string_lossy().replace('\\', "/");
         match counts.iter_mut().find(|(lang, _, _)| *lang == language) {
             Some((_, count, samples)) => {
@@ -1119,6 +1152,90 @@ where
         }
     }
     advisories
+}
+
+/// Changed files of each enabled, available preview language that the
+/// adapter refuses before counting, in stable language order.
+fn detect_preview_skipped_paths<'a, I>(
+    enabled: &[LanguageId],
+    paths: I,
+) -> Vec<(LanguageId, Vec<String>)>
+where
+    I: Iterator<Item = &'a diff::ChangedFile>,
+{
+    let mut skipped: Vec<(LanguageId, Vec<String>)> = Vec::new();
+    for changed in paths {
+        let Some(language) = super::language::route(&changed.path) else {
+            continue;
+        };
+        if !is_preview_language(language)
+            || !language.is_available()
+            || !enabled.contains(&language)
+            || !is_excluded_from_preview_analysis(language, &changed.path)
+        {
+            continue;
+        }
+        let normalized = changed.path.to_string_lossy().replace('\\', "/");
+        match skipped.iter_mut().find(|(lang, _)| *lang == language) {
+            Some((_, paths)) => paths.push(normalized),
+            None => skipped.push((language, vec![normalized])),
+        }
+    }
+    skipped.sort_by_key(|(language, _)| {
+        PREVIEW_LANGUAGE_ORDER
+            .iter()
+            .position(|ordered| ordered == language)
+    });
+    skipped
+}
+
+/// Up to three paths, then "and N more", capped at 160 characters. Recovery
+/// and detail texts are bounded; a long path must shorten the listing, never
+/// fail the analysis.
+fn bounded_path_listing(paths: &[String]) -> String {
+    let shown = paths.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+    let more = paths.len().saturating_sub(3);
+    let listed = if more > 0 {
+        format!("{shown} and {more} more")
+    } else {
+        shown
+    };
+    if listed.chars().count() > 160 {
+        format!("{}…", listed.chars().take(159).collect::<String>())
+    } else {
+        listed
+    }
+}
+
+/// Whether a changed preview-language path is refused by its adapter's own
+/// excluded-path or generated-name authority before counting.
+///
+/// This consults the same predicates the adapters apply ahead of
+/// `changed_count += 1` (TypeScript/JavaScript #3743, Python #3672), so the
+/// enabled advisory cannot present a file the adapter never analyzed. Perl has
+/// no excluded-path authority and is never filtered.
+fn is_excluded_from_preview_analysis(language: LanguageId, path: &std::path::Path) -> bool {
+    match language {
+        LanguageId::TypeScript | LanguageId::JavaScript => {
+            is_excluded_from_typescript_preview_analysis(path)
+        }
+        LanguageId::Python => {
+            crate::config::is_detectable_generated_python_path(path)
+                || crate::config::is_detectable_excluded_python_path(path)
+        }
+        LanguageId::Rust | LanguageId::Perl => false,
+    }
+}
+
+#[cfg(feature = "lang-typescript")]
+fn is_excluded_from_typescript_preview_analysis(path: &std::path::Path) -> bool {
+    crate::config::is_detectable_generated_typescript_path(path)
+        || crate::config::is_detectable_excluded_typescript_path(path)
+}
+
+#[cfg(not(feature = "lang-typescript"))]
+fn is_excluded_from_typescript_preview_analysis(_path: &std::path::Path) -> bool {
+    false
 }
 
 #[cfg(feature = "lang-typescript")]
@@ -2577,6 +2694,226 @@ index 0000000..1111111 100644
         if !advisory.enabled {
             return Err("expected enabled=true when TypeScript is in the enabled list".to_string());
         }
+        Ok(())
+    }
+
+    #[cfg(any(feature = "lang-typescript", feature = "lang-python"))]
+    fn excluded_path_advisory_options(
+        root: &std::path::Path,
+        diff_file: PathBuf,
+    ) -> AnalysisOptions {
+        AnalysisOptions {
+            root: root.to_path_buf(),
+            base: None,
+            diff_file: Some(diff_file),
+            mode: AnalysisMode::Draft,
+            resolved_subject_identity: None,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        }
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    fn added_file_diff(paths: &[&str]) -> String {
+        paths
+            .iter()
+            .map(|path| {
+                format!(
+                    "diff --git a/{path} b/{path}\nindex 0000000..1111111 100644\n--- a/{path}\n\
+                     +++ b/{path}\n@@ -1,0 +1,1 @@\n+export const limit = 1;\n"
+                )
+            })
+            .collect()
+    }
+
+    /// #4372: the enabled preview advisory ("N TypeScript files analyzed under
+    /// preview support") counts only changed files that survive the adapter's
+    /// own #3743 excluded-path and generated-name authority. A vendored,
+    /// `node_modules`, or `*.generated.*` file is never analyzed, so it must
+    /// not appear in the analyzed count or its sample paths. The regular
+    /// `src/discount.ts` is the control and still counts.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn enabled_typescript_advisory_excludes_detectable_excluded_paths() -> Result<(), String> {
+        let root = temp_root("issue-4372-ts-excluded-advisory")?;
+        let diff_file = root.join("ts.diff");
+        write(
+            &diff_file,
+            &added_file_diff(&[
+                "src/discount.ts",
+                "vendor/lib.ts",
+                "node_modules/pkg/index.js",
+                "src/cart.generated.ts",
+            ]),
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &excluded_path_advisory_options(&root, diff_file),
+            &OraclePolicy::default(),
+            &[LanguageId::TypeScript],
+        )?;
+
+        let advisories: Vec<(&str, usize, Vec<&str>, bool)> = result
+            .preview_language_advisories
+            .iter()
+            .map(|advisory| {
+                (
+                    advisory.language.as_str(),
+                    advisory.file_count,
+                    advisory.sample_paths.iter().map(String::as_str).collect(),
+                    advisory.enabled,
+                )
+            })
+            .collect();
+        assert_eq!(
+            advisories,
+            vec![("typescript", 1, vec!["src/discount.ts"], true)],
+            "excluded changed files must not be counted as analyzed under preview support"
+        );
+        // Parity with the adapter's own denominator (#3743).
+        let per_language: Vec<(&str, usize)> = result
+            .summary
+            .changed_files_by_language
+            .iter()
+            .map(|count| (count.language.as_str(), count.files))
+            .collect();
+        assert_eq!(per_language, vec![("typescript", 1)]);
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// #4372 (repo scope): the workspace-walk advisory applies the same
+    /// authority. With TypeScript enabled, a vendored or `*.generated.*`
+    /// file is not counted as analyzed; with it not enabled, the advisory
+    /// still discloses every routed file.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn repo_typescript_advisory_excludes_detectable_excluded_paths_when_enabled()
+    -> Result<(), String> {
+        let root = temp_root("issue-4372-ts-repo-advisory")?;
+        for path in ["src/discount.ts", "vendor/lib.ts", "src/cart.generated.ts"] {
+            write(&root.join(path), "export const limit = 1;\n")?;
+        }
+        let counts = |enabled: &[LanguageId]| -> Vec<(String, usize, Vec<String>, bool)> {
+            detect_repo_preview_advisories(&root, enabled)
+                .into_iter()
+                .map(|advisory| {
+                    (
+                        advisory.language,
+                        advisory.file_count,
+                        advisory.sample_paths,
+                        advisory.enabled,
+                    )
+                })
+                .collect()
+        };
+        assert_eq!(
+            counts(&[LanguageId::TypeScript]),
+            vec![(
+                "typescript".to_string(),
+                1,
+                vec!["src/discount.ts".to_string()],
+                true
+            )]
+        );
+        let not_enabled = counts(&[LanguageId::Rust]);
+        assert_eq!(
+            not_enabled
+                .iter()
+                .map(|(language, count, _, enabled)| (language.as_str(), *count, *enabled))
+                .collect::<Vec<_>>(),
+            vec![("typescript", 3, false)]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// #4372 negative control: with TypeScript NOT enabled, the not-enabled
+    /// disclosure still reports every routed TypeScript file, excluded or
+    /// not — it discloses presence, not analysis.
+    #[cfg(feature = "lang-typescript")]
+    #[test]
+    fn not_enabled_typescript_advisory_keeps_raw_routed_count() -> Result<(), String> {
+        let root = temp_root("issue-4372-ts-not-enabled-advisory")?;
+        let diff_file = root.join("ts.diff");
+        write(
+            &diff_file,
+            &added_file_diff(&["src/discount.ts", "vendor/lib.ts"]),
+        )?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &excluded_path_advisory_options(&root, diff_file),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+        )?;
+
+        let advisory = result
+            .preview_language_advisories
+            .iter()
+            .find(|advisory| advisory.language == "typescript")
+            .ok_or_else(|| "expected a not-enabled TypeScript advisory".to_string())?;
+        assert!(!advisory.enabled);
+        assert_eq!(advisory.file_count, 2);
+        // The skip limitation belongs to enabled adapters only; the
+        // not-enabled advisory already discloses every routed file.
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "expected an analysis outcome".to_string())?;
+        assert!(
+            !outcome
+                .limitations
+                .iter()
+                .any(|limitation| limitation.kind
+                    == AnalysisLimitationKind::LanguageScopeUnsupported),
+            "a not-enabled adapter must not emit a preview skip limitation"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// #4372 (Python arm): the Python adapter applies the same pre-count
+    /// excluded-path authority (#3672), so the enabled Python advisory must
+    /// not count a changed file under `.venv/` or `site-packages/`.
+    #[cfg(feature = "lang-python")]
+    #[test]
+    fn enabled_python_advisory_excludes_detectable_excluded_paths() -> Result<(), String> {
+        let root = temp_root("issue-4372-py-excluded-advisory")?;
+        let diff_file = root.join("py.diff");
+        let diff = [
+            "src/pricing.py",
+            ".venv/lib/site-packages/dep/mod.py",
+            "build/lib/pricing.py",
+        ]
+        .iter()
+        .map(|path| {
+            format!(
+                "diff --git a/{path} b/{path}\nindex 0000000..1111111 100644\n--- a/{path}\n\
+                 +++ b/{path}\n@@ -1,0 +1,1 @@\n+LIMIT = 1\n"
+            )
+        })
+        .collect::<String>();
+        write(&diff_file, &diff)?;
+
+        let result = run_diff_pipeline_with_oracle_policy(
+            &excluded_path_advisory_options(&root, diff_file),
+            &OraclePolicy::default(),
+            &[LanguageId::Python],
+        )?;
+
+        let advisory = result
+            .preview_language_advisories
+            .iter()
+            .find(|advisory| advisory.language == "python")
+            .ok_or_else(|| "expected an enabled Python advisory".to_string())?;
+        assert!(advisory.enabled);
+        assert_eq!(advisory.file_count, 1);
+        assert_eq!(advisory.sample_paths, vec!["src/pricing.py".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
         Ok(())
     }
 
