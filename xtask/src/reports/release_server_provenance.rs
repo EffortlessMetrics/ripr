@@ -7,7 +7,8 @@ use crate::{command_success_owned, run_owned};
 
 use super::release_server::{
     normalize_product_version, release_server_assets, release_server_target_set,
-    required_release_arg, sha256_file, validate_configured_release_server_targets,
+    release_server_target_set_digest, required_release_arg, sha256_file,
+    validate_configured_release_server_targets,
     validate_release_server_relative_path,
 };
 #[cfg(test)]
@@ -17,10 +18,17 @@ use super::release_server::sha256_bytes;
 struct FinalServerSubject {
     name: String,
     kind: String,
+    target: Option<String>,
+    source_role: String,
+    mode: u32,
     size: u64,
     sha256: String,
     source_receipt: String,
 }
+
+const ATTESTATION_ACTION: &str =
+    "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8";
+const RELEASE_WORKFLOW_PATH: &str = ".github/workflows/release-server-binaries.yml";
 
 fn final_server_inventory_path(version: &str) -> PathBuf {
     Path::new("dist").join(format!("ripr-server-final-subjects-v{version}.json"))
@@ -65,35 +73,54 @@ pub(crate) fn release_final_server_subjects(args: &[String]) -> Result<(), Strin
     for asset in &assets {
         let path = dist_dir.join(&asset.file_name);
         require_regular_release_file(&path)?;
+        let metadata = fs::metadata(&path)
+            .map_err(|err| format!("failed to stat {}: {err}", path.display()))?;
         subjects.push(FinalServerSubject {
             name: asset.file_name.clone(),
             kind: "server_archive".to_string(),
-            size: fs::metadata(&path)
-                .map_err(|err| format!("failed to stat {}: {err}", path.display()))?
-                .len(),
+            target: Some(asset.target.clone()),
+            source_role: "configured_target_archive".to_string(),
+            mode: release_file_mode(&metadata),
+            size: metadata.len(),
             sha256: sha256_file(&path)?,
             source_receipt: format!("ripr-server-v{version}-{}.receipt.json", asset.target),
         });
     }
+    let manifest_metadata = fs::metadata(&manifest_path)
+        .map_err(|err| format!("failed to stat {}: {err}", manifest_path.display()))?;
     subjects.push(FinalServerSubject {
         name: manifest_name.clone(),
         kind: "server_manifest".to_string(),
-        size: fs::metadata(&manifest_path)
-            .map_err(|err| format!("failed to stat {}: {err}", manifest_path.display()))?
-            .len(),
+        target: None,
+        source_role: "assembled_manifest".to_string(),
+        mode: release_file_mode(&manifest_metadata),
+        size: manifest_metadata.len(),
         sha256: manifest_sha,
         source_receipt: assembly_name.clone(),
     });
+    let sums_metadata = fs::metadata(&sums_path)
+        .map_err(|err| format!("failed to stat {}: {err}", sums_path.display()))?;
     subjects.push(FinalServerSubject {
         name: "SHA256SUMS".to_string(),
         kind: "checksums".to_string(),
-        size: fs::metadata(&sums_path)
-            .map_err(|err| format!("failed to stat {}: {err}", sums_path.display()))?
-            .len(),
+        target: None,
+        source_role: "aggregate_checksums".to_string(),
+        mode: release_file_mode(&sums_metadata),
+        size: sums_metadata.len(),
         sha256: sums_sha,
         source_receipt: assembly_name.clone(),
     });
     subjects.sort_by(|left, right| left.name.cmp(&right.name));
+    let expected_names = subjects
+        .iter()
+        .map(|subject| subject.name.clone())
+        .collect::<Vec<_>>();
+    let unique_names = expected_names
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    if unique_names.len() != expected_names.len() {
+        return Err("final server subject inventory contains duplicate normalized names".to_string());
+    }
 
     validate_sha256sums_subjects(&sums_path, &subjects)?;
     validate_final_server_staging_entries(dist_dir, &version, &subjects)?;
@@ -108,12 +135,24 @@ pub(crate) fn release_final_server_subjects(args: &[String]) -> Result<(), Strin
         "repository": repository,
         "version": version,
         "build_identity": build_identity,
+        "configured_target_set": {
+            "targets": release_server_target_set(),
+            "sha256": release_server_target_set_digest(),
+        },
         "assembly_receipt": {
             "path": assembly_name,
             "sha256": sha256_file(&assembly_path)?,
+            "schema_version": assembly.get("schema_version").cloned().unwrap_or(serde_json::Value::Null),
+        },
+        "subject_state": {
+            "expected": expected_names,
+            "observed": subjects.iter().map(|subject| subject.name.clone()).collect::<Vec<_>>(),
+            "missing": Vec::<String>::new(),
+            "duplicates": Vec::<String>::new(),
+            "unexpected": Vec::<String>::new(),
         },
         "subjects": subjects,
-        "subject_count": release_server_target_set().len() + 2,
+        "subject_count": subjects.len(),
         "attestation_required": true,
         "upload_eligible": false,
         "publication_mutation_attempted": false,
@@ -156,6 +195,12 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
         return Err("final server subject path count differs from inventory rows".to_string());
     }
 
+    let repository = required_github_identity("GITHUB_REPOSITORY")?;
+    let workflow_ref = required_github_identity("GITHUB_WORKFLOW_REF")?;
+    let candidate_sha = required_github_identity("GITHUB_SHA")?;
+    let git_ref = required_github_identity("GITHUB_REF")?;
+    let run_id = required_github_identity("GITHUB_RUN_ID")?;
+    let run_attempt = required_github_identity("GITHUB_RUN_ATTEMPT")?;
     let verified_text = fs::read_to_string(&verified_path)
         .map_err(|err| format!("failed to read {}: {err}", verified_path.display()))?;
     let mut verified = std::collections::BTreeMap::new();
@@ -191,6 +236,14 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
             "name": name,
             "sha256": sha,
             "verified": true,
+            "verification": {
+                "repository": repository,
+                "workflow_ref": workflow_ref,
+                "source_ref": git_ref,
+                "source_sha": candidate_sha,
+                "attestation_action": ATTESTATION_ACTION,
+                "predicate_type": "https://slsa.dev/provenance/v1",
+            },
         }));
     }
     if !verified.is_empty() {
@@ -200,12 +253,7 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
         ));
     }
 
-    let repository = required_github_identity("GITHUB_REPOSITORY")?;
-    let workflow_ref = required_github_identity("GITHUB_WORKFLOW_REF")?;
-    let candidate_sha = required_github_identity("GITHUB_SHA")?;
-    let git_ref = required_github_identity("GITHUB_REF")?;
-    let run_id = required_github_identity("GITHUB_RUN_ID")?;
-    let run_attempt = required_github_identity("GITHUB_RUN_ATTEMPT")?;
+
     let receipt = serde_json::json!({
         "schema_version": "release-server-attestation/1",
         "producer": "xtask release-final-server-attestation-receipt",
@@ -213,6 +261,9 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
         "inventory": {
             "path": inventory_path.file_name().and_then(|name| name.to_str()).unwrap_or_default(),
             "sha256": sha256_file(&inventory_path)?,
+            "configured_target_set": inventory.get("configured_target_set").cloned().unwrap_or(serde_json::Value::Null),
+            "assembly_receipt": inventory.get("assembly_receipt").cloned().unwrap_or(serde_json::Value::Null),
+            "subject_state": inventory.get("subject_state").cloned().unwrap_or(serde_json::Value::Null),
         },
         "producer_identity": {
             "repository": repository,
@@ -221,12 +272,17 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
             "git_ref": git_ref,
             "run_id": run_id,
             "run_attempt": run_attempt,
-            "attestation_action": "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
+            "attestation_action": ATTESTATION_ACTION,
+            "release_workflow_path": RELEASE_WORKFLOW_PATH,
         },
         "subjects": attested,
         "permission_requested": {
             "id_token_write": true,
             "attestations_write": true,
+        },
+        "permission_available": {
+            "id_token": github_oidc_available(),
+            "attestations_write": std::env::var("RIPR_ATTESTATION_ACTION_COMPLETED").ok().as_deref() == Some("true"),
         },
         "release_upload_eligible": true,
         "release_upload_attempted": false,
@@ -244,6 +300,28 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
         .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
     eprintln!("wrote {}", path.display());
     Ok(())
+}
+
+fn github_oidc_available() -> bool {
+    std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .is_some()
+        && std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .is_some()
+}
+
+#[cfg(unix)]
+fn release_file_mode(metadata: &fs::Metadata) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    metadata.permissions().mode() & 0o777
+}
+
+#[cfg(not(unix))]
+fn release_file_mode(_metadata: &fs::Metadata) -> u32 {
+    0
 }
 
 fn required_github_identity(name: &str) -> Result<String, String> {
@@ -420,6 +498,11 @@ pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
     let producer = attestation
         .get("producer_identity")
         .ok_or_else(|| "server attestation receipt has no producer_identity".to_string())?;
+    if producer.get("attestation_action").and_then(serde_json::Value::as_str)
+        != Some(ATTESTATION_ACTION)
+    {
+        return Err("server attestation receipt action identity is not the pinned release action".to_string());
+    }
     let expected_repository = required_github_identity("GITHUB_REPOSITORY")?;
     let expected_workflow_ref = required_github_identity("GITHUB_WORKFLOW_REF")?;
     let expected_sha = required_github_identity("GITHUB_SHA")?;
@@ -510,6 +593,9 @@ mod final_subject_tests {
         FinalServerSubject {
             name: name.to_string(),
             kind: kind.to_string(),
+            target: None,
+            source_role: "fixture".to_string(),
+            mode: 0o644,
             size: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
             sha256: sha256_bytes(bytes),
             source_receipt: "fixture.receipt.json".to_string(),
