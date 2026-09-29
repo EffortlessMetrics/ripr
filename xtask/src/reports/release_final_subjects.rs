@@ -19,6 +19,7 @@ pub(crate) fn release_server_final_subjects(args: &[String]) -> Result<(), Strin
     let _validated_receipts = validate_release_server_receipts(dist_dir, &version)?;
     let assets = release_server_assets(dist_dir, &version)?;
     validate_configured_release_server_targets(&assets)?;
+    validate_staging_control_inventory(dist_dir, &version, &assets)?;
 
     let manifest_name = format!("ripr-server-manifest-v{version}.json");
     let manifest_path = dist_dir.join(&manifest_name);
@@ -222,6 +223,60 @@ pub(crate) fn release_server_final_subjects(args: &[String]) -> Result<(), Strin
 
     eprintln!("wrote {}", json_path.display());
     eprintln!("wrote {}", markdown_path.display());
+    Ok(())
+}
+
+fn validate_staging_control_inventory(
+    dist_dir: &Path,
+    version: &str,
+    assets: &[super::release_server::ReleaseServerAsset],
+) -> Result<(), String> {
+    let mut allowed = BTreeSet::new();
+    for asset in assets {
+        allowed.insert(asset.file_name.clone());
+        allowed.insert(format!("{}.sha256", asset.file_name));
+        allowed.insert(format!(
+            "ripr-server-v{version}-{}.receipt.json",
+            asset.target
+        ));
+    }
+    allowed.insert(format!("ripr-server-manifest-v{version}.json"));
+    allowed.insert("SHA256SUMS".to_string());
+    allowed.insert(format!(
+        "ripr-server-assembly-v{version}.receipt.json"
+    ));
+
+    let mut observed = BTreeSet::new();
+    for entry in fs::read_dir(dist_dir)
+        .map_err(|err| format!("failed to read {}: {err}", dist_dir.display()))?
+    {
+        let path = entry
+            .map_err(|err| format!("failed to read staged release entry: {err}"))?
+            .path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|err| format!("failed to inspect {}: {err}", path.display()))?;
+        if !metadata.file_type().is_file() {
+            return Err(format!(
+                "non-regular entry in final server staging: {}",
+                path.display()
+            ));
+        }
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("non-UTF-8 final server staging path {}", path.display()))?;
+        if !allowed.contains(name) {
+            return Err(format!("unexpected final server staging file {name}"));
+        }
+        observed.insert(name.to_string());
+    }
+
+    if observed != allowed {
+        return Err(format!(
+            "final server staging inventory mismatch: expected {:?}, observed {:?}",
+            allowed, observed
+        ));
+    }
     Ok(())
 }
 
