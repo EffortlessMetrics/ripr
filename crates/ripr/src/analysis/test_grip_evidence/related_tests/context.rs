@@ -2933,6 +2933,7 @@ mod tests {
             literals: Vec::new(),
             source_role,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
         }

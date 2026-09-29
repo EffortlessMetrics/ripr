@@ -457,9 +457,28 @@ fn render_all_no_path_disclosure(out: &mut String, output: &CheckOutput) {
             all_no_path_count, related_tests_total
         )
     };
+    // Language bindings are tested from the other language, so when every
+    // finding names the cross-language limitation the same-language repair
+    // advice would contradict each finding's own next step. ripr has no
+    // evidence that such tests exist yet, so the advice covers adding them.
+    let cross_language_count = output
+        .findings
+        .iter()
+        .filter(|finding| {
+            finding.static_limit_kind
+                == Some(crate::domain::StaticLimitKind::CrossLanguageOracleVisibilityUnresolved)
+        })
+        .count();
+    let repair = if cross_language_count == output.findings.len() {
+        "add or check tests in the bindings' other language that observe the changed behavior"
+    } else if cross_language_count > 0 {
+        "add co-located tests that observe the changed behavior, or, for a language binding, tests in the binding's other language"
+    } else {
+        "add co-located tests that observe the changed behavior"
+    };
     let note = format!(
-        "Note: ripr found no static test path for any of the {} changed expression(s) in this diff. {} This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, add co-located tests that observe the changed behavior.",
-        all_no_path_count, scope_summary
+        "Note: ripr found no static test path for any of the {} changed expression(s) in this diff. {} This is not a coverage assessment. A test may already exercise these changes through macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if none does, {}.",
+        all_no_path_count, scope_summary, repair
     );
     out.push('\n');
     out.push_str(&wrap_human_prose(&note, "", "  "));
@@ -3671,6 +3690,73 @@ mod tests {
                 "analyzed: 1 changed Rust file(s), 2 changed expression(s), and 0 statically linked related"
             ),
             "expected scope-count disclosure; got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn all_no_path_disclosure_for_bindings_does_not_presume_external_tests_exist() {
+        let cross_language = || {
+            let mut finding = unknown_finding();
+            finding.static_limit_kind =
+                Some(crate::domain::StaticLimitKind::CrossLanguageOracleVisibilityUnresolved);
+            finding
+        };
+        let output_with = |findings: Vec<Finding>| CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                changed_rust_files: 1,
+                probes: 2,
+                findings: 2,
+                no_static_path: 2,
+                ..Summary::default()
+            },
+            findings,
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+        let flat = |output: &CheckOutput| {
+            render(output)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+
+        let bindings = flat(&output_with(vec![cross_language(), cross_language()]));
+        assert!(
+            bindings.contains(
+                "if none does, add or check tests in the bindings' other language that observe the changed behavior."
+            ),
+            "got:\n{bindings}"
+        );
+        assert!(
+            !bindings.contains("add co-located tests"),
+            "got:\n{bindings}"
+        );
+
+        // A mixed diff names both repairs, so neither finding's own next
+        // step is contradicted.
+        let mixed = flat(&output_with(vec![cross_language(), unknown_finding()]));
+        assert!(
+            mixed.contains(
+                "if none does, add co-located tests that observe the changed behavior, or, for a language binding, tests in the binding's other language."
+            ),
+            "got:\n{mixed}"
+        );
+
+        let plain = flat(&output_with(vec![unknown_finding(), unknown_finding()]));
+        assert!(
+            plain.contains("if none does, add co-located tests that observe the changed behavior."),
+            "got:\n{plain}"
         );
     }
 

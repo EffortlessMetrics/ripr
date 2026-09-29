@@ -602,6 +602,13 @@ pub struct FunctionFact {
     /// without re-reading the file. The lexical fallback path
     /// populates this as empty.
     pub attrs: Vec<String>,
+    /// Attribute syntax lines on the `impl` block that encloses this
+    /// function, when it is an associated function (`#[pymethods]`,
+    /// `#[wasm_bindgen]`, `#[napi]`). Kept apart from `attrs` so test and
+    /// harness detection still read only the function's own attributes.
+    /// Parser-backed only — the lexical fallback leaves this empty.
+    #[serde(default)]
+    pub impl_attrs: Vec<String>,
     /// Names of `fn` items nested inside this function's body (#3727 Slice
     /// A), sorted and deduplicated. A nested `fn <callee>` item is hoisted
     /// and defeats whole-body shadow decisions (see

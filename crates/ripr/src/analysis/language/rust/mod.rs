@@ -690,9 +690,7 @@ fn apply_probe_and_oracle_limits(
     probes::apply_rust_value_propagation_limit(finding, probe, index);
     oracles::apply_wrapper_error_binding_limit(finding, probe);
     probes::attach_changed_binding_predicate_evidence(finding, binding_relation);
-    if let Some(limit) = oracles::cross_language_limit_kind(probe, index, &finding.class) {
-        finding.static_limit_kind = Some(limit);
-    }
+    oracles::apply_cross_language_limit(finding, probe, index);
 }
 
 fn apply_rust_no_static_path_limit(finding: &mut Finding, probe: &Probe, index: &RustIndex) {
@@ -4663,6 +4661,7 @@ fn absent_delimiter_boundary_returns_head() {
             literals: vec![],
             source_role: FunctionSourceRole::Production,
             attrs: vec![],
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
         };

@@ -2592,6 +2592,7 @@ fn demote_harness_target_functions_drops_differently_named_test_facts()
         literals: Vec::new(),
         source_role: FunctionSourceRole::TestAttribute,
         attrs: vec!["#[test]".to_string()],
+        impl_attrs: Vec::new(),
         nested_fn_names: Vec::new(),
         let_bindings: Vec::new(),
     };

@@ -440,7 +440,9 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["python_repair_card", "canonical_gap_id"],
             &["typescript_repair_packet", "canonical_gap_id"],
         ],
-    )?;
+    )
+    .map(str::to_string)
+    .or_else(|| typescript_finding_gap_id(finding))?;
     let canonical_gap = finding
         .get("canonical_gap")
         .filter(|value| value.is_object());
@@ -475,7 +477,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
     let missing_discriminators = missing_discriminator_strings(finding);
 
     Some(StaticSeamRecord {
-        seam_id: canonical_gap_id.to_string(),
+        seam_id: canonical_gap_id,
         seam_kind: canonical_gap
             .and_then(|gap| optional_json_string(Some(gap), "behavior_kind"))
             .unwrap_or_else(|| seam_kind.to_string()),
@@ -491,6 +493,29 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
         evidence_path,
         related_tests_total,
     })
+}
+
+/// A TypeScript finding carries its canonical gap id only inside
+/// `typescript_repair_packet`, which is emitted only while the finding is
+/// repair-ready. A gap that a new test closed reads `exposed` and has no
+/// packet, so without this fallback it would drop out of the after snapshot
+/// and read as removed instead of closed (#4690). The packet derives the id
+/// from the finding id alone (`typescript_canonical_gap_id`), so deriving it
+/// here yields the same id on both sides of a comparison. An
+/// unsupported-syntax diagnostic names no analyzed behavior, so it is never
+/// promoted to a comparable gap.
+fn typescript_finding_gap_id(finding: &Value) -> Option<String> {
+    if finding.get("language").and_then(Value::as_str) != Some("typescript") {
+        return None;
+    }
+    if finding.get("static_limit_kind").and_then(Value::as_str) == Some("unsupported_syntax") {
+        return None;
+    }
+    let id = finding
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| id.starts_with("probe:") && !id.contains("_unsupported_syntax:"))?;
+    Some(crate::output::typescript_packet_projection::typescript_canonical_gap_id(id))
 }
 
 fn build_targeted_test_outcome_report(
@@ -1958,6 +1983,77 @@ mod tests {
         assert_eq!(movement.gap_movement, "closed");
         assert_eq!(movement.evidence_source, "check_output_finding");
         Ok(())
+    }
+
+    fn typescript_check_json(classification: &str, packet: bool) -> String {
+        let id = "probe:src_pricing.ts:typescript_preview:17445ecf";
+        let mut finding = serde_json::json!({
+            "id": id,
+            "classification": classification,
+            "probe": {"family": "predicate", "file": "src/pricing.ts", "line": 4},
+            "related_tests": [],
+            "language": "typescript",
+            "language_status": "preview"
+        });
+        if packet {
+            finding["typescript_repair_packet"] = serde_json::json!({
+                "canonical_gap_id": "gap:typescript:typescript_preview:17445ecf",
+                "repair_kind": "AddBoundaryAssertion"
+            });
+        }
+        serde_json::json!({"schema_version": "0.2", "tool": "ripr", "findings": [finding]})
+            .to_string()
+    }
+
+    #[test]
+    fn typescript_gap_closed_without_a_packet_reads_as_moved_not_removed() -> Result<(), String> {
+        // #4690: `ripr check` emits `typescript_repair_packet` only while the
+        // finding is repair-ready, so the exposed finding after the new test
+        // carries no packet. It must still match the packet's id.
+        for before_has_packet in [true, false] {
+            let report = targeted_test_outcome_report_from_json(
+                &typescript_check_json("weakly_exposed", before_has_packet),
+                &typescript_check_json("exposed", false),
+                "before-check.json".to_string(),
+                "after-check.json".to_string(),
+            )?;
+            assert!(
+                report.removed.is_empty() && report.new.is_empty(),
+                "packet before: {before_has_packet}; removed {:?}, new {:?}",
+                report.removed,
+                report.new
+            );
+            assert_eq!(report.moved.len(), 1);
+            let movement = &report.moved[0];
+            assert_eq!(
+                movement.seam_id,
+                "gap:typescript:typescript_preview:17445ecf"
+            );
+            assert_eq!(movement.gap_movement, "closed");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_unsupported_syntax_diagnostic_is_not_a_comparable_gap() {
+        let diagnostic = serde_json::json!({
+            "id": "probe:src_price.ts:typescript_preview_unsupported_syntax:abcd1234",
+            "classification": "static_unknown",
+            "static_limit_kind": "unsupported_syntax",
+            "language": "typescript"
+        });
+        assert_eq!(typescript_finding_gap_id(&diagnostic), None);
+        let mut unlabeled = diagnostic.clone();
+        unlabeled["static_limit_kind"] = Value::Null;
+        assert_eq!(typescript_finding_gap_id(&unlabeled), None);
+        let predicate = serde_json::json!({
+            "id": "probe:src_price.ts:typescript_preview:abcd1234",
+            "language": "typescript"
+        });
+        assert_eq!(
+            typescript_finding_gap_id(&predicate).as_deref(),
+            Some("gap:typescript:typescript_preview:abcd1234")
+        );
     }
 
     #[test]

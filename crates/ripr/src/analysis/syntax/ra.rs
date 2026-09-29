@@ -265,6 +265,7 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             literals: literals.clone(),
             source_role,
             attrs: attrs.clone(),
+            impl_attrs: collect_impl_attr_syntax(&function),
             nested_fn_names: nested_fn_names.clone(),
             let_bindings: let_bindings.clone(),
         };
@@ -782,6 +783,22 @@ fn collect_attr_syntax(function: &ast::Fn) -> Vec<String> {
         .attrs()
         .map(|attr| attr.syntax().text().to_string())
         .collect()
+}
+
+/// Attributes on the `impl` block directly enclosing `function`, empty for a
+/// free function or a trait body.
+fn collect_impl_attr_syntax(function: &ast::Fn) -> Vec<String> {
+    function
+        .syntax()
+        .parent()
+        .and_then(|list| list.parent())
+        .and_then(ast::Impl::cast)
+        .map(|item| {
+            item.attrs()
+                .map(|attr| attr.syntax().text().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn extract_parser_probe_shapes(
@@ -1504,6 +1521,37 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn impl_block_attrs_are_kept_apart_from_the_method_attrs() -> Result<(), String> {
+        let source = r#"
+#[pymethods]
+impl Ledger {
+    #[getter]
+    pub fn charge(&self) -> u64 { 1 }
+}
+
+#[pyfunction]
+pub fn fee() -> u64 { 5 }
+"#;
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        let function = |name: &str| {
+            facts
+                .functions
+                .iter()
+                .find(|function| function.name == name)
+        };
+        let charge = function("charge").ok_or("charge not summarized")?;
+        assert_eq!(charge.attrs, vec!["#[getter]".to_string()]);
+        assert_eq!(charge.impl_attrs, vec!["#[pymethods]".to_string()]);
+        let fee = function("fee").ok_or("fee not summarized")?;
+        assert_eq!(fee.attrs, vec!["#[pyfunction]".to_string()]);
+        assert!(
+            fee.impl_attrs.is_empty(),
+            "a free function has no impl attributes"
+        );
+        Ok(())
+    }
 
     #[test]
     #[cfg(unix)]

@@ -470,7 +470,11 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// `1.10` -> `1.11`: a leading UTF-8 byte-order mark is dropped before
 /// parsing. A warm pre-bump hit for a BOM file would serve facts parsed with
 /// the stray `U+FEFF`, where an item on line 1 has no owner.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.11";
+///
+/// `1.11` -> `1.12`: `FunctionFact.impl_attrs` (the enclosing `impl` block's
+/// attributes). A warm pre-bump hit would deserialize it empty, so a
+/// `#[pymethods]` method would silently lose its cross-language limitation.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.12";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -3394,7 +3398,8 @@ mod tests {
         // retiring the lexical scanners' defeats.
         // 1.8 -> 1.9: the Rust nesting budget moves over-deep sources to
         // lexical fallback, so a warm pre-bump parser-backed hit must miss.
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.11");
+        // 1.11 -> 1.12: impl_attrs carries the cross-language FFI marker.
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.12");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes

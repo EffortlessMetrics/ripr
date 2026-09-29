@@ -3452,6 +3452,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         literals: Vec::new(),
         source_role: FunctionSourceRole::Production,
         attrs: Vec::new(),
+        impl_attrs: Vec::new(),
         nested_fn_names: Vec::new(),
         let_bindings: Vec::new(),
     };
@@ -12359,6 +12360,7 @@ fn closure_boundary_operand_route_ignores_comment_only_closure_pattern() {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
         };
@@ -13411,6 +13413,7 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 literals: Vec::new(),
                 source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                impl_attrs: Vec::new(),
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
             }, FunctionSummary {
@@ -13429,6 +13432,7 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 literals: Vec::new(),
                 source_role: FunctionSourceRole::Production,
                 attrs: Vec::new(),
+                impl_attrs: Vec::new(),
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
             }],
