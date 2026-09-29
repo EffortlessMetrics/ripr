@@ -68,6 +68,8 @@ pub(crate) enum XtaskCommand {
     CiRoutedRustResult(Vec<String>),
     ReleaseServerArchive(Vec<String>),
     ReleaseServerManifest(Vec<String>),
+    ReleaseFinalServerSubjects(Vec<String>),
+    ReleaseFinalServerAttestationReceipt(Vec<String>),
     ReleaseDistributionCatalog(Vec<String>),
     ReleaseUploadAssets(Vec<String>),
     TargetedTestOutcome(Vec<String>),
@@ -231,6 +233,10 @@ impl XtaskCommand {
             "ci-routed-rust-result" => Self::CiRoutedRustResult(rest),
             "release-server-archive" => Self::ReleaseServerArchive(rest),
             "release-server-manifest" => Self::ReleaseServerManifest(rest),
+            "release-final-server-subjects" => Self::ReleaseFinalServerSubjects(rest),
+            "release-final-server-attestation-receipt" => {
+                Self::ReleaseFinalServerAttestationReceipt(rest)
+            }
             "release-distribution-catalog" => Self::ReleaseDistributionCatalog(rest),
             "release-upload-assets" => Self::ReleaseUploadAssets(rest),
             "targeted-test-outcome" => Self::TargetedTestOutcome(rest),
@@ -449,6 +455,8 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-distribution-catalog --product-version <version> --channel <stable|rc> --stable-tag <tag> [--rc-tag <tag>] --manifest <path> --repository <owner/repo> [--out <path>]",
         "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
         "release-server-manifest --version <version> --repository <owner/repo>",
+        "release-final-server-subjects --version <version> --repository <owner/repo>",
+        "release-final-server-attestation-receipt --version <version> --verified-subjects <path>",
         "release-upload-assets --version <version>",
         "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
         "source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>",
