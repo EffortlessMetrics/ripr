@@ -7,9 +7,11 @@ use crate::{command_success_owned, run_owned};
 
 use super::release_server::{
     normalize_product_version, release_server_assets, release_server_target_set,
-    required_release_arg, sha256_bytes, sha256_file, validate_configured_release_server_targets,
+    required_release_arg, sha256_file, validate_configured_release_server_targets,
     validate_release_server_relative_path,
 };
+#[cfg(test)]
+use super::release_server::sha256_bytes;
 
 #[derive(Debug, Clone, Serialize)]
 struct FinalServerSubject {
@@ -149,6 +151,10 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
         .get("subjects")
         .and_then(serde_json::Value::as_array)
         .ok_or_else(|| "final server subject inventory has no subjects".to_string())?;
+    let subject_paths = final_server_subject_paths(Path::new("dist"), &version)?;
+    if subject_paths.len() != rows.len() {
+        return Err("final server subject path count differs from inventory rows".to_string());
+    }
 
     let verified_text = fs::read_to_string(&verified_path)
         .map_err(|err| format!("failed to read {}: {err}", verified_path.display()))?;
@@ -415,12 +421,20 @@ pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
         .get("producer_identity")
         .ok_or_else(|| "server attestation receipt has no producer_identity".to_string())?;
     let expected_repository = required_github_identity("GITHUB_REPOSITORY")?;
+    let expected_workflow_ref = required_github_identity("GITHUB_WORKFLOW_REF")?;
     let expected_sha = required_github_identity("GITHUB_SHA")?;
     let expected_ref = required_github_identity("GITHUB_REF")?;
+    let expected_run_id = required_github_identity("GITHUB_RUN_ID")?;
+    let expected_run_attempt = required_github_identity("GITHUB_RUN_ATTEMPT")?;
     if producer.get("repository").and_then(serde_json::Value::as_str)
         != Some(expected_repository.as_str())
     {
         return Err("server attestation receipt repository differs from the upload workflow".to_string());
+    }
+    if producer.get("workflow_ref").and_then(serde_json::Value::as_str)
+        != Some(expected_workflow_ref.as_str())
+    {
+        return Err("server attestation receipt workflow ref differs from the upload workflow".to_string());
     }
     if producer.get("candidate_sha").and_then(serde_json::Value::as_str)
         != Some(expected_sha.as_str())
@@ -431,6 +445,16 @@ pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
         != Some(expected_ref.as_str())
     {
         return Err("server attestation receipt ref differs from the upload workflow".to_string());
+    }
+    if producer.get("run_id").and_then(serde_json::Value::as_str)
+        != Some(expected_run_id.as_str())
+    {
+        return Err("server attestation receipt run ID differs from the upload workflow".to_string());
+    }
+    if producer.get("run_attempt").and_then(serde_json::Value::as_str)
+        != Some(expected_run_attempt.as_str())
+    {
+        return Err("server attestation receipt run attempt differs from the upload workflow".to_string());
     }
     let tag = format!("v{version}");
     if !command_success_owned(
@@ -486,7 +510,7 @@ mod final_subject_tests {
         FinalServerSubject {
             name: name.to_string(),
             kind: kind.to_string(),
-            size: bytes.len() as u64,
+            size: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
             sha256: sha256_bytes(bytes),
             source_receipt: "fixture.receipt.json".to_string(),
         }
