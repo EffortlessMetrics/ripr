@@ -5,7 +5,7 @@ see [installation](QUICKSTART.md#installation) for published and source builds.
 
 | Task | Command | Result |
 | --- | --- | --- |
-| Inspect one change | `ripr check` | Static findings, or an explicit no-action or limited result. |
+| Inspect one change | `ripr check` | Static findings, or an explicit no-action or limited result. Analysis stages go to stderr; `--quiet` suppresses them. Machine stdout is unchanged. |
 | Inspect a finding | The `ripr explain` command printed by `check` | Evidence for that finding, using the same root, diff, mode, and ID. |
 | Hand off a finding | The `ripr context` command printed by `check` | Context for a human or coding agent. |
 | Explore the repository | `ripr pilot --root .` | Broader analysis, pilot reports, and a supported next action. |

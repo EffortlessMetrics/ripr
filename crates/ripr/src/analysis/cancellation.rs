@@ -171,6 +171,12 @@ pub(crate) fn remaining_budget() -> Option<Duration> {
     })
 }
 
+/// Pure query for the active token's recorded abort. Unlike [`checkpoint`],
+/// this never expires a budget or writes a deadline reason.
+pub(crate) fn current_abort_kind() -> Option<AnalysisAbortKind> {
+    CURRENT_TOKEN.with(|slot| slot.borrow().as_ref().and_then(|token| token.abort_kind()))
+}
+
 pub(crate) fn is_cancellation_error(error: &str) -> bool {
     error.starts_with("analysis cancelled:")
 }

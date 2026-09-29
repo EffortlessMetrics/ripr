@@ -518,6 +518,12 @@ mod tests {
         assert!(CHECK_HELP.contains("needs test-efficiency"));
         assert!(CHECK_HELP.contains("docs/BADGE_ADOPTION.md"));
         assert!(CHECK_HELP.contains("--mode ready --json"));
+        assert!(CHECK_HELP.contains("--quiet"));
+        assert!(CHECK_HELP.contains("ripr progress:"));
+        assert!(CHECK_HELP.contains("percentage or ETA"));
+        assert!(CHECK_HELP.contains("does not mean analysis is faster"));
+        assert!(CHECK_HELP.contains("json, sarif, github"));
+        assert!(!CHECK_HELP.contains("json, sarif, markdown"));
         assert!(DIFF_HELP.contains("Usage: ripr diff"));
         assert!(DIFF_HELP.contains("full-repo-limited"));
     }
@@ -1566,7 +1572,7 @@ mod tests {
             (
                 "check",
                 CHECK_HELP,
-                &["--base", "--diff", "--mode", "--json"],
+                &["--base", "--diff", "--mode", "--json", "--quiet"],
             ),
             (
                 "explain",

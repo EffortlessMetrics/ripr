@@ -1,0 +1,60 @@
+schema_version = "2.0"
+id = "ripr.slice.cli-analysis-progress-stderr.v1"
+generation = 1
+
+source_issue = "issue:4810"
+design_reference = "RIPR-SPEC-0185"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Projects producer-owned check analysis stages and throttled heartbeats onto
+CLI stderr without changing machine stdout. Consumes the closed
+loading_input/analyzing/building_output/completed|cancelled|failed contract
+from PR #4829 rather than inventing a rival producer. Does not map LSP
+work-done progress, close #2608, absorb #4811, invent percentages or a
+second stage vocabulary, or claim faster analysis.
+"""
+
+non_goals = [
+  "LSP workDoneProgress mapping (#4811)",
+  "closing parent #2608",
+  "analyzer optimization or latency envelopes",
+  "new env var or config-file progress authority",
+  "per-file or per-probe event flood",
+  "invented percentages, ETAs, or a second stage vocabulary",
+  "support-tier or release-scope auto-expand",
+]
+
+return_conditions = [
+  "Return to root if LSP progress is changed or #2608 is closed.",
+  "Return to root if machine stdout for json/sarif/markdown changes.",
+  "Return to root if progress lines invent percentages or a second stage vocabulary.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:analysis-progress-stderr",
+  "seam:ripr:app:check-progress-events",
+]
+
+shared_seams = [
+  "seam:ripr:app:check-workspace",
+  "seam:ripr:cli:check-command",
+]
+
+forbidden_seams = [
+  "seam:ripr:lsp:work-done-progress",
+  "seam:ripr:release:support-tier",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0185"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

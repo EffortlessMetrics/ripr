@@ -63,6 +63,13 @@ No `ripr.toml` is required. The development CLI prints a summary and a bounded
 preventing useful guidance. Read the changed behavior, related test, and
 suggested next test. No findings does not mean the tests are complete.
 
+While analysis is running, `ripr check` writes producer stages to **stderr**
+as `ripr progress: <stage> [<scope>]`, with throttled heartbeats if a stage
+stays active. JSON, SARIF, and other machine stdout stay byte-clean. Unknown
+totals never become a percentage or ETA. Progress does not mean analysis is
+faster or that the command will succeed. `--quiet` suppresses the progress
+stream; it does not change findings or exit codes.
+
 When a finding is selected, copy its printed `ripr explain` command to inspect
 the evidence, or its `ripr context` command for an agent handoff. Those commands
 retain the root, diff selection, mode, and finding ID. Do not substitute an ID

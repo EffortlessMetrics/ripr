@@ -199,6 +199,20 @@ Options:
                            error names git_invocation_timeout. 0 disables
                            the deadline. Default: 300 (5 minutes). Also
                            settable via RIPR_GIT_TIMEOUT env var.
+  --quiet                  Suppress analysis progress and heartbeats on
+                           stderr. Does not change machine stdout, exit
+                           codes, or error reporting.
+
+Progress:
+  Long-running check analysis writes producer stages to stderr as
+  `ripr progress: <stage> [<scope>]` and, while a stage stays active,
+  throttled `still active after <elapsed class>` heartbeats. Non-TTY
+  / CI output is newline-delimited with no control sequences. A TTY
+  may reuse one line and stays silent for sub-threshold flashes.
+  Machine formats (json, sarif, github) keep stdout byte-clean;
+  they do not disable stderr progress. Unknown totals never become a
+  percentage or ETA. Progress does not mean analysis is faster or
+  that the command will succeed. `--quiet` turns this stream off.
 
 Environment variables:
   RIPR_MAX_DIFF_CHANGED_RUST_LINES  Maximum added plus removed Rust diff lines

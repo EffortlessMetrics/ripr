@@ -11,7 +11,11 @@ The CLI has two intentional output conventions:
   their primary result to stdout. `check`, `diff`, and `context` can emit
   machine-readable JSON; `explain` emits its human explanation. Warnings and
   diagnostics go to stderr, so scripts can capture stdout without filtering
-  status text.
+  status text. `ripr check` also writes bounded producer-owned analysis
+  stages to stderr (`ripr progress: <stage> [<scope>]`). That stream is not
+  part of the JSON/SARIF/GitHub stdout contract, carries no percentage or
+  ETA when totals are unknown, and is suppressed by `--quiet`. It does not
+  mean analysis is faster or that the command will succeed.
 - The gate-family commands write reviewed artifacts to the paths shown by their
   help text and print human `Wrote ...` status lines to stdout. `gate evaluate`,
   `baseline diff`, and `zero status` support their documented JSON/Markdown

@@ -33,6 +33,12 @@ are scoped or reviewed.
 - Identity: `cargo xtask check-identity-registry` enforces one governed
   identifier catalog and generated `docs/identity` table. Vocabulary and
   compatibility map only; it does not migrate consumers (#4804).
+- CLI: `ripr check` projects producer-owned analysis stages and throttled
+  heartbeats onto stderr (`ripr progress: <stage> [<scope>]`) without changing
+  JSON, SARIF, or other machine stdout. A TTY stays silent under 250ms, then
+  reveals the active stage and heartbeats; producer `completed` is held until
+  the command actually succeeds. Unknown totals stay unknown; `--quiet`
+  suppresses the stream. This does not make analysis faster (#4810).
 
 ### Fixed
 

@@ -9925,3 +9925,60 @@ metrics = [
   "public_command_catalog_entries",
   "public_command_catalog_two_way_violations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0185"
+name = "CLI analysis progress on stderr"
+spec = "docs/specs/RIPR-SPEC-0185-cli-analysis-progress-stderr.md"
+tests = [
+  "crates/ripr/src/app/progress.rs::tests::check_progress_reports_real_boundaries_without_invented_totals",
+  "crates/ripr/src/app/progress.rs::tests::missing_diff_fails_after_loading_input_without_false_completion",
+  "crates/ripr/src/app/progress.rs::tests::progress_sink_panic_cannot_change_analysis_result",
+  "crates/ripr/src/app/progress.rs::tests::no_sink_path_stays_available",
+  "crates/ripr/src/app/progress.rs::tests::cancelled_token_through_check_emits_cancelled_not_completed",
+  "crates/ripr/src/cli/progress.rs::tests::non_tty_stage_lines_are_newline_delimited_and_path_free",
+  "crates/ripr/src/cli/progress.rs::tests::unknown_totals_never_render_as_percentage_or_eta",
+  "crates/ripr/src/cli/progress.rs::tests::tty_short_run_does_not_flash_completed",
+  "crates/ripr/src/cli/progress.rs::tests::tty_short_failure_still_projects_failed",
+  "crates/ripr/src/cli/progress.rs::tests::tty_and_non_tty_share_stage_tokens",
+  "crates/ripr/src/cli/progress.rs::tests::failure_terminal_never_emits_completed",
+  "crates/ripr/src/cli/progress.rs::tests::cancelled_terminal_never_emits_completed",
+  "crates/ripr/src/cli/progress.rs::tests::projection_tokens_cover_the_closed_producer_vocabulary",
+  "crates/ripr/src/cli/progress.rs::tests::rendering_failure_is_isolated",
+  "crates/ripr/src/cli/progress.rs::tests::heartbeat_is_throttled_and_bounded",
+  "crates/ripr/src/cli/progress.rs::tests::tty_suppressed_stage_becomes_visible_once_min_visible_elapses",
+  "crates/ripr/src/cli/progress.rs::tests::tty_overwrite_clears_a_longer_previous_line",
+  "crates/ripr/src/cli/progress.rs::tests::tty_overwrite_pads_to_the_longest_prior_line",
+  "crates/ripr/src/cli/progress.rs::tests::held_completed_waits_for_command_commit",
+  "crates/ripr/src/cli/progress.rs::tests::drop_without_commit_converts_held_completed_to_failed",
+  "crates/ripr/src/cli/progress.rs::tests::unsafe_constructed_lines_are_rejected",
+  "crates/ripr/src/cli/help.rs::tests::check_help_mentions_repo_badge_formats_and_examples",
+  "crates/ripr/tests/cli_progress.rs::check_json_stdout_parses_while_progress_stays_on_stderr",
+  "crates/ripr/tests/cli_progress.rs::check_quiet_keeps_json_stdout_byte_identical_and_drops_progress",
+  "crates/ripr/tests/cli_progress.rs::check_sarif_stdout_is_unchanged_by_progress",
+  "crates/ripr/tests/cli_progress.rs::check_github_stdout_is_unchanged_by_progress",
+  "crates/ripr/tests/cli_progress.rs::check_markdown_stdout_is_unchanged_by_progress",
+  "crates/ripr/tests/cli_progress.rs::check_worktree_projects_worktree_scope_on_stderr",
+  "crates/ripr/tests/cli_progress.rs::check_progress_failure_emits_failed_not_completed",
+  "crates/ripr/tests/cli_progress.rs::check_quiet_failure_keeps_errors_and_drops_progress",
+  "crates/ripr/tests/cli_progress.rs::check_unwritable_artifact_projects_failed_not_completed",
+  "crates/ripr/tests/cli_progress.rs::check_help_does_not_spray_progress",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/app/progress.rs",
+  "crates/ripr/src/app/check.rs",
+  "crates/ripr/src/cli/progress.rs",
+  "crates/ripr/src/cli/commands/check.rs",
+  "crates/ripr/src/cli/help/core.rs",
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/QUICKSTART.md",
+  "docs/COMMAND_HIERARCHY.md",
+]
+metrics = [
+  "cli_progress_stage_events",
+  "cli_progress_heartbeats",
+]
