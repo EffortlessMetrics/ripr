@@ -36,7 +36,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/python_same_stem_sibling_owner_not_related/input --diff fixtures/python_same_stem_sibling_owner_not_related/diff.patch --mode fast --at probe:pricing.py:python_preview:2267e505
 
 Hidden:
-  3 lower-priority finding(s) omitted from default human output.
+  3 lower-priority finding(s) omitted from default human output (Python preview: 3).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

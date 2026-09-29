@@ -30,7 +30,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast --at probe:src_guards.ts:typescript_preview:7098c2ff
 
 Hidden:
-  2 lower-priority finding(s) omitted from default human output.
+  2 lower-priority finding(s) omitted from default human output (TypeScript preview: 2).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

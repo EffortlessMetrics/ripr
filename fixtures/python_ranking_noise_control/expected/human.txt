@@ -36,7 +36,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/python_ranking_noise_control/input --diff fixtures/python_ranking_noise_control/diff.patch --mode fast --at probe:src_c_discount.py:python_preview:91995184
 
 Hidden:
-  3 lower-priority finding(s) omitted from default human output.
+  3 lower-priority finding(s) omitted from default human output (Python preview: 3).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

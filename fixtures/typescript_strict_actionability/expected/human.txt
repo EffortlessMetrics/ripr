@@ -31,7 +31,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/typescript_strict_actionability/input --diff fixtures/typescript_strict_actionability/diff.patch --mode fast --at probe:src_observed.ts:typescript_preview:d09a8abb
 
 Hidden:
-  2 lower-priority finding(s) omitted from default human output.
+  2 lower-priority finding(s) omitted from default human output (TypeScript preview: 2).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

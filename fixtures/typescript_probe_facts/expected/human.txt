@@ -31,7 +31,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/typescript_probe_facts/input --diff fixtures/typescript_probe_facts/diff.patch --mode fast --at probe:src_ambiguous.ts:typescript_preview:ba5968cd
 
 Hidden:
-  9 lower-priority finding(s) omitted from default human output.
+  9 lower-priority finding(s) omitted from default human output (TypeScript preview: 7, JavaScript preview: 2).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

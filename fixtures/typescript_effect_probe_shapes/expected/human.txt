@@ -31,7 +31,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/typescript_effect_probe_shapes/input --diff fixtures/typescript_effect_probe_shapes/diff.patch --mode fast --at probe:src_profile.ts:typescript_preview:7c5ce045
 
 Hidden:
-  1 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output (TypeScript preview: 1).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

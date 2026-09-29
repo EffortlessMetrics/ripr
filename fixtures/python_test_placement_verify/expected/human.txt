@@ -36,7 +36,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/python_test_placement_verify/input --diff fixtures/python_test_placement_verify/diff.patch --mode fast --at probe:src_pricing.py:python_preview:b6c16437
 
 Hidden:
-  1 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output (Python preview: 1).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

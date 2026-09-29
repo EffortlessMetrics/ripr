@@ -11,7 +11,7 @@ use super::sections::{one_line, render_finding_digest_with_config};
 pub(crate) struct HumanTriage<'a> {
     pub(crate) state: HumanTriageState,
     pub(crate) selected: Option<&'a Finding>,
-    pub(crate) omitted_findings: usize,
+    pub(crate) omitted: Vec<&'a Finding>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -51,12 +51,12 @@ pub(crate) fn select_human_triage<'a>(
         .collect();
     let mut selected = None;
     let mut visible_findings: usize = 0;
-    let mut considered_findings: usize = 0;
+    let mut considered: Vec<&'a Finding> = Vec::new();
     for finding in &output.findings {
         if suppressed_ids.contains(finding.id.as_str()) {
             continue;
         }
-        considered_findings += 1;
+        considered.push(finding);
         // Candidate-actionable eligibility (#3281): "Start here" names a
         // current candidate-side obligation. Base-side evidence and
         // unresolved subjects remain counted findings (the hidden-count
@@ -94,7 +94,10 @@ pub(crate) fn select_human_triage<'a>(
     HumanTriage {
         state,
         selected,
-        omitted_findings: considered_findings.saturating_sub(usize::from(selected.is_some())),
+        omitted: considered
+            .into_iter()
+            .filter(|finding| selected.is_none_or(|chosen| chosen.id != finding.id))
+            .collect(),
     }
 }
 
@@ -199,17 +202,66 @@ pub(crate) fn render_human_triage(
     // the dominant case in fixture output. When nothing is omitted, keep only the
     // format pointers under a `More:` heading; the count line stays for the real
     // truncation case, where it is the whole point of the section.
-    if triage.omitted_findings == 0 {
+    if triage.omitted.is_empty() {
         out.push_str("\nMore:\n");
     } else {
         out.push_str("\nHidden:\n");
         out.push_str(&format!(
-            "  {} lower-priority finding(s) omitted from default human output.\n",
-            triage.omitted_findings
+            "  {} lower-priority finding(s) omitted from default human output{}.\n",
+            triage.omitted.len(),
+            omitted_identity_suffix(&triage.omitted)
         ));
     }
     out.push_str("  Full evidence: rerun with --format human-full\n");
     out.push_str("  Machine data: rerun with --format json\n\n");
+}
+
+/// #4395(b): the Hidden count line names omitted preview / non-Rust identity
+/// from fields already on those findings. This is not the #2615 availability
+/// projection. Rust-only remainder stays the count line alone.
+fn omitted_identity_suffix(omitted: &[&Finding]) -> String {
+    match omitted_language_identity(omitted) {
+        Some(identity) => format!(" ({identity})"),
+        None => String::new(),
+    }
+}
+
+fn omitted_language_identity(omitted: &[&Finding]) -> Option<String> {
+    if !omitted.iter().any(|finding| {
+        is_preview_limited(finding) || finding.language.is_some_and(|id| id != LanguageId::Rust)
+    }) {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    for language in LanguageId::ALL {
+        let count = omitted
+            .iter()
+            .filter(|finding| finding.language == Some(language))
+            .count();
+        if count == 0 {
+            continue;
+        }
+        let preview = omitted
+            .iter()
+            .any(|finding| finding.language == Some(language) && is_preview_limited(finding));
+        if preview {
+            parts.push(format!("{} preview: {count}", language.display_name()));
+        } else {
+            parts.push(format!("{}: {count}", language.display_name()));
+        }
+    }
+    let unlabeled_preview = omitted
+        .iter()
+        .filter(|finding| finding.language.is_none() && is_preview_limited(finding))
+        .count();
+    if unlabeled_preview > 0 {
+        parts.push(format!("preview-language: {unlabeled_preview}"));
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(parts.join(", "))
 }
 
 /// A complete (validator-approved) preview packet: name the packet's own

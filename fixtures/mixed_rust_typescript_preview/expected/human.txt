@@ -29,7 +29,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/mixed_rust_typescript_preview/input --diff fixtures/mixed_rust_typescript_preview/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
 
 Hidden:
-  1 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output (TypeScript preview: 1).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

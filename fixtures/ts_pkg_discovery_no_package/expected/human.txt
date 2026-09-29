@@ -31,7 +31,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/ts_pkg_discovery_no_package/input --diff fixtures/ts_pkg_discovery_no_package/diff.patch --mode fast --at probe:src_utils.ts:typescript_preview:a1ef3b36
 
 Hidden:
-  1 lower-priority finding(s) omitted from default human output.
+  1 lower-priority finding(s) omitted from default human output (TypeScript preview: 1).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

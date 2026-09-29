@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Default human `Hidden:` output names the language and preview status of
+  omitted findings (`Python preview: 1`) so a mixed-repo remainder is not a
+  bare count. Rust-only remainder stays the count line. (#4395)
+- `docs/CONFIGURATION.md` no longer groups Python with opt-in TypeScript and
+  JavaScript; Python preview is marker-auto when no `ripr.toml` exists. (#4395)
 - TypeScript: a change inside a module-private helper now relates to tests
   that call an exported function reaching it in the same module, including a
   value a same-module factory built. unjs/defu tests call `defu(...)`, built

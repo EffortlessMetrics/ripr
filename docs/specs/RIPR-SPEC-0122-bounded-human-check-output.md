@@ -74,7 +74,7 @@ Start here:
   State: top_gap | no_actionable_gap | preview_limited | static_limited | missing_scope
   One selected finding or safe next action
 Hidden:                                    (only when N > 0)
-  N lower-priority finding(s) omitted from default human output.
+  N lower-priority finding(s) omitted from default human output [(language identity)].
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 ```
@@ -84,7 +84,13 @@ literal `0 lower-priority finding(s) omitted` line claims a suppressed
 remainder that does not exist:
 
 - `N > 0` — the heading is `Hidden:` and the count line is rendered. The
-  omission is the reason the section exists.
+  omission is the reason the section exists. When any omitted finding carries
+  preview `language_status` or a non-Rust `language`, the count line appends
+  a parenthetical identity breakdown from those fields (`Python preview: 1`).
+  Unlabeled preview remainder uses `preview-language: N` rather than inventing
+  a language name. Rust-only remainder stays the count line with no breakdown.
+  This reads finding identity already on the omitted records; it is not the
+  language-availability projection owned by #2615.
 - `N == 0` — the heading is `More:` and the count line is not rendered. The
   two format pointers still render, unchanged, because they remain useful
   when nothing was omitted.
@@ -379,4 +385,6 @@ suggested write cannot fail on the same missing base.
    two format pointers and no `Hidden:` heading and no
    `0 lower-priority finding(s) omitted` line.
 10. A run that omitted at least one finding renders `Hidden:` with the non-zero
-    count line above the same two format pointers.
+    count line above the same two format pointers. When the omitted set includes
+    preview-language or non-Rust identity, that line names the per-language
+    counts; a Rust-only remainder stays the count line alone.

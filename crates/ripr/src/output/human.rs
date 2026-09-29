@@ -951,8 +951,160 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("\nHidden:\n"));
-        assert!(rendered.contains("2 lower-priority finding(s) omitted"));
+        // #4395(b): unlabeled Rust-only remainder stays the count line with
+        // no invented language or preview identity.
+        assert!(
+            rendered.contains("  2 lower-priority finding(s) omitted from default human output.\n")
+        );
+        assert!(!rendered.contains("preview"));
         assert!(!rendered.contains("More:"));
+    }
+
+    /// #4395(b): mixed-repo remainder must name the omitted preview-language
+    /// identity. Ranking still selects the Rust gap; the Hidden line is how
+    /// a reader learns the omitted finding was Python preview.
+    #[test]
+    fn hidden_line_names_omitted_preview_language_identity() {
+        let mut rust = sample_finding();
+        rust.id = "rust-gap".to_string();
+        rust.language = Some(LanguageId::Rust);
+        rust.language_status = Some(LanguageStatus::Stable);
+        rust.probe.location = SourceLocation::new("src/lib.rs", 4, 1);
+
+        let mut python = sample_finding();
+        python.id = "python-preview-gap".to_string();
+        python.language = Some(LanguageId::Python);
+        python.language_status = Some(LanguageStatus::Preview);
+        python.probe.location = SourceLocation::new("src/margin.py", 2, 1);
+        python.recommended_next_step = Some("Add a Python preview assertion.".to_string());
+
+        let rendered = render(&bounded_output_with_findings(vec![rust, python]));
+
+        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("File: src/lib.rs:4"));
+        assert!(!rendered.contains("File: src/margin.py:2"));
+        assert!(
+            rendered.contains(
+                "  1 lower-priority finding(s) omitted from default human output (Python preview: 1).\n"
+            ),
+            "Hidden line must name omitted Python preview identity; got:\n{rendered}"
+        );
+    }
+
+    /// #4395(b): labeled Rust-only remainder must stay byte-identical to the
+    /// count line. Adding identity for every omitted Rust finding would churn
+    /// the default human surface without answering the mixed-repo question.
+    #[test]
+    fn hidden_line_stays_count_only_when_omitted_findings_are_labeled_rust() {
+        let mut findings = Vec::new();
+        for index in 0..3 {
+            let mut finding = sample_finding();
+            finding.id = format!("rust-{index}");
+            finding.language = Some(LanguageId::Rust);
+            finding.language_status = Some(LanguageStatus::Stable);
+            finding.probe.location = SourceLocation::new(format!("src/f{index}.rs"), 1, 1);
+            findings.push(finding);
+        }
+
+        let rendered = render(&bounded_output_with_findings(findings));
+
+        assert!(
+            rendered.contains("  2 lower-priority finding(s) omitted from default human output.\n")
+        );
+        assert!(
+            !rendered.contains("Rust:"),
+            "Rust-only Hidden line must not grow a language breakdown; got:\n{rendered}"
+        );
+        assert!(!rendered.contains("preview"));
+    }
+
+    /// #4395(b): when every omitted finding is preview, name that language
+    /// even if Start here is already `preview_limited`.
+    #[test]
+    fn hidden_line_names_preview_identity_when_all_omitted_findings_are_preview() {
+        let mut findings = Vec::new();
+        for index in 0..3 {
+            let mut finding = sample_finding();
+            finding.id = format!("python-{index}");
+            finding.language = Some(LanguageId::Python);
+            finding.language_status = Some(LanguageStatus::Preview);
+            finding.probe.location = SourceLocation::new(format!("src/f{index}.py"), 1, 1);
+            findings.push(finding);
+        }
+
+        let rendered = render(&bounded_output_with_findings(findings));
+
+        assert!(rendered.contains("State: preview_limited"));
+        assert!(
+            rendered.contains(
+                "  2 lower-priority finding(s) omitted from default human output (Python preview: 2).\n"
+            ),
+            "preview-only remainder must still name Python preview identity; got:\n{rendered}"
+        );
+    }
+
+    /// #4395(b): preview status without a language id must not invent a
+    /// language name. The count line still warns that omitted findings may
+    /// include preview-language evidence.
+    #[test]
+    fn hidden_line_hedges_unlabeled_preview_omitted_findings() {
+        let mut selected = sample_finding();
+        selected.id = "rust-selected".to_string();
+        selected.language = Some(LanguageId::Rust);
+        selected.probe.location = SourceLocation::new("src/lib.rs", 1, 1);
+
+        let mut omitted = sample_finding();
+        omitted.id = "unlabeled-preview".to_string();
+        omitted.language = None;
+        omitted.language_status = Some(LanguageStatus::Preview);
+        omitted.probe.location = SourceLocation::new("src/unknown.py", 1, 1);
+
+        let rendered = render(&bounded_output_with_findings(vec![selected, omitted]));
+
+        assert!(
+            rendered.contains(
+                "  1 lower-priority finding(s) omitted from default human output (preview-language: 1).\n"
+            ),
+            "unlabeled preview remainder must not invent a language; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("Python preview"),
+            "unlabeled preview must not be credited as Python; got:\n{rendered}"
+        );
+    }
+
+    /// #4395(b): two preview languages in the omitted set are counted
+    /// separately. Token coincidence on one language name must not hide the
+    /// other.
+    #[test]
+    fn hidden_line_counts_each_omitted_preview_language() {
+        let mut rust = sample_finding();
+        rust.id = "rust-gap".to_string();
+        rust.language = Some(LanguageId::Rust);
+        rust.probe.location = SourceLocation::new("src/lib.rs", 1, 1);
+
+        let mut python = sample_finding();
+        python.id = "python-gap".to_string();
+        python.language = Some(LanguageId::Python);
+        python.language_status = Some(LanguageStatus::Preview);
+        python.probe.location = SourceLocation::new("src/a.py", 1, 1);
+
+        let mut typescript = sample_finding();
+        typescript.id = "ts-gap".to_string();
+        typescript.language = Some(LanguageId::TypeScript);
+        typescript.language_status = Some(LanguageStatus::Preview);
+        typescript.probe.location = SourceLocation::new("src/a.ts", 1, 1);
+
+        let rendered = render(&bounded_output_with_findings(vec![
+            rust, python, typescript,
+        ]));
+
+        assert!(
+            rendered.contains(
+                "  2 lower-priority finding(s) omitted from default human output (TypeScript preview: 1, Python preview: 1).\n"
+            ),
+            "each omitted preview language must appear with its own count; got:\n{rendered}"
+        );
     }
 
     /// #2103: a Rust-only run emits no per-language breakdown line, so
@@ -1756,6 +1908,12 @@ mod tests {
         assert!(rendered.contains("State: top_gap"));
         assert!(rendered.contains("File: src/stable.rs:10"));
         assert!(!rendered.contains("File: src/preview.ts:1"));
+        assert!(
+            rendered.contains(
+                "  1 lower-priority finding(s) omitted from default human output (TypeScript preview: 1).\n"
+            ),
+            "stable-over-preview ranking still omits the preview finding; Hidden must name it; got:\n{rendered}"
+        );
     }
 
     #[test]
@@ -2734,6 +2892,32 @@ mod tests {
             discriminator_evidence_line(&finding),
             "discriminator yes: Strong oracle found"
         );
+    }
+
+    fn bounded_output_with_findings(findings: Vec<Finding>) -> CheckOutput {
+        let count = findings.len();
+        CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: count,
+                findings: count,
+                weakly_exposed: count,
+                ..Summary::default()
+            },
+            findings,
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        }
     }
 
     fn sample_finding() -> Finding {

@@ -578,6 +578,9 @@ name = "repository configuration"
 spec = "docs/specs/RIPR-SPEC-0007-repository-configuration.md"
 tests = [
   "crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults",
+  "xtask/src/tests.rs::public_docs_state_python_marker_auto_when_no_ripr_toml",
+  "xtask/src/tests.rs::python_marker_auto_docs_accept_required_phrases",
+  "xtask/src/tests.rs::python_marker_auto_docs_reject_opt_in_python_lumping",
   "crates/ripr/src/config.rs::tests::config_file_sets_core_operational_defaults",
   "crates/ripr/src/config.rs::tests::explicit_cli_mode_wins_over_config_mode",
   "crates/ripr/src/config.rs::tests::config_mode_applies_when_cli_mode_is_not_explicit",
@@ -632,6 +635,8 @@ code = [
 ]
 outputs = [
   "docs/CONFIGURATION.md",
+  "README.md",
+  "docs/status/SUPPORT_TIERS.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/EXIT_CODES.md",
   "docs/CAPABILITY_MATRIX.md",
@@ -7744,6 +7749,11 @@ tests = [
   "crates/ripr/src/output/human/sections.rs::classification_hint_tests::reachable_unrevealed_hint_agrees_with_a_reaching_test",
   "crates/ripr/src/output/human.rs::tests::render_replaces_hidden_block_with_more_when_nothing_is_omitted",
   "crates/ripr/src/output/human.rs::tests::render_keeps_hidden_block_when_findings_are_omitted",
+  "crates/ripr/src/output/human.rs::tests::hidden_line_names_omitted_preview_language_identity",
+  "crates/ripr/src/output/human.rs::tests::hidden_line_stays_count_only_when_omitted_findings_are_labeled_rust",
+  "crates/ripr/src/output/human.rs::tests::hidden_line_names_preview_identity_when_all_omitted_findings_are_preview",
+  "crates/ripr/src/output/human.rs::tests::hidden_line_hedges_unlabeled_preview_omitted_findings",
+  "crates/ripr/src/output/human.rs::tests::hidden_line_counts_each_omitted_preview_language",
   "crates/ripr/src/output/human.rs::tests::bounded_human_output_does_not_select_exposed_over_non_exposed_repair",
   "crates/ripr/src/output/human.rs::tests::bounded_human_output_reports_missing_scope_as_start_here_state",
   "crates/ripr/src/output/human.rs::tests::bounded_human_output_keeps_preview_language_in_preview_limited_state",

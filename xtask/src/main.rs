@@ -15054,6 +15054,43 @@ fn display_repo_path(root: &Path, path: &Path) -> String {
     normalize_path(display_path)
 }
 
+/// #4395(a): README, CONFIGURATION, and SUPPORT_TIERS must describe marker-auto
+/// Python when no `ripr.toml` exists, not an unconditional Rust-only default.
+fn python_marker_auto_docs_violations(
+    configuration: &str,
+    readme: &str,
+    support: &str,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    if !(configuration.contains("with no `ripr.toml`")
+        && configuration.contains("keep Python preview off"))
+    {
+        violations.push(
+            "docs/CONFIGURATION.md `[languages].enabled` default must state absent-config marker-auto Python and the rust-only opt-out".to_string(),
+        );
+    }
+    if configuration.contains("opt-in TypeScript, JavaScript, and Python evidence") {
+        violations.push(
+            "docs/CONFIGURATION.md must not lump Python with opt-in TypeScript/JavaScript; Python is marker-auto when no ripr.toml exists".to_string(),
+        );
+    }
+    if !(readme.contains("With no `ripr.toml`") && readme.contains("enables Python preview")) {
+        violations.push("README.md must state marker-auto Python activation".to_string());
+    }
+    if !(readme.contains(r#"enabled = ["rust"]"#) && readme.contains("keeps Python off")) {
+        violations.push("README.md must state the rust-only opt-out".to_string());
+    }
+    if !(support.contains("with no `ripr.toml`")
+        && support.contains("Python project markers")
+        && support.contains(r#"enabled = ["rust"]"#))
+    {
+        violations.push(
+            "docs/status/SUPPORT_TIERS.md must reconcile marker-auto Python with the rust-only opt-out".to_string(),
+        );
+    }
+    violations
+}
+
 fn check_readme_state() -> Result<(), String> {
     let readme_path = Path::new("README.md");
     let readme = read_text_lossy(readme_path)?;
@@ -15095,6 +15132,14 @@ fn check_readme_state() -> Result<(), String> {
         }
     }
 
+    let configuration = read_text_lossy(Path::new("docs/CONFIGURATION.md"))?;
+    let support = read_text_lossy(Path::new("docs/status/SUPPORT_TIERS.md"))?;
+    violations.extend(python_marker_auto_docs_violations(
+        &configuration,
+        &readme,
+        &support,
+    ));
+
     let capabilities_source = read_text_lossy(Path::new("metrics/capabilities.toml"))?;
     let matrix = read_text_lossy(Path::new("docs/CAPABILITY_MATRIX.md"))?;
     if !matrix.contains("metrics/capabilities.toml") {
@@ -15131,6 +15176,7 @@ fn check_readme_state() -> Result<(), String> {
                 "Keep README.md linked to active planning, metrics, campaign, and automation docs.",
                 "Keep README's capability snapshot compact and aligned with docs/CAPABILITY_MATRIX.md.",
                 "Update metrics/capabilities.toml and docs/CAPABILITY_MATRIX.md when capability status or next checkpoints change.",
+                "Keep README, docs/CONFIGURATION.md, and docs/status/SUPPORT_TIERS.md aligned on marker-auto Python when no ripr.toml exists.",
             ],
             rerun_command: "cargo xtask check-readme-state",
             exception_template: None,

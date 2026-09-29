@@ -31,7 +31,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/ts_parse_depth_budget/input --diff fixtures/ts_parse_depth_budget/diff.patch --mode fast --at probe:src_deep_under_budget.ts:typescript_preview:85293064
 
 Hidden:
-  2 lower-priority finding(s) omitted from default human output.
+  2 lower-priority finding(s) omitted from default human output (TypeScript preview: 2).
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 
