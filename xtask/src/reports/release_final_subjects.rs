@@ -377,3 +377,45 @@ fn render_markdown(
     );
     output
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_sha256sums, require_flat_subject_name};
+
+    #[test]
+    fn checksum_subjects_are_exact_flat_names() {
+        let a = "a".repeat(64);
+        let b = "b".repeat(64);
+        let parsed = parse_sha256sums(&format!(
+            "{a}  ripr-server-v0.11.0-x86_64-unknown-linux-gnu.tar.gz\n{b}  ripr-server-manifest-v0.11.0.json\n"
+        ))
+        .expect("valid checksum manifest");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(
+            parsed["ripr-server-v0.11.0-x86_64-unknown-linux-gnu.tar.gz"],
+            a
+        );
+    }
+
+    #[test]
+    fn checksum_manifest_rejects_duplicates_bad_digests_and_paths() {
+        let digest = "a".repeat(64);
+        assert!(parse_sha256sums(&format!(
+            "{digest}  archive.tar.gz\n{digest}  archive.tar.gz\n"
+        ))
+        .unwrap_err()
+        .contains("duplicate subject"));
+        assert!(parse_sha256sums("abcd  archive.tar.gz\n")
+            .unwrap_err()
+            .contains("non-SHA-256"));
+        for name in [
+            "../archive.tar.gz",
+            "nested/archive.tar.gz",
+            r"nested\archive.tar.gz",
+            "/tmp/archive.tar.gz",
+        ] {
+            assert!(require_flat_subject_name(name).is_err(), "{name}");
+        }
+    }
+}
