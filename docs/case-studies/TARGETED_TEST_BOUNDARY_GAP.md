@@ -15,6 +15,17 @@ It constructs an isolated Git repository and exercises the built `ripr` binary
 through repo exposure before and after the test edit, then requires `ripr
 outcome` to report the gap as closed.
 
+The same test crate also carries the remaining installed-boundary transaction
+(#3165): an isolated copy of the candidate binary (not `CARGO_BIN_EXE_ripr` or
+a PATH lookup), shared witness facts across `check --base --worktree --format
+json` and `repo-exposure-json`, the printed `--phase after` command consumed
+literally, harness-owned `cargo test --test pricing equality_boundary_discounts
+-- --exact` with nonzero selected/executed/passed subjects, and receipt/status
+agreement that `--test`/`--command` metadata is not an execution receipt. The
+harness attributes that focused-test run to itself. RIPR's agent receipt stays
+`verification_not_run`. This synthetic fixture does not enter the real corpus
+or promote support by itself.
+
 ## Operator Loop
 
 Scratch workspace:
