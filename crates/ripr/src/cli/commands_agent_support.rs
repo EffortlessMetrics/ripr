@@ -132,7 +132,7 @@ fn validate_agent_receipt_artifact_path(
 
 fn agent_receipt_config_fingerprint(root: &Path) -> Result<Option<String>, String> {
     let path = root.join(CONFIG_FILE_NAME);
-    match std::fs::read_to_string(&path) {
+    match crate::bounded_input::read_to_string(&path) {
         Ok(text) => Ok(Some(config_fingerprint(&text))),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(err) => Err(format!("read {} failed: {err}", path.display())),
@@ -181,26 +181,12 @@ pub(super) fn validate_agent_verify_snapshot_path(
     Ok(candidate)
 }
 
-/// Bound on agent verify snapshot inputs, checked from file metadata before
-/// reading. Real repo-exposure artifacts for large repositories can reach
-/// tens of megabytes; 256 MiB is far above any legitimate artifact while
-/// still failing closed on an unbounded input (#2921).
-const MAX_AGENT_VERIFY_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
-
+/// Agent verify snapshot inputs are read through the shared CLI input bound
+/// (#2921, #4480). The bound is enforced while reading: the earlier metadata
+/// pre-check saw length 0 for a character device such as `/dev/zero` and let
+/// the unbounded read run forever.
 pub(super) fn read_agent_verify_snapshot(path: &Path, label: &str) -> Result<String, String> {
-    let metadata = std::fs::metadata(path).map_err(|err| {
-        format!(
-            "read agent verify {label} snapshot {} failed: {err}",
-            output::outcome::display_path(path)
-        )
-    })?;
-    if metadata.len() > MAX_AGENT_VERIFY_SNAPSHOT_BYTES {
-        return Err(format!(
-            "agent verify {label} snapshot {} exceeds the {MAX_AGENT_VERIFY_SNAPSHOT_BYTES} byte input limit",
-            output::outcome::display_path(path)
-        ));
-    }
-    std::fs::read_to_string(path).map_err(|err| {
+    crate::bounded_input::read_to_string(path).map_err(|err| {
         format!(
             "read agent verify {label} snapshot {} failed: {err}",
             output::outcome::display_path(path)
@@ -556,6 +542,21 @@ mod tests {
         Ok(())
     }
 
+    /// #4480: a character device reports length 0, so the old metadata
+    /// pre-check let the unbounded read run forever on `/dev/zero`.
+    #[cfg(unix)]
+    #[test]
+    fn read_agent_verify_snapshot_refuses_endless_device() -> Result<(), String> {
+        let Err(error) = read_agent_verify_snapshot(Path::new("/dev/zero"), "before") else {
+            return Err("an endless device snapshot must be refused".to_string());
+        };
+        assert!(
+            error.contains("exceeds") && error.contains("byte input limit"),
+            "unexpected error: {error}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn read_agent_verify_snapshot_rejects_oversized_input() -> Result<(), String> {
         let dir = ScratchDir::new("verify-oversize");
@@ -564,7 +565,7 @@ mod tests {
             .map_err(|err| format!("create oversize fixture: {err}"))?;
         // A sparse extension past the limit: cheap to create, and the
         // metadata check must reject before any bytes are read.
-        file.set_len(MAX_AGENT_VERIFY_SNAPSHOT_BYTES + 1)
+        file.set_len(crate::bounded_input::MAX_CLI_INPUT_BYTES + 1)
             .map_err(|err| format!("size oversize fixture: {err}"))?;
         let Err(error) = read_agent_verify_snapshot(&oversized, "before") else {
             return Err("an oversized snapshot must be rejected".to_string());

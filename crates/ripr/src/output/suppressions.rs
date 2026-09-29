@@ -831,7 +831,7 @@ pub fn apply_check_suppressions(
 /// counts believing a policy was applied.
 pub fn load_check_suppression_policy(path: &Path) -> Result<Vec<SuppressionEntry>, String> {
     let display = path.display().to_string();
-    let text = std::fs::read_to_string(path)
+    let text = crate::bounded_input::read_to_string(path)
         .map_err(|err| format!("failed to read suppression policy `{display}`: {err}"))?;
     let (entries, violations) = parse_suppressions_manifest(&text);
     if violations.is_empty() {
@@ -1602,6 +1602,22 @@ owner = "repo-owner"
                 .any(|v| v.contains("`static_class` `not_a_class` is not a known exposure class")),
             "violations: {violations:?}"
         );
+    }
+
+    /// #4480: an explicit `--suppression-policy` naming an endless device
+    /// must fail at the shared input cap instead of reading forever.
+    #[cfg(unix)]
+    #[test]
+    fn load_check_suppression_policy_refuses_endless_device() -> Result<(), String> {
+        let err = load_check_suppression_policy(std::path::Path::new("/dev/zero"))
+            .err()
+            .ok_or("an endless suppression policy input must be an error")?;
+        assert!(
+            err.contains("failed to read suppression policy `/dev/zero`")
+                && err.contains("byte input limit"),
+            "{err}"
+        );
+        Ok(())
     }
 
     #[test]

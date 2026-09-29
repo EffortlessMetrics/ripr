@@ -419,7 +419,7 @@ fn run_agent_receipt_for_attempt(
     ensure_command_root(&options.root, "agent receipt")?;
 
     let verify_path = validate_agent_receipt_verify_path(&options.root, &options.verify_json)?;
-    let verify_json = std::fs::read_to_string(&verify_path).map_err(|err| {
+    let verify_json = crate::bounded_input::read_to_string(&verify_path).map_err(|err| {
         format!(
             "read agent receipt verify JSON {} failed: {err}",
             output::outcome::display_path(&verify_path)
@@ -836,7 +836,7 @@ fn run_agent_repair_phase(
             write_agent_repo_exposure_snapshot(&root, &after)?;
 
             let packet_path = attempt.packet_path.clone();
-            let packet_bytes = std::fs::read(&packet_path).map_err(|error| {
+            let packet_bytes = crate::bounded_input::read(&packet_path).map_err(|error| {
                 format!(
                     "read retained repair packet {} failed: {error}",
                     packet_path.display()

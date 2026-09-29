@@ -55,6 +55,8 @@
 // deliberately carry the contract.
 mod analysis_outcome;
 mod atomic_file;
+// Bounded reads for user-named CLI file and stdin inputs (#4480).
+mod bounded_input;
 // Commit record parser shared with build.rs; the crate only unit-tests it.
 #[cfg(test)]
 mod build_commit_record;

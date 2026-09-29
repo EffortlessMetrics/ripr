@@ -182,7 +182,7 @@ pub(crate) fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
     let Some(path) = discover_config_path(root) else {
         return default_config_for_root(root);
     };
-    let text = std::fs::read_to_string(&path)
+    let text = crate::bounded_input::read_to_string(&path)
         .map_err(|err| format!("read {} failed: {err}", path.display()))?;
     let mut config = parse_config(&text).map_err(|err| format!("{}: {err}", path.display()))?;
     config.source_path = Some(path);

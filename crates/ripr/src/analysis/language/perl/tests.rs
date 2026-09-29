@@ -3973,3 +3973,24 @@ fn perl_packet_contract_migration_corpus_pins_real_producer_dispositions() -> Re
 
     Ok(())
 }
+
+/// The streamed file digest equals the in-memory digest of the same bytes,
+/// so the packet staleness check keeps its exact meaning without buffering
+/// the source file.
+#[test]
+fn streamed_file_digest_matches_in_memory_digest() -> Result<(), String> {
+    let dir = std::env::temp_dir().join(format!("ripr-perl-digest-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+    for (name, contents) in [
+        ("empty.pl", Vec::new()),
+        ("small.pl", b"sub f { return 1 }\n".to_vec()),
+        ("large.pl", "é\n".repeat(200_000).into_bytes()),
+    ] {
+        let path = dir.join(name);
+        std::fs::write(&path, &contents).map_err(|err| format!("write {name}: {err}"))?;
+        let streamed =
+            super::hex_sha256_file(&path).map_err(|err| format!("hash {name}: {err}"))?;
+        assert_eq!(streamed, super::hex_sha256(&contents), "{name}");
+    }
+    Ok(())
+}

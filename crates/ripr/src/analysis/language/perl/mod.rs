@@ -134,6 +134,14 @@ fn hex_sha256(bytes: &[u8]) -> String {
     hex_bytes(&digest)
 }
 
+/// Hex-encode a SHA-256 digest of the file at `path`, streamed so a
+/// packet-named source file is never buffered whole in memory (#4480).
+fn hex_sha256_file(path: &std::path::Path) -> std::io::Result<String> {
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut std::fs::File::open(path)?, &mut hasher)?;
+    Ok(hex_bytes(&hasher.finalize()))
+}
+
 fn hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -190,7 +198,7 @@ impl LanguageAdapter for PerlAdapter {
             return Err(missing_fact_packet_reason());
         };
 
-        let packet_text = std::fs::read_to_string(facts_path).map_err(|err| {
+        let packet_text = crate::bounded_input::read_to_string(facts_path).map_err(|err| {
             format!(
                 "failed to read Perl fact packet `{}`: {err}",
                 facts_path.display()
@@ -247,7 +255,7 @@ impl LanguageAdapter for PerlAdapter {
             return Err(missing_fact_packet_reason());
         };
 
-        let packet_text = std::fs::read_to_string(facts_path).map_err(|err| {
+        let packet_text = crate::bounded_input::read_to_string(facts_path).map_err(|err| {
             format!(
                 "failed to read Perl fact packet `{}`: {err}",
                 facts_path.display()
@@ -1144,10 +1152,10 @@ impl PerlFactPacket {
             if !on_disk.is_file() {
                 continue;
             }
-            let Ok(bytes) = std::fs::read(&on_disk) else {
+            let Ok(digest) = hex_sha256_file(&on_disk) else {
                 continue;
             };
-            let recomputed_digest = format!("sha256:{}", hex_sha256(&bytes));
+            let recomputed_digest = format!("sha256:{digest}");
             if file.digest != recomputed_digest {
                 return Err(format!(
                     "ingestion: stale digest for file `{}` (`{}`) — declared `{}` does not \

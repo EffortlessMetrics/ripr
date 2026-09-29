@@ -796,7 +796,7 @@ fn render_check_gap_ledger_badge(
             );
         }
     };
-    let text = std::fs::read_to_string(gap_ledger)
+    let text = crate::bounded_input::read_to_string(gap_ledger)
         .map_err(|err| format!("failed to read gap ledger {}: {err}", gap_ledger.display()))?;
     let policy = output::badge::BadgePolicy {
         suppressions_path: config.suppressions().display_path(),

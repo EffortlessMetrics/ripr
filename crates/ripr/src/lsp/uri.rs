@@ -299,9 +299,10 @@ pub(super) fn absolute_join(root: &Path, path: &Path) -> PathBuf {
 /// megabytes; 256 MiB is far above any legitimate artifact while still
 /// failing closed on an unbounded input. The cap is enforced while reading
 /// (`take(limit + 1)`), not just from metadata, so a file that grows between
-/// check and read cannot bypass it. Mirrors the CLI's
-/// `MAX_AGENT_VERIFY_SNAPSHOT_BYTES` (#2921).
-pub(super) const MAX_LSP_ARTIFACT_BYTES: u64 = 256 * 1024 * 1024;
+/// check and read cannot bypass it. Defined as the CLI's
+/// `bounded_input::MAX_CLI_INPUT_BYTES` so the two surfaces cannot drift
+/// (#2921, #4480).
+pub(super) const MAX_LSP_ARTIFACT_BYTES: u64 = crate::bounded_input::MAX_CLI_INPUT_BYTES;
 
 /// Outcome of a capped artifact read. Callers must distinguish an absent
 /// artifact — a normal state for deferred analysis output, where falling back

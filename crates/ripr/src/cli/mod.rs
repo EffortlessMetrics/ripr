@@ -153,7 +153,7 @@ fn persist_before_repair_attempt(options: &agent::AgentRepairOptions) -> Result<
     let agent_brief = root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT);
     let before_snapshot = root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT);
     let agent_packet = root.join(WORKFLOW_AGENT_PACKET_ARTIFACT);
-    let packet_bytes = std::fs::read(&agent_packet)
+    let packet_bytes = crate::bounded_input::read(&agent_packet)
         .map_err(|error| format!("read {} failed: {error}", agent_packet.display()))?;
     let packet_text = String::from_utf8(packet_bytes.clone())
         .map_err(|error| format!("agent packet is not UTF-8: {error}"))?;

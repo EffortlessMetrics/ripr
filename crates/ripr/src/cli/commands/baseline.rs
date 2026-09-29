@@ -37,12 +37,13 @@ pub(in crate::cli) fn baseline(args: &[String]) -> Result<(), String> {
 
 fn baseline_create(args: &[String]) -> Result<(), String> {
     let options = parse_baseline_create_options(args)?;
-    let gate_decision_json = std::fs::read_to_string(&options.from).map_err(|err| {
-        format!(
-            "read baseline create source {} failed: {err}",
-            output::baseline::display_path(&options.from)
-        )
-    })?;
+    let gate_decision_json =
+        crate::bounded_input::read_to_string(&options.from).map_err(|err| {
+            format!(
+                "read baseline create source {} failed: {err}",
+                output::baseline::display_path(&options.from)
+            )
+        })?;
     let created_at = baseline_created_at()?;
     let source_report = output::baseline::display_path(&options.from);
     let report = output::baseline::baseline_create_report_from_gate_decision_json(
@@ -108,13 +109,13 @@ fn baseline_update(args: &[String]) -> Result<(), String> {
     }
     let baseline_path = output::baseline_update::display_path(&options.baseline);
     let current_path = output::baseline_update::display_path(&options.current);
-    let baseline_json = std::fs::read_to_string(&options.baseline).map_err(|err| {
+    let baseline_json = crate::bounded_input::read_to_string(&options.baseline).map_err(|err| {
         format!(
             "read baseline update baseline {} failed: {err}",
             output::baseline_update::display_path(&options.baseline)
         )
     })?;
-    let current_json = std::fs::read_to_string(&options.current).map_err(|err| {
+    let current_json = crate::bounded_input::read_to_string(&options.current).map_err(|err| {
         format!(
             "read baseline update current gate-decision {} failed: {err}",
             output::baseline_update::display_path(&options.current)

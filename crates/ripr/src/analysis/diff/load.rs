@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -42,12 +41,12 @@ pub fn load_diff_with_effective_base(
             // looks like a silent hang, so the CLI adapters disclose the read
             // before dispatching here; the loader itself stays silent so
             // library callers never receive CLI-branded stderr text.
-            let mut buffer = String::new();
-            std::io::stdin()
-                .read_to_string(&mut buffer)
+            // #4480: stdin is bounded by the shared CLI input cap, so a
+            // producer that never closes the pipe cannot grow memory forever.
+            let text = crate::bounded_input::read_reader_to_string(std::io::stdin().lock())
                 .map_err(|err| format!("failed to read diff from stdin: {err}"))?;
             return Ok(LoadedDiff {
-                text: buffer,
+                text,
                 effective_base: None,
             });
         }
@@ -61,7 +60,9 @@ pub fn load_diff_with_effective_base(
                 diff_file.display()
             ));
         }
-        let text = std::fs::read_to_string(diff_file)
+        // #4480: bounded, so `--diff /dev/zero` or a multi-GB log fails with
+        // the input limit instead of reading until memory is exhausted.
+        let text = crate::bounded_input::read_to_string(diff_file)
             .map_err(|err| format!("failed to read diff file {}: {err}", diff_file.display()))?;
         return Ok(LoadedDiff {
             text,
