@@ -1263,7 +1263,7 @@ pub(crate) fn write_release_server_outputs_transactional(
     Ok(())
 }
 
-pub(crate) pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
+pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     format!("{digest:x}")
 }
