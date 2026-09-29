@@ -66,7 +66,8 @@ pub(in crate::analysis) fn classify_probe_with_candidate_index(
         index,
         workspace_complete,
     )
-    .with_helper_chain(helper_chain);
+    .with_helper_chain(helper_chain)
+    .with_file_use_statements(candidate_index.file_use_statements());
     let reveal_expression = parser_expression_for_probe(
         index,
         &probe.location.file,

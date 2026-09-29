@@ -4,7 +4,7 @@
 //! ordinary stage combiner still decides the finding. Unsupported source,
 //! ownership, control flow, or oracle shapes leave existing evidence unchanged.
 
-use crate::analysis::classify::{ProbeContext, file_imports_foreign_callee_name};
+use crate::analysis::classify::ProbeContext;
 use crate::analysis::rust_index::find_file_facts;
 use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::{Confidence, Probe, ProbeFamily, RelationReason, StageEvidence, StageState};
@@ -78,10 +78,10 @@ pub(super) fn discrimination(
                 .earliest_unresolved_reason
                 .is_some()
             || !assertion_namespace_is_standalone(&owner.file, &test.file)
-            || file_imports_foreign_callee_name(
+            || context.test_file_imports_foreign_callee_name(
+                &test.file,
                 &test_facts.source,
                 &owner.name,
-                &context.index.package_names,
             )
         {
             continue;

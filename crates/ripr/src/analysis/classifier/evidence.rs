@@ -1,7 +1,7 @@
 use crate::analysis::classify::{
     ProbeContext, PropagationWitnessV1, activation_evidence, classify, confidence_score,
-    current_path_witness, file_imports_foreign_callee_name, infection_evidence, local_flow_sinks,
-    owner_may_be_reached_unseen, package_prefix, propagation_evidence_with_witness, reach_evidence,
+    current_path_witness, infection_evidence, local_flow_sinks, owner_may_be_reached_unseen,
+    package_prefix, propagation_evidence_with_witness, reach_evidence,
     reveal_evidence_with_expression,
 };
 use crate::domain::*;
@@ -68,12 +68,14 @@ impl ClassifiedProbeEvidence {
             .owner_fn
             .and_then(|owner| package_prefix(&owner.file));
         // Both defeats below depend only on the test's file (and the probe's
-        // constant owner callee), never on the individual test, so they are
-        // memoized per file. A high-traffic owner relates to thousands of
-        // tests spread over a few files; without the memo every test re-masked
-        // and re-scanned its whole file source (profiled: ~80% of a 60 s
-        // `ripr check` on a 505-line diff of this repository).
-        let import_defeats_by_file = FileDefeatMemo::default();
+        // constant owner callee), never on the individual test. A
+        // high-traffic owner relates to thousands of tests spread over a
+        // few files; without memoization every test re-masked and
+        // re-scanned its whole file source (profiled: ~80% of a 60 s
+        // `ripr check` on a 505-line diff of this repository). The package
+        // defeat is memoized per probe because it also depends on the
+        // owner's package; the import scan does not, so it uses the
+        // run-scoped per-file memo on the context.
         let package_defeats_by_file = FileDefeatMemo::default();
         let (observe, discriminate, related_tests) = reveal_evidence_with_expression(
             context.probe,
@@ -83,14 +85,8 @@ impl ClassifiedProbeEvidence {
             // reachable here, so the caller computes the same-name-import
             // defeat per test instead of restructuring the reveal inputs.
             &|test, callee| {
-                memoized_file_defeat(&import_defeats_by_file, &test.file, callee, || {
-                    context.index.files.get(&test.file).is_some_and(|facts| {
-                        file_imports_foreign_callee_name(
-                            &facts.source,
-                            callee,
-                            &context.index.package_names,
-                        )
-                    })
+                context.index.files.get(&test.file).is_some_and(|facts| {
+                    context.test_file_imports_foreign_callee_name(&test.file, &facts.source, callee)
                 })
             },
             // #3731 review (G1): the test's OWN package defining a

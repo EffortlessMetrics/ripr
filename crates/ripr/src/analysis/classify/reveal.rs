@@ -1089,7 +1089,7 @@ fn owner_call_literals(text: &str, owner: &str) -> Vec<String> {
 /// error variant the guarded pin must name that exact variant, the
 /// related test's file must not import the owner callee's bare name from
 /// a FOREIGN path (a same-name import makes the bare binding ambiguous —
-/// see `file_imports_foreign_callee_name`), the test's own package
+/// see `use_statements_import_foreign_callee_name`), the test's own package
 /// must not define a same-named function while the changed owner lives in
 /// another package (a bare call may bind the test package's own function —
 /// the cross-package ambiguity gate), and — for a return-value probe whose
@@ -1278,6 +1278,25 @@ fn assertion_matches_probe_detail(
     )
 }
 
+/// Every `use` declaration of a file source, masked, trimmed, and without
+/// its terminating `;` — the callee-independent half of
+/// `use_statements_import_foreign_callee_name`, so one scan of a file serves every
+/// callee and every probe (see `FileUseStatements`).
+fn file_use_statements(source: &str) -> Vec<String> {
+    let masked = crate::analysis::extract::mask_comments_and_strings(source);
+    all_use_statements(&masked)
+        .iter()
+        .map(|statement| {
+            let statement = statement.trim();
+            statement
+                .strip_suffix(';')
+                .unwrap_or(statement)
+                .trim_end()
+                .to_string()
+        })
+        .collect()
+}
+
 /// #3731 review (F11, F22): whether the related test's file imports the
 /// owner callee's bare name FROM A FOREIGN PATH — a `use` binding whose
 /// first path segment is neither `crate`/`self`/`super` nor one of the
@@ -1302,18 +1321,19 @@ fn assertion_matches_probe_detail(
 /// module boundaries can defeat a confirmation for a test the nested
 /// import is not visible to — a documented under-credit residual, since
 /// lexical scope resolution is exactly what this scan cannot do.
-pub(in crate::analysis) fn file_imports_foreign_callee_name(
-    source: &str,
+///
+/// This is the callee-dependent half; `file_use_statements` produces its
+/// statements and `FileUseStatements` memoizes them per file.
+fn use_statements_import_foreign_callee_name(
+    statements: &[String],
     callee: &str,
     crate_names: &std::collections::BTreeSet<String>,
 ) -> bool {
     if callee.is_empty() {
         return false;
     }
-    let masked = crate::analysis::extract::mask_comments_and_strings(source);
-    for statement in all_use_statements(&masked) {
-        let statement = statement.trim();
-        let statement = statement.strip_suffix(';').unwrap_or(statement).trim_end();
+    for statement in statements {
+        let statement = statement.as_str();
         let Some(first_segment) = use_statement_first_segment(statement) else {
             continue;
         };
@@ -1333,12 +1353,63 @@ pub(in crate::analysis) fn file_imports_foreign_callee_name(
     false
 }
 
+/// Scans `source` and applies the gate in one call; production reads the
+/// same two halves through `FileUseStatements`.
+#[cfg(test)]
+fn file_imports_foreign_callee_name(
+    source: &str,
+    callee: &str,
+    crate_names: &std::collections::BTreeSet<String>,
+) -> bool {
+    use_statements_import_foreign_callee_name(&file_use_statements(source), callee, crate_names)
+}
+
 /// The crate-identifier form of a manifest name: hyphens normalize to
 /// underscores in crate identifiers, so a package named `foo-bar` is
 /// imported as `foo_bar` and an import gate must treat the two spellings
 /// as the same crate (#3731 review F23).
 fn crate_identifier(name: &str) -> String {
     name.replace('-', "_")
+}
+
+/// Per-file `use` declarations for the reveal-side same-name-import gate,
+/// scanned at most once per file for as long as the memo lives.
+///
+/// The gate depends only on the test file's source, the owner callee, and
+/// the index's package names, never on the probe, so a classification run
+/// shares one memo across all its probes (it rides the run-scoped
+/// `RelatedTestCandidateIndex`). Re-masking every related test file for
+/// every probe was about a third of the sampled stacks of a warm
+/// `ripr check` on this repository. The memo must not outlive the index it was filled from.
+#[derive(Clone, Debug, Default)]
+pub(in crate::analysis) struct FileUseStatements {
+    by_file: std::cell::RefCell<std::collections::BTreeMap<std::path::PathBuf, Vec<String>>>,
+}
+
+impl FileUseStatements {
+    /// `use_statements_import_foreign_callee_name` over `source`'s statements,
+    /// scanning `source` only on the first query for `file`. Every caller
+    /// must pass the indexed source that `file` resolves to.
+    pub(in crate::analysis) fn imports_foreign_callee_name(
+        &self,
+        file: &std::path::Path,
+        source: &str,
+        callee: &str,
+        crate_names: &std::collections::BTreeSet<String>,
+    ) -> bool {
+        if callee.is_empty() {
+            return false;
+        }
+        if let Some(statements) = self.by_file.borrow().get(file) {
+            return use_statements_import_foreign_callee_name(statements, callee, crate_names);
+        }
+        let statements = file_use_statements(source);
+        let imports = use_statements_import_foreign_callee_name(&statements, callee, crate_names);
+        self.by_file
+            .borrow_mut()
+            .insert(file.to_path_buf(), statements);
+        imports
+    }
 }
 
 /// Every `use` declaration in a (masked) source, at any brace depth: the
@@ -3847,6 +3918,61 @@ return Err(\"typed pin\".into());
             !file_imports_foreign_callee_name(own_path, "expect_response", &crate_names),
             "an own-crate nested import binds the owner and must not defeat"
         );
+    }
+
+    /// The run-scoped memo answers every (file, callee) query exactly as a
+    /// fresh scan of that file does, on the first (scanning) query and on
+    /// every later (cached) one, so sharing it across probes cannot change
+    /// a defeat.
+    #[test]
+    fn shared_file_use_statements_match_a_fresh_scan_for_every_callee() {
+        let crate_names: std::collections::BTreeSet<String> =
+            ["own_crate"].into_iter().map(str::to_string).collect();
+        let files = [
+            (
+                "tests/foreign.rs",
+                "// use comment_crate::setup;\nuse other_crate::{setup, expect_response};\n",
+            ),
+            (
+                "tests/own.rs",
+                "use own_crate::expect_response;\nfn t() {\n    use other_crate::teardown;\n}\n",
+            ),
+            (
+                "tests/none.rs",
+                "fn t() {\n    let text = \"use other_crate::expect_response;\";\n}\n",
+            ),
+        ];
+        let callees = ["expect_response", "setup", "teardown", "absent", ""];
+        let memo = FileUseStatements::default();
+        for round in 0..2 {
+            for (file, source) in files {
+                for callee in callees {
+                    assert_eq!(
+                        memo.imports_foreign_callee_name(
+                            std::path::Path::new(file),
+                            source,
+                            callee,
+                            &crate_names,
+                        ),
+                        file_imports_foreign_callee_name(source, callee, &crate_names),
+                        "round {round}: {file} / {callee:?}"
+                    );
+                }
+            }
+        }
+        // The fixture exercises both answers, so agreement is not vacuous.
+        assert!(memo.imports_foreign_callee_name(
+            std::path::Path::new("tests/foreign.rs"),
+            files[0].1,
+            "setup",
+            &crate_names,
+        ));
+        assert!(!memo.imports_foreign_callee_name(
+            std::path::Path::new("tests/own.rs"),
+            files[1].1,
+            "expect_response",
+            &crate_names,
+        ));
     }
 
     /// F23 (#3731 review): the analyzed crate's own names include the

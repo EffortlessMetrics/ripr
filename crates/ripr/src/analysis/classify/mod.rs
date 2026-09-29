@@ -33,7 +33,7 @@ pub(in crate::analysis) use related_tests::{
     DependencyEdgeContext, RelatedTestCandidateIndex, body_contains_owner_call,
     find_related_tests_with_candidate_index, package_prefix,
 };
-pub(in crate::analysis) use reveal::file_imports_foreign_callee_name;
+pub(in crate::analysis) use reveal::FileUseStatements;
 pub(in crate::analysis) use reveal::reveal_evidence_with_expression;
 pub(in crate::analysis) use reveal::wrapper_error_seam_expression;
 // RIPR-SPEC-0106: re-export the variant parsers so test_grip_evidence.rs can

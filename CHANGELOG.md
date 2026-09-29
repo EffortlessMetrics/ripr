@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr check` spends less time rescanning test files. The same-name-import
+  gate re-masked every related test file's source for every probe; one scan
+  per file now serves the whole run. On a ripr commit, a warm check went from
+  8.6 s to 6.6 s with byte-identical JSON.
 - LSP: the server now asks clients for `textDocument/didSave`. It advertised
   only the numeric full-sync kind, which under the LSP spec does not request
   save notifications, so a strictly conforming editor could save without ripr
