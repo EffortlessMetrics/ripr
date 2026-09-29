@@ -320,14 +320,14 @@ mod tests {
     }
 
     #[test]
-    fn digest_field_rejects_uppercase_hex() {
+    fn digest_field_rejects_uppercase_hex() -> Result<(), String> {
         let mut object = serde_json::Map::new();
         object.insert(
             "digest".to_string(),
             serde_json::Value::String(format!("A{}", "a".repeat(63))),
         );
         let Err(error) = digest_field(&object, "digest") else {
-            panic!("uppercase digest must be rejected");
+            return Err("uppercase digest must be rejected".to_string());
         };
         assert!(error.contains("lowercase"), "{error}");
         object.insert(
@@ -335,6 +335,7 @@ mod tests {
             serde_json::Value::String("a".repeat(64)),
         );
         assert_eq!(digest_field(&object, "digest"), Ok("a".repeat(64)));
+        Ok(())
     }
 
     #[test]
