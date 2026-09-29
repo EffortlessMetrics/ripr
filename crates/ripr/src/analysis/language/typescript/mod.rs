@@ -54,6 +54,8 @@ mod classifier;
 mod discovery;
 mod module_entries;
 #[cfg(test)]
+mod line_index_tests;
+#[cfg(test)]
 mod new_declaration_tests;
 mod oracle;
 mod owners;

@@ -6638,8 +6638,11 @@ fn oracle_metadata_emitted_for_literal_expected_value() {
     let file = PathBuf::from("tests/clamp.test.ts");
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        None,
+    );
     assert_eq!(assertions.len(), 1, "should extract one assertion");
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "toBe");
@@ -6683,8 +6686,11 @@ fn oracle_metadata_has_dynamic_matcher_arg_for_variable_expected() {
     let source = "expect(clamp(-5, 0, 10)).toBe(expected);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        None,
+    );
     assert_eq!(assertions.len(), 1);
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "toBe");
@@ -6704,8 +6710,11 @@ fn oracle_metadata_has_dynamic_matcher_arg_for_call_expression() {
     let source = "expect(getValue()).toBe(computeExpected(0));";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        None,
+    );
     assert_eq!(assertions.len(), 1);
     let assertion = &assertions[0];
     assert!(assertion.has_dynamic_matcher_arg);
@@ -6718,8 +6727,11 @@ fn oracle_metadata_no_dynamic_flag_for_no_arg_matchers() {
     let source = "expect(result).toBeTruthy();\nexpect(fn).toThrow();";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        None,
+    );
     for assertion in &assertions {
         assert!(
             !assertion.has_dynamic_matcher_arg,
@@ -6737,8 +6749,11 @@ fn ava_is_assertion_extracts_exact_value_oracle() {
     let source = "t.is(score(10, 3), 7);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        Some("t"),
+    );
     assert_eq!(assertions.len(), 1, "should extract one AVA assertion");
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "is");
@@ -6760,8 +6775,11 @@ fn ava_not_assertion_extracts_relational_oracle() {
     let source = "t.not(score(10, 3), 8);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        Some("t"),
+    );
     assert_eq!(assertions.len(), 1, "should extract one AVA assertion");
     let assertion = &assertions[0];
     assert_eq!(assertion.matcher, "not");
@@ -6797,7 +6815,7 @@ fn ava_test_call_threads_callback_receiver() {
         });
     assert!(call.is_some(), "expected a test() call expression");
     let Some(call) = call else { return };
-    let result = test_name_and_assertions_from_call(call, source);
+    let result = test_name_and_assertions_from_call(call, &SourceText::new(source));
     assert!(result.is_some(), "should recognize the AVA test call");
     let Some((name, assertions)) = result else {
         return;
@@ -6816,8 +6834,11 @@ fn ava_assertion_requires_matching_receiver() {
     let source = "helper.is(score(10, 3), 7);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        Some("t"),
+    );
     assert!(
         assertions.is_empty(),
         "wrong receiver must not be credited as an AVA assertion: {assertions:?}"
@@ -6831,8 +6852,11 @@ fn ava_unknown_method_not_credited() {
     let source = "t.frobnicate(score(10, 3), 7);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        Some("t"),
+    );
     assert!(
         assertions.is_empty(),
         "unknown AVA method must not be credited: {assertions:?}"
@@ -6846,8 +6870,11 @@ fn ava_truthy_is_smoke_only() {
     let source = "t.truthy(score(10, 3));";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, Some("t"));
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        Some("t"),
+    );
     assert_eq!(assertions.len(), 1);
     assert_eq!(assertions[0].oracle_kind, OracleKind::SmokeOnly);
     assert_eq!(assertions[0].oracle_strength, OracleStrength::Smoke);
@@ -6863,8 +6890,11 @@ fn tape_equal_aliases_extract_exact_value_oracles() {
         let source = format!("t.{method}(score(10, 3), 7);");
         let allocator = Allocator::default();
         let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
-        let assertions =
-            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        let assertions = collect_expect_assertions_in_statements(
+            &parse_result.program.body,
+            &SourceText::new(&source),
+            Some("t"),
+        );
         assert_eq!(
             assertions.len(),
             1,
@@ -6893,8 +6923,11 @@ fn tape_negated_equal_aliases_extract_relational_oracles() {
         let source = format!("t.{method}(score(10, 3), 8);");
         let allocator = Allocator::default();
         let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
-        let assertions =
-            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        let assertions = collect_expect_assertions_in_statements(
+            &parse_result.program.body,
+            &SourceText::new(&source),
+            Some("t"),
+        );
         assert_eq!(
             assertions.len(),
             1,
@@ -6922,8 +6955,11 @@ fn tape_ok_aliases_are_smoke_only() {
         let source = format!("t.{method}(score(10, 3));");
         let allocator = Allocator::default();
         let parse_result = Parser::new(&allocator, &source, SourceType::ts()).parse();
-        let assertions =
-            collect_expect_assertions_in_statements(&parse_result.program.body, &source, Some("t"));
+        let assertions = collect_expect_assertions_in_statements(
+            &parse_result.program.body,
+            &SourceText::new(&source),
+            Some("t"),
+        );
         assert_eq!(
             assertions.len(),
             1,
@@ -6949,8 +6985,11 @@ fn ava_assertion_not_attempted_without_receiver() {
     let source = "t.is(score(10, 3), 7);";
     let allocator = Allocator::default();
     let parse_result = Parser::new(&allocator, source, SourceType::ts()).parse();
-    let assertions =
-        collect_expect_assertions_in_statements(&parse_result.program.body, source, None);
+    let assertions = collect_expect_assertions_in_statements(
+        &parse_result.program.body,
+        &SourceText::new(source),
+        None,
+    );
     assert!(
         assertions.is_empty(),
         "no receiver means no AVA assertion: {assertions:?}"

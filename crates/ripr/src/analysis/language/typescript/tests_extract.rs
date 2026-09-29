@@ -30,10 +30,12 @@ pub(crate) fn extract_tests(file: &Path, source: &str) -> Vec<TypeScriptTest> {
         let mocks = extract_mocks_from_statements(&ret.program.body, &imports);
         let mut tests = Vec::new();
         let mut scope = TestScope::default();
+        // One line index per source; every test and assertion line is a
+        // binary search against it rather than a rescan from byte 0.
         collect_tests_from_statements(
             &ret.program.body,
             file,
-            source,
+            &SourceText::new(source),
             &mocks,
             &imports,
             &mut scope,
@@ -559,7 +561,7 @@ fn string_value(expression: &Expression<'_>) -> Option<String> {
 pub(crate) fn collect_tests_from_statements(
     statements: &[Statement<'_>],
     file: &Path,
-    source: &str,
+    source: &SourceText<'_>,
     mocks: &[String],
     imports: &[TypeScriptImport],
     scope: &mut TestScope,
@@ -1358,7 +1360,7 @@ pub(crate) fn describe_body_from_statement<'a>(
 pub(crate) fn test_from_statement(
     stmt: &Statement<'_>,
     file: &Path,
-    source: &str,
+    source: &SourceText<'_>,
     describe_stack: &[String],
 ) -> Option<TypeScriptTest> {
     let Statement::ExpressionStatement(expr_stmt) = stmt else {
@@ -1373,7 +1375,7 @@ pub(crate) fn test_from_statement(
         local_name: name,
         describe_names: describe_stack.to_vec(),
         file: file.to_path_buf(),
-        line: line_for_offset(source, call.span.start as usize),
+        line: source.line_for_offset(call.span.start as usize),
         body_text: source[call.span.start as usize..call.span.end as usize].to_string(),
         assertions,
         // Populated by `extract_tests` (the only public extractor) once
@@ -1386,7 +1388,7 @@ pub(crate) fn test_from_statement(
 
 pub(crate) fn test_name_and_assertions_from_call(
     call: &oxc_ast::ast::CallExpression<'_>,
-    source: &str,
+    source: &SourceText<'_>,
 ) -> Option<(String, Vec<TypeScriptAssertion>)> {
     if !call_callee_is_active_declaration(call, TestDeclarationRoot::Test)
         && !call_callee_is_active_each_declaration(call, TestDeclarationRoot::Test)
@@ -1811,8 +1813,9 @@ pub(crate) fn detect_partial_test_extraction(
             // Parse-error disclosure owns this case; do not double-report.
             return None;
         }
+        let source = SourceText::new(source);
         let mut finder = UnextractedTestFinder {
-            source,
+            source: &source,
             extracted_starts: &extracted_starts,
             gap: None,
         };
@@ -1860,7 +1863,7 @@ fn extracted_span_starts(source: &str, extracted: &[TypeScriptTest]) -> Vec<usiz
 /// (statement containers, call arguments, function bodies). Array-element and
 /// object-property subtrees are out of scope for this disclosure slice.
 struct UnextractedTestFinder<'a> {
-    source: &'a str,
+    source: &'a SourceText<'a>,
     extracted_starts: &'a [usize],
     gap: Option<(usize, &'static str, String)>,
 }
@@ -2065,7 +2068,7 @@ impl UnextractedTestFinder<'_> {
                 && tagged_template_tag_is_test_each(&tagged.tag)
             {
                 self.gap = Some((
-                    line_for_offset(self.source, call.span.start as usize),
+                    self.source.line_for_offset(call.span.start as usize),
                     "tagged-template .each",
                     snippet_for_span(
                         self.source,
@@ -2084,7 +2087,7 @@ impl UnextractedTestFinder<'_> {
                     _ => "test/it call in loop/callback/nested body",
                 };
                 self.gap = Some((
-                    line_for_offset(self.source, call.span.start as usize),
+                    self.source.line_for_offset(call.span.start as usize),
                     shape,
                     snippet_for_span(
                         self.source,
@@ -2173,7 +2176,7 @@ impl UnextractedTestFinder<'_> {
         if statement_position && self.gap.is_none() && tagged_template_tag_is_test_each(&tagged.tag)
         {
             self.gap = Some((
-                line_for_offset(self.source, tagged.span.start as usize),
+                self.source.line_for_offset(tagged.span.start as usize),
                 "tagged-template .each",
                 snippet_for_span(
                     self.source,
