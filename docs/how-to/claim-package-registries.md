@@ -2,9 +2,9 @@
 
 This is the maintainer setup guide for the
 [PyPI/npm distribution plan](../PYPI_NPM_DISTRIBUTION.md).
-Track non-secret progress in
+Track the current non-secret operator state in
 [ripr #1780](https://github.com/EffortlessMetrics/ripr/issues/1780).
-No account, package or environment is created by this document.
+No account, package, environment or publisher is created by this document.
 
 ## What to claim
 
@@ -15,7 +15,7 @@ No account, package or environment is created by this document.
 | npm | `@effortlessmetrics/ripr` and native packages below | Each exists after its first genuine publication inside your scope |
 | TestPyPI | Optional separate project/publisher | Rehearsal only; never reserves production PyPI |
 
-The product and executable remain **ripr**. No repository/editor rename is
+The product and executable remain **ripr**. No repository or editor rename is
 needed. The unrelated PyPI project already uses `ripr`; never advertise
 `pip install ripr` or `uvx ripr` as installation of this product.
 
@@ -23,19 +23,26 @@ An absent public package page is not assurance that a name is accepted. Confirm
 ownership and conflicts in the authenticated service UI; do not automatically
 pick a different scope or spelling when a check fails.
 
-## 1. Secure npm organization ownership now
+## 1. Secure npm organization ownership
 
-Sign in to your individual npm account. Confirm you already own the organization,
-or use profile -> **Add an Organization** and choose `effortlessmetrics` with the
-public-packages plan. npm organization names define their package scopes;
-GitHub organization ownership does not create the npm organization. See
-[organization creation](https://docs.npmjs.com/creating-an-organization/) and
-[scope ownership](https://docs.npmjs.com/about-scopes/).
+The current operator checkpoint in
+[ripr #1780](https://github.com/EffortlessMetrics/ripr/issues/1780) records
+`effortlesssteven` as a super-admin of organization `effortlessmetrics`, with a
+verified email, strong personal 2FA/write-action protection, multiple security
+keys and no npm access tokens for this workstream.
 
-Enable strong 2FA, keep recovery material outside repositories and appoint an
-appropriate backup owner. Record the public organization URL and ownership
-confirmation in #1780, not passwords, tokens, recovery codes or authenticated
-page captures.
+The remaining npm account work is to:
+
+1. confirm privately that current recovery codes are stored separately from the
+   security keys;
+2. recheck organization membership and enable organization-wide 2FA
+   enforcement;
+3. appoint an appropriate backup organization owner or recovery maintainer;
+4. keep the access-token inventory empty unless a later separately authorized
+   operation proves one is unavoidable.
+
+Do not post passwords, tokens, recovery codes, authenticated HTML, cookies or
+session state in an issue or pull request.
 
 The intended package inventory is:
 
@@ -66,15 +73,15 @@ scope. Review that policy and membership, but do not treat the team form as the
 bootstrap path. The package family is created only by the genuine publication
 transaction in [ripr #1784](https://github.com/EffortlessMetrics/ripr/issues/1784).
 
-The organization page alone does not prove that the signed-in account is an
-owner. Confirm your role under organization membership/settings and retain only
-a non-secret owner/team confirmation in #1780.
-
 ## 2. Prepare PyPI; distinguish setup from reservation
 
-Sign in/create your PyPI account, verify email, configure 2FA and retain private
-recovery material. Under account **Publishing**, prepare a pending GitHub
-publisher for the source workflow:
+Sign in to the individual PyPI account, verify email, configure strong 2FA and
+retain private recovery material. The current retained evidence establishes only
+that the account was signed in and the pending-publisher form was prepared; use
+[ripr #1780](https://github.com/EffortlessMetrics/ripr/issues/1780) as the live
+state record.
+
+Under account **Publishing**, add a pending GitHub publisher with:
 
 | Field | Value |
 | --- | --- |
@@ -84,11 +91,15 @@ publisher for the source workflow:
 | Workflow filename | `publish-pypi.yml` |
 | GitHub environment | `pypi` |
 
-Source PR
-[`ripr#1783`](https://github.com/EffortlessMetrics/ripr/pull/1783) establishes
-that exact filename/environment as a deliberately non-publishing contract. It
-must be reviewed and merged before the tuple is treated as present on the source
-default branch.
+The exact source workflow is now present on `EffortlessMetrics/ripr` `main` via
+[`ripr#1783`](https://github.com/EffortlessMetrics/ripr/pull/1783), merge commit
+`92256c5022a867c6dffdf8403c2642f47c66fc1b`. It is deliberately incapable of
+publication: manual dispatch, `contents: read`, and no package build, artifact
+retrieval, `id-token: write` or upload step.
+
+Use only the workflow filename in the registry form, not
+`.github/workflows/publish-pypi.yml`. After selecting **Add**, record only the
+non-secret confirmation that the pending publisher appears.
 
 A
 [pending publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
@@ -96,10 +107,10 @@ creates the project only on its first accepted publication. **It does not
 reserve the name**, and another registrant can take the name in the meantime.
 
 The [first functional prerelease task](https://github.com/EffortlessMetrics/ripr/issues/1782)
-is deliberately separate from full npm/matrix completion. Qualify an honest
-platform subset and a useful native CLI, obtain exact source/version/artifact
-publication approval, then publish and install it back from production PyPI.
-Do not upload a dummy package just to hold the name;
+is deliberately separate from full npm and full-matrix completion. Qualify an
+honest platform subset and a useful native CLI, obtain exact
+source/version/artifact publication approval, then publish and install it back
+from production PyPI. Do not upload a dummy package just to hold the name;
 [PEP 541](https://peps.python.org/pep-0541/) treats name-squatting projects as
 invalid. A limited real prerelease is different from a placeholder.
 
@@ -111,38 +122,37 @@ setup is separate and does not secure production ownership.
 
 ## 3. Create and protect the source GitHub environments
 
-The intended source-only workflow identities are:
+The source-owned workflow identities are on `EffortlessMetrics/ripr` `main`:
 
-| Registry | GitHub owner/repository | Workflow filename | Environment | Current source PR |
+| Registry | GitHub owner/repository | Workflow filename | Environment | Merge receipt |
 | --- | --- | --- | --- | --- |
-| PyPI | `EffortlessMetrics/ripr` | `publish-pypi.yml` | `pypi` | [#1783](https://github.com/EffortlessMetrics/ripr/pull/1783) |
-| npm | `EffortlessMetrics/ripr` | `publish-npm.yml` | `npm` | [#1785](https://github.com/EffortlessMetrics/ripr/pull/1785) |
+| PyPI | `EffortlessMetrics/ripr` | `publish-pypi.yml` | `pypi` | [#1783](https://github.com/EffortlessMetrics/ripr/pull/1783) → `92256c5022a867c6dffdf8403c2642f47c66fc1b` |
+| npm | `EffortlessMetrics/ripr` | `publish-npm.yml` | `npm` | [#1785](https://github.com/EffortlessMetrics/ripr/pull/1785) → `33361d10513972d67e7c2628f95c037ab65e7488` |
 
-Both current workflows are intentionally incapable of publication. They use
-manual dispatch and `contents: read` only, with no package retrieval/build,
-`id-token: write`, staging or upload step. They establish exact source-owned
-workflow paths without extending release authority.
+Both workflows are intentionally incapable of publication. They use manual
+dispatch and `contents: read` only, with no package retrieval/build,
+`id-token: write`, staging or upload step. Their presence establishes exact
+source-owned paths, not protected environment state or registry authority.
 
 In `EffortlessMetrics/ripr`, use **Settings -> Environments -> New environment**
-to create `pypi` and `npm`. For each environment:
+to create `pypi` and `npm` explicitly. For each environment:
 
-1. add a required reviewer and enable prevention of self-review where the
-   available plan/repository settings support it;
-2. restrict deployment branches/tags to the reviewed release refs used by the
-   release transaction rather than allowing every branch;
-3. add no registry token or long-lived publication secret;
-4. save a non-secret screenshot or text receipt only if it contains no account,
-   session, token or recovery material.
+1. add the intended required reviewer when an independent approver is available;
+2. enable prevention of self-review only when another reviewer can approve;
+3. restrict deployment branches or tags to the reviewed release refs used by
+   the release transaction instead of allowing every branch;
+4. add no registry token or long-lived publication secret;
+5. retain only a non-secret confirmation containing no account, session, token
+   or recovery material.
 
-Create the environments explicitly before any workflow relies on them. A
+Create the environments before manually dispatching either contract workflow. A
 workflow reference can otherwise create an unprotected environment implicitly.
 Environment existence is not publication authorization, and environment approval
-cannot replace exact candidate/artifact authorization.
+cannot replace exact candidate and artifact authorization.
 
-Use filename only in registry forms, not `.github/workflows/...`. Give OIDC
-permission only to the eventual publishing/staging job. Build/qualification jobs
-should not receive registry-write authority. Never bind either publisher to
-`ripr-swarm`.
+Give OIDC permission only to the eventual publishing or staging job. Build and
+qualification jobs should not receive registry-write authority. Never bind
+either publisher to `ripr-swarm`.
 
 [PyPI publisher use](https://docs.pypi.org/trusted-publishers/using-a-publisher/)
 and [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) describe
@@ -188,10 +198,10 @@ and add a GitHub Actions publisher with:
 | Repository | `ripr` |
 | Workflow filename | `publish-npm.yml` |
 | Environment | `npm` |
-| Allowed actions | stage only; do not enable direct publish without a separate decision |
+| Allowed actions | Stage only; do not enable direct publish without a separate decision |
 
 Configure the tuple separately for the launcher and every published native
-payload package. Review/approve and verify native packages before approving the
+payload package. Review, approve and verify native packages before approving the
 launcher that references them. A staged package is not yet public.
 
 As checked on 2026-09-28, staging requires npm >=11.15.0 and Node >=22.14.0;
@@ -200,9 +210,9 @@ in the implementation. Those publisher minimums do not establish consumer
 runtime minimums. OIDC does not authorize general npm administration or human
 stage approval; `npm whoami` is not an OIDC readiness check.
 
-Only after the staged path is proved should package publishing access be tightened
-to require 2FA and disallow traditional tokens. Do not strand the package family
-by removing the only proven publication route first.
+Only after the staged path is proved should package publishing access be
+tightened to require 2FA and disallow traditional tokens. Do not strand the
+package family by removing the only proven publication route first.
 
 The [publishing issue](https://github.com/EffortlessMetrics/ripr/issues/1781)
 owns exact-artifact authorization, reusable staging machinery, partial
@@ -211,14 +221,27 @@ different bytes or publish a launcher before its payloads exist.
 
 ## Record progress without secrets
 
-Keep account readiness, scope ownership, pending/configured publishers, project
-creation, publication and independent verification separate. Record public URLs,
-owner confirmation, exact non-secret publisher tuples, selected artifact hashes
-and verification receipts in the source issues. Never attach tokens, recovery
-codes, credentials, full environment dumps or authenticated HTML captures.
+Keep these states separate:
 
-The immediate human actions are npm account/organization-role confirmation,
-strong 2FA, PyPI pending-publisher completion and protected GitHub environment
-creation. Package-level npm trusted publishers come **after** #1784 creates the
-real packages. No broader release, unrelated setting change or publication is
-authorized merely by completing this checklist.
+```text
+account_ready
+scope_owned
+github_environment_protected
+publisher_configured
+project_or_package_created
+published
+publicly_verified
+```
+
+Record public URLs, owner confirmation, exact non-secret publisher tuples,
+selected artifact hashes and verification receipts in the source issues. Never
+attach tokens, recovery codes, credentials, cookies, full environment dumps or
+authenticated HTML captures.
+
+The current human actions are: confirm private recovery material; enable npm
+organization-wide 2FA after checking membership; appoint a backup owner; confirm
+PyPI account 2FA; create and protect the `pypi` and `npm` GitHub environments;
+and submit the exact PyPI pending-publisher tuple. Package-level npm trusted
+publishers come **after** #1784 creates the real packages. Completing this
+checklist does not authorize a broader release, registry write or unrelated
+settings change.
