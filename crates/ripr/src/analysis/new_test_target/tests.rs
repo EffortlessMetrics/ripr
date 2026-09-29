@@ -315,7 +315,7 @@ fn same_file_private_owner_with_one_inline_module_earns_inline_unit() -> Result<
     if !readiness
         .present_evidence
         .iter()
-        .any(|fact| fact.contains(NewTestTargetAdmission::present_reason()))
+        .any(|fact| fact.contains("producer-owned new inline unit test proposal"))
     {
         return Err(format!(
             "proposal should be present evidence, got {:?}",

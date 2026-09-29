@@ -13289,7 +13289,7 @@ fn check_rust_source_role_authority() -> Result<(), String> {
     /// authority may be consumed only by this inventoried set; new consumers
     /// extend the inventory here with a reason so role consumers stay
     /// reviewable.
-    const IS_TEST_FILE_CONSUMERS: [&str; 7] = [
+    const IS_TEST_FILE_CONSUMERS: [&str; 8] = [
         "crates/ripr/src/analysis/classify/owner_shape.rs",
         "crates/ripr/src/analysis/test_grip_evidence.rs",
         "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
@@ -13297,8 +13297,10 @@ fn check_rust_source_role_authority() -> Result<(), String> {
         "crates/ripr/src/analysis/mod.rs",
         "crates/ripr/src/analysis/language/rust/mod.rs",
         // InlineUnit admission refuses tests/** owners as InlineUnitOutOfScope
-        // rather than inventing a second path heuristic (#4784).
+        // rather than inventing a second path heuristic (#4784). Integration
+        // admission uses the same authority for proposed tests/*.rs leaves (#4576).
         "crates/ripr/src/analysis/new_test_target.rs",
+        "crates/ripr/src/analysis/new_test_target/integration.rs",
     ];
 
     let files = tracked_files()?;

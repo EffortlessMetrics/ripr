@@ -11,6 +11,7 @@
 //! actionability flip is fail-closed and every ineligible state carries a
 //! typed reason.
 
+pub(crate) use super::new_test_target::NewTestTargetAdmission;
 use super::seam_classification::ClassifiedSeam;
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind};
 use super::test_grip_evidence::{RelatedTestGrip, TestGripEvidence, TestTargetEvidence};
@@ -18,7 +19,7 @@ use crate::analysis::canonical_gap::canonical_gap_identity;
 use crate::domain::{OracleKind, OracleStrength, RelationReason, StageState};
 
 pub(crate) use super::new_test_target::{
-    NewTestKind, NewTestProposalProvenance, NewTestTargetAdmission, NewTestTargetProposal,
+    NewTestKind, NewTestProposalProvenance, NewTestTargetProposal,
 };
 
 pub(crate) const REPAIR_ROUTE_AUTHORITY_BOUNDARY: &str =
@@ -38,9 +39,9 @@ pub(crate) enum RepairRouteState {
 /// The producer-owned choice of where a test-only repair may land.
 ///
 /// `Missing` is deliberate: a related-test summary, a path, or a renderer
-/// heuristic is not permission to edit that location. New-test proposals are
-/// represented explicitly so a producer can supply them without overloading
-/// an existing-test identity.
+/// heuristic is not permission to edit that location. `Proposed` is a
+/// producer-owned new Integration or InlineUnit target, not an existing-test
+/// identity.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RepairTargetSelection {
@@ -242,8 +243,10 @@ fn value_route_readiness(seam: &RepoSeam, evidence: &TestGripEvidence) -> Repair
     }
     if has_safe_target {
         present_evidence.push(SAFE_TEST_TARGET_EVIDENCE.to_string());
-        if matches!(target_selection, RepairTargetSelection::Proposed(_)) {
-            present_evidence.push(NewTestTargetAdmission::present_reason().to_string());
+        if matches!(target_selection, RepairTargetSelection::Proposed(_))
+            && let Some(admission) = admission
+        {
+            present_evidence.push(admission.present_reason().to_string());
         }
     }
     let mut missing_evidence = Vec::new();
@@ -490,9 +493,10 @@ fn fact_discriminator_key(
                     right,
                 });
             }
-            let right = fact
-                .trim()
+            let trimmed = fact.trim();
+            let right = trimmed
                 .strip_suffix(" (equality boundary)")
+                .or_else(|| trimmed.strip_suffix(" (boundary value)"))
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(normalize_discriminator_text)?;
@@ -553,8 +557,10 @@ fn value_target_selection(
         return RepairTargetSelection::Existing(existing.clone());
     }
     if let Some(proposal) = admission.and_then(|admission| admission.proposal.clone()) {
-        if proposal.kind != NewTestKind::InlineUnit
-            || proposal.provenance != NewTestProposalProvenance::ProducerOwned
+        if !matches!(
+            proposal.kind,
+            NewTestKind::Integration | NewTestKind::InlineUnit
+        ) || proposal.provenance != NewTestProposalProvenance::ProducerOwned
         {
             return RepairTargetSelection::Missing;
         }
@@ -914,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn integration_proposal_is_not_admitted_by_the_inline_unit_ranker() -> Result<(), String> {
+    fn producer_owned_integration_proposal_is_a_safe_target() -> Result<(), String> {
         let mut entry = classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, Vec::new());
         let mut admission = inline_unit_admission();
         if let Some(proposal) = admission.proposal.as_mut() {
@@ -923,10 +929,11 @@ mod tests {
         }
         entry.evidence.new_test_target = Some(admission);
         match repair_packet_eligibility(&entry).readiness.target_selection {
-            RepairTargetSelection::Missing => Ok(()),
-            other => Err(format!(
-                "Integration must stay Missing on this producer, got {other:?}"
-            )),
+            RepairTargetSelection::Proposed(proposal) => {
+                assert_eq!(proposal.kind, NewTestKind::Integration);
+                Ok(())
+            }
+            other => Err(format!("expected Proposed Integration, got {other:?}")),
         }
     }
 

@@ -1,10 +1,9 @@
-//! Producer-owned InlineUnit `NewTestTargetProposal` admission (#4784).
+//! Producer-owned `NewTestTargetProposal` admission.
 //!
-//! When no existing test can own a test-only repair, this module may earn
-//! one exact insertion into an already-governed inline cfg-test module
-//! from RustIndex and parser-backed source-role facts. It does not invent
-//! expected values, generate a test body, or create a missing test module.
-//! Integration-file proposals stay out of scope.
+//! InlineUnit (#4784) may earn one exact insertion into an already-governed
+//! inline cfg-test module. Integration (#4576) may earn one new `tests/` file
+//! for a crate-root public library item with established autodiscovery.
+//! Neither invents expected values or generates a test body.
 
 use crate::analysis::facts::FunctionSourceRole;
 use crate::analysis::language::is_generated_rust_file_with_patterns;
@@ -16,6 +15,9 @@ use crate::analysis::syntax::{
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 
+mod integration;
+#[cfg(test)]
+mod integration_tests;
 mod region;
 #[cfg(test)]
 mod tests;
@@ -25,6 +27,8 @@ pub(crate) use region::InlineTestRegionAuthority;
 pub(crate) use region::validate_inline_region_edit;
 
 const SAFE_NEW_INLINE_UNIT_EVIDENCE: &str = "producer-owned new inline unit test proposal";
+
+pub(crate) use integration::admit_new_integration_test;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct NewTestTargetAdmission {
@@ -38,16 +42,16 @@ pub(crate) struct NewTestTargetAdmission {
 
 impl NewTestTargetAdmission {
     pub(crate) fn missing_reason(&self) -> Option<String> {
-        self.blocker.as_ref().map(|blocker| {
-            format!(
-                "new inline unit test proposal blocked: {}",
-                blocker.as_str()
-            )
-        })
+        self.blocker
+            .as_ref()
+            .map(|blocker| format!("new test proposal blocked: {}", blocker.as_str()))
     }
 
-    pub(crate) fn present_reason() -> &'static str {
-        SAFE_NEW_INLINE_UNIT_EVIDENCE
+    pub(crate) fn present_reason(&self) -> &'static str {
+        match self.proposal.as_ref().map(|proposal| proposal.kind) {
+            Some(NewTestKind::Integration) => integration::integration_present_reason(),
+            _ => SAFE_NEW_INLINE_UNIT_EVIDENCE,
+        }
     }
 }
 
@@ -66,6 +70,11 @@ pub(crate) enum NewTestProposalBlocker {
     StaleSource,
     ProductionEdit,
     InlineUnitOutOfScope,
+    PrivateOwner,
+    AutotestsDisabled,
+    MissingIntegrationLayout,
+    LibraryTargetUnresolved,
+    FileCollision,
 }
 
 impl NewTestProposalBlocker {
@@ -101,6 +110,13 @@ impl NewTestProposalBlocker {
             Self::InlineUnitOutOfScope => {
                 "inline unit insertion is out of scope for this seam or file"
             }
+            Self::PrivateOwner => {
+                "owner is private and would require a production visibility change"
+            }
+            Self::AutotestsDisabled => "cargo autotests discovery is disabled",
+            Self::MissingIntegrationLayout => "package has no established tests/ layout",
+            Self::LibraryTargetUnresolved => "exact public library target is unresolved",
+            Self::FileCollision => "proposed integration file collides with an existing path",
         }
     }
 }
@@ -124,6 +140,31 @@ pub(crate) enum NewTestKind {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum NewTestProposalProvenance {
     ProducerOwned,
+}
+
+/// Prefer a producer-owned Integration file when the owner is a crate-root
+/// public library item; otherwise keep the landed InlineUnit producer.
+/// When both stay Missing, keep Integration's Cargo/layout blockers. A
+/// PrivateOwner Integration refusal does not replace an InlineUnit module
+/// reason: private items can still earn a same-file unit proposal.
+pub(crate) fn admit_new_test_target(seam: &RepoSeam, index: &RustIndex) -> NewTestTargetAdmission {
+    let integration = admit_new_integration_test(seam, index);
+    if integration.proposal.is_some() {
+        return integration;
+    }
+    let inline = admit_new_inline_unit_test(seam, index);
+    if inline.proposal.is_some() {
+        return inline;
+    }
+    match integration.blocker {
+        Some(
+            NewTestProposalBlocker::AutotestsDisabled
+            | NewTestProposalBlocker::MissingIntegrationLayout
+            | NewTestProposalBlocker::LibraryTargetUnresolved
+            | NewTestProposalBlocker::FileCollision,
+        ) => integration,
+        _ => inline,
+    }
 }
 
 /// Admit one InlineUnit proposal from indexed source-role and parser-backed
@@ -269,7 +310,7 @@ fn path_is_generated_or_vendor(path: &Path) -> bool {
     })
 }
 
-fn is_relative_without_parent(path: &Path) -> bool {
+pub(super) fn is_relative_without_parent(path: &Path) -> bool {
     !path.is_absolute()
         && path.components().all(|component| {
             !matches!(
@@ -279,6 +320,6 @@ fn is_relative_without_parent(path: &Path) -> bool {
         })
 }
 
-fn normalize_relative(path: &Path) -> PathBuf {
+pub(super) fn normalize_relative(path: &Path) -> PathBuf {
     PathBuf::from(path.to_string_lossy().replace('\\', "/"))
 }

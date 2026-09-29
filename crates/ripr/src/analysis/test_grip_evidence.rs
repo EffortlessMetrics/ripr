@@ -53,6 +53,10 @@ pub(crate) struct TestGripEvidence {
     pub(crate) discriminate: StageEvidence,
     pub(crate) observed_values: Vec<ValueFact>,
     pub(crate) missing_discriminators: Vec<MissingDiscriminatorFact>,
+    /// Producer-owned Integration or InlineUnit proposal, or the typed
+    /// blocker that kept the target `Missing`. Compact evidence leaves this
+    /// empty so the compact classified-seam cache does not need a generation
+    /// bump.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) new_test_target: Option<NewTestTargetAdmission>,
 }
@@ -296,7 +300,7 @@ fn new_test_target_admission(seam: &RepoSeam, index: &RustIndex) -> Option<NewTe
         | SeamKind::ErrorVariant
         | SeamKind::ReturnValue
         | SeamKind::FieldConstruction
-        | SeamKind::MatchArm => Some(new_test_target::admit_new_inline_unit_test(seam, index)),
+        | SeamKind::MatchArm => Some(new_test_target::admit_new_test_target(seam, index)),
         SeamKind::SideEffect | SeamKind::CallPresence => None,
     }
 }

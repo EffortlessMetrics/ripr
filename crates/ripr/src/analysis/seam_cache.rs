@@ -249,7 +249,10 @@ pub(crate) struct CachedSeamLimitInfo {
 /// parsing and a non-UTF-8 source is indexed on lexical fallback instead of
 /// aborting. Old classified entries would keep the ownerless line-1 findings
 /// a BOM produced.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.17";
+/// `1.17` -> `1.18`: full classified evidence may carry a producer-owned
+/// Integration new-test proposal (#4576). A warm main `1.17` hit would hide
+/// a now-admitted `Proposed` target.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.18";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -299,7 +302,11 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.17";
 /// 0.21 -> 0.22: typed semantic-body integrity (#4382); unsigned generations cold-recompute.
 /// `0.22` -> `0.23`: BOM and non-UTF-8 Rust source decoding — same semantic
 /// transition as the outer classified-seam cache.
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.23";
+/// `0.23` -> `0.24`: full classified evidence may carry a producer-owned
+/// Integration new-test proposal (#4576) — same semantic transition as
+/// the outer classified-seam cache. Compact evidence stays empty, so the
+/// compact generation remains main's `0.24`.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.24";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -3423,7 +3430,12 @@ mod tests {
         // 1.14 -> 1.15: the Rust nesting budget moves over-deep sources to
         // lexical fallback, so classified seams derived from their old
         // parser-backed facts must miss.
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.17");
+        // 1.15 -> 1.16: typed semantic-body integrity (#4382).
+        // 1.16 -> 1.17: BOM / non-UTF-8 Rust source decoding (#4597).
+        // 1.17 -> 1.18: full classified evidence may carry a producer-owned
+        // Integration new-test proposal (#4576); a warm main 1.17 hit would
+        // hide Proposed targets.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.18");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
@@ -3437,7 +3449,12 @@ mod tests {
         // resolution — same semantic transition as the outer cache.
         // 0.21 (sharded) / 0.22 (compact): Rust nesting budget refusal —
         // same semantic transition as the outer cache.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.23");
+        // 0.22 (sharded) / 0.23 (compact): typed semantic-body integrity
+        // (#4382).
+        // 0.23 (sharded) / 0.24 (compact): BOM / non-UTF-8 decoding (#4597).
+        // 0.24 (sharded) / 0.24 (compact): #4576 Integration proposals
+        // persist on full classified evidence only; compact stays empty.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.24");
         assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.24");
     }
 

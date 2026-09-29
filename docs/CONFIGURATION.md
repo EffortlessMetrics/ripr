@@ -225,9 +225,12 @@ completeness limits, lexical-fallback provenance and shard descriptors. JSON
 whitespace/object-key ordering does not affect integrity. Derived
 `FileFacts.role_provenance` is skipped by serialization and recomputed.
 
-The integrity generations are file facts `1.10`, full classified `1.16`, compact
-classified `0.23`, shards `0.22` and corpus fingerprints `0.3`. The integrity
-transition follows the unsigned nesting-budget generations from #4475. Older unsigned
+The integrity generations are file facts `1.11`, full classified `1.18`, compact
+classified `0.24`, shards `0.24` and corpus fingerprints `0.3`. Full and
+sharded generations move past main's #4597 `1.17` / `0.23` for producer-owned
+Integration proposals (#4576); compact stays at main's `0.24` because compact
+evidence does not carry that admission. The integrity transition follows the unsigned
+nesting-budget generations from #4475. Older unsigned
 generations cold-recompute; no source migration is needed. Decoded key/schema
 mismatches invalidate before digest checking. Matching current entries with
 missing, invalid or mismatching digests are corruption; invalid file facts do

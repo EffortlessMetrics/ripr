@@ -17,6 +17,7 @@ fn boundary_matching_preserves_operand_case() {
         "amount >= LIMIT",
         "amount == LIMIT",
         "LIMIT (equality boundary)",
+        "LIMIT (boundary value)",
     ] {
         assert!(discriminator_fact_matches(&required, fact), "{fact}");
     }
