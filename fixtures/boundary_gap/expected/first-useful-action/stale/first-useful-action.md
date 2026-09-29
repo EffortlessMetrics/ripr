@@ -10,7 +10,8 @@ Refresh RIPR evidence before acting.
 
 ## One-Screen Recommendation
 
-- Changed behavior: The best available seam evidence is stale.
+- Changed behavior: not named by the selected evidence
+- Why: The best available seam evidence is stale.
 - Current evidence strength: `Static evidence found related test context, but the current check is weak because the discriminator is missing.`
 - Missing discriminator: input that hits the boundary: amount >= discount_threshold
 - Focused proof intent: Refresh RIPR evidence before acting

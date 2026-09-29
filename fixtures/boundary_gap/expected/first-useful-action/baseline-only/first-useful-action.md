@@ -10,7 +10,8 @@ Leave existing baseline debt outside this PR action.
 
 ## One-Screen Recommendation
 
-- Changed behavior: The visible debt is baseline-only and not PR-local first-action work.
+- Changed behavior: not named by the selected evidence
+- Why: The visible debt is baseline-only and not PR-local first-action work.
 - Current evidence strength: `Static evidence found related test context, but the current check is weak because the discriminator is missing.`
 - Missing discriminator: input that hits the boundary: amount >= discount_threshold
 - Focused proof intent: Leave existing baseline debt outside this PR action

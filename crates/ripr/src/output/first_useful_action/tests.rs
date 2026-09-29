@@ -2236,6 +2236,68 @@ fn assert_no_repair_loop_command(rendered: &str) {
     );
 }
 
+/// F60-12: the one-screen `Changed behavior` line names the changed
+/// expression the card carries, and the selection's `why` gets its own line
+/// instead of being printed under that label.
+#[test]
+fn one_screen_changed_behavior_names_the_expression_not_the_why() -> Result<(), String> {
+    let comments = exact_line_comments()?;
+    // Fixture construction: the card really names the changed expression.
+    assert_eq!(
+        comments
+            .pointer("/comments/0/seam/expression")
+            .and_then(serde_json::Value::as_str),
+        Some("amount >= discount_threshold")
+    );
+    let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+    let markdown = render_first_useful_action_markdown(&report);
+    let changed = markdown
+        .lines()
+        .find(|line| line.starts_with("- Changed behavior: "))
+        .ok_or_else(|| format!("missing Changed behavior line:\n{markdown}"))?;
+    assert_eq!(
+        changed,
+        "- Changed behavior: `amount >= discount_threshold`"
+    );
+    let why = markdown
+        .lines()
+        .find(|line| line.starts_with("- Why: "))
+        .ok_or_else(|| format!("missing Why line:\n{markdown}"))?;
+    assert!(!why.contains("amount >= discount_threshold"), "{why}");
+    assert!(
+        !markdown.contains("Changed behavior: Changed behavior"),
+        "{markdown}"
+    );
+    Ok(())
+}
+
+/// A blank `seam.expression` names nothing, so the one-screen line falls back
+/// to the card's own `changed_behavior` instead of reporting no expression.
+#[test]
+fn one_screen_changed_behavior_skips_a_blank_seam_expression() -> Result<(), String> {
+    let mut comments = exact_line_comments()?;
+    let card = comments
+        .pointer_mut("/comments/0")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("fixture must carry a first review card")?;
+    card.insert(
+        "changed_behavior".to_string(),
+        serde_json::json!("amount > discount_threshold"),
+    );
+    let seam = card
+        .get_mut("seam")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("fixture card must carry a seam")?;
+    seam.insert("expression".to_string(), serde_json::json!("  "));
+    let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+    let markdown = render_first_useful_action_markdown(&report);
+    assert!(
+        markdown.contains("- Changed behavior: `amount > discount_threshold`\n"),
+        "{markdown}"
+    );
+    Ok(())
+}
+
 #[test]
 fn first_useful_action_matches_repair_start_fixture() -> Result<(), String> {
     let repo_root = repo_root()?;
@@ -2408,5 +2470,102 @@ fn blank_carried_repair_start_is_not_a_repair_start() -> Result<(), String> {
     let rendered = render_first_useful_action_json(&build_first_useful_action_report(input))?;
     assert!(rendered.contains(r#""status": "missing_required_artifact""#));
     assert_no_repair_loop_command(&rendered);
+    Ok(())
+}
+
+fn gap_route_input(repair_route_extra: &str) -> FirstUsefulActionInput {
+    FirstUsefulActionInput {
+        root: ".".to_string(),
+        generated_at: "2026-05-09T12:00:00Z".to_string(),
+        pr_guidance_path: Some("comments.json".to_string()),
+        assistant_proof_path: None,
+        gap_ledger_path: Some("gap-decision-ledger.json".to_string()),
+        ledger_path: None,
+        baseline_delta_path: None,
+        receipt_path: None,
+        gate_decision_path: None,
+        coverage_frontier_path: None,
+        editor_context_path: None,
+        pr_guidance_json: Some(Ok(
+            r#"{"comments":[{"seam_id":"raw-a","classification":"static_unknown"}]}"#.to_string(),
+        )),
+        assistant_proof_json: None,
+        gap_ledger_json: Some(Ok(format!(
+            r#"{{
+  "kind": "gap_decision_ledger",
+  "records": [
+    {{
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {{ "file": "src/pricing.rs", "line": 42 }},
+      "repair_route": {{
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"{repair_route_extra}
+      }},
+      "verification_commands": ["cargo xtask fixtures boundary_gap"]
+    }}
+  ]
+}}"#
+        ))),
+        ledger_json: None,
+        baseline_delta_json: None,
+        receipt_json: None,
+        gate_decision_json: None,
+        coverage_frontier_json: None,
+        editor_context_json: None,
+    }
+}
+
+/// F60-12: a gap route that names the changed expression carries it into
+/// `selected.changed_behavior`, which the generated CI summary reads before
+/// falling back to `why`; a route that names none omits the field.
+#[test]
+fn gap_route_changed_behavior_reaches_json_and_markdown() -> Result<(), String> {
+    let named = build_first_useful_action_report(gap_route_input(
+        r#", "changed_behavior": "amount >= discount_threshold""#,
+    ));
+    // Fixture construction: the gap route really was selected.
+    let named_json = render_first_useful_action_json(&named)?;
+    assert!(
+        named_json.contains(r#""source": "gap_ledger""#),
+        "{named_json}"
+    );
+    assert!(
+        named_json.contains(r#""changed_behavior": "amount >= discount_threshold""#),
+        "{named_json}"
+    );
+
+    let unnamed =
+        build_first_useful_action_report(gap_route_input(r#", "changed_behavior": "   ""#));
+    let unnamed_json = render_first_useful_action_json(&unnamed)?;
+    assert!(
+        unnamed_json.contains(r#""source": "gap_ledger""#),
+        "{unnamed_json}"
+    );
+    assert!(
+        !unnamed_json.contains("\"changed_behavior\""),
+        "{unnamed_json}"
+    );
+
+    let named_md = render_first_useful_action_markdown(&named);
+    let unnamed_md = render_first_useful_action_markdown(&unnamed);
+    assert!(
+        named_md.contains("- Changed behavior: `amount >= discount_threshold`\n"),
+        "{named_md}"
+    );
+    assert!(
+        unnamed_md.contains("- Changed behavior: not named by the selected evidence\n"),
+        "{unnamed_md}"
+    );
     Ok(())
 }

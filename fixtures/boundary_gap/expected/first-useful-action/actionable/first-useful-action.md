@@ -10,7 +10,8 @@ Add equality-boundary discriminator test.
 
 ## One-Screen Recommendation
 
-- Changed behavior: Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.
+- Changed behavior: not named by the selected evidence
+- Why: Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.
 - Current evidence strength: `Static evidence found related test context, but the current check is weak because the discriminator is missing.`
 - Missing discriminator: discount_threshold (equality boundary)
 - Focused proof intent: Assert the exact discounted_total output at amount == discount_threshold.

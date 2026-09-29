@@ -141,10 +141,18 @@ fn should_render_one_screen_recommendation(report: &FirstUsefulActionReport) -> 
 }
 
 fn render_one_screen_recommendation_markdown(report: &FirstUsefulActionReport, out: &mut String) {
-    let changed_behavior = if report.why.trim().is_empty() {
-        "changed behavior unavailable"
-    } else {
-        report.why.trim()
+    // F60-12: `why` explains the selection; it is not the changed behavior.
+    // Name the changed expression only when the selected evidence names one,
+    // and give `why` its own line.
+    let changed_behavior = match report
+        .selected
+        .as_ref()
+        .and_then(|selected| selected.changed_behavior.as_deref())
+        .map(str::trim)
+        .filter(|expression| !expression.is_empty())
+    {
+        Some(expression) => crate::output::markdown::code_span(expression),
+        None => "not named by the selected evidence".to_string(),
     };
     let evidence_strength = report
         .selected
@@ -182,6 +190,9 @@ fn render_one_screen_recommendation_markdown(report: &FirstUsefulActionReport, o
 
     out.push_str("## One-Screen Recommendation\n\n");
     out.push_str(&format!("- Changed behavior: {changed_behavior}\n"));
+    if !report.why.trim().is_empty() {
+        out.push_str(&format!("- Why: {}\n", with_period(report.why.trim())));
+    }
     out.push_str(&format!(
         "- Current evidence strength: `{evidence_strength}`\n"
     ));

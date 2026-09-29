@@ -44,6 +44,7 @@
     "path": "src/pricing.rs",
     "line": 88,
     "classification": "weakly_exposed",
+    "changed_behavior": "amount >= discount_threshold",
     "current_evidence_strength": "Static evidence found related test context, but the current check is weak because the discriminator is missing.",
     "missing_discriminator": "amount == discount_threshold",
     "focused_proof_intent": "assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)",

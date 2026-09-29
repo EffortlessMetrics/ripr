@@ -10,7 +10,8 @@ Regenerate a complete agent receipt before routing.
 
 ## One-Screen Recommendation
 
-- Changed behavior: The supplied receipt carries no promotable verify evidence.
+- Changed behavior: not named by the selected evidence
+- Why: The supplied receipt carries no promotable verify evidence.
 - Current evidence strength: `missing_required_artifact`
 - Missing discriminator: missing discriminator unavailable
 - Focused proof intent: Regenerate a complete agent receipt before routing

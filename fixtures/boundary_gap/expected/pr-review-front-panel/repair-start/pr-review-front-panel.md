@@ -9,6 +9,7 @@ Start here:
 - File: src/pricing.rs:88
 - Repair route: focused_test
 - Class: weakly_exposed
+- Changed behavior: `amount >= discount_threshold`
 - Current evidence strength: Static evidence found related test context, but the current check is weak because the discriminator is missing.
 - Missing discriminator: amount == discount_threshold
 - Focused proof intent: assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)

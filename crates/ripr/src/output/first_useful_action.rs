@@ -739,8 +739,8 @@ fn repair_start_report(
         string_path(card, &["seam", "expression"]),
         selected.missing_discriminator.as_deref(),
     ) {
-        (Some(expression), Some(missing)) => format!(
-            "Changed behavior `{expression}` lacks a discriminator for `{missing}`; the review card names its repair start."
+        (Some(_), Some(missing)) => format!(
+            "The changed behavior lacks a discriminator for `{missing}`; the review card names its repair start."
         ),
         _ => {
             "The review card names a repair start for this seam; no repair has run yet.".to_string()
@@ -1165,6 +1165,13 @@ fn selected_from_gap_record(
             gap_id: string_path(record, &["gap_id"]),
             canonical_gap_id: string_path(record, &["canonical_gap_id"]),
             repair_route: string_path(repair_route?, &["route_kind"]),
+            changed_behavior: [
+                repair_route.and_then(|route| string_path(route, &["changed_behavior"])),
+                string_path(record, &["changed_behavior"]),
+            ]
+            .into_iter()
+            .flatten()
+            .find(|expression| !expression.trim().is_empty()),
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1247,6 +1254,7 @@ fn selected_from_editor_context(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            changed_behavior: None,
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1272,6 +1280,7 @@ fn selected_from_assistant_proof(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            changed_behavior: None,
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1349,6 +1358,7 @@ fn selected_from_receipt_or_sources(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            changed_behavior: None,
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1400,6 +1410,15 @@ fn selected_from_guidance_item(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            // A blank seam expression names nothing; fall back to the card's
+            // own changed_behavior instead of stopping on the empty value.
+            changed_behavior: [
+                item.and_then(|item| string_path(item, &["seam", "expression"])),
+                item.and_then(|item| string_path(item, &["changed_behavior"])),
+            ]
+            .into_iter()
+            .flatten()
+            .find(|expression| !expression.trim().is_empty()),
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1481,6 +1500,7 @@ fn selected_from_delta_item(source: &str, source_artifact: String, item: &Value)
         gap_id: None,
         canonical_gap_id: None,
         repair_route: None,
+        changed_behavior: None,
     }
     .with_inferred_current_evidence_strength()
 }
@@ -1506,6 +1526,7 @@ fn weakly_exposed_boundary_selected(
         gap_id: None,
         canonical_gap_id: None,
         repair_route: None,
+        changed_behavior: None,
     }
     .with_inferred_current_evidence_strength()
 }

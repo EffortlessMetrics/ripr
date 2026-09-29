@@ -10,7 +10,8 @@ Generate assistant proof before routing.
 
 ## One-Screen Recommendation
 
-- Changed behavior: Required joined proof input is missing.
+- Changed behavior: not named by the selected evidence
+- Why: Required joined proof input is missing.
 - Current evidence strength: `missing_required_artifact`
 - Missing discriminator: missing discriminator unavailable
 - Focused proof intent: Generate assistant proof before routing

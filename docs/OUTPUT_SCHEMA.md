@@ -11032,6 +11032,13 @@ Field contract:
 - `selected.gap_id`, `selected.canonical_gap_id`, and
   `selected.repair_route` are present when an explicit gap decision ledger
   drives the first action.
+- `selected.changed_behavior` is the changed expression the selected evidence
+  names: the review card's nonblank `seam.expression`, else its
+  `changed_behavior`, or the gap record's `repair_route.changed_behavior`, else
+  its record-level `changed_behavior`. It is omitted when the evidence names
+  none. `why` explains the selection and does not repeat the expression.
+  Markdown's one-screen `Changed behavior` line and the generated CI summary
+  read this field (F60-12).
 - `why_first` records deterministic routing reasons. It must not be an opaque
   score.
 - `target.*` records the recommended test file, related test, suggested test
