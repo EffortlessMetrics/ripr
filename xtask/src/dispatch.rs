@@ -141,6 +141,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseFinalServerSubjects(args) => {
             super::reports::release_server_provenance::release_final_server_subjects(&args)
         }
+        XtaskCommand::ReleaseFinalServerAttestationFixture(args) => {
+            super::reports::release_server_provenance::release_final_server_attestation_fixture(&args)
+        }
         XtaskCommand::ReleaseFinalServerAttestationReceipt(args) => {
             super::reports::release_server_provenance::release_final_server_attestation_receipt(&args)
         }
