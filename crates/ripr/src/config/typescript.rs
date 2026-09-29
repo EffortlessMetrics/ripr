@@ -70,11 +70,16 @@ pub(crate) fn is_detectable_excluded_typescript_path(path: &Path) -> bool {
 
 /// Whether a UTF-8 file name is a generated TypeScript/JavaScript artifact.
 ///
-/// The family is `*.generated.*` (`cart.generated.ts`,
-/// `types.generated.d.ts`). `generated.ts` and `regenerated.ts` are
-/// near-misses and stay ordinary source.
+/// The families are `*.generated.*` (`cart.generated.ts`,
+/// `types.generated.d.ts`) and minified bundles (`app.min.js`,
+/// `vendor.min.mjs`, `lib.min.cjs`), which web apps check in under
+/// `public/`, `static/` or `assets/`. `generated.ts`, `regenerated.ts`,
+/// `min.js` and `admin.js` are near-misses and stay ordinary source.
 pub(crate) fn is_detectable_generated_typescript_name(name: &str) -> bool {
     name.contains(".generated.")
+        || [".min.js", ".min.mjs", ".min.cjs"]
+            .iter()
+            .any(|suffix| name.len() > suffix.len() && name.ends_with(suffix))
 }
 
 /// Path form of [`is_detectable_generated_typescript_name`].
@@ -128,6 +133,9 @@ mod tests {
             "client.generated.js",
             "view.generated.jsx",
             "types.generated.d.ts",
+            "app.min.js",
+            "vendor.min.mjs",
+            "lib.min.cjs",
         ] {
             assert!(
                 is_detectable_generated_typescript_name(name),
@@ -139,6 +147,11 @@ mod tests {
             "regenerated.ts",
             "notgenerated.js",
             "cart.ts",
+            "min.js",
+            ".min.js",
+            "admin.js",
+            "app.min.ts",
+            "app.minified.js",
         ] {
             assert!(
                 !is_detectable_generated_typescript_name(name),

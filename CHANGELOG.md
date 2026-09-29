@@ -1588,6 +1588,21 @@ are scoped or reviewed.
   `ripr check --root DIR ...`. It printed `ripr check`, which analyzes the
   current directory rather than the one doctor diagnosed
   ([#4890](https://github.com/EffortlessMetrics/ripr-swarm/issues/4890)).
+- TypeScript: minified bundles (`*.min.js`, `*.min.mjs`, `*.min.cjs`) are
+  skipped like `*.generated.*` files. A rebuilt `public/js/app.min.js`
+  became a `no_static_path` finding whose JSON carried the 1.4 MB line
+  twice.
+- Rust: checked-in generated code and `cargo vendor` crates no longer turn
+  into findings. A file whose first five lines carry an `@generated`
+  (prost, tonic, Diesel), rust-bindgen, or `Code generated ... DO NOT EDIT`
+  comment is skipped like `bindings.rs`, and so is every file in a
+  directory holding `.cargo-checksum.json`. A `cargo vendor` bump used to
+  add hundreds of `no_static_path` findings, or fail the whole check with
+  `diff_scope_oversized` once it passed 2000 lines. The skipped files are
+  named in the existing generated-code limitation, the header is read
+  from the committed file rather than uncommitted edits, and
+  repository-wide runs count the skipped files as a partial run. A
+  hand-written `src/vendor/` module stays analyzed.
 
 ### Added
 

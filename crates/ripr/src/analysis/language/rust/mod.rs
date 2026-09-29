@@ -26,6 +26,7 @@ use super::super::{
 };
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::analysis::cancellation;
+use crate::analysis::committed_source::{self, CommittedSourceRead};
 use crate::analysis::facts::RustIndex;
 use crate::analysis::path_glob::{path_glob_matches, segment_glob_matches};
 use crate::config::OraclePolicy;
@@ -33,7 +34,7 @@ use crate::domain::{
     ExposureClass, Finding, Probe, SourceCurrentness, StaticLimitKind, StopReason,
 };
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod lexical_test_grip;
 
@@ -915,6 +916,128 @@ pub(crate) fn is_generated_rust_file_with_patterns(
             .any(|pattern| generated_pattern_matches(pattern, path))
 }
 
+/// Rust sources that stay outside analysis as generated or vendored code.
+///
+/// Adds two content signals to the path rules: a generated-file header and a
+/// `cargo vendor` crate. Checked-in prost, tonic, Diesel and bindgen output
+/// often has an ordinary name (`shop.v1.rs`, `ffi.rs`), and a vendored
+/// dependency is third-party code whose changes no test in this repository
+/// is meant to discriminate.
+///
+/// Both signals are read through the committed-source overlay, so a
+/// committed-history check classifies the same bytes it indexes. A diff that
+/// touches a crate's `.cargo-checksum.json` also marks that crate vendored,
+/// which covers a crate `cargo vendor` deleted or renamed.
+pub(crate) struct GeneratedRustSources<'a> {
+    root: &'a Path,
+    patterns: &'a [String],
+    diff_vendored_dirs: BTreeSet<PathBuf>,
+}
+
+impl<'a> GeneratedRustSources<'a> {
+    /// Classifier for repository files, with no diff context.
+    pub(crate) fn for_repo(root: &'a Path, patterns: &'a [String]) -> Self {
+        Self {
+            root,
+            patterns,
+            diff_vendored_dirs: BTreeSet::new(),
+        }
+    }
+
+    /// Classifier for a diff: crates whose checksum file the diff touches
+    /// count as vendored even when they no longer exist on disk.
+    pub(crate) fn for_diff(
+        root: &'a Path,
+        patterns: &'a [String],
+        changed_files: &[ChangedFile],
+    ) -> Self {
+        let diff_vendored_dirs = changed_files
+            .iter()
+            .filter(|file| {
+                file.path
+                    .file_name()
+                    .is_some_and(|name| name == CARGO_VENDOR_CHECKSUM_FILE)
+            })
+            .filter_map(|file| file.path.parent().map(Path::to_path_buf))
+            .collect();
+        Self {
+            root,
+            patterns,
+            diff_vendored_dirs,
+        }
+    }
+
+    /// Whether a repository-relative Rust path is generated or vendored.
+    pub(crate) fn contains(&self, path: &Path) -> bool {
+        is_generated_rust_file_with_patterns(path, self.patterns)
+            || (route(path) == Some(LanguageId::Rust)
+                && (self.is_in_vendored_crate(path) || self.has_generated_header(path)))
+    }
+
+    fn is_in_vendored_crate(&self, path: &Path) -> bool {
+        path.ancestors()
+            .skip(1)
+            .filter(|ancestor| !ancestor.as_os_str().is_empty())
+            .any(|ancestor| {
+                self.diff_vendored_dirs.contains(ancestor)
+                    || self.subject_file_exists(&ancestor.join(CARGO_VENDOR_CHECKSUM_FILE))
+            })
+    }
+
+    fn subject_file_exists(&self, relative: &Path) -> bool {
+        match committed_source::lookup(self.root, relative) {
+            CommittedSourceRead::Worktree => self.root.join(relative).is_file(),
+            CommittedSourceRead::Committed(_) => true,
+            CommittedSourceRead::AbsentAtHead => false,
+        }
+    }
+
+    fn has_generated_header(&self, path: &Path) -> bool {
+        match committed_source::lookup(self.root, path) {
+            CommittedSourceRead::Worktree => std::fs::File::open(self.root.join(path))
+                .is_ok_and(|file| has_generated_rust_header(std::io::BufReader::new(file))),
+            CommittedSourceRead::Committed(bytes) => has_generated_rust_header(bytes.as_slice()),
+            CommittedSourceRead::AbsentAtHead => false,
+        }
+    }
+}
+
+/// Marker file `cargo vendor` writes at the top of every vendored crate.
+/// Keyed on it rather than a `vendor/` name so a hand-written `src/vendor/`
+/// module (a marketplace seller, say) stays analyzed.
+const CARGO_VENDOR_CHECKSUM_FILE: &str = ".cargo-checksum.json";
+
+/// Lines at the top of a file searched for a generated-file marker. rustfmt's
+/// `format_generated_files = false` uses the same five-line window. The byte
+/// cap bounds a pathological first line without cutting off a marker that
+/// follows an ordinary license banner.
+const GENERATED_HEADER_LINES: usize = 5;
+const GENERATED_HEADER_BYTES: u64 = 64 * 1024;
+
+fn has_generated_rust_header(reader: impl std::io::BufRead) -> bool {
+    use std::io::BufRead;
+
+    reader
+        .take(GENERATED_HEADER_BYTES)
+        .split(b'\n')
+        .take(GENERATED_HEADER_LINES)
+        .map_while(Result::ok)
+        .any(|line| is_generated_header_line(&String::from_utf8_lossy(&line)))
+}
+
+/// A comment line carrying a generator's own marker: `@generated` (prost,
+/// tonic, Diesel, rustfmt's convention), rust-bindgen's banner, or the
+/// `Code generated ... DO NOT EDIT` convention. A code line that merely
+/// mentions one is not a header.
+fn is_generated_header_line(line: &str) -> bool {
+    let line = line.trim_start();
+    let is_comment = line.starts_with("//") || line.starts_with("/*") || line.starts_with('*');
+    is_comment
+        && (line.contains("@generated")
+            || line.contains("automatically generated by rust-bindgen")
+            || (line.contains("Code generated") && line.contains("DO NOT EDIT")))
+}
+
 fn generated_pattern_matches(pattern: &str, path: &Path) -> bool {
     if route(path) != Some(LanguageId::Rust) {
         return false;
@@ -960,11 +1083,11 @@ impl RustAdapter {
         // Exclude conventional generated surfaces before hard line limits and
         // partial-diff budgeting so machine output cannot consume the budget
         // that protects actionable source analysis.
+        let generated_sources =
+            GeneratedRustSources::for_diff(&options.root, generated_file_patterns, changed_files);
         let analyzable_changed_files = changed_files
             .iter()
-            .filter(|file| {
-                !is_generated_rust_file_with_patterns(&file.path, generated_file_patterns)
-            })
+            .filter(|file| !generated_sources.contains(&file.path))
             .cloned()
             .collect::<Vec<_>>();
         enforce_changed_rust_line_limit(
@@ -996,7 +1119,7 @@ impl RustAdapter {
         let rust_files = workspace::discover_rust_files(&options.root)?;
         let analyzable_rust_files = rust_files
             .into_iter()
-            .filter(|path| !is_generated_rust_file_with_patterns(path, generated_file_patterns))
+            .filter(|path| !generated_sources.contains(path))
             .collect::<Vec<_>>();
         // Authoritative source-role context (#3283): declared Cargo
         // test/bench targets confirm evidence role outside the default
@@ -1320,9 +1443,7 @@ impl RustAdapter {
             skipped_files: changed_files
                 .iter()
                 .filter(|file| self.accepts_path(&file.path))
-                .filter(|file| {
-                    is_generated_rust_file_with_patterns(&file.path, generated_file_patterns)
-                })
+                .filter(|file| generated_sources.contains(&file.path))
                 .count(),
             limitations: limitations
                 .into_iter()
@@ -1492,13 +1613,15 @@ impl RustAdapter {
         generated_file_patterns: &[String],
     ) -> Result<LanguageRepoResult, String> {
         let rust_files = workspace::discover_rust_files(&options.root)?;
+        let generated_sources =
+            GeneratedRustSources::for_repo(&options.root, generated_file_patterns);
         let skipped_files = rust_files
             .iter()
-            .filter(|path| is_generated_rust_file_with_patterns(path, generated_file_patterns))
+            .filter(|path| generated_sources.contains(path))
             .count();
         let analyzable_rust_files = rust_files
             .iter()
-            .filter(|path| !is_generated_rust_file_with_patterns(path, generated_file_patterns))
+            .filter(|path| !generated_sources.contains(path))
             .cloned()
             .collect::<Vec<_>>();
         // Fail closed before the whole-workspace load (#2109): an
@@ -1623,11 +1746,11 @@ impl RustAdapter {
 #[cfg(test)]
 mod tests {
     use super::{
-        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, PARTIAL_DIFF_FILE_BUDGET_DEFAULT,
-        PARTIAL_DIFF_FILE_BUDGET_ENV, PARTIAL_DIFF_LANGUAGE_TIER_VERSION,
-        PARTIAL_DIFF_LINE_BUDGET_DEFAULT, PARTIAL_DIFF_LINE_BUDGET_ENV,
-        PARTIAL_DIFF_SELECTION_VERSION, PartialDiffBudgets, PartialDiffScope,
-        PartialDiffStopReason, REPO_INDEX_FILE_LIMIT_ENV, RustAdapter,
+        DIFF_CHANGED_RUST_LINE_LIMIT, DIFF_INDEX_FILE_LIMIT, GeneratedRustSources,
+        PARTIAL_DIFF_FILE_BUDGET_DEFAULT, PARTIAL_DIFF_FILE_BUDGET_ENV,
+        PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_LINE_BUDGET_DEFAULT,
+        PARTIAL_DIFF_LINE_BUDGET_ENV, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffBudgets,
+        PartialDiffScope, PartialDiffStopReason, REPO_INDEX_FILE_LIMIT_ENV, RustAdapter,
         apply_probe_and_oracle_limits, changed_rust_line_count,
         diff_changed_rust_line_limit_from_env, diff_identity_from_changed_files,
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit,
@@ -3755,6 +3878,127 @@ fn absent_delimiter_boundary_returns_head() {
                 "unexpected custom generated Rust path: {path}"
             );
         }
+    }
+
+    #[test]
+    fn generator_headers_and_cargo_vendor_crates_mark_rust_source_generated() -> Result<(), String>
+    {
+        let root = temp_root("generated-rust-source")?;
+        let write = |path: &str, text: &str| -> Result<(), String> {
+            let path = root.join(path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+            }
+            fs::write(path, text).map_err(|err| err.to_string())
+        };
+        write(
+            "src/pb/shop.v1.rs",
+            "// This file is @generated by prost-build.\npub struct Order;\n",
+        )?;
+        write(
+            "src/ffi.rs",
+            "/* automatically generated by rust-bindgen 0.69.4 */\npub const A: u32 = 1;\n",
+        )?;
+        write(
+            "src/api.rs",
+            "#![allow(clippy::all)]\n// Code generated by protoc-gen-rust. DO NOT EDIT.\npub fn a() {}\n",
+        )?;
+        // A marker after a first line longer than a small read buffer.
+        write(
+            "src/licensed.rs",
+            &format!("// {}\n// @generated\npub fn a() {{}}\n", "x".repeat(8192)),
+        )?;
+        write("vendor/serde/.cargo-checksum.json", "{}")?;
+        write("vendor/serde/src/de/mod.rs", "pub fn f() {}\n")?;
+        // Near misses stay analyzed: a marker in code or below the header
+        // window, a `vendor` module without a checksum file.
+        write(
+            "src/marker.rs",
+            "pub const MARKER: &str = \"@generated\";\n",
+        )?;
+        write(
+            "src/late.rs",
+            "//! Lint rules.\n\n\n\n\npub fn a() {}\n// @generated\n",
+        )?;
+        write("src/vendor/mod.rs", "pub fn seller() {}\n")?;
+        write("src/lib.rs", "pub fn a() {}\n")?;
+
+        let generated = GeneratedRustSources::for_repo(&root, &[]);
+        for path in [
+            "src/pb/shop.v1.rs",
+            "src/ffi.rs",
+            "src/api.rs",
+            "src/licensed.rs",
+            "vendor/serde/src/de/mod.rs",
+        ] {
+            assert!(
+                generated.contains(Path::new(path)),
+                "expected generated or vendored Rust source: {path}"
+            );
+        }
+        for path in [
+            "src/marker.rs",
+            "src/late.rs",
+            "src/vendor/mod.rs",
+            "src/lib.rs",
+            "src/missing.rs",
+        ] {
+            assert!(
+                !generated.contains(Path::new(path)),
+                "unexpected generated Rust source: {path}"
+            );
+        }
+
+        // A crate `cargo vendor` deleted is gone from disk; the diff's own
+        // checksum change still marks its removed files vendored.
+        let removed = |path: &str| ChangedFile {
+            path: PathBuf::from(path),
+            added_lines: Vec::new(),
+            removed_lines: Vec::new(),
+        };
+        let diff = [
+            removed("vendor/gone/.cargo-checksum.json"),
+            removed("vendor/gone/src/lib.rs"),
+        ];
+        assert!(
+            GeneratedRustSources::for_diff(&root, &[], &diff)
+                .contains(Path::new("vendor/gone/src/lib.rs"))
+        );
+        assert!(
+            !GeneratedRustSources::for_repo(&root, &[])
+                .contains(Path::new("vendor/gone/src/lib.rs"))
+        );
+        let _ = fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// A committed-history check indexes HEAD bytes, so the header decision
+    /// must read HEAD bytes too: a marker added or removed only in the
+    /// working tree must not change which committed files are analyzed.
+    #[test]
+    fn generator_header_reads_the_committed_source_overlay() -> Result<(), String> {
+        use crate::analysis::committed_source::{CommittedSourceOverlay, with_overlay};
+        use std::sync::Arc;
+
+        let root = temp_root("generated-rust-overlay")?;
+        fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+        fs::write(root.join("src/pb.rs"), "pub fn edited() {}\n").map_err(|err| err.to_string())?;
+        fs::write(root.join("src/hand.rs"), "// @generated\npub fn a() {}\n")
+            .map_err(|err| err.to_string())?;
+        let overlay = CommittedSourceOverlay::from_entries(
+            &root,
+            [
+                ("src/pb.rs", Some(&b"// @generated\npub fn a() {}\n"[..])),
+                ("src/hand.rs", Some(&b"pub fn a() {}\n"[..])),
+            ],
+        );
+        with_overlay(Some(Arc::new(overlay)), || {
+            let generated = GeneratedRustSources::for_repo(&root, &[]);
+            assert!(generated.contains(Path::new("src/pb.rs")));
+            assert!(!generated.contains(Path::new("src/hand.rs")));
+        });
+        let _ = fs::remove_dir_all(&root);
+        Ok(())
     }
 
     #[test]

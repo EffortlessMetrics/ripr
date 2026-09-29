@@ -957,7 +957,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `generated_file_patterns` | array of strings | `[]` | Additional Rust generated-source globs. Built-in generated names and `gen/`, `generated/`, and `out/` directories remain excluded. A pattern without `/` matches any filename; a pattern with `/` matches the repository-relative path. `*` matches within one path segment, `?` matches one character, and `**` matches zero or more path segments. Empty, duplicate, absolute, parent-traversing, drive-prefixed, and backslash-containing patterns are rejected. |
+| `generated_file_patterns` | array of strings | `[]` | Additional Rust generated-source globs. Built-in generated names, `gen/`, `generated/`, and `out/` directories, files whose first five lines carry an `@generated`, rust-bindgen, or `Code generated ... DO NOT EDIT` comment, and `cargo vendor` crates (directories holding `.cargo-checksum.json`) remain excluded. A pattern without `/` matches any filename; a pattern with `/` matches the repository-relative path. `*` matches within one path segment, `?` matches one character, and `**` matches zero or more path segments. Empty, duplicate, absolute, parent-traversing, drive-prefixed, and backslash-containing patterns are rejected. |
 
 For example:
 

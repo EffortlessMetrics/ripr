@@ -114,8 +114,9 @@ Diff analysis refuses vendored, built, and generated TypeScript/JavaScript
 trees before they enter the changed-file count: `node_modules`, `dist`,
 `build`, `coverage`, `vendor`, `__generated__`, and the repository tooling
 directories already pruned from the workspace walk (`.git`, `target`, `.ripr`,
-`.direnv`). `*.generated.*` files are refused the same way. Near-misses such
-as `src/build.ts` and `generated.ts` stay ordinary source. Unlike Python, this
+`.direnv`). `*.generated.*` files and minified bundles (`*.min.js`,
+`*.min.mjs`, `*.min.cjs`) are refused the same way. Near-misses such as
+`src/build.ts`, `generated.ts` and `admin.js` stay ordinary source. Unlike Python, this
 adapter has no excluded-role ledger, so those trees are omitted entirely
 rather than counted as an excluded role. A repair packet may still name a
 Jest/Vitest, Node, Cypress, Jasmine, or `__tests__` test path as its edit

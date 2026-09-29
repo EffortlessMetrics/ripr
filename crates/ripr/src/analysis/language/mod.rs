@@ -44,8 +44,8 @@ pub(crate) use router::{
     is_ts_js_source_extension, route, ts_js_source_kind, unanalyzed_source_language,
 };
 pub(crate) use rust::{
-    DIFF_SCOPE_OVERSIZED_PREFIX, RustAdapter, changed_let_binding, is_diff_scope_oversized,
-    is_generated_rust_file_with_patterns, mask_rust_comments_and_strings,
+    DIFF_SCOPE_OVERSIZED_PREFIX, GeneratedRustSources, RustAdapter, changed_let_binding,
+    is_diff_scope_oversized, is_generated_rust_file_with_patterns, mask_rust_comments_and_strings,
 };
 pub use rust::{
     PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,
