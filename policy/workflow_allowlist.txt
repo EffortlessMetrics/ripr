@@ -18,7 +18,7 @@
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/publish-npm.yml|18|Manual npm publisher-contract workflow records the reviewed source tuple without build, OIDC, staging, or publication capability.
 .github/workflows/publish-pypi.yml|15|Manual PyPI publisher-contract workflow records the reviewed identity tuple without build, OIDC, or upload capability.
-.github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
+.github/workflows/release-server-binaries.yml|20|Release workflow delegates archive/manifest/final-subject production to Rust xtask, then retains one bounded attestation-verification loop before the separately permissioned upload job.
 .github/workflows/routed-rust.yml|44|Source routed Rust workflow proves pull requests on GitHub-hosted runners only; the normalized verdict is decided by the typed ci-routed-rust-result command rather than in shell, so the run blocks only gather inputs.
 .github/workflows/rust-gates.yml|31|Reusable Rust gate implementation preserves scratch tempfail fallback, required proof, bounded PR evidence, and failure-only ordinary artifacts.
 .github/workflows/scratch-gc.yml|4|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + hard-fail guard) on a timer so disk recovery does not depend on PR traffic (#1028).
