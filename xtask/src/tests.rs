@@ -1,5 +1,3 @@
-
-
 fn vsix_inventory_entry(name: &str, size: u64) -> super::VsixEntry {
     super::VsixEntry {
         name: name.to_string(),
@@ -55,12 +53,18 @@ fn vsix_inventory_bounds_entry_count_and_unpacked_size() -> Result<(), String> {
     let Err(count) = super::check_vsix_inventory(&entries, 2, 30) else {
         return Err("an entry count above the bound must be rejected".to_string());
     };
-    assert!(count.contains("3 entries, above the 2-entry bound"), "{count}");
+    assert!(
+        count.contains("3 entries, above the 2-entry bound"),
+        "{count}"
+    );
 
     let Err(size) = super::check_vsix_inventory(&entries, 3, 29) else {
         return Err("an unpacked size above the bound must be rejected".to_string());
     };
-    assert!(size.contains("30 bytes, above the 29-byte bound"), "{size}");
+    assert!(
+        size.contains("30 bytes, above the 29-byte bound"),
+        "{size}"
+    );
 
     const { assert!(super::VSIX_MAX_ENTRIES > 410 && super::VSIX_MAX_ENTRIES < 2_805) };
     const {
