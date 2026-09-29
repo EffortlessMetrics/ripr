@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- CI: a dispatch-only local-wheelhouse qualification lane records pip and uv
+  isolation facts and evaluates a fail-closed aggregate. Missing, skipped,
+  zero-subject, or mismatched rows cannot pass. No PyPI credentials or
+  publication (#4631).
 - LSP: `cargo xtask lsp-performance-report` writes an identity-bound saved-edit
   sequence receipt (`ripr-lsp-saved-edit-sequence-v1`) covering cold start,
   unchanged save/refresh, production/related/unrelated edits, rename, config

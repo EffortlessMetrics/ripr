@@ -1,0 +1,19 @@
+schema_version = "1.0"
+policy_state = "credential-free-rehearsal"
+enforcement = "workflow_dispatch_only"
+owner = "repo-maintainers"
+workflow = ".github/workflows/python-wheelhouse-qualification.yml"
+issues = [4631, 4493]
+channel = "pypi-wheelhouse"
+publication = "forbidden"
+secrets = "forbidden"
+receipt_transport = "actions_artifact_only"
+max_artifact_retention_days = 5
+admitted_os = "linux"
+admitted_arch = "x86_64"
+required_clients = ["pip", "uv"]
+
+# This lane qualifies local-wheelhouse installs for the selected OS/arch.
+# It does not build the ripr-rs adapter, claim compatibility floors, or
+# authorize publication. Missing, skipped, zero-subject, or mismatched rows
+# cannot pass the aggregate.

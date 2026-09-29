@@ -98,10 +98,10 @@ owner = "repo-maintainers"
 reason = "VS Code extension implementation, package, or tests need editor-loop proof."
 
 [risk_pack.release_surface]
-paths = ["docs/RELEASE.md", "docs/RELEASE_BINARIES.md", "docs/RELEASE_MARKETPLACE.md", "docs/PUBLISHING.md", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml", "Cargo.toml", "Cargo.lock"]
+paths = ["docs/RELEASE.md", "docs/RELEASE_BINARIES.md", "docs/RELEASE_MARKETPLACE.md", "docs/PUBLISHING.md", "docs/PYTHON_WHEELHOUSE_QUALIFICATION.md", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml", ".github/workflows/python-wheelhouse-qualification.yml", "policy/python-wheelhouse-qualification.toml", "Cargo.toml", "Cargo.lock"]
 required = ["rust", "policy", "security-posture"]
 advisory = ["coverage"]
-on_demand = ["release-package", "publish-dry-run", "vsix-package", "extension-marketplace-publish", "server-archive", "release-readiness-proof"]
+on_demand = ["release-package", "publish-dry-run", "vsix-package", "extension-marketplace-publish", "server-archive", "python-wheelhouse", "release-readiness-proof"]
 artifact_families = ["release-readiness"]
 estimated_lem = 60
 owner = "repo-maintainers"

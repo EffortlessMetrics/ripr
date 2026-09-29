@@ -310,6 +310,16 @@ artifact_families = ["release-readiness"]
 description = "Cross-platform server archive and manifest proof. Actual build commands come from the workflow matrix."
 
 [[lane]]
+id = "python-wheelhouse"
+posture = "on_demand_release"
+workflow = ".github/workflows/python-wheelhouse-qualification.yml"
+jobs = ["qualify"]
+commands = ["cargo xtask qualify-python-wheelhouse --receipts <dir>"]
+estimated_lem = 20
+artifact_families = ["release-readiness"]
+description = "Dispatch-only local-wheelhouse pip/uv qualification (#4631). Fail-closed aggregate; no registry write."
+
+[[lane]]
 id = "release-readiness-proof"
 posture = "on_demand_release"
 workflow = "manual-or-release"

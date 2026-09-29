@@ -53,3 +53,7 @@ pub(crate) fn check_release_targets() -> Result<(), String> {
         Err(failures.join("\n"))
     }
 }
+
+pub(crate) fn qualify_python_wheelhouse(args: &[String]) -> Result<(), String> {
+    distribution::wheelhouse::run(args)
+}

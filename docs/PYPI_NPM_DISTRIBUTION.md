@@ -161,7 +161,9 @@ exact package -> clean install -> useful analysis -> supported next step
 ```
 
 Use a local wheelhouse and isolated npm test registry seeded with the actual
-artifacts. Remove source checkout, Rust and ambient ripr from consumer reach;
+artifacts. The wheelhouse aggregate and no-publish workflow live in
+[Python wheelhouse qualification](PYTHON_WHEELHOUSE_QUALIFICATION.md). Remove
+source checkout, Rust and ambient ripr from consumer reach;
 retain the package-manager runtime and required Git. Exercise offline execution
 after installation, native platform baselines and scripts-disabled npm.
 
