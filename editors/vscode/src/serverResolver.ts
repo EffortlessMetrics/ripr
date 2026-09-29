@@ -340,7 +340,27 @@ function withManagedIdentity(
   resolved: ResolvedServer,
   installation: ManagedServerInstallation
 ): ResolvedServer {
-  return combineActiveManagedServerIdentity(resolved, installation);
+  const combined = combineActiveManagedServerIdentity(resolved, installation);
+  const placement = managedManifestPlacementDetail(installation);
+  return placement === undefined
+    ? combined
+    : { ...combined, detail: `${combined.detail}; ${placement}` };
+}
+
+export function managedManifestPlacementDetail(
+  installation: ManagedServerInstallation
+): string | undefined {
+  const receipt = installation.receipt;
+  if (
+    receipt.manifestSelection === undefined ||
+    receipt.selectedManifestUrl === undefined
+  ) {
+    return undefined;
+  }
+  if (receipt.manifestSelection === 'preferred_exact') {
+    return `manifest placement: preferred exact (${receipt.selectedManifestUrl}); preferred=accepted; fallback=not requested`;
+  }
+  return `manifest placement: exact fallback after preferred absence (${receipt.selectedManifestUrl}); preferred=direct 404; fallback=accepted`;
 }
 
 function isResolved(result: ResolvedServer | ResolveFailure): result is ResolvedServer {
