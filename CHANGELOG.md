@@ -1537,6 +1537,15 @@ are scoped or reviewed.
 
 ### Docs
 
+- Documented the proposed `ripr-rs` PyPI distribution and
+  `@effortlessmetrics/ripr` npm launcher/native package family, including
+  the development-in-swarm/source-owned-publication boundary, maintainer
+  registry setup, package bootstrap ordering, and explicit non-claims. This is
+  planning and review guidance; it does not claim that either package family is
+  built, published, reserved, or installable
+  ([#4487](https://github.com/EffortlessMetrics/ripr-swarm/issues/4487),
+  [#4496](https://github.com/EffortlessMetrics/ripr-swarm/pull/4496)).
+
 - The README and quickstart first run now define "discriminator" where it
   first appears and state `ripr check`'s exit codes. They add a one-line
   `cargo install --locked --git` development install and a short section on
