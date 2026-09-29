@@ -779,6 +779,10 @@ jobs:
             > target/ripr/reports/ripr-seams.sarif
 
       - name: Render RIPR repo badge artifacts
+        # These files are uploaded with this PR run; they do not update a
+        # README badge endpoint on the default branch. To publish a badge,
+        # set up a separate reviewed badge-refresh workflow as described at
+        # https://github.com/EffortlessMetrics/ripr/blob/main/docs/BADGE_ADOPTION.md
         continue-on-error: true
         run: |
           mkdir -p target/ripr/reports
