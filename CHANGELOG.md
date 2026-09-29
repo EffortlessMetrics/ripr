@@ -1127,6 +1127,26 @@ are scoped or reviewed.
   focused test with the missing discriminator next to the nearest related
   test", matching the new test `pilot` names, where it used to say "extend
   the nearest related test".
+- A deeply nested Rust file anywhere in the workspace no longer aborts
+  `ripr check`, `ripr pilot`, or the LSP with a stack overflow. A lexical scan
+  now refuses a source file before parsing when its estimated nesting depth
+  passes 256, an `else if` chain passes 2,048 links, or an operator chain
+  passes 4,096. That file gets lexical-fallback facts, and the
+  fallback disclosure names the `rust_nesting_budget` reason on cold and warm
+  runs. Cache generations bumped, so a warm cache cannot serve facts from
+  before the budget (#4475).
+- `ripr check --format repo-exposure-md` puts the file path in each Top gaps
+  heading in a code span, as the owner line already did. A file name holding
+  Markdown link brackets or `*` rendered as a link or emphasis in that heading
+  (#4605).
+- Each repair attempt keeps its own result. The after phase copies the
+  receipt and the verify document into the attempt's artifacts directory and
+  records them in `attempt.json` as `terminal_artifacts`, bound by path,
+  size, and SHA-256. Finishing a second attempt used to overwrite
+  `target/ripr/reports/agent-receipt.json`, the only copy of the first
+  attempt's result; that file is now a compatibility copy of the latest
+  finish, and `ripr agent status` reads the attempt's own receipt first
+  (#4636).
 
 ### Added
 
@@ -1426,6 +1446,13 @@ are scoped or reviewed.
   `valid` / `incomplete` / `not_run` — a structural currentness-readiness
   verdict, never a robustness or adequacy claim
   ([#3565](https://github.com/EffortlessMetrics/ripr-swarm/issues/3565)).
+- `ripr feedback record` writes a local usefulness receipt bound to one
+  analysis snapshot (`--snapshot`, required) with a reason from a closed list,
+  such as `useful_actionable` or `false_actionable`, under
+  `target/ripr/feedback/`. `ripr feedback export` joins those receipts onto an
+  existing `route-quality.json`, listing receipts that match no row instead of
+  inventing movement. Recording changes no diagnostic, classification,
+  baseline, suppression, gate, or gap closure (#4684).
 
 ### Changed
 
