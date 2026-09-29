@@ -61,7 +61,7 @@ without chat history:
 | Agent review summary | `target/ripr/workflow/agent-review-summary.{json,md}` |
 
 Generated GitHub CI also uploads these paths under the `ripr-reports` artifact.
-It keeps compatibility copies of packet, brief, verify, and receipt JSON under
+It keeps compatibility copies of the packet and brief JSON under
 `target/ripr/agent/`.
 
 ## Ordinary path: `ripr agent repair`
@@ -372,8 +372,9 @@ ripr agent verify-execute \
   `verification_executed_fail`, `verification_rejected_policy`,
   `verification_wrong_root`, `verification_timed_out`,
   `verification_cancelled`). Usage errors stay plain stderr messages with no
-  disposition. The exit status distinguishes only whether a bounded
-  observation was committed.
+  disposition. Exit `0` means a bounded observation was committed (including
+  a failing verify command), `3` a typed refusal (read the stdout JSON), and
+  `2` that the result could not be written.
 
 The packet chooses which provenance-validated producer artifacts to compare;
 it never authors the command. Route authority is layered: the typed
@@ -403,14 +404,17 @@ The generated GitHub workflow from:
 ripr init --ci github
 ```
 
-runs the same advisory loop around the top pilot seam when one is available. It
-uploads:
+prepares the before side of the same advisory loop (workflow, brief, and
+packet) around the top pilot seam when one is available; the after snapshot,
+verify, and receipt need a test edit and run locally. It uploads:
 
 ```text
 target/ripr/pilot
-target/ripr/workflow
 target/ripr/agent
+target/ripr/workflow
 target/ripr/reports
+target/ripr/review
+target/ci
 ```
 
 It also appends the pilot summary and agent review summary to the GitHub job

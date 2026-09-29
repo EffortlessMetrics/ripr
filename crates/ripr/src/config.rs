@@ -136,7 +136,7 @@ enabled = ["rust"]
 #
 # [perl]
 # producer = "perl-ripr-facts"  # canonical managed exporter; "perllsp"/"perl-lsp" are compatibility wrappers
-# executable = "perl"      # Exporter path; only run when RIPR_ALLOW_REPO_PERL_EXECUTABLE=1
+# executable = "perl-ripr-facts"  # Exporter path; honored only when RIPR_ALLOW_REPO_PERL_EXECUTABLE=1
 # timeout_ms = 30000       # Per-invocation timeout
 # cache_dir = "target/ripr/perl-facts"  # Fact cache location
 "#;

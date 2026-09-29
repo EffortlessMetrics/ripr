@@ -128,6 +128,7 @@ The development extension also exposes the following commands:
 - `ripr: Inspect Test Gap - Copy Context`
 - `ripr: Write Targeted Test - Copy Suggested Assertion`
 - `ripr: Write Targeted Test - Copy Brief`
+- `ripr: Start Repair - Copy Repair Command`
 - `ripr: Agent Handoff - Copy Packet Command`
 - `ripr: Agent Handoff - Copy Brief Command`
 - `ripr: Verify After Test - Copy After Snapshot Command`

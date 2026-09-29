@@ -52,8 +52,10 @@ target/ripr/pilot/pilot-summary.md
 The pilot summary is the first screen. It should name the top actionable gap,
 why it matters, and the related test to inspect when available. When the gap is
 eligible for a repair transaction, it ends with the `ripr agent repair ...
---phase before` command for that seam (step 5). Otherwise it ends with the
-snapshot commands in step 7.
+--phase before` command for that seam (step 5). A run with no Rust seam and a
+Python repair card instead ends with the card's route: `ripr first-pr`, the test
+edit, the card's verify command, then the receipt command `first-pr` names.
+Otherwise it ends with the snapshot commands in step 7.
 
 If the pilot reports `partial`, use the retry command it prints. Do not guess
 at cache or timeout settings.

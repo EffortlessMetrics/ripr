@@ -241,8 +241,10 @@ Such a path cannot satisfy or violate the cage. Any other movement after the aft
 Repair attempts fail closed:
 
 - a packet whose selected edit target is not a test surface (a `tests` or
-  `test` path component, or a `*_test.rs`, `*_tests.rs`, `test_*.py`,
-  `*_test.py`, or `*_tests.py` file name) is refused before any attempt is
+  `test` path component, a `*_test.rs`, `*_tests.rs`, `test_*.py`,
+  `*_test.py`, or `*_tests.py` file name, or, in a build with the default
+  `lang-typescript` feature, a TypeScript/JavaScript test path such as
+  `*.test.ts`, `*.spec.*`, `*.cy.*`, or `__tests__`) is refused before any attempt is
   created, and before the phase writes any workflow artifact or prints a
   completion line; inline `#[cfg(test)]` modules in production files are not
   valid edit targets;

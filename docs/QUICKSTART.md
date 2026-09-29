@@ -149,7 +149,10 @@ Generate the advisory GitHub workflow:
 ripr init --ci github
 ```
 
-Review the generated files before committing them. On a PR, read the job summary
+Review the generated files before committing them. The workflow installs the
+ripr version that generated it, so generate it with a released `ripr`: an
+unreleased development build names a version crates.io does not publish yet,
+and the install step fails. On a PR, read the job summary
 first, then open the linked artifacts for the evidence and suggested test.
 The generated workflow is non-blocking by default; a policy gate is a separate,
 explicit adoption decision.
@@ -207,9 +210,14 @@ ripr agent status --root .
 
 Use the reported continuation or recovery step. The full phase and identity
 reference is [Repair attempt identity](REPAIR_ATTEMPT.md).
-A trust-bound Python repair adds a third `verify` phase, run with its own
-authorization flags; follow [the Python sequence](REPAIR_ATTEMPT.md#governed-python-sequence),
-not the Rust sequence above.
+
+When pilot's top recommendation is a Python repair card, it prints a different
+route under `Next, in order:`: `ripr first-pr` (run any regeneration command it
+prints), the focused test edit, the card's verify command, and the receipt
+command `first-pr` named. Run those as printed. A trust-bound Python repair
+through `ripr agent repair` is a separate governed route that needs a selection
+manifest and adds a `verify` phase; see
+[the Python sequence](REPAIR_ATTEMPT.md#governed-python-sequence).
 
 For lower-level control, see [Agent workflows](AGENT_WORKFLOWS.md) and
 [the LLM operator guide](LLM_OPERATOR_GUIDE.md). No LLM provider is called by
@@ -220,7 +228,7 @@ these commands.
 After generating the needed evidence, use `ripr first-pr` to compose the
 PR-facing packet. It does not run analysis or repair the code. See
 [First successful PR workflow](FIRST_PR_WORKFLOW.md) for the inputs and
-[the command guide](COMMAND_HIERARCHY.md) for its options.
+`ripr help first-pr` for its options.
 
 ## Troubleshooting
 

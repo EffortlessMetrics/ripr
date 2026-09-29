@@ -142,9 +142,8 @@ The release/install proof downloaded the Windows server archive, matched its
 SHA-256 against the manifest, extracted it, and ran `ripr --version`,
 `ripr lsp --version`, `ripr pilot`, and `ripr outcome`.
 
-For `v0.7.0`, the release proof must publish the same asset family and extend
-the extracted server smoke through `ripr agent verify` and
-`ripr agent receipt`.
+The `v0.7.0` release proof published the same asset family and extended the
+extracted server smoke through `ripr agent verify` and `ripr agent receipt`.
 
 ## Supported Targets
 
@@ -167,6 +166,9 @@ such as `GLIBC_ABI_DT_RELR` or `GLIBC_PRIVATE`. The published 0.10.0 Linux
 archives were built on Ubuntu 24.04 and need glibc 2.39. When GitHub retires
 the 22.04 images, raising the floor is a support decision, not a runner update.
 
+Windows on ARM64 has no native target: the extension downloads the
+`x86_64-pc-windows-msvc` server, which runs under Windows 11's x64 emulation.
+
 Alpine and musl targets are intentionally separate. If no compatible prebuilt
 server exists, users can set `ripr.server.path` or install `ripr` manually.
 
@@ -185,8 +187,8 @@ The e2e suite runs in a fixture Rust workspace and covers extension activation,
 defaults-first `draft` mode, command registration, LSP-first seam context
 collection with CLI fallback, targeted-test brief copying, suggested assertion
 copying, related-test opening, malformed command arguments, and restart
-behavior. The `v0.7.0` release proof verifies the server archive path and local
-VSIX package path for current provisioning. Defaults-first public install proof
+behavior. The `v0.7.0` release proof verified the server archive path and local
+VSIX package path; later releases' proof is not recorded here. Defaults-first public install proof
 for `ripr pilot`, `ripr outcome`, `ripr agent verify`, and
 `ripr agent receipt` is covered by
 [Installation verification](INSTALLATION_VERIFICATION.md).

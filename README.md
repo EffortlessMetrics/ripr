@@ -128,7 +128,8 @@ test files, whether Git ignores it or not. Build output under a gitignored
 a committed `.gitignore`; changing `.gitignore` mid-attempt is itself refused.
 Redirect ripr output under `target/ripr/` or outside the repository.
 Exit `0` means the command completed and `2` means it could not, which includes
-the file refusal above; `3` means a gate blocked or a typed refusal answered.
+the file refusal above; `3` means a gate blocked or a typed refusal answered, such
+as a repair after phase refused for a named cause.
 See [exit codes](docs/EXIT_CODES.md). The
 [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) covers the full repair loop.
 
@@ -159,7 +160,7 @@ a promise that every surface is available from the published package.
 | --- | --- |
 | Rust | Static analysis and bounded test-only repair are `usable alpha`. Repairs require a valid route; ordinary real-repository route yield and success remain unestablished. |
 | Python | Analysis is `preview`. Selected pytest/unittest repair routes are `usable alpha`; a finding without a complete route has no repair card. |
-| TypeScript / JavaScript | Opt-in `preview` analysis. |
+| TypeScript / JavaScript | Opt-in `preview` analysis. When a finding has a complete repair packet, `check` names the test file, the missing case, and the test command to run. |
 | Perl | `preview` / advisory development only. It needs a `lang-perl` build and the unpublished `perl-ripr-facts` exporter; no released build/exporter combination is usable yet. |
 
 With no `ripr.toml`, ripr analyzes Rust and also enables Python preview when

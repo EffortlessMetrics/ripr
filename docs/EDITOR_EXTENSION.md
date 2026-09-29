@@ -489,8 +489,11 @@ static-limit bounded, and not Rust-level confidence.
 If no usable server can be resolved, the extension shows:
 
 ```text
-ripr server is not available: <cause>. Enable automatic download, install with `cargo install ripr`, or set `ripr.server.path` (`ripr.server.downloadBaseUrl` for a mirror).
+ripr server is not available: <cause>. Install with cargo install ripr or set ripr.server.path (ripr.server.downloadBaseUrl for a mirror).
 ```
+
+With `ripr.server.autoDownload` set to `false`, the remedy instead reads
+`Enable ripr.server.autoDownload, install with cargo install ripr, or set ripr.server.path.`
 
 Actions:
 
