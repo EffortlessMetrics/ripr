@@ -9,6 +9,8 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
+
 ## 0.11.0 - Swarm promotion and fail-closed output hardening
 
 Release date: staged (unreleased).
