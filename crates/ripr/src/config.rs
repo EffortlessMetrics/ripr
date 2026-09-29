@@ -11,12 +11,16 @@ use crate::domain::{LanguageId, OracleStrength};
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path, PathBuf};
 
+mod diagnostic;
 mod model;
 mod python;
 mod toolchain_file;
 #[cfg(feature = "lang-typescript")]
 mod typescript;
 
+pub(crate) use diagnostic::ConfigDiagnostic;
+#[cfg(test)]
+use diagnostic::ConfigLocationStatus;
 pub(crate) use model::PERL_EXECUTABLE_OPT_IN_ENV;
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub use model::{
@@ -311,8 +315,20 @@ pub(crate) fn apply_to_check_input(
 }
 
 fn parse_config(text: &str) -> Result<RiprConfig, String> {
-    let raw: RawConfig = toml::from_str(text).map_err(|err| format!("invalid ripr.toml: {err}"))?;
-    RiprConfig::from_raw(raw)
+    parse_config_diagnostic(text).map_err(|diagnostic| diagnostic.message)
+}
+
+/// Preserve semantic source locations without changing the typed configuration
+/// authority. Consumers can project this diagnostic into their own transports.
+/// The diagnostic is boxed: it is deliberately rich (spans, expected values),
+/// which would otherwise trip `clippy::result_large_err` on every parser hop.
+pub(crate) fn parse_config_diagnostic(text: &str) -> Result<RiprConfig, Box<ConfigDiagnostic>> {
+    let raw: RawConfig = toml::from_str(text).map_err(|err| {
+        Box::new(ConfigDiagnostic::structural(format!(
+            "invalid ripr.toml: {err}"
+        )))
+    })?;
+    RiprConfig::from_raw(raw, text)
 }
 
 #[cfg(test)]
@@ -321,11 +337,14 @@ pub(crate) fn tests_only_parse(text: &str) -> Result<RiprConfig, String> {
 }
 
 impl RiprConfig {
-    fn from_raw(raw: RawConfig) -> Result<Self, String> {
+    fn from_raw(raw: RawConfig, text: &str) -> Result<Self, Box<ConfigDiagnostic>> {
         let mut config = RiprConfig::default();
         if let Some(analysis) = raw.analysis {
             if let Some(mode) = analysis.mode {
-                config.analysis.mode = Some(parse_mode_value(&mode)?);
+                config.analysis.mode =
+                    Some(parse_mode_value(mode.get_ref()).map_err(|message| {
+                        ConfigDiagnostic::at_value(message, "analysis.mode", mode.span(), text)
+                    })?);
             }
             config.analysis.include_unchanged_tests = analysis.include_unchanged_tests;
             if let Some(targets) = analysis.production_like_targets {
@@ -344,17 +363,41 @@ impl RiprConfig {
         }
         if let Some(oracles) = raw.oracles {
             if let Some(strength) = oracles.snapshot_strength {
-                config.oracles.snapshot_strength = parse_oracle_strength(&strength)?;
+                config.oracles.snapshot_strength = parse_oracle_strength(strength.get_ref())
+                    .map_err(|message| {
+                        ConfigDiagnostic::at_value(
+                            message,
+                            "oracles.snapshot_strength",
+                            strength.span(),
+                            text,
+                        )
+                    })?;
             }
             if let Some(strength) = oracles.mock_expectation_strength {
-                config.oracles.mock_expectation_strength = parse_oracle_strength(&strength)?;
+                config.oracles.mock_expectation_strength =
+                    parse_oracle_strength(strength.get_ref()).map_err(|message| {
+                        ConfigDiagnostic::at_value(
+                            message,
+                            "oracles.mock_expectation_strength",
+                            strength.span(),
+                            text,
+                        )
+                    })?;
             }
             if let Some(strength) = oracles.broad_error_strength {
-                config.oracles.broad_error_strength = parse_oracle_strength(&strength)?;
+                config.oracles.broad_error_strength = parse_oracle_strength(strength.get_ref())
+                    .map_err(|message| {
+                        ConfigDiagnostic::at_value(
+                            message,
+                            "oracles.broad_error_strength",
+                            strength.span(),
+                            text,
+                        )
+                    })?;
             }
         }
         if let Some(severity) = raw.severity {
-            config.severity = merge_severity(config.severity, severity)?;
+            config.severity = merge_severity(config.severity, severity, text)?;
         }
         if let Some(lsp) = raw.lsp {
             if let Some(seam_diagnostics) = lsp.seam_diagnostics {
@@ -362,8 +405,14 @@ impl RiprConfig {
             }
             if let Some(profile) = lsp.diagnostic_profile {
                 config.lsp.diagnostic_profile = Some(
-                    LspDiagnosticProfile::parse(&profile)
-                        .map_err(|err| format!("{err} in [lsp]"))?,
+                    LspDiagnosticProfile::parse(profile.get_ref()).map_err(|err| {
+                        ConfigDiagnostic::at_value(
+                            format!("{err} in [lsp]"),
+                            "lsp.diagnostic_profile",
+                            profile.span(),
+                            text,
+                        )
+                    })?,
                 );
             }
         }
@@ -564,7 +613,7 @@ struct RawBunUbProfileConfig {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawAnalysisConfig {
-    mode: Option<String>,
+    mode: Option<toml::Spanned<String>>,
     include_unchanged_tests: Option<bool>,
     production_like_targets: Option<Vec<String>>,
     test_harnesses: Option<Vec<RawTestHarnessRegistration>>,
@@ -586,16 +635,16 @@ struct RawTestHarnessRegistration {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawOraclePolicy {
-    snapshot_strength: Option<String>,
-    mock_expectation_strength: Option<String>,
-    broad_error_strength: Option<String>,
+    snapshot_strength: Option<toml::Spanned<String>>,
+    mock_expectation_strength: Option<toml::Spanned<String>>,
+    broad_error_strength: Option<toml::Spanned<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawLspConfig {
     seam_diagnostics: Option<bool>,
-    diagnostic_profile: Option<String>,
+    diagnostic_profile: Option<toml::Spanned<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -620,40 +669,41 @@ struct RawSeverityConfig {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawFindingSeverityConfig {
-    exposed: Option<String>,
-    weakly_exposed: Option<String>,
-    reachable_unrevealed: Option<String>,
-    no_static_path: Option<String>,
-    infection_unknown: Option<String>,
-    propagation_unknown: Option<String>,
-    static_unknown: Option<String>,
+    exposed: Option<toml::Spanned<String>>,
+    weakly_exposed: Option<toml::Spanned<String>>,
+    reachable_unrevealed: Option<toml::Spanned<String>>,
+    no_static_path: Option<toml::Spanned<String>>,
+    infection_unknown: Option<toml::Spanned<String>>,
+    propagation_unknown: Option<toml::Spanned<String>>,
+    static_unknown: Option<toml::Spanned<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSeamSeverityConfig {
-    strongly_gripped: Option<String>,
-    weakly_gripped: Option<String>,
-    ungripped: Option<String>,
-    reachable_unrevealed: Option<String>,
-    activation_unknown: Option<String>,
-    propagation_unknown: Option<String>,
-    observation_unknown: Option<String>,
-    discrimination_unknown: Option<String>,
-    opaque: Option<String>,
-    intentional: Option<String>,
-    suppressed: Option<String>,
+    strongly_gripped: Option<toml::Spanned<String>>,
+    weakly_gripped: Option<toml::Spanned<String>>,
+    ungripped: Option<toml::Spanned<String>>,
+    reachable_unrevealed: Option<toml::Spanned<String>>,
+    activation_unknown: Option<toml::Spanned<String>>,
+    propagation_unknown: Option<toml::Spanned<String>>,
+    observation_unknown: Option<toml::Spanned<String>>,
+    discrimination_unknown: Option<toml::Spanned<String>>,
+    opaque: Option<toml::Spanned<String>>,
+    intentional: Option<toml::Spanned<String>>,
+    suppressed: Option<toml::Spanned<String>>,
 }
 
 fn merge_severity(
     mut current: SeverityConfig,
     raw: RawSeverityConfig,
-) -> Result<SeverityConfig, String> {
+    text: &str,
+) -> Result<SeverityConfig, Box<ConfigDiagnostic>> {
     if let Some(findings) = raw.findings {
-        merge_finding_severity(&mut current.findings, findings)?;
+        merge_finding_severity(&mut current.findings, findings, text)?;
     }
     if let Some(seams) = raw.seams {
-        merge_seam_severity(&mut current.seams, seams)?;
+        merge_seam_severity(&mut current.seams, seams, text)?;
     }
     Ok(current)
 }
@@ -661,48 +711,56 @@ fn merge_severity(
 fn merge_finding_severity(
     current: &mut FindingSeverityConfig,
     raw: RawFindingSeverityConfig,
-) -> Result<(), String> {
+    text: &str,
+) -> Result<(), Box<ConfigDiagnostic>> {
     assign_severity(
         &mut current.exposed,
         raw.exposed,
         "severity.findings.exposed",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.weakly_exposed,
         raw.weakly_exposed,
         "severity.findings.weakly_exposed",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.reachable_unrevealed,
         raw.reachable_unrevealed,
         "severity.findings.reachable_unrevealed",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.no_static_path,
         raw.no_static_path,
         "severity.findings.no_static_path",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.infection_unknown,
         raw.infection_unknown,
         "severity.findings.infection_unknown",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.propagation_unknown,
         raw.propagation_unknown,
         "severity.findings.propagation_unknown",
         false,
+        text,
     )?;
     assign_severity(
         &mut current.static_unknown,
         raw.static_unknown,
         "severity.findings.static_unknown",
         false,
+        text,
     )?;
     Ok(())
 }
@@ -710,84 +768,98 @@ fn merge_finding_severity(
 fn merge_seam_severity(
     current: &mut SeamSeverityConfig,
     raw: RawSeamSeverityConfig,
-) -> Result<(), String> {
+    text: &str,
+) -> Result<(), Box<ConfigDiagnostic>> {
     assign_severity(
         &mut current.strongly_gripped,
         raw.strongly_gripped,
         "severity.seams.strongly_gripped",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.weakly_gripped,
         raw.weakly_gripped,
         "severity.seams.weakly_gripped",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.ungripped,
         raw.ungripped,
         "severity.seams.ungripped",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.reachable_unrevealed,
         raw.reachable_unrevealed,
         "severity.seams.reachable_unrevealed",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.activation_unknown,
         raw.activation_unknown,
         "severity.seams.activation_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.propagation_unknown,
         raw.propagation_unknown,
         "severity.seams.propagation_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.observation_unknown,
         raw.observation_unknown,
         "severity.seams.observation_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.discrimination_unknown,
         raw.discrimination_unknown,
         "severity.seams.discrimination_unknown",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.opaque,
         raw.opaque,
         "severity.seams.opaque",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.intentional,
         raw.intentional,
         "severity.seams.intentional",
         true,
+        text,
     )?;
     assign_severity(
         &mut current.suppressed,
         raw.suppressed,
         "severity.seams.suppressed",
         true,
+        text,
     )?;
     Ok(())
 }
 
 fn assign_severity(
     target: &mut ConfigSeverity,
-    raw: Option<String>,
+    raw: Option<toml::Spanned<String>>,
     field: &str,
     allow_off: bool,
-) -> Result<(), String> {
+    text: &str,
+) -> Result<(), Box<ConfigDiagnostic>> {
     if let Some(value) = raw {
-        *target = parse_severity(field, &value, allow_off)?;
+        *target = parse_severity(field, value.get_ref(), allow_off)
+            .map_err(|message| ConfigDiagnostic::at_value(message, field, value.span(), text))?;
     }
     Ok(())
 }
@@ -967,6 +1039,10 @@ fn marker_path_is_exact(marker: &str) -> bool {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "Tests assert an expected config diagnostic via `.expect_err(\"why\")`; the closure-style helper makes the expected failure mode part of the assertion message."
+)]
 mod tests;
 
 /// The config a bound immutable-subject run uses (#3279 R4): the

@@ -8,6 +8,86 @@ use proptest::prelude::*;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[test]
+fn semantic_config_diagnostic_locates_canonical_value_not_comment_or_other_leaf() {
+    let source = "# reachable_unrevealed = \"eror\"\n[severity.seams]\nreachable_unrevealed = \"warning\"\n[severity.findings]\nreachable_unrevealed = \"eror\"\n";
+    let diagnostic = parse_config_diagnostic(source).expect_err("invalid nested severity");
+    assert_eq!(
+        diagnostic.config_path.as_deref(),
+        Some("severity.findings.reachable_unrevealed")
+    );
+    assert_eq!(diagnostic.location_status, ConfigLocationStatus::Exact);
+    assert_eq!(
+        diagnostic.location.as_ref().map(|range| (
+            range.start.line,
+            range.start.column,
+            range.end.column
+        )),
+        Some((5, 24, 30))
+    );
+    assert_eq!(diagnostic.invalid_value.as_deref(), Some("\"eror\""));
+    assert_eq!(diagnostic.expected_values, ["info", "warning", "note"]);
+}
+
+#[test]
+fn semantic_config_diagnostic_preserves_crlf_quoted_key_and_inline_table() {
+    let source = "# mode = \"wrong\"\r\n\"analysis\" = { \"mode\" = \"eror\" }\r\n";
+    let diagnostic = parse_config_diagnostic(source).expect_err("invalid inline analysis mode");
+    assert_eq!(diagnostic.config_path.as_deref(), Some("analysis.mode"));
+    assert_eq!(diagnostic.location_status, ConfigLocationStatus::Exact);
+    assert_eq!(
+        diagnostic.location.as_ref().map(|range| (
+            range.start.line,
+            range.start.column,
+            range.end.column
+        )),
+        Some((2, 25, 31))
+    );
+    assert_eq!(diagnostic.invalid_value.as_deref(), Some("\"eror\""));
+}
+
+#[test]
+fn semantic_config_diagnostic_locates_oracle_and_admits_unavailable_fallback() {
+    let source = "[oracles]\nsnapshot_strength = \"bad\"\n";
+    let diagnostic = parse_config_diagnostic(source).expect_err("invalid oracle strength");
+    assert_eq!(
+        diagnostic.config_path.as_deref(),
+        Some("oracles.snapshot_strength")
+    );
+    assert_eq!(
+        diagnostic
+            .location
+            .as_ref()
+            .map(|range| (range.start.line, range.start.column)),
+        Some((2, 21))
+    );
+    assert_eq!(
+        diagnostic.expected_values,
+        ["strong", "medium", "weak", "smoke", "none", "unknown"]
+    );
+
+    let diagnostic = parse_config_diagnostic("[analysis]\nunknown = true\n")
+        .expect_err("structural error retains the native parser message");
+    assert_eq!(
+        diagnostic.location_status,
+        ConfigLocationStatus::Unavailable
+    );
+    assert!(diagnostic.message.contains("invalid ripr.toml:"));
+}
+
+#[test]
+fn semantic_config_diagnostic_names_profile_expected_values() {
+    let source = "[lsp]\ndiagnostic_profile = \"verbose\"\n";
+    let diagnostic = parse_config_diagnostic(source).expect_err("invalid lsp diagnostic_profile");
+    assert_eq!(
+        diagnostic.config_path.as_deref(),
+        Some("lsp.diagnostic_profile")
+    );
+    assert_eq!(diagnostic.location_status, ConfigLocationStatus::Exact);
+    assert_eq!(diagnostic.invalid_value.as_deref(), Some("\"verbose\""));
+    assert_eq!(diagnostic.expected_values, ["actionable", "full"]);
+}
+
 fn temp_root(name: &str) -> Result<PathBuf, String> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1179,30 +1259,30 @@ proptest! {
     ) {
         let raw = RawConfig {
             analysis: Some(RawAnalysisConfig {
-                mode,
+                mode: spanned_value(mode),
                 include_unchanged_tests,
                 production_like_targets: None,
                 test_harnesses: None,
             }),
             oracles: Some(RawOraclePolicy {
-                snapshot_strength,
-                mock_expectation_strength,
-                broad_error_strength,
+                snapshot_strength: spanned_value(snapshot_strength),
+                mock_expectation_strength: spanned_value(mock_expectation_strength),
+                broad_error_strength: spanned_value(broad_error_strength),
             }),
             severity: Some(RawSeverityConfig {
                 findings: Some(RawFindingSeverityConfig {
-                    exposed,
-                    weakly_exposed,
+                    exposed: spanned_value(exposed),
+                    weakly_exposed: spanned_value(weakly_exposed),
                     ..Default::default()
                 }),
                 seams: Some(RawSeamSeverityConfig {
-                    strongly_gripped,
+                    strongly_gripped: spanned_value(strongly_gripped),
                     ..Default::default()
                 }),
             }),
             lsp: Some(RawLspConfig {
                 seam_diagnostics,
-                diagnostic_profile,
+                diagnostic_profile: spanned_value(diagnostic_profile),
             }),
             reports: Some(RawReportsConfig {
                 max_related_tests: Some(max_related_tests),
@@ -1248,6 +1328,12 @@ proptest! {
             "serialized valid config must parse: {effective:?}\n{serialized}"
         );
     }
+}
+
+fn spanned_value(value: Option<String>) -> Option<toml::Spanned<String>> {
+    // Raw config fields carry source spans; a round-trip fixture only needs a
+    // placeholder range because `Spanned` equality compares the value alone.
+    value.map(|value| toml::Spanned::new(0..value.len(), value))
 }
 
 #[test]
@@ -1310,11 +1396,10 @@ fn valid_repository_paths() -> impl Strategy<Value = String> {
 fn parse_config_reads_production_like_targets() -> Result<(), String> {
     // #3283: the opt-in parses as workspace-relative paths and joins the
     // check-artifact identity as FindingAffecting.
-    let raw = toml::from_str::<RawConfig>(
-        "[analysis]\nproduction_like_targets = [\"tests/api_contract.rs\", \"benches/perf.rs\"]\n",
-    )
-    .map_err(|error| error.to_string())?;
-    let config = RiprConfig::from_raw(raw)?;
+    let config_text =
+        "[analysis]\nproduction_like_targets = [\"tests/api_contract.rs\", \"benches/perf.rs\"]\n";
+    let raw = toml::from_str::<RawConfig>(config_text).map_err(|error| error.to_string())?;
+    let config = RiprConfig::from_raw(raw, config_text).map_err(|diagnostic| diagnostic.message)?;
     let targets = config.analysis().production_like_targets();
     assert_eq!(targets.len(), 2);
     assert!(
@@ -1346,10 +1431,11 @@ fn parse_config_rejects_absolute_production_like_target() -> Result<(), String> 
     };
     let text = format!("[analysis]\nproduction_like_targets = ['{outside}']\n");
     let raw = toml::from_str::<RawConfig>(&text).map_err(|error| error.to_string())?;
-    match RiprConfig::from_raw(raw) {
+    match RiprConfig::from_raw(raw, &text) {
         Err(error) => assert!(
-            error.contains("production_like_targets"),
-            "error must name the field: {error}"
+            error.message.contains("production_like_targets"),
+            "error must name the field: {}",
+            error.message
         ),
         Ok(_) => return Err("absolute opt-in paths must fail closed".to_string()),
     }
@@ -1380,7 +1466,9 @@ marker = 'libtest_mimic'
 
 fn parse_test_harnesses(toml_text: &str) -> Result<Vec<TestHarnessRegistration>, String> {
     let raw = toml::from_str::<RawConfig>(toml_text).map_err(|error| error.to_string())?;
-    RiprConfig::from_raw(raw).map(|config| config.analysis.test_harnesses)
+    RiprConfig::from_raw(raw, toml_text)
+        .map(|config| config.analysis.test_harnesses)
+        .map_err(|diagnostic| diagnostic.message)
 }
 
 /// The named parse error a registration config must produce; `Err` when it
@@ -1426,7 +1514,9 @@ marker = "myco::contract_test"
 
     let identity = RiprConfig::from_raw(
         toml::from_str::<RawConfig>(config_text).map_err(|error| error.to_string())?,
-    )?
+        config_text,
+    )
+    .map_err(|diagnostic| diagnostic.message)?
     .check_artifact_identity_fields();
     let field = identity
         .iter()

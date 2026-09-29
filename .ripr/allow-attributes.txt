@@ -24,3 +24,4 @@ xtask/src/main.rs|expect(clippy::unwrap_used)|1|xtask test module: production pa
 xtask/src/no_panic.rs|expect(clippy::unwrap_used)|1|no-panic test module (extracted from main.rs in the #2119 decomposition): production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
 xtask/src/product_gate_plan.rs|allow(dead_code)|1|Canonical product-gate authority is introduced before workflow consumers migrate; the next slice will consume it for observational parity.
 xtask/src/types.rs|allow(dead_code)|4|Test-only types (CheckStatus/CheckViolation/CheckReport/AutoFixable) used via super::* glob in tests.rs; dead in non-test builds
+crates/ripr/src/config.rs|expect(clippy::expect_used)|1|Test module: asserts expected config diagnostics via `.expect_err("why")`; the failure mode stays part of the assertion message.
