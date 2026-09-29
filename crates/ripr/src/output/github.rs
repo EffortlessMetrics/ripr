@@ -175,9 +175,20 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     // `GITHUB_ANNOTATIONS_PER_LEVEL` annotations of each level per step, so
     // a trailing notice is the first line dropped on a busy run.
     let mut out = String::new();
-    if output.findings.is_empty() {
+    let incomplete = output
+        .analysis_outcome
+        .as_ref()
+        .filter(|outcome| !outcome.kind.is_complete());
+    if let Some(outcome) = incomplete {
+        *per_level.entry("warning").or_default() += 1;
+        out.push_str(&incomplete_outcome_warning(
+            outcome,
+            output.findings.is_empty(),
+        ));
+    } else if output.findings.is_empty() {
         out.push_str("::notice title=ripr::No static exposure findings found\n");
-    } else if suppressed > 0 || not_current > 0 {
+    }
+    if !output.findings.is_empty() && (suppressed > 0 || not_current > 0) {
         out.push_str(&unannotated_denominator_notice(
             output,
             suppressed,
@@ -189,6 +200,35 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     }
     out.push_str(&annotations);
     out
+}
+
+/// An incomplete analysis must not read as a clean one in a PR check: the
+/// annotation stream is often the only thing a reviewer sees, so it names
+/// the outcome and each limitation's recovery, as the human report does.
+fn incomplete_outcome_warning(
+    outcome: &crate::analysis_outcome::AnalysisOutcome,
+    no_findings: bool,
+) -> String {
+    let scope = if no_findings {
+        "Zero findings is not a clean result because the analyzed scope is incomplete."
+    } else {
+        "The findings cover only the analyzed scope; behavior outside it has no finding."
+    };
+    let mut message = format!(
+        "Analysis outcome: {} (analysis incomplete). {scope}",
+        outcome.kind.as_str()
+    );
+    for limitation in &outcome.limitations {
+        message.push_str(&format!(
+            " Limitation: {}: {}",
+            limitation.kind.as_str(),
+            limitation.recovery.detail
+        ));
+    }
+    format!(
+        "::warning title=ripr analysis incomplete::{}\n",
+        escape_data(&message)
+    )
 }
 
 /// GitHub Actions displays at most this many annotations of each level
@@ -373,6 +413,81 @@ mod tests {
             rendered,
             "::notice title=ripr::No static exposure findings found\n"
         );
+    }
+
+    fn partial_outcome() -> Result<crate::analysis_outcome::AnalysisOutcome, String> {
+        use crate::analysis_outcome::{
+            AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+            AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+            AnalysisStage,
+        };
+        AnalysisOutcome::new(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisIdentity::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 2,
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![AnalysisLimitation::new(
+                AnalysisLimitationKind::LanguageScopeUnsupported,
+                AnalysisStage::LanguageAdapter,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::InspectFailure,
+                    "Not analyzed (Go: 1): pkg/calc.go.",
+                )?,
+            )],
+        )
+    }
+
+    #[test]
+    fn render_never_calls_an_incomplete_analysis_clean() -> Result<(), String> {
+        // A Perl- or Go-only diff is `partial_with_limitations`; the GitHub
+        // stream printed only "No static exposure findings found".
+        let mut output = output_with_unknown_finding();
+        output.findings.clear();
+        output.analysis_outcome = Some(partial_outcome()?);
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.starts_with("::warning title=ripr analysis incomplete::Analysis outcome: partial_with_limitations"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("Zero findings is not a clean result"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "Limitation: language_scope_unsupported: Not analyzed (Go: 1): pkg/calc.go."
+            ),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn render_scopes_findings_of_an_incomplete_analysis() -> Result<(), String> {
+        let mut output = output_with_unknown_finding();
+        output.analysis_outcome = Some(partial_outcome()?);
+
+        let rendered = render(&output);
+
+        let first = rendered.lines().next().unwrap_or_default();
+        assert!(
+            first.contains("findings cover only the analyzed scope"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("title=ripr static_unknown::"),
+            "{rendered}"
+        );
+        Ok(())
     }
 
     #[test]

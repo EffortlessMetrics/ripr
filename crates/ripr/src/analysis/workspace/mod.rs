@@ -17,6 +17,6 @@ pub(crate) use source_role::{
 };
 
 pub(crate) use classify::{normalize_path, package_root};
-pub(crate) use discover::discover_preview_language_files;
 pub use discover::discover_rust_files;
+pub(crate) use discover::{discover_preview_language_files, discover_unanalyzed_source_files};
 pub(crate) use select::select_rust_files_for_mode_with_dependent_packages;

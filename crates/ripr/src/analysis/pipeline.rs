@@ -6,7 +6,7 @@ use super::language::PythonAdapter;
 use super::language::TypeScriptAdapter;
 use super::language::{
     LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, PartialDiffScope,
-    RustAdapter, route,
+    RustAdapter, route, unanalyzed_source_language,
 };
 use super::{
     AnalysisOptions, AnalysisResult, LanguageRun, LanguageRunStatus, PreviewLanguageAdvisory, diff,
@@ -264,6 +264,20 @@ fn non_source_disclosure_message(changed_files: &[diff::ChangedFile]) -> Option<
     if changed_files.is_empty() || changed_files.iter().any(|file| route(&file.path).is_some()) {
         return None;
     }
+    // Source in a language no adapter reads is not a non-source file: the
+    // empty result is a non-claim, never "correct".
+    let unanalyzed = changed_files
+        .iter()
+        .filter_map(|file| unanalyzed_source_language(&file.path))
+        .collect::<std::collections::BTreeSet<_>>();
+    if !unanalyzed.is_empty() {
+        let languages = unanalyzed.into_iter().collect::<Vec<_>>().join(", ");
+        return Some(format!(
+            "ripr: diff changed source in languages ripr does not analyze ({languages}); \
+             no analyzable Rust, TypeScript, Python, or Perl files found. Those changes were \
+             not analyzed, so this empty result is not a clean pass."
+        ));
+    }
     const MAX_NAMED_PATHS: usize = 3;
     let non_source_count = changed_files.len();
     let mut extensions = std::collections::BTreeSet::new();
@@ -356,6 +370,73 @@ fn rust_excluded_by_config_limitation(
         .with_affected_items(excluded as u64)?
         .with_detail(format!(
             "rust changed {excluded} file(s), but rust is not in the effective [languages].enabled set [{enabled}], so these files were not analyzed"
+        ))?,
+    ))
+}
+
+/// The typed limitation for changed source files in languages no ripr adapter
+/// reads (Go, Java, C, shell, ...). `None` when the diff has none. Without it
+/// a Go-only diff read as `no_behavioral_candidates (analysis complete)` and a
+/// Rust + Go diff reported only the Rust half as a complete analysis.
+fn unanalyzed_source_language_limitation(
+    changed_files: &[diff::ChangedFile],
+) -> Result<Option<AnalysisLimitation>, String> {
+    const MAX_NAMED_PATHS: usize = 3;
+    let mut by_language = std::collections::BTreeMap::<&str, usize>::new();
+    let mut paths = Vec::new();
+    for file in changed_files {
+        if let Some(language) = unanalyzed_source_language(&file.path) {
+            *by_language.entry(language).or_default() += 1;
+            paths.push(file.path.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    if paths.is_empty() {
+        return Ok(None);
+    }
+    const MAX_NAMED_LANGUAGES: usize = 4;
+    let mut languages = by_language
+        .iter()
+        .take(MAX_NAMED_LANGUAGES)
+        .map(|(language, count)| format!("{language}: {count}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if by_language.len() > MAX_NAMED_LANGUAGES {
+        languages.push_str(&format!(
+            " and {} more language(s)",
+            by_language.len() - MAX_NAMED_LANGUAGES
+        ));
+    }
+    let mut listed = paths
+        .iter()
+        .take(MAX_NAMED_PATHS)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if paths.len() > MAX_NAMED_PATHS {
+        listed.push_str(&format!(" and {} more", paths.len() - MAX_NAMED_PATHS));
+    }
+    // The detail text is bounded; a long path shortens the listing, never
+    // fails the analysis.
+    if listed.chars().count() > 160 {
+        listed = format!("{}…", listed.chars().take(159).collect::<String>());
+    }
+    Ok(Some(
+        AnalysisLimitation::new(
+            AnalysisLimitationKind::LanguageScopeUnsupported,
+            AnalysisStage::LanguageAdapter,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::InspectFailure,
+                format!(
+                    "Not analyzed ({languages}): {listed}. ripr analyzes Rust, plus \
+                     TypeScript/JavaScript and Python as previews; review these changes with \
+                     their own tests."
+                ),
+            )?,
+        )
+        .with_affected_items(paths.len() as u64)?
+        .with_detail(format!(
+            "{} changed file(s) in languages ripr does not analyze ({languages}) were not analyzed: {listed}",
+            paths.len()
         ))?,
     ))
 }
@@ -537,6 +618,9 @@ fn run_pipeline_for_diff_text(
         // must not present a Rust diff as a complete analysis. The preview
         // advisory below covers only preview languages, so the reference
         // adapter's exclusion is recorded here as a typed limitation.
+        limitations.push(limitation);
+    }
+    if let Some(limitation) = unanalyzed_source_language_limitation(&analysis_changed_files)? {
         limitations.push(limitation);
     }
     // When the Rust adapter returned a partial partition, preview adapters
@@ -1625,6 +1709,130 @@ mod tests {
                 limitation.recovery.detail
             );
         }
+        Ok(())
+    }
+
+    const SAMPLE_GO_DIFF: &str = "diff --git a/pkg/calc.go b/pkg/calc.go\n--- a/pkg/calc.go\n+++ b/pkg/calc.go\n@@ -1,1 +1,1 @@\n-func f(x int) bool { return x > 1 }\n+func f(x int) bool { return x >= 1 }\n";
+
+    fn unanalyzed_language_limitation(outcome: &AnalysisOutcome) -> Option<&AnalysisLimitation> {
+        outcome.limitations.iter().find(|limitation| {
+            limitation.kind == AnalysisLimitationKind::LanguageScopeUnsupported
+                && limitation
+                    .bounded_detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("languages ripr does not analyze"))
+        })
+    }
+
+    #[test]
+    fn unsupported_language_diff_is_a_non_claim_not_a_complete_analysis() -> Result<(), String> {
+        // A Go-only diff read as `no_behavioral_candidates (analysis
+        // complete)`; the changed Go behavior was never analyzed.
+        let root = temp_root("outcome-go-only")?;
+        let result = run_pipeline_for_diff_text(
+            &sample_rust_diff_options(root),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            SAMPLE_GO_DIFF,
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "outcome must be projected".to_string())?;
+        assert_eq!(
+            outcome.counts.changed_file_count, 1,
+            "fixture parses one Go file"
+        );
+        assert_eq!(outcome.kind, AnalysisOutcomeKind::PartialWithLimitations);
+        assert!(!outcome.kind.is_complete());
+        let limitation = unanalyzed_language_limitation(&outcome)
+            .ok_or_else(|| format!("Go change must be a typed limitation: {outcome:?}"))?;
+        assert_eq!(limitation.affected_items, Some(1));
+        let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+        assert!(
+            detail.contains("Go: 1") && detail.contains("pkg/calc.go"),
+            "{detail}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_rust_and_go_diff_names_the_unanalyzed_go_half() -> Result<(), String> {
+        // Rust + Go: the Rust half is analyzed; the Go half must not vanish
+        // behind a complete outcome.
+        let root = temp_root("outcome-rust-and-go")?;
+        let result = run_pipeline_for_diff_text(
+            &sample_rust_diff_options(root),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            &format!("{SAMPLE_RUST_DIFF}{SAMPLE_GO_DIFF}"),
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "outcome must be projected".to_string())?;
+        assert_eq!(
+            outcome.counts.changed_file_count, 2,
+            "fixture parses Rust and Go"
+        );
+        assert_eq!(outcome.kind, AnalysisOutcomeKind::PartialWithLimitations);
+        assert!(unanalyzed_language_limitation(&outcome).is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn many_unanalyzed_languages_with_long_paths_stay_within_text_bounds() -> Result<(), String> {
+        // Review finding: 28 languages under a deep path overflowed the
+        // 512-character recovery bound and failed the whole analysis.
+        let files = super::super::language::UNANALYZED_SOURCE_LANGUAGES_FOR_TESTS
+            .iter()
+            .map(|(extension, _)| {
+                changed_file(&format!(
+                    "services/payments/internal/processor/very/deep/tree/handler.{extension}"
+                ))
+            })
+            .collect::<Vec<_>>();
+        let limitation = unanalyzed_source_language_limitation(&files)?
+            .ok_or_else(|| "every file is unanalyzed source".to_string())?;
+        assert_eq!(limitation.affected_items, Some(files.len() as u64));
+        assert!(limitation.recovery.detail.contains("more language(s)"));
+        Ok(())
+    }
+
+    #[test]
+    fn rust_and_docs_diff_records_no_unanalyzed_language() -> Result<(), String> {
+        // Negative control: documentation next to Rust is not source.
+        let root = temp_root("outcome-rust-and-docs")?;
+        let docs = "diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+        let result = run_pipeline_for_diff_text(
+            &sample_rust_diff_options(root),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            &format!("{SAMPLE_RUST_DIFF}{docs}"),
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "outcome must be projected".to_string())?;
+        assert_eq!(outcome.counts.changed_file_count, 2);
+        assert!(
+            unanalyzed_language_limitation(&outcome).is_none(),
+            "{outcome:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn unsupported_language_disclosure_never_calls_the_empty_result_correct() -> Result<(), String>
+    {
+        let files = vec![changed_file("pkg/calc.go"), changed_file("README.md")];
+        let message = non_source_disclosure_message(&files)
+            .ok_or_else(|| "a Go-only diff must disclose".to_string())?;
+        assert!(!message.contains("empty result is correct"), "{message}");
+        assert!(
+            message.contains("(Go)") && message.contains("not a clean pass"),
+            "{message}"
+        );
         Ok(())
     }
 

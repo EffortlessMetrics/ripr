@@ -1,5 +1,7 @@
 use crate::analysis::cancellation;
-use crate::analysis::language::{LanguageAdapter, LanguageId, RustAdapter, route};
+use crate::analysis::language::{
+    LanguageAdapter, LanguageId, RustAdapter, route, unanalyzed_source_language,
+};
 use std::path::{Path, PathBuf};
 
 const DEFAULT_IGNORED_DIRS: &[&str] = &[
@@ -29,12 +31,38 @@ pub fn discover_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 /// directories are skipped the same way as Rust discovery.
 pub(crate) fn discover_preview_language_files(root: &Path) -> Vec<(LanguageId, PathBuf)> {
     let mut out: Vec<(LanguageId, PathBuf)> = Vec::new();
-    visit_preview(root, root, &mut out);
+    visit_classified(root, root, &mut out, &|path| {
+        route(path).filter(|language| {
+            matches!(
+                language,
+                LanguageId::TypeScript
+                    | LanguageId::JavaScript
+                    | LanguageId::Python
+                    | LanguageId::Perl
+            )
+        })
+    });
     out.sort_by(|a, b| a.1.cmp(&b.1));
     out
 }
 
-fn visit_preview(root: &Path, dir: &Path, out: &mut Vec<(LanguageId, PathBuf)>) {
+/// Discover source files in languages no ripr adapter reads (Go, Java, C,
+/// shell, ...), with their language names, skipping the same directories as
+/// the other discovery walks. Pilot uses it so a repository written in such a
+/// language gets a named non-claim instead of an empty "complete" ranking.
+pub(crate) fn discover_unanalyzed_source_files(root: &Path) -> Vec<(&'static str, PathBuf)> {
+    let mut out: Vec<(&'static str, PathBuf)> = Vec::new();
+    visit_classified(root, root, &mut out, &unanalyzed_source_language);
+    out.sort_by(|a, b| a.1.cmp(&b.1));
+    out
+}
+
+fn visit_classified<T>(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(T, PathBuf)>,
+    classify: &dyn Fn(&Path) -> Option<T>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -51,18 +79,10 @@ fn visit_preview(root: &Path, dir: &Path, out: &mut Vec<(LanguageId, PathBuf)>) 
             if DEFAULT_IGNORED_DIRS.contains(&name) {
                 continue;
             }
-            visit_preview(root, &path, out);
-        } else if let Some(language) = route(&path)
-            && matches!(
-                language,
-                LanguageId::TypeScript
-                    | LanguageId::JavaScript
-                    | LanguageId::Python
-                    | LanguageId::Perl
-            )
-        {
+            visit_classified(root, &path, out, classify);
+        } else if let Some(class) = classify(&path) {
             let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-            out.push((language, relative));
+            out.push((class, relative));
         }
     }
 }

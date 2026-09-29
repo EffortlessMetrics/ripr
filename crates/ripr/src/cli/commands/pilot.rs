@@ -181,6 +181,10 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         !classified.is_empty(),
         config.languages().enabled(),
         &analysis::workspace_preview_language_files(&input.root),
+    )
+    .with_unanalyzed(
+        analysis::workspace_unanalyzed_source_languages(&input.root),
+        !analysis::workspace_rust_files(&input.root).is_empty(),
     );
     let context = output::pilot::PilotSummaryContext {
         root: &input.root,

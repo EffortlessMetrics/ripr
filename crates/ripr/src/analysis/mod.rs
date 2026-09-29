@@ -86,6 +86,16 @@ pub(crate) fn workspace_preview_language_files(
     workspace::discover_preview_language_files(root)
 }
 
+/// Source files in languages no ripr adapter reads, counted per language
+/// name in stable name order; see `workspace::discover_unanalyzed_source_files`.
+pub(crate) fn workspace_unanalyzed_source_languages(root: &Path) -> Vec<(&'static str, usize)> {
+    let mut counts = std::collections::BTreeMap::<&'static str, usize>::new();
+    for (language, _) in workspace::discover_unanalyzed_source_files(root) {
+        *counts.entry(language).or_default() += 1;
+    }
+    counts.into_iter().collect()
+}
+
 /// Re-export workspace Rust file discovery for the output layer so it can
 /// check whether a workspace has any Rust source.
 pub(crate) fn workspace_rust_files(root: &Path) -> Vec<PathBuf> {

@@ -25,11 +25,38 @@ pub(in crate::cli) fn init(args: &[String]) -> Result<(), String> {
     // an existing `ripr.toml` without `--force`, and a root that is not a
     // directory.
     let plan = init_plan(&options)?;
+    if let Some(warning) = unanalyzed_root_warning(&options.root) {
+        eprintln!("{warning}");
+    }
     if options.dry_run {
         print_init_dry_run(&plan);
         return Ok(());
     }
     apply_init_plan(&plan)
+}
+
+/// Warn before configuring ripr for a repository it cannot analyze: a Go or
+/// Java repository got a workflow and "run `ripr check`" with no hint that
+/// every change would be reported as not analyzed.
+fn unanalyzed_root_warning(root: &Path) -> Option<String> {
+    if !crate::analysis::workspace_rust_files(root).is_empty()
+        || !crate::analysis::workspace_preview_language_files(root).is_empty()
+    {
+        return None;
+    }
+    let unanalyzed = crate::analysis::workspace_unanalyzed_source_languages(root);
+    if unanalyzed.is_empty() {
+        return None;
+    }
+    let found = unanalyzed
+        .iter()
+        .map(|(language, count)| format!("{language} ({count} file(s))"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "ripr: warning: the root `{}` has {found} source and no Rust, TypeScript/JavaScript or Python source. ripr does not analyze these languages, so `ripr check` and this configuration will report their changes as not analyzed.",
+        output::path::human_path(root)
+    ))
 }
 
 /// What `ripr init` would do to one file.
@@ -2909,6 +2936,26 @@ mod tests {
             std::env::temp_dir().join(format!("ripr-init-{name}-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&root).map_err(|err| format!("create temp root failed: {err}"))?;
         Ok(root)
+    }
+
+    #[test]
+    fn unanalyzed_root_warning_names_go_only_repositories() -> Result<(), String> {
+        let root = temp_root("go-only")?;
+        std::fs::write(root.join("main.go"), "package main\n")
+            .map_err(|err| format!("write main.go: {err}"))?;
+        let warning = unanalyzed_root_warning(&root).unwrap_or_default();
+        assert!(warning.contains("Go (1 file(s))"), "{warning}");
+        assert!(
+            warning.contains("report their changes as not analyzed"),
+            "{warning}"
+        );
+        // Negative control: Rust source beside the Go file is analyzable.
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("mkdir: {err}"))?;
+        std::fs::write(root.join("src/lib.rs"), "pub fn f() {}\n")
+            .map_err(|err| format!("write lib.rs: {err}"))?;
+        assert_eq!(unanalyzed_root_warning(&root), None);
+        std::fs::remove_dir_all(&root).map_err(|err| format!("cleanup: {err}"))?;
+        Ok(())
     }
 
     fn options(root: &Path) -> InitOptions {

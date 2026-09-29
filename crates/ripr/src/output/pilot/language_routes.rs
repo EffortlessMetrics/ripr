@@ -35,6 +35,10 @@ pub(crate) enum PilotLanguageRoutesState {
     /// Pilot's Rust seam scan produced no seams. An empty ranking says
     /// nothing about these languages, so the human output names each route.
     Required,
+    /// No Rust seams and no routed language, but source in languages no ripr
+    /// adapter reads (Go, Java, C, ...). The human output names them so the
+    /// empty ranking reads as a non-claim, not a clean result.
+    UnanalyzedOnly,
 }
 
 impl PilotLanguageRoutesState {
@@ -43,6 +47,7 @@ impl PilotLanguageRoutesState {
             PilotLanguageRoutesState::NotDetected => "not_detected",
             PilotLanguageRoutesState::Supplementary => "supplementary",
             PilotLanguageRoutesState::Required => "required",
+            PilotLanguageRoutesState::UnanalyzedOnly => "unanalyzed_only",
         }
     }
 }
@@ -90,6 +95,9 @@ impl PilotLanguageRoute {
 pub(crate) struct PilotLanguageRoutes {
     pub(crate) state: PilotLanguageRoutesState,
     pub(crate) routes: Vec<PilotLanguageRoute>,
+    /// Source files per language name that no ripr adapter reads.
+    pub(crate) unanalyzed: Vec<(&'static str, usize)>,
+    rust_seams_present: bool,
 }
 
 impl PilotLanguageRoutes {
@@ -120,7 +128,40 @@ impl PilotLanguageRoutes {
         } else {
             PilotLanguageRoutesState::Required
         };
-        Self { state, routes }
+        Self {
+            state,
+            routes,
+            unanalyzed: Vec::new(),
+            rust_seams_present,
+        }
+    }
+
+    /// Record source in languages no adapter reads
+    /// (`analysis::workspace_unanalyzed_source_languages`). With no Rust seam
+    /// and no routed language, they decide what the empty ranking means.
+    /// A Rust crate with no seams yet is still a Rust repository, so
+    /// `rust_source_present` keeps it out of the unanalyzed-only state.
+    pub(crate) fn with_unanalyzed(
+        mut self,
+        unanalyzed: Vec<(&'static str, usize)>,
+        rust_source_present: bool,
+    ) -> Self {
+        if self.state == PilotLanguageRoutesState::NotDetected
+            && !self.rust_seams_present
+            && !rust_source_present
+            && !unanalyzed.is_empty()
+        {
+            self.state = PilotLanguageRoutesState::UnanalyzedOnly;
+        }
+        self.unanalyzed = unanalyzed;
+        self
+    }
+
+    /// The unanalyzed languages the human output must show: only when they
+    /// are all pilot found.
+    pub(crate) fn unanalyzed_only(&self) -> Option<&[(&'static str, usize)]> {
+        (self.state == PilotLanguageRoutesState::UnanalyzedOnly)
+            .then_some(self.unanalyzed.as_slice())
     }
 
     /// The routes the human output must show: only when pilot found no Rust
