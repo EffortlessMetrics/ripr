@@ -1,5 +1,7 @@
 use super::*;
+use crate::analysis::syntax::parse_clean_source_file;
 use crate::analysis::value_resolution::{FileValueScan, ValueEnvFacts};
+use ra_ap_syntax::{Parse, SourceFile};
 use std::cell::{OnceCell, RefCell};
 use std::sync::{Arc, OnceLock};
 
@@ -26,6 +28,8 @@ pub(crate) struct CompactGripContext<'a> {
     /// Per test file: evidence-role function indices grouped by start line,
     /// built on first use. See [`Self::unique_evidence_function`].
     evidence_functions_by_line_cache: RefCell<BTreeMap<&'a Path, BTreeMap<usize, Vec<usize>>>>,
+    /// Run-scoped parser reuse for owner-result binding inspection.
+    parsed_sources: RefCell<BTreeMap<&'a Path, Option<Parse<SourceFile>>>>,
 }
 
 /// Candidate generation only: the existing `contains` and `same_module`
@@ -356,6 +360,7 @@ impl<'a> CompactGripContext<'a> {
             same_module_cache: RefCell::new(BTreeMap::new()),
             source_digest_cache: RefCell::new(BTreeMap::new()),
             evidence_functions_by_line_cache: RefCell::new(BTreeMap::new()),
+            parsed_sources: RefCell::new(BTreeMap::new()),
         })
     }
 
@@ -415,6 +420,26 @@ impl<'a> CompactGripContext<'a> {
             .borrow_mut()
             .insert(path.as_path(), digest.clone());
         Some(digest)
+    }
+
+    /// Parser-backed source for `path`, or `None` on lexical fallback or
+    /// parse refusal. Cached once per file for the life of this context.
+    pub(in crate::analysis::test_grip_evidence) fn parsed_source(
+        &self,
+        path: &Path,
+    ) -> Option<Parse<SourceFile>> {
+        let (path, facts) = self.index.files.get_key_value(path)?;
+        if facts.used_lexical_fallback {
+            return None;
+        }
+        if let Some(cached) = self.parsed_sources.borrow().get(path.as_path()) {
+            return cached.clone();
+        }
+        let parsed = parse_clean_source_file(&facts.source);
+        self.parsed_sources
+            .borrow_mut()
+            .insert(path.as_path(), parsed.clone());
+        parsed
     }
 
     pub(super) fn owner_named_indices(&self, owner_name_lower: &str) -> Vec<usize> {

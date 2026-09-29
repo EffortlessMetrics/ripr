@@ -3,6 +3,32 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-09-29: Repo-seam FieldConstruction missing facts need parser-backed owner-result identity (#1981)
+
+`CallFact`, `LetBindingFact`, and `ValueEnv` cannot prove that a local is the
+direct return of the seam owner. A nearby test name or a `.field` token on
+another object must not emit a compatible missing discriminator. Derive the
+fact only after activation is already `Yes`; nonempty `missing_discriminators`
+classifies `WeaklyGripped` before `ActivationUnknown`, so an unconditional
+field fact would invent actionability. Keep helper-transfer and qualified or
+method callees as named limitations until a later producer can resolve them.
+A same-name local or imported callee, a mutable borrow of the observed field,
+an assertion-message-only field mention, and an assertion-local shadow of the
+owner-result binding are also not owner-result observations: credit only a
+parser-backed discriminating condition or compared operands, and fail closed
+when the bare callee identity is ambiguous, including a local binding of the
+owner name that is not itself the parser-backed direct owner-result. A grouped
+nested-`super` import is the production owner only when the resolved module
+path uniquely matches this seam's owner; do not whitelist every `super::`
+prefix. The same spelling from another module, an unresolved import, or two
+cfg-ambiguous same-name owners stay non-ready. A leading `::` path selects
+the extern prelude and is not this seam's owner. A
+DirectOwnerCall related test that failed target admission stays `Missing`;
+ranking must not fall through to a Proposed InlineUnit or Integration target
+just because the `field_value` fact is now present. Advisory related observers
+(`SameModule`, `WeakTokenSubstring`, `ImportPathAffinity`) do not occupy that
+existing-test slot.
+
 ## 2026-09-29: Boundary input and oracle from different tests is a false `exposed` (#4828)
 
 Infection ("related test input at the changed boundary") and discrimination

@@ -42,6 +42,21 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Repo-seam `FieldConstruction` evidence now emits a compatible missing
+  `field_value` fact when a parser-backed direct owner-result binding is
+  observed only by a weak field oracle, and only after activation is already
+  known. Exact field equality stays already-gripped; wrappers, helper
+  transfer, shadows, sibling fields, token coincidence, unknown activation,
+  failed target authority, mutable field borrows, assertion-message-only
+  field mentions, assertion-local shadows, same-name local or imported
+  callees, and local callee bindings of the owner name stay non-ready.
+  A grouped nested-`super` import of the unique production owner completes
+  the route; the same spelling from another module and cfg-ambiguous
+  same-name owners stay non-ready. A leading `::` extern-prelude import is
+  not a local owner even when a same-named dependency crate exists.
+  A DirectOwnerCall related test that failed target admission stays missing
+  rather than falling through to a proposed new-test target; advisory related
+  observers do not block an independently admitted proposal (#1981).
 - Rust: a predicate probe no longer reads `exposed` when a boundary input
   comes from a test that asserts nothing and a discriminating oracle comes
   from a different test. `exposed` requires one test that both feeds a
