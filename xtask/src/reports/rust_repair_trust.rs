@@ -274,6 +274,7 @@ fn build_report(corpus: &Value) -> Value {
     }
 
     let mut valid_exclusions = 0usize;
+    let mut seen_canonical_candidate_ids = BTreeMap::<String, usize>::new();
     for (index, exclusion) in exclusions.iter().enumerate() {
         let prefix = format!("exclusions[{index}]");
         let mut errors = exclusion_errors(exclusion, &authorized_repositories);
@@ -286,6 +287,20 @@ fn build_report(corpus: &Value) -> Value {
         }
         if !id.is_empty() && case_ids.contains(id) {
             errors.push(format!("exclusion id {id} collides with an attempt id"));
+        }
+        if let Some(candidate_id) = exclusion
+            .get("canonical_candidate_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|candidate_id| !candidate_id.is_empty())
+        {
+            if let Some(first) = seen_canonical_candidate_ids.get(candidate_id) {
+                errors.push(format!(
+                    "canonical_candidate_id {candidate_id} duplicates exclusions[{first}]"
+                ));
+            } else {
+                seen_canonical_candidate_ids.insert(candidate_id.to_string(), index);
+            }
         }
         if errors.is_empty() {
             valid_exclusions += 1;
@@ -1070,9 +1085,9 @@ mod tests {
         .map_err(|error| format!("parse corpus fixture: {error}"))?;
         let report = build_report(&corpus);
         for (field, expected) in [
-            ("observation_count", 25),
+            ("observation_count", 28),
             ("unique_exclusion_count", 24),
-            ("duplicate_observation_count", 1),
+            ("duplicate_observation_count", 4),
             ("timeout_observation_count", 6),
             ("eligible_attempt_count", 0),
             ("repository_count", 3),
@@ -1086,8 +1101,11 @@ mod tests {
                 "eleven follow-up/pilot observations must map to new exclusions".to_string(),
             );
         }
-        if report["observation_classification_counts"]["duplicate_observation"] != 1 {
-            return Err("the repeated #747 observation must remain a duplicate".to_string());
+        if report["observation_classification_counts"]["duplicate_observation"] != 4 {
+            return Err(
+                "the repeated #747 observation plus three post-#2933 FieldConstruction reruns must remain duplicates"
+                    .to_string(),
+            );
         }
         Ok(())
     }
@@ -1127,12 +1145,276 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn duplicate_observations_require_valid_exclusion_targets() -> Result<(), String> {
-        let mut corpus: Value = serde_json::from_str(include_str!(
+    fn live_corpus() -> Result<Value, String> {
+        serde_json::from_str(include_str!(
             "../../../metrics/rust-repair-trust/corpus.json"
         ))
-        .map_err(|error| format!("parse corpus fixture: {error}"))?;
+        .map_err(|error| format!("parse corpus fixture: {error}"))
+    }
+
+    fn fieldconstruction_pilot_exclusion<'a>(
+        corpus: &'a Value,
+        exclusion_id: &str,
+    ) -> Result<&'a Value, String> {
+        corpus
+            .get("exclusions")
+            .and_then(Value::as_array)
+            .and_then(|exclusions| {
+                exclusions.iter().find(|exclusion| {
+                    exclusion.get("exclusion_id").and_then(Value::as_str) == Some(exclusion_id)
+                })
+            })
+            .ok_or_else(|| format!("missing exclusion {exclusion_id}"))
+    }
+
+    fn duplicate_observation_from_exclusion(
+        exclusion: &Value,
+        observation_id: &str,
+        reason: &str,
+    ) -> Result<Value, String> {
+        let exclusion_id = exclusion
+            .get("exclusion_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "exclusion_id required".to_string())?;
+        let repository = exclusion
+            .get("repository")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "repository required".to_string())?;
+        let analyzed_head_sha = exclusion
+            .get("analyzed_head_sha")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "analyzed_head_sha required".to_string())?;
+        let source_ref = exclusion
+            .get("source_ref")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "source_ref required".to_string())?;
+        let canonical_candidate_id = exclusion
+            .get("canonical_candidate_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "canonical_candidate_id required".to_string())?;
+        Ok(json!({
+            "observation_id": observation_id,
+            "repository": repository,
+            "analyzed_head_sha": analyzed_head_sha,
+            "source_ref": source_ref,
+            "canonical_candidate_id": canonical_candidate_id,
+            "reason": reason,
+            "evidence_ref": format!("metrics/rust-repair-trust/{observation_id}.json"),
+            "classification": "duplicate_observation",
+            "duplicate_of": exclusion_id,
+            "claim_boundary": "identity-matched rerun is not a new exclusion or attempt"
+        }))
+    }
+
+    #[test]
+    fn fieldconstruction_identity_reruns_do_not_inflate_cases_or_exclusions() -> Result<(), String>
+    {
+        let mut corpus = live_corpus()?;
+        let baseline = build_report(&corpus);
+        let baseline_unique = baseline["unique_exclusion_count"]
+            .as_u64()
+            .ok_or_else(|| "unique_exclusion_count must be a number".to_string())?;
+        let baseline_duplicates = baseline["duplicate_observation_count"]
+            .as_u64()
+            .ok_or_else(|| "duplicate_observation_count must be a number".to_string())?;
+        let baseline_timeouts = baseline["timeout_observation_count"]
+            .as_u64()
+            .ok_or_else(|| "timeout_observation_count must be a number".to_string())?;
+        let identities = [
+            (
+                "ripr-1580-static-limitation",
+                "identity-control-ripr-1580",
+                "analysis_timeout",
+            ),
+            (
+                "ub-772-static-limitation",
+                "identity-control-ub-772",
+                "no_current_behavior_change",
+            ),
+            (
+                "ub-744-static-limitation",
+                "identity-control-ub-744",
+                "analysis_timeout",
+            ),
+        ];
+        let mut added_timeout_duplicates = 0u64;
+        for (exclusion_id, observation_id, reason) in identities {
+            let exclusion = fieldconstruction_pilot_exclusion(&corpus, exclusion_id)?.clone();
+            let observation =
+                duplicate_observation_from_exclusion(&exclusion, observation_id, reason)?;
+            if reason == "analysis_timeout" {
+                added_timeout_duplicates += 1;
+            }
+            corpus
+                .get_mut("observations")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| "observations must be an array".to_string())?
+                .push(observation);
+        }
+
+        let report = build_report(&corpus);
+        if report["unique_exclusion_count"] != baseline_unique {
+            return Err(format!(
+                "identity-matched reruns must not add exclusions: {}",
+                report["unique_exclusion_count"]
+            ));
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err(
+                "identity-matched reruns must not enter the attempt denominator".to_string(),
+            );
+        }
+        if corpus.get("cases").and_then(Value::as_array).map(Vec::len) != Some(0) {
+            return Err("identity-matched reruns must not inflate cases".to_string());
+        }
+        if report["duplicate_observation_count"].as_u64() != Some(baseline_duplicates + 3) {
+            return Err(format!(
+                "three identity-matched reruns must count as duplicates: {}",
+                report["duplicate_observation_count"]
+            ));
+        }
+        if report["timeout_observation_count"].as_u64()
+            != Some(baseline_timeouts + added_timeout_duplicates)
+        {
+            return Err(format!(
+                "timeout duplicate observations must increment timeout count without new exclusions: {}",
+                report["timeout_observation_count"]
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn mismatched_head_cannot_be_a_duplicate_of_an_existing_exclusion() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let exclusion =
+            fieldconstruction_pilot_exclusion(&corpus, "ripr-1580-static-limitation")?.clone();
+        let mut observation = duplicate_observation_from_exclusion(
+            &exclusion,
+            "identity-control-ripr-1580-wrong-head",
+            "analysis_timeout",
+        )?;
+        // Sibling #1581 head is authorized for ripr-swarm observation, but it is
+        // not the #1580 FieldConstruction identity.
+        observation["analyzed_head_sha"] = json!("86fbe048eeedd0eeb6090db96355791c40b3486b");
+
+        corpus
+            .get_mut("observations")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "observations must be an array".to_string())?
+            .push(observation);
+
+        let report = build_report(&corpus);
+        if report["duplicate_observation_count"]
+            != build_report(&live_corpus()?)["duplicate_observation_count"]
+        {
+            return Err("mismatched head must not count as a duplicate observation".to_string());
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors.iter().filter_map(Value::as_str).any(|error| {
+            error.contains("duplicate observation does not match exclusion ripr-1580-static-limitation field analyzed_head_sha")
+        }) {
+            return Err(format!("missing mismatched-head duplicate error: {errors:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn second_exclusion_for_the_same_canonical_candidate_is_rejected() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let baseline_unique = build_report(&corpus)["unique_exclusion_count"]
+            .as_u64()
+            .ok_or_else(|| "unique_exclusion_count must be a number".to_string())?;
+        let mut duplicate =
+            fieldconstruction_pilot_exclusion(&corpus, "ub-772-static-limitation")?.clone();
+        duplicate["exclusion_id"] = json!("identity-control-ub-772-duplicate-exclusion");
+        duplicate["reason"] = json!("no_current_behavior_change");
+        corpus
+            .get_mut("exclusions")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "exclusions must be an array".to_string())?
+            .push(duplicate);
+
+        let report = build_report(&corpus);
+        if report["unique_exclusion_count"].as_u64() != Some(baseline_unique) {
+            return Err(format!(
+                "duplicate canonical identity must not inflate unique exclusions: {}",
+                report["unique_exclusion_count"]
+            ));
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err(
+                "duplicate canonical identity must not enter the attempt denominator".to_string(),
+            );
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors.iter().filter_map(Value::as_str).any(|error| {
+            error.contains("canonical_candidate_id EffortlessMetrics/ub-review#772 duplicates")
+        }) {
+            return Err(format!(
+                "missing duplicate canonical-candidate error: {errors:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn in_place_exclusion_reason_update_keeps_identity_and_denominator() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let baseline = build_report(&corpus);
+        let exclusions = corpus
+            .get_mut("exclusions")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "exclusions must be an array".to_string())?;
+        let exclusion = exclusions
+            .iter_mut()
+            .find(|exclusion| {
+                exclusion.get("exclusion_id").and_then(Value::as_str)
+                    == Some("ripr-1580-static-limitation")
+            })
+            .ok_or_else(|| "missing ripr-1580 exclusion".to_string())?;
+        exclusion["reason"] = json!("analysis_timeout");
+        exclusion["evidence_ref"] = json!("metrics/rust-repair-trust/post-2933-ripr-1580.json");
+
+        let report = build_report(&corpus);
+        if report["unique_exclusion_count"] != baseline["unique_exclusion_count"] {
+            return Err("in-place identity update must not add an exclusion".to_string());
+        }
+        if report["exclusion_count"] != baseline["exclusion_count"] {
+            return Err("in-place identity update must keep the same exclusion_id row".to_string());
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err("in-place identity update must not invent an attempt".to_string());
+        }
+        if report["exclusion_reason_counts"]["analysis_timeout"].as_u64()
+            != baseline["exclusion_reason_counts"]["analysis_timeout"]
+                .as_u64()
+                .map(|count| count + 1)
+        {
+            return Err(
+                "updated reason must move the existing exclusion into the new bucket".to_string(),
+            );
+        }
+        if report["exclusion_reason_counts"]["static_limitation_no_repair_packet"].as_u64()
+            != baseline["exclusion_reason_counts"]["static_limitation_no_repair_packet"]
+                .as_u64()
+                .map(|count| count.saturating_sub(1))
+        {
+            return Err("updated reason must leave the prior bucket".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_observations_require_valid_exclusion_targets() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let baseline_duplicates = build_report(&corpus)["duplicate_observation_count"]
+            .as_u64()
+            .ok_or_else(|| "duplicate_observation_count must be a number".to_string())?;
         let exclusions = corpus
             .get_mut("exclusions")
             .and_then(Value::as_array_mut)
@@ -1150,7 +1432,12 @@ mod tests {
         let duplicate_source = corpus
             .get("observations")
             .and_then(Value::as_array)
-            .and_then(|observations| observations.get(5))
+            .and_then(|observations| {
+                observations.iter().find(|observation| {
+                    observation.get("observation_id").and_then(Value::as_str)
+                        == Some("follow-up-ub-747-duplicate")
+                })
+            })
             .cloned()
             .ok_or_else(|| "expected duplicate observation fixture".to_string())?;
         let mut duplicate = duplicate_source;
@@ -1163,7 +1450,7 @@ mod tests {
             .push(duplicate);
 
         let report = build_report(&corpus);
-        if report["duplicate_observation_count"] != 1 {
+        if report["duplicate_observation_count"].as_u64() != Some(baseline_duplicates) {
             return Err("duplicate of an invalid exclusion must not count".to_string());
         }
         let errors = report["validation_errors"]
