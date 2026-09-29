@@ -127,10 +127,19 @@ request document diagnostics after a refresh.
 
 ## Zed
 
-Not available yet. Zed launches only language servers that Zed or an
-extension registers; the `lsp.<name>.binary` setting overrides an existing
-server's binary and cannot add ripr. Running ripr in Zed needs a small Zed
-extension (#4460). Read from Zed's documentation on 2026-09-28.
+Zed launches only language servers that Zed or an extension registers, so
+ripr needs the extension in [`editors/zed`](../../editors/zed/README.md)
+(#4460). It is not in the Zed extension registry: install it with
+`zed: install dev extension` from a checkout, with `ripr` on your `PATH`.
+Settings go under `lsp.ripr.settings` in Zed's `settings.json`, written flat:
+
+```json
+{ "lsp": { "ripr": { "settings": { "diagnosticProfile": "full" } } } }
+```
+
+Zed starts one ripr server per worktree, so each folder of a project is
+analyzed as its own repository. Read from Zed's source on 2026-09-29; not run
+in a Zed binary.
 
 ## Any other client, or a script
 

@@ -31,6 +31,8 @@ crates/**/Cargo.toml|rust_package_manifest|rust|Cargo package manifests.
 editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm dependency graph for the VS Code extension.
 editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
 editors/vscode/test-fixtures/**/Cargo.toml|fixture_input|lsp/editor|VS Code extension test fixture workspace Cargo manifest.
+editors/zed/Cargo.lock|editor_extension_lockfile|lsp/editor|Pinned Cargo dependency graph for the Zed extension (#4460).
+editors/zed/Cargo.toml|editor_extension_manifest|lsp/editor|Zed extension crate manifest; depends only on zed_extension_api (#4460).
 fixtures/**/Cargo.toml|fixture_input|analysis-fixtures|Fixture workspaces may contain Cargo manifests as analyzed inputs.
 fixtures/**/package-lock.json|fixture_input|analysis-fixtures|TypeScript adapter runner-detection fixtures: npm lockfile is intentional discovery input.
 fixtures/**/package.json|fixture_input|analysis-fixtures|TypeScript adapter package-discovery fixtures: package.json is intentional discovery input.

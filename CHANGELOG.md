@@ -306,6 +306,12 @@ are scoped or reviewed.
 
 ### Added
 
+- Zed: a Zed extension in `editors/zed` starts `ripr lsp --stdio` from your
+  `PATH` for Rust, Python, TypeScript, TSX, and JavaScript files. Zed runs
+  only language servers an extension registers, so ripr could not run in Zed
+  before. Install it with `zed: install dev extension`; it is not in the Zed
+  extension registry. Settings under `lsp.ripr.settings` answer ripr's
+  `ripr` configuration section (#4460).
 - `ripr --version` now names the commit the binary was built from, as
   `ripr <version> (<commit>)`, with `-dirty` when the sources that build it differed
   from that commit. Packaged crates (crates.io, `cargo install ripr`) read the

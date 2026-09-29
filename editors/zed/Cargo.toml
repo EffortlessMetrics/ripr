@@ -1,0 +1,26 @@
+[package]
+name = "ripr-zed"
+# Versioned on its own, not with ripr: the extension only starts `ripr lsp
+# --stdio`, and each Zed registry release is a version bump of its own.
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+publish = false
+description = "Zed extension that starts `ripr lsp --stdio` from PATH"
+
+# Zed compiles this crate on its own, so it is not a member of the repository
+# workspace and keeps its own lockfile.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# 0.6.0 loads in Zed 0.192 and later; the 0.7.0 API needs a newer Zed and adds
+# nothing this extension uses.
+zed_extension_api = "0.6.0"
+
+[lints.rust]
+unsafe_code = "forbid"
