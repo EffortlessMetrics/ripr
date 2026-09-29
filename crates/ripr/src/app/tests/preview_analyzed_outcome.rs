@@ -64,6 +64,7 @@ fn shared_preview_completion_predicate_fails_closed_for_every_non_success_status
         language: "python".to_string(),
         file_count: 1,
         sample_paths: vec!["src/app.py".to_string()],
+        javascript_file_count: 0,
         enabled: true,
     };
     if !advisory.analyzed(&[]) {

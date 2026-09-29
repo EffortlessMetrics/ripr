@@ -38,4 +38,4 @@ Hidden:
   Machine data: rerun with --format json
 
 
-Note: 4 TypeScript files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.
+Note: 4 TypeScript/JavaScript files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

@@ -137,6 +137,12 @@ impl LanguageId {
             LanguageId::Perl => format!(
                 "Perl analysis is not available from this ripr binary. It needs both a ripr build with Cargo feature `lang-perl` (`cargo install ripr --features lang-perl`) and a compatible Perl fact exporter (`{PERL_FACT_EXPORTER}`), which is not yet published; no released ripr setup analyzes Perl yet, and adding `perl` to ripr.toml [languages] alone does not enable it"
             ),
+            // The TypeScript adapter analyzes the whole TS/JS family, and a
+            // JavaScript-only diff is disclosed under it (#4555).
+            LanguageId::TypeScript => format!(
+                "rebuild ripr with Cargo feature `{}` to analyze TypeScript and JavaScript files",
+                LanguageId::TypeScript.required_feature()
+            ),
             other => format!(
                 "rebuild ripr with Cargo feature `{}` to analyze {} files",
                 other.required_feature(),
@@ -489,11 +495,14 @@ mod tests {
 
     #[test]
     fn unavailable_adapter_recovery_names_the_feature_for_non_perl_languages() {
-        for language in [
-            LanguageId::TypeScript,
-            LanguageId::JavaScript,
-            LanguageId::Python,
-        ] {
+        assert_eq!(
+            LanguageId::TypeScript.unavailable_adapter_recovery(),
+            format!(
+                "rebuild ripr with Cargo feature `{}` to analyze TypeScript and JavaScript files",
+                LanguageId::TypeScript.required_feature()
+            )
+        );
+        for language in [LanguageId::JavaScript, LanguageId::Python] {
             let recovery = language.unavailable_adapter_recovery();
             assert_eq!(
                 recovery,

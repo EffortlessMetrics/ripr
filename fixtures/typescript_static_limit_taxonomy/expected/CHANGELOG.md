@@ -493,3 +493,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_static_limit_taxonomy (8)
+
+Reason:
+RIPR-SPEC-0082: preview note names JavaScript-family files JavaScript, TS/JS for a mixed diff (#4555)
+
+Command:
+`cargo xtask goldens bless typescript_static_limit_taxonomy --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

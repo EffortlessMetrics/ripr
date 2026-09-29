@@ -1659,6 +1659,7 @@ fn check_output_with_preview_advisory(
             language: language.to_string(),
             file_count: 1,
             sample_paths: vec![format!("src/foo.{language}")],
+            javascript_file_count: 0,
             enabled,
         }],
         language_runs: Vec::new(),

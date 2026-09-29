@@ -672,6 +672,7 @@ mod tests {
                     language: "typescript".to_string(),
                     file_count: 2,
                     sample_paths: vec!["src/discount.ts".to_string()],
+                    javascript_file_count: 0,
                     enabled: true,
                 }],
                 language_runs: Vec::new(),

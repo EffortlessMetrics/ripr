@@ -93,6 +93,9 @@ trigger an advisory. Each advisory carries:
   scope that routed to this adapter
 - `sample_paths`: up to three normalized file paths (forward-slash), drawn from
   the same set `file_count` counts
+- `javascript_file_count`: how many of the `file_count` files are
+  JavaScript-family sources (`0` for every language but `typescript`); used by
+  human prose only (#4555)
 - `enabled`: whether this preview adapter was configured and available for
   this analysis
 
@@ -167,6 +170,17 @@ Note: this diff contains 1 TypeScript file. The TypeScript adapter is preview an
 The note names the language by its display name (`TypeScript`,
 `JavaScript`, `Python`, `Perl`, owned by `LanguageId::display_name`) and
 counts files as `1 <Language> file` or `N <Language> files`.
+
+The TypeScript adapter analyzes the whole TS/JS family under the `typescript`
+wire name, so its advisory also carries `javascript_file_count`: how many of
+`file_count` are `.js`/`.jsx`/`.mjs`/`.cjs` sources, by the router's exact
+extension lists (#4555). Human prose uses it: a JavaScript-only advisory
+counts `JavaScript file(s)`, a mixed one `TypeScript/JavaScript files`, and
+the not-enabled, not-compiled and none-routed notes name the
+`TypeScript/JavaScript adapter`. The not-enabled note keeps
+the `"typescript"` config value and adds `("typescript" enables the adapter
+for JavaScript files too.)`. A TypeScript-only advisory is unchanged. The JSON
+advisory does not carry the new count; its `language` stays the wire name.
 
 The note is omitted entirely for pure-Rust diffs. The note does not change
 exit code or pass/fail status.

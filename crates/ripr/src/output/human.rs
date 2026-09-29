@@ -539,11 +539,11 @@ pub(super) fn wrap_human_prose(
 ///   the adapter is a single edit.
 fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
     for advisory in &output.preview_language_advisories {
-        let language = language_display_name(&advisory.language);
+        let (language, file_language) = advisory_language_names(advisory);
         let file_label = if advisory.file_count == 1 {
-            format!("{language} file")
+            format!("{file_language} file")
         } else {
-            format!("{language} files")
+            format!("{file_language} files")
         };
         if advisory.analyzed(&output.language_runs) {
             // The empty-result caveat only applies when there is no finding.
@@ -570,6 +570,9 @@ fn render_preview_language_advisories(out: &mut String, output: &CheckOutput) {
                 "\nNote: this diff contains {} {}. The {} adapter is preview and not enabled, so these files were not analyzed — this is NOT a clean Rust-grade result. Enable it in ripr.toml [languages] to analyze them.\n\nTo enable, add to ripr.toml:\n\n[languages]\nenabled = [\"rust\", \"{language_lowercase}\"]\n",
                 advisory.file_count, file_label, language,
             ));
+            if advisory.language == "typescript" && advisory.javascript_file_count > 0 {
+                out.push_str("\n(\"typescript\" enables the adapter for JavaScript files too.)\n");
+            }
             if let Some(prerequisite) = crate::domain::LanguageId::from_wire(&advisory.language)
                 .and_then(crate::domain::LanguageId::enable_prerequisite)
             {
@@ -619,6 +622,25 @@ fn render_language_runs(out: &mut String, output: &CheckOutput) {
                 run.status.as_str(),
             )),
         }
+    }
+}
+
+/// Prose names for a preview advisory: the adapter it ran under and the kind
+/// of files it counted. The TypeScript adapter also analyzes JavaScript, so a
+/// JavaScript-only diff is "JavaScript files" under the "TypeScript/JavaScript"
+/// adapter, and a mixed one is "TypeScript/JavaScript files" (#4555).
+fn advisory_language_names(
+    advisory: &crate::analysis::PreviewLanguageAdvisory,
+) -> (String, String) {
+    let language = language_display_name(&advisory.language);
+    if advisory.language != "typescript" || advisory.javascript_file_count == 0 {
+        return (language.clone(), language);
+    }
+    let family = "TypeScript/JavaScript".to_string();
+    if advisory.javascript_file_count >= advisory.file_count {
+        (family, "JavaScript".to_string())
+    } else {
+        (family.clone(), family)
     }
 }
 
@@ -3161,6 +3183,7 @@ mod tests {
                 language: "typescript".to_string(),
                 file_count: 2,
                 sample_paths: vec!["src/discount.ts".to_string(), "src/pricing.ts".to_string()],
+                javascript_file_count: 0,
                 enabled: true,
             }],
             language_runs: Vec::new(),
@@ -3202,6 +3225,7 @@ mod tests {
                 language: "python".to_string(),
                 file_count: 3,
                 sample_paths: vec!["app/main.py".to_string()],
+                javascript_file_count: 0,
                 enabled: true,
             }],
             language_runs: Vec::new(),
@@ -3286,6 +3310,7 @@ mod tests {
                 language: "typescript".to_string(),
                 file_count: 7,
                 sample_paths: vec!["src/lib.ts".to_string()],
+                javascript_file_count: 0,
                 enabled: true,
             }],
             language_runs: Vec::new(),
@@ -3322,6 +3347,7 @@ mod tests {
                 language: "perl".to_string(),
                 file_count: 1,
                 sample_paths: vec!["lib/Pricing.pm".to_string()],
+                javascript_file_count: 0,
                 enabled: false,
             }],
             language_runs: Vec::new(),
@@ -3406,6 +3432,7 @@ mod tests {
                 language: "python".to_string(),
                 file_count: 3,
                 sample_paths: vec!["app/models.py".to_string()],
+                javascript_file_count: 0,
                 enabled: false,
             }],
             language_runs: Vec::new(),
@@ -4075,6 +4102,7 @@ mod tests {
             language: language.to_string(),
             file_count,
             sample_paths: Vec::new(),
+            javascript_file_count: 0,
             enabled,
         };
         let output = CheckOutput {
@@ -4124,6 +4152,91 @@ mod tests {
             assert!(
                 !rendered.contains(forbidden),
                 "must not render `{forbidden}`; got:\n{rendered}"
+            );
+        }
+    }
+
+    /// #4555: the TypeScript adapter also analyzes JavaScript, so a
+    /// JavaScript-only advisory says "JavaScript file", a mixed one says
+    /// "TypeScript/JavaScript files", and the not-enabled note keeps the
+    /// `"typescript"` config value with a gloss that it covers JavaScript.
+    #[test]
+    fn typescript_advisory_names_javascript_and_mixed_files() {
+        let advisory = |file_count: usize, javascript_file_count: usize, enabled: bool| {
+            PreviewLanguageAdvisory {
+                language: "typescript".to_string(),
+                file_count,
+                sample_paths: Vec::new(),
+                javascript_file_count,
+                enabled,
+            }
+        };
+        let render_one = |advisory: PreviewLanguageAdvisory| {
+            render(&CheckOutput {
+                harness_projections: Vec::new(),
+                schema_version: "0.1".to_string(),
+                tool: "ripr".to_string(),
+                mode: Mode::Draft,
+                root: PathBuf::from("repo"),
+                base: None,
+                summary: Summary::default(),
+                findings: vec![],
+                preview_language_advisories: vec![advisory],
+                language_runs: Vec::new(),
+                no_scope_provided: false,
+                unanalyzed_working_tree: false,
+                suppression: None,
+                analysis_outcome: None,
+                partial_scope: None,
+            })
+        };
+
+        let javascript_only = render_one(advisory(1, 1, true));
+        assert!(
+            javascript_only.contains("Note: 1 JavaScript file analyzed under preview support"),
+            "{javascript_only}"
+        );
+        let mixed = render_one(advisory(3, 1, true));
+        assert!(
+            mixed.contains("Note: 3 TypeScript/JavaScript files analyzed under preview support"),
+            "{mixed}"
+        );
+        let typescript_only = render_one(advisory(2, 0, true));
+        assert!(
+            typescript_only.contains("Note: 2 TypeScript files analyzed under preview support"),
+            "{typescript_only}"
+        );
+
+        let not_enabled = render_one(advisory(1, 1, false));
+        let expected = if cfg!(feature = "lang-typescript") {
+            "Note: this diff contains 1 JavaScript file. The TypeScript/JavaScript adapter is preview"
+        } else {
+            "Note: this diff contains 1 JavaScript file. The TypeScript/JavaScript adapter is not compiled into this ripr binary"
+        };
+        assert!(not_enabled.contains(expected), "{not_enabled}");
+        if cfg!(feature = "lang-typescript") {
+            assert!(
+                not_enabled.contains("enabled = [\"rust\", \"typescript\"]"),
+                "{not_enabled}"
+            );
+            assert!(
+                not_enabled
+                    .contains("(\"typescript\" enables the adapter for JavaScript files too.)"),
+                "{not_enabled}"
+            );
+        }
+        // A TypeScript-only diff counts TypeScript files and gets no
+        // JavaScript gloss. The adapter name itself says
+        // "TypeScript/JavaScript" in every build.
+        let typescript_not_enabled = render_one(advisory(1, 0, false));
+        assert!(
+            typescript_not_enabled.contains("Note: this diff contains 1 TypeScript file."),
+            "{typescript_not_enabled}"
+        );
+        for forbidden in ["JavaScript file.", "enables the adapter for JavaScript"] {
+            assert!(
+                !typescript_not_enabled.contains(forbidden),
+                "TypeScript-only note must not render `{forbidden}`:\n{typescript_not_enabled}"
             );
         }
     }
