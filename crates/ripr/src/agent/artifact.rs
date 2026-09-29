@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
 
 pub(crate) const ARTIFACT_IDENTITY_SCHEMA_VERSION: &str = "1";
 /// Version of the repo-exposure analysis input-identity algorithm (#2823).
@@ -627,14 +627,20 @@ fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
         .map_err(|err| format!("git {args:?} returned non-UTF-8 output: {err}"))
 }
 
+/// Cooperative deadline for every git adapter spawn in this module (#2303,
+/// #4363). The adapters answer artifact identity and verify questions
+/// (`rev-parse`, `status`, `cat-file`, `merge-base`) on bounded repair/verify
+/// flows: a hung git must not block the flow past the deadline. One minute
+/// matches the `GIT_DEADLINE` family used by the other bounded git consumers.
+const ARTIFACT_GIT_DEADLINE: Duration = Duration::from_mins(1);
+
 /// The single process-spawn site for every git adapter in this module: the
-/// process-policy gate allows exactly one command spawn here.
+/// process-policy gate allows exactly one command spawn here. The spawn goes
+/// through the shared `crate::git` deadline/process-owner authority (#4363);
+/// the adapter-level `Output` contract (exit status inspected by the caller)
+/// is unchanged.
 fn git_spawn(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
-    Command::new("git")
-        .args(crate::git::UNTRUSTED_REPOSITORY_CONFIG)
-        .args(args)
-        .current_dir(root)
-        .output()
+    crate::git::run_git_output_with_deadline(root, args, Some(ARTIFACT_GIT_DEADLINE))
         .map_err(|err| format!("run git {:?} in {} failed: {err}", args, root.display()))
 }
 

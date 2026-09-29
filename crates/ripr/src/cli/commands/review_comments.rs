@@ -265,12 +265,24 @@ fn review_comments_with_diff_loader_at(
         Duration::from_millis(options.timeout_ms),
         std::sync::Arc::clone(&now),
     );
+    // #4363 review: the receipt's revision probes must respect this run's
+    // `--timeout-ms` budget, not a fixed one-minute ceiling per probe — the
+    // run's own deadline is only enforced after construction. The constructor
+    // runs both probes itself and re-derives the remaining budget between
+    // them on its own clock, so no pre-construction subtraction is needed
+    // here: a fresh observation would break the run's single clock-observation
+    // contract in the source-failure flow
+    // (`review_comments_source_error_wins_over_later_clock_expiry`), and
+    // `started` is observed immediately before admission, making the run's
+    // full budget the remaining budget at this point.
+    let revision_budget = Some(Duration::from_millis(options.timeout_ms));
     let mut receipt = output::review_comments_receipt::ReviewCommentsRunReceipt::new(
         &input.root,
         &options.base,
         &options.head,
         options.timeout_ms,
         &artifacts,
+        revision_budget,
     );
     receipt.write_atomic(&receipt_path)?;
     receipt.phase("input_validation", "configuration");

@@ -16,9 +16,8 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub(crate) const REPAIR_ATTEMPT_SCHEMA_VERSION: &str = "0.1";
 pub(crate) const REPAIR_ATTEMPT_DIRECTORY: &str = "target/ripr/repair-attempts";
@@ -2229,17 +2228,32 @@ fn validate_trusted_head_surface(
     Ok(())
 }
 
+/// Cooperative deadline for the trusted-surface git inventory (#2303, #4363).
+/// Receipt admission is a bounded repair flow: a hung git must not block it
+/// past the deadline. `diff --name-only` and `ls-files` are near-instant on
+/// any real repository; one minute matches the `GIT_DEADLINE` family used by
+/// the other bounded git consumers.
+const GIT_PATHS_DEADLINE: Duration = Duration::from_mins(1);
+
 fn git_paths(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
+    git_paths_with_deadline(root, args, Some(GIT_PATHS_DEADLINE))
+}
+
+/// The one-parameter production wrapper binds the fixed one-minute ceiling;
+/// tests inject a deadline through `git_paths_with_deadline` to prove the
+/// caller-supplied bound is plumbed into the shared authority rather than
+/// dropped on the way (#4363 review).
+fn git_paths_with_deadline(
+    root: &Path,
+    args: &[&str],
+    deadline: Option<Duration>,
+) -> Result<Vec<String>, String> {
     // Callers pass `-z` output, which is never C-quoted; decoding rules
     // come from the shared NUL path-record authority (#4006). Strict:
     // non-UTF-8 or empty records fail loudly instead of collapsing through
     // lossy conversion, which refuses admission in the trusted-surface
     // validator rather than admitting a rewritten path.
-    let output = Command::new("git")
-        .current_dir(root)
-        .args(crate::git::UNTRUSTED_REPOSITORY_CONFIG)
-        .args(args)
-        .output()
+    let output = crate::git::run_git_output_with_deadline(root, args, deadline)
         .map_err(|error| format!("run git {} failed: {error}", args.join(" ")))?;
     if !output.status.success() {
         return Err(format!(
@@ -3223,6 +3237,99 @@ mod tests {
         })();
         let _ = std::fs::remove_dir_all(&root);
         result
+    }
+
+    #[test]
+    fn git_paths_spawns_through_the_shared_git_authority() -> Result<(), String> {
+        // #4363: the trusted-surface inventory must spawn through the shared
+        // `crate::git` deadline/process-owner authority, not a direct git
+        // process construction. A missing root fails the spawn inside the
+        // shared collector, and the collector's describe text (`git -C <root>
+        // ...`) is produced only on that shared path — a direct spawn can
+        // never emit it, so its presence discriminates the routing. The
+        // caller's own `run git ... failed` wrapper must survive so the
+        // fail-closed admission error family is unchanged. The deadline
+        // plumbing is established adapter-level by
+        // `git_paths_supplies_the_promised_bounded_deadline`; the
+        // terminate-and-reap behavior with a named timeout error is owned
+        // by `git.rs`'s re-exec harness tests.
+        let missing = Path::new("definitely-missing-git-root-for-4363");
+        let Err(error) = git_paths(
+            missing,
+            &["ls-files", "--others", "--exclude-standard", "-z"],
+        ) else {
+            return Err(
+                "an inventory against a missing root must fail closed, not succeed".to_string(),
+            );
+        };
+        if !error.starts_with("run git ") {
+            return Err(format!(
+                "expected the caller wrapper to survive, got: {error}"
+            ));
+        }
+        if !error.contains("git -C") {
+            return Err(format!(
+                "expected the shared authority's describe text (git -C), got: {error}"
+            ));
+        }
+        if !error.contains("failed to run") {
+            return Err(format!(
+                "expected the shared spawn-failure family text, got: {error}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_paths_supplies_the_promised_bounded_deadline() -> Result<(), String> {
+        // #4363 review: the routing witness above proves git_paths spawns
+        // through the shared authority, but not that it supplies a bounded
+        // deadline — a `None` (unbounded) argument would pass it. A zero
+        // injected deadline through the same production wrapper path is
+        // rejected by the shared authority BEFORE any spawn with the named
+        // timeout-family error, so this case fails deterministically (no
+        // git execution, no hung fixture) unless the deadline reaches the
+        // shared authority. The production wrapper binds the fixed
+        // `GIT_PATHS_DEADLINE` ceiling by construction; this test pins the
+        // ceiling as nonzero and proves the plumbing honors a supplied
+        // bound.
+        if GIT_PATHS_DEADLINE.is_zero() {
+            return Err("the trusted-surface deadline must be positive".to_string());
+        }
+        let plain_dir = std::env::temp_dir().join(format!(
+            "ripr-git-paths-deadline-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&plain_dir).map_err(|err| format!("create plain root: {err}"))?;
+        let result = git_paths_with_deadline(
+            &plain_dir,
+            &["ls-files", "--others", "--exclude-standard", "-z"],
+            Some(Duration::ZERO),
+        );
+        std::fs::remove_dir_all(&plain_dir).map_err(|err| format!("remove plain root: {err}"))?;
+        let Err(error) = result else {
+            return Err("a zero injected deadline must fail closed, not succeed".to_string());
+        };
+        if !error.starts_with("run git ") {
+            return Err(format!(
+                "expected the caller wrapper to survive, got: {error}"
+            ));
+        }
+        if !error.contains(crate::git::GIT_INVOCATION_TIMEOUT_PREFIX) {
+            return Err(format!(
+                "expected the shared timeout family for the injected deadline, got: {error}"
+            ));
+        }
+        if !error.contains("zero deadline") {
+            return Err(format!(
+                "expected the shared zero-deadline rejection (no spawn), got: {error}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]

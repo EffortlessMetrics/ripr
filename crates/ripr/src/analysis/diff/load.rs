@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 #[cfg(test)]
@@ -742,12 +741,20 @@ enum WorkingTreeProbe {
     Error(String),
 }
 
+/// Cooperative deadline for the working-tree change probe (#2303, #4363).
+/// The probe is a disclosure side channel on the analysis path, not the
+/// analysis itself: a hung `git status` must not block the run past the
+/// deadline. One minute matches the `GIT_DEADLINE` family used by the other
+/// bounded git consumers; unlike the loader's base-resolution probes, this
+/// public entry point carries no caller-supplied `git_timeout`.
+const WORKING_TREE_PROBE_DEADLINE: Duration = Duration::from_mins(1);
+
 fn working_tree_probe(root: &Path) -> WorkingTreeProbe {
-    let result = Command::new("git")
-        .args(crate::git::UNTRUSTED_REPOSITORY_CONFIG)
-        .args(["status", "--porcelain", "--", "."])
-        .current_dir(root)
-        .output();
+    let result = crate::git::run_git_output_with_deadline(
+        root,
+        &["status", "--porcelain", "--", "."],
+        Some(WORKING_TREE_PROBE_DEADLINE),
+    );
     match result {
         Ok(out) if out.status.success() => {
             if String::from_utf8_lossy(&out.stdout)
