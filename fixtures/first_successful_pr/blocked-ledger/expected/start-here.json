@@ -64,6 +64,7 @@
     "Does not change CI blocking or gate policy."
   ],
   "posture": "advisory",
+  "ripr_version": "<ripr_version>",
   "root": "fixtures/first_successful_pr/blocked-ledger",
   "schema_version": "0.1",
   "selected": {

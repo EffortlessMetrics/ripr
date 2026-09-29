@@ -129,11 +129,14 @@ impl ProofPathLabels {
     }
 }
 
+mod freshness;
 mod options;
 mod preflight;
 mod rendering;
 mod validation;
 
+use freshness::{producing_ripr_version, start_here_packet_version_freshness};
+pub(crate) use freshness::{start_here_json_version_freshness, start_here_version_stale_detail};
 pub(crate) use options::FIRST_PR_HELP;
 use options::{FirstPrOptions, parse_options, print_help};
 use preflight::{FirstPrPreflight, first_pr_preflight};
@@ -294,6 +297,20 @@ fn check_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {
         check_packet_paths(repo, &root, root_recovery.is_some(), None, options)?;
     let preflight_recovery = root_recovery.or_else(|| git_preflight_recovery(&root, options));
     let packet = validate_start_here_packet(&json_path, &markdown_path)?;
+    let out_dir = json_path.parent().ok_or_else(|| {
+        format!(
+            "first-pr start-here packet {} is missing a parent directory",
+            json_path.display()
+        )
+    })?;
+    if let Some(detail) =
+        start_here_version_stale_detail(&start_here_packet_version_freshness(&packet))
+    {
+        return Err(format!(
+            "first-pr start-here packet is {detail}; rerun `{}` before relying on it",
+            first_pr_write_command(options, out_dir, false)
+        ));
+    }
     validate_current_preflight_recovery(&packet, &root, options, preflight_recovery)?;
     print!(
         "{}",
@@ -541,6 +558,7 @@ fn render_start_here_packet_with_selection(
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
         "kind": "first_pr_start_here",
+        "ripr_version": producing_ripr_version(),
         "status": selection.status(),
         "posture": "advisory",
         "root": options.root,
@@ -3766,6 +3784,82 @@ mod tests {
     }
 
     #[test]
+    fn write_first_pr_records_producing_ripr_version() -> Result<(), String> {
+        let repo = temp_repo("first-pr-records-version")?;
+        write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_with_repairable_gap())?;
+        let options = FirstPrOptions::default();
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["ripr_version"], producing_ripr_version());
+        check_first_pr(&repo, &options)?;
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn check_first_pr_rejects_missing_ripr_version() -> Result<(), String> {
+        let repo = temp_repo("first-pr-check-missing-version")?;
+        write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_with_repairable_gap())?;
+        let options = FirstPrOptions::default();
+        write_first_pr(&repo, &options)?;
+        let json_path = repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON);
+        let mut packet = read_packet(&json_path)?;
+        packet
+            .as_object_mut()
+            .ok_or_else(|| "packet is not an object".to_string())?
+            .remove("ripr_version");
+        write_json(&json_path, packet)?;
+        let err = match check_first_pr(&repo, &options) {
+            Ok(()) => {
+                return Err("check mode accepted a packet with no ripr_version".to_string());
+            }
+            Err(err) => err,
+        };
+        assert!(
+            err.contains("stale_evidence") && err.contains("missing ripr_version"),
+            "unexpected check error: {err}"
+        );
+        assert!(
+            err.contains("ripr first-pr") && err.contains("before relying on it"),
+            "refresh command missing: {err}"
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
+    fn check_first_pr_rejects_other_ripr_version() -> Result<(), String> {
+        let repo = temp_repo("first-pr-check-other-version")?;
+        write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_with_repairable_gap())?;
+        let options = FirstPrOptions::default();
+        write_first_pr(&repo, &options)?;
+        let json_path = repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON);
+        let mut packet = read_packet(&json_path)?;
+        let recorded = if producing_ripr_version() == "0.10.0" {
+            "0.9.0"
+        } else {
+            "0.10.0"
+        };
+        packet["ripr_version"] = json!(recorded);
+        write_json(&json_path, packet)?;
+        let err = match check_first_pr(&repo, &options) {
+            Ok(()) => {
+                return Err("check mode accepted a packet from another ripr".to_string());
+            }
+            Err(err) => err,
+        };
+        assert!(
+            err.contains("stale_evidence")
+                && err.contains(recorded)
+                && err.contains(producing_ripr_version()),
+            "unexpected check error: {err}"
+        );
+        assert!(
+            err.contains("ripr first-pr") && err.contains("before relying on it"),
+            "refresh command missing: {err}"
+        );
+        cleanup(&repo)
+    }
+
+    #[test]
     fn missing_plain_git_base_writes_fetch_all_recovery_packet() -> Result<(), String> {
         let repo = temp_repo("first-pr-missing-plain-base")?;
         write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_with_repairable_gap())?;
@@ -5769,6 +5863,16 @@ mod tests {
         // the checked-in expectation (placeholder rule: loop_commands).
         let mut normalized_json = actual_json;
         project_renderer_cwd(&mut normalized_json);
+        let recorded = normalized_json
+            .get("ripr_version")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("{case_id} packet missing ripr_version"))?;
+        assert_eq!(
+            recorded,
+            producing_ripr_version(),
+            "start-here JSON ripr_version in {case_id}"
+        );
+        normalized_json["ripr_version"] = json!("<ripr_version>");
         let normalized_md = project_cwd_text(&actual_md);
         let expected_json = read_packet(&case.join("expected/start-here.json"))?;
         assert_eq!(

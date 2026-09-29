@@ -4,6 +4,7 @@
   "kind": "first_pr_start_here",
   "status": "actionable",
   "posture": "advisory",
+  "ripr_version": "<ripr_version>",
   "root": "fixtures/first_successful_pr/typescript-preview-gap",
   "inputs": {
     "gap_ledger": "inputs/reports/gap-decision-ledger.json",

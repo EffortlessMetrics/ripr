@@ -63,6 +63,7 @@
     "Does not change CI blocking or gate policy."
   ],
   "posture": "advisory",
+  "ripr_version": "<ripr_version>",
   "root": "fixtures/first_successful_pr/empty-diff",
   "schema_version": "0.1",
   "selected": {

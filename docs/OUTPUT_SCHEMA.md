@@ -12031,6 +12031,7 @@ JSON shape:
   "schema_version": "0.1",
   "tool": "ripr",
   "kind": "first_pr_start_here",
+  "ripr_version": "0.11.0",
   "status": "blocked",
   "posture": "advisory",
   "root": ".",
@@ -12093,6 +12094,10 @@ Field contract:
 
 - `schema_version` is `0.1` until the packet shape changes.
 - `kind` is always `first_pr_start_here`.
+- `ripr_version` is the producing `ripr` package version. It is additive on
+  schema `0.1`. `first-pr --check` and `doctor` treat a missing or different
+  value as `stale_evidence` and print the refresh command. A packet without
+  this field is a pre-0.11 artifact, not a contract-invalid document.
 - `status` is `actionable`, `blocked`, or `no_action`. It is reviewer context
   only, not gate authority.
 - `posture` is always `advisory`.

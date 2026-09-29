@@ -155,12 +155,15 @@ fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -
 }
 
 fn print_doctor_start_here_guidance(root: &Path, report: &output::doctor::DoctorReport) {
-    // First-run honesty: name the packet only as present when it exists.
-    // An unconditional path reads as an existing artifact on a fresh
-    // workspace where `ripr first-pr` has never run (RIPR-SPEC-0051 names
-    // the path, not its existence). `is_file` (not `exists`) so a directory
-    // squatting the packet path cannot read as openable evidence.
-    // The safe next action follows the packet's existence, because `first-pr`
+    // First-run honesty: name the packet as present only when it exists and
+    // was written by this ripr. An unconditional path reads as an existing
+    // artifact on a fresh workspace where `ripr first-pr` has never run
+    // (RIPR-SPEC-0051 names the path, not its existence). A packet without
+    // this ripr's `ripr_version` is stale_evidence after an upgrade: 0.10
+    // packets have no version field, so existence alone cannot be trusted
+    // (#4757). `is_file` (not `exists`) so a directory squatting the packet
+    // path cannot read as openable evidence.
+    // The safe next action follows the packet's freshness, because `first-pr`
     // composes the packet out of artifacts `ripr check` produces -- it runs no
     // analysis of its own (the boundary `help --all` states). Recommending it
     // on a fresh workspace dead-ends: measured, it returns `missing_artifacts`
@@ -168,12 +171,25 @@ fn print_doctor_start_here_guidance(root: &Path, report: &output::doctor::Doctor
     // command this same screen already prints three lines below. Two different
     // first commands on one screen, one of which bounces straight back to the
     // other, is not a route.
-    if root.join("target/ripr/reports/start-here.md").is_file() {
-        println!("- Start-here packet: target/ripr/reports/start-here.md (present; open it first)");
-        println!(
-            "- Safe next action: open that packet; `ripr first-pr --root {} --base <ref> --head HEAD` refreshes it",
-            root.display()
-        );
+    let md = root.join("target/ripr/reports/start-here.md");
+    if md.is_file() {
+        let json = root.join("target/ripr/reports/start-here.json");
+        let freshness = crate::output::first_pr::start_here_json_version_freshness(&json);
+        if let Some(detail) = crate::output::first_pr::start_here_version_stale_detail(&freshness) {
+            println!("- Start-here packet: target/ripr/reports/start-here.md ({detail})");
+            println!(
+                "- Safe next action: `ripr first-pr --root {} --base <ref> --head HEAD` refreshes it",
+                root.display()
+            );
+        } else {
+            println!(
+                "- Start-here packet: target/ripr/reports/start-here.md (present; open it first)"
+            );
+            println!(
+                "- Safe next action: open that packet; `ripr first-pr --root {} --base <ref> --head HEAD` refreshes it",
+                root.display()
+            );
+        }
     } else {
         println!(
             "- Start-here packet: target/ripr/reports/start-here.md (not yet generated; `ripr first-pr` composes it once analysis evidence exists)"

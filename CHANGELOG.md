@@ -25,6 +25,9 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr doctor` and `ripr first-pr --check` treat a start-here packet written
+  by another ripr version, or with no `ripr_version`, as stale evidence and
+  print the refresh command instead of trusting it after an upgrade (#4757).
 - Changes in languages ripr does not analyze (Go, Java, C, C++, shell and
   others) are no longer called non-source files. A Go-only diff reported
   `no_behavioral_candidates (analysis complete)` and said the empty result was
