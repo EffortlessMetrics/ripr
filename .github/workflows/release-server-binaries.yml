@@ -6,10 +6,9 @@ on:
       version:
         description: "Release version, for example 0.11.0"
         required: true
-      attest_final_subjects:
-        description: "Create and verify GitHub attestations for this non-publishing rehearsal"
-        required: false
-        default: "false"
+      expected_source_sha:
+        description: "Exact source SHA for the read-only non-publishing rehearsal"
+        required: true
   push:
     tags:
       - "v*"
@@ -106,9 +105,42 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  rehearsal:
+    needs: manifest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ripr-server-final-staging
+          path: dist
+
+      - name: Emit exact-SHA read-only attestation fixture
+        env:
+          RIPR_RELEASE_VERSION: ${{ github.event.inputs.version }}
+          EXPECTED_SOURCE_SHA: ${{ github.event.inputs.expected_source_sha }}
+        shell: bash
+        run: cargo run --locked -p xtask -- release-final-server-attestation-fixture --version "$RIPR_RELEASE_VERSION" --expected-source-sha "$EXPECTED_SOURCE_SHA"
+
+      - name: Retain read-only rehearsal packet
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-server-attestation-fixture
+          path: dist/*
+          if-no-files-found: error
+
   attest:
     needs: manifest
-    if: ${{ github.event_name == 'push' || github.event.inputs.attest_final_subjects == 'true' }}
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
