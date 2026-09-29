@@ -1,6 +1,8 @@
+mod framing;
 mod protocol;
 mod server;
 mod transport;
+mod writer;
 
 use std::path::PathBuf;
 
@@ -76,7 +78,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .enable_all()
         .build()
         .map_err(|error| format!("create MCP runtime: {error}"))?;
-    runtime.block_on(transport::serve_stdio(explicit_root))
+    let result = runtime.block_on(transport::serve_stdio(explicit_root));
+    // Tokio stdin uses a non-cancellable blocking read. Once the SDK service
+    // has terminated, that read must not hold process exit until stdin EOF.
+    runtime.shutdown_background();
+    result
 }
 
 #[cfg(test)]

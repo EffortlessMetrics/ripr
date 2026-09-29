@@ -1,284 +1,320 @@
-use super::protocol;
-use super::server::{McpServer, bounded_error_response};
-#[cfg(test)]
-use super::{MAX_MESSAGE_BYTES, MAX_RESPONSE_BYTES};
+use super::{
+    framing::{FrameRead, FrameReader},
+    server::McpServer,
+    writer::FrameWriter,
+};
 use crate::workspace_status::WorkspaceStatus;
-use serde_json::{Value, json};
-use std::path::PathBuf;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use rmcp::{
+    RoleServer, ServiceExt,
+    model::{ClientJsonRpcMessage, ErrorData, RequestId, ServerJsonRpcMessage},
+    transport::{
+        Transport,
+        async_rw::{JsonRpcMessageCodec, JsonRpcMessageCodecError},
+    },
+};
+use std::{
+    io::Error,
+    path::PathBuf,
+    sync::{Arc, Mutex as StdMutex},
+};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{Mutex, Notify},
+};
+use tokio_util::{bytes::BytesMut, codec::Decoder};
 
-pub(super) async fn serve_stdio(explicit_root: Option<PathBuf>) -> Result<(), String> {
-    let status = WorkspaceStatus::resolve(explicit_root);
-    serve(tokio::io::stdin(), tokio::io::stdout(), status).await
+#[derive(Default)]
+struct TransportFailure {
+    reason: StdMutex<Option<&'static str>>,
+    wake: Notify,
 }
-
-async fn serve<R, W>(reader: R, mut writer: W, status: WorkspaceStatus) -> Result<(), String>
-where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
+type Failure = Arc<TransportFailure>;
+/// One typed request remains admitted until its actual reply frame is flushed.
+#[derive(Default)]
+struct Admission {
+    pending: StdMutex<Option<RequestId>>,
+    wake: Notify,
+}
+impl Admission {
+    fn is_pending(&self) -> Result<bool, Error> {
+        self.pending
+            .lock()
+            .map(|id| id.is_some())
+            .map_err(|_error| Error::other("MCP admission unavailable"))
+    }
+    fn admit(&self, id: RequestId) -> Result<(), Error> {
+        let mut pending = self
+            .pending
+            .lock()
+            .map_err(|_error| Error::other("MCP admission unavailable"))?;
+        if pending.is_some() {
+            return Err(Error::other("MCP admission already pending"));
+        }
+        *pending = Some(id);
+        Ok(())
+    }
+    fn complete(&self, id: Option<RequestId>) -> Result<(), Error> {
+        let mut pending = self
+            .pending
+            .lock()
+            .map_err(|_error| Error::other("MCP admission unavailable"))?;
+        if id.is_some() && *pending == id {
+            *pending = None;
+            self.wake.notify_one();
+        }
+        Ok(())
+    }
+}
+fn record_failure(failure: &Failure, reason: &'static str) {
+    if let Ok(mut stored) = failure.reason.lock()
+        && stored.is_none()
+    {
+        *stored = Some(reason);
+    }
+    // A response send task can fail while the SDK is awaiting receive.
+    // Notify retains a permit even if that future is between polls.
+    failure.wake.notify_one();
+}
+struct BoundedTransport<R, W> {
+    reader: FrameReader<R>,
+    writer: Arc<Mutex<FrameWriter<W>>>,
+    failure: Failure,
+    admission: Arc<Admission>,
+    pending_protocol_error: Option<ServerJsonRpcMessage>,
+    writer_needs_drain: bool,
+}
+impl<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin + Send + 'static> Transport<RoleServer>
+    for BoundedTransport<R, W>
 {
-    let mut reader = BufReader::new(reader);
-    let mut server = McpServer::new(status);
-    loop {
-        match read_frame(&mut reader).await? {
-            FrameRead::Eof => return Ok(()),
-            FrameRead::Empty => {}
-            FrameRead::Oversized => {
-                // The frame was discarded unread, so the request id is
-                // unknown and the JSON-RPC 2.0 fallback carries a null id.
-                let response = bounded_error_response(
-                    None,
-                    protocol::ERROR_INVALID_REQUEST,
-                    "MCP message exceeds the configured byte limit",
-                    Some(json!({ "maxMessageBytes": super::MAX_MESSAGE_BYTES })),
-                );
-                write_response(&mut writer, &response).await?;
+    type Error = Error;
+    fn send(
+        &mut self,
+        item: ServerJsonRpcMessage,
+    ) -> impl Future<Output = Result<(), Error>> + Send + 'static {
+        let writer = self.writer.clone();
+        let failure = self.failure.clone();
+        let admission = self.admission.clone();
+        async move {
+            let result = async {
+                let mut writer = writer.lock().await;
+                admission.complete(writer.finish_pending().await?)?;
+                writer.queue(&item)?;
+                // Retained notification and frame identity survive a dropped send.
+                admission.wake.notify_one();
+                admission.complete(writer.finish_pending().await?)
             }
-            FrameRead::Frame(frame) => {
-                if let Some(response) = server.handle_frame(&frame) {
-                    write_response(&mut writer, &response).await?;
+            .await;
+            if let Err(error) = &result {
+                record_failure(&failure, super::writer::failure_reason(error));
+            }
+            result
+        }
+    }
+    async fn receive(&mut self) -> Option<ClientJsonRpcMessage> {
+        loop {
+            if self
+                .failure
+                .reason
+                .lock()
+                .map_or(true, |reason| reason.is_some())
+            {
+                return None;
+            }
+            match self.admission.is_pending() {
+                Err(_) => {
+                    record_failure(&self.failure, "MCP admission unavailable");
+                    return None;
+                }
+                Ok(true) => {
+                    // Never hold the admission mutex while acquiring the writer.
+                    let mut writer = tokio::select! {
+                        _ = self.failure.wake.notified() => return None,
+                        writer = self.writer.lock() => writer,
+                    };
+                    if writer.has_pending() {
+                        let flushed = tokio::select! {
+                            _ = self.failure.wake.notified() => return None,
+                            flushed = writer.finish_pending() => flushed,
+                        };
+                        match flushed.and_then(|id| self.admission.complete(id)) {
+                            Ok(()) => continue,
+                            Err(error) => {
+                                record_failure(
+                                    &self.failure,
+                                    super::writer::failure_reason(&error),
+                                );
+                                return None;
+                            }
+                        }
+                    }
+                    drop(writer);
+                    if self.admission.is_pending().ok() != Some(true) {
+                        continue;
+                    }
+                    tokio::select! {
+                        _ = self.failure.wake.notified() => return None,
+                        _ = self.admission.wake.notified() => continue,
+                    }
+                }
+                Ok(false) => {}
+            }
+            if self.pending_protocol_error.is_some() || self.writer_needs_drain {
+                let mut writer = self.writer.lock().await;
+                if let Err(error) = writer
+                    .finish_pending()
+                    .await
+                    .and_then(|id| self.admission.complete(id))
+                {
+                    record_failure(&self.failure, super::writer::failure_reason(&error));
+                    return None;
+                }
+                self.writer_needs_drain = false;
+                if let Some(error) = self.pending_protocol_error.as_ref() {
+                    if let Err(error) = writer.queue(error) {
+                        record_failure(&self.failure, super::writer::failure_reason(&error));
+                        return None;
+                    }
+                    self.pending_protocol_error = None;
+                    self.writer_needs_drain = true;
+                    if let Err(error) = writer
+                        .finish_pending()
+                        .await
+                        .and_then(|id| self.admission.complete(id))
+                    {
+                        record_failure(&self.failure, super::writer::failure_reason(&error));
+                        return None;
+                    }
+                    self.writer_needs_drain = false;
+                }
+            }
+            let read = tokio::select! {
+                _ = self.failure.wake.notified() => return None,
+                read = self.reader.read_frame() => read,
+            };
+            let frame = match read {
+                Ok(FrameRead::Eof) => return None,
+                Ok(FrameRead::Empty) => continue,
+                Ok(FrameRead::Oversized) => {
+                    let error = ServerJsonRpcMessage::error(
+                        ErrorData::invalid_request(
+                            "MCP message exceeds the configured byte limit",
+                            None,
+                        ),
+                        None,
+                    );
+                    self.pending_protocol_error = Some(error);
+                    continue;
+                }
+                Ok(FrameRead::Frame(frame)) => frame,
+                Err(_) => {
+                    record_failure(&self.failure, "MCP input IO failed");
+                    return None;
+                }
+            };
+            // The SDK codec owns typed parsing and compatibility. Framing
+            // already enforced the product input bound, including at EOF.
+            let mut bytes = BytesMut::from(frame.as_slice());
+            match JsonRpcMessageCodec::<ClientJsonRpcMessage>::default().decode_eof(&mut bytes) {
+                Ok(Some(message)) => {
+                    if let ClientJsonRpcMessage::Request(request) = &message
+                        && self.admission.admit(request.id.clone()).is_err()
+                    {
+                        record_failure(&self.failure, "MCP admission unavailable");
+                        return None;
+                    }
+                    return Some(message);
+                }
+                Ok(None) => continue,
+                Err(JsonRpcMessageCodecError::Serde(error))
+                    if matches!(
+                        error.classify(),
+                        serde_json::error::Category::Syntax | serde_json::error::Category::Eof
+                    ) =>
+                {
+                    continue;
+                }
+                Err(_) => {
+                    let error = ServerJsonRpcMessage::error(
+                        ErrorData::invalid_request("Invalid request", None),
+                        None,
+                    );
+                    self.pending_protocol_error = Some(error);
                 }
             }
         }
     }
-}
-
-async fn write_response<W>(writer: &mut W, response: &Value) -> Result<(), String>
-where
-    W: AsyncWrite + Unpin,
-{
-    let encoded =
-        serde_json::to_vec(response).map_err(|error| format!("serialize MCP response: {error}"))?;
-    let encoded = if encoded.len() > super::MAX_RESPONSE_BYTES {
-        // JSON-RPC 2.0: the error fallback must echo the known request id so
-        // the client can correlate it; only an unreadable id becomes null.
-        let request_id = response.get("id").and_then(readable_response_id);
-        let fallback = bounded_error_response(
-            request_id,
-            protocol::ERROR_INTERNAL,
-            "MCP response exceeds the configured byte limit",
-            Some(json!({ "maxResponseBytes": super::MAX_RESPONSE_BYTES })),
-        );
-        serde_json::to_vec(&fallback)
-            .map_err(|error| format!("serialize bounded MCP response: {error}"))?
-    } else {
-        encoded
-    };
-    writer
-        .write_all(&encoded)
-        .await
-        .map_err(|error| format!("write MCP response: {error}"))?;
-    writer
-        .write_all(b"\n")
-        .await
-        .map_err(|error| format!("write MCP response delimiter: {error}"))?;
-    writer
-        .flush()
-        .await
-        .map_err(|error| format!("flush MCP response: {error}"))
-}
-
-enum FrameRead {
-    Eof,
-    Empty,
-    Oversized,
-    Frame(Vec<u8>),
-}
-
-async fn read_frame<R>(reader: &mut R) -> Result<FrameRead, String>
-where
-    R: AsyncBufRead + Unpin,
-{
-    let mut frame = Vec::new();
-    let mut oversized = false;
-    loop {
-        let (consumed, saw_newline, saw_eof) = {
-            let available = reader
-                .fill_buf()
-                .await
-                .map_err(|error| format!("read MCP request: {error}"))?;
-            if available.is_empty() {
-                (0, false, true)
-            } else if let Some(newline) = available.iter().position(|byte| *byte == b'\n') {
-                append_bounded(&mut frame, &available[..newline], &mut oversized);
-                (newline + 1, true, false)
-            } else {
-                append_bounded(&mut frame, available, &mut oversized);
-                (available.len(), false, false)
-            }
-        };
-
-        if saw_eof {
-            if oversized {
-                return Ok(FrameRead::Oversized);
-            }
-            if frame.is_empty() {
-                return Ok(FrameRead::Eof);
-            }
-            trim_carriage_return(&mut frame);
-            return Ok(FrameRead::Frame(frame));
+    async fn close(&mut self) -> Result<(), Error> {
+        let result = self.writer.lock().await.close().await;
+        if let Err(error) = &result {
+            record_failure(&self.failure, super::writer::failure_reason(error));
         }
-        reader.consume(consumed);
-        if saw_newline {
-            if oversized {
-                return Ok(FrameRead::Oversized);
-            }
-            trim_carriage_return(&mut frame);
-            return if frame.is_empty() {
-                Ok(FrameRead::Empty)
-            } else {
-                Ok(FrameRead::Frame(frame))
+        result
+    }
+}
+pub(super) async fn serve_stdio(explicit_root: Option<PathBuf>) -> Result<(), String> {
+    serve(
+        tokio::io::stdin(),
+        tokio::io::stdout(),
+        WorkspaceStatus::resolve(explicit_root),
+    )
+    .await
+}
+async fn serve<R, W>(reader: R, writer: W, status: WorkspaceStatus) -> Result<(), String>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    let failure: Failure = Arc::new(TransportFailure::default());
+    let transport = BoundedTransport {
+        reader: FrameReader::new(reader),
+        writer: Arc::new(Mutex::new(FrameWriter::new(writer))),
+        failure: failure.clone(),
+        admission: Arc::new(Admission::default()),
+        pending_protocol_error: None,
+        writer_needs_drain: false,
+    };
+    let server =
+        McpServer::new(status).map_err(|_error| "MCP status projection failed".to_owned())?;
+    let service = match server.serve(transport).await {
+        Ok(service) => service,
+        Err(error) => {
+            let reason = failure
+                .reason
+                .lock()
+                .map_err(|_error| "MCP transport status unavailable".to_string())?
+                .take();
+            return match reason {
+                Some(reason) => Err(reason.to_string()),
+                None if matches!(
+                    error,
+                    rmcp::service::ServerInitializeError::ConnectionClosed(_)
+                ) =>
+                {
+                    Ok(())
+                }
+                None => Err("MCP SDK startup failed".to_string()),
             };
         }
-    }
-}
-
-fn append_bounded(frame: &mut Vec<u8>, bytes: &[u8], oversized: &mut bool) {
-    if *oversized {
-        return;
-    }
-    let Some(next_len) = frame.len().checked_add(bytes.len()) else {
-        *oversized = true;
-        frame.clear();
-        return;
     };
-    if next_len > super::MAX_MESSAGE_BYTES {
-        *oversized = true;
-        frame.clear();
-        return;
-    }
-    frame.extend_from_slice(bytes);
-}
-
-fn readable_response_id(value: &Value) -> Option<Value> {
-    match value {
-        Value::Null | Value::Number(_) | Value::String(_) => Some(value.clone()),
-        _ => None,
-    }
-}
-
-fn trim_carriage_return(frame: &mut Vec<u8>) {
-    if frame.last() == Some(&b'\r') {
-        let _removed = frame.pop();
+    service
+        .waiting()
+        .await
+        .map_err(|_error| "MCP SDK service failed".to_string())?;
+    let error = failure
+        .reason
+        .lock()
+        .map_err(|_error| "MCP transport status unavailable".to_string())?
+        .take();
+    match error {
+        Some(error) => Err(error.to_string()),
+        None => Ok(()),
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+#[path = "transport_tests.rs"]
+mod tests;
 
-    #[tokio::test]
-    async fn framing_accepts_coalesced_lines_and_crlf() -> Result<(), String> {
-        let input = b"{\"one\":1}\r\n{\"two\":2}\n";
-        let mut reader = BufReader::new(&input[..]);
-        let first = read_frame(&mut reader).await?;
-        let second = read_frame(&mut reader).await?;
-        let eof = read_frame(&mut reader).await?;
-
-        match first {
-            FrameRead::Frame(value) if value.as_slice() == b"{\"one\":1}" => {}
-            _ => return Err("first coalesced frame drifted".to_string()),
-        }
-        match second {
-            FrameRead::Frame(value) if value.as_slice() == b"{\"two\":2}" => {}
-            _ => return Err("second coalesced frame drifted".to_string()),
-        }
-        if !matches!(eof, FrameRead::Eof) {
-            return Err("framing must end cleanly at EOF".to_string());
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn framing_reassembles_a_message_split_across_reads() -> Result<(), String> {
-        let (mut writer, reader) = tokio::io::duplex(4);
-        let writer_task = tokio::spawn(async move {
-            writer
-                .write_all(b"{\"split\":")
-                .await
-                .map_err(|error| error.to_string())?;
-            writer
-                .write_all(b"true}\n")
-                .await
-                .map_err(|error| error.to_string())
-        });
-        let mut reader = BufReader::new(reader);
-        let frame = read_frame(&mut reader).await?;
-        writer_task
-            .await
-            .map_err(|error| format!("fragment writer task failed: {error}"))??;
-        match frame {
-            FrameRead::Frame(value) if value.as_slice() == b"{\"split\":true}" => Ok(()),
-            _ => Err("fragmented frame was not reassembled".to_string()),
-        }
-    }
-
-    #[tokio::test]
-    async fn oversized_frame_is_discarded_without_allocating_past_the_cap() -> Result<(), String> {
-        let mut input = vec![b'x'; super::MAX_MESSAGE_BYTES + 1];
-        input.push(b'\n');
-        input.extend_from_slice(b"{}\n");
-        let mut reader = BufReader::new(input.as_slice());
-        if !matches!(read_frame(&mut reader).await?, FrameRead::Oversized) {
-            return Err("oversized frame must fail closed".to_string());
-        }
-        match read_frame(&mut reader).await? {
-            FrameRead::Frame(value) if value.as_slice() == b"{}" => Ok(()),
-            _ => Err("reader did not recover after oversized frame".to_string()),
-        }
-    }
-
-    #[tokio::test]
-    async fn oversized_response_fallback_keeps_the_known_request_id() -> Result<(), String> {
-        let response = json!({
-            "jsonrpc": "2.0",
-            "id": 7,
-            "result": { "blob": "x".repeat(super::MAX_RESPONSE_BYTES + 1) }
-        });
-        let mut output = Vec::new();
-        write_response(&mut output, &response).await?;
-        if output.last() == Some(&b'\n') {
-            let _trailing_newline = output.pop();
-        }
-        let parsed: Value = serde_json::from_slice(&output)
-            .map_err(|error| format!("fallback response is not JSON: {error}"))?;
-        if parsed.get("id") != Some(&json!(7)) {
-            return Err(format!(
-                "over-cap fallback dropped the known request id: {parsed}"
-            ));
-        }
-        if parsed.pointer("/error/code").and_then(Value::as_i64) != Some(protocol::ERROR_INTERNAL) {
-            return Err("over-cap fallback error code drifted".to_string());
-        }
-        if parsed
-            .pointer("/error/data/maxResponseBytes")
-            .and_then(Value::as_u64)
-            != Some(super::MAX_RESPONSE_BYTES as u64)
-        {
-            return Err("over-cap fallback omitted the byte limit".to_string());
-        }
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn oversized_response_fallback_maps_an_unreadable_id_to_null() -> Result<(), String> {
-        let response = json!({
-            "jsonrpc": "2.0",
-            "id": { "not": "a json-rpc id" },
-            "result": { "blob": "x".repeat(super::MAX_RESPONSE_BYTES + 1) }
-        });
-        let mut output = Vec::new();
-        write_response(&mut output, &response).await?;
-        if output.last() == Some(&b'\n') {
-            let _trailing_newline = output.pop();
-        }
-        let parsed: Value = serde_json::from_slice(&output)
-            .map_err(|error| format!("fallback response is not JSON: {error}"))?;
-        if parsed.get("id") != Some(&Value::Null) {
-            return Err(format!(
-                "over-cap fallback must null out an unreadable id: {parsed}"
-            ));
-        }
-        Ok(())
-    }
-}
+#[cfg(test)]
+#[path = "transport_backpressure_tests.rs"]
+mod backpressure_tests;

@@ -5,15 +5,6 @@ use serde_json::{Value, json};
 pub(super) const STATUS_TOOL_NAME: &str = "ripr_workspace_status";
 pub(super) const STATUS_RESOURCE_URI: &str = "ripr://workspace/status";
 
-pub(super) const CURRENT_PROTOCOL_VERSION: &str = "2026-07-28";
-pub(super) const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
-    "2024-11-05",
-    "2025-03-26",
-    "2025-06-18",
-    "2025-11-25",
-    CURRENT_PROTOCOL_VERSION,
-];
-
 /// What a host shows a model before any call. Cold agents read the earlier
 /// text ("bounded, read-only static workspace status") as the whole of RIPR
 /// and stopped, or guessed the CLI from `ripr --help`. Name what RIPR answers,
@@ -23,82 +14,12 @@ pub(super) const INSTRUCTIONS: &str = "RIPR is a static analyzer that asks wheth
 
 const STATUS_TOOL_DESCRIPTION: &str = "Report whether the RIPR workspace root is usable: root validation, repository markers, configuration presence, and the authority this server declares. Read-only; it does not run analysis or load project-local provider configuration. It answers no gap question: after a `ready` result, run `ripr check --format json` in the repository for findings.";
 
-pub(super) const ERROR_RESOURCE_NOT_FOUND: i64 = -32002;
-pub(super) const ERROR_UNSUPPORTED_PROTOCOL_VERSION: i64 = -32022;
-pub(super) const ERROR_INVALID_REQUEST: i64 = -32600;
-pub(super) const ERROR_METHOD_NOT_FOUND: i64 = -32601;
-pub(super) const ERROR_INVALID_PARAMS: i64 = -32602;
-pub(super) const ERROR_INTERNAL: i64 = -32603;
-pub(super) const ERROR_PARSE: i64 = -32700;
-
-pub(super) fn is_supported_protocol_version(value: &str) -> bool {
-    SUPPORTED_PROTOCOL_VERSIONS.contains(&value)
+pub(super) fn tools_list_result() -> Value {
+    json!({"tools": [status_tool_descriptor()]})
 }
 
-pub(super) fn is_current_protocol(value: &str) -> bool {
-    value >= CURRENT_PROTOCOL_VERSION
-}
-
-pub(super) fn server_capabilities() -> Value {
-    json!({
-        "resources": {
-            "subscribe": false,
-            "listChanged": false
-        },
-        "tools": {
-            "listChanged": false
-        }
-    })
-}
-
-pub(super) fn initialize_result(protocol_version: &str) -> Value {
-    json!({
-        "protocolVersion": protocol_version,
-        "capabilities": server_capabilities(),
-        "serverInfo": server_info(),
-        "instructions": INSTRUCTIONS
-    })
-}
-
-pub(super) fn discover_result() -> Value {
-    json!({
-        "resultType": "complete",
-        "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,
-        "capabilities": server_capabilities(),
-        "ttlMs": 0,
-        "cacheScope": "private",
-        "instructions": INSTRUCTIONS,
-        "_meta": {
-            "io.modelcontextprotocol/serverInfo": server_info()
-        }
-    })
-}
-
-pub(super) fn tools_list_result(current_protocol: bool) -> Value {
-    with_result_type(
-        json!({
-            "tools": [status_tool_descriptor()]
-        }),
-        current_protocol,
-    )
-}
-
-pub(super) fn resources_list_result(current_protocol: bool) -> Value {
-    with_result_type(
-        json!({
-            "resources": [status_resource_descriptor()]
-        }),
-        current_protocol,
-    )
-}
-
-pub(super) fn resource_templates_list_result(current_protocol: bool) -> Value {
-    with_result_type(
-        json!({
-            "resourceTemplates": []
-        }),
-        current_protocol,
-    )
+pub(super) fn resources_list_result() -> Value {
+    json!({"resources": [status_resource_descriptor()]})
 }
 
 #[derive(Serialize)]
@@ -126,7 +47,6 @@ pub(super) fn status_tool_result(
     status: &WorkspaceStatus,
     max_message_bytes: usize,
     max_response_bytes: usize,
-    current_protocol: bool,
 ) -> Result<Value, String> {
     let document = status_document(status, max_message_bytes, max_response_bytes);
     let structured = serde_json::to_value(&document)
@@ -143,14 +63,11 @@ pub(super) fn status_tool_result(
             "text": recovery
         }));
     }
-    Ok(with_result_type(
-        json!({
-            "content": content,
-            "structuredContent": structured,
-            "isError": false
-        }),
-        current_protocol,
-    ))
+    Ok(json!({
+        "content": content,
+        "structuredContent": structured,
+        "isError": false
+    }))
 }
 
 /// One sentence a model can act on when the root is unusable. The status
@@ -175,21 +92,17 @@ pub(super) fn status_resource_result(
     status: &WorkspaceStatus,
     max_message_bytes: usize,
     max_response_bytes: usize,
-    current_protocol: bool,
 ) -> Result<Value, String> {
     let document = status_document(status, max_message_bytes, max_response_bytes);
     let text = serde_json::to_string_pretty(&document)
         .map_err(|error| format!("render workspace status: {error}"))?;
-    Ok(with_result_type(
-        json!({
-            "contents": [{
-                "uri": STATUS_RESOURCE_URI,
-                "mimeType": "application/json",
-                "text": text
-            }]
-        }),
-        current_protocol,
-    ))
+    Ok(json!({
+        "contents": [{
+            "uri": STATUS_RESOURCE_URI,
+            "mimeType": "application/json",
+            "text": text
+        }]
+    }))
 }
 
 fn status_document(
@@ -210,26 +123,6 @@ fn status_document(
             },
         },
     }
-}
-
-pub(super) fn empty_result(current_protocol: bool) -> Value {
-    with_result_type(json!({}), current_protocol)
-}
-
-fn with_result_type(mut result: Value, current_protocol: bool) -> Value {
-    if current_protocol && let Some(object) = result.as_object_mut() {
-        object
-            .entry("resultType".to_string())
-            .or_insert_with(|| Value::String("complete".to_string()));
-    }
-    result
-}
-
-fn server_info() -> Value {
-    json!({
-        "name": "ripr",
-        "version": env!("CARGO_PKG_VERSION")
-    })
 }
 
 fn status_tool_descriptor() -> Value {
