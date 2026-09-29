@@ -304,10 +304,9 @@ fn relative_import_resolves_to_workspace_file(
 /// Real producers:
 ///
 /// 1. **Cross-package exclusion**: a test in a *different* package references
-///    the owner by call name (`contains_call_name`) or via an import.  The
-///    test would have produced an `ImportedOwnerCall` or `DirectOwnerCall`
-///    relation, but the package-local filter discarded it.  We detect this by
-///    comparing candidates with vs. without the package-local filter.
+///    the owner by call name (`contains_call_name`) or via an import, and the
+///    relation layer did not admit it (`related`). A cross-package test whose
+///    import resolves to the owner's file is admitted (#4552) and skipped.
 ///
 /// 2. **Direct-call with no resolvable import**: `contains_call_name` is true
 ///    in a test outside the owner's file, but no import in that test resolves
@@ -320,6 +319,7 @@ pub(crate) fn named_limitations_for_unresolved_ownership(
     owner: &TypeScriptOwner,
     all_tests: &[TypeScriptTest],
     workspace_root: &Path,
+    related: &[TypeScriptRelatedCandidate<'_>],
 ) -> Vec<TypeScriptNamedLimitation> {
     let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
     let mut saw_target_unresolved = false;
@@ -328,6 +328,14 @@ pub(crate) fn named_limitations_for_unresolved_ownership(
     for test in all_tests {
         if saw_target_unresolved {
             break;
+        }
+        // A cross-package test the relation layer already admitted through an
+        // import anchored to the owner's file (#4552) is resolved ownership.
+        if related
+            .iter()
+            .any(|candidate| std::ptr::eq(candidate.test, test))
+        {
+            continue;
         }
         // Only consider tests that are NOT in the same package — cross-package
         // ones are the real producer.  Within-package tests are handled by the
@@ -456,7 +464,27 @@ pub(crate) fn alias_gap_for_unresolved_import(
             // cause; an absent map is either flag-off (the only honest "enable
             // the flag" case) or a typed flag-ON load gap naming the real
             // config problem.
-            let (cause_text, recovery_hint) = match (alias_map, alias_unavailable) {
+            // A map that carries only workspace package names (#4554) has no
+            // tsconfig of its own: its advice is the flag-off / load-gap one.
+            // A specifier naming a workspace package (#4769) failed in its
+            // own manifest; tsconfig advice would send the user elsewhere.
+            let package_dir =
+                alias_map.and_then(|map| map.workspace_package_dir_for(&import.source));
+            let tsconfig_map = alias_map.filter(|map| map.has_tsconfig());
+            let (cause_text, recovery_hint) = match (tsconfig_map, alias_unavailable) {
+                _ if package_dir.is_some() => {
+                    let manifest = package_dir
+                        .map(|dir| normalized_path(&dir.join("package.json")))
+                        .unwrap_or_default();
+                    (
+                        format!(
+                            "the specifier names a workspace package whose {manifest} does not map it to exactly one source file in the workspace"
+                        ),
+                        format!(
+                            "add a condition such as `source` to that export in {manifest} pointing at the source file, or import the file by relative path"
+                        ),
+                    )
+                }
                 (Some(map), _) => {
                     let (cause, hint) = map.unresolve_cause_for(&import.source).parts();
                     (cause.to_string(), hint.to_string())

@@ -627,10 +627,14 @@ pub(crate) fn same_package_root(
 /// Collect related test candidates for `owner` from `all_tests`.
 ///
 /// `workspace_root` enables package-local ownership filtering when `Some`:
-/// tests in different packages are excluded from the candidate set so that a
-/// test in `packages/b/` cannot be selected as an owner relation for a source
-/// file in `packages/a/`.  Pass `None` to preserve the previous behaviour
-/// (used in unit tests that do not have a real filesystem).
+/// a test in `packages/b/` that only shares the owner's name or path tokens
+/// cannot be selected as a relation for a source file in `packages/a/`.
+/// Owner-call relations are exempt (#4552): every `owner_call_relation` arm
+/// is anchored to the owner's own file (same file, an import whose specifier
+/// resolves to it, or a resolved re-export chain), so a sibling-package test
+/// that imports the changed file is file identity, not a name guess.  Pass
+/// `None` to preserve the previous behaviour (used in unit tests that do not
+/// have a real filesystem).
 ///
 /// `reexport_index` enables bounded re-export tracing: tests that import
 /// the owner through a barrel file are credited when the chain resolves
@@ -654,7 +658,6 @@ pub(crate) fn related_test_candidates<'a>(
     };
     let mut candidates: Vec<TypeScriptRelatedCandidate<'a>> = all_tests
         .iter()
-        .filter(in_owner_package)
         .filter_map(|test| {
             owner_call_relation(test, owner, reexport_index, alias_map, workspace_root)
                 .map(|relation| TypeScriptRelatedCandidate { test, relation })
@@ -956,6 +959,18 @@ pub(crate) fn receiver_owner_call_relation(
     // construction, so a test that executes `new ClassName(...)` exercises it
     // directly — there is no member-call needle for a `constructor` name.
     if owner.method_kind == TypeScriptMethodKind::Constructor {
+        // The bare class name below is a name match, not file identity. It
+        // is kept inside the owner's package; a test in another workspace
+        // package must construct the class through a same-file or resolved
+        // import binding, or a same-named class there would lend it its
+        // oracle (#4552 review).
+        if workspace_root
+            .is_some_and(|root| !OwnerPackageScope::new(&owner.file, root).contains(&test.file))
+        {
+            return constructor_names_for_method_owner(test, owner, alias_map, workspace_root)
+                .iter()
+                .any(|candidate| contains_new_expression_call(&test.body_text, candidate));
+        }
         let mut constructor_names = Vec::new();
         if let Some(class_name) = owner.class_name.as_deref() {
             constructor_names.push(class_name.to_string());

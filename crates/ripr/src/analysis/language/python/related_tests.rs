@@ -5,7 +5,8 @@ use super::{
     python_string_literal_value,
 };
 use crate::domain::{ExposureClass, OracleKind, OracleStrength, OwnerKind, RelatedTest};
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum PythonRelationKind {
@@ -701,8 +702,9 @@ fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
         (!is_method_owner
             && import.imported == owner.name
             && import.alias != owner.name
+            && import_module_may_be_owners(import, owner, &test.file)
             && contains_call_name(&test.body_text, &import.alias))
-            || (imported_module_matches_owner(import, owner)
+            || (imported_module_matches_owner(import, owner, &test.file)
                 // A parameter, fixture or assignment named like the module
                 // alias (`def test_one(pkg): pkg.one(...)`) calls a local
                 // value, not the imported module.
@@ -711,8 +713,12 @@ fn import_alias_calls_owner(test: &PythonTest, owner: &PythonOwner) -> bool {
     })
 }
 
-pub(super) fn imported_module_matches_owner(import: &PythonImport, owner: &PythonOwner) -> bool {
-    owner
+pub(super) fn imported_module_matches_owner(
+    import: &PythonImport,
+    owner: &PythonOwner,
+    test_file: &Path,
+) -> bool {
+    let matches = owner
         .file
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -721,7 +727,29 @@ pub(super) fn imported_module_matches_owner(import: &PythonImport, owner: &Pytho
         // whose `__init__.py` re-exports the owner (`reexports.rs`). The full
         // dotted package path must match; the caller still requires the
         // owner's name through the alias (`mi.one(`).
-        || (import.source_module.is_empty() && owner.reexport_modules.contains(&import.imported))
+        || (import.source_module.is_empty() && owner.reexport_modules.contains(&import.imported));
+    matches && import_module_may_be_owners(import, owner, test_file)
+}
+
+/// Whether every module an import names could be the owner's: false when
+/// one of them is a name another workspace project also produces (#4566) and
+/// the test is not inside the owner's project. A plain `import X` names `X`;
+/// `from M import Y` names `M` and, when `Y` is a submodule, `M.Y` (`from
+/// shared import calc`).
+pub(super) fn import_module_may_be_owners(
+    import: &PythonImport,
+    owner: &PythonOwner,
+    test_file: &Path,
+) -> bool {
+    if import.source_module.is_empty() {
+        return module_name_identifies_owner_for(owner, &import.imported, test_file);
+    }
+    module_name_identifies_owner_for(owner, &import.source_module, test_file)
+        && module_name_identifies_owner_for(
+            owner,
+            &format!("{}.{}", import.source_module, import.imported),
+            test_file,
+        )
 }
 
 /// The dotted module paths under which the owner file can be imported.
@@ -770,6 +798,156 @@ pub(super) fn owner_module_paths(file: &Path) -> Vec<String> {
     paths
 }
 
+/// A src-layout short module name of an owner file that another workspace
+/// source file also produces (#4566): `a/src/shared/calc.py` and
+/// `b/src/shared/calc.py` are both importable as `shared.calc`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AmbiguousSrcModule {
+    /// The shared dotted name.
+    module: String,
+    /// The directory holding the owner's `src/` that yields `module`.
+    owner_root: PathBuf,
+    /// The same directory for every other file yielding `module`.
+    rival_roots: Vec<PathBuf>,
+}
+
+/// The src-layout short names of `file`, each with its project root (the
+/// directory holding that `src` segment). Mirrors the short forms of
+/// [`owner_module_paths`]; the full dotted path is never ambiguous.
+fn src_layout_module_names(file: &Path) -> Vec<(String, PathBuf)> {
+    let paths = owner_module_paths(file);
+    let normalized = normalized_path(file);
+    let segments = normalized
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    // The dotted name below a `src` segment is the full dotted path with the
+    // segments up to and including that `src` removed.
+    let Some(full) = paths.first() else {
+        return Vec::new();
+    };
+    let directory_count = segments.len().saturating_sub(1);
+    segments
+        .iter()
+        .enumerate()
+        .take(directory_count)
+        .filter(|(_, part)| **part == "src")
+        .filter_map(|(idx, _)| {
+            let module = full.split('.').skip(idx + 1).collect::<Vec<_>>().join(".");
+            (!module.is_empty() && paths.iter().skip(1).any(|path| *path == module))
+                .then(|| (module, segments.iter().take(idx).collect::<PathBuf>()))
+        })
+        .collect()
+}
+
+/// Records on each owner the src-layout short names that another workspace
+/// source file also produces, so module identity through such a name can be
+/// decided by where the importing test lives. Covers the owner file's own
+/// short names and the re-exporting package names `apply_package_reexports`
+/// already recorded (`a/src/shared/__init__.py` and `b/src/shared/__init__.py`
+/// both import as `shared`), so it must run after that pass.
+pub(super) fn apply_src_module_ambiguity<'a>(
+    owners: &mut [PythonOwner],
+    source_files: impl Iterator<Item = &'a PathBuf>,
+) {
+    let mut roots_by_module: BTreeMap<String, Vec<(PathBuf, PathBuf)>> = BTreeMap::new();
+    for file in source_files {
+        for (module, root) in src_layout_module_names(file) {
+            roots_by_module
+                .entry(module)
+                .or_default()
+                .push((file.clone(), root));
+        }
+    }
+    for owner in owners.iter_mut() {
+        let owner_file = normalized_path(&owner.file);
+        let own = src_layout_module_names(&owner.file);
+        let mut ambiguous = Vec::new();
+        for (module, owner_root) in &own {
+            let rival_roots = rival_roots_for(&roots_by_module, module, |file, _| {
+                normalized_path(file) == owner_file
+            });
+            if !rival_roots.is_empty() {
+                ambiguous.push(AmbiguousSrcModule {
+                    module: module.clone(),
+                    owner_root: owner_root.clone(),
+                    rival_roots,
+                });
+            }
+        }
+        for module in &owner.reexport_modules {
+            if own.iter().any(|(own_module, _)| own_module == module) {
+                continue;
+            }
+            // The re-exporting package is the one whose project root holds the
+            // owner file; a deeper such root wins over an enclosing one.
+            let Some(owner_root) = roots_by_module
+                .get(module)
+                .into_iter()
+                .flatten()
+                .map(|(_, root)| root)
+                .filter(|root| path_is_under(&owner.file, root))
+                .max_by_key(|root| root.components().count())
+                .cloned()
+            else {
+                continue;
+            };
+            let rival_roots =
+                rival_roots_for(&roots_by_module, module, |_, root| *root == owner_root);
+            if !rival_roots.is_empty() {
+                ambiguous.push(AmbiguousSrcModule {
+                    module: module.clone(),
+                    owner_root,
+                    rival_roots,
+                });
+            }
+        }
+        owner.ambiguous_src_modules = ambiguous;
+    }
+}
+
+/// The project roots of every file producing `module` except the owner's own.
+fn rival_roots_for(
+    roots_by_module: &BTreeMap<String, Vec<(PathBuf, PathBuf)>>,
+    module: &str,
+    is_owners: impl Fn(&Path, &PathBuf) -> bool,
+) -> Vec<PathBuf> {
+    roots_by_module
+        .get(module)
+        .into_iter()
+        .flatten()
+        .filter(|(file, root)| !is_owners(file, root))
+        .map(|(_, root)| root.clone())
+        .collect()
+}
+
+/// Whether `file` lies inside directory `root` (an empty root is the
+/// repository root and holds everything).
+fn path_is_under(file: &Path, root: &Path) -> bool {
+    let root = normalized_path(root);
+    root.is_empty() || normalized_path(file).starts_with(&format!("{root}/"))
+}
+
+/// Whether `test_file` may take `module` as the owner's module. An
+/// unambiguous name always may. A name another workspace file also produces
+/// identifies the owner only for a test under the owner's project root that
+/// is not inside a rival's (deeper) project root; anywhere else the import is
+/// as likely to be the rival's module, so it fails closed.
+fn module_name_identifies_owner_for(owner: &PythonOwner, module: &str, test_file: &Path) -> bool {
+    let Some(ambiguous) = owner
+        .ambiguous_src_modules
+        .iter()
+        .find(|ambiguous| ambiguous.module == module)
+    else {
+        return true;
+    };
+    let owner_depth = ambiguous.owner_root.components().count();
+    path_is_under(test_file, &ambiguous.owner_root)
+        && !ambiguous.rival_roots.iter().any(|rival| {
+            rival.components().count() > owner_depth && path_is_under(test_file, rival)
+        })
+}
+
 /// Whether a `from M import Y` statement's source module `M` is the owner's
 /// module. `M` must equal one of the owner's full dotted module paths (see
 /// [`owner_module_paths`]): `from src.handler import validate`, a resolved
@@ -781,14 +959,16 @@ pub(super) fn owner_module_paths(file: &Path) -> Vec<String> {
 pub(super) fn import_source_module_matches_owner(
     import: &PythonImport,
     owner: &PythonOwner,
+    test_file: &Path,
 ) -> bool {
     if import.source_module.is_empty() {
         return false;
     }
-    owner_module_paths(&owner.file).contains(&import.source_module)
+    let names_owner_module = owner_module_paths(&owner.file).contains(&import.source_module)
         // `from humanize import naturaldelta`: the package re-exports the
         // owner under its own name, so the package path identifies it too.
-        || (import.imported == owner.name && owner.reexport_modules.contains(&import.source_module))
+        || (import.imported == owner.name && owner.reexport_modules.contains(&import.source_module));
+    names_owner_module && module_name_identifies_owner_for(owner, &import.source_module, test_file)
 }
 
 /// Free-function module-identity evidence: a strong observing test imports the
@@ -807,7 +987,7 @@ pub(super) fn strong_test_imports_owner_from_module(
                 && test.file == related_test.file
                 && test.imports.iter().any(|import| {
                     import.imported == owner.name
-                        && import_source_module_matches_owner(import, owner)
+                        && import_source_module_matches_owner(import, owner, &test.file)
                 })
         })
     })
@@ -934,10 +1114,14 @@ fn construct_result_calls_method(text: &str, open_paren_idx: usize, method: &str
 /// `imported == class` form is identity-bearing: a different class aliased *to* the
 /// owner's name (`from m import Other as OwnerClass`) refers to `Other`, not the
 /// owner, so it must not contribute a local.
-fn owner_class_locals(test: &PythonTest, class: &str) -> Vec<String> {
+fn owner_class_locals(test: &PythonTest, owner: &PythonOwner, class: &str) -> Vec<String> {
     let mut locals = Vec::new();
     for import in &test.imports {
-        if import.imported == class && !import.alias.is_empty() && !locals.contains(&import.alias) {
+        if import.imported == class
+            && !import.alias.is_empty()
+            && !locals.contains(&import.alias)
+            && import_module_may_be_owners(import, owner, &test.file)
+        {
             locals.push(import.alias.clone());
         }
     }
@@ -995,6 +1179,7 @@ fn body_calls_method_on_owner_bound_receiver(body: &str, local: &str, method: &s
 /// `exposed` whenever the class name merely appeared in the test — even as a dead
 /// reference or while the asserted `.method(` ran on an unrelated receiver.
 pub(super) fn strong_test_calls_owner_method_on_bound_receiver(
+    owner: &PythonOwner,
     owner_class_token: Option<&String>,
     method_name: Option<&String>,
     strong_tests: &[&RelatedTest],
@@ -1007,9 +1192,34 @@ pub(super) fn strong_test_calls_owner_method_on_bound_receiver(
         all_tests.iter().any(|test| {
             test.name == related_test.name
                 && test.file == related_test.file
-                && owner_class_locals(test, class).iter().any(|local| {
+                && owner_class_locals(test, owner, class).iter().any(|local| {
                     body_calls_method_on_owner_bound_receiver(&test.body_text, local, method)
                 })
+        })
+    })
+}
+
+/// Whether every strong test imports a same-named module of another
+/// workspace project (#4566): `from shared.calc import Calculator` or `from
+/// shared import calc` in `b/tests` names `b`'s code when `a` and `b` both
+/// ship `src/shared/calc.py`. Method-owner identity is otherwise class and
+/// method name, so this is the module check for that path.
+pub(super) fn strong_tests_import_only_rival_modules(
+    owner: &PythonOwner,
+    strong_tests: &[&RelatedTest],
+    all_tests: &[PythonTest],
+) -> bool {
+    if owner.ambiguous_src_modules.is_empty() || strong_tests.is_empty() {
+        return false;
+    }
+    strong_tests.iter().all(|related_test| {
+        all_tests.iter().any(|test| {
+            test.name == related_test.name
+                && test.file == related_test.file
+                && test
+                    .imports
+                    .iter()
+                    .any(|import| !import_module_may_be_owners(import, owner, &test.file))
         })
     })
 }
@@ -1101,12 +1311,12 @@ fn test_references_module_symbol(test: &PythonTest, owner: &PythonOwner, symbol:
     test.imports.iter().any(|import| {
         if import.imported == symbol
             && import.alias != symbol
-            && import_source_module_matches_owner(import, owner)
+            && import_source_module_matches_owner(import, owner, &test.file)
         {
             return !test_binds_local(test, &import.alias)
                 && contains_name_reference(body, &import.alias);
         }
-        imported_module_matches_owner(import, owner)
+        imported_module_matches_owner(import, owner, &test.file)
             && !test_binds_local(test, &import.alias)
             && contains_member_reference(body, &import.alias, symbol)
     })
@@ -1116,8 +1326,8 @@ fn test_references_module_symbol(test: &PythonTest, owner: &PythonOwner, symbol:
 /// import X` or by an import of the owner module itself.
 fn test_references_owner_module(test: &PythonTest, owner: &PythonOwner) -> bool {
     test.imports.iter().any(|import| {
-        (import_source_module_matches_owner(import, owner)
-            || imported_module_matches_owner(import, owner))
+        (import_source_module_matches_owner(import, owner, &test.file)
+            || imported_module_matches_owner(import, owner, &test.file))
             && !test_binds_local(test, &import.alias)
             && contains_name_reference(&test.body_text, &import.alias)
     })

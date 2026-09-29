@@ -631,7 +631,7 @@ fn imported_constant_value(
             }
             if import.alias == argument {
                 return import.imported == constant.name
-                    && import_source_module_matches_owner(import, owner);
+                    && import_source_module_matches_owner(import, owner, &test.file);
             }
             let module = if import.source_module.is_empty() {
                 import.imported.clone()

@@ -599,3 +599,96 @@ fn repo_mode_initializer_assignment_that_replaces_the_name_is_not_credited() -> 
         ],
     )
 }
+
+const SHARED_CALC_PY: &str = "def price(amount):\n    return amount - 1\n\n\nclass Calculator:\n    def total(self, amount):\n        return amount * 2\n";
+
+/// #4566 end to end: `a/src/shared` and `b/src/shared` both import as
+/// `shared`. A strong test inside `a` relates to a change in `a`'s code; the
+/// same test inside `b` exercises `b`'s code and must neither make that change
+/// `exposed` nor supply the module-identity relation. One row per import shape
+/// that carries module identity: `from M import f`, `from M import Class` +
+/// method call, `import M as m` + `m.f(`, `from P import m` + `m.f(` or
+/// `m.Class()`, and a package re-export `from shared import f`. A module
+/// binding never reaches `exposed` for a free function (its identity rule
+/// wants `from M import f`), so those rows check their
+/// `import_alias_call` relation instead. `syntactic_call` is a name-level
+/// relation for every row and is not identity.
+#[test]
+fn same_named_src_package_in_another_project_lends_no_exposure() -> Result<(), String> {
+    let reexport_init = "from .calc import price\n";
+    let rows: [(&str, &str, usize, &str); 6] = [
+        (
+            "from-module",
+            "from shared.calc import price\n\n\ndef test_price():\n    assert price(10) == 9\n",
+            2,
+            "",
+        ),
+        (
+            "class-method",
+            "from shared.calc import Calculator\n\n\ndef test_total():\n    assert Calculator().total(3) == 6\n",
+            7,
+            "",
+        ),
+        (
+            "module-alias",
+            "import shared.calc as calc\n\n\ndef test_price():\n    assert calc.price(10) == 9\n",
+            2,
+            "import_alias_call",
+        ),
+        (
+            "package-submodule",
+            "from shared import calc\n\n\ndef test_price():\n    assert calc.price(10) == 9\n",
+            2,
+            "import_alias_call",
+        ),
+        (
+            "class-via-package-submodule",
+            "from shared import calc\n\n\ndef test_total():\n    assert calc.Calculator().total(3) == 6\n",
+            7,
+            "",
+        ),
+        (
+            "package-reexport",
+            "from shared import price\n\n\ndef test_price():\n    assert price(10) == 9\n",
+            2,
+            "",
+        ),
+    ];
+    for (label, test_source, line, identity_relation) in rows {
+        for (test_project, own_project) in [("a", true), ("b", false)] {
+            let test_path = format!("{test_project}/tests/test_calc.py");
+            let finding = analyze_one_line(
+                &format!("{label}-{test_project}"),
+                &[
+                    ("a/src/shared/calc.py", SHARED_CALC_PY),
+                    ("a/src/shared/__init__.py", reexport_init),
+                    ("b/src/shared/calc.py", SHARED_CALC_PY),
+                    ("b/src/shared/__init__.py", reexport_init),
+                    (&test_path, test_source),
+                ],
+                "a/src/shared/calc.py",
+                line,
+            )?;
+            let exposed = finding.class == ExposureClass::Exposed;
+            let identity_related = !identity_relation.is_empty()
+                && finding.evidence.iter().any(|line| {
+                    line.starts_with(&format!("related_test_relation: {identity_relation} "))
+                });
+            let ok = if own_project {
+                (exposed || matches!(label, "module-alias" | "package-submodule"))
+                    && (identity_relation.is_empty() || identity_related)
+            } else {
+                !exposed && !identity_related
+            };
+            if !ok {
+                return Err(format!(
+                    "{label}: test in `{test_project}` gave {:?}; related {:?}; evidence {:?}",
+                    finding.class,
+                    related_names(&finding),
+                    finding.evidence
+                ));
+            }
+        }
+    }
+    Ok(())
+}

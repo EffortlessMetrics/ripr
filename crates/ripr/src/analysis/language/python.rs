@@ -107,8 +107,9 @@ use related_tests::{
     verify_command_for_test,
 };
 use related_tests::{
-    first_parenthesized_string_argument, import_source_module_matches_owner,
-    strong_test_calls_owner_method_on_bound_receiver, strong_test_imports_owner_from_module,
+    first_parenthesized_string_argument, import_module_may_be_owners,
+    import_source_module_matches_owner, strong_test_calls_owner_method_on_bound_receiver,
+    strong_test_imports_owner_from_module, strong_tests_import_only_rival_modules,
 };
 #[cfg(test)]
 use sink_alignment::strong_oracle_observes_owner;
@@ -182,6 +183,10 @@ struct PythonOwner {
     /// Dotted package paths whose `__init__.py` re-exports this owner under
     /// its own name (`reexports.rs`). Empty until the workspace pass fills it.
     reexport_modules: Vec<String>,
+    /// Src-layout short module names of this owner's file that another
+    /// workspace source file also produces (`related_tests.rs`, #4566).
+    /// Empty until the workspace pass fills it.
+    ambiguous_src_modules: Vec<related_tests::AmbiguousSrcModule>,
     /// Module-scope literal constants visible in a function/method owner
     /// (not shadowed locally). Empty for class and module owners. Used only
     /// to resolve named predicate boundary operands (`boundary.rs`, #4227).
@@ -535,6 +540,10 @@ impl PythonAdapter {
         reexports::apply_package_reexports(&mut all_owners, |file| {
             workspace_read.sources.get(file).map(String::as_str)
         });
+        related_tests::apply_src_module_ambiguity(
+            &mut all_owners,
+            workspace_files.iter().filter(|file| !is_test_file(file)),
+        );
 
         // Walk-count cap disclosure: one named limitation carrying the
         // refused count, mirroring the TypeScript adapter's

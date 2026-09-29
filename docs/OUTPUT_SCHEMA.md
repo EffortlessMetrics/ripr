@@ -1023,10 +1023,11 @@ The evidence-first fields are additive in schema `0.2`:
       the call site.
     - `typescript_target_unresolved` — fired (RIPR-SPEC-0085 §PR6) when a test
       in a different package references the owner by call name but is excluded by
-      the package-local ownership filter. The real producer is
+      the package-local ownership filter. A cross-package test whose import
+      resolves to the owner's own file is related, not excluded, and does not
+      fire it (#4552). The real producer is
       `static_limit.rs::named_limitations_for_unresolved_ownership`, which
-      confirms the cross-package exclusion by comparing candidates with vs.
-      without the package-local filter. Only emitted when `workspace_root` is
+      skips tests the relation layer admitted. Only emitted when `workspace_root` is
       `Some` (i.e. in production, not in unit tests without a workspace root).
     - `typescript_path_alias_unresolved` — fired (RIPR-SPEC-0099) when a related
       test imports a symbol name-matched to the owner from a NON-RELATIVE

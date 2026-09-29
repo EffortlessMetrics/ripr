@@ -2426,7 +2426,7 @@ pub(crate) fn classify_change_with_alias_state(
     // Only active when workspace_root is supplied (i.e. in the live pipeline).
     let named_limitations_from_ownership: Vec<TypeScriptNamedLimitation> =
         if let Some(root) = workspace_root {
-            named_limitations_for_unresolved_ownership(owner, all_tests, root)
+            named_limitations_for_unresolved_ownership(owner, all_tests, root, &related_candidates)
         } else {
             Vec::new()
         };

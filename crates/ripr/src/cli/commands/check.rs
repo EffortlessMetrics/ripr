@@ -105,6 +105,10 @@ fn manifest_declares_workspace(manifest: &Path) -> bool {
 pub(super) enum ImplicitRootReason {
     Workspace,
     Package,
+    /// #4553: JavaScript and Python workspace declarations.
+    PnpmWorkspace,
+    PackageJsonWorkspaces,
+    UvWorkspace,
     GitTopLevel,
 }
 
@@ -113,6 +117,9 @@ impl ImplicitRootReason {
         match self {
             Self::Workspace => "Cargo.toml contains [workspace]",
             Self::Package => "nearest Cargo.toml",
+            Self::PnpmWorkspace => "pnpm-workspace.yaml",
+            Self::PackageJsonWorkspaces => "package.json declares workspaces",
+            Self::UvWorkspace => "pyproject.toml contains [tool.uv.workspace]",
             Self::GitTopLevel => "git top level; no Cargo.toml found",
         }
     }
@@ -121,11 +128,15 @@ impl ImplicitRootReason {
 /// Resolve the root an implicit run analyzes from `start`.
 ///
 /// A `[workspace]` manifest anywhere above wins. Otherwise the nearest
-/// ancestor holding a `Cargo.toml` or a `.git` entry is the root, so a run
-/// from `repo/src` of a single-crate repo analyzes the crate instead of
-/// silently scoping the diff to `src/` and reporting a clean, complete result
-/// (#4610). The walk stops at the git top level so a stray manifest outside
-/// the repository is never adopted.
+/// ancestor holding a `Cargo.toml`, a JavaScript or Python workspace
+/// declaration (`pnpm-workspace.yaml`, a `package.json` with `workspaces`,
+/// a `pyproject.toml` with `[tool.uv.workspace]`), or a `.git` entry is the
+/// root. So a run from `repo/src` of a single-crate repo analyzes the crate
+/// instead of silently scoping the diff to `src/` and reporting a clean,
+/// complete result (#4610), and a run from one package of a pnpm/npm/yarn/bun
+/// or uv monorepo analyzes the workspace, where sibling-package tests are
+/// visible (#4553). The walk stops at the git top level so a stray manifest
+/// outside the repository is never adopted.
 pub(super) fn resolve_project_root(
     start: &Path,
 ) -> Result<Option<(PathBuf, ImplicitRootReason)>, String> {
@@ -142,6 +153,9 @@ pub(super) fn resolve_project_root(
         if ancestor.join("Cargo.toml").is_file() {
             return Ok(Some((ancestor.to_path_buf(), ImplicitRootReason::Package)));
         }
+        if let Some(reason) = non_cargo_workspace_marker(ancestor) {
+            return Ok(Some((ancestor.to_path_buf(), reason)));
+        }
         if ancestor.join(".git").exists() {
             return Ok(Some((
                 ancestor.to_path_buf(),
@@ -150,6 +164,33 @@ pub(super) fn resolve_project_root(
         }
     }
     Ok(None)
+}
+
+fn non_cargo_workspace_marker(dir: &Path) -> Option<ImplicitRootReason> {
+    if dir.join("pnpm-workspace.yaml").is_file() {
+        return Some(ImplicitRootReason::PnpmWorkspace);
+    }
+    if std::fs::read_to_string(dir.join("package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .is_some_and(|manifest| manifest.get("workspaces").is_some())
+    {
+        return Some(ImplicitRootReason::PackageJsonWorkspaces);
+    }
+    if std::fs::read_to_string(dir.join("pyproject.toml"))
+        .ok()
+        .and_then(|text| toml::from_str::<toml::Value>(&text).ok())
+        .is_some_and(|document| {
+            document
+                .get("tool")
+                .and_then(|tool| tool.get("uv"))
+                .and_then(|uv| uv.get("workspace"))
+                .is_some_and(toml::Value::is_table)
+        })
+    {
+        return Some(ImplicitRootReason::UvWorkspace);
+    }
+    None
 }
 
 fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String> {
@@ -1227,6 +1268,61 @@ mod tests {
     }
 
     #[test]
+    fn project_root_walk_reaches_a_js_or_python_workspace_from_a_package() -> Result<(), String> {
+        let cases: [(&str, &str, &str, ImplicitRootReason); 3] = [
+            (
+                "pnpm-workspace.yaml",
+                "packages:\n  - 'packages/*'\n",
+                "packages/utils/src",
+                ImplicitRootReason::PnpmWorkspace,
+            ),
+            (
+                "package.json",
+                r#"{"name":"root","private":true,"workspaces":["packages/*"]}"#,
+                "packages/utils/src",
+                ImplicitRootReason::PackageJsonWorkspaces,
+            ),
+            (
+                "pyproject.toml",
+                "[tool.uv.workspace]\nmembers = [\"packages/*\"]\n",
+                "packages/core/src/core",
+                ImplicitRootReason::UvWorkspace,
+            ),
+        ];
+        for (index, (manifest, contents, nested, marker)) in cases.into_iter().enumerate() {
+            let root = outside_workspace_fixture(&format!("non-cargo-walk-{index}"))?;
+            let repo = root.join("repo");
+            let nested = repo.join(nested);
+            std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(repo.join(".git")).map_err(|error| error.to_string())?;
+            std::fs::write(repo.join(manifest), contents).map_err(|error| error.to_string())?;
+            // A package-level manifest between the start and the workspace
+            // root must not stop the walk.
+            let package = nested
+                .ancestors()
+                .find(|dir| {
+                    dir.parent()
+                        .is_some_and(|parent| parent.ends_with("packages"))
+                })
+                .map(Path::to_path_buf)
+                .ok_or_else(|| "fixture has no package directory".to_string())?;
+            std::fs::write(package.join("package.json"), r#"{"name":"member"}"#)
+                .map_err(|error| error.to_string())?;
+            std::fs::write(
+                package.join("pyproject.toml"),
+                "[project]\nname = \"member\"\n",
+            )
+            .map_err(|error| error.to_string())?;
+
+            let resolved = resolve_project_root(&nested);
+            let expected = std::fs::canonicalize(&repo).map_err(|error| error.to_string());
+            std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+            assert_eq!(resolved?, Some((expected?, marker)), "{manifest}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn project_root_walk_reaches_a_package_manifest_from_its_source_dir() -> Result<(), String> {
         let root = outside_workspace_fixture("project-root-package")?;
         let nested = root.join("src/inner");
@@ -1245,6 +1341,30 @@ mod tests {
             resolved?,
             Some((expected?, ImplicitRootReason::Package)),
             "a package-only crate run from src/ must analyze the crate root"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_walk_ignores_markers_above_the_git_top_level() -> Result<(), String> {
+        let root = outside_workspace_fixture("non-cargo-walk-bounded")?;
+        let repo = root.join("repo");
+        let nested = repo.join("packages/utils");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        std::fs::create_dir_all(repo.join(".git")).map_err(|error| error.to_string())?;
+        // A workspace marker above the work tree belongs to something else.
+        std::fs::write(root.join("pnpm-workspace.yaml"), "packages: []\n")
+            .map_err(|error| error.to_string())?;
+        // A package.json without a workspaces field is not a marker.
+        std::fs::write(repo.join("package.json"), r#"{"name":"root"}"#)
+            .map_err(|error| error.to_string())?;
+
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&repo).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::GitTopLevel))
         );
         Ok(())
     }

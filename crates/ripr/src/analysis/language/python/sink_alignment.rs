@@ -1,8 +1,9 @@
 use super::{
-    PythonOwner, PythonTest, has_identifier_boundary, import_source_module_matches_owner,
-    parse_attribute_assignment, python_dict_field_segment_parts, significant_change_tokens,
+    PythonOwner, PythonTest, has_identifier_boundary, import_module_may_be_owners,
+    import_source_module_matches_owner, parse_attribute_assignment,
+    python_dict_field_segment_parts, significant_change_tokens,
     strong_test_calls_owner_method_on_bound_receiver, strong_test_imports_owner_from_module,
-    top_level_python_segments,
+    strong_tests_import_only_rival_modules, top_level_python_segments,
 };
 use crate::domain::{OracleStrength, OwnerKind, RelatedTest};
 /// The visible read-out of the sink-alignment decision. `ripr`'s value over
@@ -522,11 +523,12 @@ pub(super) fn classify_sink_alignment_with_old(
             // function aliased in an unrelated module (a false-`exposed`).
             let imported_matches = if is_method_owner {
                 owner_class_token.as_deref() == Some(import.imported.as_str())
+                    && import_module_may_be_owners(import, owner, &test.file)
             } else {
                 // Free-function alias: require module identity, else a same-named
                 // function aliased from an unrelated module credits a false-`exposed`.
                 (import.imported == owner_simple || import.imported == owner.name)
-                    && import_source_module_matches_owner(import, owner)
+                    && import_source_module_matches_owner(import, owner, &test.file)
             };
             if imported_matches && !import.alias.is_empty() {
                 alias_tokens.push(import.alias.clone());
@@ -614,6 +616,7 @@ pub(super) fn classify_sink_alignment_with_old(
     // receiver while the class is referenced (or merely named) elsewhere. This is
     // the false-`exposed` guard at the relation layer.
     let strong_test_binds_method_receiver = strong_test_calls_owner_method_on_bound_receiver(
+        owner,
         owner_class_token.as_ref(),
         method_name_token.as_ref(),
         &strong_tests,
@@ -629,6 +632,10 @@ pub(super) fn classify_sink_alignment_with_old(
     // identity-bearing — the false-`exposed` guard for free functions.
     let free_fn_module_identity =
         !is_method_owner && strong_test_imports_owner_from_module(&strong_tests, all_tests, owner);
+    // Method-owner identity is class and method name; a test whose imports
+    // name a same-named module of another project uses that project's class.
+    let method_owner_identity =
+        is_method_owner && !strong_tests_import_only_rival_modules(owner, &strong_tests, all_tests);
     // Receiver/value identity for an attribute-assignment changed sink. The bare
     // attribute token (`status`) is collision-prone: a same-named field on an
     // unrelated receiver (`session.status` changed, oracle `conn.status == ...`)
@@ -712,7 +719,7 @@ pub(super) fn classify_sink_alignment_with_old(
     // cannot sneak `exposed` through the direct/alias/changed_sink_token path of a
     // localized literal change. Both are pass-through `true` for unrelated changes.
     let (oracle_alignment, alignment_reason) = if any_strong_observes(&identity_tokens)
-        && (is_method_owner || free_fn_module_identity)
+        && (method_owner_identity || free_fn_module_identity)
         && field_construction_credit_ok
         && fstring_credit_ok
     {
@@ -735,7 +742,7 @@ pub(super) fn classify_sink_alignment_with_old(
         && change_only_credit_ok
         && field_construction_credit_ok
         && fstring_credit_ok
-        && (is_method_owner || free_fn_module_identity)
+        && (method_owner_identity || free_fn_module_identity)
     {
         // Gate the changed-sink-token path with the same free-function module
         // identity as the direct/alias paths: a same-named free function from a

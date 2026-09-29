@@ -226,6 +226,39 @@ are scoped or reviewed.
   (`changed_test_unresolved`, `changed_test_owner_unresolved`,
   `changed_test_owner_ambiguous`) with exit 0. It used to exit 2 with empty
   stdout, so a `--json` caller got nothing to parse (#4571).
+- Monorepos: `ripr check` run from a package directory of a pnpm, npm, yarn
+  or bun workspace, or of a uv workspace, now roots at the directory that
+  declares the workspace. The implicit root walk counts the nearest
+  `pnpm-workspace.yaml`, `package.json` with `workspaces`, or `pyproject.toml`
+  with `[tool.uv.workspace]` alongside the nearest `Cargo.toml`, stays inside
+  the git work tree, and names the manifest on stderr. Before, a package
+  directory without a Cargo manifest rooted at the package, so tests in
+  sibling packages were outside the analysis and a change they cover read
+  `no_static_path` with the analysis reported complete.
+- TypeScript: a test in another workspace package that imports the changed
+  file now relates to it, whether the import is a relative path, a tsconfig
+  alias, or the package's own name (`@vitest/utils/helpers`). The
+  package-boundary filter, meant for name-only matches, dropped these
+  import-anchored calls, and package names were not resolved at all, so the
+  change read `no_static_path`. A package name resolves through that
+  package's `exports` (or `source`/`module`/`main`) to a source file in the
+  workspace; a name two packages share, or a target that exists only as
+  build output, stays unresolved. A constructor change in another package
+  still needs the test to import the class.
+- TypeScript: a package's own tests that import it by name (zustand's
+  `import { devtools } from 'zustand/middleware'`) now relate to the changed
+  source. When the manifest exports only published build output
+  (`"./*": "./esm/*.mjs"`), ripr reads the `src/` counterpart of that
+  target, the layout the test runner's alias points at, and uses it only
+  when it names exactly one source file. An import of a workspace package
+  that still cannot be resolved now names that package's `package.json` in
+  its limitation, not the tsconfig path-alias setting, which would not help
+  (#4769).
+- Python: when two packages ship a module with the same importable name
+  (`a/src/shared/calc.py` and `b/src/shared/calc.py` are both
+  `shared.calc`), a test importing that name is credited only to the package
+  it lives in. Before, a test in `b` exercising `b`'s function could make a
+  change to `a`'s function read `exposed`.
 - `ripr check` spends less time rescanning test files. The same-name-import
   gate re-masked every related test file's source for every probe; one scan
   per file now serves the whole run. On a ripr commit, a warm check went from
