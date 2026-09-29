@@ -306,17 +306,24 @@ fingerprint when available, command-template version, artifact hashes, before
 class, after class, movement, and static boundary flags. It stays advisory and
 does not claim runtime proof.
 
-Receipt states should be read conservatively:
+Read the receipt's movement from `summary.next_action.kind` conservatively:
 
-| State | Reviewer interpretation |
+| `summary.next_action.kind` | Reviewer interpretation |
 | --- | --- |
-| `improved` | Static evidence improved; inspect the focused test and keep the receipt. |
+| `improved` | Static evidence improved; run the focused test, keep it only if it passes, and keep the receipt. |
+| `changed` | Static evidence changed without reaching a higher grip class; inspect the focused test and classification context. |
 | `unchanged` | Static evidence did not move; inspect whether the test observes the missing discriminator. |
 | `regressed` | Static evidence weakened; inspect the test change and classification context. |
 | `resolved` | The selected gap no longer appears in the after snapshot. |
 | `new_gap` | A new static gap appeared; inspect changed owner/test relation. |
-| `missing_artifact` | Run the missing command from `agent status`. |
-| `stale_artifact` | Regenerate before/after, verify, or receipt artifacts. |
+| `unknown` | Movement could not be established; do not use the receipt as review evidence. |
+
+`summary.receipt_state` is the receipt's lifecycle (`receipt_missing`,
+`receipt_found`, `receipt_stale`, `receipt_gap_mismatch`,
+`receipt_movement_improved`, `receipt_movement_unchanged`,
+`receipt_not_applicable`). Missing and stale workflow artifacts are reported
+by `ripr agent status`: run the command it names in `missing_commands`, or
+regenerate the artifact its `stale_artifact` warning names.
 
 ## 7. Build The Reviewer Summary
 

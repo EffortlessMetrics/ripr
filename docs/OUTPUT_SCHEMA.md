@@ -42,10 +42,15 @@ map is:
 | `ripr check --format sarif` | `version` | `2.1.0` (standard SARIF envelope) |
 | `ripr gate evaluate` | `schema_version` | `0.1` |
 | `ripr doctor --json` | `schema_version` | `0.3` |
-| `ripr agent packet` | `schema_version` | `0.4` |
+| `ripr diff --json` (`kind: "ripr_diff"`) | `schema_version` | `0.1` |
+| `ripr check --format repo-exposure-json` | `schema_version` | `0.3` |
+| `ripr rerun --json` | `schema_version` | `ripr-targeted-rerun-v1` |
+| `ripr agent packet` and `ripr check --format agent-seam-packets-json` | `schema_version` | `0.4` |
+| `ripr agent brief` | `schema_version` | `0.1` |
 | `ripr agent receipt` | `schema_version` | `0.5` |
 | `ripr agent verify` | `schema_version` | `0.3` |
 | `ripr agent repair --phase after` success stdout | `schema_version` | `0.1` |
+| `ripr agent repair --phase after` refusal stdout (`repair_after_refusal`) | `schema_version` | `0.2` |
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
@@ -106,6 +111,15 @@ PATH, symlinks resolved, or `null`), `path_ripr_is_cargo_build_output`,
 `.fingerprint/` directories in a `target/<profile>/` directory. The warnings are
 advisory: they never change `status` or the exit code, because a workspace build
 on PATH is a legitimate development setup.
+
+`ripr cache status --json` (schema `0.1`) prints one object with
+`schema_version`, `cache_dir` (the inspected directory), `status`,
+`entry_count` (regular files under the cache, symlinks skipped), and
+`total_size_bytes`. `status` is `ok`, `not_found` (no cache directory yet;
+both counts are `0`), `partial` (some directories or entries, including the
+cache directory itself, could not be read, so the counts are lower bounds), or
+`unavailable` (the path is not a directory, is a symlink, or its metadata
+could not be read; both counts are `0`).
 
 ## JSON object key ordering
 
@@ -7082,8 +7096,7 @@ JSON shape:
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
-      "safe_to_merge": false
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
     }
   }
 }
@@ -7154,7 +7167,7 @@ Field contract:
 - `seam.grip_class` - one-sided grip class for `new` or `resolved` gaps, or
   `null` for matched seams.
 - `test_changed` - optional focused test the edit changed. `ripr agent receipt`
-  takes it from `--test-changed`. The after phase of `ripr agent repair` sets it
+  takes it from `--test NAME`. The after phase of `ripr agent repair` sets it
   to the attempt's selected test file when the edit cage is compliant and
   recorded that file changing, and leaves it null otherwise.
 - `verification.status` - always `verification_not_run` (RIPR-SPEC-0135): no
@@ -7179,8 +7192,9 @@ Field contract:
 - `summary.next_action` - structured static guidance for agents and reviewers.
   `kind` is `improved`, `changed`, `regressed`, `unchanged`, `new_gap`,
   `resolved`, or `unknown`; `summary` is a short static movement statement;
-  `recommended_action` is the bounded next step; and `safe_to_merge` is always
-  `false` because the static receipt is review evidence, not a merge policy.
+  `recommended_action` is the bounded next step. Schema `0.5` omits the
+  invariant-false `safe_to_merge` field that earlier versions carried: the
+  static receipt is review evidence, not a merge policy.
   Only an `advisory` receipt is review evidence: for an `incomplete` or
   `invalid` receipt, `recommended_action` carries the same not-review-evidence
   statement as `next_recommendation` and never recommends including the
@@ -12286,6 +12300,7 @@ paths under the supplied workspace root:
 ```text
 target/ripr/workflow/before.repo-exposure.json
 target/ripr/workflow/after.repo-exposure.json
+target/ripr/workflow/analysis-outcome.json
 target/ripr/workflow/agent-brief.json
 target/ripr/workflow/agent-packet.json
 target/ripr/workflow/agent-verify.json
@@ -12351,9 +12366,12 @@ Field contract:
 - `seam` - recovered seam identity when available. The current recovery order
   is receipt, verify, packet, then brief. It is `null` when no existing
   artifact names a seam.
-- `artifacts[]` - one entry for each required fixed artifact. `bytes` and
-  `modified_unix_ms` are `null` when the artifact is missing or the filesystem
-  does not expose the timestamp.
+- `artifacts[]` - one entry for each of the seven fixed artifacts above.
+  `required` is `true` in the artifact loop. While a repair attempt exists
+  under `target/ripr/repair-attempts/`, all seven report `required: false`:
+  the attempt directory holds the enforced identity and the global files are
+  compatibility projections. `bytes` and `modified_unix_ms` are `null` when
+  the artifact is missing or the filesystem does not expose the timestamp.
 - Volatile fields: `artifacts[].modified_unix_ms` is wall-clock state read
   from the filesystem at report time, not analysis output. Two consecutive
   `agent status --json` runs over an unchanged artifact tree can produce
@@ -12364,7 +12382,8 @@ Field contract:
   to the `agent_status` document embedded by `ripr agent repair --phase after`
   (#4052), which is the same schema.
 - `missing_commands[]` - one command for each missing artifact in workflow
-  order: before snapshot, packet, brief, after snapshot, verify, receipt. If no
+  order: before snapshot, packet, brief, after snapshot, analysis outcome,
+  verify, receipt. If no
   seam can be recovered, packet, brief, and receipt commands use `<seam-id>`.
 - `repair_attempts[]` - every repair attempt under
   `target/ripr/repair-attempts/`, validated by the attempt authority and
@@ -12516,7 +12535,7 @@ The JSON schema is version `0.1`:
     "state": "improved",
     "before_class": "weakly_gripped",
     "after_class": "strongly_gripped",
-    "grip_class": "strongly_gripped",
+    "grip_class": null,
     "evidence_artifact": "target/ripr/reports/agent-receipt.json",
     "verify_artifact": "target/ripr/workflow/agent-verify.json",
     "summary": "Static movement is improved (weakly_gripped -> strongly_gripped).",
@@ -12546,7 +12565,7 @@ The JSON schema is version `0.1`:
       "state": "computed",
       "status": "complete",
       "required": true,
-      "summary": "6 of 6 required artifacts present, 0 missing, 0 warnings."
+      "summary": "7 of 7 required artifacts present, 0 missing, 0 warnings."
     }
   ],
   "ci_artifacts": [
@@ -13332,7 +13351,7 @@ The queue envelope is:
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "report": "swarm-queue",
   "scope": "repo",
@@ -13444,6 +13463,13 @@ The queue envelope is:
   ]
 }
 ```
+
+The example is abbreviated. The real envelope also carries top-level
+`analysis_outcome`, `analysis_outcome_error`, `analysis_outcome_status`,
+`assignment_policy`, `must_not_infer`, and `source_currentness`. `--language`
+defaults to `python`, so in a repository whose ledger holds only Rust records
+the default queue reports `language_records_total: 0` and an empty `packets`
+array; pass `--language rust` to consider Rust records.
 
 `source_currentness` is the live producer-backed authority for a packet source.
 It contains `status`, `queue_state`, `reason`, `refresh_commands`,
@@ -16444,7 +16470,7 @@ targeted-rerun receipt shape:
     "direct_call_names": ["discounted_total"]
   },
   "cache": {
-    "schema_version": "0.1",
+    "schema_version": "1.9",
     "reuse_state": "reused_file_facts",
     "file_fact_status": "hits_2_misses_0_corrupt_0_store_errors_0",
     "hits": 2,
@@ -16455,8 +16481,8 @@ targeted-rerun receipt shape:
     "recomputation_reasons": ["selected_test_scope_recomputed"],
     "invalidation_status": "not_available",
     "input_fingerprint": {
-      "schema_version": "0.3",
-      "analyzer_version": "0.10.0",
+      "schema_version": "1.15",
+      "analyzer_version": "0.11.0",
       "workspace_root_hash": "…",
       "files_content_hash": "…",
       "cfg_features_hash": "…",
@@ -16537,6 +16563,11 @@ targeted-rerun receipt shape:
   "authority_boundary": "static evidence only; no before snapshot was supplied, so gap movement is not inferred"
 }
 ```
+
+`cache.schema_version` and `cache.input_fingerprint.schema_version` version
+the file-fact cache and its input identity, not this report. They move
+whenever cache identity changes, so a consumer dispatches on the top-level
+`schema_version` and treats the nested values as opaque.
 
 For a changed-test selector, `selector.kind` is `changed_test`. `changed_test`
 names the repository-relative parsed test file and may append

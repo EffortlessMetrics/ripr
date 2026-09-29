@@ -95,6 +95,12 @@ are scoped or reviewed.
   report, and uses the exporter on PATH unless the user sets
   `RIPR_ALLOW_REPO_PERL_EXECUTABLE=1`. The VS Code extension already required
   a trusted workspace to start the server.
+- `docs/OUTPUT_SCHEMA.md`, `docs/LLM_OPERATOR_GUIDE.md`, and
+  `docs/interop/mcp.md` now match the JSON agents receive: five missing
+  version-table rows, the `swarm queue` `0.2` example and its `python`
+  language default, the receipt's omitted `safe_to_merge` and `--test` flag,
+  the seventh `agent status` artifact, the `rerun` cache versions, the receipt
+  movement vocabulary, and a `cache status --json` field contract (#4608).
 - Rust related tests are the ones that name or reach the changed code, not
   every test that shares a word with it. A test name now relates only when it
   contains a probe token as a whole word (`new` no longer matches `renews_`), a

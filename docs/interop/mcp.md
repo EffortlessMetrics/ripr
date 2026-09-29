@@ -81,6 +81,9 @@ An invalid root does not stop the server. Status reports
 adds a second text content item that names the cause and the recovery
 (restart with `--root <repository>`). An unknown tool or resource name is
 rejected with the one valid name in the message and in `error.data.available`.
+A client that negotiated an older protocol version gets the standard
+resource error for an unknown resource instead (`-32002`, message
+`Resource not found`); `error.data.available` still names the valid URI.
 The instructions (returned by both `initialize` and `server/discover`) and the
 tool description say that this server
 does not analyze the diff and name the CLI route that does
