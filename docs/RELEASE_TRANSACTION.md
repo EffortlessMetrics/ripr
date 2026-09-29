@@ -568,22 +568,18 @@ jq -e --arg tag "v${VERSION}" --arg head "$SOURCE_RELEASE_HEAD" '.tagName == $ta
 
 ```bash
 set -euo pipefail
-# [EXTERNAL-PUBLISHING] repo=source; explicit #1470 server-artifact authorization only
-DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# [READ-ONLY] repo=source/public; bind the tag-triggered server provenance/upload run
+# The tag push is the publication trigger. workflow_dispatch is rehearsal-only.
 RELEASE_REF="v${VERSION}"
 test "$(gh api "repos/EffortlessMetrics/ripr/git/ref/tags/${RELEASE_REF}" --jq .object.sha)" = "$SOURCE_RELEASE_HEAD"
-gh api --paginate --slurp "repos/EffortlessMetrics/ripr/actions/workflows/release-server-binaries.yml/runs?per_page=100&event=workflow_dispatch" | jq '[.[] | .workflow_runs[]]' > "$PACKET_ROOT/server-runs-before.json"
-gh workflow run release-server-binaries.yml --repo EffortlessMetrics/ripr --ref "$RELEASE_REF" -f version="$VERSION"
-```
-
-```bash
-set -euo pipefail
-# [LOCAL-MUTATING] repo=packet; paginate and bind the dispatched server run
-gh api --paginate --slurp "repos/EffortlessMetrics/ripr/actions/workflows/release-server-binaries.yml/runs?per_page=100&event=workflow_dispatch" | jq '[.[] | .workflow_runs[]]' > "$PACKET_ROOT/server-runs-after.json"
-SERVER_RUN_ID="$(bind_new_dispatch_run "$PACKET_ROOT/server-runs-before.json" "$PACKET_ROOT/server-runs-after.json" "$SOURCE_RELEASE_HEAD" "$RELEASE_REF" "$DISPATCHED_AT" "repos/EffortlessMetrics/ripr/actions/workflows/release-server-binaries.yml/runs?per_page=100&event=workflow_dispatch")"
+gh api --paginate --slurp "repos/EffortlessMetrics/ripr/actions/workflows/release-server-binaries.yml/runs?per_page=100&event=push" \
+  | jq --arg head "$SOURCE_RELEASE_HEAD" --arg ref "$RELEASE_REF" \
+    '[.[] | .workflow_runs[] | select(.head_sha == $head and .head_branch == $ref)] | unique_by(.id)' \
+  > "$PACKET_ROOT/server-tag-runs.json"
+SERVER_RUN_ID="$(jq -er 'if length == 1 then .[0].id else error("expected exactly one tag-triggered server run") end' "$PACKET_ROOT/server-tag-runs.json")"
 wait_for_run_success "$SERVER_RUN_ID"
-gh run view "$SERVER_RUN_ID" --repo EffortlessMetrics/ripr --json databaseId,headSha,status,conclusion,url > "$PACKET_ROOT/server-run-receipt.json"
-jq -e --arg sha "$SOURCE_RELEASE_HEAD" '.headSha == $sha and .status == "completed" and .conclusion == "success"' "$PACKET_ROOT/server-run-receipt.json" >/dev/null
+gh run view "$SERVER_RUN_ID" --repo EffortlessMetrics/ripr --json databaseId,headSha,event,status,conclusion,url > "$PACKET_ROOT/server-run-receipt.json"
+jq -e --arg sha "$SOURCE_RELEASE_HEAD" '.headSha == $sha and .event == "push" and .status == "completed" and .conclusion == "success"' "$PACKET_ROOT/server-run-receipt.json" >/dev/null
 ```
 
 ```bash
