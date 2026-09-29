@@ -3325,3 +3325,171 @@ fn sink_alignment_changed_sink_join_format() {
     // No related test -> no strong oracle -> unknown.
     assert_eq!(a.oracle_alignment, "unknown");
 }
+
+/// Runs the diff adapter over one production file with the given added and
+/// removed `(line, text)` pairs (removed lines are paired at the same new-side
+/// position) and returns the probed line numbers.
+fn probed_lines_for_python_rewrite(
+    tag: &str,
+    source: &str,
+    added: &[(usize, &str)],
+    removed: &[(usize, &str)],
+) -> Result<Vec<usize>, String> {
+    let root = unique_tempdir(tag)?;
+    let production_rel = PathBuf::from("src/pricing.py");
+    write_file(&root.join(&production_rel), source)?;
+    write_file(
+        &root.join("tests/test_pricing.py"),
+        "from src.pricing import apply_discount\n\ndef test_apply_discount():\n    assert apply_discount(100) == 90\n",
+    )?;
+    let options = AnalysisOptions {
+        root: root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+    };
+    let line = |(line, text): &(usize, &str)| crate::analysis::diff::ChangedLine {
+        line: *line,
+        new_side_line: *line,
+        text: (*text).to_string(),
+    };
+    let changed_files = vec![ChangedFile {
+        path: production_rel,
+        added_lines: added.iter().map(line).collect(),
+        removed_lines: removed.iter().map(line).collect(),
+    }];
+    let result = PythonAdapter.analyze_diff(&options, &OraclePolicy::default(), &changed_files);
+    let cleanup = std::fs::remove_dir_all(&root);
+    let result = result?;
+    cleanup.map_err(|err| format!("remove_dir_all({}): {err}", root.display()))?;
+    let mut lines = result
+        .findings
+        .iter()
+        .map(|finding| finding.probe.location.line)
+        .collect::<Vec<_>>();
+    lines.sort_unstable();
+    Ok(lines)
+}
+
+#[test]
+fn analyze_diff_rewritten_block_probes_behavior_not_its_comment_or_bracket() -> Result<(), String> {
+    // requests 6404f345 shape: a three-line `if` is rewritten as comment +
+    // assignment + one-line `if`; git pairs the old `if` header with the comment.
+    let lines = probed_lines_for_python_rewrite(
+        "rewrite-comment",
+        "def apply_discount(amount):\n    # big orders get the discount\n    big = amount >= 100\n    if big and not isinstance(\n        amount, str\n    ):\n        return amount - 10\n    return amount\n",
+        &[
+            (2, "    # big orders get the discount"),
+            (3, "    big = amount >= 100"),
+            (4, "    if big and not isinstance("),
+            (5, "        amount, str"),
+            (6, "    ):"),
+        ],
+        &[
+            (2, "    if amount >= 100 and not isinstance("),
+            (3, "        amount, str"),
+            (4, "    ):"),
+        ],
+    )?;
+    assert_eq!(
+        lines,
+        vec![3, 4, 5],
+        "comment (2) and `):` (6) carry no probe"
+    );
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_keeps_code_replaced_only_by_a_comment() -> Result<(), String> {
+    // Commenting code out removes behavior; with nothing else in the run the
+    // comment line stays the carrier of that change.
+    let lines = probed_lines_for_python_rewrite(
+        "commented-out",
+        "def apply_discount(amount):\n    # return amount - 10\n    return amount\n",
+        &[(2, "    # return amount - 10")],
+        &[(2, "    return amount - 10")],
+    )?;
+    assert_eq!(lines, vec![2]);
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_skips_added_imports_but_keeps_a_repointed_import() -> Result<(), String> {
+    let source = "import typing\nfrom decimal import (\n    Decimal,\n)\n\ndef apply_discount(amount):\n    from math import floor\n    return floor(amount) - 10\n";
+    // Added imports (module level, multi-line, function-local) are not probes;
+    // the changed return is.
+    let lines = probed_lines_for_python_rewrite(
+        "added-imports",
+        source,
+        &[
+            (1, "import typing"),
+            (2, "from decimal import ("),
+            (3, "    Decimal,"),
+            (4, ")"),
+            (7, "    from math import floor"),
+            (8, "    return floor(amount) - 10"),
+        ],
+        &[(7, "    return amount - 10")],
+    )?;
+    assert_eq!(lines, vec![8], "added imports carry no probe");
+    // An import that replaces an import re-points a name and stays analyzed,
+    // alone or beside a behavioral line.
+    let lines = probed_lines_for_python_rewrite(
+        "repointed-import",
+        source,
+        &[(7, "    from math import floor")],
+        &[(7, "    from math import ceil as floor")],
+    )?;
+    assert_eq!(lines, vec![7]);
+    let lines = probed_lines_for_python_rewrite(
+        "repointed-import-in-run",
+        source,
+        &[
+            (7, "    from math import floor"),
+            (8, "    return floor(amount) - 10"),
+        ],
+        &[
+            (7, "    from math import ceil as floor"),
+            (8, "    return floor(amount) - 9"),
+        ],
+    )?;
+    assert_eq!(lines, vec![7, 8]);
+    // A name re-pointed inside a parenthesized import is a continuation line
+    // that does not start with `import`; the old-side import range keeps it.
+    let lines = probed_lines_for_python_rewrite(
+        "repointed-parenthesized-import",
+        source,
+        &[(3, "    Decimal,")],
+        &[(3, "    Fraction as Decimal,")],
+    )?;
+    assert_eq!(lines, vec![3]);
+    Ok(())
+}
+
+#[test]
+fn python_structural_lines_are_recognized() {
+    for structural in [
+        ")", "    ):", "],", "}", "else:", "  try:", "finally:", ") # done",
+    ] {
+        assert!(is_python_structural_line(structural), "{structural:?}");
+    }
+    for behavioral in [
+        "    return x",
+        "else if",
+        "elif x:",
+        "except ValueError:",
+        "pass",
+        "x,",
+        "])  + 1",
+    ] {
+        assert!(!is_python_structural_line(behavioral), "{behavioral:?}");
+    }
+}

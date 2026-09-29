@@ -26,6 +26,9 @@ pub(super) struct PythonSourceFacts {
     pub(super) facts: Vec<PythonSourceFact>,
     pub(super) limitations: Vec<PythonSourceLimitation>,
     pub(super) docstring_line_ranges: Vec<RangeInclusive<usize>>,
+    /// Physical lines of every `import` / `from ... import` statement, at any
+    /// nesting depth (a multi-line parenthesized import spans several lines).
+    pub(super) import_line_ranges: Vec<RangeInclusive<usize>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -220,6 +223,7 @@ pub(super) fn extract_source_facts(file: &Path, source: &str) -> PythonSourceFac
         facts: Vec::new(),
         limitations: Vec::new(),
         docstring_line_ranges: Vec::new(),
+        import_line_ranges: Vec::new(),
     };
     let module = match parse_module_result(file, source) {
         Ok(Mod::Module(module)) => module,
@@ -291,7 +295,72 @@ pub(super) fn extract_source_facts(file: &Path, source: &str) -> PythonSourceFac
         &mut snapshot.facts,
     );
     collect_docstring_line_ranges(source, &module.body, &mut snapshot.docstring_line_ranges);
+    collect_import_line_ranges(source, &module.body, &mut snapshot.import_line_ranges);
     snapshot
+}
+
+/// Collects the line spans of `import` and `from ... import` statements in
+/// every scope, including function-local and `if TYPE_CHECKING:` imports.
+fn collect_import_line_ranges(
+    source: &SourceText<'_>,
+    statements: &[Stmt],
+    out: &mut Vec<RangeInclusive<usize>>,
+) {
+    for statement in statements {
+        match statement {
+            Stmt::Import(_) | Stmt::ImportFrom(_) => {
+                let range = statement.range();
+                out.push(line_for_range_start(source, range)..=line_for_range_end(source, range));
+            }
+            Stmt::FunctionDef(function) => collect_import_line_ranges(source, &function.body, out),
+            Stmt::AsyncFunctionDef(function) => {
+                collect_import_line_ranges(source, &function.body, out);
+            }
+            Stmt::ClassDef(class) => collect_import_line_ranges(source, &class.body, out),
+            Stmt::If(statement) => {
+                collect_import_line_ranges(source, &statement.body, out);
+                collect_import_line_ranges(source, &statement.orelse, out);
+            }
+            Stmt::For(statement) => {
+                collect_import_line_ranges(source, &statement.body, out);
+                collect_import_line_ranges(source, &statement.orelse, out);
+            }
+            Stmt::AsyncFor(statement) => {
+                collect_import_line_ranges(source, &statement.body, out);
+                collect_import_line_ranges(source, &statement.orelse, out);
+            }
+            Stmt::While(statement) => {
+                collect_import_line_ranges(source, &statement.body, out);
+                collect_import_line_ranges(source, &statement.orelse, out);
+            }
+            Stmt::With(statement) => collect_import_line_ranges(source, &statement.body, out),
+            Stmt::AsyncWith(statement) => collect_import_line_ranges(source, &statement.body, out),
+            Stmt::Try(statement) => {
+                collect_import_line_ranges(source, &statement.body, out);
+                for handler in &statement.handlers {
+                    let ast::ExceptHandler::ExceptHandler(handler) = handler;
+                    collect_import_line_ranges(source, &handler.body, out);
+                }
+                collect_import_line_ranges(source, &statement.orelse, out);
+                collect_import_line_ranges(source, &statement.finalbody, out);
+            }
+            Stmt::TryStar(statement) => {
+                collect_import_line_ranges(source, &statement.body, out);
+                for handler in &statement.handlers {
+                    let ast::ExceptHandler::ExceptHandler(handler) = handler;
+                    collect_import_line_ranges(source, &handler.body, out);
+                }
+                collect_import_line_ranges(source, &statement.orelse, out);
+                collect_import_line_ranges(source, &statement.finalbody, out);
+            }
+            Stmt::Match(statement) => {
+                for case in &statement.cases {
+                    collect_import_line_ranges(source, &case.body, out);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Collects the line spans of real Python docstrings from parsed scope bodies.

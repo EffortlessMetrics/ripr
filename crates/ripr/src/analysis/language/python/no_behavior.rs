@@ -4,6 +4,7 @@ use super::related_tests::{
 };
 use super::source_facts::parse_module_result;
 use super::static_limits::is_simple_python_identifier;
+use crate::analysis::diff::ChangedLine;
 use crate::domain::{OracleStrength, OwnerKind};
 use rustpython_parser::ast::{Expr, Mod, Ranged, Stmt};
 use std::path::Path;
@@ -26,6 +27,57 @@ use std::path::Path;
 pub(super) fn is_python_no_behavior_line(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.is_empty() || trimmed.starts_with('#') || is_bare_string_literal_statement(trimmed)
+}
+
+/// A line that only opens, continues, or closes a block or bracket and holds
+/// no expression of its own: `)`, `):`, `],`, `}`, `else:`, `try:`,
+/// `finally:`. Structural is not ignorable: a lone inserted `else:` or `try:`
+/// changes behavior. The diff producer skips such a line only when its
+/// contiguous added run also holds a behavioral line (Rust #4216 row 5).
+pub(super) fn is_python_structural_line(line: &str) -> bool {
+    let code = line.split('#').next().unwrap_or_default();
+    let rest = code
+        .trim_matches(|ch: char| matches!(ch, ')' | ']' | '}' | ',' | ':') || ch.is_whitespace());
+    rest.is_empty() || matches!(rest, "else" | "try" | "finally")
+}
+
+/// Whether a line begins an `import` / `from ... import` statement.
+pub(super) fn is_python_import_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("import ") || (trimmed.starts_with("from ") && trimmed.contains(" import"))
+}
+
+/// For each added line, whether it is `quiet` (no behavior, structural, or an
+/// import) AND its contiguous added run (consecutive new-side lines) holds at
+/// least one line that is not quiet. Such a line never carries a probe: the
+/// run's behavioral lines carry the change. A run made only of quiet lines is
+/// left to the classifier, so code replaced by a comment or docstring stays
+/// analyzed.
+pub(super) fn python_quiet_lines_covered_by_run(
+    lines: &[ChangedLine],
+    quiet: impl Fn(&ChangedLine) -> bool,
+) -> Vec<bool> {
+    let mut order = (0..lines.len()).collect::<Vec<_>>();
+    order.sort_by_key(|&index| lines[index].line);
+    let quiet_by_index = lines.iter().map(&quiet).collect::<Vec<_>>();
+    let mut covered = vec![false; lines.len()];
+    let mut run_start = 0;
+    while run_start < order.len() {
+        let mut run_end = run_start + 1;
+        while run_end < order.len()
+            && lines[order[run_end - 1]].line.checked_add(1) == Some(lines[order[run_end]].line)
+        {
+            run_end += 1;
+        }
+        let run = &order[run_start..run_end];
+        if run.iter().any(|&index| !quiet_by_index[index]) {
+            for &index in run {
+                covered[index] = quiet_by_index[index];
+            }
+        }
+        run_start = run_end;
+    }
+    covered
 }
 
 /// Whether `trimmed` (already whitespace-trimmed) is exactly one Python string

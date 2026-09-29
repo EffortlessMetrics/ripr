@@ -82,11 +82,14 @@ use discriminators::{
     python_return_dict_field_discriminator, python_string_literal_value, split_python_assignment,
     top_level_python_segments,
 };
-use no_behavior::is_python_no_behavior_line;
 #[cfg(test)]
 use no_behavior::{
     analyze_call_args, changed_default_value_params, free_function_call_arglists,
     is_annotation_only_def_change, is_annotation_only_var_change,
+};
+use no_behavior::{
+    is_python_import_line, is_python_no_behavior_line, is_python_structural_line,
+    python_quiet_lines_covered_by_run,
 };
 use oracles::collect_assertions_from_statements;
 #[cfg(test)]
@@ -509,6 +512,8 @@ impl PythonAdapter {
         let mut all_tests: Vec<PythonTest> = Vec::new();
         let mut docstring_ranges_by_file: BTreeMap<PathBuf, Vec<RangeInclusive<usize>>> =
             BTreeMap::new();
+        let mut import_ranges_by_file: BTreeMap<PathBuf, Vec<RangeInclusive<usize>>> =
+            BTreeMap::new();
         let mut limitations = Vec::new();
         for relative in &workspace_files {
             let Some(source) = workspace_read.sources.get(relative) else {
@@ -520,6 +525,7 @@ impl PythonAdapter {
                 limitations.push(limitation);
             }
             docstring_ranges_by_file.insert(relative.clone(), facts.docstring_line_ranges.clone());
+            import_ranges_by_file.insert(relative.clone(), facts.import_line_ranges.clone());
             if is_test_file(relative) {
                 all_tests.extend(facts.tests);
             } else {
@@ -633,19 +639,59 @@ impl PythonAdapter {
             // bounds above; a capped-out file degrades to empty ranges,
             // exactly the pre-existing unreadable-file path, and the file
             // itself is already named in the limitation set.
-            let old_docstring_ranges = workspace_read
+            let (old_docstring_ranges, old_import_ranges) = workspace_read
                 .sources
                 .get(&changed.path)
                 .and_then(|source| reconstruct_old_source(source, changed))
-                .map(|source| extract_source_facts(&changed.path, &source).docstring_line_ranges)
+                .map(|source| {
+                    let old_facts = extract_source_facts(&changed.path, &source);
+                    (
+                        old_facts.docstring_line_ranges,
+                        old_facts.import_line_ranges,
+                    )
+                })
                 .unwrap_or_default();
-            for added in &changed.added_lines {
+            let import_ranges = import_ranges_by_file
+                .get(&changed.path)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            // An import line that replaces an import line re-points a name
+            // (`from a import x` -> `from b import x`, or `old as x,` inside a
+            // parenthesized import), so it is behavior of its own; any other
+            // added import line is not.
+            let is_added_import = |added: &crate::analysis::diff::ChangedLine| {
+                line_is_in_ranges(added.line, import_ranges)
+                    && changed
+                        .removed_lines
+                        .iter()
+                        .find(|removed| removed.new_side_line == added.line)
+                        .is_none_or(|removed| {
+                            !line_is_in_ranges(removed.line, &old_import_ranges)
+                                && !is_python_import_line(&removed.text)
+                        })
+            };
+            let covered = python_quiet_lines_covered_by_run(&changed.added_lines, |added| {
+                line_is_in_ranges(added.line, new_docstring_ranges)
+                    || is_added_import(added)
+                    || is_python_no_behavior_line(&added.text)
+                    || is_python_structural_line(&added.text)
+            });
+            for (added_index, added) in changed.added_lines.iter().enumerate() {
                 // Pair the in-place removed line (same new-side position) so the
                 // classifier can credit the changed-sink token on the DELTA only.
                 let old_line = changed
                     .removed_lines
                     .iter()
                     .find(|removed| removed.new_side_line == added.line);
+                // Git pairs a rewritten block line by line, so a comment, a
+                // lone bracket or an import that lands where old code stood is
+                // not the carrier of that code's change: the behavioral lines of
+                // the same added run are (#4216 for Rust). An added import is
+                // not a behavior probe of its own either (the Rust adapter
+                // ignores `use` lines).
+                if covered[added_index] || is_added_import(added) {
+                    continue;
+                }
                 let old_line_text = old_line.map(|removed| removed.text.as_str());
                 let no_behavior = PythonNoBehaviorContext {
                     new_line_in_docstring: line_is_in_ranges(added.line, new_docstring_ranges),
