@@ -18,7 +18,7 @@ use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identit
 use crate::analysis::seams::SeamGripClass;
 use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::json::escape as json_escape;
-use crate::output::markdown::{code_span, inline_prose, inline_prose_literal, table_cell_text};
+use crate::output::markdown::{code_span, inline_prose_literal, table_cell_text};
 use crate::output::path::display_path;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -881,9 +881,13 @@ pub(crate) fn render_repo_exposure_md(
 fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
+    // Path in a code span, like the owner line: odd names can contain
+    // `[y](z)` and `*` that would otherwise render as a link or emphasis.
+    // Do not fold this into #4473's prose neutralization; that owner still
+    // leaves link/emphasis syntax live in headings (#4605).
     out.push_str(&format!(
         "### {}:{} {}\n\n",
-        inline_prose(&display_path(seam.file())),
+        code_span(&display_path(seam.file())),
         seam.display_line(),
         seam.kind().as_str()
     ));
@@ -1039,6 +1043,7 @@ mod tests {
         Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence,
         StageState, ValueFact,
     };
+    use crate::output::markdown::{code_span, inline_prose_literal};
 
     fn stage(state: StageState) -> StageEvidence {
         StageEvidence::new(state, Confidence::Medium, "test stage")
@@ -1451,6 +1456,84 @@ mod tests {
         assert!(md.contains("predicate_boundary"));
         assert!(md.contains("amount >= discount_threshold"));
         assert!(md.contains("discount_threshold (equality boundary)"));
+    }
+
+    fn top_gap_heading(md: &str) -> &str {
+        md.lines()
+            .find(|line| line.starts_with("### "))
+            .unwrap_or("")
+    }
+
+    #[test]
+    fn markdown_top_gap_heading_puts_the_path_in_a_code_span() {
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()], None, None, None);
+        let heading = top_gap_heading(&md);
+        assert_eq!(
+            heading,
+            format!(
+                "### {}:{} {}",
+                code_span("src/pricing.rs"),
+                42,
+                "predicate_boundary",
+            ),
+            "ordinary path must be a code span in the heading, like owner:\n{md}"
+        );
+        assert!(
+            md.contains(&format!(
+                "- owner: {}\n",
+                code_span("pricing::discounted_total")
+            )),
+            "owner line remains a code span:\n{md}"
+        );
+        assert_ne!(
+            heading,
+            format!("### {}", code_span("src/pricing.rs:42 predicate_boundary")),
+            "line and kind stay outside the path span:\n{md}"
+        );
+        assert_ne!(
+            heading, "### src/pricing.rs:42 predicate_boundary",
+            "bare path in the heading lets Markdown parse the file name:\n{md}"
+        );
+    }
+
+    #[test]
+    fn markdown_top_gap_heading_code_span_holds_link_emphasis_and_backticks() {
+        // Unix-legal name reachable through #[path]: inner backtick, emphasis,
+        // and a Markdown link. #4473's inline_prose leaves [y](z) and * live
+        // in a heading; wrapping the path in code_span (same owner as owner:)
+        // is the heading-only fix (#4605).
+        let path = "src/a|b`x]*[y](z).rs";
+        let md = render_repo_exposure_md(
+            &[classified_at(
+                path,
+                "odd::owner",
+                2,
+                SeamGripClass::WeaklyGripped,
+            )],
+            None,
+            None,
+            None,
+        );
+        let heading = top_gap_heading(&md);
+        let expected = format!("### {}:{} {}", code_span(path), 2, "predicate_boundary");
+        assert_eq!(
+            heading, expected,
+            "odd path must use the owner-line code-span fence:\n{md}"
+        );
+        assert_ne!(
+            heading,
+            format!("### {path}:2 predicate_boundary"),
+            "bare [y](z) and * in the heading render as a link and emphasis:\n{md}"
+        );
+        assert_ne!(
+            heading,
+            format!("### {}:2 predicate_boundary", inline_prose_literal(path)),
+            "literal-markup neutralization is not this heading's contract:\n{md}"
+        );
+        assert!(
+            md.contains(&format!("- owner: {}\n", code_span("odd::owner"))),
+            "owner line stays a code span for the odd owner too:\n{md}"
+        );
     }
 
     #[test]

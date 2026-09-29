@@ -370,6 +370,8 @@ tests = [
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_full_classified_record",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_emits_empty_seams_array_when_inventory_is_empty",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_renders_summary_table_and_top_gaps",
+  "crates/ripr/src/output/repo_exposure.rs::tests::markdown_top_gap_heading_puts_the_path_in_a_code_span",
+  "crates/ripr/src/output/repo_exposure.rs::tests::markdown_top_gap_heading_code_span_holds_link_emphasis_and_backticks",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_explains_when_inventory_is_empty",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_explains_when_no_headline_gaps",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_uses_static_exposure_vocabulary",
