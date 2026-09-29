@@ -13,6 +13,17 @@ use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
+/// Producer-neutral inline test-module region cage (#4783).
+/// Staged until the InlineUnit producer (#4784) and RepairAttempt bind it.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "staged inline-test region cage; #4784 and RepairAttempt consume it next"
+    )
+)]
+pub(crate) mod inline_test_region;
+
 const MAX_CAPTURE_PATHS: usize = 10_000;
 const MAX_CAPTURE_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_CAPTURE_TOTAL_FILE_BYTES: u64 = 64 * 1024 * 1024;

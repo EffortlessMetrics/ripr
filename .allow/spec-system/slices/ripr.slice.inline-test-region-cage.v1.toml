@@ -1,0 +1,59 @@
+schema_version = "2.0"
+id = "ripr.slice.inline-test-region-cage.v1"
+generation = 1
+
+source_issue = "issue:4783"
+design_reference = "RIPR-SPEC-0181"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds a producer-neutral, fail-closed edit-cage contract for a proposed
+inline Rust unit test inside one exact existing test-required module,
+without granting edit permission to the surrounding production file.
+It proves whether an external before/after change stayed inside that
+region. It does not select a repair target, create a NewTestTargetProposal,
+generate a test, apply an edit, or make any analyzer route actionable.
+"""
+
+non_goals = [
+  "InlineUnit target producer (#4784)",
+  "new inline test module creation",
+  "whole-test body or expected-value generation",
+  "automatic edit application",
+  "Integration-target redesign",
+  "public schema, CLI, LSP, or support-tier change",
+]
+
+return_conditions = [
+  "Return to root if a production edit in the same file is admitted.",
+  "Return to root if cfg-test recognition is reimplemented instead of cfg_predicates.",
+  "Return to root if the contract starts selecting targets or flipping actionability.",
+]
+
+owned_seams = [
+  "seam:ripr:edit-cage:inline-test-region",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:cfg-predicates",
+  "seam:ripr:edit-cage:file-path",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:repair-route-producer",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:cli:commands",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0181"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

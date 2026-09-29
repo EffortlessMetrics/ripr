@@ -9637,3 +9637,40 @@ outputs = [
 metrics = [
   "lsp_saved_edit_sequence_honesty",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0181"
+name = "Inline test-module region cage"
+spec = "docs/specs/RIPR-SPEC-0181-inline-test-module-region-cage.md"
+tests = [
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::adding_one_test_function_inside_the_named_module_is_admitted",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::changing_the_production_owner_in_the_same_file_is_rejected",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::adding_a_production_helper_beside_the_test_module_is_rejected",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::changing_module_visibility_while_adding_a_test_is_rejected",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::inserting_into_a_sibling_test_module_not_named_by_the_authority_is_rejected",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::inserting_into_a_nested_test_module_not_named_by_the_authority_is_rejected",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::line_movement_after_capture_invalidates_the_old_authority",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::macro_body_is_not_an_observed_inline_region",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::use_only_insertion_is_not_a_completed_repair",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::adding_a_test_and_changing_production_is_the_discriminating_negative",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::removing_the_region_check_would_let_the_production_negative_pass",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::portable_identity_survives_relocated_roots_while_containment_stays_exact",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::symlink_escape_cannot_redirect_the_allowed_region",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::function_local_cfg_test_module_is_not_a_region",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::file_level_region_stays_unique_beside_a_function_local_lookalike",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::inner_cfg_not_test_plus_a_function_is_rejected",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::configured_generated_pattern_rejects_a_non_conventional_path",
+  "crates/ripr/src/edit_cage/inline_test_region/tests.rs::fifo_at_the_captured_path_is_rejected_without_blocking",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/edit_cage/inline_test_region/mod.rs",
+  "crates/ripr/src/edit_cage/inline_test_region/observe.rs",
+  "crates/ripr/src/edit_cage/inline_test_region/validate.rs",
+]
+outputs = [
+]
+metrics = [
+  "unit_test_pass_rate",
+]
