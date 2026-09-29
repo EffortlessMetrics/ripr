@@ -26,12 +26,16 @@ an explicit durable limitation disposition.
 
 The report measures route evidence, not developer or agent performance. It
 reports authorized repositories, supplied and eligible attempts, excluded
-rows and reasons, movement counts, one-attempt improvement, attempts to first
-improvement, repair rounds, false actionability, known-impossible
-recommendations, missing route fields, general and CallPresence limitation
-frequency, parity failures, and artifact archaeology. Rates remain null when
-their denominator is zero, and every rate carries explicit numerator and
-denominator fields.
+rows and reasons, movement counts, the observation-derived route-yield
+ladder, one-attempt improvement, attempts to first improvement, repair
+rounds, false actionability, known-impossible recommendations, missing route
+fields, general and CallPresence limitation frequency, parity failures, and
+artifact archaeology. Route yield is complete routes over selected
+opportunities. Repair success stays `not_measurable` when the eligible-attempt
+denominator is zero. Completion without hidden help stays `not_measurable`
+until a complete route records observed archaeology evidence. Rates remain
+null or `not_measurable` when their denominator is zero, and every measured
+rate carries explicit numerator and denominator fields.
 
 The corpus does not establish runtime mutation results, coverage, universal
 Rust-seam support, or a support-tier claim beyond the observed repositories,

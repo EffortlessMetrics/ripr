@@ -895,6 +895,13 @@ status = "proposed"
 owner = "product-analysis"
 standalone_reason = "Issue #4101 records the TypeScript parse-depth budget contract: a nesting-depth budget guards every oxc parse entry that can reach the recursive parser, pathological deep input is refused into a typed unsupported_syntax limitation instead of aborting the process, a large-stack parse worker bounds parser recursion, and pre-fix abort and post-fix non-abort fixtures pin the behavior."
 [[artifact]]
+id = "RIPR-SPEC-0178"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0178-rust-repair-trust-route-yield-ladder.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Issue #4570 records the Rust repair-trust route-yield ladder: the existing corpus validator/report derives selected-opportunity, complete-route, and eligible-attempt stages from typed observations so three unrouted observations report 0/3 route yield and not_measurable repair success, without a second corpus, attempt lifecycle, or support promotion."
+[[artifact]]
 id = "RIPR-SPEC-0179"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0179-local-usefulness-feedback-receipts.md"

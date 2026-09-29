@@ -1481,7 +1481,9 @@ fn title_argument(
         oxc_ast::ast::Argument::TemplateLiteral(template) if template.single_quasi().is_some() => {
             template.single_quasi().map(|quasi| quasi.to_string())
         }
-        _ => Some(computed_title(line_for_offset(source, registration_start))),
+        _ => Some(computed_title(
+            SourceText::new(source).line_for_offset(registration_start),
+        )),
     }
 }
 

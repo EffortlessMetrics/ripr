@@ -52,9 +52,9 @@ mod bounded_read;
 mod bun_bridge;
 mod classifier;
 mod discovery;
-mod module_entries;
 #[cfg(test)]
 mod line_index_tests;
+mod module_entries;
 #[cfg(test)]
 mod new_declaration_tests;
 mod oracle;
