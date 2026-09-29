@@ -304,8 +304,395 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct FinalServerSubject {
+    name: String,
+    kind: String,
+    size: u64,
+    sha256: String,
+    source_receipt: String,
+}
+
+fn final_server_inventory_path(version: &str) -> PathBuf {
+    Path::new("dist").join(format!("ripr-server-final-subjects-v{version}.json"))
+}
+
+fn final_server_attestation_receipt_path(version: &str) -> PathBuf {
+    Path::new("dist").join(format!("ripr-server-attestation-v{version}.receipt.json"))
+}
+
+pub(crate) fn release_final_server_subjects(args: &[String]) -> Result<(), String> {
+    let version = normalize_product_version(&required_release_arg(args, "version", "RAW_VERSION")?)?;
+    let repository = required_release_arg(args, "repository", "REPOSITORY")?;
+    let dist_dir = Path::new("dist");
+    let assets = release_server_assets(dist_dir, &version)?;
+    validate_configured_release_server_targets(&assets)?;
+
+    let manifest_name = format!("ripr-server-manifest-v{version}.json");
+    let assembly_name = format!("ripr-server-assembly-v{version}.receipt.json");
+    let manifest_path = dist_dir.join(&manifest_name);
+    let sums_path = dist_dir.join("SHA256SUMS");
+    let assembly_path = dist_dir.join(&assembly_name);
+    for path in [&manifest_path, &sums_path, &assembly_path] {
+        require_regular_release_file(path)?;
+    }
+
+    let assembly_text = fs::read_to_string(&assembly_path)
+        .map_err(|err| format!("failed to read {}: {err}", assembly_path.display()))?;
+    let assembly: serde_json::Value = serde_json::from_str(&assembly_text)
+        .map_err(|err| format!("malformed assembly receipt {}: {err}", assembly_path.display()))?;
+    if assembly.get("disposition").and_then(serde_json::Value::as_str) != Some("assembled") {
+        return Err("release server assembly receipt is not terminal 'assembled'".to_string());
+    }
+    if assembly.get("version").and_then(serde_json::Value::as_str) != Some(version.as_str()) {
+        return Err("release server assembly receipt version does not match requested version".to_string());
+    }
+    let manifest_sha = sha256_file(&manifest_path)?;
+    let sums_sha = sha256_file(&sums_path)?;
+    require_receipt_digest(&assembly, "manifest", &manifest_sha)?;
+    require_receipt_digest(&assembly, "sha256sums", &sums_sha)?;
+
+    let mut subjects = Vec::new();
+    for asset in &assets {
+        let path = dist_dir.join(&asset.file_name);
+        require_regular_release_file(&path)?;
+        subjects.push(FinalServerSubject {
+            name: asset.file_name.clone(),
+            kind: "server_archive".to_string(),
+            size: fs::metadata(&path)
+                .map_err(|err| format!("failed to stat {}: {err}", path.display()))?
+                .len(),
+            sha256: sha256_file(&path)?,
+            source_receipt: format!("ripr-server-v{version}-{}.receipt.json", asset.target),
+        });
+    }
+    subjects.push(FinalServerSubject {
+        name: manifest_name.clone(),
+        kind: "server_manifest".to_string(),
+        size: fs::metadata(&manifest_path)
+            .map_err(|err| format!("failed to stat {}: {err}", manifest_path.display()))?
+            .len(),
+        sha256: manifest_sha,
+        source_receipt: assembly_name.clone(),
+    });
+    subjects.push(FinalServerSubject {
+        name: "SHA256SUMS".to_string(),
+        kind: "checksums".to_string(),
+        size: fs::metadata(&sums_path)
+            .map_err(|err| format!("failed to stat {}: {err}", sums_path.display()))?
+            .len(),
+        sha256: sums_sha,
+        source_receipt: assembly_name.clone(),
+    });
+    subjects.sort_by(|left, right| left.name.cmp(&right.name));
+
+    validate_sha256sums_subjects(&sums_path, &subjects)?;
+    validate_final_server_staging_entries(dist_dir, &version, &subjects)?;
+
+    let build_identity = assembly
+        .get("build_identity")
+        .cloned()
+        .ok_or_else(|| "release server assembly receipt has no build_identity".to_string())?;
+    let receipt = serde_json::json!({
+        "schema_version": "release-final-server-subjects/1",
+        "producer": "xtask release-final-server-subjects",
+        "repository": repository,
+        "version": version,
+        "build_identity": build_identity,
+        "assembly_receipt": {
+            "path": assembly_name,
+            "sha256": sha256_file(&assembly_path)?,
+        },
+        "subjects": subjects,
+        "subject_count": release_server_target_set().len() + 2,
+        "attestation_required": true,
+        "upload_eligible": false,
+        "publication_mutation_attempted": false,
+        "disposition": "inventoried",
+        "non_claims": [
+            "inventory is not attestation verification",
+            "inventory does not authorize release publication"
+        ],
+    });
+    let text = serde_json::to_string_pretty(&receipt)
+        .map_err(|err| format!("failed to render final server subject inventory: {err}"))?;
+    let path = final_server_inventory_path(&version);
+    fs::write(&path, format!("{text}\n"))
+        .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+    eprintln!("wrote {}", path.display());
+    Ok(())
+}
+
+pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Result<(), String> {
+    let version = normalize_product_version(&required_release_arg(args, "version", "RAW_VERSION")?)?;
+    let verified_path = PathBuf::from(required_release_arg(
+        args,
+        "verified-subjects",
+        "VERIFIED_SUBJECTS",
+    )?);
+    let inventory_path = final_server_inventory_path(&version);
+    let inventory_text = fs::read_to_string(&inventory_path)
+        .map_err(|err| format!("failed to read {}: {err}", inventory_path.display()))?;
+    let inventory: serde_json::Value = serde_json::from_str(&inventory_text)
+        .map_err(|err| format!("malformed final server subject inventory: {err}"))?;
+    if inventory.get("disposition").and_then(serde_json::Value::as_str) != Some("inventoried") {
+        return Err("final server subject inventory is not terminal 'inventoried'".to_string());
+    }
+    let rows = inventory
+        .get("subjects")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "final server subject inventory has no subjects".to_string())?;
+
+    let verified_text = fs::read_to_string(&verified_path)
+        .map_err(|err| format!("failed to read {}: {err}", verified_path.display()))?;
+    let mut verified = std::collections::BTreeMap::new();
+    for (index, line) in verified_text.lines().enumerate() {
+        let Some((sha, name)) = line.split_once("  ") else {
+            return Err(format!("verified-subjects line {} is malformed", index + 1));
+        };
+        if verified.insert(name.to_string(), sha.to_string()).is_some() {
+            return Err(format!("verified-subjects duplicates '{name}'"));
+        }
+    }
+
+    let mut attested = Vec::new();
+    for row in rows {
+        let name = row
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "subject row has no name".to_string())?;
+        let sha = row
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("subject '{name}' has no sha256"))?;
+        match verified.remove(name) {
+            Some(observed) if observed == sha => {}
+            Some(observed) => {
+                return Err(format!(
+                    "attestation verification digest mismatch for '{name}': expected '{sha}', observed '{observed}'"
+                ));
+            }
+            None => return Err(format!("missing attestation verification for '{name}'")),
+        }
+        attested.push(serde_json::json!({
+            "name": name,
+            "sha256": sha,
+            "verified": true,
+        }));
+    }
+    if !verified.is_empty() {
+        return Err(format!(
+            "attestation verification includes unexpected subjects: {:?}",
+            verified.keys().collect::<Vec<_>>()
+        ));
+    }
+
+    let repository = std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "local".to_string());
+    let workflow_ref = std::env::var("GITHUB_WORKFLOW_REF").unwrap_or_else(|_| "local".to_string());
+    let candidate_sha = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+    let git_ref = std::env::var("GITHUB_REF").unwrap_or_else(|_| "local".to_string());
+    let receipt = serde_json::json!({
+        "schema_version": "release-server-attestation/1",
+        "producer": "xtask release-final-server-attestation-receipt",
+        "version": version,
+        "inventory": {
+            "path": inventory_path.file_name().and_then(|name| name.to_str()).unwrap_or_default(),
+            "sha256": sha256_file(&inventory_path)?,
+        },
+        "producer_identity": {
+            "repository": repository,
+            "workflow_ref": workflow_ref,
+            "candidate_sha": candidate_sha,
+            "git_ref": git_ref,
+            "run_id": std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string()),
+            "run_attempt": std::env::var("GITHUB_RUN_ATTEMPT").unwrap_or_else(|_| "local".to_string()),
+            "attestation_action": "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
+        },
+        "subjects": attested,
+        "permission_requested": {
+            "id_token_write": true,
+            "attestations_write": true,
+        },
+        "release_upload_eligible": true,
+        "release_upload_attempted": false,
+        "publication_mutation_attempted": false,
+        "disposition": "attested",
+        "non_claims": [
+            "attestation does not authorize a release channel",
+            "no release asset has been uploaded by this receipt producer"
+        ],
+    });
+    let text = serde_json::to_string_pretty(&receipt)
+        .map_err(|err| format!("failed to render server attestation receipt: {err}"))?;
+    let path = final_server_attestation_receipt_path(&version);
+    fs::write(&path, format!("{text}\n"))
+        .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
+    eprintln!("wrote {}", path.display());
+    Ok(())
+}
+
+fn final_server_subject_paths(dist_dir: &Path, version: &str) -> Result<Vec<PathBuf>, String> {
+    let inventory_path = final_server_inventory_path(version);
+    let text = fs::read_to_string(&inventory_path)
+        .map_err(|err| format!("final subject inventory {} is unavailable: {err}", inventory_path.display()))?;
+    let inventory: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|err| format!("malformed final subject inventory: {err}"))?;
+    let rows = inventory
+        .get("subjects")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "final subject inventory has no subjects".to_string())?;
+    let mut paths = Vec::new();
+    for row in rows {
+        let name = row
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "final subject row has no name".to_string())?;
+        validate_release_server_relative_path(name, "final subject", "release")?;
+        let path = dist_dir.join(name);
+        require_regular_release_file(&path)?;
+        let expected = row
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("final subject '{name}' has no sha256"))?;
+        let actual = sha256_file(&path)?;
+        if actual != expected {
+            return Err(format!(
+                "final subject '{name}' changed after inventory: expected '{expected}', actual '{actual}'"
+            ));
+        }
+        paths.push(path);
+    }
+    paths.sort();
+    Ok(paths)
+}
+
+fn require_regular_release_file(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|err| format!("release subject {} is unavailable: {err}", path.display()))?;
+    if !metadata.file_type().is_file() {
+        return Err(format!("release subject is not a regular file: {}", path.display()));
+    }
+    Ok(())
+}
+
+fn require_receipt_digest(
+    assembly: &serde_json::Value,
+    field: &str,
+    actual: &str,
+) -> Result<(), String> {
+    let expected = assembly
+        .get(field)
+        .and_then(|value| value.get("sha256"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("assembly receipt has no '{field}.sha256'"))?;
+    if expected != actual {
+        return Err(format!(
+            "assembly receipt '{field}' digest mismatch: expected '{expected}', actual '{actual}'"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_sha256sums_subjects(
+    path: &Path,
+    subjects: &[FinalServerSubject],
+) -> Result<(), String> {
+    let text = fs::read_to_string(path)
+        .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
+    let mut observed = std::collections::BTreeMap::new();
+    for (index, line) in text.lines().enumerate() {
+        let Some((sha, name)) = line.split_once("  ") else {
+            return Err(format!("SHA256SUMS line {} is malformed", index + 1));
+        };
+        if sha.len() != 64 || !sha.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+            return Err(format!("SHA256SUMS line {} has a non-canonical sha256", index + 1));
+        }
+        if observed.insert(name.to_string(), sha.to_string()).is_some() {
+            return Err(format!("SHA256SUMS duplicates '{name}'"));
+        }
+    }
+    for subject in subjects.iter().filter(|subject| subject.kind != "checksums") {
+        match observed.remove(&subject.name) {
+            Some(sha) if sha == subject.sha256 => {}
+            Some(sha) => {
+                return Err(format!(
+                    "SHA256SUMS digest mismatch for '{}': expected '{}', observed '{sha}'",
+                    subject.name, subject.sha256
+                ));
+            }
+            None => return Err(format!("SHA256SUMS omits '{}'", subject.name)),
+        }
+    }
+    if !observed.is_empty() {
+        return Err(format!(
+            "SHA256SUMS contains unexpected subjects: {:?}",
+            observed.keys().collect::<Vec<_>>()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_final_server_staging_entries(
+    dist_dir: &Path,
+    version: &str,
+    subjects: &[FinalServerSubject],
+) -> Result<(), String> {
+    let subject_names = subjects
+        .iter()
+        .map(|subject| subject.name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let inventory_name = format!("ripr-server-final-subjects-v{version}.json");
+    let attestation_name = format!("ripr-server-attestation-v{version}.receipt.json");
+    for entry in fs::read_dir(dist_dir)
+        .map_err(|err| format!("failed to read {}: {err}", dist_dir.display()))?
+    {
+        let path = entry
+            .map_err(|err| format!("failed to read {} entry: {err}", dist_dir.display()))?
+            .path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|err| format!("failed to inspect {}: {err}", path.display()))?;
+        if !metadata.file_type().is_file() {
+            return Err(format!("non-regular final server staging entry '{}'", path.display()));
+        }
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("non-UTF8 final server staging entry '{}'", path.display()))?;
+        if subject_names.contains(name)
+            || name == inventory_name
+            || name == attestation_name
+            || name == format!("ripr-server-assembly-v{version}.receipt.json")
+            || name.ends_with(".sha256")
+            || (name.starts_with(&format!("ripr-server-v{version}-"))
+                && name.ends_with(".receipt.json"))
+        {
+            continue;
+        }
+        return Err(format!("unexpected final server staging entry '{name}'"));
+    }
+    Ok(())
+}
+
 pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
-    let version = normalize_release_version(&required_release_arg(args, "version", "RAW_VERSION")?);
+    let version = normalize_product_version(&required_release_arg(args, "version", "RAW_VERSION")?)?;
+    let attestation_path = final_server_attestation_receipt_path(&version);
+    let attestation_text = fs::read_to_string(&attestation_path).map_err(|err| {
+        format!(
+            "verified attestation receipt {} is required before release upload: {err}",
+            attestation_path.display()
+        )
+    })?;
+    let attestation: serde_json::Value = serde_json::from_str(&attestation_text)
+        .map_err(|err| format!("malformed server attestation receipt: {err}"))?;
+    if attestation.get("disposition").and_then(serde_json::Value::as_str) != Some("attested")
+        || attestation
+            .get("release_upload_eligible")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+    {
+        return Err("release upload is blocked until final subjects are attested and verified".to_string());
+    }
     let tag = format!("v{version}");
     if !command_success_owned(
         "gh",
@@ -335,25 +722,7 @@ pub(crate) fn release_server_public_asset_paths(
     dist_dir: &Path,
     version: &str,
 ) -> Result<Vec<PathBuf>, String> {
-    let assets = release_server_assets(dist_dir, version)?;
-    let mut paths = Vec::with_capacity(assets.len() * 2 + 2);
-    for asset in assets {
-        paths.push(dist_dir.join(&asset.file_name));
-        paths.push(dist_dir.join(format!("{}.sha256", asset.file_name)));
-    }
-    paths.push(dist_dir.join(format!("ripr-server-manifest-v{version}.json")));
-    paths.push(dist_dir.join("SHA256SUMS"));
-    for path in &paths {
-        let metadata = fs::symlink_metadata(path)
-            .map_err(|err| format!("release asset {} is unavailable: {err}", path.display()))?;
-        if !metadata.file_type().is_file() {
-            return Err(format!(
-                "release asset is not a regular file: {}",
-                path.display()
-            ));
-        }
-    }
-    Ok(paths)
+    final_server_subject_paths(dist_dir, version)
 }
 
 #[derive(Debug, Eq, PartialEq)]
