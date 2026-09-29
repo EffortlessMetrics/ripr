@@ -91,6 +91,9 @@ suite('Distribution manifest fallback', () => {
       result.manifestUrl,
       'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json'
     );
+    assert.strictEqual(result.manifestSelection, 'fallback_exact_after_preferred_absent');
+    assert.strictEqual(result.preferredManifestObservation, 'direct_not_found');
+    assert.strictEqual(result.fallbackManifestObservation, 'accepted');
     assert.deepStrictEqual(requested, [
       [
         'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0/ripr-server-manifest-v0.11.0.json',
