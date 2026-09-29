@@ -9,11 +9,11 @@ use std::path::{Path, PathBuf};
 const FORBIDDEN_TOOLS: [&str; 2] = ["cargo", "rustc"];
 
 pub(crate) fn resolve_on_path(path_env: &str, name: &str) -> Option<PathBuf> {
-    path_env.split(':').find_map(|entry| {
-        if entry.is_empty() {
+    std::env::split_paths(path_env).find_map(|entry| {
+        if entry.as_os_str().is_empty() {
             return None;
         }
-        let candidate = Path::new(entry).join(name);
+        let candidate = entry.join(name);
         candidate.is_file().then_some(candidate)
     })
 }
@@ -139,17 +139,28 @@ mod tests {
     fn temp_root(label: &str) -> Result<PathBuf, String> {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or(0);
+            .map_err(|error| format!("isolation fixture clock: {error}"))?
+            .as_nanos();
         let path = std::env::temp_dir().join(format!(
             "ripr-pypi-isolation-{label}-{}-{}-{}",
             std::process::id(),
             COUNTER.fetch_add(1, Ordering::Relaxed),
             stamp
         ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path).map_err(|error| format!("create isolation fixture: {error}"))?;
+        fs::create_dir(&path).map_err(|error| format!("create isolation fixture: {error}"))?;
         Ok(path)
+    }
+
+    fn path_env(paths: &[&Path]) -> Result<String, String> {
+        std::env::join_paths(paths)
+            .map_err(|error| format!("join fixture PATH: {error}"))?
+            .into_string()
+            .map_err(|_non_utf8_path| "fixture PATH is not UTF-8".to_string())
+    }
+
+    fn remove_fixture(root: &Path) -> Result<(), String> {
+        fs::remove_dir_all(root)
+            .map_err(|error| format!("remove owned isolation fixture {}: {error}", root.display()))
     }
 
     fn touch(path: &Path) -> Result<(), String> {
@@ -164,7 +175,7 @@ mod tests {
         let root = temp_root("clean")?;
         let cargo = root.join("cargo");
         touch(&cargo)?;
-        let path = format!("{}:/usr/bin", root.display());
+        let path = path_env(&[&root])?;
         let error = require_error(
             require_clean_consumer_path(&path, None),
             "cargo on PATH must fail",
@@ -173,16 +184,18 @@ mod tests {
             return Err(format!("unexpected cargo PATH error: {error}"));
         }
 
-        let path = "/usr/bin:/bin";
+        let empty_bin = root.join("empty-bin");
+        fs::create_dir(&empty_bin).map_err(|error| format!("create empty bin: {error}"))?;
+        let path = path_env(&[&empty_bin])?;
         touch(&root.join("Cargo.toml"))?;
         let error = require_error(
-            require_clean_consumer_path(path, Some(&root)),
+            require_clean_consumer_path(&path, Some(&root)),
             "source checkout must fail",
         )?;
         if !error.contains("source checkout") {
             return Err(format!("unexpected checkout error: {error}"));
         }
-        let _ = fs::remove_dir_all(&root);
+        remove_fixture(&root)?;
         Ok(())
     }
 
@@ -202,16 +215,20 @@ mod tests {
         let planted_parent = planted
             .parent()
             .ok_or_else(|| "planted dir missing parent".to_string())?;
-        let path = format!(
-            "{}:{}:/usr/bin",
-            installed_parent.display(),
-            planted_parent.display()
-        );
+        let wrong_path = path_env(&[planted_parent, installed_parent])?;
+        let error = require_error(
+            require_installed_beats_planted(&wrong_path, &installed, &planted, &sentinel),
+            "planted-first PATH must fail",
+        )?;
+        if !error.contains("instead of installed payload") {
+            return Err(format!("unexpected planted-first error: {error}"));
+        }
+        let path = path_env(&[installed_parent, planted_parent])?;
         require_installed_beats_planted(&path, &installed, &planted, &sentinel)?;
 
         fs::remove_file(&installed).map_err(|error| format!("uninstall payload: {error}"))?;
         require_uninstall_leaves_planted_and_project(&path, &installed, &planted, &project)?;
-        let _ = fs::remove_dir_all(&root);
+        remove_fixture(&root)?;
         Ok(())
     }
 
@@ -230,11 +247,7 @@ mod tests {
         let planted_parent = planted
             .parent()
             .ok_or_else(|| "planted dir missing parent".to_string())?;
-        let path = format!(
-            "{}:{}",
-            installed_parent.display(),
-            planted_parent.display()
-        );
+        let path = path_env(&[installed_parent, planted_parent])?;
         let error = require_error(
             require_installed_beats_planted(&path, &installed, &planted, &sentinel),
             "executed planted binary must fail",
@@ -253,7 +266,7 @@ mod tests {
         if !error.contains("project virtualenv python was executed") {
             return Err(format!("unexpected project python error: {error}"));
         }
-        let _ = fs::remove_dir_all(&root);
+        remove_fixture(&root)?;
         Ok(())
     }
 }

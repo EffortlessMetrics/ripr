@@ -4,10 +4,13 @@
 //! the recorded wheel payload, named `ripr-rs` (not the unrelated `ripr`
 //! distribution), and pip/uv consumers must agree on the digest.
 
+#[cfg(unix)]
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
 use std::path::Path;
 
 pub(crate) const DISTRIBUTION: &str = "ripr-rs";
+#[cfg(unix)]
 pub(crate) const EXECUTABLE: &str = "ripr";
 pub(crate) const WHEEL_NORMALIZED_PREFIX: &str = "ripr_rs-";
 
@@ -26,12 +29,14 @@ pub(crate) struct InstalledPayload {
     pub(crate) sha256: String,
 }
 
+#[cfg(unix)]
 pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
 }
 
+#[cfg(unix)]
 pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     let bytes = std::fs::read(path).map_err(|error| format!("read {}: {error}", path.display()))?;
     if bytes.is_empty() {
