@@ -13604,6 +13604,138 @@ fn execute_command_context_commands_reject_unreadable_arguments_with_shapes() ->
     })
 }
 
+/// Runs one server-executed command on `backend` and returns its
+/// InvalidParams error, or explains what came back instead.
+async fn expect_invalid_params(
+    backend: &Backend,
+    command: &str,
+    argument: serde_json::Value,
+) -> Result<tower_lsp_server::jsonrpc::Error, String> {
+    let described = format!("{command} {argument}");
+    let result = backend
+        .execute_command(ExecuteCommandParams {
+            command: command.to_string(),
+            arguments: vec![argument],
+            work_done_progress_params: Default::default(),
+        })
+        .await;
+    match result {
+        Ok(value) => Err(format!("{described}: expected an error, got {value:?}")),
+        Err(error) if error.code == tower_lsp_server::jsonrpc::ErrorCode::InvalidParams => {
+            Ok(error)
+        }
+        Err(error) => Err(format!(
+            "{described}: expected InvalidParams, got {error:?}"
+        )),
+    }
+}
+
+/// A present `gap_id` that is not a string is the caller's fault and is
+/// reported under `gap_id`, even when a `seam_id` is also present: the
+/// handler looks `gap_id` up first, so blaming `seam_id` named the wrong
+/// field.
+#[test]
+fn execute_command_collect_context_rejects_malformed_gap_id_naming_gap_id() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        let cases = [
+            (
+                serde_json::json!({"gap_id": 42, "seam_id": "seam:src/lib.rs:1"}),
+                "a number",
+            ),
+            (
+                serde_json::json!({"gap_id": false, "finding_id": "probe:src/lib.rs:1:predicate"}),
+                "a boolean",
+            ),
+            (
+                serde_json::json!({"gap_id": {"id": "gap:rust:x"}}),
+                "an object",
+            ),
+        ];
+        for (argument, got) in cases {
+            let error =
+                expect_invalid_params(backend, COLLECT_CONTEXT_COMMAND, argument.clone()).await?;
+            assert!(
+                error.message.contains(&format!(
+                    "`gap_id` must be a string when present, got {got}"
+                )),
+                "{argument}: error must name `gap_id` and what was expected: {}",
+                error.message
+            );
+            assert!(
+                !error.message.contains("`seam_id` `") && !error.message.contains("`finding_id` `"),
+                "{argument}: error must not blame another field: {}",
+                error.message
+            );
+        }
+        Ok(())
+    })
+}
+
+/// Positive controls for the context target: a valid `gap_id` is still the
+/// looked-up target, and a JSON `null` or blank `gap_id` counts as absent so
+/// the next key in precedence order is used, as before.
+#[test]
+fn execute_command_collect_context_valid_or_null_gap_id_keeps_target() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("context-gap-id-target")?;
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        let error = expect_invalid_params(
+            backend,
+            COLLECT_CONTEXT_COMMAND,
+            serde_json::json!({"gap_id": "gap:rust:absent"}),
+        )
+        .await?;
+        assert!(
+            error
+                .message
+                .contains("`gap_id` `gap:rust:absent` is not in the gap ledger"),
+            "a valid gap_id must stay the looked-up target: {}",
+            error.message
+        );
+        let error = expect_invalid_params(
+            backend,
+            COLLECT_CONTEXT_COMMAND,
+            serde_json::json!({"gap_id": null, "finding_id": "probe:unknown:1:predicate"}),
+        )
+        .await?;
+        assert!(
+            error.message.contains(
+                "`finding_id` `probe:unknown:1:predicate` is not in the current analysis snapshot"
+            ),
+            "a null gap_id must be treated as absent: {}",
+            error.message
+        );
+        let error = expect_invalid_params(
+            backend,
+            COLLECT_CONTEXT_COMMAND,
+            serde_json::json!({"gap_id": "  ", "finding_id": "probe:unknown:1:predicate"}),
+        )
+        .await?;
+        assert!(
+            error.message.contains(
+                "`finding_id` `probe:unknown:1:predicate` is not in the current analysis snapshot"
+            ),
+            "a blank gap_id must be treated as absent: {}",
+            error.message
+        );
+        Ok(())
+    })
+}
+
 #[test]
 fn execute_command_refresh_remains_unchanged() -> Result<(), String> {
     let Some(provider) = initialize_result().capabilities.execute_command_provider else {
@@ -14583,6 +14715,154 @@ fn execute_command_collect_repair_packet_incomplete_gap_returns_sentinel() -> Re
         assert!(
             packet["reason"].as_str().is_some_and(|r| !r.is_empty()),
             "sentinel must carry a non-empty reason, got {packet}"
+        );
+        Ok(())
+    })
+}
+
+/// A present `gap_id` that is not a string must be rejected, not silently
+/// dropped: dropping it answered a request for one gap with the top
+/// gap's packet, a wrong actionable signal. The fixture holds a complete top
+/// packet so a fall-through would visibly succeed.
+#[test]
+fn execute_command_collect_repair_packet_rejects_malformed_gap_id() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-malformed-gap-id")?;
+        write_actionable_gaps_report(root.path(), &complete_actionable_gaps_report())?;
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        let cases = [
+            (serde_json::json!({"gap_id": 42}), "a number"),
+            (serde_json::json!({"gap_id": true}), "a boolean"),
+            (
+                serde_json::json!({"gap_id": ["gap:rust:pricing-boundary"]}),
+                "an array",
+            ),
+        ];
+        for (argument, got) in cases {
+            let error =
+                expect_invalid_params(backend, COLLECT_REPAIR_PACKET_COMMAND, argument.clone())
+                    .await?;
+            assert!(
+                error.message.contains(&format!(
+                    "`gap_id` must be a string when present, got {got}"
+                )) && error.message.contains("no arguments for the top packet"),
+                "{argument}: error must name `gap_id`, the expectation, and the shapes: {}",
+                error.message
+            );
+        }
+        Ok(())
+    })
+}
+
+/// Positive control: without a `gap_id` (no arguments, an empty object, a
+/// null `gap_id`, or an empty or blank one, per RIPR-SPEC-0077) the top
+/// packet is still returned, and a valid, padded `gap_id` still selects its
+/// packet.
+#[test]
+fn execute_command_collect_repair_packet_absent_or_valid_gap_id_returns_packet()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-absent-gap-id")?;
+        write_actionable_gaps_report(root.path(), &complete_actionable_gaps_report())?;
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        let cases = [
+            vec![],
+            vec![serde_json::Value::Null],
+            vec![serde_json::json!({})],
+            vec![serde_json::json!({"gap_id": null})],
+            vec![serde_json::json!({"gap_id": ""})],
+            vec![serde_json::json!({"gap_id": "  "})],
+            vec![serde_json::json!({"gap_id": " gap:rust:pricing-boundary "})],
+        ];
+        for arguments in cases {
+            let described = format!("{arguments:?}");
+            let packet = backend
+                .execute_command(ExecuteCommandParams {
+                    command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+                    arguments,
+                    work_done_progress_params: Default::default(),
+                })
+                .await
+                .map_err(|err| format!("{described}: execute_command failed: {err}"))?
+                .ok_or_else(|| format!("{described}: expected a repair packet"))?;
+            assert_eq!(packet["kind"], "repair_packet", "{described}");
+            assert_eq!(
+                packet["canonical_gap_id"], "gap:rust:pricing-boundary",
+                "{described}: expected the packet, got {packet}"
+            );
+        }
+        Ok(())
+    })
+}
+
+/// A requested `gap_id` that `actionable-gaps.json` does not hold must not be
+/// answered with that report's first packet (another gap's repair
+/// instructions). An id held only by the gap ledger reaches the ledger, and
+/// an id held by neither gets the sentinel naming it.
+#[test]
+fn execute_command_collect_repair_packet_unknown_gap_id_never_returns_another_gap()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let root = unique_lsp_test_root("repair-packet-unknown-gap-id")?;
+        write_actionable_gaps_report(root.path(), &complete_actionable_gaps_report())?;
+        write_gap_decision_ledger(root.path())?;
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, root.path().to_path_buf()));
+        let backend = service.inner();
+        seed_successful_snapshot(backend)?;
+        let run = |gap_id: &'static str| {
+            backend.execute_command(ExecuteCommandParams {
+                command: COLLECT_REPAIR_PACKET_COMMAND.to_string(),
+                arguments: vec![serde_json::json!({ "gap_id": gap_id })],
+                work_done_progress_params: Default::default(),
+            })
+        };
+
+        let ledger_only = run("gap:rust:pricing:threshold-boundary")
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected the ledger packet".to_string())?;
+        assert_eq!(
+            ledger_only["canonical_gap_id"], "gap:rust:pricing:threshold-boundary",
+            "an id only the ledger holds must reach the ledger: {ledger_only}"
+        );
+
+        let unknown = run("gap:rust:absent")
+            .await
+            .map_err(|err| format!("execute_command failed: {err}"))?
+            .ok_or_else(|| "expected the no-packet sentinel".to_string())?;
+        assert_eq!(
+            unknown["status"], "not_actionable_or_incomplete",
+            "{unknown}"
+        );
+        assert!(
+            unknown["canonical_gap_id"].is_null(),
+            "an unknown id must not carry another gap's packet: {unknown}"
+        );
+        let reason = unknown["reason"]
+            .as_str()
+            .ok_or_else(|| format!("sentinel must carry a string reason: {unknown}"))?;
+        assert!(
+            reason.contains("no repair packet for gap `gap:rust:absent`"),
+            "the sentinel must name the requested gap: {reason}"
         );
         Ok(())
     })

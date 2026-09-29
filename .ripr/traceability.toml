@@ -5465,7 +5465,10 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_no_snapshot_and_no_file_returns_null",
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_incomplete_gap_returns_sentinel",
   "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_complete_gap_returns_full_packet",
-  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_registered_in_capabilities"
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_registered_in_capabilities",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_rejects_malformed_gap_id",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_absent_or_valid_gap_id_returns_packet",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_repair_packet_unknown_gap_id_never_returns_another_gap"
 ]
 fixtures = []
 code = [

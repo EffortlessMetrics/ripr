@@ -117,10 +117,15 @@ is not ready. Do not fabricate a packet or attempt an edit without one.
 
 The command takes no arguments for the top packet, or one object
 `{"gap_id": "..."}` for a specific gap; any other first argument is a `-32602`
-InvalidParams error. When neither `target/ripr/reports/actionable-gaps.json`
-nor `target/ripr/reports/gap-decision-ledger.json` holds a packet, the result
-is a `not_actionable_or_incomplete` packet whose `reason` names both files and
-the CLI route (`ripr pilot --root .`), never `null`.
+InvalidParams error. A `gap_id` that is present but not a string (for
+example `42`, `true` or an array) is also an InvalidParams error naming
+`gap_id`; it never falls back to the top packet. An absent, `null`, empty or
+blank `gap_id` asks for the top packet. When neither `target/ripr/reports/actionable-gaps.json` nor
+`target/ripr/reports/gap-decision-ledger.json` holds a packet, the result is a
+`not_actionable_or_incomplete` packet whose `reason` names both files and the
+CLI route (`ripr pilot --root .`). The result is `null` only when the server
+cannot read its own workspace-root state after an internal failure; restart
+the language server if that happens.
 
 ---
 

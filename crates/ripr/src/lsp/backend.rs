@@ -4594,6 +4594,10 @@ pub(crate) const COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES: &str = "one object: \
 {\"seam_id\": \"...\", \"evidence_identity\": {...}}; copy both from a ripr seam \
 diagnostic's data";
 
+/// Accepted argument shapes for `ripr.collectRepairPacket`, quoted in its errors.
+pub(crate) const COLLECT_REPAIR_PACKET_ARGUMENT_SHAPES: &str = "no arguments for the top \
+packet, or one object {\"gap_id\": \"...\"} for a specific gap";
+
 /// Longest client-supplied id echoed back in an error message.
 const ECHOED_ID_MAX_CHARS: usize = 120;
 
@@ -4611,20 +4615,53 @@ fn context_command_target(
             "`{command}` expects {shapes}"
         )));
     };
-    keys.iter()
-        .find_map(|key| {
-            args.get(*key)
-                .and_then(|value| value.as_str())
-                .filter(|id| !id.trim().is_empty())
-                .map(|id| (*key, id.to_string()))
-        })
-        .ok_or_else(|| {
-            let one_of = if keys.len() > 1 { "one of " } else { "" };
-            LspError::invalid_params(format!(
-                "`{command}` needs a non-empty string {one_of}`{}`; it expects {shapes}",
-                keys.join("`, `")
-            ))
-        })
+    // Every present target key is validated before one is chosen, so a
+    // mistyped higher-precedence id (`{"gap_id": 42, "seam_id": "..."}`) is
+    // reported under its own name instead of being skipped for a later key.
+    // A blank id counts as not given, so the next key is used.
+    let mut target = None;
+    for key in keys {
+        if let Some(id) = optional_id_argument(command, args, key, shapes)?
+            && target.is_none()
+        {
+            target = Some((*key, id.to_string()));
+        }
+    }
+    target.ok_or_else(|| {
+        let one_of = if keys.len() > 1 { "one of " } else { "" };
+        LspError::invalid_params(format!(
+            "`{command}` needs a non-empty string {one_of}`{}`; it expects {shapes}",
+            keys.join("`, `")
+        ))
+    })
+}
+
+/// Reads one optional id argument of an agent command. An absent key, a
+/// JSON `null`, or a string that is empty after trimming is `Ok(None)`: the
+/// id was not given (RIPR-SPEC-0077: an absent or empty `gap_id` selects the
+/// top gap). Any other non-string value is rejected with InvalidParams naming
+/// the field. A mistyped id must never fall through to a different target
+/// (such as the top repair packet): answering a request for one gap with
+/// another gap's packet is a wrong actionable signal.
+fn optional_id_argument<'a>(
+    command: &str,
+    args: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    shapes: &str,
+) -> LspResult<Option<&'a str>> {
+    let found = match args.get(key) {
+        None | Some(serde_json::Value::Null) => return Ok(None),
+        Some(serde_json::Value::String(id)) if id.trim().is_empty() => return Ok(None),
+        Some(serde_json::Value::String(id)) => return Ok(Some(id)),
+        Some(serde_json::Value::Bool(_)) => "a boolean",
+        Some(serde_json::Value::Number(_)) => "a number",
+        Some(serde_json::Value::Array(_)) => "an array",
+        Some(serde_json::Value::Object(_)) => "an object",
+    };
+    Err(LspError::invalid_params(format!(
+        "`{command}`: `{key}` must be a string when present, got {found}; \
+it expects {shapes}"
+    )))
 }
 
 fn context_target_not_found(command: &str, key: &str, id: &str) -> LspError {
@@ -4874,17 +4911,23 @@ impl Backend {
             return Ok(self.collect_workspace_status());
         }
         if params.command == COLLECT_REPAIR_PACKET_COMMAND {
-            if params
-                .arguments
-                .first()
-                .is_some_and(|first| !first.is_object() && !first.is_null())
-            {
-                return Err(LspError::invalid_params(format!(
-                    "`{COLLECT_REPAIR_PACKET_COMMAND}` expects no arguments for the top packet, \
-or one object {{\"gap_id\": \"...\"}} for a specific gap"
-                )));
-            }
-            return Ok(self.collect_repair_packet(&params.arguments));
+            let gap_id = match params.arguments.first() {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::Object(args)) => optional_id_argument(
+                    COLLECT_REPAIR_PACKET_COMMAND,
+                    args,
+                    "gap_id",
+                    COLLECT_REPAIR_PACKET_ARGUMENT_SHAPES,
+                )?
+                .map(str::trim),
+                Some(_) => {
+                    return Err(LspError::invalid_params(format!(
+                        "`{COLLECT_REPAIR_PACKET_COMMAND}` expects \
+{COLLECT_REPAIR_PACKET_ARGUMENT_SHAPES}"
+                    )));
+                }
+            };
+            return Ok(self.collect_repair_packet(gap_id));
         }
         if params.command == COLLECT_TOP_LIMITATION_COMMAND {
             return Ok(self.collect_top_limitation());
@@ -6638,7 +6681,10 @@ fn collect_gap_record_context_packet(
 const DEFAULT_ACTIONABLE_GAPS_OUT: &str = "target/ripr/reports/actionable-gaps.json";
 
 impl Backend {
-    fn collect_repair_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
+    /// `gap_id` is already validated by `optional_id_argument`: `None` means
+    /// the caller asked for the top packet, never that a malformed id was
+    /// dropped.
+    fn collect_repair_packet(&self, gap_id: Option<&str>) -> Option<LSPAny> {
         let health = self.analysis_health_snapshot();
         if !health.allows_current_repairs() {
             return Some(repair_packet_sentinel("analysis_snapshot_stale"));
@@ -6650,33 +6696,19 @@ impl Backend {
             )));
         }
         let root = self.root.lock().ok()?.clone();
-        let gap_id_arg = arguments
-            .first()
-            .and_then(|v| v.as_object())
-            .and_then(|obj| obj.get("gap_id"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(ToOwned::to_owned);
 
         // Try actionable-gaps.json first (preferred: projection-validated).
         let actionable_path = absolute_join(&root, Path::new(DEFAULT_ACTIONABLE_GAPS_OUT));
-        if let Some(result) =
-            collect_repair_packet_from_actionable_gaps(&actionable_path, gap_id_arg.as_deref())
-        {
+        if let Some(result) = collect_repair_packet_from_actionable_gaps(&actionable_path, gap_id) {
             return Some(result);
         }
 
         // Fallback: gap-decision-ledger.json using the existing GapRecord machinery.
         let ledger_path = absolute_join(&root, Path::new(DEFAULT_GAP_DECISION_LEDGER_OUT));
-        collect_repair_packet_from_ledger(&root, &ledger_path, gap_id_arg.as_deref())
+        collect_repair_packet_from_ledger(&root, &ledger_path, gap_id)
             // Neither source holds a packet: say so and name the route,
             // instead of a null the client can only render as "no response".
-            .or_else(|| {
-                Some(repair_packet_sentinel(&no_repair_packet_reason(
-                    gap_id_arg.as_deref(),
-                )))
-            })
+            .or_else(|| Some(repair_packet_sentinel(&no_repair_packet_reason(gap_id))))
     }
 
     fn collect_top_limitation(&self) -> Option<LSPAny> {
@@ -7062,15 +7094,15 @@ fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>)
         Err(_) => return Some(repair_packet_sentinel(MALFORMED_ACTIONABLE_GAPS_REASON)),
     };
     let packets = report.get("packets").and_then(|v| v.as_array())?;
+    // A requested gap must match exactly. Answering an unknown id with the
+    // first packet handed out another gap's repair instructions; `None` lets
+    // the caller try the ledger, then say which gap has no packet.
     let packet = if let Some(id) = gap_id {
-        packets
-            .iter()
-            .find(|p| {
-                p.get("canonical_gap_id")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|cid| cid == id)
-            })
-            .or_else(|| packets.first())?
+        packets.iter().find(|p| {
+            p.get("canonical_gap_id")
+                .and_then(|v| v.as_str())
+                .is_some_and(|cid| cid == id)
+        })?
     } else {
         packets
             .iter()
