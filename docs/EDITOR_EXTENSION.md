@@ -176,7 +176,9 @@ The extension passes `ripr.baseRef`, `ripr.check.mode`,
 `ripr.includeUnchangedTests`, `ripr.seamDiagnostics`, and
 `ripr.diagnosticProfile` to the language server as initialization options, and
 serves those five plus `ripr.gitTimeoutMs` and `ripr.refreshDeadlineMs` through
-`workspace/configuration`. Changing
+`workspace/configuration`. `ripr.seamDiagnostics` and `ripr.diagnosticProfile` are
+forwarded only when a user, workspace or folder setting sets them, so
+`ripr.toml` `[lsp]` values apply when they are unset. Changing
 `ripr.enabled`, `ripr.server.*`, `ripr.check.mode`, or `ripr.baseRef` restarts
 the client so the next diagnostic refresh uses the new configuration.
 `ripr.trace.server` applies live. The server re-reads the other keys without a

@@ -18,6 +18,7 @@
 //! - All error paths are fail-closed: on any validation failure nothing is
 //!   written and a non-zero exit is triggered via `Err(String)`.
 
+use crate::agent::loop_commands::shell_arg;
 use crate::output::gap_decision_ledger::parse_gap_records_json;
 use crate::output::json;
 use sha2::{Digest, Sha256};
@@ -435,6 +436,9 @@ fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<
 
     for field in &required_fields {
         if value.get(field).is_none() {
+            if *field == "current_head" {
+                return Err(missing_current_head_error(value, path));
+            }
             return Err(format!(
                 "receipt at {} is malformed: missing required field `{field}`",
                 path.display()
@@ -475,10 +479,66 @@ fn validate_receipt_structure(value: &serde_json::Value, path: &Path) -> Result<
     Ok(())
 }
 
+/// A receipt without `current_head` predates HEAD binding: ripr 0.10 and
+/// earlier wrote the same `schema_version` without it (#4737). It stays
+/// rejected, because nothing binds it to a revision, but the error says why
+/// and how to replace it instead of only calling it malformed.
+fn missing_current_head_error(value: &serde_json::Value, path: &Path) -> String {
+    let gap = value["canonical_gap_id"]
+        .as_str()
+        .unwrap_or("<canonical_gap_id>");
+    let verify_command = value["verify_command"].as_str().unwrap_or("<cmd>");
+    format!(
+        "receipt at {} is malformed: missing required field `current_head`; receipts written by \
+         ripr 0.10 or earlier do not record the repository HEAD and cannot be checked. After \
+         re-running the verify command, rewrite it at the current HEAD: ripr receipt write \
+         --gap {} --verify-command {} --status <passed|failed|not_run|unknown> --out {}",
+        path.display(),
+        shell_arg(gap),
+        shell_arg(verify_command),
+        shell_arg(&path.display().to_string())
+    )
+}
+
+/// The file name `ripr receipt write` used before default paths were
+/// percent-encoded (0.10 and earlier): the raw canonical gap id. Only ids
+/// that cannot name another directory qualify.
+fn legacy_receipt_default_path(canonical_gap_id: &str) -> Option<PathBuf> {
+    let unsafe_component = canonical_gap_id.is_empty()
+        || canonical_gap_id.contains(['/', '\\'])
+        || canonical_gap_id.contains("..")
+        || canonical_gap_id.chars().any(|c| c.is_control());
+    if unsafe_component {
+        return None;
+    }
+    let legacy = PathBuf::from(RECEIPT_DEFAULT_DIRECTORY).join(format!("{canonical_gap_id}.json"));
+    (legacy != receipt_default_path(canonical_gap_id)).then_some(legacy)
+}
+
 fn resolve_check_path(opts: &ReceiptCheckOptions) -> Result<PathBuf, String> {
+    resolve_check_path_from(opts, Path::new(""))
+}
+
+/// `base` is the directory the relative default paths resolve against (the
+/// process working directory in production).
+fn resolve_check_path_from(opts: &ReceiptCheckOptions, base: &Path) -> Result<PathBuf, String> {
     match (&opts.path, &opts.gap) {
         (Some(p), _) => Ok(p.clone()),
-        (None, Some(gap)) => Ok(receipt_default_path(gap)),
+        (None, Some(gap)) => {
+            let current = receipt_default_path(gap);
+            // `symlink_metadata`, not `exists`: a dangling link at the current
+            // path is still the current receipt, and reading it must report
+            // that failure rather than fall back to an older file.
+            if std::fs::symlink_metadata(base.join(&current)).is_ok() {
+                return Ok(current);
+            }
+            // #4737: a receipt written by ripr 0.10 sits at the raw gap-id
+            // file name. Resolve it so the check reports what is wrong with
+            // it rather than claiming no receipt exists.
+            Ok(legacy_receipt_default_path(gap)
+                .filter(|legacy| base.join(legacy).exists())
+                .unwrap_or(current))
+        }
         (None, None) => Err(
             "receipt check requires --path <receipt_path> or --gap <canonical_gap_id>".to_string(),
         ),
@@ -895,6 +955,9 @@ mod tests {
             "written_at": "2026-06-11T00:00:00Z"
         });
         std::fs::write(&path, json.to_string()).map_err(|e| format!("write json failed: {e}"))?;
+        // The rewrite targets the file that was checked, so following it
+        // repairs an explicit `--path` receipt instead of writing elsewhere.
+        let out_arg = format!("--out {}", shell_arg(&path.display().to_string()));
 
         let result = check_receipt(&ReceiptCheckOptions {
             gap: None,
@@ -905,8 +968,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         match result {
             Ok(_) => Err("check_receipt should reject a receipt without current_head".to_string()),
-            Err(err) if err.contains("current_head") => Ok(()),
-            Err(err) => Err(format!("error should mention current_head, got: {err}")),
+            // #4737: the rejection names why (a pre-HEAD-binding receipt)
+            // and the rewrite command, not only the missing field.
+            Err(err)
+                if err.contains("missing required field `current_head`")
+                    && err.contains("ripr 0.10 or earlier")
+                    && err.contains(
+                        "ripr receipt write --gap gap:test:aabbccdd --verify-command 'cargo test' --status <passed|failed|not_run|unknown>",
+                    )
+                    && err.ends_with(&out_arg) =>
+            {
+                Ok(())
+            }
+            Err(err) => Err(format!("error should explain the missing current_head, got: {err}")),
         }
     }
 
@@ -1249,6 +1323,84 @@ mod tests {
             "default receipt file name must be filesystem-portable: {file_name}"
         );
         Ok(())
+    }
+
+    #[test]
+    fn receipt_check_resolves_a_0_10_raw_gap_id_file_name() -> Result<(), String> {
+        let base =
+            std::env::temp_dir().join(format!("ripr-receipt-legacy-path-{}", std::process::id()));
+        let receipts = base.join(RECEIPT_DEFAULT_DIRECTORY);
+        std::fs::create_dir_all(&receipts).map_err(|e| format!("create dir failed: {e}"))?;
+        let gap = "gap:4b5fdc1a2a157b0d";
+        let opts = ReceiptCheckOptions {
+            gap: Some(gap.to_string()),
+            path: None,
+            ledger: None,
+            json: false,
+        };
+        let encoded = receipt_default_path(gap);
+        let legacy = PathBuf::from(RECEIPT_DEFAULT_DIRECTORY).join("gap:4b5fdc1a2a157b0d.json");
+
+        // Nothing on disk: the current encoded path is reported as missing.
+        let nothing = resolve_check_path_from(&opts, &base);
+        // Only the 0.10 file name exists: resolve it.
+        let legacy_written = std::fs::write(base.join(&legacy), "{}");
+        let only_legacy = resolve_check_path_from(&opts, &base);
+        // Both exist: the current encoded file wins.
+        let encoded_written = std::fs::write(base.join(&encoded), "{}");
+        let both = resolve_check_path_from(&opts, &base);
+        let _ = std::fs::remove_dir_all(&base);
+
+        legacy_written.map_err(|e| format!("write legacy failed: {e}"))?;
+        encoded_written.map_err(|e| format!("write encoded failed: {e}"))?;
+        assert_eq!(nothing?, encoded);
+        assert_eq!(only_legacy?, legacy);
+        assert_eq!(both?, encoded);
+        Ok(())
+    }
+
+    /// A dangling link at the current encoded path is still the current
+    /// receipt: the check must report it, not fall back to a 0.10 file.
+    #[cfg(unix)]
+    #[test]
+    fn receipt_check_keeps_a_dangling_current_path_over_the_0_10_name() -> Result<(), String> {
+        let base = std::env::temp_dir().join(format!(
+            "ripr-receipt-dangling-current-{}",
+            std::process::id()
+        ));
+        let receipts = base.join(RECEIPT_DEFAULT_DIRECTORY);
+        std::fs::create_dir_all(&receipts).map_err(|e| format!("create dir failed: {e}"))?;
+        let gap = "gap:4b5fdc1a2a157b0d";
+        let opts = ReceiptCheckOptions {
+            gap: Some(gap.to_string()),
+            path: None,
+            ledger: None,
+            json: false,
+        };
+        let encoded = receipt_default_path(gap);
+        let legacy = PathBuf::from(RECEIPT_DEFAULT_DIRECTORY).join("gap:4b5fdc1a2a157b0d.json");
+        let legacy_written = std::fs::write(base.join(&legacy), "{}");
+        let linked = std::os::unix::fs::symlink(base.join("missing-target"), base.join(&encoded));
+        let resolved = resolve_check_path_from(&opts, &base);
+        let _ = std::fs::remove_dir_all(&base);
+
+        legacy_written.map_err(|e| format!("write legacy failed: {e}"))?;
+        linked.map_err(|e| format!("symlink failed: {e}"))?;
+        assert_eq!(resolved?, encoded);
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_receipt_path_refuses_ids_that_name_another_directory() {
+        for gap in ["", "gap/../../etc", "..", "gap\\x", "gap\nx"] {
+            assert_eq!(legacy_receipt_default_path(gap), None, "{gap:?}");
+        }
+        // An id the encoding leaves unchanged has no separate legacy name.
+        assert_eq!(legacy_receipt_default_path("gap-plain-id"), None);
+        assert_eq!(
+            legacy_receipt_default_path("gap:rust:a"),
+            Some(PathBuf::from(RECEIPT_DEFAULT_DIRECTORY).join("gap:rust:a.json"))
+        );
     }
 
     #[test]

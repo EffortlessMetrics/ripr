@@ -89,7 +89,11 @@ when requested. Schema `0.3` also adds top-level `ripr_version`, the running
 binary's package version, and `ripr_build_msrv`, the minimum rustc that can
 build that version from source. Each `checks[].status` is `pass`, `fail`, `advisory`, or `skipped`;
 `advisory` (added in schema `0.3`) reports an unavailable Cargo/rustc
-capability without failing installed-binary analysis. The source-build profile
+capability without failing installed-binary analysis. An additive
+`generated_workflow` advisory check appears when
+`.github/workflows/ripr.yml` installs ripr without a version (the 0.10
+template) or pins a version other than the running one; its `evidence` names
+the refresh command. The source-build profile
 fails on missing tools or rustc below RIPR's build MSRV, and reports its
 language `runtime_probes` with `required: false` because a language runtime is
 an analysis capability, not a build prerequisite. It does not establish

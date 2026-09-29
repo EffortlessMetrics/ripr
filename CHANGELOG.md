@@ -1451,6 +1451,31 @@ are scoped or reviewed.
   `run ripr check` recovery that could not help. One trailing redirect into
   the workspace's `target/ripr/` is accepted; every other redirect is still
   refused.
+- Upgrading from 0.10: a `.ripr/suppressions.toml` `finding_id` written
+  under 0.10 no longer matches, because Rust finding ids now hash the parsed
+  expression (`amount >= threshold`) instead of the whole changed line
+  (`if amount >= threshold {`). The stale entry still does not suppress, but
+  its warning now names the current id to write instead
+  ([#4736](https://github.com/EffortlessMetrics/ripr-swarm/issues/4736)).
+- Upgrading from 0.10: `ripr receipt check --gap` finds a receipt 0.10 wrote
+  under the raw gap id file name, and a receipt without `current_head` is
+  rejected with the reason (it predates HEAD binding) and the
+  `ripr receipt write` command that replaces it
+  ([#4737](https://github.com/EffortlessMetrics/ripr-swarm/issues/4737)).
+- Upgrading from 0.10: `ripr doctor` flags a `.github/workflows/ripr.yml`
+  that installs ripr unpinned or pins another version. The 0.10 template's
+  unpinned install runs the newest release against 0.10's steps, whose
+  agent-loop step now fails on every run; regenerate it with
+  `ripr init --ci github --force`, which now replaces only the workflow and
+  leaves an existing `ripr.toml` unchanged (before, it also reset the config
+  to the generated defaults). `ripr doctor --json` reports the same finding
+  as an advisory `generated_workflow` check
+  ([#4738](https://github.com/EffortlessMetrics/ripr-swarm/issues/4738)).
+- VS Code: `ripr.seamDiagnostics` and `ripr.diagnosticProfile` are forwarded
+  to the server only when a settings layer sets them, so `ripr.toml`
+  `[lsp] seam_diagnostics = false`, honored by the 0.10 extension, applies
+  again instead of being overridden by the extension's default
+  ([#4717](https://github.com/EffortlessMetrics/ripr-swarm/issues/4717)).
 
 ### Added
 

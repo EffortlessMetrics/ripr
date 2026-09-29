@@ -119,3 +119,50 @@ fn check_output_with_temp_seam_workspace(findings: Vec<Finding>) -> Result<Check
     output.root = root;
     Ok(output)
 }
+
+/// #4736 review: the 0.10 id is derived (a source read) only when some
+/// `finding_id` selector matches no current finding.
+#[test]
+fn suppression_candidates_derive_the_0_10_id_only_for_an_unmatched_selector() -> Result<(), String>
+{
+    let root = std::env::temp_dir().join(format!("ripr-legacy-candidates-{}", std::process::id()));
+    let file = root.join("src").join("lib.rs");
+    let written = std::fs::create_dir_all(root.join("src")).and_then(|()| {
+        std::fs::write(
+            &file,
+            "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}\n",
+        )
+    });
+    let mut finding = sample_finding(&file.display().to_string(), 2);
+    finding.id = "probe:src_lib.rs:predicate:c80557eb".to_string();
+    finding.probe.id = ProbeId(finding.id.clone());
+    finding.probe.family = ProbeFamily::Predicate;
+    finding.probe.owner = Some(crate::domain::SymbolId(
+        "src/lib.rs::discounted_total".to_string(),
+    ));
+    let policy = |finding_id: &str| {
+        crate::output::suppressions::parse_suppressions_manifest(&format!(
+            "schema_version = 1\n\n[[suppressions]]\nkind = \"exposure_gap\"\nfinding_id = \"{finding_id}\"\nreason = \"covered\"\nowner = \"team\"\n"
+        ))
+        .0
+    };
+    let candidates = |entries: &[crate::output::suppressions::SuppressionEntry]| {
+        crate::output::suppressions::CheckSuppressionCandidate::for_findings(
+            &root,
+            [&finding],
+            entries,
+        )
+    };
+    let current_selector = candidates(&policy("probe:src_lib.rs:predicate:c80557eb"));
+    let stale_selector = candidates(&policy("probe:src_lib.rs:predicate:8390dd91"));
+    let _ = std::fs::remove_dir_all(&root);
+    written.map_err(|e| format!("write fixture failed: {e}"))?;
+
+    assert_eq!(current_selector.len(), 1);
+    assert_eq!(current_selector[0].legacy_finding_id, None);
+    assert_eq!(
+        stale_selector[0].legacy_finding_id.as_deref(),
+        Some("probe:src_lib.rs:predicate:8390dd91")
+    );
+    Ok(())
+}

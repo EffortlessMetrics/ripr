@@ -66,8 +66,8 @@ enum InitAction {
     Create,
     /// The path exists and `--force` was given; it would be replaced.
     Overwrite,
-    /// The config exists without `--force`, but `--ci` still has work to do,
-    /// so the config is left as the user wrote it.
+    /// The config exists and `--ci` has work to do, so the config is left as
+    /// the user wrote it, with or without `--force`.
     LeaveUnchanged,
 }
 
@@ -132,8 +132,12 @@ fn init_plan(options: &InitOptions) -> Result<Vec<InitTarget>, String> {
         ));
     }
 
+    // With `--ci`, `--force` only lets the workflow be replaced. Refreshing a
+    // workflow after an upgrade (`ripr init --ci github --force`, which
+    // `ripr doctor` recommends) must not reset a customized `ripr.toml`;
+    // `ripr init --force` without `--ci` still resets the config.
     let config_action = if path_is_occupied(&config_path)? {
-        if options.force {
+        if options.force && options.ci.is_none() {
             InitAction::Overwrite
         } else {
             InitAction::LeaveUnchanged
@@ -3044,6 +3048,40 @@ mod tests {
         let plan = init_plan(&opts)?;
         assert_eq!(plan[0].action, InitAction::LeaveUnchanged);
         assert_eq!(plan[1].action, InitAction::Create);
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    /// Upgrade path: refreshing an existing workflow with `--force` replaces
+    /// the workflow and keeps the repository's own `ripr.toml`.
+    #[test]
+    fn plan_ci_force_refreshes_the_workflow_and_keeps_the_config() -> Result<(), String> {
+        let root = temp_root("ci-force")?;
+        write(
+            &root.join(CONFIG_FILE_NAME),
+            "[lsp]\nseam_diagnostics = false\n",
+        )?;
+        let workflow = root.join(".github/workflows/ripr.yml");
+        if let Some(parent) = workflow.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+        }
+        write(&workflow, "run: cargo install ripr --locked\n")?;
+        let mut opts = options(&root);
+        opts.ci = Some(InitCi::Github);
+        opts.force = true;
+
+        let plan = init_plan(&opts)?;
+        assert_eq!(plan[0].action, InitAction::LeaveUnchanged);
+        assert_eq!(plan[1].action, InitAction::Overwrite);
+        apply_init_plan(&plan)?;
+        let config = std::fs::read_to_string(root.join(CONFIG_FILE_NAME))
+            .map_err(|err| format!("read config failed: {err}"))?;
+        assert_eq!(config, "[lsp]\nseam_diagnostics = false\n");
+        let written = std::fs::read_to_string(&workflow)
+            .map_err(|err| format!("read workflow failed: {err}"))?;
+        assert!(written.contains("--version"), "{written}");
 
         let _ = std::fs::remove_dir_all(&root);
         Ok(())

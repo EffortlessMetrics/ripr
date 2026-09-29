@@ -8105,6 +8105,41 @@ fn doctor_names_workspace_build_first_on_path() -> Result<(), String> {
 }
 
 #[test]
+fn doctor_json_reports_an_unpinned_generated_workflow_as_advisory() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let workflows = workspace.join(".github/workflows");
+    std::fs::create_dir_all(&workflows).map_err(|err| format!("create workflows: {err}"))?;
+    // The install step `ripr 0.10.0 init --ci github` wrote.
+    std::fs::write(
+        workflows.join("ripr.yml"),
+        "      - name: Install ripr\n        run: cargo install ripr --locked\n",
+    )
+    .map_err(|err| format!("write workflow: {err}"))?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root, "--json"]);
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|err| format!("doctor JSON did not parse: {err}"))?;
+    std::fs::remove_dir_all(workspace).map_err(|err| format!("remove workspace: {err}"))?;
+
+    let check = report["checks"]
+        .as_array()
+        .and_then(|checks| {
+            checks
+                .iter()
+                .find(|check| check["name"] == "generated_workflow")
+        })
+        .ok_or_else(|| format!("doctor JSON must report the stale workflow: {report}"))?;
+    assert_eq!(check["status"], "advisory");
+    assert!(
+        check["evidence"].as_str().is_some_and(|evidence| evidence
+            .contains("installs ripr without a version")
+            && evidence.contains("ripr init --ci github --force")),
+        "{check}"
+    );
+    Ok(())
+}
+
+#[test]
 fn doctor_json_reports_current_schema() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
     let root = workspace.display().to_string();

@@ -221,15 +221,8 @@ fn apply_suppression_policy(output: &mut CheckOutput, policy: &Path) -> Result<(
     };
     let entries = sup::load_check_suppression_policy(&resolved)?;
     let today = sup::current_iso_date();
-    let candidates: Vec<sup::CheckSuppressionCandidate> = output
-        .findings
-        .iter()
-        .map(|finding| sup::CheckSuppressionCandidate {
-            finding_id: finding.id.clone(),
-            path: sup::root_relative_finding_path(&output.root, &finding.probe.location.file),
-            class: finding.class.as_str().to_string(),
-        })
-        .collect();
+    let candidates =
+        sup::CheckSuppressionCandidate::for_findings(&output.root, &output.findings, &entries);
     let (matched, warnings) = sup::apply_check_suppressions(&candidates, &entries, &today);
 
     let mut suppressed = Vec::new();

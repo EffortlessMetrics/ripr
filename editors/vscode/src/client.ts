@@ -9,7 +9,7 @@ import {
   ServerOptions,
   Trace
 } from 'vscode-languageclient/node';
-import { getConfig, RiprConfig } from './config';
+import { explicitSetting, getConfig, RiprConfig } from './config';
 import { missingServerRemedy, requestedServerVersion, resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
 import { setupFilePath, hasUnsafeShellMetacharacter, redirectTargetMatches, redirectStaysInWorkspace, serverShellArg, normalizePath, sameWorkspaceRoot, rootMatchesWorkspace, objectField, stringField, boundedStringField, arrayLength, numberFieldValue } from './packetJson';
 import { riprDocumentSelectorsForWorkspace, extensionVersion, traceFromConfig, currentWorkspaceRootState, workspaceRootStateNoWorkspace, workspaceRootStateLabel, workspaceRootStateDetail, workspaceRootPickItems } from './workspaceHelpers';
@@ -77,8 +77,8 @@ function lspConfigurationForResource(scopeUri: string | undefined): Record<strin
     baseRef: config.get<string>('baseRef'),
     checkMode: config.get<string>('check.mode'),
     includeUnchangedTests: config.get<boolean>('includeUnchangedTests'),
-    seamDiagnostics: config.get<boolean>('seamDiagnostics'),
-    diagnosticProfile: config.get<string>('diagnosticProfile'),
+    seamDiagnostics: explicitSetting<boolean>(config, 'seamDiagnostics'),
+    diagnosticProfile: explicitSetting<string>(config, 'diagnosticProfile'),
     gitTimeoutMs: config.get<number>('gitTimeoutMs'),
     refreshDeadlineMs: config.get<number>('refreshDeadlineMs')
   };

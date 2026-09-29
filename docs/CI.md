@@ -878,7 +878,11 @@ does not have yet, so its install step fails and no ripr step runs. Generate the
 committed workflow with a released `ripr`. To upgrade, install
 the newer `ripr` and compare its `ripr init --ci github --force --dry-run`
 output with the committed file (`--force` lets the dry run plan over the
-existing file; nothing is written). On pull requests the workflow checks out the PR head
+existing file; nothing is written). With `--ci`, `--force` replaces only the
+workflow: an existing `ripr.toml` is left unchanged, so refreshing CI keeps the
+repository's settings (`ripr init --force` without `--ci` resets the config).
+`ripr doctor` flags a workflow that installs ripr unpinned or at another
+version. On pull requests the workflow checks out the PR head
 commit, not GitHub's `refs/pull/N/merge` commit, so annotation and review
 comment lines match the lines in the PR diff after the base branch moves. A
 newer push cancels the older run of the same PR. Dependabot runs get a

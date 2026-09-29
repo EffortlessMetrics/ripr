@@ -11,6 +11,7 @@ import {
   readFirstPrPacketStatus,
   validatedAgentLoopCommand
 } from '../../src/client';
+import { explicitSetting } from '../../src/config';
 import { hasUnsafeShellMetacharacter, redirectStaysInWorkspace, redirectTargetMatches, serverShellArg } from '../../src/packetJson';
 import { compatibleLspEvidence } from './testCompatibility';
 
@@ -341,6 +342,44 @@ suite('Extension Smoke', () => {
         }
       );
     });
+  });
+
+  test('leaves unset seam diagnostic settings to ripr.toml', async () => {
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+
+      // A key the user never set must stay absent so the server applies
+      // ripr.toml [lsp] values; forwarding the manifest default overrode
+      // `seam_diagnostics = false` for every 0.10 user who upgraded.
+      const initializationOptions = context.client.receivedInitializationOptions ?? {};
+      assert.strictEqual(JSON.parse(JSON.stringify(initializationOptions)).seamDiagnostics, undefined);
+      assert.strictEqual(JSON.parse(JSON.stringify(initializationOptions)).diagnosticProfile, undefined);
+    });
+  });
+
+  test('explicitSetting ignores manifest defaults and returns user layers', () => {
+    const fakeConfig = (inspected: Record<string, unknown>) =>
+      ({ inspect: () => ({ key: 'ripr.seamDiagnostics', ...inspected }) }) as unknown as vscode.WorkspaceConfiguration;
+
+    assert.strictEqual(explicitSetting<boolean>(fakeConfig({ defaultValue: true }), 'seamDiagnostics'), undefined);
+    assert.strictEqual(
+      explicitSetting<boolean>(fakeConfig({ defaultValue: true, globalValue: false }), 'seamDiagnostics'),
+      false
+    );
+    assert.strictEqual(
+      explicitSetting<boolean>(
+        fakeConfig({ defaultValue: true, globalValue: true, workspaceValue: false }),
+        'seamDiagnostics'
+      ),
+      false
+    );
+    assert.strictEqual(
+      explicitSetting<boolean>(
+        fakeConfig({ defaultValue: true, workspaceValue: false, workspaceFolderValue: true }),
+        'seamDiagnostics'
+      ),
+      true
+    );
   });
 
   test('preserves mixed LSP configuration request ordering', async () => {
@@ -4849,8 +4888,8 @@ function createControllerTestContext(options: ControllerTestOptions) {
         checkMode: 'draft',
         baseRef: 'origin/main',
         includeUnchangedTests: options.includeUnchangedTests ?? true,
-        seamDiagnostics: options.seamDiagnostics ?? true,
-        diagnosticProfile: options.diagnosticProfile ?? 'actionable',
+        seamDiagnostics: options.seamDiagnostics,
+        diagnosticProfile: options.diagnosticProfile,
         traceServer: 'off'
       };
     },
