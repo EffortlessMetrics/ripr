@@ -131,7 +131,11 @@ fn directory_resolution_fails_closed_to_the_lexical_module() -> Result<(), Strin
 const OWNER: &str = "'use strict';\n\nexports.charset = charset;\n\nfunction charset(type) {\n  return type === 'text/html' ? 'UTF-8' : false;\n}\n";
 const CHANGED: (usize, &str) = (6, "  return type === 'text/html' ? 'UTF-8' : false;");
 
-fn charset_class(label: &str, test_source: &str) -> Result<ExposureClass, String> {
+/// The related tests of the `charset` finding. The relation is the subject:
+/// `return type === 'text/html' ? ...` is a predicate boundary, and the
+/// member call `mimeTypes.charset(...)` is not a boundary witness, so the
+/// class alone cannot tell a related test from an unrelated one.
+fn charset_related_tests(label: &str, test_source: &str) -> Result<Vec<RelatedTest>, String> {
     let root = ts_unique_tempdir(label)?;
     ts_write_file(&root.join("index.js"), OWNER)?;
     ts_write_file(&root.join("test/test.js"), test_source)?;
@@ -151,27 +155,32 @@ fn charset_class(label: &str, test_source: &str) -> Result<ExposureClass, String
                 .as_ref()
                 .is_some_and(|owner| owner.0.ends_with("charset"))
         })
-        .map(|finding| finding.class)
+        .map(|finding| finding.related_tests)
         .ok_or_else(|| format!("{label}: expected a finding for `charset`"))
 }
 
 #[test]
 fn require_parent_directory_relates_to_root_index_owner() -> Result<(), String> {
-    let class = charset_class(
+    let related = charset_related_tests(
         "dir-e2e",
         "var mimeTypes = require('..');\n\ntest('charset', function () {\n  expect(mimeTypes.charset('text/html')).toBe('UTF-8');\n});\n",
     )?;
-    assert_eq!(class, ExposureClass::Exposed);
+    assert!(
+        related
+            .iter()
+            .any(|test| test.file.ends_with("test/test.js")),
+        "{related:?}"
+    );
     Ok(())
 }
 
 #[test]
 fn require_of_other_directory_does_not_relate_to_root_index_owner() -> Result<(), String> {
-    let class = charset_class(
+    let related = charset_related_tests(
         "dir-e2e-neg",
         "var mimeTypes = require('.');\n\ntest('charset', function () {\n  expect(mimeTypes.charset('text/html')).toBe('UTF-8');\n});\n",
     )?;
-    assert_ne!(class, ExposureClass::Exposed);
+    assert!(related.is_empty(), "{related:?}");
     Ok(())
 }
 

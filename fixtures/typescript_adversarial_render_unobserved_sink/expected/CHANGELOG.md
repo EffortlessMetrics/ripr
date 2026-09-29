@@ -235,3 +235,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — typescript_adversarial_render_unobserved_sink (9)
+
+Reason:
+RIPR-SPEC-0027: a returned ternary is a predicate probe on its condition, not a return_value probe
+
+Command:
+`cargo xtask goldens bless typescript_adversarial_render_unobserved_sink --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

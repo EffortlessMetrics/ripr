@@ -15,8 +15,8 @@ Changed
   after:    return count > 99 ? "99+" : String(count);
 
 Probe
-  family: return_value
-  delta:  value
+  family: predicate
+  delta:  control
   owner:  typescript:src/badge.tsx::formatBadge
 
 Language
@@ -44,7 +44,10 @@ Evidence
   - propagation unknown: TypeScript preview adapter does not yet model propagation.
   - observation no: Strongest extracted oracle kind: `unknown` (rank 0)
   - discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.
-  - local flow reaches returned value: return count > 99 ? "99+" : String(count); (line 2)
+  - owner: formatBadge
+  - typescript_package_confidence: none
+  - typescript_package_limitation: typescript_package_root_unresolved
+  - typescript_package_limitation: typescript_test_runner_unresolved
 
 Weakness
   - No test references `formatBadge(` — add a test that calls the changed owner.
@@ -54,9 +57,9 @@ TypeScript preview card (advisory)
   authority: preview_advisory_only (typescript/preview)
   owner: formatBadge
   owner kind: function
-  changed behavior: return_value changed at src/badge.tsx:2: `return count > 99 ? "99+" : String(count);`
+  changed behavior: predicate changed at src/badge.tsx:2: `return count > 99 ? "99+" : String(count);`
   oracle: unknown (none)
-  suggested assertion shape: Add an exact return-value assertion for the changed output.
+  suggested assertion shape: Add an exact boundary assertion for the changed predicate.
   repair packet ready: false
   why not actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route
   repair route: add trusted related-test matching for this owner shape before emitting a repair packet

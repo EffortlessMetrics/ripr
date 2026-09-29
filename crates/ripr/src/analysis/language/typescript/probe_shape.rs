@@ -61,6 +61,13 @@ pub(crate) fn classify_probe_shape_detail(line_text: &str) -> TypeScriptProbeSha
     if is_object_literal_return_line(leading) {
         return TypeScriptProbeShape::new(ProbeFamily::FieldConstruction, DeltaKind::Value);
     }
+    // `return cond ? a : b` is a predicate boundary first: a changed
+    // condition is witnessed only at its boundary input, so crediting any
+    // exact return-value oracle would read a `>=` -> `>` change as exposed.
+    // Python classifies its conditional expression the same way.
+    if return_ternary_condition(leading).is_some() {
+        return TypeScriptProbeShape::new(ProbeFamily::Predicate, DeltaKind::Control);
+    }
     if leading.starts_with("return ") || leading == "return;" || leading.starts_with("return;") {
         return TypeScriptProbeShape::new(ProbeFamily::ReturnValue, DeltaKind::Value);
     }
@@ -299,7 +306,11 @@ pub(crate) fn typescript_boundary_discriminator(line_text: &str) -> Option<Strin
 pub(crate) fn typescript_boundary_discriminator_with_shape(
     line_text: &str,
 ) -> Option<(String, bool)> {
-    let expression = strip_typescript_control_prefix(line_text);
+    // Only the condition of `return cond ? a : b` is the boundary; a
+    // comparison inside an arm is not what selects the branch.
+    let expression = return_ternary_condition(line_text.trim())
+        .map(str::to_string)
+        .unwrap_or_else(|| strip_typescript_control_prefix(line_text));
     // The nullish flag comes from the quote-aware normalization, not a raw
     // `contains("??")`: a `??` inside a string literal (`total >= 100 &&
     // "??"`) is not a nullish coalesce, and arming the nullish-input witness
@@ -323,6 +334,23 @@ pub(crate) fn typescript_boundary_discriminator_with_shape(
         }
     }
     None
+}
+
+/// The condition of a `return <condition> ? <a> : <b>` line, when the
+/// returned expression is a conditional whose ` ? ` and ` : ` sit outside
+/// strings and comments. `??` and `?.` never match ` ? `.
+fn return_ternary_condition(leading: &str) -> Option<&str> {
+    let expression = leading.strip_prefix("return ")?.trim_start();
+    let question = expression.match_indices(" ? ").find_map(|(idx, _)| {
+        (!line_prefix_looks_like_comment_or_string(expression, idx)
+            && !inside_block_comment(expression, idx))
+        .then_some(idx)
+    })?;
+    if !contains_unquoted_shape(expression.get(question + 3..)?, " : ") {
+        return None;
+    }
+    let condition = expression.get(..question)?.trim();
+    (!condition.is_empty()).then_some(condition)
 }
 
 pub(crate) fn typescript_return_value_discriminator(line_text: &str) -> Option<String> {

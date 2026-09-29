@@ -1578,6 +1578,23 @@
       ]
     },
     {
+      "id": "ts_return_ternary_boundary_one_side_input",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_return_ternary_boundary",
+      "vector": "returned_ternary_condition_change_credited_by_one_side_exact_value",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "ts_domock_relation_gate",
       "language": "typescript",
       "tier": "pure",

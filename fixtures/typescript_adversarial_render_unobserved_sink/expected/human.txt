@@ -25,7 +25,7 @@ Start here:
   Evidence:
     - reach no: 0 related test(s) found for owner `formatBadge`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 7 more evidence line(s) hidden
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_adversarial_render_unobserved_sink/input --diff fixtures/typescript_adversarial_render_unobserved_sink/diff.patch --mode fast probe:src_badge.tsx:typescript_preview:6ebbadf9

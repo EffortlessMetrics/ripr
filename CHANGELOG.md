@@ -102,6 +102,12 @@ are scoped or reviewed.
   Python and TypeScript readers already did. A cloned repository or pull
   request that committed `src/zero.rs -> /dev/zero` made `ripr check` read
   until it ran out of memory (#4751).
+- TypeScript: a changed condition in `return total > 100 ? total * 0.9 : total`
+  is now a predicate boundary on `total == 100`, as it is for Python's
+  conditional expression and for the `if` form. The line was read as a
+  returned value, so any exact assertion such as
+  `expect(discount(500)).toBe(450)` made a `>=` to `>` change read `exposed`
+  with "no repair to make", although 500 takes the discount either way.
 - Rust findings now list the related tests that call the changed owner before
   tests matched only by a weak name token, as RIPR-SPEC-0021 already required.
   On `tokio-rs/bytes` the "Related tests appear to reach" line quoted
