@@ -582,7 +582,13 @@ can route an existing Python preview GapRecord into a preview-limited
 start-here packet for a Python project root. The first-PR mapping also covers
 the direct `--check-output <check.json>` bridge that materializes the
 check-output-derived gap decision ledger before selecting the same preview
-Python repair card. The repo-ops PR summary also projects the top eligible
+Python repair card. When that start-here packet ends with a
+`ripr receipt write` receipt, which records only the verify status it is
+given, and the ledger names its check-output input report, the packet also
+carries `selected.static_recheck_command`: a `ripr check --worktree` run from
+the same merge base compared with that input report by `ripr outcome`. The
+comparison is static movement, not runtime or mutation evidence, and it is
+omitted when the ledger's input report is unnamed or absent. The repo-ops PR summary also projects the top eligible
 Python preview repair card from `actionable-gaps.json` so local reviewer
 packets preserve the same canonical gap, missing discriminator, verify command,
 receipt command, and advisory boundary. Editor projection accepts bounded

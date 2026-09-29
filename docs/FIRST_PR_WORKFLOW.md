@@ -162,7 +162,18 @@ run before the test edit. A `ripr receipt write` command printed there records
 `--status not_run`, which is true when it runs as printed; a `Receipt status`
 line follows it and says to pass `--status passed` when the verify command
 exited 0 and `--status failed` when it did not, since only the reader knows
-that outcome. `ripr pr-summary` carries the same start command as
+that outcome. That receipt records the verify status it is given and
+re-checks nothing. On the Python and TypeScript preview route, when the check
+report the gap came from is on disk, a `Static re-check after verify` line
+follows: `ripr check ... --worktree --json > .../check.after.json && ripr
+outcome --before .../check.json --after .../check.after.json`. It reads the
+test edit even before it is committed and shows the gap under `Moved` or
+`Removed` when its static evidence changed, under `Unchanged` when it did not;
+a `Receipt boundary` line says so. That movement is static evidence, not a
+runtime or mutation result. Rerunning `ripr first-pr` after the edit reports
+the evidence as stale and prints a refresh that also passes `--worktree`, so
+the next run selects the next open gap rather than the one just closed.
+`ripr pr-summary` carries the same start command as
 its first local reproduction command, and its Markdown, like
 `gate-decision.md`, follows the start with the after-phase step and the same
 manual labels. The generated CI job summary leads its `First-run status` block

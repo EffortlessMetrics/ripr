@@ -170,11 +170,29 @@ pub fn load_worktree_diff_with_effective_base(
 
     let base = resolve_effective_base(root, base, git_timeout)?;
 
-    let text = run_git_diff(root, &base, &["--submodule=short"], git_timeout)?;
+    let origin = worktree_diff_origin(root, &base, git_timeout);
+    let text = run_git_diff(root, &origin, &["--submodule=short"], git_timeout)?;
     Ok(LoadedDiff {
         text,
         effective_base: Some(base),
     })
+}
+
+/// The commit a `--worktree` diff starts from: the merge base of `base` and
+/// `HEAD`, the same origin the committed `<base>...HEAD` form uses. Diffing
+/// from the base tip instead would report every commit the base gained after
+/// the branch forked, reversed, as a change in this branch, so a worktree
+/// re-check after a test edit would not cover the same PR changes as the
+/// check it is compared with. Without a merge base (a shallow clone, an
+/// unborn branch) the base tip stays the origin, as before.
+fn worktree_diff_origin(root: &Path, base: &str, git_timeout: Option<Duration>) -> String {
+    crate::git::run_git_output_with_deadline(root, &["merge-base", base, "HEAD"], git_timeout)
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|commit| commit.trim().to_string())
+        .filter(|commit| !commit.is_empty())
+        .unwrap_or_else(|| base.to_string())
 }
 
 /// Resolve the base ref the diff will actually run against, which is also
@@ -1799,6 +1817,58 @@ mod tests {
             loaded.as_ref().is_ok_and(|diff| diff.contains("src.rs")),
             "expected a resolvable explicit base to analyze the changed file, got: {loaded:?}"
         );
+
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn worktree_load_starts_at_the_merge_base_when_the_base_moved_on() -> std::io::Result<()> {
+        // The branch forks at A and changes feature.rs; the base then gains
+        // B, which changes upstream.rs. The committed `main...HEAD` diff
+        // names only feature.rs, and the worktree diff must cover the same
+        // PR changes plus the uncommitted edit, not B reversed.
+        let dir = unique_fixture_root("worktree-merge-base")?;
+        ignore_remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+        fs::write(dir.join("feature.rs"), "fn feature() -> u32 { 1 }\n")?;
+        fs::write(dir.join("upstream.rs"), "fn upstream() -> u32 { 1 }\n")?;
+        fs::write(dir.join("edit.rs"), "fn edit() -> u32 { 1 }\n")?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "--quiet", "-m", "A"])?;
+        run_git_checked(&dir, &["checkout", "--quiet", "-b", "feature"])?;
+        fs::write(dir.join("feature.rs"), "fn feature() -> u32 { 2 }\n")?;
+        run_git_checked(&dir, &["commit", "--quiet", "-am", "feature"])?;
+        run_git_checked(&dir, &["checkout", "--quiet", "main"])?;
+        fs::write(dir.join("upstream.rs"), "fn upstream() -> u32 { 2 }\n")?;
+        run_git_checked(&dir, &["commit", "--quiet", "-am", "B"])?;
+        run_git_checked(&dir, &["checkout", "--quiet", "feature"])?;
+        fs::write(dir.join("edit.rs"), "fn edit() -> u32 { 2 }\n")?;
+
+        let tip_diff = run_git_checked(&dir, &["diff", "main"])?;
+        assert!(
+            tip_diff.contains("upstream.rs"),
+            "fixture precondition: a base-tip diff must carry the base's own change:\n{tip_diff}"
+        );
+        let committed = load_diff(&dir, Some("main"), None, None).map_err(std::io::Error::other)?;
+        assert!(
+            committed.contains("feature.rs") && !committed.contains("upstream.rs"),
+            "fixture precondition: the committed range names only the branch change:\n{committed}"
+        );
+
+        let loaded = load_worktree_diff_with_effective_base(&dir, Some("main"), None)
+            .map_err(std::io::Error::other)?;
+        assert!(
+            loaded.text.contains("feature.rs") && loaded.text.contains("edit.rs"),
+            "the worktree diff must keep the branch change and the uncommitted edit:\n{}",
+            loaded.text
+        );
+        assert!(
+            !loaded.text.contains("upstream.rs"),
+            "the worktree diff must not report the base's later commit as a branch change:\n{}",
+            loaded.text
+        );
+        assert_eq!(loaded.effective_base.as_deref(), Some("main"));
 
         ignore_remove_dir_all(&dir);
         Ok(())

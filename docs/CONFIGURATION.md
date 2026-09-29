@@ -170,7 +170,7 @@ Runs the static exposure analysis and renders findings.
 | `--diff PATH` | _(unset)_ | Path to a unified diff file. Overrides `--base`. `--diff -` reads from stdin. |
 | `--candidate-tree TREE` | _(unset)_ | Analyze exactly this immutable Git tree object, deriving the diff from Git objects alone. Mutually exclusive with `--diff` and `--base`. |
 | `--candidate-base BASE` | repository's empty tree | Base treeish for `--candidate-tree` (a commit, tag, or tree OID). |
-| `--worktree` | _(off)_ | Diff the base against the live working tree instead of `HEAD`, including staged and unstaged tracked edits. Cannot be combined with `--diff`. |
+| `--worktree` | _(off)_ | Diff the base against the live working tree instead of `HEAD`, including staged and unstaged tracked edits. Like the committed `<base>...HEAD` diff, it starts at the merge base of the base and `HEAD`, so commits the base gained after the branch forked are not reported as branch changes (the base tip when there is no merge base, as in a shallow clone). Cannot be combined with `--diff`. |
 | `--mode MODE` | `ripr.toml` `analysis.mode`, otherwise `draft` | One of `instant`, `draft`, `fast`, `deep`, `ready`. See the [mode reference](#analysis-modes). |
 | `--format FORMAT` | `human` | See [Output formats](#output-formats) for the full set. |
 | `--gap-ledger PATH` | _(unset)_ | For `repo-badge-*` formats only: render badge counts from explicit gap-decision-ledger projection targets. |

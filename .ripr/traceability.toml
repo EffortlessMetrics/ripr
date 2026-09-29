@@ -2516,6 +2516,8 @@ tests = [
   "crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_python_output_fixture_matches_expected_receipts",
   "crates/ripr/src/output/first_pr.rs::tests::python_preview_gap_ledger_is_selected_for_start_here",
   "crates/ripr/src/output/first_pr.rs::tests::python_check_output_materializes_gap_ledger_for_start_here",
+  "crates/ripr/src/output/first_pr.rs::tests::python_top_gap_names_the_static_recheck_after_verify",
+  "crates/ripr/src/analysis/diff/load.rs::tests::worktree_load_starts_at_the_merge_base_when_the_base_moved_on",
   "crates/ripr/src/output/github.rs::tests::render_includes_python_repair_card_guidance",
   "crates/ripr/src/output/sarif.rs::tests::sarif_projects_python_repair_card_properties",
   "xtask/src/main.rs::tests::dogfood_language_preview_scenarios_cover_projection_boundaries",

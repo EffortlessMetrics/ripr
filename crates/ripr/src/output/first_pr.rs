@@ -69,15 +69,36 @@ pub(crate) const RECEIPT_STATUS_LABEL: &str = "Receipt status";
 /// values that carry it instead of the command claiming one.
 pub(crate) const RECEIPT_STATUS_STEP: &str = "the command records `--status not_run` as printed; after the verify command runs, change it to `--status passed` if verify exited 0 or `--status failed` if it did not.";
 
+/// Label for the command that re-checks the selected gap's static evidence
+/// after verify, on the check-output route that has no repair after phase.
+pub(crate) const STATIC_RECHECK_LABEL: &str = "Static re-check after verify";
+/// Label for the line that says what the receipt does not show.
+pub(crate) const RECEIPT_BOUNDARY_LABEL: &str = "Receipt boundary";
+/// A `ripr receipt write` receipt records the verify status it is given and
+/// nothing else, so nothing on that route shows whether the gap moved (MCP
+/// agent walk, 2026-09-29). The static re-check reads the uncommitted test
+/// edit and compares it with the check report the gap came from.
+pub(crate) const RECEIPT_BOUNDARY_STEP: &str = "the receipt records the verify status you pass; it does not re-check the gap. The static re-check reads the test edit even before it is committed (`--worktree`) and compares it with the check report this gap came from; find this gap's line: under `Moved` or `Removed` its static evidence changed, under `Unchanged` it did not. Static movement is not a runtime or mutation result.";
+
 /// The `Receipt status` step for a receipt command that records `not_run`,
 /// `None` for any other command (a `ripr outcome` receipt, or one that already
 /// carries an outcome).
 pub(crate) fn receipt_status_step(receipt_command: &str) -> Option<&'static str> {
     let words = ripr_command_words(receipt_command)?;
-    let is_receipt_write = words.get(1).map(|(word, _)| word.as_str()) == Some("receipt")
-        && words.get(2).map(|(word, _)| word.as_str()) == Some("write");
-    (is_receipt_write && ripr_flag_value(&words, "--status") == Some("not_run"))
+    (is_receipt_write(&words) && ripr_flag_value(&words, "--status") == Some("not_run"))
         .then_some(RECEIPT_STATUS_STEP)
+}
+
+/// Whether `command` is `ripr receipt write`, whose receipt records the
+/// verify status it is given and re-checks nothing; a `ripr outcome` receipt
+/// compares snapshots itself.
+fn is_receipt_write_command(command: &str) -> bool {
+    ripr_command_words(command).is_some_and(|words| is_receipt_write(&words))
+}
+
+fn is_receipt_write(words: &[(String, bool)]) -> bool {
+    words.get(1).map(|(word, _)| word.as_str()) == Some("receipt")
+        && words.get(2).map(|(word, _)| word.as_str()) == Some("write")
 }
 
 /// The one selector for the low-level verify and receipt labels (#3906).
@@ -1007,6 +1028,11 @@ struct TopGapSelection {
     /// (#3906). Ledger selections never carry one: first-pr does not build
     /// `agent repair` from a gap id, probe id, or seam id.
     repair_command: Option<String>,
+    /// The static re-check after verify on the check-output route: rerun
+    /// check over the working tree and compare it with the check report the
+    /// gap came from. `None` when that report is absent or a repair start
+    /// carries its own after phase.
+    static_recheck_command: Option<String>,
 }
 
 impl TopGapSelection {
@@ -1054,6 +1080,9 @@ impl TopGapSelection {
         }
         if let Some(command) = &self.analysis_outcome_command {
             value["analysis_outcome_command"] = Value::String(command.clone());
+        }
+        if let Some(command) = &self.static_recheck_command {
+            value["static_recheck_command"] = Value::String(command.clone());
         }
         value
     }
@@ -1120,7 +1149,7 @@ fn select_from_gap_ledger(gap_ledger: &Value, root: &Path, options: &FirstPrOpti
         );
     }
     if let Some(record) = records.iter().copied().find(is_first_run_repairable_gap) {
-        let top_gap = top_gap_from_record(record, root, options);
+        let top_gap = top_gap_from_record(record, gap_ledger, root, options);
         if let Some(edited) = check_output_evidence_predates_edit(root, options, &top_gap) {
             return Selection::blocked(
                 "stale_artifact",
@@ -1426,6 +1455,7 @@ fn top_gap_from_review_card(card: &Value, options: &FirstPrOptions) -> Option<To
         static_limit_detail: None,
         agent_packet_command: None,
         repair_command: Some(repair_command),
+        static_recheck_command: None,
     })
 }
 
@@ -1752,7 +1782,12 @@ fn first_pr_language_is_supported(record: &Value) -> bool {
     )
 }
 
-fn top_gap_from_record(record: &Value, root: &Path, options: &FirstPrOptions) -> TopGapSelection {
+fn top_gap_from_record(
+    record: &Value,
+    gap_ledger: &Value,
+    root: &Path,
+    options: &FirstPrOptions,
+) -> TopGapSelection {
     let repair_route = record.get("repair_route");
     let anchor = record.get("anchor");
     let gap_id = string_path(record, &["gap_id"]).unwrap_or_else(|| "unknown-gap".to_string());
@@ -1790,6 +1825,11 @@ fn top_gap_from_record(record: &Value, root: &Path, options: &FirstPrOptions) ->
             ),
             "first_pr.default_receipt_write_command".to_string(),
         ),
+    };
+    let static_recheck_command = if is_receipt_write_command(&receipt_command) {
+        static_recheck_command(gap_ledger, root, options)
+    } else {
+        None
     };
     let repair_route_kind = string_from_sources(&[(repair_route, &["route_kind"])])
         .unwrap_or_else(|| "RepairRouteUnavailable".to_string());
@@ -1841,6 +1881,7 @@ fn top_gap_from_record(record: &Value, root: &Path, options: &FirstPrOptions) ->
         static_limit_kind: string_path(record, &["static_limit_kind"]),
         static_limit_detail: string_path(record, &["static_limit_detail"]),
         repair_command: None,
+        static_recheck_command,
         agent_packet_command: Some(format!(
             "ripr agent packet --root {} --gap-ledger {} --gap-id {} --json > {}",
             shell_arg(&options.command_root()),
@@ -2292,16 +2333,70 @@ fn regenerate_repo_exposure_gap_ledger_command(options: &FirstPrOptions) -> Stri
 }
 
 fn regenerate_check_output_gap_ledger_command(options: &FirstPrOptions) -> String {
-    check_output_gap_ledger_command(options, options.check_output.is_none())
+    check_output_gap_ledger_command(options, options.check_output.is_none(), false)
 }
 
 /// Rewrites the check output (the supplied `--check-output` path when there
-/// is one) before rebuilding the ledger from it.
+/// is one) before rebuilding the ledger from it. This is the stale-evidence
+/// refresh after a test or source edit, and that edit is usually still
+/// uncommitted: plain `ripr check` reads each file as committed at HEAD, so
+/// the refresh reads the working tree (`--worktree`), or it would select the
+/// gap the edit just closed again (MCP agent walk, 2026-09-29).
 fn rerun_check_output_gap_ledger_command(options: &FirstPrOptions) -> String {
-    check_output_gap_ledger_command(options, true)
+    check_output_gap_ledger_command(options, true, true)
 }
 
-fn check_output_gap_ledger_command(options: &FirstPrOptions, rerun_check: bool) -> String {
+/// The static re-check after verify (MCP agent walk, 2026-09-29): on the
+/// check-output route the receipt records only the verify status it is given,
+/// so this reruns check over the working tree, where the test edit usually
+/// still is, and compares it with the check report the gap came from.
+///
+/// That report is the one the ledger names as its input
+/// (`inputs.records` with `inputs.source_kind == "check_output"`), never a
+/// default path that merely exists: comparing against a report that did not
+/// produce the selected gap would show movement that is not the edit's. The
+/// command is omitted when the ledger names no check-output input, when it
+/// disagrees with a supplied `--check-output`, or when the report is absent.
+fn static_recheck_command(
+    gap_ledger: &Value,
+    root: &Path,
+    options: &FirstPrOptions,
+) -> Option<String> {
+    if !uses_check_output_gap_ledger(root) {
+        return None;
+    }
+    if string_path(gap_ledger, &["inputs", "source_kind"]).as_deref() != Some("check_output") {
+        return None;
+    }
+    let before_raw =
+        string_path(gap_ledger, &["inputs", "records"]).filter(|path| !path.trim().is_empty())?;
+    let before_path = resolve_path(root, &before_raw);
+    if let Some(supplied) = options.check_output.as_deref()
+        && resolve_path(root, supplied) != before_path
+    {
+        return None;
+    }
+    if !before_path.is_file() {
+        return None;
+    }
+    let after_raw = match before_raw.strip_suffix(".json") {
+        Some(stem) => format!("{stem}.after.json"),
+        None => format!("{before_raw}.after.json"),
+    };
+    let before = options.anchored_arg(&before_raw);
+    let after = options.anchored_arg(&after_raw);
+    Some(format!(
+        "ripr check --root {} --base {} --worktree --json > {after} && ripr outcome --before {before} --after {after}",
+        shell_arg(&options.command_root()),
+        shell_arg(&options.base),
+    ))
+}
+
+fn check_output_gap_ledger_command(
+    options: &FirstPrOptions,
+    rerun_check: bool,
+    worktree: bool,
+) -> String {
     let root = shell_arg(&options.command_root());
     let base = shell_arg(&options.base);
     let check_output_raw = options
@@ -2322,7 +2417,8 @@ fn check_output_gap_ledger_command(options: &FirstPrOptions, rerun_check: bool) 
     // working directory. The paired --check-output read names the same
     // anchored file: a relative read next to an absolute write would
     // split the compound across directories when pasted elsewhere.
-    format!("ripr check --root {root} --base {base} --json > {check_output} && {ledger}")
+    let worktree = if worktree { " --worktree" } else { "" };
+    format!("ripr check --root {root} --base {base}{worktree} --json > {check_output} && {ledger}")
 }
 
 fn detect_typescript_project(root: &Path) -> bool {
@@ -4692,6 +4788,12 @@ mod tests {
             next.starts_with("ripr check --root ") && next.contains("ripr reports gap-ledger"),
             "stale selection must route to the check-output refresh: {next}"
         );
+        // The edit that made the evidence stale is usually uncommitted; a
+        // refresh that reads HEAD selects the gap it just closed again.
+        assert!(
+            next.contains(" --base origin/main --worktree --json > "),
+            "stale refresh must read the working tree: {next}"
+        );
         assert!(packet["selected"].get("verify_command").is_none());
         check_first_pr(&repo, &options)?;
         cleanup(&repo)
@@ -4715,6 +4817,7 @@ mod tests {
         let (check, ledger) = rerun.split_once(" && ").unwrap_or((rerun.as_str(), ""));
         assert!(check.starts_with("ripr check --root "), "{rerun}");
         assert!(check.ends_with("saved/check.json"), "{rerun}");
+        assert!(check.contains(" --worktree --json > "), "{rerun}");
         assert_eq!(ledger, ledger_only);
     }
 
@@ -4755,6 +4858,158 @@ mod tests {
         assert!(
             check.starts_with("ripr check --root ") && check.ends_with(DEFAULT_CHECK_OUTPUT),
             "stale recovery must rewrite the supplied check output: {next}"
+        );
+        cleanup(&repo)
+    }
+
+    /// MCP agent walk (2026-09-29): on the Python route the printed
+    /// receipt records only the verify status it is given, and nothing on
+    /// the route showed whether the gap moved after the test edit. With the
+    /// check report the gap came from on disk, first-pr names the static
+    /// re-check: check over the working tree, then `ripr outcome` against
+    /// that report. Without the report there is nothing to compare, so no
+    /// re-check is offered.
+    #[test]
+    fn python_top_gap_names_the_static_recheck_after_verify() -> Result<(), String> {
+        let repo = temp_python_repo("first-pr-python-static-recheck")?;
+        fs::create_dir_all(repo.join("app")).map_err(|err| format!("mkdir app: {err}"))?;
+        fs::write(
+            repo.join("app/pricing.py"),
+            "def calculate_discount(amount, threshold):\n    return amount >= threshold\n",
+        )
+        .map_err(|err| format!("write app/pricing.py: {err}"))?;
+        run_git_setup(&repo, &["add", "app/pricing.py"])?;
+        run_git_setup(&repo, &["commit", "-m", "change pricing"])?;
+        let options = FirstPrOptions::default();
+
+        let mut ledger = ledger_with_python_repairable_gap();
+        ledger["records"][0]["receipt_command"] = json!(
+            "ripr receipt write --gap g --verify-command 'pytest tests/test_pricing.py' --status not_run --out target/ripr/receipts/g.json"
+        );
+        ledger["inputs"] = json!({
+            "source_kind": "check_output",
+            "records": DEFAULT_CHECK_OUTPUT,
+        });
+
+        // No check report on disk: nothing to compare against.
+        write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger.clone())?;
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["selected"]["state"], "top_gap");
+        assert!(
+            packet["selected"].get("static_recheck_command").is_none(),
+            "{packet}"
+        );
+
+        // A `ripr outcome` receipt compares snapshots itself: no re-check.
+        write_json(
+            &repo.join(DEFAULT_CHECK_OUTPUT),
+            check_output_with_python_repair_card(),
+        )?;
+        write_json(
+            &repo.join(DEFAULT_GAP_LEDGER),
+            ledger_with_python_repairable_gap(),
+        )?;
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["selected"]["state"], "top_gap");
+        assert!(
+            packet["selected"].get("static_recheck_command").is_none(),
+            "{packet}"
+        );
+
+        // A `receipt write` receipt with the check report on disk.
+        write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger.clone())?;
+        write_first_pr(&repo, &options)?;
+        let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+        assert_eq!(packet["selected"]["state"], "top_gap");
+        let before = options.anchored_arg(DEFAULT_CHECK_OUTPUT);
+        let after = options.anchored_arg("target/ripr/reports/check.after.json");
+        let expected = format!(
+            "ripr check --root {} --base origin/main --worktree --json > {after} && ripr outcome --before {before} --after {after}",
+            bound_arg(".")
+        );
+        assert_eq!(packet["selected"]["static_recheck_command"], expected);
+        assert!(
+            before.ends_with("target/ripr/reports/check.json"),
+            "{before}"
+        );
+        assert!(
+            after.ends_with("target/ripr/reports/check.after.json"),
+            "{after}"
+        );
+
+        let summary = start_here_cli_summary(
+            &packet,
+            Path::new("start-here.json"),
+            Path::new("start-here.md"),
+        );
+        let status_line = format!("{RECEIPT_STATUS_LABEL}: {RECEIPT_STATUS_STEP}\n");
+        let recheck_line = format!("{STATIC_RECHECK_LABEL}: `{expected}`\n");
+        let boundary_line = format!("{RECEIPT_BOUNDARY_LABEL}: {RECEIPT_BOUNDARY_STEP}\n");
+        let status_at = summary.find(&status_line).ok_or(summary.clone())?;
+        let recheck_at = summary.find(&recheck_line).ok_or(summary.clone())?;
+        let boundary_at = summary.find(&boundary_line).ok_or(summary.clone())?;
+        assert!(
+            status_at < recheck_at && recheck_at < boundary_at,
+            "{summary}"
+        );
+        assert!(
+            summary.contains(&format!("{STATIC_RECHECK_LABEL} (PowerShell 2/2): `ripr outcome --before {before} --after {after}`")),
+            "{summary}"
+        );
+        assert!(
+            RECEIPT_BOUNDARY_STEP.contains("does not re-check the gap")
+                && RECEIPT_BOUNDARY_STEP.contains("not a runtime or mutation result"),
+            "{RECEIPT_BOUNDARY_STEP}"
+        );
+        let markdown = render_start_here_markdown(&packet);
+        assert!(
+            markdown.contains(&format!("- {STATIC_RECHECK_LABEL}: `{expected}`\n"))
+                && markdown.contains(&format!(
+                    "- {RECEIPT_BOUNDARY_LABEL}: {RECEIPT_BOUNDARY_STEP}\n"
+                )),
+            "{markdown}"
+        );
+        check_first_pr(&repo, &options)?;
+
+        // Provenance: the before report is the one the ledger was built from,
+        // never the default path merely because it exists.
+        let recheck_for = |ledger: &Value, options: &FirstPrOptions| -> Result<Value, String> {
+            write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger.clone())?;
+            write_first_pr(&repo, options)?;
+            let packet = read_packet(&repo.join(DEFAULT_OUT_DIR).join(START_HERE_JSON))?;
+            assert_eq!(packet["selected"]["state"], "top_gap", "{packet}");
+            Ok(packet["selected"]["static_recheck_command"].clone())
+        };
+        let mut unnamed = ledger.clone();
+        unnamed
+            .as_object_mut()
+            .ok_or("ledger fixture must be an object")?
+            .remove("inputs");
+        assert_eq!(recheck_for(&unnamed, &options)?, Value::Null);
+        let mut records_source = ledger.clone();
+        records_source["inputs"]["source_kind"] = json!("records");
+        assert_eq!(recheck_for(&records_source, &options)?, Value::Null);
+        let mut saved = ledger.clone();
+        saved["inputs"]["records"] = json!("saved/check.json");
+        assert_eq!(
+            recheck_for(&saved, &options)?,
+            Value::Null,
+            "an absent named report must not fall back to the default check.json"
+        );
+        write_json(
+            &repo.join("saved/check.json"),
+            check_output_with_python_repair_card(),
+        )?;
+        let saved_before = options.anchored_arg("saved/check.json");
+        let saved_after = options.anchored_arg("saved/check.after.json");
+        assert_eq!(
+            recheck_for(&saved, &options)?,
+            json!(format!(
+                "ripr check --root {} --base origin/main --worktree --json > {saved_after} && ripr outcome --before {saved_before} --after {saved_after}",
+                bound_arg(".")
+            ))
         );
         cleanup(&repo)
     }

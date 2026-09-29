@@ -12114,6 +12114,18 @@ Field contract:
   receipt writer's default for its `--gap` when it has no `--out`), else a
   path the ledger record names, else the default path the synthesized command is
   built with, so the printed path and the printed command never disagree.
+  `selected.static_recheck_command` is present only when `receipt_command`
+  is a `ripr receipt write` command, the root uses the check-output gap
+  ledger route (Python or TypeScript preview, no `Cargo.toml`), and the check
+  report the gap ledger was built from exists: the ledger's `inputs.records`
+  when its `inputs.source_kind` is `check_output`, which must match a supplied
+  `--check-output`. A default report that merely exists is never used. It is `ripr check --root <root> --base <base> --worktree --json >
+  <check>.after.json && ripr outcome --before <check> --after
+  <check>.after.json`: the receipt records only the verify status it is
+  given, and this command shows whether the gap's static evidence moved. It is
+  not runtime or mutation evidence. The `stale_artifact` refresh on that route
+  also passes `--worktree`, because the edit that made the evidence stale is
+  usually uncommitted.
   A missing
   receipt is not failure, merge approval, mutation proof, or runtime adequacy.
   `selected.receipt_state` uses the canonical receipt lifecycle vocabulary:
