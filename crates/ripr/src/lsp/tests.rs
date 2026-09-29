@@ -904,8 +904,8 @@ fn serve_stdio_call_presence_observer() -> Result<(), String> {
         "serve_streams should set the explicit in-flight request concurrency bound (#2034)"
     );
     assert!(
-        serve_streams.contains(".serve(service)"),
-        "serve_streams should hand the bounded transport, the socket, and the service to the tower LSP server"
+        serve_streams.contains(".serve(dollar_requests::AnswerDollarRequests(service))"),
+        "serve_streams should hand the bounded transport, the socket, and the service (behind the `$/` request layer, #4456) to the tower LSP server"
     );
 
     Ok(())

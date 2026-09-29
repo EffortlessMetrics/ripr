@@ -164,9 +164,8 @@ Observed error behavior:
 | Any request before `initialize` | `-32002` server not initialized (unknown methods: `-32601`) |
 | Second `initialize` | `-32600` invalid request |
 | Request after `shutdown` | `-32600` invalid request |
-| Unknown method | `-32601` method not found |
+| Unknown method, including one starting with `$/` | `-32601` method not found |
 | Invalid params | `-32602` with the field named |
-| Request whose method starts with `$/` | No response; the LSP spec requires `-32601` (#4456) |
 | Malformed frame or JSON | `-32700` with a null id, then the server exits with status 0 |
 | `exit` without `shutdown` | Exits with status 0 (the spec suggests 1) |
 | Client stops reading output | The server stops after two minutes without write progress |

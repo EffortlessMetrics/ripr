@@ -39,6 +39,9 @@ Consumes:
   so every conforming client sends `textDocument/didSave` (saved content is
   the analysis input; the bare numeric kind does not request save
   notifications)
+- `MethodNotFound` (`-32601`, method named in `data`) for any unhandled
+  request whose method starts with `$/`; unhandled `$/` notifications stay
+  silent (LSP 3.17 "$ Notifications and Requests", #4456)
 - `textDocument/publishDiagnostics` (push) or `textDocument/diagnostic` (pull)
 - `textDocument/hover`
 - `textDocument/codeAction` (kind strings are metadata visible to every
@@ -247,6 +250,9 @@ qualified as static analysis results; diagnostic codes and data remain stable.
 - `tests/lsp_lifecycle.rs::initialize_advertises_full_sync_with_save_notifications`
   verifies over the real wire that the document-sync advertisement requests
   `didSave`.
+- `tests/lsp_lifecycle.rs::dollar_request_is_answered_method_not_found`
+  verifies over the real wire that a `$/` request gets `-32601` naming the
+  method, while the same `$/` notification gets no response.
 - `tests.rs` code-action tests verify the negotiated client-command filter
   (#1776): an unenhanced client receives only server-executed commands, a
   client advertising a subset keeps exactly that subset, and every emitted

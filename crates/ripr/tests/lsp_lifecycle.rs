@@ -537,6 +537,27 @@ fn normal_request_after_initialize_returns_result() -> Result<(), String> {
     exit_and_wait(&mut session)
 }
 
+/// LSP 3.17 "$ Notifications and Requests": a `$/` notification may be
+/// ignored, but a `$/` request must be answered with `MethodNotFound`
+/// (#4456). tower-lsp-server drops both unless ripr's layer answers.
+#[test]
+fn dollar_request_is_answered_method_not_found() -> Result<(), String> {
+    let mut session = LspSession::spawn()?;
+    handshake(&mut session)?;
+    session.notify("$/ripr-unknown", Some(serde_json::json!({})))?;
+    let response = session.request("$/ripr-unknown", serde_json::json!({}))?;
+    expect_error(&response, "$/ripr-unknown", -32601)?;
+    let data = response.pointer("/error/data");
+    if data != Some(&serde_json::json!("$/ripr-unknown")) {
+        return Err(format!(
+            "`$/` MethodNotFound should name the method like other unknown methods: {response}"
+        ));
+    }
+    let hover = session.request("textDocument/hover", hover_params())?;
+    expect_result(&hover, "textDocument/hover")?;
+    exit_and_wait(&mut session)
+}
+
 // ── 5/6. `shutdown` transition and request-after-shutdown rejection ──
 
 #[test]
