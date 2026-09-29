@@ -4,7 +4,9 @@ import {
   resolveDistributionRequest
 } from '../../src/distributionDescriptor';
 import {
+  FetchAdmittedManifest,
   FetchManifest,
+  fetchAdmittedManifestForDistribution,
   fetchManifestForDistribution,
   isDirectManifestNotFound,
   ManifestFetchError,
@@ -57,6 +59,112 @@ suite('Distribution manifest fallback', () => {
       'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0/ripr-server-manifest-v0.11.0.json',
       'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json'
     ]);
+  });
+
+  test('admits the exact RC placement with the same embedded digest after direct stable 404', async () => {
+    const distribution = resolveDistributionRequest('0.11.0', {
+      ...catalog,
+      schema: 2,
+      distributionGeneration: 'a'.repeat(64),
+      manifestSha256: 'b'.repeat(64),
+      targetSetDigest: 'c'.repeat(64)
+    });
+    const expectedDigest = distribution.manifestSha256 as string;
+    const requested: Array<[string, string]> = [];
+    const fetchImpl: FetchAdmittedManifest = async (url, digest) => {
+      requested.push([url, digest]);
+      if (requested.length === 1) {
+        throw notFound(url, false);
+      }
+      return { productVersion: '0.11.0', assets: {} } as never;
+    };
+
+    const result = await fetchAdmittedManifestForDistribution(
+      '',
+      distribution,
+      '0.11.0',
+      expectedDigest,
+      fetchImpl
+    );
+
+    assert.strictEqual(
+      result.manifestUrl,
+      'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json'
+    );
+    assert.deepStrictEqual(requested, [
+      [
+        'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0/ripr-server-manifest-v0.11.0.json',
+        expectedDigest
+      ],
+      [
+        'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json',
+        expectedDigest
+      ]
+    ]);
+  });
+
+  test('trusted manifest fallback propagates every non-authoritative absence unchanged', async () => {
+    const distribution = resolveDistributionRequest('0.11.0', {
+      ...catalog,
+      schema: 2,
+      distributionGeneration: 'a'.repeat(64),
+      manifestSha256: 'b'.repeat(64),
+      targetSetDigest: 'c'.repeat(64)
+    });
+    const failures: Array<[string, unknown]> = [
+      ['http 500', new ManifestFetchError('GET https://example.invalid/stable failed with HTTP 500.', { statusCode: 500, redirected: false })],
+      ['redirected 404', notFound('https://example.invalid/stable', true)],
+      ['transport', new Error('socket hang up')],
+      ['digest conflict', new Error('Server manifest SHA-256 does not match the admitted digest.')]
+    ];
+
+    for (const [name, failure] of failures) {
+      let calls = 0;
+      const fetchImpl: FetchAdmittedManifest = async () => {
+        calls += 1;
+        throw failure;
+      };
+      await assert.rejects(
+        fetchAdmittedManifestForDistribution(
+          '',
+          distribution,
+          '0.11.0',
+          distribution.manifestSha256 as string,
+          fetchImpl
+        ),
+        (error: unknown) => error === failure,
+        name
+      );
+      assert.strictEqual(calls, 1, `${name} must not reach the trusted fallback`);
+    }
+  });
+
+  test('trusted manifest fallback is disabled for an explicit mirror transport', async () => {
+    const distribution = resolveDistributionRequest('0.11.0', {
+      ...catalog,
+      schema: 2,
+      distributionGeneration: 'a'.repeat(64),
+      manifestSha256: 'b'.repeat(64),
+      targetSetDigest: 'c'.repeat(64)
+    });
+    const failure = notFound('https://mirror.invalid/ripr/ripr-server-manifest-v0.11.0.json', false);
+    let calls = 0;
+    const fetchImpl: FetchAdmittedManifest = async () => {
+      calls += 1;
+      throw failure;
+    };
+
+    await assert.rejects(
+      fetchAdmittedManifestForDistribution(
+        'https://mirror.invalid/ripr',
+        distribution,
+        '0.11.0',
+        distribution.manifestSha256 as string,
+        fetchImpl
+      ),
+      (error: unknown) => error === failure
+    );
+    assert.strictEqual(calls, 1);
   });
 
   test('propagates transport, server, redirect, and malformed failures without falling back', async () => {
