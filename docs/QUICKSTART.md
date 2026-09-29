@@ -156,6 +156,9 @@ and the install step fails. On a PR, read the job summary
 first, then open the linked artifacts for the evidence and suggested test.
 The generated workflow is non-blocking by default; a policy gate is a separate,
 explicit adoption decision.
+The workflow runs on `ubuntu-latest` and pins `shell: bash`, so its steps
+still parse if you move the job to another runner; only the Linux runner is
+covered by ripr's own tests.
 
 The [copyable CI recipe](CI.md#copyable-ripr-advisory-workflow) is the downstream
 usage section of the repository's CI guide. See [PR review guidance](PR_REVIEW_GUIDANCE.md)

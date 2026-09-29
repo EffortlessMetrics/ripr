@@ -98,7 +98,7 @@ cargo install --locked --git https://github.com/EffortlessMetrics/ripr-swarm rip
 | Review a change | Inspect possible assertion gaps and the evidence behind them. | [CLI quickstart](docs/QUICKSTART.md#cli-first-hour) |
 | Write a focused test | Prepare a supported repair, edit the test yourself or with an agent, and compare the static evidence afterward. | [Repair a gap](docs/QUICKSTART.md#agent-or-reviewer-first-hour) |
 | Work in VS Code | Inspect saved-workspace diagnostics, open a related test, and copy a test brief. | [Editor quickstart](docs/QUICKSTART.md#vs-code-first-hour) |
-| Review in GitHub | Add an advisory PR summary and downloadable evidence. | [CI quickstart](docs/QUICKSTART.md#ci-first-hour) |
+| Review in GitHub | Run `ripr init --ci github` to generate an advisory PR workflow with a summary and downloadable evidence. | [CI quickstart](docs/QUICKSTART.md#ci-first-hour) |
 
 `ripr check` inspects a change. `ripr pilot` explores the repository more broadly.
 `ripr agent repair` records a supported before/edit/after attempt; you or your

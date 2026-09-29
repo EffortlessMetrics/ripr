@@ -1138,13 +1138,14 @@ fn far_above_threshold_discounts() {
         Ok(format!("{}:{inherited}", bin.display()))
     }
 
-    /// Run a script the way a GitHub-hosted Linux step does without a
-    /// `shell:` key (`bash -e {0}`), with the freshly built `ripr` first on
-    /// PATH.
+    /// Run a script the way a GitHub-hosted Linux step does under the
+    /// generated workflow's `defaults.run.shell: bash`
+    /// (`bash --noprofile --norc -eo pipefail {0}`), with the freshly built
+    /// `ripr` first on PATH.
     pub(super) fn bash(dir: &Path, script: &str, env: &[(String, String)]) -> TestResult<Output> {
         let mut command = Command::new("bash");
         command
-            .args(["--noprofile", "--norc", "-e", "-c", script])
+            .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", script])
             .current_dir(dir)
             .env("PATH", path_with_ripr()?)
             .stdin(Stdio::null());
@@ -2545,14 +2546,15 @@ fn run_ripr_init(root: &std::path::Path) -> Result<std::process::Output, Box<dyn
 }
 
 /// One spawn site for executing extracted capture-step shell (process-policy
-/// bound). GitHub Actions runs a `run:` step without `shell:` as `bash -e`
-/// on ubuntu-latest, so the helper mirrors that invocation instead of a
-/// bare `sh -c`, which would not enable errexit. Unix-only, so Windows
-/// builds never see a dead helper.
+/// bound). The generated workflow pins `defaults.run.shell: bash`, which
+/// GitHub Actions runs as `bash --noprofile --norc -eo pipefail {0}`, so the
+/// helper mirrors that invocation instead of a bare `sh -c`, which would
+/// enable neither errexit nor pipefail. Unix-only, so Windows builds never
+/// see a dead helper.
 #[cfg(unix)]
 fn run_sh(script: &str, cwd: &std::path::Path) -> Result<std::process::Output, Box<dyn Error>> {
     Ok(Command::new("bash")
-        .args(["-e", "-c", script])
+        .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", script])
         .current_dir(cwd)
         .output()?)
 }

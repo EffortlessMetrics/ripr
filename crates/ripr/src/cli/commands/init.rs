@@ -392,6 +392,13 @@ env:
   #           pull-requests: write, which this workflow grants)
   RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
 
+# Every run step is bash (arrays, mktemp, [ -f ]). Pin the shell so the
+# steps still parse if a job is moved to windows-latest, whose default run
+# shell is PowerShell.
+defaults:
+  run:
+    shell: bash
+
 # One run per PR: a newer push cancels the older run. Only the newest head's
 # placements are valid, and two overlapping runs would each snapshot the
 # existing inline comments before either publishes, then both create the
@@ -2801,6 +2808,25 @@ mod tests {
         assert!(
             unix.ends_with("\nRerun without --dry-run to apply.\n"),
             "{unix}"
+        );
+    }
+
+    /// #4391: the steps use bash-only syntax, so the job pins `shell: bash`
+    /// instead of inheriting a runner default (PowerShell on Windows).
+    #[test]
+    fn generated_workflow_pins_bash_for_every_run_step() {
+        let workflow = generated_github_actions_workflow();
+        let defaults_at = workflow
+            .find("\ndefaults:\n  run:\n    shell: bash\n")
+            .unwrap_or(usize::MAX);
+        let jobs_at = workflow.find("\njobs:\n").unwrap_or(usize::MAX);
+        assert!(
+            defaults_at < jobs_at && jobs_at != usize::MAX,
+            "the workflow must pin bash for every job:\n{workflow}"
+        );
+        assert!(
+            workflow.contains("gate_args=("),
+            "bash-only syntax the pin protects"
         );
     }
 

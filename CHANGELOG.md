@@ -94,6 +94,9 @@ are scoped or reviewed.
   blocked root, a file outside the analyzed root, an edited buffer whose
   evidence is paused until the file is saved, or a file no refresh has
   analyzed yet.
+- CI: the `ripr init --ci github` workflow pins `shell: bash` for every job,
+  so its bash-only steps still parse on a Windows runner, and the README
+  names `ripr init --ci github` as the CI entry point (#4391).
 - `ripr review-comments` no longer times out on a large diff. It evaluates
   seams on changed lines and in changed owner functions first, and skips the
   rest of the scope when those already fill the ten review slots; a warning
