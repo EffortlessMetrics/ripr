@@ -1714,3 +1714,121 @@ pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {
         .map(|text| text.trim().to_string())
         .map_err(|err| format!("failed to read {}: {err}", path.display()))
 }
+
+
+#[cfg(test)]
+mod final_subject_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn scratch(name: &str) -> Result<PathBuf, String> {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("clock before epoch: {err}"))?
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "ripr-release-server-{name}-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path)
+            .map_err(|err| format!("create scratch {}: {err}", path.display()))?;
+        Ok(path)
+    }
+
+    fn subject(name: &str, kind: &str, bytes: &[u8]) -> FinalServerSubject {
+        FinalServerSubject {
+            name: name.to_string(),
+            kind: kind.to_string(),
+            size: bytes.len() as u64,
+            sha256: sha256_bytes(bytes),
+            source_receipt: "fixture.receipt.json".to_string(),
+        }
+    }
+
+    #[test]
+    fn final_subject_checksum_contract_rejects_missing_extra_and_drift() -> Result<(), String> {
+        let root = scratch("checksums")?;
+        let sums = root.join("SHA256SUMS");
+        let archive = subject("ripr-server-v0.11.0-test.tar.gz", "server_archive", b"archive");
+        let manifest = subject("ripr-server-manifest-v0.11.0.json", "server_manifest", b"manifest");
+        let checksums = subject("SHA256SUMS", "checksums", b"not-self-covered");
+        let subjects = vec![archive.clone(), manifest.clone(), checksums];
+
+        fs::write(
+            &sums,
+            format!(
+                "{}  {}\n{}  {}\n",
+                archive.sha256, archive.name, manifest.sha256, manifest.name
+            ),
+        )
+        .map_err(|err| err.to_string())?;
+        validate_sha256sums_subjects(&sums, &subjects)?;
+
+        fs::write(&sums, format!("{}  {}\n", archive.sha256, archive.name))
+            .map_err(|err| err.to_string())?;
+        let missing = validate_sha256sums_subjects(&sums, &subjects)
+            .expect_err("missing manifest row must reject");
+        assert!(missing.contains("omits"), "{missing}");
+
+        fs::write(
+            &sums,
+            format!(
+                "{}  {}\n{}  {}\n{}  extra.bin\n",
+                archive.sha256,
+                archive.name,
+                manifest.sha256,
+                manifest.name,
+                sha256_bytes(b"extra")
+            ),
+        )
+        .map_err(|err| err.to_string())?;
+        let extra = validate_sha256sums_subjects(&sums, &subjects)
+            .expect_err("unexpected checksum subject must reject");
+        assert!(extra.contains("unexpected subjects"), "{extra}");
+
+        fs::write(
+            &sums,
+            format!(
+                "{}  {}\n{}  {}\n",
+                sha256_bytes(b"changed"),
+                archive.name,
+                manifest.sha256,
+                manifest.name
+            ),
+        )
+        .map_err(|err| err.to_string())?;
+        let drift = validate_sha256sums_subjects(&sums, &subjects)
+            .expect_err("changed digest must reject");
+        assert!(drift.contains("digest mismatch"), "{drift}");
+
+        fs::remove_dir_all(&root).map_err(|err| err.to_string())
+    }
+
+    #[test]
+    fn final_subject_staging_rejects_unexpected_and_non_regular_entries() -> Result<(), String> {
+        let root = scratch("staging")?;
+        let version = "0.11.0";
+        let subject_name = "ripr-server-v0.11.0-test.tar.gz";
+        fs::write(root.join(subject_name), b"archive").map_err(|err| err.to_string())?;
+        fs::write(
+            root.join(format!("ripr-server-assembly-v{version}.receipt.json")),
+            b"{}",
+        )
+        .map_err(|err| err.to_string())?;
+        let subjects = vec![subject(subject_name, "server_archive", b"archive")];
+        validate_final_server_staging_entries(&root, version, &subjects)?;
+
+        fs::write(root.join("unexpected.log"), b"no").map_err(|err| err.to_string())?;
+        let extra = validate_final_server_staging_entries(&root, version, &subjects)
+            .expect_err("unexpected staging file must reject");
+        assert!(extra.contains("unexpected final server staging entry"), "{extra}");
+        fs::remove_file(root.join("unexpected.log")).map_err(|err| err.to_string())?;
+
+        fs::create_dir(root.join("unexpected-dir")).map_err(|err| err.to_string())?;
+        let non_regular = validate_final_server_staging_entries(&root, version, &subjects)
+            .expect_err("non-regular staging entry must reject");
+        assert!(non_regular.contains("non-regular final server staging entry"), "{non_regular}");
+
+        fs::remove_dir_all(&root).map_err(|err| err.to_string())
+    }
+}
