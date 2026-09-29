@@ -99,6 +99,7 @@ jobs:
         run: cargo run --locked -p xtask -- release-final-server-subjects --version "$RIPR_RELEASE_VERSION" --repository "${{ github.repository }}"
 
       - name: Retain final server staging packet
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: ripr-server-final-staging
@@ -139,14 +140,50 @@ jobs:
         env:
           RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
           GH_TOKEN: ${{ github.token }}
+          RIPR_ATTESTATION_ACTION_COMPLETED: "true"
         run: |
           set -euo pipefail
           version="${RIPR_RELEASE_VERSION#v}"
           inventory="dist/ripr-server-final-subjects-v${version}.json"
           verified="${RUNNER_TEMP}/verified-subjects.txt"
           : > "${verified}"
-          while IFS=$'\t' read -r sha name; do
-            gh attestation verify "dist/${name}" --repo "${GITHUB_REPOSITORY}"
+          while IFS=
+
+      - name: Retain verified attestation packet
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-server-attested
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: attest
+    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ripr-server-attested
+          path: dist
+
+      - name: Upload attested release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RIPR_RELEASE_VERSION: ${{ github.ref_name }}
+        shell: bash
+        run: cargo run --locked -p xtask -- release-upload-assets --version "$RIPR_RELEASE_VERSION"
+\t' read -r sha name; do
+            gh attestation verify "dist/${name}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release-server-binaries.yml" --signer-digest "${GITHUB_SHA}" --source-digest "${GITHUB_SHA}" --source-ref "${GITHUB_REF}"
             printf '%s  %s\n' "${sha}" "${name}" >> "${verified}"
           done < <(jq -r '.subjects[] | [.sha256, .name] | @tsv' "${inventory}")
           cargo run --locked -p xtask -- release-final-server-attestation-receipt --version "${version}" --verified-subjects "${verified}"
