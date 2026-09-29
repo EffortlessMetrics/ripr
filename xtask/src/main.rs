@@ -34,6 +34,7 @@ mod evidence_promotion;
 mod evidence_quality;
 mod fixture_contracts;
 mod no_panic;
+mod output_enum_contracts;
 mod policy;
 mod product_gate_plan;
 mod public_api_surface;
@@ -13416,6 +13417,7 @@ fn check_output_contracts() -> Result<(), String> {
         "crates/ripr/src/domain/mod.rs",
         "crates/ripr/src/domain/classification.rs",
         "crates/ripr/src/domain/evidence.rs",
+        "crates/ripr/src/domain/language.rs",
         "crates/ripr/src/domain/probe.rs",
         "crates/ripr/src/domain/summary.rs",
         "crates/ripr/src/domain/support.rs",
@@ -13516,7 +13518,7 @@ fn check_output_contracts() -> Result<(), String> {
             }
             "exposure_class" | "severity" | "probe_family" | "delta" | "flow_sink"
             | "stage_state" | "confidence" | "oracle_kind" | "oracle_strength" | "stop_reason"
-            | "value_context" | "oracle_alignment" | "source_currentness" => {
+            | "value_context" | "oracle_alignment" | "source_currentness" | "static_limit_kind" => {
                 require_contract_value(
                     "crates/ripr/src/domain/",
                     &domain,
@@ -13579,6 +13581,22 @@ fn check_output_contracts() -> Result<(), String> {
             )),
         }
     }
+
+    let mut registry: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for entry in &seen {
+        if let Some((kind, value)) = entry.split_once('|') {
+            registry
+                .entry(kind.to_string())
+                .or_default()
+                .insert(value.to_string());
+        }
+    }
+    output_enum_contracts::check_enum_completeness(
+        &registry,
+        &schema,
+        &|path| read_text_lossy(Path::new(path)),
+        &mut violations,
+    )?;
 
     // These producer-owned kinds are durable artifacts in the governed Python
     // repair path. Removing a registry row must fail too, not just a bad row.

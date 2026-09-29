@@ -382,6 +382,14 @@ are scoped or reviewed.
   facts or classified evidence. File-fact, full/compact classified, shard and
   corpus-fingerprint generations cold-recompute once; checksums do not
   authenticate writers able to recompute them (#4382).
+- `docs/OUTPUT_SCHEMA.md` now lists every finding enum value `ripr check
+  --format json` can emit: `static_limit_kind` gains
+  `wrapper_error_binding_unresolved` and
+  `rust_subprocess_binary_reach_unresolved`, and `stop_reason` gains
+  `transitive_reach_unresolved`. `cargo xtask check-output-contracts` now
+  derives each governed enum from its declaration and fails when the doc list
+  or `policy/output_contracts.txt` misses or invents a value, instead of
+  accepting any substring match (#4539).
 
 - LSP code lenses now offer the registered saved-workspace refresh command with an
   explicit action label, avoiding unsupported empty-command clicks in standard clients.

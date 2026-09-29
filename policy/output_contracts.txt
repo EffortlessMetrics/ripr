@@ -25,9 +25,14 @@ exposure_class|reachable_unrevealed|Static classification value.
 exposure_class|static_unknown|Static classification value.
 exposure_class|weakly_exposed|Static classification value.
 flow_sink|call_effect|Flow sink value.
+flow_sink|config_change|Flow sink value.
 flow_sink|error_variant|Flow sink value.
+flow_sink|event_call|Flow sink value.
+flow_sink|log_message|Flow sink value.
 flow_sink|match_arm|Flow sink value.
+flow_sink|persistence|Flow sink value.
 flow_sink|return_value|Flow sink value.
+flow_sink|state_write|Flow sink value.
 flow_sink|struct_field|Flow sink value.
 flow_sink|unknown|Flow sink value.
 ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit forces unknown outcome.
@@ -80,6 +85,24 @@ stage_state|opaque|RIPR stage state value.
 stage_state|unknown|RIPR stage state value.
 stage_state|weak|RIPR stage state value.
 stage_state|yes|RIPR stage state value.
+static_limit_kind|cross_language_oracle_visibility_unresolved|Typed static limitation value.
+static_limit_kind|decorator_indirection|Typed static limitation value.
+static_limit_kind|dynamic_dispatch|Typed static limitation value.
+static_limit_kind|metaprogramming|Typed static limitation value.
+static_limit_kind|missing_import_graph|Typed static limitation value.
+static_limit_kind|mocked_module|Typed static limitation value.
+static_limit_kind|opaque_custom_assertion_helper|Typed static limitation value.
+static_limit_kind|property_based_test|Typed static limitation value.
+static_limit_kind|rust_integration_public_api_path_unresolved|Typed static limitation value.
+static_limit_kind|rust_macro_reach_unresolved|Typed static limitation value.
+static_limit_kind|rust_macro_wrapped_assertion_unresolved|Typed static limitation value.
+static_limit_kind|rust_macro_wrapped_test_call_unresolved|Typed static limitation value.
+static_limit_kind|rust_subprocess_binary_reach_unresolved|Typed static limitation value.
+static_limit_kind|rust_transitive_reach_unresolved|Typed static limitation value.
+static_limit_kind|rust_value_propagation_unresolved|Typed static limitation value.
+static_limit_kind|unresolved_pytest_fixture|Typed static limitation value.
+static_limit_kind|unsupported_syntax|Typed static limitation value.
+static_limit_kind|wrapper_error_binding_unresolved|Typed static limitation value.
 stop_reason|async_boundary_opaque|Static analysis stop reason value.
 stop_reason|dynamic_dispatch_unresolved|Static analysis stop reason value.
 stop_reason|external_crate_boundary|Static analysis stop reason value.
