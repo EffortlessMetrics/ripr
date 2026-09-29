@@ -124,9 +124,12 @@ editors/vscode/
 This directory is intentionally outside the Cargo workspace. It is a Node/VS
 Code extension package, not a Rust package.
 
-For a local VSIX smoke, run `npm run package`, then install
+For a local VSIX smoke, `cd editors/vscode` and run `npm ci` and
+`npm run compile` before `npm run package`, then install
 `editors/vscode/dist/ripr-VERSION.vsix`, replacing `VERSION` with the package
-version.
+version. `npm run package` does not compile the extension; in a fresh
+checkout it stops with `Extension entrypoint(s) missing` until
+`npm run compile` has built `out/`.
 
 ### Managed Download Integrity
 

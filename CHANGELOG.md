@@ -2048,6 +2048,11 @@ are scoped or reviewed.
   requires, and name the formatter check as `cargo fmt --check`
   ([#3826](https://github.com/EffortlessMetrics/ripr-swarm/pull/3826)).
 
+- The local VSIX steps in `docs/EDITOR_EXTENSION.md` now run `npm ci` and
+  `npm run compile` before `npm run package`. Run alone in a fresh checkout,
+  `npm run package` stops with `Extension entrypoint(s) missing`
+  ([#4865](https://github.com/EffortlessMetrics/ripr-swarm/pull/4865)).
+
 ## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
 
 Release date: 2026-06-15 (crates.io publication; the GitHub release draft for this version remains unfinalized).
