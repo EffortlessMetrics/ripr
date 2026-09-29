@@ -789,12 +789,55 @@ pub(crate) struct TargetedTestClassifiedSeamInventory {
     pub(crate) workspace_cache_key: super::seam_cache::RepoSeamCacheKey,
 }
 
+/// Why a `--changed-test` selector could not name the seams to recompute.
+/// The selector failures are named limitations for the rerun report
+/// (RIPR-SPEC-0123); `Analysis` is a workspace failure the caller reports as
+/// an error.
+#[derive(Debug)]
+pub(crate) enum TargetedTestInventoryError {
+    Selector {
+        kind: &'static str,
+        message: String,
+        selected_test_count: usize,
+        /// The index was already built when the selector failed, so the
+        /// report still discloses the cache work that ran.
+        cache: Box<TargetedSelectorCacheEvidence>,
+    },
+    Analysis(String),
+}
+
+/// File-fact cache work completed before a changed-test selector failed.
+#[derive(Clone, Debug)]
+pub(crate) struct TargetedSelectorCacheEvidence {
+    pub(crate) file_fact_cache: FileFactCacheStats,
+    pub(crate) workspace_cache_key: super::seam_cache::RepoSeamCacheKey,
+}
+
+impl From<String> for TargetedTestInventoryError {
+    fn from(message: String) -> Self {
+        Self::Analysis(message)
+    }
+}
+
+impl From<TargetedTestInventoryError> for String {
+    fn from(error: TargetedTestInventoryError) -> Self {
+        match error {
+            TargetedTestInventoryError::Selector { message, .. }
+            | TargetedTestInventoryError::Analysis(message) => message,
+        }
+    }
+}
+
+pub(crate) const CHANGED_TEST_UNRESOLVED: &str = "changed_test_unresolved";
+pub(crate) const CHANGED_TEST_OWNER_UNRESOLVED: &str = "changed_test_owner_unresolved";
+pub(crate) const CHANGED_TEST_OWNER_AMBIGUOUS: &str = "changed_test_owner_ambiguous";
+
 pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
     root: &Path,
     config: &RiprConfig,
     changed_test: &Path,
     test_node: Option<&str>,
-) -> Result<TargetedTestClassifiedSeamInventory, String> {
+) -> Result<TargetedTestClassifiedSeamInventory, TargetedTestInventoryError> {
     let state = collect_workspace_state(root, config)?;
     let workspace_cache_key = state.cache_key();
     let changed_test = normalized_inventory_path(changed_test);
@@ -804,6 +847,16 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
         harness_registrations(config),
     )?;
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+    let selector_limitation =
+        |kind, message, selected_test_count| TargetedTestInventoryError::Selector {
+            kind,
+            message,
+            selected_test_count,
+            cache: Box::new(TargetedSelectorCacheEvidence {
+                file_fact_cache: cached.file_fact_cache.clone(),
+                workspace_cache_key: workspace_cache_key.clone(),
+            }),
+        };
 
     let selected_tests = cached
         .index
@@ -813,10 +866,14 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
         .filter(|test| test_node.is_none_or(|node| test.name == node))
         .collect::<Vec<_>>();
     if selected_tests.is_empty() {
-        return Err(format!(
-            "targeted rerun changed test `{}`{} did not resolve to a parsed test",
-            changed_test,
-            test_node.map_or(String::new(), |node| format!("::{node}"))
+        return Err(selector_limitation(
+            CHANGED_TEST_UNRESOLVED,
+            format!(
+                "targeted rerun changed test `{}{}` did not resolve to a parsed test",
+                changed_test,
+                test_node.map_or(String::new(), |node| format!("::{node}"))
+            ),
+            0,
         ));
     }
 
@@ -832,8 +889,12 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
         .map(str::to_string)
         .collect::<BTreeSet<_>>();
     if direct_call_names.is_empty() {
-        return Err(format!(
-            "targeted rerun changed test `{changed_test}` has no direct owner-call selector"
+        return Err(selector_limitation(
+            CHANGED_TEST_OWNER_UNRESOLVED,
+            format!(
+                "targeted rerun changed test `{changed_test}` has no direct owner-call selector"
+            ),
+            selected_tests.len(),
         ));
     }
 
@@ -850,8 +911,12 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
         .map(|function| function.name.clone())
         .collect::<BTreeSet<_>>();
     if matched_call_names.is_empty() {
-        return Err(format!(
-            "targeted rerun changed test `{changed_test}` did not resolve a direct production owner"
+        return Err(selector_limitation(
+            CHANGED_TEST_OWNER_UNRESOLVED,
+            format!(
+                "targeted rerun changed test `{changed_test}` did not resolve a direct production owner"
+            ),
+            selected_tests.len(),
         ));
     }
     for call_name in &matched_call_names {
@@ -860,8 +925,12 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
             .filter(|function| function.name == *call_name)
             .count();
         if matching_owners > 1 {
-            return Err(format!(
-                "targeted rerun changed test `{changed_test}` has ambiguous direct production owner `{call_name}`"
+            return Err(selector_limitation(
+                CHANGED_TEST_OWNER_AMBIGUOUS,
+                format!(
+                    "targeted rerun changed test `{changed_test}` has ambiguous direct production owner `{call_name}`"
+                ),
+                selected_tests.len(),
             ));
         }
     }
@@ -5135,8 +5204,17 @@ fn surcharge_total_case() { assert_eq!(surcharge_total(50), 55); }
         );
         let _ = std::fs::remove_dir_all(&root);
         match result {
-            Err(message) if message.contains("::missing_case") => Ok(()),
-            Err(message) => Err(format!("unexpected missing-node diagnostic: {message}")),
+            Err(TargetedTestInventoryError::Selector {
+                kind: CHANGED_TEST_UNRESOLVED,
+                message,
+                ..
+            }) if message.contains("::missing_case") => Ok(()),
+            Err(TargetedTestInventoryError::Selector { kind, message, .. }) => Err(format!(
+                "unexpected missing-node limitation {kind}: {message}"
+            )),
+            Err(TargetedTestInventoryError::Analysis(message)) => {
+                Err(format!("unexpected missing-node diagnostic: {message}"))
+            }
             Ok(_) => Err("unknown test node must fail closed".to_string()),
         }
     }
@@ -5165,10 +5243,18 @@ fn surcharge_total_case() { assert_eq!(surcharge_total(50), 55); }
         );
         let _ = std::fs::remove_dir_all(&root);
         match result {
-            Err(message) if message.contains("ambiguous direct production owner `same_name`") => {
-                Ok(())
+            Err(TargetedTestInventoryError::Selector {
+                kind: CHANGED_TEST_OWNER_AMBIGUOUS,
+                message,
+                selected_test_count: 1,
+                ..
+            }) if message.contains("ambiguous direct production owner `same_name`") => Ok(()),
+            Err(TargetedTestInventoryError::Selector { kind, message, .. }) => {
+                Err(format!("unexpected ambiguity limitation {kind}: {message}"))
             }
-            Err(message) => Err(format!("unexpected ambiguity diagnostic: {message}")),
+            Err(TargetedTestInventoryError::Analysis(message)) => {
+                Err(format!("unexpected ambiguity diagnostic: {message}"))
+            }
             Ok(_) => Err("ambiguous direct owner must fail closed".to_string()),
         }
     }

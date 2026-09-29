@@ -1,7 +1,7 @@
 #[cfg(feature = "lang-typescript")]
 use crate::analysis::targeted_typescript_findings_for_scope;
 use crate::analysis::{
-    canonical_gap::canonical_gap_identity,
+    TargetedTestInventoryError, canonical_gap::canonical_gap_identity,
     inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config, seam_cache::stable_input_hash,
@@ -480,28 +480,49 @@ fn rerun_changed_test(
     test_node: Option<&str>,
 ) -> Result<TargetedRerunReport, String> {
     let changed_test = normalize_changed_test(root, changed_test)?;
-    let inventory = inventory_changed_test_classified_seams_at_with_config_node(
+    let selector = |selected_test_count, direct_call_names| TargetedRerunSelector {
+        kind: "changed_test",
+        changed_test: Some(match test_node {
+            Some(test_node) => format!("{}::{test_node}", display_path(&changed_test)),
+            None => display_path(&changed_test),
+        }),
+        canonical_gap_id: None,
+        gap_ledger: None,
+        matched_record_count: None,
+        recomputed_scope_count: None,
+        selected_test_count,
+        direct_call_names,
+    };
+    // RIPR-SPEC-0123: an unknown, ownerless, or ambiguous selector is a named
+    // limitation with no seams, never an error or a broader scan.
+    let inventory = match inventory_changed_test_classified_seams_at_with_config_node(
         root,
         config,
         &changed_test,
         test_node,
-    )?;
+    ) {
+        Ok(inventory) => inventory,
+        Err(TargetedTestInventoryError::Selector {
+            kind,
+            message,
+            selected_test_count,
+            cache,
+        }) => {
+            // The index (and its file-fact cache) already ran; disclose that
+            // work instead of reporting a cache that never ran.
+            let mut report =
+                limited_report(selector(selected_test_count, Vec::new()), kind, message);
+            report.cache = cache_from(&cache.file_fact_cache, []);
+            report.cache.input_fingerprint =
+                Some(input_fingerprint_for(root, &cache.workspace_cache_key));
+            return Ok(report);
+        }
+        Err(TargetedTestInventoryError::Analysis(message)) => return Err(message),
+    };
     let direct_call_names = inventory.direct_call_names.clone();
     let mut report = report(
         "current_state_only",
-        TargetedRerunSelector {
-            kind: "changed_test",
-            changed_test: Some(match test_node {
-                Some(test_node) => format!("{}::{test_node}", display_path(&changed_test)),
-                None => display_path(&changed_test),
-            }),
-            canonical_gap_id: None,
-            gap_ledger: None,
-            matched_record_count: None,
-            recomputed_scope_count: None,
-            selected_test_count: inventory.selected_test_count,
-            direct_call_names: inventory.direct_call_names,
-        },
+        selector(inventory.selected_test_count, inventory.direct_call_names),
         cache_from(
             &inventory.file_fact_cache,
             ["selected_test_scope_recomputed"],
@@ -1920,8 +1941,9 @@ mod tests {
         TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector,
         add_cache_stats, cache_from, compare_selector_scoped_seams, entry_matches_selected_gap,
         graph_provenance_unavailable_fields, input_fingerprint_changes, parity_mismatch_fields,
-        parse_options, render_human, rerun_gap, resolve_gap_records, route_from_gap_records,
-        same_root, scopes_from_gap_records, seam_from, seam_matches_resolved_scope,
+        parse_options, render_human, rerun_changed_test, rerun_gap, resolve_gap_records,
+        route_from_gap_records, same_root, scopes_from_gap_records, seam_from,
+        seam_matches_resolved_scope,
     };
     use crate::analysis::ClassifiedSeam;
     use crate::analysis::classify_seam;
@@ -2258,6 +2280,81 @@ mod tests {
         Ok(())
     }
 
+    /// RIPR-SPEC-0123: an unknown test node, an unparsed test path, and an
+    /// ambiguous owner are named limitations with no seams, so a `--json`
+    /// caller gets a parseable report instead of exit 2 with empty stdout.
+    #[test]
+    fn unresolved_changed_test_selectors_are_named_limitations() -> Result<(), String> {
+        let root = unique_temp_root("rerun-changed-test-unresolved")?;
+        write_file(
+            &root.join("src/first.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount > 0 { amount } else { 0 } }
+",
+        )?;
+        write_file(
+            &root.join("src/second.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount >= 0 { amount } else { 0 } }
+",
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            "#[test]\nfn same_name_case() { assert_eq!(same_name(1), 1); }\n",
+        )?;
+        let config = RiprConfig::default();
+        let cases = [
+            (
+                "tests/pricing.rs",
+                Some("missing_case"),
+                "changed_test_unresolved",
+                0,
+            ),
+            ("tests/absent.rs", None, "changed_test_unresolved", 0),
+            ("tests/pricing.rs", None, "changed_test_owner_ambiguous", 1),
+        ];
+        let mut failures = Vec::new();
+        let mut warm_hits = Vec::new();
+        for (file, node, expected_kind, expected_selected) in cases {
+            let report = rerun_changed_test(&root, &config, Path::new(file), node)?;
+            let kind = report.limitation.as_ref().map(|limitation| limitation.kind);
+            // The index ran before the selector failed, so the cache block
+            // must report that work, not `not_run` with zeroed counters.
+            let cache = &report.cache;
+            if report.state != "limited"
+                || kind != Some(expected_kind)
+                || !report.seams.is_empty()
+                || report.selector.selected_test_count != expected_selected
+                || cache.reuse_state == "not_run"
+                || cache.hits + cache.misses == 0
+                || cache.input_fingerprint.is_none()
+            {
+                failures.push(format!(
+                    "{file} {node:?}: state={} kind={kind:?} seams={} selected={} cache={}/{} hits={} misses={} fingerprint={:?}",
+                    report.state,
+                    report.seams.len(),
+                    report.selector.selected_test_count,
+                    cache.reuse_state,
+                    cache.file_fact_status,
+                    cache.hits,
+                    cache.misses,
+                    cache.input_fingerprint
+                ));
+            }
+            warm_hits.push(cache.hits);
+        }
+        // Later selectors reuse the file facts the first run stored.
+        if warm_hits.last().is_none_or(|hits| *hits == 0) {
+            failures.push(format!(
+                "warm selector runs reused no file facts: {warm_hits:?}"
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
+    }
+
     #[cfg(feature = "lang-typescript")]
     #[test]
     fn typescript_rerun_without_current_seam_fails_closed() -> Result<(), String> {
@@ -2304,7 +2401,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "lang-typescript")]
     fn unique_temp_root(name: &str) -> Result<PathBuf, String> {
         let root = std::env::temp_dir().join(format!(
             "ripr-{name}-{}-{}",
@@ -2394,7 +2490,6 @@ mod tests {
         write_file(path, &rendered)
     }
 
-    #[cfg(feature = "lang-typescript")]
     fn write_file(path: &Path, contents: &str) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
