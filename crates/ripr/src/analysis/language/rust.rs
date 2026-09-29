@@ -16,6 +16,7 @@ use super::super::{
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::analysis::cancellation;
 use crate::analysis::facts::{FunctionSummary, RustIndex};
+use crate::analysis::path_glob::{path_glob_matches, segment_glob_matches};
 use crate::config::OraclePolicy;
 use crate::domain::{
     ExposureClass, Finding, Probe, SourceCurrentness, StaticLimitKind, StopReason,
@@ -1431,113 +1432,9 @@ fn generated_pattern_matches(pattern: &str, path: &Path) -> bool {
     if pattern.contains('/') {
         path_glob_matches(pattern, &normalized_path)
     } else {
-        path.file_name().is_some_and(|name| {
-            let pattern_chars = pattern.chars().collect::<Vec<_>>();
-            let name_chars = name.to_string_lossy().chars().collect::<Vec<_>>();
-            let mut memo = vec![vec![None; name_chars.len() + 1]; pattern_chars.len() + 1];
-            glob_segment_chars_match(&pattern_chars, &name_chars, 0, 0, &mut memo)
-        })
+        path.file_name()
+            .is_some_and(|name| segment_glob_matches(pattern, &name.to_string_lossy()))
     }
-}
-
-fn path_glob_matches(pattern: &str, path: &str) -> bool {
-    let pattern_segments = pattern
-        .split('/')
-        .filter(|segment| !segment.is_empty() && *segment != ".")
-        .map(|segment| segment.chars().collect::<Vec<_>>())
-        .collect::<Vec<_>>();
-    let path_segments = path
-        .split('/')
-        .filter(|segment| !segment.is_empty() && *segment != ".")
-        .map(|segment| segment.chars().collect::<Vec<_>>())
-        .collect::<Vec<_>>();
-    let mut memo = vec![vec![None; path_segments.len() + 1]; pattern_segments.len() + 1];
-    glob_segments_match(&pattern_segments, &path_segments, 0, 0, &mut memo)
-}
-
-fn glob_segments_match(
-    pattern: &[Vec<char>],
-    path: &[Vec<char>],
-    pattern_index: usize,
-    path_index: usize,
-    memo: &mut [Vec<Option<bool>>],
-) -> bool {
-    if let Some(result) = memo[pattern_index][path_index] {
-        return result;
-    }
-
-    let result = if pattern_index == pattern.len() {
-        path_index == path.len()
-    } else if pattern[pattern_index] == ['*', '*'] {
-        glob_segments_match(pattern, path, pattern_index + 1, path_index, memo)
-            || (path_index < path.len()
-                && glob_segments_match(pattern, path, pattern_index, path_index + 1, memo))
-    } else if path_index == path.len() {
-        false
-    } else {
-        let segment_pattern = &pattern[pattern_index];
-        let segment = &path[path_index];
-        let mut segment_memo = vec![vec![None; segment.len() + 1]; segment_pattern.len() + 1];
-        glob_segment_chars_match(segment_pattern, segment, 0, 0, &mut segment_memo)
-            && glob_segments_match(pattern, path, pattern_index + 1, path_index + 1, memo)
-    };
-
-    memo[pattern_index][path_index] = Some(result);
-    result
-}
-
-fn glob_segment_chars_match(
-    pattern: &[char],
-    segment: &[char],
-    pattern_index: usize,
-    segment_index: usize,
-    memo: &mut [Vec<Option<bool>>],
-) -> bool {
-    if let Some(result) = memo[pattern_index][segment_index] {
-        return result;
-    }
-
-    let result = if pattern_index == pattern.len() {
-        segment_index == segment.len()
-    } else {
-        match pattern[pattern_index] {
-            '*' => {
-                glob_segment_chars_match(pattern, segment, pattern_index + 1, segment_index, memo)
-                    || (segment_index < segment.len()
-                        && glob_segment_chars_match(
-                            pattern,
-                            segment,
-                            pattern_index,
-                            segment_index + 1,
-                            memo,
-                        ))
-            }
-            '?' => {
-                segment_index < segment.len()
-                    && glob_segment_chars_match(
-                        pattern,
-                        segment,
-                        pattern_index + 1,
-                        segment_index + 1,
-                        memo,
-                    )
-            }
-            expected => {
-                segment_index < segment.len()
-                    && segment[segment_index] == expected
-                    && glob_segment_chars_match(
-                        pattern,
-                        segment,
-                        pattern_index + 1,
-                        segment_index + 1,
-                        memo,
-                    )
-            }
-        }
-    };
-
-    memo[pattern_index][segment_index] = Some(result);
-    result
 }
 
 impl RustAdapter {

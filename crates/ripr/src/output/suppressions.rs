@@ -855,48 +855,10 @@ pub fn load_check_suppression_policy(path: &Path) -> Result<Vec<SuppressionEntry
 /// Supports `**` (zero or more `/`-separated segments), `*` (any run of
 /// characters within one segment), and `?` (exactly one character within a
 /// segment). Matching is case-sensitive over `/`-separated relative paths;
-/// leading `./` segments are ignored on both sides.
+/// leading `./` segments are ignored on both sides. Delegates to the shared
+/// polynomial-time owner in `analysis::path_glob`.
 pub fn path_glob_matches(pattern: &str, path: &str) -> bool {
-    let pattern_segments: Vec<&str> = pattern
-        .split('/')
-        .filter(|segment| !segment.is_empty() && *segment != ".")
-        .collect();
-    let path_segments: Vec<&str> = path
-        .split('/')
-        .filter(|segment| !segment.is_empty() && *segment != ".")
-        .collect();
-    glob_segments_match(&pattern_segments, &path_segments)
-}
-
-fn glob_segments_match(pattern: &[&str], path: &[&str]) -> bool {
-    let Some((head, rest)) = pattern.split_first() else {
-        return path.is_empty();
-    };
-    if *head == "**" {
-        return (0..=path.len()).any(|skip| glob_segments_match(rest, &path[skip..]));
-    }
-    let Some((segment, remaining)) = path.split_first() else {
-        return false;
-    };
-    glob_segment_chars_match(
-        &head.chars().collect::<Vec<_>>(),
-        &segment.chars().collect::<Vec<_>>(),
-    ) && glob_segments_match(rest, remaining)
-}
-
-fn glob_segment_chars_match(pattern: &[char], segment: &[char]) -> bool {
-    match pattern.split_first() {
-        None => segment.is_empty(),
-        Some(('*', rest)) => {
-            (0..=segment.len()).any(|skip| glob_segment_chars_match(rest, &segment[skip..]))
-        }
-        Some(('?', rest)) => segment
-            .split_first()
-            .is_some_and(|(_, remaining)| glob_segment_chars_match(rest, remaining)),
-        Some((expected, rest)) => segment.split_first().is_some_and(|(actual, remaining)| {
-            actual == expected && glob_segment_chars_match(rest, remaining)
-        }),
-    }
+    crate::analysis::path_glob::path_glob_matches(pattern, path)
 }
 
 #[cfg(test)]
@@ -1465,6 +1427,24 @@ reason = "second"
         // Leading `./` is ignored on both sides.
         assert!(path_glob_matches("./src/*.rs", "src/lib.rs"));
         assert!(path_glob_matches("src/*.rs", "./src/lib.rs"));
+    }
+
+    #[test]
+    fn path_glob_matches_pathological_star_pattern_without_backtracking_blowup() {
+        // Twenty `*a` wildcards against a forty-`a` name with no trailing
+        // `b`: naive recursive backtracking explores ~C(40, 20) splits.
+        let started = std::time::Instant::now();
+        let pattern = format!("src/{}b.rs", "*a".repeat(20) + "*");
+        let path = format!("src/{}.rs", "a".repeat(40));
+        assert!(!path_glob_matches(&pattern, &path));
+        let pattern = format!("{}/b.rs", "**/a".repeat(20));
+        let path = format!("{}/c.rs", vec!["a"; 40].join("/"));
+        assert!(!path_glob_matches(&pattern, &path));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "pathological suppression globs took {:?}",
+            started.elapsed()
+        );
     }
 
     fn candidate(finding_id: &str, path: &str, class: &str) -> CheckSuppressionCandidate {
