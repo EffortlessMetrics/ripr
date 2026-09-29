@@ -11,13 +11,23 @@ Use:
 .github/workflows/release-server-binaries.yml
 ```
 
-Manual dispatch:
+Manual dispatch is a **non-publishing rehearsal** by default:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.8.0
+gh workflow run release-server-binaries.yml -f version=0.11.0
 ```
 
-The workflow builds:
+To exercise GitHub Artifact Attestations without creating or changing a GitHub
+Release, explicitly request the attestation lane:
+
+```bash
+gh workflow run release-server-binaries.yml \
+  -f version=0.11.0 \
+  -f attest_final_subjects=true
+```
+
+Only the reviewed tag-push path can reach the public upload job. The workflow
+builds:
 
 ```text
 x86_64-pc-windows-msvc
@@ -71,13 +81,15 @@ Packaging and manifest assembly intentionally live in Rust-first automation:
 ```bash
 cargo xtask release-server-archive --version <VERSION> --target <target> --executable <ripr-or-ripr.exe> --archive <zip-or-tar.gz>
 cargo xtask release-server-manifest --version <VERSION> --repository <owner/repo>
+cargo xtask release-final-server-subjects --version <VERSION> --repository <owner/repo>
+cargo xtask release-final-server-attestation-receipt --version <VERSION> --verified-subjects <path>
 cargo xtask release-upload-assets --version <VERSION>
 ```
 
 The workflow should only orchestrate those commands instead of keeping archive,
 checksum, manifest, or upload branching logic in shell or PowerShell.
 
-and uploads these assets to the matching GitHub Release:
+The final-subject inventory admits exactly these public release subjects:
 
 ```text
 ripr-server-v<VERSION>-<target>.zip
@@ -85,6 +97,13 @@ ripr-server-v<VERSION>-<target>.tar.gz
 ripr-server-manifest-v<VERSION>.json
 SHA256SUMS
 ```
+
+Per-target `.sha256` files and build/assembly receipts remain internal staging
+evidence. `SHA256SUMS` is the single public checksum authority. Before a tag
+upload becomes reachable, every admitted subject is provenance-attested with
+the full-SHA-pinned GitHub attestation action, independently verified with
+`gh attestation verify --repo EffortlessMetrics/ripr`, and bound into
+`ripr-server-attestation-v<VERSION>.receipt.json`.
 
 The assembly step also retains the internal, non-publication evidence packet
 `ripr-server-assembly-v<VERSION>.receipt.json`. It records the common build
@@ -94,8 +113,10 @@ release asset; downstream provenance and placement-independent subject
 selection consume this evidence.
 
 The release-server evidence contracts are versioned independently of release
-placement: per-target build receipts use schema `0.2`, the assembled manifest
-uses schema `0.1`, and the internal assembly receipt uses schema `0.1`.
+placement: per-target build receipts use schema `0.2`, the placement-independent
+manifest uses schema `server-manifest/2`, and the internal assembly receipt uses
+schema `0.2`. Final-subject inventory and attestation receipts use
+`release-final-server-subjects/1` and `release-server-attestation/1`.
 Manifest assembly accepts only per-target receipts with schema `0.2`, validates
 the platform-neutral compiler release/commit identity across runner hosts, and
 retains host-specific `rustc -vV` text only as per-target evidence. The
