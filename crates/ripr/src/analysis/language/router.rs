@@ -115,6 +115,19 @@ const UNANALYZED_SOURCE_LANGUAGES: &[(&str, &str)] = &[
     ("svelte", "Svelte"),
 ];
 
+/// Unanalyzed languages that are build, CI and automation scripts rather
+/// than product source. A changed script is still named as not analyzed,
+/// but it does not make an otherwise complete analysis partial: nearly every
+/// Rust repository carries CI scripts, and marking each such PR partial
+/// buried the real signal (a changed Go or C file).
+const SCRIPT_LANGUAGES: &[&str] = &["Shell", "PowerShell"];
+
+/// Whether an unanalyzed language name is a script language; see
+/// [`SCRIPT_LANGUAGES`].
+pub(crate) fn is_script_language(language: &str) -> bool {
+    SCRIPT_LANGUAGES.contains(&language)
+}
+
 #[cfg(test)]
 pub(crate) const UNANALYZED_SOURCE_LANGUAGES_FOR_TESTS: &[(&str, &str)] =
     UNANALYZED_SOURCE_LANGUAGES;
@@ -169,6 +182,25 @@ mod tests {
                 unanalyzed_source_language(Path::new(path)),
                 expected,
                 "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn script_languages_are_the_shell_and_powershell_entries() {
+        for language in ["Shell", "PowerShell"] {
+            assert!(is_script_language(language), "{language}");
+        }
+        for language in ["Go", "Java", "C", "C++", "Ruby", "Vue"] {
+            assert!(!is_script_language(language), "{language}");
+        }
+        // Every script language names a real table entry.
+        for language in SCRIPT_LANGUAGES {
+            assert!(
+                UNANALYZED_SOURCE_LANGUAGES
+                    .iter()
+                    .any(|(_, name)| name == language),
+                "{language}"
             );
         }
     }
