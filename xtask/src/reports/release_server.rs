@@ -1831,6 +1831,17 @@ mod final_subject_tests {
         assert!(extra.contains("unexpected final server staging entry"), "{extra}");
         fs::remove_file(root.join("unexpected.log")).map_err(|err| err.to_string())?;
 
+        fs::write(root.join("rogue.sha256"), b"no").map_err(|err| err.to_string())?;
+        let Err(rogue_sidecar) = validate_final_server_staging_entries(&root, version, &subjects)
+        else {
+            return Err("unowned checksum sidecar must reject".to_string());
+        };
+        assert!(
+            rogue_sidecar.contains("unexpected final server staging entry"),
+            "{rogue_sidecar}"
+        );
+        fs::remove_file(root.join("rogue.sha256")).map_err(|err| err.to_string())?;
+
         fs::create_dir(root.join("unexpected-dir")).map_err(|err| err.to_string())?;
         let Err(non_regular) = validate_final_server_staging_entries(&root, version, &subjects) else {
             return Err("non-regular staging entry must reject".to_string());
