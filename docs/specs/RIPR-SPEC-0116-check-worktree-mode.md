@@ -99,6 +99,14 @@ a saved diff with `--diff PATH` / `--diff -`), and the recommended first
 command is `ripr check --diff PATH`. A dirty worktree does not override that:
 `--worktree` cannot run without git.
 
+`ripr check` defaults to `--root .`, so when doctor diagnosed a root other than
+`.` each recommended command names it, bound to an absolute path against
+doctor's directory and shell-quoted: `ripr doctor --root
+/work/app` recommends `ripr check --root /work/app --base HEAD --worktree`,
+`ripr check --root /work/app`, or `ripr check --root /work/app --diff PATH`.
+When PowerShell needs a different form (a root containing an apostrophe), a
+labeled `(PowerShell)` line follows (#4890).
+
 ### LSP saved-workspace contract
 
 The LSP refresh path consumes the same tracked-worktree diff source as

@@ -1533,6 +1533,10 @@ are scoped or reviewed.
   `[lsp] seam_diagnostics = false`, honored by the 0.10 extension, applies
   again instead of being overridden by the extension's default
   ([#4717](https://github.com/EffortlessMetrics/ripr-swarm/issues/4717)).
+- `ripr doctor --root DIR` run from another directory now recommends
+  `ripr check --root DIR ...`. It printed `ripr check`, which analyzes the
+  current directory rather than the one doctor diagnosed
+  ([#4890](https://github.com/EffortlessMetrics/ripr-swarm/issues/4890)).
 
 ### Added
 

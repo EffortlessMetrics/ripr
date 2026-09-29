@@ -216,7 +216,9 @@ fn print_doctor_start_here_guidance(root: &Path, report: &output::doctor::Doctor
         output::doctor::git_tool_can_run(report),
         || analysis::working_tree_has_tracked_changes(root),
     );
-    println!("- Recommended first command: {}", first.command_line());
+    for line in first.recommendation_lines(root) {
+        println!("{line}");
+    }
     match first {
         output::doctor::DoctorFirstCommand::Worktree => {
             println!(
