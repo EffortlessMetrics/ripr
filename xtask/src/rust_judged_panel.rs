@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer};
 mod host_run;
 mod packet;
 mod release_judgments;
+mod rolling_observation;
 mod subject;
 
 pub(crate) use release_judgments::check_release_judgments;
@@ -295,7 +296,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         [subcommand] if subcommand == "check" => {
             let manifest = check_at(Path::new("."))?;
             println!(
-                "Rust judged panel seed, subjects, and portable packets valid: manifest={MANIFEST_PATH} items={} directions={}",
+                "Rust judged panel seed, subjects, portable packets, and rolling observation valid: manifest={MANIFEST_PATH} items={} directions={}",
                 manifest.items.len(),
                 manifest.required_directions.join(",")
             );
@@ -334,6 +335,7 @@ pub(crate) fn check_canonical() -> Result<(), String> {
 fn check_at(root: &Path) -> Result<RustJudgedPanelManifest, String> {
     let manifest = check_seed_at(root)?;
     packet::validate_at(root, &manifest)?;
+    rolling_observation::validate_at(root, &manifest)?;
     Ok(manifest)
 }
 

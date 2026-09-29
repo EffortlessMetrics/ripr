@@ -166,6 +166,30 @@ validates it against the selection bytes it names.
   historical probe ids in the selection reasons are evidence of what was
   selected, not identities the current analyzer reproduces.
 
+## Rolling production-quiet and actionability observation
+
+`rolling-observation.json` is the #4578 extension of this same panel. It does
+not replace the seed, the portable packets, or the frozen #3806 judgments.
+
+`cargo xtask rust-judged-panel check` (and the precommit alias) now also
+validates that rolling packet against the retained subjects:
+
+- Production quiet, gap, and limitation coverage is filled from the authorized
+  seed production subjects. The three #3806 test-only quiet controls remain
+  `test_only_quiet` and cannot occupy the production-quiet row.
+- Classification is observed from the check-JSON findings already projected
+  into the portable packets.
+- Canonical repair actionability is observed only from a non-blocked
+  `gap_decision_ledger`. A missing adapter, missing ledger, blocked ledger, or
+  governed-manifest expected label is `not_observed` with a precise cause. It
+  is not `no_action` and not `false_actionable=false`.
+- Unauthorized real-repository production-quiet replay stays named as an unmet
+  row rather than invented.
+
+The CLI still accepts only `check`, `replay`, and `packet`. There is no
+`report` command. Bounded real ledger replay remains outside the routine PR
+path.
+
 ## Item contract
 
 Each `items[]` row carries:

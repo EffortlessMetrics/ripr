@@ -748,7 +748,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "stdout only",
             false,
             false,
-            "Validates the governed Rust judged-panel seed manifest and anchored diffs.",
+            "Validates the governed Rust judged-panel seed, portable packets, and rolling production-quiet/actionability observation.",
         ),
         command_entry(
             "rust-judged-panel replay [--out target/ripr/<path>]",
@@ -772,7 +772,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "stdout only",
             false,
             true,
-            "Precommit alias for the same Rust judged-panel semantic validator.",
+            "Precommit alias for the same Rust judged-panel semantic validator, including rolling production-quiet and canonical actionability observation.",
         ),
         command_entry(
             "check-release-challenge-selection",
