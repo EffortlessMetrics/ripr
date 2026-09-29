@@ -326,7 +326,10 @@ mod tests {
             "digest".to_string(),
             serde_json::Value::String(format!("A{}", "a".repeat(63))),
         );
-        assert!(digest_field(&object, "digest").is_err());
+        let Err(error) = digest_field(&object, "digest") else {
+            panic!("uppercase digest must be rejected");
+        };
+        assert!(error.contains("lowercase"), "{error}");
         object.insert(
             "digest".to_string(),
             serde_json::Value::String("a".repeat(64)),
