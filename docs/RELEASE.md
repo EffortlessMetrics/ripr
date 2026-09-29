@@ -360,31 +360,25 @@ analysis, default blocking, or stable preview-language gate authority.
 
 ## Recovery
 
-If a release workflow fails after the tag has been pushed, prefer
-fix-forward over retagging. Workflow reruns (`gh workflow run ...`) also
-belong to the source repository: run them with `--repo EffortlessMetrics/ripr`
-from anywhere else, or from a source checkout. The tag is the release-prep snapshot; the
-release workflows can be rerun against `main` (or any commit that contains
-the fix) using `workflow_dispatch`, and uploaded assets attach to the
-existing GitHub Release rather than replacing it.
+For the 0.11 release line, a manual `release-server-binaries.yml`
+`workflow_dispatch` is a **non-publishing rehearsal**. It may rebuild,
+inventory, and—when explicitly requested—attest candidate server subjects, but
+it cannot attach or replace public GitHub Release assets.
 
-1. Open a focused fix PR on `main` that reproduces the failure as a test
-   and fixes only the broken path. Merge it.
-2. Rerun the failed workflow via `workflow_dispatch` with the same
-   `version` input as the tag, for example
-   `gh workflow run release-server-binaries.yml -f version=0.8.0`. The
-   asset names continue to use the original version, so they overlay
-   correctly on the existing Release.
-3. After server assets are present and verified, rerun any downstream
-   workflow that was gated on them, for example
-   `gh workflow run publish-extension.yml -f version=0.8.0`.
-4. Do not retag and do not delete the GitHub Release. Leave the tag at
-   the release-prep commit; the fix-forward commit is on `main` and any
-   subsequent point release will include it.
-5. Update the GitHub Release body to document the recovery if the failure
-   was user-visible. crates.io publish remains a manual step and should
-   only run once asset verification is complete.
+If the tag-triggered public path fails:
 
-This pattern is what the `v0.5.0` release used after the initial Windows
-server-archive failure; see CHANGELOG `Release recovery (v0.5.0)` for the
-record.
+1. Stop the affected channel and retain the exact failed run, inventory,
+   attestation, and public-state receipts.
+2. Do not retag, move/delete the tag, clobber an existing asset, or turn a
+   manual dispatch into an alternate publication path.
+3. Reproduce the defect in a focused PR and fix forward on `main`.
+4. Follow the current release-transaction / #1644 recovery authority for any
+   resumable public operation. If the immutable public object is already
+   contradictory, record an incident/fix-forward disposition rather than
+   replacing it in place.
+5. Resume dependent channels only after the matching server subjects are
+   independently verified.
+
+The historical `v0.5.0` release used an older workflow-dispatch recovery
+pattern after its Windows archive failure. That handoff remains historical
+evidence; it is not the 0.11 publication contract.
