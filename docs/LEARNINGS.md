@@ -86,6 +86,29 @@ slice with a discriminating control. New family members get their own
 investigation per the escalation rule (same operation green in isolation and
 red only under concurrency = structural).
 
+## 2026-09-29: Unchanged lexical-fallback test files and complete runs (#4775)
+
+#2698 discloses lexical fallback on the repo/seam-inventory path (stderr).
+Diff-scoped `ripr check` did not. An unchanged test file with a nightly-only
+construct (`Some(y if y > 0)`, `Err(!)`, or any other reference-parser
+refusal) was indexed lexically; compact `#[test] fn p() { ... }` registrations
+then vanished from related-test discovery. The changed production owner read
+`no_static_path` while `analysis_outcome` stayed complete.
+
+#4722/#4773 cover *changed* files as `producer_failure`. This lane is the
+unchanged test-file follow-up. The TypeScript analog is #4261: do not mark
+every run in a nightly-feature crate partial merely because some unused test
+file failed extraction. Emit `rust_lexical_test_index_partial` only when a
+classified owner actually consulted that file.
+
+Lesson: stderr disclosure on a different analysis mode is not a machine
+limitation. Related-test dropout is a completeness fact, not a classification
+vocabulary change. Owner-call scans must mask comments and strings so a
+comment mentioning the owner cannot make the crate partial. A `fn owner()`
+declaration, a same-named call in another crate, and a long repository path
+are not reasons to abort analysis or mark an unused nightly file as
+consulted; a turbofish `owner::<T>(...)` and `#[ test ]` still are.
+
 ## 2026-07-29: Property tests and lexical fallback disclosure
 
 Added the first property-based tests (`proptest`) for the diff parser. The

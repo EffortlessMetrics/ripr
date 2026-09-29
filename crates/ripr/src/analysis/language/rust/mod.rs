@@ -35,6 +35,8 @@ use crate::domain::{
 use std::collections::BTreeSet;
 use std::path::Path;
 
+mod lexical_test_grip;
+
 /// Default ceiling on the number of Rust files a diff-scoped analysis will
 /// load into the index. A large multi-crate diff expands the index far beyond
 /// the changed files (`select_rust_files_for_mode` pulls in whole touched
@@ -1198,7 +1200,7 @@ impl RustAdapter {
         // tests. The findings it still yields are not a complete analysis of
         // that file, so the run discloses a typed producer limitation instead
         // of presenting the degraded result as complete.
-        let limitations = lexical_fallback_limitations(
+        let mut limitations = lexical_fallback_limitations(
             &index,
             analyzable_changed_files
                 .iter()
@@ -1289,6 +1291,20 @@ impl RustAdapter {
                 );
                 findings.push(finding);
             }
+        }
+
+        // #4775: unchanged lexical-fallback test files are a separate
+        // language-scope limitation. Compose with #4722 rather than
+        // replacing producer_failure when both apply.
+        if let Some(limitation) =
+            lexical_test_grip::limitation_for_consulted_unchanged_lexical_tests(
+                &index,
+                &findings,
+                &changed_rust_paths,
+                &options.root,
+            )?
+        {
+            limitations.push(limitation);
         }
 
         Ok(LanguageDiffResult {

@@ -13289,13 +13289,18 @@ fn check_rust_source_role_authority() -> Result<(), String> {
     /// authority may be consumed only by this inventoried set; new consumers
     /// extend the inventory here with a reason so role consumers stay
     /// reviewable.
-    const IS_TEST_FILE_CONSUMERS: [&str; 8] = [
+    const IS_TEST_FILE_CONSUMERS: [&str; 9] = [
         "crates/ripr/src/analysis/classify/owner_shape.rs",
         "crates/ripr/src/analysis/test_grip_evidence.rs",
         "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
         "crates/ripr/src/analysis/source_role_corpus.rs",
         "crates/ripr/src/analysis/mod.rs",
         "crates/ripr/src/analysis/language/rust/mod.rs",
+        // #4775: consulted unchanged lexical-fallback files that live under
+        // `tests/**` are test evidence even when the lexical scanner extracted
+        // no TestFact. The layout authority stays `is_test_file`; this module
+        // does not re-derive role from names or cfg strings.
+        "crates/ripr/src/analysis/language/rust/lexical_test_grip.rs",
         // InlineUnit admission refuses tests/** owners as InlineUnitOutOfScope
         // rather than inventing a second path heuristic (#4784). Integration
         // admission uses the same authority for proposed tests/*.rs leaves (#4576).

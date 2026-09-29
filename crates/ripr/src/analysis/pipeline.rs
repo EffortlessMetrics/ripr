@@ -2472,6 +2472,76 @@ mod tests {
         Ok(())
     }
 
+    /// #4775: an unchanged test file that the reference parser refuses is
+    /// indexed lexically; compact `#[test] fn` registrations drop out, so the
+    /// changed owner's discriminating test vanishes. The pipeline must project
+    /// `partial_with_limitations` instead of a complete `no_static_path` run.
+    #[test]
+    fn unchanged_lexical_test_file_projects_a_partial_outcome() -> Result<(), String> {
+        let root = temp_root("unchanged-lexical-test-grip")?;
+        write(
+            root.join("Cargo.toml").as_path(),
+            "[package]\nname='demo'\nversion='0.1.0'\nedition='2024'\n",
+        )?;
+        write(
+            root.join("src/lib.rs").as_path(),
+            "pub fn price(total: u32, d: u32) -> u32 {\n    if total >= 100 { total - d } else { total }\n}\n",
+        )?;
+        write(
+            root.join("tests/price.rs").as_path(),
+            "use demo::price;\n#[test] fn p() { assert_eq!(price(200, 10), 190); }\nfn refuse_reference_parser(\n",
+        )?;
+        let options = AnalysisOptions {
+            root: root.clone(),
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            resolved_subject_identity: None,
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        };
+        let result = run_pipeline_for_diff_text(
+            &options,
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             new file mode 100644\n\
+             --- /dev/null\n\
+             +++ b/src/lib.rs\n\
+             @@ -0,0 +1,3 @@\n\
+             +pub fn price(total: u32, d: u32) -> u32 {\n\
+             +    if total >= 100 { total - d } else { total }\n\
+             +}\n",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "diff analysis must project an outcome".to_string())?;
+        assert_eq!(
+            outcome.kind,
+            AnalysisOutcomeKind::PartialWithLimitations,
+            "silently complete no_static_path is the #4775 defect"
+        );
+        assert!(
+            outcome.limitations.iter().any(|limitation| {
+                limitation.kind == AnalysisLimitationKind::LanguageScopeUnsupported
+                    && limitation
+                        .bounded_detail
+                        .as_deref()
+                        .is_some_and(|detail| detail.contains("rust_lexical_test_index_partial"))
+            }),
+            "expected rust_lexical_test_index_partial, got {:?}",
+            outcome.limitations
+        );
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
     /// #4216 row 5 review (F1): a diff whose only changed line is a lone
     /// `} else {` splits (added) or joins (removed) a block, so it changes
     /// behavior. Structural-line suppression must not turn that into
