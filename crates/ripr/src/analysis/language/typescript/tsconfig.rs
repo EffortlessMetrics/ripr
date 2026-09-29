@@ -508,6 +508,136 @@ fn parse_alias_map(root: &Path, text: &str) -> Result<TsAliasMap, TsAliasMapBloc
     })
 }
 
+// ── Build-output (outDir) mapping (#4551) ─────────────────────────────────────
+
+/// Maps a relative import that names `tsc` build output back to its
+/// TypeScript source, from the root `tsconfig.json`'s own
+/// `compilerOptions.outDir` / `compilerOptions.rootDir` (#4551).
+///
+/// Tests of a compiled package often import the emitted file
+/// (`import { f } from '../build/lib/x.js'`). The build tree is excluded
+/// from the workspace walk, so without this mapping the import names an
+/// unindexed module and a change to `lib/x.ts` reads as `no_static_path`.
+///
+/// Independent of `[typescript] resolve_tsconfig_paths`: that opt-in governs
+/// non-relative `paths` aliases, whose templates can redirect arbitrary
+/// specifiers. This mapping only rewrites a RELATIVE import whose target
+/// does not exist, and only onto a source file that does exist, following
+/// the fixed `tsc` emit layout (`<rootDir>/<p>.ts` → `<outDir>/<p>.js`).
+///
+/// `extends` is not followed, but the root file's own `outDir`/`rootDir`
+/// are still read when it is present: `tsc` lets the extending file's own
+/// `compilerOptions` override the extended ones, so the root file's values
+/// are the effective ones. A root file without its own `outDir` and
+/// `rootDir` yields no mapping: an inherited value is a miss, never a guess,
+/// and an unset `rootDir` is inferred by `tsc` from its inputs, which this
+/// reader does not model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TsOutDirMap {
+    /// Workspace-relative `outDir`, `/`-separated, never empty.
+    out_dir: String,
+    /// Workspace-relative `rootDir`, `/`-separated; empty for the root.
+    root_dir: String,
+}
+
+impl TsOutDirMap {
+    /// Whether the workspace-relative path `joined` lies under `outDir`.
+    pub(crate) fn contains(&self, joined: &str) -> bool {
+        joined
+            .strip_prefix(self.out_dir.as_str())
+            .is_some_and(|rest| rest.starts_with('/'))
+    }
+
+    /// Source module (workspace-relative, extension stripped) for the
+    /// workspace-relative import target `joined`, when `joined` lies under
+    /// `outDir` and exactly one TypeScript source file exists at the mapped
+    /// path. The caller checks that nothing exists at `joined` itself.
+    pub(crate) fn source_module_for(&self, root: &Path, joined: &str) -> Option<String> {
+        let rest = joined
+            .strip_prefix(self.out_dir.as_str())?
+            .strip_prefix('/')?;
+        let (stem, extensions): (&str, &[&str]) = if let Some(stem) = rest.strip_suffix(".mjs") {
+            (stem, &["mts"])
+        } else if let Some(stem) = rest.strip_suffix(".cjs") {
+            (stem, &["cts"])
+        } else if let Some(stem) = rest.strip_suffix(".jsx") {
+            (stem, &["tsx"])
+        } else if let Some(stem) = rest.strip_suffix(".js") {
+            (stem, &["ts", "tsx"])
+        } else if [".ts", ".tsx", ".mts", ".cts"]
+            .iter()
+            .any(|extension| rest.ends_with(extension))
+        {
+            // `tsc` never emits TypeScript sources into outDir.
+            return None;
+        } else {
+            (rest, &["ts", "tsx"])
+        };
+        if stem.is_empty() || stem.ends_with('/') {
+            return None;
+        }
+        let module = if self.root_dir.is_empty() {
+            stem.to_string()
+        } else {
+            format!("{}/{stem}", self.root_dir)
+        };
+        let mut found = extensions.iter().filter(|extension| {
+            std::fs::symlink_metadata(root.join(format!("{module}.{extension}")))
+                .is_ok_and(|metadata| metadata.file_type().is_file())
+        });
+        // Exactly one source file: `x.ts` and `x.tsx` both present is
+        // ambiguous and fails closed.
+        match (found.next(), found.next()) {
+            (Some(_), None) => Some(module),
+            _ => None,
+        }
+    }
+}
+
+/// Load the root `tsconfig.json` outDir mapping. `None` (no mapping) when
+/// the file is absent, unreadable, not JSONC, lacks its own
+/// `compilerOptions.outDir` or `compilerOptions.rootDir`, or names an
+/// absolute, root-escaping or
+/// root-identical `outDir`, or an absolute or root-escaping `rootDir`.
+pub(crate) fn load_out_dir_map(root: &Path) -> Option<TsOutDirMap> {
+    let text = read_config_capped(&root.join("tsconfig.json")).ok()?;
+    parse_out_dir_map(&text)
+}
+
+fn parse_out_dir_map(text: &str) -> Option<TsOutDirMap> {
+    let normalized = strip_jsonc(text).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&normalized).ok()?;
+    let options = value.get("compilerOptions")?;
+    let out_dir = normalize_config_dir(options.get("outDir")?.as_str()?)?;
+    if out_dir.is_empty() {
+        return None;
+    }
+    // `rootDir` must be the root file's own: without it `tsc` infers the
+    // common directory of the included inputs (or inherits one through
+    // `extends`), and guessing the workspace root would map `dist/index.js`
+    // onto a root-level `index.ts` that never produced it (#4800 review).
+    let root_dir = normalize_config_dir(options.get("rootDir")?.as_str()?)?;
+    Some(TsOutDirMap { out_dir, root_dir })
+}
+
+/// Workspace-relative, `/`-separated form of a config directory (`./build`,
+/// `build/` → `build`; `.` → empty). `None` for an absolute, drive/UNC or
+/// `..`-bearing path.
+fn normalize_config_dir(raw: &str) -> Option<String> {
+    let raw = raw.replace('\\', "/");
+    if raw.starts_with('/') || raw.contains(':') || !is_safe_relative(Path::new(&raw)) {
+        return None;
+    }
+    let parts: Vec<&str> = raw
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect();
+    if parts.contains(&"..") {
+        return None;
+    }
+    Some(parts.join("/"))
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Normalize JSONC (the dialect `tsc` accepts for tsconfig.json /
@@ -633,6 +763,8 @@ fn match_glob(specifier: &str, prefix: &str, suffix: &str) -> Option<String> {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
+#[cfg(test)]
+mod out_dir_tests;
 #[cfg(test)]
 mod precedence_tests;
 

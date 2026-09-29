@@ -228,6 +228,27 @@ unreadable or invalid manifest, a non-string, absolute, root-escaping or
 unresolvable `main`, a symlink, or a join that escaped the root keeps the
 lexical module (fail-closed). The alias branch is unchanged.
 
+Build-output amendment (#4551): with a known workspace root, a relative
+import whose in-root join lies under the root `tsconfig.json`'s own
+`compilerOptions.outDir`, and for which nothing (file, directory or symlink)
+exists at the join and no file module exists for it, maps back through the
+`tsc` emit layout: the `outDir` prefix is replaced by the root file's own
+`rootDir` and the emitted extension by its
+source extension (`.js` → `.ts`/`.tsx`, `.jsx` → `.tsx`, `.mjs` → `.mts`,
+`.cjs` → `.cts`, extensionless → `.ts`/`.tsx`). It is accepted only when
+exactly one such source file exists. The config is read once per run as
+JSONC; `extends` is not followed, but the root file's own `outDir`/`rootDir`
+override any extended value, so they are read even when `extends` is
+present. Both must be the root file's own: without an own `rootDir`, `tsc`
+infers the common directory of its inputs or inherits one, which this reader
+does not model, so no mapping is made. A built tree (a real emitted file at
+the import) also disables the mapping for that import. An absent,
+unreadable or unparseable config, an absent `outDir` or `rootDir`, an
+absolute, root-escaping or root-identical `outDir`, an absolute or
+root-escaping `rootDir`, a real emitted file, or a missing or ambiguous
+source keeps the lexical module. This is independent of
+`resolve_tsconfig_paths`, which governs non-relative aliases only.
+
 ### Disclosure limitation scope
 
 `typescript_path_alias_unresolved` fires on the FIRST uncredited test

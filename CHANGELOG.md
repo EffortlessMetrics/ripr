@@ -163,6 +163,17 @@ are scoped or reviewed.
   properties of `module.exports = { ... }` are now owners that `require()`
   tests relate to; non-function values and computed keys still produce none,
   and an export name assigned twice in one file produces no owner. (#4545)
+- TypeScript/JavaScript preview: a test that imports `tsc` build output
+  (`import { looksLikeNumber } from '../build/lib/string-utils.js'`) now
+  relates to the TypeScript source (`lib/string-utils.ts`) through the root
+  `tsconfig.json`'s own `compilerOptions.outDir` and `rootDir`. The import
+  named the excluded, unindexed build tree, so a change to the source reported
+  `no_static_path`. The mapping needs the root `tsconfig.json` to set both
+  `outDir` and `rootDir` itself; it applies only when nothing exists at the
+  imported path (a built tree keeps the import on the build file) and
+  exactly one source file exists at the mapped path. It does not follow
+  `extends` and does not need `resolve_tsconfig_paths`.
+  (#4551)
 - TypeScript/JavaScript preview: mocha, `node:test` and Vitest suites written
   with `context`, `suite` or `specify`, with an options object before the
   callback (`it(name, { timeout }, fn)`), or with a `describe` title that is
