@@ -20,7 +20,9 @@ Start here:
   Changed behavior: if (amount >= threshold) {
   Missing discriminator: Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/discount.test.ts:4 below threshold has no discount
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt,…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `amount == threshold`; no actionable repair packet is emitted until verify,
+    receipt, and edit-boundary fields are available.
   Evidence:
     - reach weak: 2 related test(s) found for owner `applyDiscount`
     - infection unknown: TypeScript preview adapter does not yet model infection.

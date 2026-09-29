@@ -20,7 +20,9 @@ Start here:
   Changed behavior: if (value < min) {
   Missing discriminator: Related tests reach `clamp` with a strong oracle, but no strong assertion observes a `clamp(...)` call at the changed predicate boundary `value == min`; inputs on one side of the…
   Related test: tests/clamp.test.ts:6 clamps below minimum
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `value == min`; no actionable repair packet is emitted until verify, receipt, and…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `value == min`; no actionable repair packet is emitted until verify, receipt, and
+    edit-boundary fields are available.
   Evidence:
     - reach yes: 1 related test(s) found for owner `clamp`
     - infection unknown: TypeScript preview adapter does not yet model infection.

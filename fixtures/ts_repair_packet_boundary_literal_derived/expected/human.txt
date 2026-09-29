@@ -20,7 +20,8 @@ Start here:
   Changed behavior: if (amount >= 5000) {
   Missing discriminator: Related tests reach `shipping` with a strong oracle, but no strong assertion observes a `shipping(...)` call at the changed predicate boundary `amount == 5000`; inputs on one side…
   Related test: tests/shipping.test.ts:3 small order pays shipping
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == 5000`; the repair packet is complete and delegatable (advisory).
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `amount == 5000`; the repair packet is complete and delegatable (advisory).
   Evidence:
     - reach yes: 1 related test(s) found for owner `shipping`
     - infection unknown: TypeScript preview adapter does not yet model infection.

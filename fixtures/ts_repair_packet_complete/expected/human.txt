@@ -20,7 +20,8 @@ Start here:
   Changed behavior: if (amount >= threshold) {
   Missing discriminator: Related test reaches `applyDiscount` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or…
   Related test: tests/discount.test.ts:3 applyDiscount applies discount when amount meets threshold
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; the repair packet is complete and delegatable (advisory).
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `amount == threshold`; the repair packet is complete and delegatable (advisory).
   Evidence:
     - reach yes: 1 related test(s) found for owner `applyDiscount`
     - infection unknown: TypeScript preview adapter does not yet model infection.

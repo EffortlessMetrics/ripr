@@ -36,7 +36,7 @@ Weakness
   - No strong discriminator was detected
 
 Stop reasons:
-  - transitive_reach_unresolved
+  - transitive_reach_unresolved — a candidate test path exists but passes through calls ripr only matched by name
 
 Static limitation
   rust_integration_public_api_path_unresolved — An integration test may reach this change through a crate public API or test-helper path ripr cannot fully trace. This is a named limitation, not a coverage claim.
@@ -84,7 +84,7 @@ Weakness
   - No strong discriminator was detected
 
 Stop reasons:
-  - transitive_reach_unresolved
+  - transitive_reach_unresolved — a candidate test path exists but passes through calls ripr only matched by name
 
 Static limitation
   rust_integration_public_api_path_unresolved — An integration test may reach this change through a crate public API or test-helper path ripr cannot fully trace. This is a named limitation, not a coverage claim.

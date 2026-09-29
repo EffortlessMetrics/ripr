@@ -20,7 +20,9 @@ Start here:
   Changed behavior: if (a >= 0) {
   Missing discriminator: Related test reaches `multiply` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a…
   Related test: tests/calculator.test.ts:3 multiply returns expected for positive inputs
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `a == 0`; no actionable repair packet is emitted until verify, receipt, and…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `a == 0`; no actionable repair packet is emitted until verify, receipt, and
+    edit-boundary fields are available.
   Evidence:
     - reach yes: 1 related test(s) found for owner `multiply`
     - infection unknown: TypeScript preview adapter does not yet model infection.

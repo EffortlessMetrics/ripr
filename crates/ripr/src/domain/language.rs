@@ -441,7 +441,10 @@ impl StaticLimitKind {
                  limitation, not a reach, receipt, or coverage claim."
             }
             StaticLimitKind::WrapperErrorBindingUnresolved => {
-                "The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion."
+                "The changed line converts a callee's error through a boxed wrapper \
+                 (`map_err(Into::into)`), so whether the wrapper faithfully carries the \
+                 callee's error variant is not statically established; ripr cannot credit \
+                 a downcast witness to this conversion."
             }
         }
     }
@@ -450,6 +453,18 @@ impl StaticLimitKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #4323: a lost string-literal continuation left ~18-space runs inside
+    /// this gloss, which rendered as mid-sentence gaps in human and JSON output.
+    #[test]
+    fn wrapper_error_binding_gloss_has_no_whitespace_runs() {
+        let gloss = StaticLimitKind::WrapperErrorBindingUnresolved.describe();
+        assert!(!gloss.contains("  "), "{gloss}");
+        assert!(
+            gloss.contains("boxed wrapper (`map_err(Into::into)`), so"),
+            "{gloss}"
+        );
+    }
 
     #[test]
     fn pytest_verify_command_accepts_module_and_legacy_bare_forms() {

@@ -264,7 +264,12 @@ mod tests {
         let no_suppressions: Vec<SuppressionEntry> = Vec::new();
 
         // Human surface
-        let human = human_render_with_config(&output, &config);
+        // The human renderer wraps long Next step lines (#4323); compare on
+        // collapsed whitespace so a wrap cannot hide or fake a phrase.
+        let human = human_render_with_config(&output, &config)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(
             human.contains("the repair packet is complete and delegatable (advisory)"),
             "human surface must contain reconciled next-step.\nExpected: {expected}\nHuman output: {human}"
@@ -358,7 +363,12 @@ mod tests {
         let no_suppressions: Vec<SuppressionEntry> = Vec::new();
 
         // Human surface
-        let human = human_render_with_config(&output, &config);
+        // The human renderer wraps long Next step lines (#4323); compare on
+        // collapsed whitespace so a wrap cannot hide or fake a phrase.
+        let human = human_render_with_config(&output, &config)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(
             human.contains("no actionable repair packet is emitted"),
             "human surface must preserve blocked-case disclosure for incomplete packet.\nHuman output: {human}"

@@ -20,7 +20,9 @@ Start here:
   Changed behavior: actions[key]();
   Missing discriminator: Only heuristic TypeScript test links were found for `dispatch`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/dispatch.test.ts:1 dispatch smoke
-  Next step: TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before…
+  Next step: TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the
+    concrete dispatch key or add analyzer support for explicit dispatch-map resolution before
+    issuing a repair packet.; no actionable repair packet is emitted.
   Evidence:
     - reach weak: 1 related test(s) found for owner `dispatch`
     - infection unknown: TypeScript preview adapter does not yet model infection.

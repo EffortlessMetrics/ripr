@@ -20,7 +20,9 @@ Start here:
   Changed behavior: return count + 1;
   Missing discriminator: Only heuristic TypeScript test links were found for `normalizeCount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/observed.test.ts:1 normalizeCount exact value
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == count + 1`; no actionable repair packet is emitted until verify,…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `return value == count + 1`; no actionable repair packet is emitted until verify,
+    receipt, and edit-boundary fields are available.
   Evidence:
     - reach weak: 1 related test(s) found for owner `normalizeCount`
     - infection unknown: TypeScript preview adapter does not yet model infection.

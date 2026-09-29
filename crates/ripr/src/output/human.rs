@@ -2726,6 +2726,87 @@ mod tests {
         assert!(output.contains("  - static_probe_unknown"));
     }
 
+    /// #4323: a stop reason renders its gloss beside the token, the way the
+    /// `Static limitation` section already does, so the reader learns why.
+    #[test]
+    fn human_output_glosses_stop_reasons() {
+        let output = render_finding(&unknown_finding());
+
+        assert!(
+            output.contains(
+                "  - static_probe_unknown \u{2014} ripr could not model this change well enough to classify it\n"
+            ),
+            "{output}"
+        );
+    }
+
+    /// #4323 review: guidance just under the budget must count the label, so
+    /// the rendered line never runs past 180 characters.
+    #[test]
+    fn digest_next_step_line_counts_its_label_against_the_budget() {
+        let mut finding = sample_finding();
+        let guidance = format!("{} remedy.", "word ".repeat(34));
+        assert!(
+            (170..=180).contains(&guidance.chars().count()),
+            "{guidance}"
+        );
+        finding.recommended_next_step = Some(guidance);
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.lines().all(|line| line.chars().count() <= 180),
+            "no digest line exceeds the budget; got:\n{digest}"
+        );
+        assert!(digest.contains("remedy."), "{digest}");
+    }
+
+    /// #4323: the default no-path guidance is ~330 characters and ends with
+    /// the remedy. The digest used to cut it at 180 characters, so the
+    /// imperative ("add a co-located test ...") never rendered.
+    #[test]
+    fn digest_next_step_keeps_the_remedy_clause() {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::NoStaticPath;
+        finding.recommended_next_step = Some(crate::domain::NO_STATIC_PATH_NEXT_STEP.to_string());
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+        // The field is its first line plus the four-space continuation lines.
+        let mut lines = digest
+            .lines()
+            .skip_while(|line| !line.starts_with("  Next step: "));
+        let mut next_step = lines
+            .next()
+            .map(|line| line.trim_start_matches("  Next step: ").to_string())
+            .unwrap_or_default();
+        for line in lines.take_while(|line| line.starts_with("    ")) {
+            next_step.push(' ');
+            next_step.push_str(line.trim());
+        }
+        let flattened = next_step.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        assert!(
+            flattened.ends_with(
+                "add a co-located test that reaches and observes the changed behavior so a discriminator exists."
+            ),
+            "digest must keep the remedy; got:\n{digest}"
+        );
+        assert!(
+            !next_step.contains('\u{2026}'),
+            "digest must not truncate; got:\n{digest}"
+        );
+        assert!(
+            digest.lines().all(|line| line.chars().count() <= 180),
+            "wrapped lines stay within the display budget; got:\n{digest}"
+        );
+    }
+
     // RIPR-SPEC-0115: a transitive-reach witness line in `evidence` (recognized
     // by the shared prefix) renders as a concrete "Where to look" pointer.
     #[test]

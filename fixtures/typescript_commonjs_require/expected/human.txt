@@ -20,7 +20,9 @@ Start here:
   Changed behavior: if (decimals <= 0) {
   Missing discriminator: Related tests reach `formatAmount` with a strong oracle, but no strong assertion observes a `formatAmount(...)` call at the changed predicate boundary `decimals == 0`; inputs on…
   Related test: tests/format.test.js:4 formats amount with two decimals
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `decimals == 0`; no actionable repair packet is emitted until verify, receipt, and…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `decimals == 0`; no actionable repair packet is emitted until verify, receipt, and
+    edit-boundary fields are available.
   Evidence:
     - reach yes: 1 related test(s) found for owner `formatAmount`
     - infection unknown: TypeScript preview adapter does not yet model infection.

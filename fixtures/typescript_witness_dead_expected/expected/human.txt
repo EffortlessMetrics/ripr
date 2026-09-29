@@ -20,7 +20,9 @@ Start here:
   Changed behavior: if (total >= 100) {
   Missing discriminator: Related tests reach `applyDiscount` with a strong oracle, but no strong assertion observes a `applyDiscount(...)` call at the changed predicate boundary `total == 100`; inputs on…
   Related test: tests/discount.test.ts:3 wrong expected
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `total == 100`; no actionable repair packet is emitted until verify, receipt, and…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `total == 100`; no actionable repair packet is emitted until verify, receipt, and
+    edit-boundary fields are available.
   Evidence:
     - reach yes: 1 related test(s) found for owner `applyDiscount`
     - infection unknown: TypeScript preview adapter does not yet model infection.

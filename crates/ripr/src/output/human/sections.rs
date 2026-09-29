@@ -113,10 +113,18 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         ));
     }
     if finding.recommended_next_step.is_some() {
-        out.push_str(&format!(
-            "  Next step: {}\n",
-            one_line(&reconcile_next_step(finding))
-        ));
+        // #4323: wrap, never truncate. The guidance leads with context and
+        // ends with the imperative, so a hard cut deletes the remedy. Text
+        // that fits the line budget keeps its single line.
+        let next_step = reconcile_next_step(finding);
+        const NEXT_STEP_PREFIX: &str = "  Next step: ";
+        let collapsed = next_step.split_whitespace().collect::<Vec<_>>().join(" ");
+        if NEXT_STEP_PREFIX.chars().count() + collapsed.chars().count() <= LINE_BUDGET {
+            out.push_str(&format!("{NEXT_STEP_PREFIX}{collapsed}\n"));
+        } else {
+            out.push_str(&wrap_human_prose(&collapsed, NEXT_STEP_PREFIX, "    "));
+            out.push('\n');
+        }
     }
     let evidence = evidence_path_lines(finding);
     if !evidence.is_empty() {
@@ -311,7 +319,11 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
     if !stop_reasons.is_empty() {
         out.push_str("\nStop reasons:\n");
         for reason in &stop_reasons {
-            out.push_str(&format!("  - {}\n", reason.as_str()));
+            out.push_str(&format!(
+                "  - {} \u{2014} {}\n",
+                reason.as_str(),
+                reason.describe()
+            ));
         }
     }
 

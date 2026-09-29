@@ -154,6 +154,10 @@ selector is deterministic:
 4. Class, gap metadata, related tests, missing evidence, confidence, path, and
    line provide stable tie-breakers.
 
+The selected finding's `Next step` is never truncated, because the guidance
+ends with its remedy (#4323). Text within the digest line budget stays on one
+line; longer guidance wraps onto four-space continuation lines.
+
 ### Triage states
 
 | State | Meaning |

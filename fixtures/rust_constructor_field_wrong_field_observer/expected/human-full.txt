@@ -35,7 +35,7 @@ Weakness
   - No clear propagation path from changed behavior to an observable sink
 
 Stop reasons:
-  - propagation_evidence_unknown
+  - propagation_evidence_unknown — ripr could not tell whether the changed value flows to something a test observes
 
 Next step
   Escalate to real mutation testing or deep static analysis for this probe.

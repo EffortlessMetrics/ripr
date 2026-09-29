@@ -20,7 +20,9 @@ Start here:
   Changed behavior: if (Number.isNaN(n)) {
   Missing discriminator: Related tests reach `parseLimit` with a strong oracle, but the changed line has no statically comparable predicate boundary; static evidence cannot tie an assertion to the changed…
   Related test: tests/limiter.test.ts:3 parseLimit parses a numeric limit
-  Next step: TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is…
+  Next step: TypeScript preview advisory: add a test that exercises the changed behavior with an
+    exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is
+    emitted until the target shape is explicit.
   Evidence:
     - reach yes: 1 related test(s) found for owner `parseLimit`
     - infection unknown: TypeScript preview adapter does not yet model infection.

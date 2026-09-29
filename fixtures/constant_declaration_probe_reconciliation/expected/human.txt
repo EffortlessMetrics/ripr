@@ -15,7 +15,10 @@ Start here:
   Why unknown: the analysis could not determine a static exposure state
   Changed behavior: pub(crate) const OBSERVATION_SCHEMA_GENERATION: u32 = 3;
   Analyzer limit: No relevant oracle was detected
-  Next step: No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a…
+  Next step: No static test path reaches this change (a test may still reach it through macros,
+    dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a
+    test that exercises it and asserts the result first; deep mode and real mutation testing need a
+    reaching test to say more.
   Evidence:
     - reach no: No static test path found for the changed owner
     - infection unknown: Changed syntax is not mapped to a high-confidence probe family

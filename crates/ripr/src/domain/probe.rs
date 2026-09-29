@@ -97,6 +97,60 @@ impl StopReason {
         }
     }
 
+    /// Plain-English gloss for human output (#4323). The snake_case token
+    /// stays the machine identity; this says why the static path stopped. Each
+    /// gloss names a limit of ripr's model, never a coverage or runtime claim.
+    /// Reasons produced by a lexical heuristic (`FixtureOpaque`,
+    /// `AsyncBoundaryOpaque`) say "mentions ... may", not a confirmed fact.
+    pub fn describe(&self) -> &'static str {
+        match self {
+            StopReason::MaxDepthReached => {
+                "the bounded call walk reached its depth limit before finding a test"
+            }
+            StopReason::ExternalCrateBoundary => {
+                "the path crosses into another crate, which ripr does not analyze"
+            }
+            StopReason::DynamicDispatchUnresolved => {
+                "the path goes through a dynamic call ripr cannot resolve statically"
+            }
+            StopReason::ProcMacroOpaque => {
+                "the changed expression contains a macro call whose expansion ripr does not see"
+            }
+            StopReason::FixtureOpaque => {
+                "a related test mentions a fixture, builder, or generator, so its inputs may \
+                 come from values ripr does not evaluate"
+            }
+            StopReason::FeatureUnknown => {
+                "the code depends on a Cargo feature or cfg ripr could not resolve"
+            }
+            StopReason::AsyncBoundaryOpaque => {
+                "the changed expression mentions async, spawn, or await, so the path may cross \
+                 a task boundary ripr does not follow"
+            }
+            StopReason::NoChangedRustLine => {
+                "ripr could not place the changed line inside a Rust function it analyzes"
+            }
+            StopReason::InfectionEvidenceUnknown => {
+                "ripr could not tell whether a test input reaches a value that makes the \
+                 change matter"
+            }
+            StopReason::PropagationEvidenceUnknown => {
+                "ripr could not tell whether the changed value flows to something a test \
+                 observes"
+            }
+            StopReason::StaticProbeUnknown => {
+                "ripr could not model this change well enough to classify it"
+            }
+            StopReason::TransitiveReachUnresolved => {
+                "a candidate test path exists but passes through calls ripr only matched by \
+                 name"
+            }
+            StopReason::MacroReachUnresolved => {
+                "a candidate test path stops at a same-repo macro ripr does not expand"
+            }
+        }
+    }
+
     pub fn for_unknown_class(class: &ExposureClass) -> Option<Self> {
         match class {
             ExposureClass::InfectionUnknown => Some(StopReason::InfectionEvidenceUnknown),
@@ -448,6 +502,32 @@ impl Finding {
 
 #[cfg(test)]
 mod tests {
+
+    /// #4323: every stop-reason gloss is one clean clause (no whitespace runs
+    /// from broken literal continuations) and differs from its token.
+    #[test]
+    fn stop_reason_glosses_are_clean_prose() {
+        for reason in [
+            StopReason::MaxDepthReached,
+            StopReason::ExternalCrateBoundary,
+            StopReason::DynamicDispatchUnresolved,
+            StopReason::ProcMacroOpaque,
+            StopReason::FixtureOpaque,
+            StopReason::FeatureUnknown,
+            StopReason::AsyncBoundaryOpaque,
+            StopReason::NoChangedRustLine,
+            StopReason::InfectionEvidenceUnknown,
+            StopReason::PropagationEvidenceUnknown,
+            StopReason::StaticProbeUnknown,
+            StopReason::TransitiveReachUnresolved,
+            StopReason::MacroReachUnresolved,
+        ] {
+            let gloss = reason.describe();
+            assert!(!gloss.contains("  "), "{}: {gloss}", reason.as_str());
+            assert!(!gloss.contains('_'), "{}: {gloss}", reason.as_str());
+            assert!(!gloss.ends_with('.'), "{}: {gloss}", reason.as_str());
+        }
+    }
     use super::{FlowSinkKind, StopReason, ValueContext};
     use crate::domain::ExposureClass;
 

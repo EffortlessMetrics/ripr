@@ -34,7 +34,7 @@ Weakness
   - Syntax-first analysis cannot classify this change; use deep mode or real mutation
 
 Stop reasons:
-  - no_changed_rust_line
+  - no_changed_rust_line — ripr could not place the changed line inside a Rust function it analyzes
 
 Next step
   No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.

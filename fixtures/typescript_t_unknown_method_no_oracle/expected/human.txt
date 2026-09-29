@@ -20,7 +20,9 @@ Start here:
   Changed behavior: return total - penalty + 0;
   Missing discriminator: Related test reaches `score` but the strongest extracted oracle is `unknown`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a `toThrow` form…
   Related test: tests/score.test.ts:3 unknown t method mentions the result
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `return value == total - penalty + 0`; no actionable repair packet is emitted until…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `return value == total - penalty + 0`; no actionable repair packet is emitted
+    until verify, receipt, and edit-boundary fields are available.
   Evidence:
     - reach yes: 1 related test(s) found for owner `score`
     - infection unknown: TypeScript preview adapter does not yet model infection.

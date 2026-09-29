@@ -15,6 +15,7 @@ Updated:
 ## Pending — typescript_reexport_barrel_other_name (2)
 
 Reason:
+RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy (#4323, main merge)
 RIPR-SPEC-0122: human lines lead with the plain word the check summary uses; schema value kept beside it
 
 Command:

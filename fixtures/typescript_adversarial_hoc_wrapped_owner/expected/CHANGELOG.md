@@ -224,6 +224,7 @@ Updated:
 ## Pending — typescript_adversarial_hoc_wrapped_owner (8)
 
 Reason:
+RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy; stop reasons carry a gloss; boxed-wrapper limitation text has no whitespace runs (#4323)
 RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
 
 Command:

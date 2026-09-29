@@ -220,6 +220,20 @@ Updated:
 ## Pending — rust_macro_wrapped_assertion_limitation (5)
 
 Reason:
+RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy; stop reasons carry a gloss; boxed-wrapper limitation text has no whitespace runs (#4323)
+
+Command:
+`cargo xtask goldens bless rust_macro_wrapped_assertion_limitation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_macro_wrapped_assertion_limitation (6)
+
+Reason:
+RIPR-SPEC-0122: Next step counts its label against the line budget and wraps instead of overflowing; fixture_opaque gloss states the heuristic (#4323 review)
 RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
 
 Command:

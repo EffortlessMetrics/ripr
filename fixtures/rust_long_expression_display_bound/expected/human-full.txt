@@ -37,7 +37,7 @@ Weakness
   - missing discriminator decisions.iter().filter(|d| d.decision == "blocking").count() == 0: No related test call uses decisions.iter().filter(|d| d.decision equal to "blocking").count() == 0; observed decisions.iter().filter(|d| d.decision values: unknown; target "blocking").count() == 0 value: "blocking"
 
 Stop reasons:
-  - propagation_evidence_unknown
+  - propagation_evidence_unknown — ripr could not tell whether the changed value flows to something a test observes
 
 Next step
   Escalate to real mutation testing or deep static analysis for this probe.

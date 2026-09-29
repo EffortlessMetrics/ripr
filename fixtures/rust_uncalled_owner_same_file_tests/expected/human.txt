@@ -16,7 +16,10 @@ Start here:
   Changed behavior: (cents + 49) / 100
   Missing discriminator: No relevant oracle was detected
   Related test: src/lib.rs:14 discount_applies_at_100
-  Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that…
+  Next step: ripr found no static test path to this change — this is not a coverage assessment. A
+    test may already exercise it through macros, helper-call chains, or integration tests that
+    ripr's static model does not yet trace. If none does, add a co-located test that reaches and
+    observes the changed behavior so a discriminator exists.
   Evidence:
     - reach no: No test is seen calling untested_rounding; tests share only its file or a name token: discount_applies_at_100, discount_small_unchanged
     - infection no: No test reaches the changed owner, so no test can activate this change

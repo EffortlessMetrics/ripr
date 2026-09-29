@@ -39,7 +39,7 @@ Weakness
   - missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3
 
 Stop reasons:
-  - fixture_opaque
+  - fixture_opaque — a related test mentions a fixture, builder, or generator, so its inputs may come from values ripr does not evaluate
 
 Static limitation
   rust_macro_wrapped_assertion_unresolved — A reachable Rust test uses an assertion-like macro that ripr does not classify, so the assertion semantics are unresolved. This is a named limitation, not a coverage claim.
@@ -92,7 +92,7 @@ Weakness
   - missing discriminator a == b: No related test call uses a equal to b; observed a values: 10; observed b values: 3
 
 Stop reasons:
-  - fixture_opaque
+  - fixture_opaque — a related test mentions a fixture, builder, or generator, so its inputs may come from values ripr does not evaluate
 
 Static limitation
   rust_macro_wrapped_assertion_unresolved — A reachable Rust test uses an assertion-like macro that ripr does not classify, so the assertion semantics are unresolved. This is a named limitation, not a coverage claim.

@@ -42,7 +42,7 @@ Weakness
   - Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.
 
 Stop reasons:
-  - static_probe_unknown
+  - static_probe_unknown — ripr could not model this change well enough to classify it
 
 Static limitation
   decorator_indirection — A decorator wraps the changed owner, so ripr cannot statically confirm a test exercises the underlying behavior.

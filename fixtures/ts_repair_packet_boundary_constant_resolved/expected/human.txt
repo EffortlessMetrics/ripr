@@ -20,7 +20,9 @@ Start here:
   Changed behavior: if (amount >= DISCOUNT_THRESHOLD) {
   Missing discriminator: Related tests reach `discountedTotal` with a strong oracle, but no strong assertion observes a `discountedTotal(...)` call at the changed predicate boundary…
   Related test: tests/pricing.test.ts:3 no discount below threshold
-  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == DISCOUNT_THRESHOLD`; the repair packet is complete and delegatable…
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `amount == DISCOUNT_THRESHOLD`; the repair packet is complete and delegatable
+    (advisory).
   Evidence:
     - reach yes: 2 related test(s) found for owner `discountedTotal`
     - infection unknown: TypeScript preview adapter does not yet model infection.

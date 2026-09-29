@@ -46,7 +46,7 @@ Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -99,7 +99,7 @@ Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -152,7 +152,7 @@ Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
@@ -205,7 +205,7 @@ Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
 
 Static limitation
-  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper (`map_err(Into::into)`), so whether the wrapper faithfully carries the callee's error variant is not statically established; ripr cannot credit a downcast witness to this conversion.
 
 Limitation detail
   last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel

@@ -16,7 +16,9 @@ Start here:
   Changed behavior: fragment.crate_root.is_none()
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/fragments.rs:5 workspace_source_paths_are_stable
-  Next step: The changed owner is an assertion helper (its body is dominated by assert*/expect calls and nothing outside tests calls it); there is no fixture/builder for ripr.toml to describe.…
+  Next step: The changed owner is an assertion helper (its body is dominated by assert*/expect calls
+    and nothing outside tests calls it); there is no fixture/builder for ripr.toml to describe. Add
+    a boundary or negative-path case for the code this helper checks.
   Evidence:
     - reach yes: Related tests appear to reach assert_workspace_source_paths_are_stable: workspace_source_paths_are_stable
     - infection unknown: Predicate changed, but no literal boundary was visible in the changed expression

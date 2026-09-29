@@ -19,7 +19,9 @@ Start here:
   Changed behavior: handlers[key]();
   Discriminator (observed, advisory): Related test reaches `dispatchAction` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant…
   Related test: tests/cache.test.ts:3 dispatchAction calls the named handler
-  Next step: TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the concrete dispatch key or add analyzer support for explicit dispatch-map resolution before…
+  Next step: TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the
+    concrete dispatch key or add analyzer support for explicit dispatch-map resolution before
+    issuing a repair packet.; no actionable repair packet is emitted.
   Evidence:
     - reach yes: 1 related test(s) found for owner `dispatchAction`
     - infection unknown: TypeScript preview adapter does not yet model infection.

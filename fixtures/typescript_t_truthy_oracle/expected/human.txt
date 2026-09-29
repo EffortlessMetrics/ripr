@@ -20,7 +20,10 @@ Start here:
   Changed behavior: return total - penalty + 0;
   Missing discriminator: Related test reaches `score` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair…
   Related test: tests/score.test.ts:3 scores a truthy result
-  Next step: TypeScript preview advisory: replace or augment the smoke-only assertion with an exact-value assertion for missing discriminator `return value == total - penalty + 0`; no…
+  Next step: TypeScript preview advisory: replace or augment the smoke-only assertion with an
+    exact-value assertion for missing discriminator `return value == total - penalty + 0`; no
+    actionable repair packet is emitted until verify, receipt, and edit-boundary fields are
+    available.
   Evidence:
     - reach yes: 1 related test(s) found for owner `score`
     - infection unknown: TypeScript preview adapter does not yet model infection.

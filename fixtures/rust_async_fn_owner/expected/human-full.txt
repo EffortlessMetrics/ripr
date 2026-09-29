@@ -37,7 +37,7 @@ Weakness
   - missing discriminator capacity == threshold: No related test call uses capacity equal to threshold; observed capacity values: 100; observed threshold values: 50
 
 Stop reasons:
-  - propagation_evidence_unknown
+  - propagation_evidence_unknown — ripr could not tell whether the changed value flows to something a test observes
 
 Next step
   Escalate to real mutation testing or deep static analysis for this probe.
