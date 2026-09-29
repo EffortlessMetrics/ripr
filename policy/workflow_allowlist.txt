@@ -30,3 +30,4 @@
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
 .github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.
 .github/workflows/windows-packaged-qualification.yml|50|On-demand exact-candidate Windows package and VSIX rehearsal must retain identity checks, isolated CLI/editor journeys, and Actions-only receipts in one workflow.
+.github/workflows/join-tree-qualification.yml|40|DO-NOT-MERGE 0.11.0 J control: materializes one reviewed tree from a parentless control-branch carrier commit (raw-object parent check), runs the source-owned resolved-tree validator with a digest-pinned trusted checker, and qualifies the tree on hosted Linux and Windows; each block is bounded identity or evidence handling and no ref, tag, or package is mutated.

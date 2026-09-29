@@ -1,0 +1,365 @@
+name: Join Tree Qualification
+
+# Hosted product/editor qualification for one exact reviewed source/W7 join tree
+# (ripr#1771, 0.11.0 J). The tree is materialized from a parentless carrier commit on a
+# control branch whose tree is the reviewed tree. A parentless carrier cannot be
+# mistaken for, or merged as, the two-parent join J.
+#
+# This workflow creates no branch, tag, release, or package publication, uses no
+# secret, and mutates no ref.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: join-tree-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# The exact identities are pinned on this control branch only.
+env:
+  SOURCE_PARENT: "6989700f64936a6b9829e5ed06c731f0e1bed0e1"
+  SWARM_PARENT: "112a834e4397784d4bbb1feeffbea55e00dda427"
+  REVIEWED_TREE: "3e27eb6e07ce58546a6544877237c39beca2fa2e"
+  REVIEWED_TREE_REF: "refs/heads/control/tree-3e27eb6e"
+  CHECKER_REF: "refs/heads/control/checker-0f118b24"
+  CHECKER_SHA256: "0f118b24e3f5d67fd6a2396bc680cffbbc8f7d48ec317281cc839e36ee78c238"
+  PREFLIGHT_SHA256: "2f3ad0f0243765fed6aa52e4d4119337406ba18c3b85848e4dfb6b188cf17222"
+  RESOLUTION_MANIFEST_SHA256: "c492ed3aad404e381f081881a6ae58d9a024cbe28e1c6e7b788e927826f93e56"
+  CONTROL_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  CARGO_TERM_COLOR: never
+
+jobs:
+  validate:
+    name: Validate exact reviewed tree with the trusted checker
+    if: >-
+      github.repository == 'EffortlessMetrics/ripr' &&
+      contains(github.event.pull_request.body, '<!-- join-tree-qualification: true -->')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
+        with:
+          toolchain: 1.95.0
+
+      - name: Materialize source parent, reviewed tree, trusted checker and inputs
+        run: |
+          set -euo pipefail
+          git init --quiet src
+          cd src
+          git config user.email "qualification@invalid"
+          git config user.name "join tree qualification"
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" "+$REVIEWED_TREE_REF:refs/jq/tree" "+$CHECKER_REF:refs/jq/checker" "$CONTROL_SHA"
+          git fetch --quiet "https://github.com/EffortlessMetrics/ripr-swarm.git" "$SWARM_PARENT"
+          test "$(git rev-parse 'refs/jq/tree^{tree}')" = "$REVIEWED_TREE"
+          git cat-file -e "$SWARM_PARENT^{commit}"
+          git checkout --quiet --detach "$SOURCE_PARENT"
+          test "$(git rev-parse HEAD)" = "$SOURCE_PARENT"
+          mkdir -p "$RUNNER_TEMP/checker" target/jq
+          git cat-file blob refs/jq/checker:xtask > "$RUNNER_TEMP/checker/xtask"
+          echo "$CHECKER_SHA256  $RUNNER_TEMP/checker/xtask" | sha256sum --check --strict
+          chmod +x "$RUNNER_TEMP/checker/xtask"
+          git show "$CONTROL_SHA:docs/release/0.11.0/tree-qualification/inputs/source-promotion-preflight.json" > target/jq/source-promotion-preflight.json
+          git show "$CONTROL_SHA:docs/release/0.11.0/tree-qualification/inputs/resolution-manifest.json" > target/jq/resolution-manifest.json
+          echo "$PREFLIGHT_SHA256  target/jq/source-promotion-preflight.json" | sha256sum --check --strict
+          echo "$RESOLUTION_MANIFEST_SHA256  target/jq/resolution-manifest.json" | sha256sum --check --strict
+          test -z "$(git status --porcelain=v1)"
+
+      - name: Run source-owned resolved-tree validation
+        working-directory: src
+        run: >-
+          "$RUNNER_TEMP/checker/xtask" source-promotion validate-resolved-tree
+          --source-parent "$SOURCE_PARENT" --swarm-parent "$SWARM_PARENT"
+          --reviewed-tree "$REVIEWED_TREE"
+          --preflight target/jq/source-promotion-preflight.json --preflight-sha256 "$PREFLIGHT_SHA256"
+          --resolution-manifest target/jq/resolution-manifest.json --resolution-sha256 "$RESOLUTION_MANIFEST_SHA256"
+          --out target/jq/validation
+
+      - name: Emit the validation packet into the log
+        if: always()
+        working-directory: src
+        run: |
+          set -euo pipefail
+          test -d target/jq/validation || exit 0
+          tar -C target/jq --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 -czf "$RUNNER_TEMP/validation.tgz" validation
+          sha256sum "$RUNNER_TEMP/validation.tgz"
+          echo "BEGIN-VALIDATION-PACKET"
+          base64 -w 0 "$RUNNER_TEMP/validation.tgz" | fold -w 2000
+          echo
+          echo "END-VALIDATION-PACKET"
+
+      - name: Upload validation packet
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: resolved-tree-validation-${{ env.REVIEWED_TREE }}
+          path: src/target/jq/validation
+          if-no-files-found: warn
+          retention-days: 90
+
+  qualify:
+    name: Qualify exact reviewed tree (${{ matrix.os }})
+    if: >-
+      github.repository == 'EffortlessMetrics/ripr' &&
+      contains(github.event.pull_request.body, '<!-- join-tree-qualification: true -->')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Reject non-exact inputs before any work
+        run: |
+          set -euo pipefail
+          for name in SOURCE_PARENT SWARM_PARENT REVIEWED_TREE; do
+            value="${!name}"
+            printf '%s\n' "$value" | grep -Eq '^[0-9a-f]{40}$' \
+              || { echo "::error::$name is not an exact 40-hex object id"; exit 1; }
+          done
+          for name in PREFLIGHT_SHA256 RESOLUTION_MANIFEST_SHA256; do
+            value="${!name}"
+            printf '%s\n' "$value" | grep -Eq '^[0-9a-f]{64}$' \
+              || { echo "::error::$name is not a bare 64-hex digest"; exit 1; }
+          done
+          case "$REVIEWED_TREE_REF" in
+            refs/heads/control/*) ;;
+            *) echo "::error::reviewed_tree_ref must be a control carrier branch"; exit 1 ;;
+          esac
+          mkdir -p evidence
+          echo "reviewed_tree=$REVIEWED_TREE" > evidence/requested-identity.txt
+
+      - name: Materialize the exact reviewed tree
+        run: |
+          set -euo pipefail
+          mkdir -p tree
+          cd tree
+          git init --quiet .
+          git config user.email "qualification@invalid"
+          git config user.name "join tree qualification"
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --quiet --depth=1 origin "$REVIEWED_TREE_REF"
+          # The carrier is a parentless commit on a control branch whose tree is
+          # the reviewed tree; it is never J and is never merged. Read the raw
+          # object: a shallow fetch grafts parents away from `git log --format=%P`.
+          if git cat-file commit FETCH_HEAD | sed '/^$/q' | grep -q '^parent '; then
+            echo "::error::$REVIEWED_TREE_REF carrier has parents"; exit 1
+          fi
+          fetched="$(git rev-parse 'FETCH_HEAD^{tree}')"
+          test "$fetched" = "$REVIEWED_TREE" \
+            || { echo "::error::carrier tree is $fetched, not $REVIEWED_TREE"; exit 1; }
+          git read-tree "$REVIEWED_TREE"
+          git checkout-index --all --force
+          rebuilt="$(git write-tree)"
+          test "$rebuilt" = "$REVIEWED_TREE" \
+            || { echo "::error::materialized tree $rebuilt does not equal $REVIEWED_TREE"; exit 1; }
+          git update-index -q --refresh || true
+          git diff-files --quiet \
+            || { echo "::error::materialized worktree does not match the reviewed tree index"; exit 1; }
+          git commit --quiet --no-verify -m "disposable qualification carrier for tree $REVIEWED_TREE"
+          carrier_tree="$(git rev-parse HEAD^{tree})"
+          test "$carrier_tree" = "$REVIEWED_TREE" \
+            || { echo "::error::carrier commit tree $carrier_tree does not equal $REVIEWED_TREE"; exit 1; }
+          test -z "$(git status --porcelain=v1)" \
+            || { echo "::error::materialized checkout is not clean"; exit 1; }
+          {
+            echo "reviewed_tree=$REVIEWED_TREE"
+            echo "carrier_commit=$(git rev-parse HEAD)"
+            echo "carrier_parents=$(git log -1 --format=%P)"
+            echo "carrier_scope=runner_local_never_pushed"
+          } | tee ../evidence/carrier-identity.txt
+          echo "materialized $REVIEWED_TREE"
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
+        with:
+          toolchain: 1.95.0
+          components: clippy, rustfmt
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tree/editors/vscode/package-lock.json
+
+      - name: Record host and toolchain identity
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          {
+            echo "os=${{ matrix.os }}"
+            echo "runner_os=${RUNNER_OS}"
+            echo "runner_arch=${RUNNER_ARCH}"
+            echo "cargo=$(cargo --version)"
+            echo "rustc=$(rustc --version)"
+            echo "clippy=$(cargo clippy --version)"
+            echo "rustfmt=$(rustfmt --version)"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "git=$(git --version)"
+            echo "reviewed_tree=${REVIEWED_TREE}"
+          } | tee ../evidence/host-identity.txt
+
+      - name: Rust formatting
+        working-directory: tree
+        run: cargo fmt --all -- --check 2>&1 | tee ../evidence/cargo-fmt.log
+
+      - name: Rust check
+        working-directory: tree
+        run: cargo check --workspace --all-targets --locked 2>&1 | tee ../evidence/cargo-check.log
+
+      - name: Rust clippy
+        working-directory: tree
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings 2>&1 | tee ../evidence/cargo-clippy.log
+
+      - name: Rust tests
+        working-directory: tree
+        run: cargo test --workspace --all-targets --locked --no-fail-fast 2>&1 | tee ../evidence/cargo-test.log
+
+      - name: Rust docs
+        working-directory: tree
+        run: cargo doc --workspace --no-deps --locked 2>&1 | tee ../evidence/cargo-doc.log
+
+      - name: Source-governed repository contracts
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          : > ../evidence/governance.log
+          for command in \
+            check-network-policy check-process-policy check-workflows check-file-policy \
+            check-dependencies check-generated-clean check-executable-files \
+            check-command-catalog check-spec-format check-traceability check-doc-artifacts \
+            check-public-api check-architecture check-static-language check-no-panic-family \
+            check-output-contracts check-capabilities check-doc-index
+          do
+            echo "== $command" | tee -a ../evidence/governance.log
+            cargo xtask "$command" 2>&1 | tee -a ../evidence/governance.log
+          done
+
+      - name: Fixture and golden evidence
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          cargo xtask goldens check 2>&1 | tee ../evidence/goldens.log
+          cargo xtask fixtures 2>&1 | tee ../evidence/fixtures.log
+
+      - name: Working tree is unchanged by every gate
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --porcelain=v1)" \
+            || { echo "::error::gates left the checkout dirty"; exit 1; }
+          git add --all
+          rebuilt="$(git write-tree)"
+          test "$rebuilt" = "$REVIEWED_TREE" \
+            || { echo "::error::gates mutated the tree into $rebuilt"; exit 1; }
+
+      - name: Extension clean install, compile, and package
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          npm --prefix editors/vscode ci 2>&1 | tee ../evidence/npm-ci.log
+          npm --prefix editors/vscode run compile 2>&1 | tee ../evidence/npm-compile.log
+          npm --prefix editors/vscode run package 2>&1 | tee ../evidence/npm-package.log
+
+      - name: Record VSIX and server identity
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          vsix="$(find editors/vscode/dist editors/vscode -maxdepth 1 -name '*.vsix' -print 2>/dev/null | head -n 1)"
+          test -n "$vsix" || { echo "::error::no VSIX was produced"; exit 1; }
+          {
+            echo "vsix_path=$vsix"
+            echo "vsix_sha256=$(sha256sum "$vsix" | cut -d' ' -f1)"
+            echo "vsix_bytes=$(wc -c < "$vsix")"
+          } | tee ../evidence/vsix-identity.txt
+          unzip -l "$vsix" > ../evidence/vsix-inventory.txt
+
+      - name: Build the exact local server for editor journeys
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          cargo build -p ripr --locked 2>&1 | tee ../evidence/cargo-build-server.log
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            server="target/debug/ripr.exe"
+          else
+            server="target/debug/ripr"
+          fi
+          {
+            echo "server_path=$server"
+            echo "server_sha256=$(sha256sum "$server" | cut -d' ' -f1)"
+            echo "server_version=$("./$server" --version)"
+          } | tee ../evidence/server-identity.txt
+
+      - name: Editor host tests (Linux, virtual display)
+        if: runner.os == 'Linux'
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr" \
+            xvfb-run -a npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-test-e2e.log
+          RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr" \
+            RIPR_TEST_WORKSPACE_TRUST=untrusted \
+            xvfb-run -a npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-untrusted.log
+
+      - name: Editor host tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr.exe" \
+            npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-test-e2e.log
+          RIPR_TEST_SERVER_PATH="${GITHUB_WORKSPACE}/tree/target/debug/ripr.exe" \
+            RIPR_TEST_WORKSPACE_TRUST=untrusted \
+            npm --prefix editors/vscode run test:e2e 2>&1 | tee ../evidence/vscode-untrusted.log
+
+      - name: Prove the untrusted Workspace Trust host actually ran
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          grep -q "untrusted host keeps an actionable repair packet out of the clipboard" \
+            ../evidence/vscode-untrusted.log \
+            || { echo "::error::untrusted packaged-trust journey is absent from the run"; exit 1; }
+          if grep -qE "^\\s+- untrusted host keeps an actionable repair packet" ../evidence/vscode-untrusted.log; then
+            echo "::error::untrusted packaged-trust journey self-skipped"
+            exit 1
+          fi
+
+      - name: Prove no ref, tag, or remote mutation was attempted
+        if: always()
+        working-directory: tree
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+          git for-each-ref --format='%(refname) %(objectname)' | tee ../evidence/refs-after.txt
+          git tag --list | tee ../evidence/tags-after.txt
+          test ! -s ../evidence/tags-after.txt \
+            || { echo "::error::a tag exists in the qualification checkout"; exit 1; }
+          carrier="$(git rev-parse HEAD)"
+          git ls-remote origin > ../evidence/remote-refs.txt 2>/dev/null || true
+          if grep -q "^${carrier}" ../evidence/remote-refs.txt; then
+            echo "::error::a remote ref points at the runner-local carrier ${carrier}"
+            exit 1
+          fi
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: join-tree-qualification-${{ matrix.os }}-${{ env.REVIEWED_TREE }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 90
