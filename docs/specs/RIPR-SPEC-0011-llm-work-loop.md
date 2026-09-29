@@ -410,11 +410,21 @@ interprets it through the receipt owner (`output::agent_receipt`):
 - anything else (an `invalid` or `incomplete` improved receipt, a new or
   resolved seam, or no receipt issued for the attempt): `unconfirmed`. The seam
   is not restarted and a `repair_receipt_unconfirmed` warning says why.
-- the workflow receipt is bound to another attempt: the workflow keeps one
-  receipt, so a later attempt's after phase superseded this attempt's.
-  `receipt.superseded_by` names that attempt; the reading is `unconfirmed`,
-  because the earlier outcome can no longer be read, and the warning names the
-  new-attempt command for the seam in case its gap is still open.
+- the attempt retained a terminal receipt: status reads that attempt-local
+  artifact (hashes, path, and after-verdict binding) even when the
+  compatibility file now holds another attempt's receipt. Replacing, deleting,
+  or corrupting `target/ripr/reports/agent-receipt.json` does not change the
+  retained reading.
+- a declared attempt-local receipt is missing, digest-mismatched, path-escaped,
+  or bound to a different after verdict: `receipt.unavailable` is true and the
+  reading is `unconfirmed`. Status does not fall back to another attempt's
+  compatibility receipt.
+- a legacy manifest with no `terminal_artifacts` whose workflow receipt is bound
+  to another attempt: the workflow keeps one compatibility receipt, so a later
+  attempt's after phase superseded this attempt's. `receipt.superseded_by` names
+  that attempt; the reading is `unconfirmed`, because the earlier outcome cannot
+  be reconstructed, and the warning names the new-attempt command for the seam
+  in case its gap is still open.
 
 An after phase that refuses after selecting its attempt records the refusal on
 the attempt (`last_after_refusal`, owned by `app::repair_attempt`): the final

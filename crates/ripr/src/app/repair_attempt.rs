@@ -28,6 +28,13 @@ const REPAIR_ATTEMPT_COMMITMENT: &str = "before-commitment.sha256";
 const REPAIR_ATTEMPT_ARTIFACTS_DIRECTORY: &str = "artifacts";
 const REPAIR_ATTEMPT_ID_PREFIX: &str = "repair-attempt-";
 const REPAIR_ATTEMPT_ID_HEX_LEN: usize = 24;
+/// Role of the attempt-local agent receipt retained at finish. The
+/// repository-global `target/ripr/reports/agent-receipt.json` file is a
+/// one-slot compatibility projection of the latest finish, not the
+/// authoritative copy.
+pub(crate) const TERMINAL_RECEIPT_ROLE: &str = "agent_receipt";
+/// Role of the verify document the after phase used to produce that receipt.
+pub(crate) const TERMINAL_VERIFY_ROLE: &str = "agent_verify";
 /// Cargo's default build directory, relative to the workspace root.
 const CARGO_DEFAULT_BUILD_OUTPUT_DIR: &str = "target";
 /// The lockfile Cargo writes at the workspace root when it resolves
@@ -111,6 +118,13 @@ pub(crate) struct RepairAttemptManifest {
     /// one keep their exact bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) last_after_refusal: Option<RepairAttemptAfterRefusal>,
+    /// Terminal static-result artifacts retained at finish (`agent_receipt`,
+    /// and the `agent_verify` document it was built from). Absent or empty on
+    /// legacy manifests. Excluded from the before commitment, so adding them
+    /// cannot rewrite prepared inputs. Status prefers these over the
+    /// one-slot compatibility receipt.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) terminal_artifacts: Vec<RepairAttemptArtifact>,
 }
 
 /// Why the last after phase of an attempt refused, recorded by the attempt
@@ -509,8 +523,7 @@ fn complete_repair_attempt(
                 artifacts,
                 next_command,
                 limitations: vec![
-                    "after-phase verify and receipt outputs remain mirrored through target/ripr/workflow compatibility paths"
-                        .to_string(),
+                    "after-phase verify and receipt outputs remain mirrored through target/ripr/workflow compatibility paths; those files are compatibility projections and not the sole surviving copy of an attempt result".to_string(),
                 ],
                 non_claims: vec![
                     "RIPR does not author or apply the focused test edit".to_string(),
@@ -519,6 +532,7 @@ fn complete_repair_attempt(
                 ],
                 after: None,
                 last_after_refusal: None,
+                terminal_artifacts: Vec::new(),
             };
             let manifest_path = write_repair_attempt_manifest(canonical_root, &manifest)?;
             Ok(BeginRepairAttemptResult {
@@ -613,6 +627,344 @@ pub(crate) fn find_manifest_artifact_by_role<'a>(
         .find(|artifact| artifact.role == role)
 }
 
+/// Finds one terminal static-result artifact by role, if the attempt retained it.
+pub(crate) fn find_terminal_artifact_by_role<'a>(
+    manifest: &'a RepairAttemptManifest,
+    role: &str,
+) -> Option<&'a RepairAttemptArtifact> {
+    manifest
+        .terminal_artifacts
+        .iter()
+        .find(|artifact| artifact.role == role)
+}
+
+/// How status and other exact-attempt readers load the retained terminal receipt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum AttemptTerminalReceipt {
+    /// Legacy manifest: no terminal retention was declared. Callers may use a
+    /// still-present exact matching compatibility receipt, but must not
+    /// reconstruct an outcome from a superseded or unrelated global file.
+    NotRetained,
+    /// Digest-bound receipt under this attempt, matching its after verdict.
+    Issued {
+        path: String,
+        value: serde_json::Value,
+    },
+    /// Terminal retention was declared but cannot be projected. Never fall
+    /// back to another attempt's compatibility receipt.
+    Unavailable {
+        path: Option<String>,
+        reason: String,
+    },
+}
+
+/// Loads the attempt-local terminal receipt, validating path, digest, root,
+/// and result binding. Missing, corrupt, escaped, or mis-bound files are
+/// `Unavailable` — not a license to read `agent-receipt.json` for a different
+/// attempt.
+pub(crate) fn load_attempt_terminal_receipt(
+    root: &Path,
+    manifest: &RepairAttemptManifest,
+) -> AttemptTerminalReceipt {
+    if manifest.state != RepairAttemptState::ReadyToFinish {
+        return AttemptTerminalReceipt::NotRetained;
+    }
+    let Some(receipt_artifact) = find_terminal_artifact_by_role(manifest, TERMINAL_RECEIPT_ROLE)
+    else {
+        return if manifest.terminal_artifacts.is_empty() {
+            AttemptTerminalReceipt::NotRetained
+        } else {
+            AttemptTerminalReceipt::Unavailable {
+                path: None,
+                reason: "repair attempt declares terminal artifacts but no agent_receipt"
+                    .to_string(),
+            }
+        };
+    };
+    match read_bound_terminal_receipt(root, manifest, receipt_artifact) {
+        Ok((path, value)) => AttemptTerminalReceipt::Issued { path, value },
+        Err(reason) => AttemptTerminalReceipt::Unavailable {
+            path: Some(receipt_artifact.path.clone()),
+            reason,
+        },
+    }
+}
+
+fn read_bound_terminal_receipt(
+    root: &Path,
+    manifest: &RepairAttemptManifest,
+    artifact: &RepairAttemptArtifact,
+) -> Result<(String, serde_json::Value), String> {
+    let bytes = read_terminal_artifact_bytes(root, &manifest.repair_attempt_id, artifact)?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "repair attempt terminal receipt {} is not JSON: {error}",
+            artifact.path
+        )
+    })?;
+    let after = manifest.after.as_ref().ok_or_else(|| {
+        "repair attempt is ready_to_finish but carries no after verdict".to_string()
+    })?;
+    let bound = |pointer: &str, expected: &str| {
+        value.pointer(pointer).and_then(serde_json::Value::as_str) == Some(expected)
+    };
+    if !(bound("/repair_attempt/attempt_id", after.attempt_id.as_str())
+        && bound("/repair_attempt/after_head", &after.repository_head)
+        && bound("/repair_attempt/delta_sha256", &after.delta_sha256)
+        && bound("/repair_attempt/packet_sha256", &after.packet_sha256))
+    {
+        return Err(format!(
+            "repair attempt terminal receipt {} is not bound to this attempt's after verdict",
+            artifact.path
+        ));
+    }
+    Ok((artifact.path.clone(), value))
+}
+
+fn read_terminal_artifact_bytes(
+    root: &Path,
+    attempt_id: &RepairAttemptId,
+    artifact: &RepairAttemptArtifact,
+) -> Result<Vec<u8>, String> {
+    if artifact.path.is_empty() || Path::new(&artifact.path).is_absolute() {
+        return Err(format!(
+            "repair attempt terminal artifact path is not a relative attempt path: {}",
+            artifact.path
+        ));
+    }
+    let artifacts_root =
+        repair_attempt_directory(root, attempt_id).join(REPAIR_ATTEMPT_ARTIFACTS_DIRECTORY);
+    let artifacts_root = artifacts_root.canonicalize().map_err(|error| {
+        format!(
+            "canonicalize repair attempt artifacts directory {} failed: {error}",
+            artifacts_root.display()
+        )
+    })?;
+    let path = root.join(&artifact.path);
+    let canonical = path.canonicalize().map_err(|error| {
+        format!(
+            "canonicalize repair attempt terminal artifact {} failed: {error}",
+            artifact.path
+        )
+    })?;
+    if !canonical.starts_with(&artifacts_root) {
+        return Err(format!(
+            "repair attempt terminal artifact escapes its attempt: {}",
+            artifact.path
+        ));
+    }
+    let bytes = std::fs::read(&canonical)
+        .map_err(|error| format!("read terminal artifact {} failed: {error}", artifact.path))?;
+    if u64::try_from(bytes.len()).map_err(|error| error.to_string())? != artifact.bytes
+        || sha256_bytes(&bytes) != artifact.sha256
+    {
+        return Err(format!(
+            "repair attempt terminal artifact binding failed: {}",
+            artifact.path
+        ));
+    }
+    Ok(bytes)
+}
+
+/// Copies the after-phase verify/receipt bytes under the attempt directory
+/// and records them on the manifest. Files are published first; the manifest
+/// reference is updated only after those bytes are durable. Existing matching
+/// files are reused; a different committed payload is refused rather than
+/// replaced.
+pub(crate) fn retain_terminal_evidence(
+    root: &Path,
+    attempt_id: &RepairAttemptId,
+    sources: &[BeforeArtifactSource<'_>],
+) -> Result<Vec<RepairAttemptArtifact>, String> {
+    if sources.is_empty() {
+        return Err("terminal retention requires at least one after-phase artifact".to_string());
+    }
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("canonicalize repair attempt root failed: {error}"))?;
+    let (manifest_path, mut manifest) = load_repair_attempt_by_id(&root, attempt_id)?;
+    if manifest.state != RepairAttemptState::ReadyToFinish {
+        return Err(format!(
+            "repair attempt {} is not ready_to_finish; terminal evidence is retained only after a compliant finish",
+            attempt_id.as_str()
+        ));
+    }
+    let destination_directory =
+        repair_attempt_directory(&root, attempt_id).join(REPAIR_ATTEMPT_ARTIFACTS_DIRECTORY);
+    let mut retained = Vec::with_capacity(sources.len());
+    let mut roles = BTreeSet::new();
+    let mut names = BTreeSet::new();
+    for source in sources {
+        if source.role.trim().is_empty() || !roles.insert(source.role) {
+            return Err(format!(
+                "repair attempt terminal artifact role is blank or duplicated: `{}`",
+                source.role
+            ));
+        }
+        if source.role != TERMINAL_RECEIPT_ROLE && source.role != TERMINAL_VERIFY_ROLE {
+            return Err(format!(
+                "repair attempt terminal artifact role `{}` is not a retained after-phase result",
+                source.role
+            ));
+        }
+        let source_path = source.path.canonicalize().map_err(|error| {
+            format!(
+                "canonicalize terminal source {} failed: {error}",
+                source.path.display()
+            )
+        })?;
+        if !source_path.starts_with(&root) {
+            return Err(format!(
+                "repair attempt terminal artifact escapes root: {}",
+                source.path.display()
+            ));
+        }
+        let file_name = source_path
+            .file_name()
+            .ok_or_else(|| {
+                format!(
+                    "repair attempt terminal artifact has no file name: {}",
+                    source_path.display()
+                )
+            })?
+            .to_owned();
+        if !names.insert(file_name.clone()) {
+            return Err(format!(
+                "repair attempt terminal artifact file name is duplicated: {}",
+                file_name.to_string_lossy()
+            ));
+        }
+        let bytes = std::fs::read(&source_path)
+            .map_err(|error| format!("read {} failed: {error}", source_path.display()))?;
+        let digest = sha256_bytes(&bytes);
+        let size = u64::try_from(bytes.len()).map_err(|error| {
+            format!("repair attempt terminal artifact size does not fit u64: {error}")
+        })?;
+        let destination = destination_directory.join(&file_name);
+        if destination.exists() {
+            let existing = std::fs::read(&destination)
+                .map_err(|error| format!("read {} failed: {error}", destination.display()))?;
+            if sha256_bytes(&existing) != digest {
+                if !manifest.terminal_artifacts.is_empty() {
+                    return Err(format!(
+                        "repair attempt destination is immutable and already exists: {}",
+                        destination.display()
+                    ));
+                }
+                // Restore and crash-before-manifest leave unpublished leftover
+                // files. They are not a committed result; retry may replace them.
+                replace_file_atomically(&destination, &bytes)?;
+            }
+        } else {
+            write_bytes_atomic(&destination, &bytes)?;
+        }
+        let relative = destination.strip_prefix(&root).map_err(|error| {
+            format!(
+                "repair attempt destination {} is not under root {}: {error}",
+                destination.display(),
+                root.display()
+            )
+        })?;
+        retained.push(RepairAttemptArtifact {
+            role: source.role.to_string(),
+            path: display_path(relative),
+            sha256: digest,
+            bytes: size,
+        });
+    }
+    retained.sort_by(|left, right| left.role.cmp(&right.role));
+    if !manifest.terminal_artifacts.is_empty() && manifest.terminal_artifacts != retained {
+        return Err(format!(
+            "repair attempt {} already retained different terminal evidence; committed results are not replaced",
+            attempt_id.as_str()
+        ));
+    }
+    if manifest.terminal_artifacts == retained {
+        return Ok(retained);
+    }
+    manifest.terminal_artifacts = retained.clone();
+    validate_manifest(&manifest)?;
+    let mut bytes = serde_json::to_vec_pretty(&manifest)
+        .map_err(|error| format!("serialize repair attempt terminal retention failed: {error}"))?;
+    bytes.push(b'\n');
+    replace_manifest_bytes(&manifest_path, &bytes)?;
+    read_repair_attempt_manifest_at(&root, &manifest_path)?;
+    Ok(retained)
+}
+
+/// Completes terminal retention for a finished attempt whose after phase
+/// wrote the compatibility receipt but did not yet record attempt-local
+/// artifacts. No-op when the attempt is not finished, already retained, or
+/// the compatibility receipt is missing or bound to a different attempt.
+/// Does not re-run verify or rewrite committed bytes.
+pub(crate) fn complete_pending_terminal_retention(
+    root: &Path,
+    attempt_id: &str,
+) -> Result<bool, String> {
+    let attempt_id = RepairAttemptId::parse(attempt_id.to_string())?;
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("canonicalize repair attempt root failed: {error}"))?;
+    let Ok((_, manifest)) = load_repair_attempt_by_id(&root, &attempt_id) else {
+        return Ok(false);
+    };
+    if manifest.state != RepairAttemptState::ReadyToFinish
+        || find_terminal_artifact_by_role(&manifest, TERMINAL_RECEIPT_ROLE).is_some()
+    {
+        return Ok(false);
+    }
+    let receipt_path = root.join(crate::agent::loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT);
+    let verify_path = root.join(crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT);
+    if !receipt_path.is_file() || !verify_path.is_file() {
+        return Ok(false);
+    }
+    let receipt_text = std::fs::read_to_string(&receipt_path)
+        .map_err(|error| format!("read {} failed: {error}", receipt_path.display()))?;
+    let receipt: serde_json::Value = match serde_json::from_str(&receipt_text) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    let Some(after) = manifest.after.as_ref() else {
+        return Ok(false);
+    };
+    let bound = |pointer: &str, expected: &str| {
+        receipt.pointer(pointer).and_then(serde_json::Value::as_str) == Some(expected)
+    };
+    if !(bound("/repair_attempt/attempt_id", after.attempt_id.as_str())
+        && bound("/repair_attempt/after_head", &after.repository_head)
+        && bound("/repair_attempt/delta_sha256", &after.delta_sha256)
+        && bound("/repair_attempt/packet_sha256", &after.packet_sha256))
+    {
+        return Ok(false);
+    }
+    let verify_bytes = std::fs::read(&verify_path)
+        .map_err(|error| format!("read {} failed: {error}", verify_path.display()))?;
+    let Some(expected_verify) = receipt
+        .pointer("/provenance/verify_artifact/sha256")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return Ok(false);
+    };
+    if expected_verify != sha256_bytes(&verify_bytes) {
+        return Ok(false);
+    }
+    retain_terminal_evidence(
+        &root,
+        &attempt_id,
+        &[
+            BeforeArtifactSource {
+                role: TERMINAL_RECEIPT_ROLE,
+                path: &receipt_path,
+            },
+            BeforeArtifactSource {
+                role: TERMINAL_VERIFY_ROLE,
+                path: &verify_path,
+            },
+        ],
+    )?;
+    Ok(true)
+}
+
 /// Loads the retained edit-cage policy of a durable attempt from its staged
 /// baseline artifact, re-verifying the artifact digest first.
 pub(crate) fn load_edit_cage_policy(
@@ -698,6 +1050,7 @@ fn manifest_before_bytes(manifest: &RepairAttemptManifest) -> Result<Vec<u8>, St
     before.state = RepairAttemptState::AwaitingEdit;
     before.after = None;
     before.last_after_refusal = None;
+    before.terminal_artifacts.clear();
     serde_json::to_vec_pretty(&before)
         .map_err(|error| format!("serialize repair attempt commitment failed: {error}"))
 }
@@ -995,6 +1348,12 @@ pub(crate) fn restore_repair_attempt_to_awaiting_edit(
     }
     manifest.state = RepairAttemptState::AwaitingEdit;
     manifest.after = None;
+    // Terminal files stay on disk. They are not before-phase inputs; clearing
+    // the manifest field keeps the restored awaiting_edit record from claiming
+    // a finished result. A retry reuses them when the bytes still match, and
+    // may replace unpublished leftovers when a later finish produces a new
+    // timestamped receipt.
+    manifest.terminal_artifacts.clear();
     validate_manifest(&manifest)?;
     let mut bytes = serde_json::to_vec_pretty(&manifest)
         .map_err(|error| format!("serialize restored repair attempt failed: {error}"))?;
@@ -1335,7 +1694,7 @@ fn after_phase_not_awaiting_error(root_display: &str, manifest: &RepairAttemptMa
         });
     match manifest.state {
         RepairAttemptState::ReadyToFinish => format!(
-            "repair attempt {attempt_id} (seam `{seam_id}`) already finished: its after phase ran at HEAD {after_head} and the edit cage admitted the edit (state `ready_to_finish`), so there is no after phase left to run. Its receipt, when that after phase issued one, is `{receipt}` until a later attempt's after phase replaces that file. Next: `{status}` reads the attempt's outcome; if the receipt leaves the gap open, start a new attempt with `{restart}`",
+            "repair attempt {attempt_id} (seam `{seam_id}`) already finished: its after phase ran at HEAD {after_head} and the edit cage admitted the edit (state `ready_to_finish`), so there is no after phase left to run. Its retained receipt stays under `{REPAIR_ATTEMPT_DIRECTORY}/{attempt_id}/`; `{receipt}` is only a compatibility projection of the latest finish. Next: `{status}` reads the attempt's outcome; if the receipt leaves the gap open, start a new attempt with `{restart}`",
             receipt = crate::agent::loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT,
         ),
         RepairAttemptState::Stale
@@ -1675,6 +2034,23 @@ fn validate_manifest(manifest: &RepairAttemptManifest) -> Result<(), String> {
     {
         return Err("repair attempt manifest contains duplicate artifact identity".to_string());
     }
+    if manifest.terminal_artifacts.iter().any(|artifact| {
+        artifact.role.is_empty() || artifact.path.is_empty() || !is_sha256_digest(&artifact.sha256)
+    }) {
+        return Err("repair attempt manifest contains an invalid terminal artifact".to_string());
+    }
+    let mut terminal_roles = BTreeSet::new();
+    let mut terminal_paths = BTreeSet::new();
+    if manifest.terminal_artifacts.iter().any(|artifact| {
+        !terminal_roles.insert(&artifact.role)
+            || !terminal_paths.insert(&artifact.path)
+            || paths.contains(&artifact.path)
+    }) {
+        return Err(
+            "repair attempt manifest contains duplicate or colliding terminal artifact identity"
+                .to_string(),
+        );
+    }
     Ok(())
 }
 
@@ -1976,6 +2352,7 @@ mod tests {
             non_claims: vec!["not merge authority".to_string()],
             after: None,
             last_after_refusal: None,
+            terminal_artifacts: Vec::new(),
         })
     }
 
@@ -3041,5 +3418,342 @@ mod tests {
         run_git(&root, &["add", "."])?;
         run_git(&root, &["commit", "--no-gpg-sign", "-m", "initial"])?;
         Ok(root)
+    }
+
+    fn finish_sample_attempt(
+        root: &Path,
+        prepared: &BeginRepairAttemptResult,
+    ) -> Result<RepairAttemptManifest, String> {
+        let test_path = root.join("tests/target.rs");
+        std::fs::create_dir_all(
+            test_path
+                .parent()
+                .ok_or_else(|| "test path has no parent".to_string())?,
+        )
+        .map_err(|error| format!("create tests dir failed: {error}"))?;
+        std::fs::write(&test_path, "#[test]\nfn focused() {}\n")
+            .map_err(|error| format!("write {} failed: {error}", test_path.display()))?;
+        let packet = root.join(&find_manifest_artifact(&prepared.manifest, "agent_packet")?.path);
+        finish_repair_attempt(
+            root,
+            &prepared.manifest.repair_attempt_id,
+            &packet,
+            HeadMovement::AdmitDescendantCommits,
+        )?;
+        load_repair_attempt_manifest(root, &prepared.manifest.repair_attempt_id)
+    }
+
+    fn bound_receipt_bytes(manifest: &RepairAttemptManifest) -> Result<Vec<u8>, String> {
+        bound_receipt_bytes_with_verify(manifest, None)
+    }
+
+    fn bound_receipt_bytes_with_verify(
+        manifest: &RepairAttemptManifest,
+        verify_sha256: Option<&str>,
+    ) -> Result<Vec<u8>, String> {
+        let after = manifest
+            .after
+            .as_ref()
+            .ok_or("finished sample has no after")?;
+        let mut provenance = serde_json::json!({ "movement": "unchanged" });
+        if let Some(sha256) = verify_sha256 {
+            provenance["verify_artifact"] = serde_json::json!({
+                "path": crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                "sha256": sha256
+            });
+        }
+        let value = serde_json::json!({
+            "status": "advisory",
+            "provenance": provenance,
+            "repair_attempt": {
+                "attempt_id": after.attempt_id.as_str(),
+                "after_head": after.repository_head,
+                "delta_sha256": after.delta_sha256,
+                "packet_sha256": after.packet_sha256
+            }
+        });
+        serde_json::to_vec_pretty(&value)
+            .map_err(|error| format!("serialize sample receipt failed: {error}"))
+    }
+
+    #[test]
+    fn terminal_retention_survives_a_later_compatibility_receipt() -> Result<(), String> {
+        let root = test_repo_root("retain-terminal")?;
+        let prepared = prepare_sample_attempt(&root, "seam:sample", "a")?;
+        let finished = finish_sample_attempt(&root, &prepared)?;
+        let before_commitment = std::fs::read_to_string(
+            repair_attempt_directory(&root, &finished.repair_attempt_id)
+                .join(REPAIR_ATTEMPT_COMMITMENT),
+        )
+        .map_err(|error| format!("read before commitment failed: {error}"))?;
+
+        let reports = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports)
+            .map_err(|error| format!("create {} failed: {error}", reports.display()))?;
+        let receipt_path = reports.join("agent-receipt.json");
+        let verify_path = root.join("target/ripr/workflow/agent-verify.json");
+        std::fs::write(&receipt_path, bound_receipt_bytes(&finished)?)
+            .map_err(|error| format!("write receipt failed: {error}"))?;
+        std::fs::write(&verify_path, b"{\"kind\":\"verify\"}\n")
+            .map_err(|error| format!("write verify failed: {error}"))?;
+
+        retain_terminal_evidence(
+            &root,
+            &finished.repair_attempt_id,
+            &[
+                BeforeArtifactSource {
+                    role: TERMINAL_RECEIPT_ROLE,
+                    path: &receipt_path,
+                },
+                BeforeArtifactSource {
+                    role: TERMINAL_VERIFY_ROLE,
+                    path: &verify_path,
+                },
+            ],
+        )?;
+        let retained = load_repair_attempt_manifest(&root, &finished.repair_attempt_id)?;
+        let after_commitment = std::fs::read_to_string(
+            repair_attempt_directory(&root, &retained.repair_attempt_id)
+                .join(REPAIR_ATTEMPT_COMMITMENT),
+        )
+        .map_err(|error| format!("reread before commitment failed: {error}"))?;
+        if before_commitment != after_commitment {
+            return Err("terminal retention rewrote the immutable before commitment".to_string());
+        }
+        match load_attempt_terminal_receipt(&root, &retained) {
+            AttemptTerminalReceipt::Issued { path, value } => {
+                if !path.contains(retained.repair_attempt_id.as_str()) {
+                    return Err(format!("retained path left the attempt directory: {path}"));
+                }
+                if value["repair_attempt"]["attempt_id"] != retained.repair_attempt_id.as_str() {
+                    return Err("retained receipt is not bound to this attempt".to_string());
+                }
+            }
+            other => return Err(format!("expected issued local receipt, got {other:?}")),
+        }
+
+        std::fs::write(
+            &receipt_path,
+            b"{\"repair_attempt\":{\"attempt_id\":\"other\"}}\n",
+        )
+        .map_err(|error| format!("overwrite compatibility receipt failed: {error}"))?;
+        match load_attempt_terminal_receipt(&root, &retained) {
+            AttemptTerminalReceipt::Issued { .. } => {}
+            other => {
+                return Err(format!(
+                    "rewriting the one-slot projection must not drop A's result: {other:?}"
+                ));
+            }
+        }
+
+        let local = root.join(
+            find_terminal_artifact_by_role(&retained, TERMINAL_RECEIPT_ROLE)
+                .ok_or("missing retained receipt")?
+                .path
+                .clone(),
+        );
+        std::fs::write(&local, b"tampered")
+            .map_err(|error| format!("tamper local receipt failed: {error}"))?;
+        match load_attempt_terminal_receipt(&root, &retained) {
+            AttemptTerminalReceipt::Unavailable { .. } => {}
+            other => {
+                return Err(format!(
+                    "a tampered local receipt must be unavailable, not {other:?}"
+                ));
+            }
+        }
+
+        std::fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove {} failed: {error}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn terminal_receipt_path_escape_is_unavailable() -> Result<(), String> {
+        let root = test_repo_root("retain-escape")?;
+        let prepared = prepare_sample_attempt(&root, "seam:sample", "escape")?;
+        let mut finished = finish_sample_attempt(&root, &prepared)?;
+        let outside = root.join("target/ripr/reports/agent-receipt.json");
+        std::fs::create_dir_all(
+            outside
+                .parent()
+                .ok_or_else(|| "receipt parent".to_string())?,
+        )
+        .map_err(|error| format!("create reports failed: {error}"))?;
+        std::fs::write(&outside, bound_receipt_bytes(&finished)?)
+            .map_err(|error| format!("write outside receipt failed: {error}"))?;
+        finished.terminal_artifacts = vec![RepairAttemptArtifact {
+            role: TERMINAL_RECEIPT_ROLE.to_string(),
+            path: "target/ripr/reports/agent-receipt.json".to_string(),
+            sha256: sha256_bytes(&std::fs::read(&outside).map_err(|error| error.to_string())?),
+            bytes: std::fs::metadata(&outside)
+                .map_err(|error| error.to_string())?
+                .len(),
+        }];
+        match load_attempt_terminal_receipt(&root, &finished) {
+            AttemptTerminalReceipt::Unavailable { reason, .. }
+                if reason.contains("escapes its attempt") => {}
+            other => {
+                return Err(format!(
+                    "a path outside the attempt must be unavailable, not {other:?}"
+                ));
+            }
+        }
+        std::fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove {} failed: {error}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pending_terminal_retention_completes_from_a_matching_projection() -> Result<(), String> {
+        let root = test_repo_root("retain-pending")?;
+        let prepared = prepare_sample_attempt(&root, "seam:sample", "pending")?;
+        let finished = finish_sample_attempt(&root, &prepared)?;
+        let reports = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports)
+            .map_err(|error| format!("create {} failed: {error}", reports.display()))?;
+        let verify_bytes = b"{\"kind\":\"verify\"}\n";
+        std::fs::write(
+            root.join("target/ripr/workflow/agent-verify.json"),
+            verify_bytes,
+        )
+        .map_err(|error| format!("write verify failed: {error}"))?;
+        std::fs::write(
+            reports.join("agent-receipt.json"),
+            bound_receipt_bytes_with_verify(&finished, Some(&sha256_bytes(verify_bytes)))?,
+        )
+        .map_err(|error| format!("write receipt failed: {error}"))?;
+
+        if !complete_pending_terminal_retention(&root, finished.repair_attempt_id.as_str())? {
+            return Err("matching compatibility receipt should complete retention".to_string());
+        }
+        let retained = load_repair_attempt_manifest(&root, &finished.repair_attempt_id)?;
+        match load_attempt_terminal_receipt(&root, &retained) {
+            AttemptTerminalReceipt::Issued { .. } => {}
+            other => return Err(format!("pending completion did not retain: {other:?}")),
+        }
+        if complete_pending_terminal_retention(&root, finished.repair_attempt_id.as_str())? {
+            return Err("a second completion must be a no-op".to_string());
+        }
+
+        std::fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove {} failed: {error}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pending_terminal_retention_refuses_a_replaced_verify_projection() -> Result<(), String> {
+        let root = test_repo_root("retain-pending-verify")?;
+        let prepared = prepare_sample_attempt(&root, "seam:sample", "pending-verify")?;
+        let finished = finish_sample_attempt(&root, &prepared)?;
+        let reports = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports)
+            .map_err(|error| format!("create {} failed: {error}", reports.display()))?;
+        let original_verify = b"{\"kind\":\"verify\",\"attempt\":\"a\"}\n";
+        std::fs::write(
+            reports.join("agent-receipt.json"),
+            bound_receipt_bytes_with_verify(&finished, Some(&sha256_bytes(original_verify)))?,
+        )
+        .map_err(|error| format!("write receipt failed: {error}"))?;
+        std::fs::write(
+            root.join("target/ripr/workflow/agent-verify.json"),
+            b"{\"kind\":\"verify\",\"attempt\":\"b\"}\n",
+        )
+        .map_err(|error| format!("write replaced verify failed: {error}"))?;
+
+        if complete_pending_terminal_retention(&root, finished.repair_attempt_id.as_str())? {
+            return Err(
+                "a replaced verify projection must not be retained as A's evidence".to_string(),
+            );
+        }
+        let manifest = load_repair_attempt_manifest(&root, &finished.repair_attempt_id)?;
+        if !manifest.terminal_artifacts.is_empty() {
+            return Err("pending completion must leave terminal_artifacts empty".to_string());
+        }
+
+        std::fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove {} failed: {error}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn restored_attempt_may_replace_unpublished_terminal_files() -> Result<(), String> {
+        let root = test_repo_root("retain-restore")?;
+        let prepared = prepare_sample_attempt(&root, "seam:sample", "restore")?;
+        let finished = finish_sample_attempt(&root, &prepared)?;
+        let reports = root.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports)
+            .map_err(|error| format!("create {} failed: {error}", reports.display()))?;
+        let receipt_path = reports.join("agent-receipt.json");
+        let verify_path = root.join("target/ripr/workflow/agent-verify.json");
+        std::fs::write(&receipt_path, bound_receipt_bytes(&finished)?)
+            .map_err(|error| format!("write receipt failed: {error}"))?;
+        std::fs::write(&verify_path, b"{\"kind\":\"verify\"}\n")
+            .map_err(|error| format!("write verify failed: {error}"))?;
+        retain_terminal_evidence(
+            &root,
+            &finished.repair_attempt_id,
+            &[
+                BeforeArtifactSource {
+                    role: TERMINAL_RECEIPT_ROLE,
+                    path: &receipt_path,
+                },
+                BeforeArtifactSource {
+                    role: TERMINAL_VERIFY_ROLE,
+                    path: &verify_path,
+                },
+            ],
+        )?;
+
+        restore_repair_attempt_to_awaiting_edit(&root, &finished.repair_attempt_id)?;
+        let restored = load_repair_attempt_manifest(&root, &finished.repair_attempt_id)?;
+        let packet = root.join(&find_manifest_artifact(&restored, "agent_packet")?.path);
+        finish_repair_attempt(
+            &root,
+            &finished.repair_attempt_id,
+            &packet,
+            HeadMovement::AdmitDescendantCommits,
+        )?;
+        let retried = load_repair_attempt_manifest(&root, &finished.repair_attempt_id)?;
+        let mut receipt: serde_json::Value =
+            serde_json::from_slice(&bound_receipt_bytes(&retried)?)
+                .map_err(|error| format!("parse retried receipt: {error}"))?;
+        receipt["generated_at"] = serde_json::json!("retry");
+        std::fs::write(
+            &receipt_path,
+            serde_json::to_vec_pretty(&receipt)
+                .map_err(|error| format!("serialize retried receipt: {error}"))?,
+        )
+        .map_err(|error| format!("write retried receipt failed: {error}"))?;
+        std::fs::write(&verify_path, b"{\"kind\":\"verify\",\"retry\":true}\n")
+            .map_err(|error| format!("write retried verify failed: {error}"))?;
+
+        retain_terminal_evidence(
+            &root,
+            &retried.repair_attempt_id,
+            &[
+                BeforeArtifactSource {
+                    role: TERMINAL_RECEIPT_ROLE,
+                    path: &receipt_path,
+                },
+                BeforeArtifactSource {
+                    role: TERMINAL_VERIFY_ROLE,
+                    path: &verify_path,
+                },
+            ],
+        )?;
+        let retained = load_repair_attempt_manifest(&root, &retried.repair_attempt_id)?;
+        match load_attempt_terminal_receipt(&root, &retained) {
+            AttemptTerminalReceipt::Issued { value, .. } => {
+                if value["generated_at"] != "retry" {
+                    return Err("retry must retain the new receipt bytes".to_string());
+                }
+            }
+            other => return Err(format!("expected issued retried receipt, got {other:?}")),
+        }
+
+        std::fs::remove_dir_all(&root)
+            .map_err(|error| format!("remove {} failed: {error}", root.display()))?;
+        Ok(())
     }
 }

@@ -807,6 +807,9 @@ fn run_agent_repair_phase(
         }
         AgentRepairPhase::After => {
             ensure_command_root(&root, "agent repair --phase after")?;
+            if let Some(id) = attempt_id.as_deref() {
+                crate::app::repair_attempt::complete_pending_terminal_retention(&root, id)?;
+            }
             let attempt = crate::app::repair_attempt::resolve_awaiting_repair_attempt(
                 &root,
                 attempt_id.as_deref(),
@@ -1022,6 +1025,27 @@ fn run_agent_repair_phase(
                     Some(cage_after.attempt_id.as_str()),
                     Some(&packet_path),
                 );
+
+                // Attempt-local copy of the just-written receipt and the
+                // verify document it was built from. The compatibility
+                // projection above can be replaced by a later finish; this
+                // retain is the surviving authority for this attempt.
+                if receipt_result.is_ok() {
+                    crate::app::repair_attempt::retain_terminal_evidence(
+                        &root,
+                        &attempt.attempt_id,
+                        &[
+                            crate::app::repair_attempt::BeforeArtifactSource {
+                                role: crate::app::repair_attempt::TERMINAL_RECEIPT_ROLE,
+                                path: &root.join("target/ripr/reports/agent-receipt.json"),
+                            },
+                            crate::app::repair_attempt::BeforeArtifactSource {
+                                role: crate::app::repair_attempt::TERMINAL_VERIFY_ROLE,
+                                path: &verify_json,
+                            },
+                        ],
+                    )?;
+                }
 
                 // The status report the finished after phase embeds in its
                 // single stdout document. Built here it reads exactly what

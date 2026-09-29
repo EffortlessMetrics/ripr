@@ -15296,6 +15296,44 @@ fn repair_route_manifest(
     )?)?)
 }
 
+/// Writes one receipt to both the compatibility projection and the digest-bound
+/// attempt-local artifact, then updates `terminal_artifacts` so status still
+/// reads this attempt's result.
+fn repair_route_write_terminal_receipt(
+    root: &Path,
+    attempt_id: &str,
+    receipt: &serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = serde_json::to_vec_pretty(receipt)?;
+    std::fs::write(root.join("target/ripr/reports/agent-receipt.json"), &bytes)?;
+    let manifest_path = root
+        .join("target/ripr/repair-attempts")
+        .join(attempt_id)
+        .join("attempt.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
+    let digest = sha256_hex_bytes(&bytes);
+    let size = u64::try_from(bytes.len())?;
+    let Some(artifacts) = manifest["terminal_artifacts"].as_array_mut() else {
+        return Err("attempt retained no terminal_artifacts".into());
+    };
+    let Some(receipt_artifact) = artifacts
+        .iter_mut()
+        .find(|artifact| artifact["role"] == "agent_receipt")
+    else {
+        return Err("attempt retained no agent_receipt".into());
+    };
+    let relative = receipt_artifact["path"]
+        .as_str()
+        .ok_or("agent_receipt path missing")?
+        .to_string();
+    std::fs::write(root.join(&relative), &bytes)?;
+    receipt_artifact["sha256"] = serde_json::Value::String(digest);
+    receipt_artifact["bytes"] = serde_json::Value::from(size);
+    std::fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest)?)?;
+    Ok(())
+}
+
 fn repair_route_attempt<'a>(
     report: &'a serde_json::Value,
     attempt_id: &str,
@@ -15678,7 +15716,7 @@ fn agent_status_is_complete_only_for_an_advisory_improved_receipt_at_head()
         receipt["status"] = serde_json::Value::String("advisory".to_string());
         receipt["analysis_outcome_status"] = serde_json::Value::String("complete".to_string());
         receipt["analysis_outcome_error"] = serde_json::Value::Null;
-        std::fs::write(&receipt_path, serde_json::to_vec_pretty(&receipt)?)?;
+        repair_route_write_terminal_receipt(&root, &attempt_id, &receipt)?;
     }
     let manifest = repair_route_manifest(&root, &attempt_id)?;
     assert_eq!(manifest["state"], "ready_to_finish", "{manifest:#}");
@@ -15749,7 +15787,7 @@ fn agent_status_is_complete_only_for_an_advisory_improved_receipt_at_head()
     // A receipt that names a different after verdict is not this attempt's.
     receipt["repair_attempt"]["delta_sha256"] =
         serde_json::Value::String(format!("sha256:{}", "0".repeat(64)));
-    std::fs::write(&receipt_path, serde_json::to_vec_pretty(&receipt)?)?;
+    repair_route_write_terminal_receipt(&root, &attempt_id, &receipt)?;
     let report = repair_route_status(&root)?;
     let attempt = repair_route_attempt(&report, &attempt_id)?;
     assert_eq!(attempt["disposition"], "unconfirmed", "{report:#}");
@@ -16173,25 +16211,32 @@ fn repair_route_two_seam_workspace(label: &str) -> Result<PathBuf, Box<dyn std::
     Ok(root)
 }
 
-/// N3: the workflow keeps one receipt. When a later attempt's after phase
-/// replaces it, the earlier attempt's receipt is reported as superseded by
-/// that attempt (not "no receipt issued"), and the warning names the restart
-/// for its seam in case its gap is still open.
+/// #4572 first falsifier: finishing B must not destroy A's retained terminal
+/// result. The workflow receipt remains a one-slot compatibility projection
+/// (B replaces it), but status after a process restart still reads A's own
+/// outcome from attempt-local evidence — not B's result and not an artificial
+/// loss-of-receipt / superseded state.
 #[test]
-fn agent_status_reports_a_receipt_superseded_by_a_later_attempt()
+fn agent_status_retains_an_earlier_attempt_outcome_after_a_later_finish()
 -> Result<(), Box<dyn std::error::Error>> {
-    let root = repair_route_two_seam_workspace("status superseded receipt")?;
+    let root = repair_route_two_seam_workspace("status retain earlier receipt")?;
     let first = repair_route_attempt_id(&repair_route_before(&root)?)?;
     std::fs::write(
         root.join("tests/pricing.rs"),
         format!("{REPAIR_ROUTE_WEAK_TEST}{REPAIR_ROUTE_NON_DISCRIMINATING_TEST}"),
     )?;
     assert_success(&repair_route_after(&root, &first));
-    let report = repair_route_status(&root)?;
+    let first_report = repair_route_status(&root)?;
+    let first_attempt = repair_route_attempt(&first_report, &first)?;
     assert_eq!(
-        repair_route_attempt(&report, &first)?["disposition"],
-        "gap_open",
+        first_attempt["disposition"], "gap_open",
         "precondition: the first attempt's own receipt leaves its gap open"
+    );
+    let first_status = first_attempt["receipt"]["status"].clone();
+    let first_movement = first_attempt["receipt"]["movement"].clone();
+    assert_eq!(
+        first_attempt["receipt"]["issued_for_attempt"], true,
+        "{first_report:#}"
     );
     run_git(&root, &["add", "tests"])?;
     repair_route_commit(&root, "first attempt's test")?;
@@ -16226,59 +16271,181 @@ fn agent_status_reports_a_receipt_superseded_by_a_later_attempt()
     assert_eq!(
         receipt["repair_attempt"]["attempt_id"],
         second.as_str(),
-        "precondition: the second attempt's receipt replaced the first one's"
+        "precondition: the compatibility projection now holds B's receipt"
     );
 
+    // Process restart: a fresh `ripr agent status` re-reads the files.
     let report = repair_route_status(&root)?;
     let earlier = repair_route_attempt(&report, &first)?;
-    assert_eq!(earlier["disposition"], "unconfirmed", "{report:#}");
     assert_eq!(
-        earlier["receipt"]["issued_for_attempt"], false,
-        "{report:#}"
+        earlier["disposition"], "gap_open",
+        "A must still report A's retained outcome after B finishes: {report:#}"
     );
+    assert_eq!(earlier["receipt"]["issued_for_attempt"], true, "{report:#}");
+    assert_eq!(earlier["receipt"]["status"], first_status, "{report:#}");
+    assert_eq!(earlier["receipt"]["movement"], first_movement, "{report:#}");
     assert_eq!(
         earlier["receipt"]["superseded_by"],
-        second.as_str(),
-        "{report:#}"
+        serde_json::Value::Null,
+        "a readable attempt-local result is not a superseded loss: {report:#}"
     );
+    let earlier_path = earlier["receipt"]["path"]
+        .as_str()
+        .ok_or("earlier receipt path missing")?;
+    assert!(
+        earlier_path.contains(&format!("repair-attempts/{first}/")),
+        "A's status must name the attempt-local receipt, not the one-slot projection: {earlier:#}"
+    );
+    let later = repair_route_attempt(&report, &second)?;
+    assert_eq!(later["receipt"]["issued_for_attempt"], true, "{report:#}");
     assert_eq!(
-        repair_route_attempt(&report, &second)?["receipt"]["superseded_by"],
+        later["receipt"]["superseded_by"],
         serde_json::Value::Null,
         "{report:#}"
     );
-    let warning = report["warnings"]
-        .as_array()
-        .and_then(|warnings| {
-            warnings.iter().find(|warning| {
-                warning["kind"] == "repair_receipt_unconfirmed"
-                    && warning["message"]
-                        .as_str()
-                        .is_some_and(|message| message.contains(&first))
-            })
-        })
-        .and_then(|warning| warning["message"].as_str())
-        .unwrap_or_default()
-        .to_string();
-    assert!(
-        warning.contains(&format!(
-            "was superseded by the receipt for repair attempt `{second}`"
-        )),
-        "{report:#}"
+    assert_ne!(
+        later["receipt"]["movement"], first_movement,
+        "B's outcome must stay distinct from A's so this is not a same-result coincidence: {report:#}"
     );
-    assert!(
-        warning.contains(&format!("--seam-id {REPAIR_ROUTE_SEAM} --phase before")),
-        "{warning}"
+
+    // Compatibility projection rewritten, removed, or bound to B must not
+    // change A's retained reading, and must not fall back to B.
+    std::fs::write(
+        root.join("target/ripr/reports/agent-receipt.json"),
+        "{not json",
+    )?;
+    let after_malformed = repair_route_status(&root)?;
+    let earlier = repair_route_attempt(&after_malformed, &first)?;
+    assert_eq!(earlier["disposition"], "gap_open", "{after_malformed:#}");
+    assert_eq!(
+        earlier["receipt"]["issued_for_attempt"], true,
+        "{after_malformed:#}"
     );
-    assert!(!warning.contains("no receipt at"), "{warning}");
+    assert_eq!(
+        earlier["receipt"]["movement"], first_movement,
+        "{after_malformed:#}"
+    );
+
+    std::fs::remove_file(root.join("target/ripr/reports/agent-receipt.json"))?;
+    let after_removed = repair_route_status(&root)?;
+    let earlier = repair_route_attempt(&after_removed, &first)?;
+    assert_eq!(earlier["disposition"], "gap_open", "{after_removed:#}");
+    assert_eq!(
+        earlier["receipt"]["issued_for_attempt"], true,
+        "{after_removed:#}"
+    );
+
     let markdown = repair_route_markdown(&root)?;
     assert!(
-        markdown.contains(&format!("receipt superseded by attempt `{second}`")),
+        !markdown.contains(&format!("receipt superseded by attempt `{second}`")),
         "{markdown}"
     );
+    assert!(markdown.contains("gap still open"), "{markdown}");
     assert!(
         !markdown.contains("no receipt issued for this attempt"),
         "{markdown}"
     );
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+/// Attempt-local terminal evidence is content-bound. Removing it, changing its
+/// payload, or pointing the manifest at a path outside the attempt must not
+/// reconstruct A's outcome from B's compatibility receipt.
+#[test]
+fn agent_status_does_not_fall_back_to_another_attempt_when_local_receipt_is_unusable()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = repair_route_two_seam_workspace("status local receipt unusable")?;
+    let first = repair_route_attempt_id(&repair_route_before(&root)?)?;
+    std::fs::write(
+        root.join("tests/pricing.rs"),
+        format!("{REPAIR_ROUTE_WEAK_TEST}{REPAIR_ROUTE_NON_DISCRIMINATING_TEST}"),
+    )?;
+    assert_success(&repair_route_after(&root, &first));
+    run_git(&root, &["add", "tests"])?;
+    repair_route_commit(&root, "first attempt's test")?;
+
+    let root_arg = root.to_string_lossy().into_owned();
+    let second_before = run_ripr(&[
+        "agent",
+        "repair",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        REPAIR_ROUTE_SHIPPING_SEAM,
+        "--phase",
+        "before",
+    ]);
+    assert_success(&second_before);
+    let second = repair_route_attempt_id(
+        String::from_utf8_lossy(&second_before.stderr)
+            .lines()
+            .find_map(|line| line.strip_prefix("ripr: attempt next command: "))
+            .ok_or("second before phase printed no attempt command")?,
+    )?;
+    let mut shipping = std::fs::read_to_string(root.join("tests/shipping.rs"))?;
+    shipping.push_str(
+        "\n#[test]\nfn at_limit_is_heavy() {\n    assert_eq!(shipping_fee(10, 10), 25);\n}\n",
+    );
+    std::fs::write(root.join("tests/shipping.rs"), shipping)?;
+    assert_success(&repair_route_after(&root, &second));
+
+    let first_manifest_path = root
+        .join("target/ripr/repair-attempts")
+        .join(&first)
+        .join("attempt.json");
+    let first_manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&first_manifest_path)?)?;
+    let terminal = first_manifest["terminal_artifacts"]
+        .as_array()
+        .ok_or("first attempt retained no terminal_artifacts")?;
+    let receipt_artifact = terminal
+        .iter()
+        .find(|artifact| artifact["role"] == "agent_receipt")
+        .ok_or("first attempt retained no agent_receipt")?;
+    let local_receipt = root.join(
+        receipt_artifact["path"]
+            .as_str()
+            .ok_or("agent_receipt path missing")?,
+    );
+    assert!(
+        local_receipt.starts_with(root.join("target/ripr/repair-attempts").join(&first)),
+        "retained receipt must stay under A's attempt directory: {}",
+        local_receipt.display()
+    );
+
+    std::fs::remove_file(&local_receipt)?;
+    let missing = repair_route_status(&root)?;
+    let earlier = repair_route_attempt(&missing, &first)?;
+    assert_ne!(
+        earlier["disposition"], "finished",
+        "a missing local result is not successful closure: {missing:#}"
+    );
+    assert_eq!(
+        earlier["receipt"]["issued_for_attempt"], false,
+        "{missing:#}"
+    );
+    assert_eq!(earlier["receipt"]["unavailable"], true, "{missing:#}");
+    assert_eq!(
+        earlier["receipt"]["superseded_by"],
+        serde_json::Value::Null,
+        "a declared local miss is unavailable, not a superseded projection of B: {missing:#}"
+    );
+    assert_ne!(
+        earlier["receipt"]["movement"],
+        repair_route_attempt(&missing, &second)?["receipt"]["movement"],
+        "must not project B's movement onto A: {missing:#}"
+    );
+
+    std::fs::write(&local_receipt, b"tampered-not-the-retained-receipt")?;
+    let tampered = repair_route_status(&root)?;
+    let earlier = repair_route_attempt(&tampered, &first)?;
+    assert_eq!(
+        earlier["receipt"]["issued_for_attempt"], false,
+        "{tampered:#}"
+    );
+    assert_eq!(earlier["receipt"]["unavailable"], true, "{tampered:#}");
 
     let _ = std::fs::remove_dir_all(&root);
     Ok(())

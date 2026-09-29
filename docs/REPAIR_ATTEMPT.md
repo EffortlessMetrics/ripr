@@ -102,12 +102,19 @@ target/ripr/repair-attempts/<repair-attempt-id>/
     ├── agent-brief.json
     ├── before.repo-exposure.json
     ├── agent-packet.json
-    └── attempt-baseline.json
+    ├── attempt-baseline.json
+    ├── agent-receipt.json   # retained at finish; authoritative for this attempt
+    └── agent-verify.json    # verify document that produced that receipt
 ```
 
-The exact filenames follow the command-owned source artifacts. `attempt.json` identifies them by semantic role and binds each retained file by path, byte count, and SHA-256 digest.
+The exact filenames follow the command-owned source artifacts. `attempt.json` identifies them by semantic role and binds each retained file by path, byte count, and SHA-256 digest. After-phase `agent_receipt` / `agent_verify` files are recorded in `terminal_artifacts` and are excluded from the before commitment.
 
-Repository-global files under `target/ripr/workflow/` remain compatibility projections for existing cockpit and review consumers. They are not repair-attempt identity.
+Repository-global files under `target/ripr/workflow/` and `target/ripr/reports/agent-receipt.json` remain compatibility projections for existing cockpit and review consumers. They are not repair-attempt identity, and they are not the sole surviving copy of a finished attempt's result.
+
+The trust-bound Python verify route still writes repository-global
+`python-repair-driver-verification.json` (and related execution/analysis files)
+with overwrite-refusal. This retention covers the shared static after-phase
+receipt only; Python execution-receipt persistence remains #3557.
 
 ## Manifest contract
 
@@ -121,7 +128,7 @@ The manifest schema is `schemas/ripr/repair-attempt.schema.json` (`schema_versio
 - the exact next command;
 - limitations and explicit non-claims.
 
-The before commitment is derived from the prepared manifest. Terminal updates may add after-phase evidence, but they cannot silently rewrite the retained before identity or artifacts.
+The before commitment is derived from the prepared manifest. Terminal updates may add after-phase evidence (`after`, `last_after_refusal`, `terminal_artifacts`), but they cannot silently rewrite the retained before identity or artifacts. `terminal_artifacts` is omitted from the before commitment, same as `after` and `last_after_refusal`.
 
 When an after phase refuses after it selected the attempt (for example `agent verify` finds the pair incomparable or without movement, or the receipt is refused), the manifest gains an optional `last_after_refusal` object (`reason`, `repository_head`, `recorded_unix_ms`). The `reason` is the final error followed by the cause and recovery the after phase printed (the changed analysis inputs, or the rewritten history and its reset), bounded to 4096 bytes. It is an observation, not a state: it never changes `state` or `after`, the before commitment excludes it, and the next after phase that reaches the durable finish removes it. `ripr agent status` reports it instead of repeating the refused command unannotated. Manifests without a refusal omit the field.
 
@@ -201,7 +208,7 @@ Only `ready_to_finish` with a current, compliant after verdict can authorize the
 
 A terminal attempt's after phase does not run again. Rerunning it is refused with the state (`ready_to_finish`: already finished; `stale`, `incomparable`, `failed`: ended), the receipt path, and the next step: `ripr agent status`, or a new `--phase before` while the gap is still open.
 
-`target/ripr/reports/agent-receipt.json` holds one receipt, so the next attempt's after phase replaces the previous attempt's receipt. `ripr agent status` then reports the earlier attempt's receipt as superseded by the later attempt (`receipt.superseded_by`) rather than as never issued.
+The after phase also retains the terminal static result under the attempt directory (`artifacts/agent-receipt.json` and the `agent_verify` document it was built from), bound by role, path, byte count, and SHA-256 in `attempt.json` as `terminal_artifacts`. Those files are the surviving authority for that attempt. `target/ripr/reports/agent-receipt.json` remains a one-slot compatibility projection of the latest finish; replacing, deleting, or corrupting it must not erase an earlier attempt's retained result. `ripr agent status` prefers the attempt-local receipt. Legacy manifests without `terminal_artifacts` still read the compatibility file: an exact matching receipt is used, and a receipt bound to another attempt stays `unconfirmed` with `receipt.superseded_by` because that earlier outcome cannot be reconstructed.
 
 ## Compatibility outputs
 
