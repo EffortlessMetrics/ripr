@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/binding_predicate_equality_boundary/input/src/lib.rs:4
-  Static exposure: propagation_unknown (note, confidence 0.66)
-  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Static exposure: unknown (propagation_unknown, note, confidence 0.66)
+  Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: input.rfind(delim).map_or(1, |idx| idx)
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/split.rs:9 absent_delimiter_boundary_returns_head

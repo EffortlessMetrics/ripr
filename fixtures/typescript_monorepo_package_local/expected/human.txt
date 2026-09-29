@@ -15,8 +15,8 @@ Start here:
   File: packages/pkg-a/src/discount.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (discountPct >= 100) {
   Missing discriminator: Related tests reach `applyDiscount` with a strong oracle, but no strong assertion observes a `applyDiscount(...)` call at the changed predicate boundary `discountPct == 100`;…
   Related test: packages/pkg-a/tests/discount.test.ts:4 applies discount within pkg-a

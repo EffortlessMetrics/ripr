@@ -467,3 +467,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_parse_error_unsupported_syntax (6)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless typescript_parse_error_unsupported_syntax --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

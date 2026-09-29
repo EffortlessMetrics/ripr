@@ -214,3 +214,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — propagate_swallowed_ok (3)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless propagate_swallowed_ok --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

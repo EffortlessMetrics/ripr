@@ -15,8 +15,8 @@ Start here:
   File: src/auth.ts:8
   Language: typescript
   Language status: preview
-  Static exposure: no_static_path (warning, confidence 0.40)
-  Why no_static_path: no related test was found that reaches this change
+  Static exposure: no path (no_static_path, warning, confidence 0.40)
+  Why no path: no related test was found that reaches this change
   Changed behavior: return this.valid.has(token.trim());
   Missing discriminator: No trusted TypeScript method receiver relation for `validate`. Direct `new ClassName(...)` receiver calls are supported, but factories, dependency injection, mocked modules,…
   Next step: TypeScript preview advisory: method receiver relation is missing context; use a direct `new ClassName(...)` receiver observer when safe, and keep factories, dependency injection,…

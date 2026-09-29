@@ -47,3 +47,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — match_arm_controls (5)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless match_arm_controls --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

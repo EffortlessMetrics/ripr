@@ -198,6 +198,44 @@ impl SeamGripClass {
         }
     }
 
+    /// The plain word human output leads with, shared with
+    /// `ExposureClass::plain_label`: a seam whose tests reach it but miss the
+    /// discriminator reads `weak` in `pilot` exactly as the changed line reads
+    /// `weak` in `ripr check`. The schema value (`as_str`) is unchanged.
+    pub(crate) fn plain_label(&self) -> &'static str {
+        match self {
+            SeamGripClass::StronglyGripped => "exposed",
+            SeamGripClass::WeaklyGripped => "weak",
+            SeamGripClass::Ungripped => "no path",
+            SeamGripClass::ReachableUnrevealed => "unrevealed",
+            SeamGripClass::ActivationUnknown
+            | SeamGripClass::PropagationUnknown
+            | SeamGripClass::ObservationUnknown
+            | SeamGripClass::DiscriminationUnknown
+            | SeamGripClass::Opaque => "unknown",
+            SeamGripClass::Intentional => "intentional",
+            SeamGripClass::Suppressed => "suppressed",
+        }
+    }
+
+    /// `plain word, schema value` for human lines, or the value alone when
+    /// the two are the same (`intentional`, `suppressed`).
+    pub(crate) fn human_label(&self) -> String {
+        if self.plain_label() == self.as_str() {
+            self.as_str().to_string()
+        } else {
+            format!("{}, {}", self.plain_label(), self.as_str())
+        }
+    }
+
+    /// Parse a schema value back to its class, for renderers that read the
+    /// value out of a JSON artifact.
+    pub(crate) fn from_schema_value(value: &str) -> Option<SeamGripClass> {
+        SeamGripClass::ALL
+            .into_iter()
+            .find(|class| class.as_str() == value)
+    }
+
     /// Whether this class counts toward the headline badge per
     /// RIPR-SPEC-0005 § "Headline Count vs Visible-Only Mapping".
     /// `Opaque`'s headline treatment is decided by badge policy at
@@ -361,6 +399,37 @@ fn compute_seam_id(file: &str, owner: &str, kind: SeamKind, byte_offset: usize) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grip_and_exposure_counterparts_share_one_plain_word() {
+        use crate::domain::ExposureClass;
+        // The same judgment at seam scope (`pilot`) and changed-line scope
+        // (`check`) must read the same to a person; the values stay distinct.
+        let pairs = [
+            (SeamGripClass::StronglyGripped, ExposureClass::Exposed),
+            (SeamGripClass::WeaklyGripped, ExposureClass::WeaklyExposed),
+            (SeamGripClass::Ungripped, ExposureClass::NoStaticPath),
+            (
+                SeamGripClass::ReachableUnrevealed,
+                ExposureClass::ReachableUnrevealed,
+            ),
+            (
+                SeamGripClass::PropagationUnknown,
+                ExposureClass::PropagationUnknown,
+            ),
+        ];
+        for (grip, exposure) in pairs {
+            assert_eq!(grip.plain_label(), exposure.plain_label(), "{grip:?}");
+        }
+        assert_eq!(SeamGripClass::WeaklyGripped.plain_label(), "weak");
+        for class in SeamGripClass::ALL {
+            assert_eq!(
+                SeamGripClass::from_schema_value(class.as_str()),
+                Some(class)
+            );
+        }
+        assert_eq!(SeamGripClass::from_schema_value("weakly_exposed"), None);
+    }
 
     fn make_seam(file: &str, owner: &str, kind: SeamKind, off: usize) -> RepoSeam {
         RepoSeam::new(

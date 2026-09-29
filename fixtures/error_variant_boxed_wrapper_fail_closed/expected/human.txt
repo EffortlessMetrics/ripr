@@ -11,8 +11,8 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:29
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: try_checksum_summary(payload).map_err(Into::into)
   Missing discriminator: Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
   Related test: tests/errors.rs:4 checksum_summary_pins_wrong_sibling_variant

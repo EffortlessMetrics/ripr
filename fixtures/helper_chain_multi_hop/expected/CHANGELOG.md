@@ -59,3 +59,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — helper_chain_multi_hop (3)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless helper_chain_multi_hop --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

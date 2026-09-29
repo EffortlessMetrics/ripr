@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/helper_chain_multi_hop/input/src/lib.rs:2
-  Static exposure: static_unknown (note, confidence 0.50)
-  Why static_unknown: the analysis could not determine a static exposure state
+  Static exposure: unknown (static_unknown, note, confidence 0.50)
+  Why unknown: the analysis could not determine a static exposure state
   Changed behavior: let head = input.chars().next().map_or('?', |c| c);
   Analyzer limit: No strong discriminator was detected
   Related test: tests/classify.rs:4 leading_space_classifies_other

@@ -25,3 +25,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — match_arm_tuple_derived_return_before_assertion (3)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless match_arm_tuple_derived_return_before_assertion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

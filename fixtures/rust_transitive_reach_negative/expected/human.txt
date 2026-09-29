@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/rust_transitive_reach_negative/input/src/lib.rs:2
-  Static exposure: no_static_path (warning, confidence 0.48)
-  Why no_static_path: no related test was found that reaches this change
+  Static exposure: no path (no_static_path, warning, confidence 0.48)
+  Why no path: no related test was found that reaches this change
   Changed behavior: if amount >= fee {
   Missing discriminator: No detected boundary input for the changed predicate
   Next step: ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that…

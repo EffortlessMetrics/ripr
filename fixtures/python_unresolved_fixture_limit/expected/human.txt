@@ -15,8 +15,8 @@ Start here:
   File: src/pricing.py:2
   Language: python
   Language status: preview
-  Static exposure: static_unknown (note, confidence 0.20)
-  Why static_unknown: the analysis could not determine a static exposure state
+  Static exposure: unknown (static_unknown, note, confidence 0.20)
+  Why unknown: the analysis could not determine a static exposure state
   Changed behavior: if amount >= threshold:
   Analyzer limit: Static limit `unresolved_pytest_fixture`: a related pytest test depends on fixture-sourced values; syntax-first preview evidence cannot prove whether the fixture supplies the…
   Related test: tests/test_pricing.py:11 test_apply_discount_fixture_case

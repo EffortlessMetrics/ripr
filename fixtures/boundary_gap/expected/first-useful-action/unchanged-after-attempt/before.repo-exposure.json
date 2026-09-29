@@ -10,7 +10,7 @@
       "worktree": "dirty"
     },
     "canonicalization": "raw_json_placeholder_v1",
-    "content_sha256": "sha256:2918fc4d123aa7753d1c60237d27411db0ada9931548b7061ebf6a6fdc9a3543",
+    "content_sha256": "sha256:7794d054af09f0cc3942e5e909ddc06377781ee6ffe429dfd4d83a778f08b80c",
     "kind": "repo_exposure",
     "producer": {
       "tool": "ripr",
@@ -54,7 +54,7 @@
         "actionability": {
           "class": "actionable_related_test_extension",
           "has_concrete_guidance": true,
-          "reason": "extend the nearest related test with the missing discriminator",
+          "reason": "add a focused test with the missing discriminator next to the nearest related test",
           "signals": {
             "assertion_shape": true,
             "candidate_value": true,
@@ -202,7 +202,7 @@
           },
           "static_limitations": [],
           "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
-          "why": "extend the nearest related test with the missing discriminator"
+          "why": "add a focused test with the missing discriminator next to the nearest related test"
         },
         "evidence_path": {
           "activate": {
@@ -306,7 +306,7 @@
             "relation_confidence": "high",
             "relation_reason": "direct_owner_call"
           },
-          "reason": "extend the nearest related test with the missing discriminator",
+          "reason": "add a focused test with the missing discriminator next to the nearest related test",
           "recommended_test": {
             "file": "tests/pricing.rs",
             "name": "discounted_total_boundary_discriminator",

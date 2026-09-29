@@ -15,8 +15,8 @@ Start here:
   File: src/pricing/discounts.py:2
   Language: python
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pricing/discounts.py:bulk_discount:predicate_boundary:predicate:quantity>100
   Changed behavior: if quantity > 100:
   Missing discriminator: A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test…

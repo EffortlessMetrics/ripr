@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/assertion_shaped_control_production_caller/input/src/lib.rs:8
-  Static exposure: propagation_unknown (note, confidence 0.66)
-  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Static exposure: unknown (propagation_unknown, note, confidence 0.66)
+  Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: let clamped = if value >= 0 { value } else { 0 };
   Missing discriminator: let clamped = if value == 0
   Related test: tests/scores.rs:4 validate_score_accepts_in_range_values

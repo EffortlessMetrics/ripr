@@ -95,3 +95,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — source_role_harness_suppression (5)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless source_role_harness_suppression --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/propagate_swallowed_ok/input/src/lib.rs:11
-  Static exposure: propagation_unknown (note, confidence 0.66)
-  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Static exposure: unknown (propagation_unknown, note, confidence 0.66)
+  Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: self.persist(amount * 9).ok()
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/ledger_tests.rs:4 apply_changes_balance

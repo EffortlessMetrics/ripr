@@ -447,6 +447,7 @@ Updated:
 ## Pending — typescript_jest_vitest_assertion_facts (8)
 
 Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
 RIPR-SPEC-0122: Hidden remainder names omitted preview-language identity (#4395); formatting-only, no class or JSON change.
 
 Command:

@@ -346,6 +346,9 @@ fn pilot_summary_md_spells_out_first_screen_recommendation() {
         "## What Was Inspected",
         "## Top Recommendation",
         "- Inspected seam:",
+        "(weak, weakly_gripped)",
+        " weak (`weakly_gripped`) src/pricing.rs:88 ",
+        "- weak, weakly_gripped\n",
         "- Why it matters: missing discriminator: input that hits the boundary: amount >= discount_threshold",
         "- Focused test: none: this seam has no test target that `ripr agent repair` can use (for example, the only tests are in another crate, or static evidence names no exact discriminator), so it will not start a repair attempt here",
         "Target seam:",
@@ -496,7 +499,7 @@ fn pilot_terminal_prints_top_test_and_follow_up_commands() {
     // (`ripr agent repair --seam-id <id>`) is reachable from the screen alone.
     assert!(
         terminal.contains(&format!(
-            "inspected seam: {seam_id} src/pricing.rs:88 predicate_boundary in pricing::discounted_total (weakly_gripped)"
+            "inspected seam: {seam_id} src/pricing.rs:88 predicate_boundary in pricing::discounted_total (weak, weakly_gripped)"
         )),
         "the terminal seam line must lead with the seam id:\n{terminal}"
     );

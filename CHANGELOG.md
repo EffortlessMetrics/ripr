@@ -1113,7 +1113,17 @@ are scoped or reviewed.
   ([#3999](https://github.com/EffortlessMetrics/ripr-swarm/issues/3999),
   [#4000](https://github.com/EffortlessMetrics/ripr-swarm/issues/4000),
   [#4287](https://github.com/EffortlessMetrics/ripr-swarm/pull/4287)).
-
+- `ripr check`, `ripr pilot` and `ripr agent repair` now name one gap with the
+  same word. The changed line `check` reports as `weakly_exposed` and the
+  seam `pilot` reports as `weakly_gripped` both read `weak` first, for
+  example `Static exposure: weak (weakly_exposed, warning, ...)`,
+  `(weak, weakly_gripped)` and `weak -> exposed (weakly_gripped ->
+  strongly_gripped, improved)`. The words are the ones the `check` summary
+  line already uses (weak, unrevealed, no path, unknown). The schema values
+  are unchanged. The repair packet's actionability reason now says "add a
+  focused test with the missing discriminator next to the nearest related
+  test", matching the new test `pilot` names, where it used to say "extend
+  the nearest related test".
 
 ### Added
 

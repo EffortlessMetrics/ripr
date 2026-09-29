@@ -1136,7 +1136,7 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
         seam.display_line()
     ));
     out.push_str(&format!("- {}\n", seam.kind().as_str()));
-    out.push_str(&format!("- {}\n", entry.class.as_str()));
+    out.push_str(&format!("- {}\n", entry.class.human_label()));
     out.push_str(&format!("- owner: {}\n", seam.owner()));
 
     out.push_str("\nWhy it matters:\n");
@@ -5313,7 +5313,7 @@ mod tests {
             "Target seam:",
             "- src/pricing.rs:88",
             "- predicate_boundary",
-            "- weakly_gripped",
+            "- weak, weakly_gripped",
             "- owner: pricing::discounted_total",
             "Why it matters:",
             "- Related test evidence: below_threshold_has_no_discount uses strong exact_value oracle.",

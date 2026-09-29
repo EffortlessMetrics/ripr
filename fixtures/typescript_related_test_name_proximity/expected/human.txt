@@ -15,8 +15,8 @@ Start here:
   File: src/pricing.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: no_static_path (warning, confidence 0.40)
-  Why no_static_path: no related test was found that reaches this change
+  Static exposure: no path (no_static_path, warning, confidence 0.40)
+  Why no path: no related test was found that reaches this change
   Changed behavior: if (amount >= threshold) {
   Missing discriminator: No test references `applyDiscount(` — add a test that calls the changed owner.
   Next step: TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair…

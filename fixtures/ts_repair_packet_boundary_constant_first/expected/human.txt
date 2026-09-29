@@ -15,8 +15,8 @@ Start here:
   File: src/pricing.ts:4
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (DISCOUNT_THRESHOLD <= amount) {
   Missing discriminator: Related tests reach `discountedTotal` with a strong oracle, but no strong assertion observes a `discountedTotal(...)` call at the changed predicate boundary…
   Related test: tests/pricing.test.ts:3 no discount below threshold

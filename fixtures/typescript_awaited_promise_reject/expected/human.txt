@@ -15,8 +15,8 @@ Start here:
   File: src/profile.ts:3
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return await Promise.reject(new Error("missing id"));
   Missing discriminator: Only heuristic TypeScript test links were found for `loadProfile`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/profile.test.ts:1 rejects missing profile id broadly

@@ -15,8 +15,8 @@ Start here:
   File: src/rounding.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Math.round(amount * 100) / 100;
   Missing discriminator: Only heuristic TypeScript test links were found for `roundCents`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/rounding.test.ts:6 rounds two decimals

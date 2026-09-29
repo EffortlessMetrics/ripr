@@ -15,8 +15,8 @@ Start here:
   File: src/utils.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (value <= min) {
   Missing discriminator: Related tests reach `clamp` with a strong oracle, but no strong assertion observes a `clamp(...)` call at the changed predicate boundary `value == min`; inputs on one side of the…
   Related test: tests/utils.test.ts:3 clamp below min

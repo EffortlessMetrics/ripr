@@ -59,3 +59,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — error_variant_wrapper_callee_only_pin (6)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless error_variant_wrapper_callee_only_pin --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

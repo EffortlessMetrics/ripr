@@ -384,3 +384,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_dynamic_route_registration_limit (7)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless python_dynamic_route_registration_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

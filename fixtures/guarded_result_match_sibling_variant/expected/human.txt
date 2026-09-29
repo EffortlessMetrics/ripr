@@ -11,8 +11,8 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/guarded_result_match_sibling_variant/input/src/lib.rs:9
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(ParseError::InvalidData)
   Missing discriminator: ParseError::InvalidData
   Related test: tests/protocol.rs:4 pins_the_sibling_variant_of_the_changed_owner

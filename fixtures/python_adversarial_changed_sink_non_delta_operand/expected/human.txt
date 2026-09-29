@@ -15,8 +15,8 @@ Start here:
   File: src/account.py:7
   Language: python
   Language status: preview
-  Static exposure: static_unknown (note, confidence 0.20)
-  Why static_unknown: the analysis could not determine a static exposure state
+  Static exposure: unknown (static_unknown, note, confidence 0.20)
+  Why unknown: the analysis could not determine a static exposure state
   Changed behavior: return max(0, self._balance)
   Analyzer limit: Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.
   Evidence:

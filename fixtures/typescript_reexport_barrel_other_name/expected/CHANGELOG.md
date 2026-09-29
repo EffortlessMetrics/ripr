@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_reexport_barrel_other_name (2)
+
+Reason:
+RIPR-SPEC-0122: human lines lead with the plain word the check summary uses; schema value kept beside it
+
+Command:
+`cargo xtask goldens bless typescript_reexport_barrel_other_name --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

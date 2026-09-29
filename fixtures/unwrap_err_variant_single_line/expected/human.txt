@@ -11,8 +11,8 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12
-  Static exposure: weakly_exposed (warning, confidence 0.66)
-  Why weakly_exposed: a related test reaches this change, but the path from it to what the test checks is only partly traced
+  Static exposure: weak (weakly_exposed, warning, confidence 0.66)
+  Why weak: a related test reaches this change, but the path from it to what the test checks is only partly traced
   Changed behavior: return Err(ParseError::TooLong(name.len()))
   Related test: tests/errors.rs:4 too_long_name_rejected_with_exact_variant
   Evidence:

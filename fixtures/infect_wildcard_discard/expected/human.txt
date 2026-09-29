@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/infect_wildcard_discard/input/src/lib.rs:3
-  Static exposure: propagation_unknown (note, confidence 0.66)
-  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Static exposure: unknown (propagation_unknown, note, confidence 0.66)
+  Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: amount
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/process_tests.rs:4 process_returns_amount_unchanged

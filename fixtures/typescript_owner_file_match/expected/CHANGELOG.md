@@ -433,3 +433,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_owner_file_match (7)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless typescript_owner_file_match --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

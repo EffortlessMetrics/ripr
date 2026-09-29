@@ -40,15 +40,15 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         }
     }
     out.push_str(&format!(
-        "  Static exposure: {} ({}, confidence {:.2})\n",
-        finding.class.as_str(),
+        "  Static exposure: {}{}, confidence {:.2})\n",
+        finding.class.human_lead(),
         severity,
         finding.confidence
     ));
     // #2614: add a brief classification hint so the digest reader understands
     // WHY the finding is at this class without reading the full form.
     if let Some(hint) = classification_hint(&finding.class, &finding.ripr) {
-        out.push_str(&format!("  Why {0}: {hint}\n", finding.class.as_str()));
+        out.push_str(&format!("  Why {}: {hint}\n", finding.class.plain_label()));
     }
     if let Some(gap) = &finding.canonical_gap {
         out.push_str(&format!("  Canonical gap: {}\n", gap.id));

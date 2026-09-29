@@ -81,13 +81,13 @@ pub(super) fn push_top_seam_json(out: &mut String, entry: &ClassifiedSeam) {
 pub(super) fn push_markdown_recommendation(out: &mut String, entry: &ClassifiedSeam) {
     let outline = targeted_test_brief_outline_for_classified_seam(entry);
     out.push_str(&format!(
-        "- Inspected seam: `{}` {}:{} `{}` in `{}` (`{}`)\n",
+        "- Inspected seam: `{}` {}:{} `{}` in `{}` ({})\n",
         entry.seam.id().as_str(),
         display_path(entry.seam.file()),
         entry.seam.display_line(),
         entry.seam.kind().as_str(),
         entry.seam.owner(),
-        entry.class.as_str()
+        entry.class.human_label()
     ));
     out.push_str(&format!("- Why it matters: {}\n", why_line(entry)));
     if outline.is_not_applicable() {

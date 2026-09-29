@@ -2785,7 +2785,7 @@ Consumers must not treat limited artifacts as canonical actionable counts.
               "source_id": "f3c9e4d21a0b7c88"
             }
           ],
-          "why": "extend the nearest related test with the missing discriminator",
+          "why": "add a focused test with the missing discriminator next to the nearest related test",
           "recommended_repair": "Add or strengthen `assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)` for `input that hits the boundary: amount >= discount_threshold` in `tests/pricing_tests.rs` as `discounted_total_boundary_discriminator`.",
           "repair_route": {
             "repair_kind": "add_boundary_assertion",
@@ -2876,7 +2876,7 @@ Consumers must not treat limited artifacts as canonical actionable counts.
         ],
         "recommendation": {
           "action": "write_targeted_test",
-          "reason": "extend the nearest related test with the missing discriminator",
+          "reason": "add a focused test with the missing discriminator next to the nearest related test",
           "recommended_test": {
             "name": "discounted_total_boundary_discriminator",
             "file": "tests/pricing_tests.rs",
@@ -2911,7 +2911,7 @@ Consumers must not treat limited artifacts as canonical actionable counts.
         },
         "actionability": {
           "class": "actionable_related_test_extension",
-          "reason": "extend the nearest related test with the missing discriminator",
+          "reason": "add a focused test with the missing discriminator next to the nearest related test",
           "has_concrete_guidance": true,
           "signals": {
             "missing_discriminator": true,
@@ -13785,7 +13785,7 @@ schema bump.
         ],
         "recommendation": {
           "action": "write_targeted_test",
-          "reason": "extend the nearest related test with the missing discriminator",
+          "reason": "add a focused test with the missing discriminator next to the nearest related test",
           "recommended_test": {
             "name": "discounted_total_boundary_discriminator",
             "file": "tests/pricing.rs",
@@ -13806,7 +13806,7 @@ schema bump.
         },
         "actionability": {
           "class": "actionable_related_test_extension",
-          "reason": "extend the nearest related test with the missing discriminator",
+          "reason": "add a focused test with the missing discriminator next to the nearest related test",
           "has_concrete_guidance": true,
           "signals": {
             "missing_discriminator": true,

@@ -11,8 +11,8 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/assertion_shaped_control_production_owner/input/src/lib.rs:2
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: amount >= 100
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/pricing.rs:8 discounted_total_at_boundary

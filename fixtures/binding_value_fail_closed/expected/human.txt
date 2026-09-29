@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/binding_value_fail_closed/input/src/lib.rs:2
-  Static exposure: infection_unknown (warning, confidence 0.66)
-  Why infection_unknown: the change reaches a sink but infection could not be determined statically
+  Static exposure: unknown (infection_unknown, warning, confidence 0.66)
+  Why unknown: the change reaches a sink but infection could not be determined statically
   Changed behavior: let end = input.rfind(delim).map_or_else(|| 1, |idx| idx);
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/controls.rs:4 map_or_else_boundary_stays_unresolved

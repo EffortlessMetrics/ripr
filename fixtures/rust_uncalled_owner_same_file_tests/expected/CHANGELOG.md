@@ -84,3 +84,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — rust_uncalled_owner_same_file_tests (8)
+
+Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless rust_uncalled_owner_same_file_tests --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

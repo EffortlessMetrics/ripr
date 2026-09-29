@@ -87,6 +87,7 @@ Updated:
 ## Pending — ts_repair_packet_wrong_family_oracle (8)
 
 Reason:
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
 RIPR-SPEC-0122: Hidden remainder names omitted preview-language identity (#4395); formatting-only, no class or JSON change.
 
 Command:

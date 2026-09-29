@@ -15,8 +15,8 @@ Start here:
   File: app/checkout.py:17
   Language: python
   Language status: preview
-  Static exposure: static_unknown (note, confidence 0.20)
-  Why static_unknown: the analysis could not determine a static exposure state
+  Static exposure: unknown (static_unknown, note, confidence 0.20)
+  Why unknown: the analysis could not determine a static exposure state
   Changed behavior: return {"detail": "coupon expired"}
   Analyzer limit: Static limit `dynamic_route_registration`: owner `checkout` uses dynamic route registration `api.post`; syntax-first preview evidence cannot safely match client calls to a…
   Evidence:

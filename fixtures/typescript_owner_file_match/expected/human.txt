@@ -15,8 +15,8 @@ Start here:
   File: src/b.ts:2
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (value >= 10) {
   Missing discriminator: Related tests reach `betaScore` with a strong oracle, but no strong assertion observes a `betaScore(...)` call at the changed predicate boundary `value == 10`; inputs on one side…
   Related test: tests/b.test.ts:3 beta keeps its threshold

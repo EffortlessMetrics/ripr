@@ -1486,7 +1486,7 @@ fn check_human_output_reports_sample_findings() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Summary: 4 probe(s)"));
     assert!(stdout.contains("Start here:"));
-    assert!(stdout.contains("Static exposure: weakly_exposed"));
+    assert!(stdout.contains("Static exposure: weak (weakly_exposed, "));
     assert!(stdout.contains("Evidence:"));
     assert!(stdout.contains("Missing discriminator:"));
     assert!(stdout.contains("Next step:"));
@@ -4613,7 +4613,7 @@ fn agent_repair_phases_materialize_snapshots_and_verify_json()
     assert_success(&after);
     let after_stderr = String::from_utf8_lossy(&after.stderr);
     assert!(
-        after_stderr.contains("ripr: result for seam `67fc764ba37d77bd`: weakly_gripped -> "),
+        after_stderr.contains("ripr: result for seam `67fc764ba37d77bd`: weak -> "),
         "after phase must name the seam's movement:\n{after_stderr}"
     );
     assert!(
@@ -5164,7 +5164,7 @@ fn agent_repair_admits_cargo_build_output_and_unchanged_untracked_lockfile()
     let after_stderr = String::from_utf8_lossy(&after.stderr);
     assert!(
         after_stderr.contains(&format!(
-            "result for seam `{BOUNDARY_GAP_SEAM_ID}`: weakly_gripped -> strongly_gripped (improved)"
+            "result for seam `{BOUNDARY_GAP_SEAM_ID}`: weak -> exposed (weakly_gripped -> strongly_gripped, improved)"
         )),
         "after phase must report the movement:\n{after_stderr}"
     );
@@ -5487,7 +5487,7 @@ fn agent_repair_admits_a_cargo_lock_first_generated_between_the_phases()
     let stderr = String::from_utf8_lossy(&after.stderr);
     assert!(
         stderr.contains(&format!(
-            "result for seam `{BOUNDARY_GAP_SEAM_ID}`: weakly_gripped -> strongly_gripped (improved)"
+            "result for seam `{BOUNDARY_GAP_SEAM_ID}`: weak -> exposed (weakly_gripped -> strongly_gripped, improved)"
         )),
         "{stderr}"
     );
@@ -5847,7 +5847,7 @@ fn agent_repair_admits_a_focused_test_committed_between_the_phases()
     let after = run_repair_phase(&root, &["--attempt", &attempt_id], "after")?;
     assert_success(&after);
     let stderr = String::from_utf8_lossy(&after.stderr);
-    assert!(stderr.contains("(improved)"), "{stderr}");
+    assert!(stderr.contains(", improved)"), "{stderr}");
     assert!(stderr.contains(INCLUDE_RECEIPT_LINE), "{stderr}");
     assert!(!stderr.contains("is stale"), "{stderr}");
     let (_, manifest) = sole_repair_attempt(&root)?;
@@ -15616,7 +15616,7 @@ fn agent_repair_after_a_failing_test_says_the_test_was_not_run()
 
     let stderr = String::from_utf8_lossy(&after.stderr);
     assert!(
-        stderr.contains("(improved)"),
+        stderr.contains(", improved)"),
         "precondition: static movement improved:\n{stderr}"
     );
     assert!(

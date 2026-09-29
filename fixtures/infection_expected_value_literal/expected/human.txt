@@ -11,8 +11,8 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/infection_expected_value_literal/input/src/lib.rs:19
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: weight_grams >= 2_000
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax

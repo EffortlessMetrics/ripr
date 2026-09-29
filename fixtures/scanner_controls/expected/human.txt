@@ -11,8 +11,8 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/scanner_controls/input/src/lib.rs:16
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change, but no test input tells the old and new behavior apart
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: if final_state == "text" {
   Missing discriminator: final_state == "text"
   Related test: tests/classify.rs:12 bound_long_trailing_space_is_blank

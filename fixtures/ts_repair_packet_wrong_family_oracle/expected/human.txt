@@ -15,8 +15,8 @@ Start here:
   File: src/limiter.ts:3
   Language: typescript
   Language status: preview
-  Static exposure: weakly_exposed (warning, confidence 0.40)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (Number.isNaN(n)) {
   Missing discriminator: Related tests reach `parseLimit` with a strong oracle, but the changed line has no statically comparable predicate boundary; static evidence cannot tie an assertion to the changed…
   Related test: tests/limiter.test.ts:3 parseLimit parses a numeric limit

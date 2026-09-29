@@ -11,8 +11,8 @@ Start here:
   State: top_gap
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/unwrap_err_sibling_variant/input/src/lib.rs:11
-  Static exposure: weakly_exposed (warning, confidence 0.92)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(CalcError::TooLarge);
   Missing discriminator: CalcError::TooLarge
   Related test: tests/errors.rs:5 negative_input_rejects_with_negative_error

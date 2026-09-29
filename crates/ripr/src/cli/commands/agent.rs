@@ -1588,9 +1588,19 @@ fn repair_receipt_summary_lines(receipt: &str) -> Vec<String> {
         let summary = text("/summary/next_action/summary")
             .map(|summary| format!(" {summary}"))
             .unwrap_or_default();
-        lines.push(format!(
-            "result for seam `{seam_id}`: {before} -> {after} ({movement}).{summary}"
-        ));
+        // Lead with the plain words `ripr check` uses for the same gap
+        // (`weak -> exposed`), then the grip schema values the JSON carries.
+        let plain = |value: &str| {
+            crate::analysis::seams::SeamGripClass::from_schema_value(value)
+                .map(|class| class.plain_label())
+        };
+        let words = match (plain(before), plain(after)) {
+            (Some(before_word), Some(after_word)) => {
+                format!("{before_word} -> {after_word} ({before} -> {after}, {movement})")
+            }
+            _ => format!("{before} -> {after} ({movement})"),
+        };
+        lines.push(format!("result for seam `{seam_id}`: {words}.{summary}"));
     }
     // Static movement is not a test result: a failing focused test still
     // reads `improved`. Say so before the next step, not only inside it.
@@ -2149,7 +2159,7 @@ mod repair_summary_tests {
         assert_eq!(
             repair_receipt_summary_lines(receipt),
             vec![
-                "result for seam `67fc764ba37d77bd`: weakly_gripped -> strongly_gripped (improved). Static grip improved.".to_string(),
+                "result for seam `67fc764ba37d77bd`: weak -> exposed (weakly_gripped -> strongly_gripped, improved). Static grip improved.".to_string(),
                 "next: Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.".to_string(),
             ]
         );
@@ -2163,7 +2173,10 @@ mod repair_summary_tests {
         }"#;
         assert_eq!(
             repair_receipt_summary_lines(receipt),
-            vec!["result for seam `s`: weakly_gripped -> weakly_gripped (unchanged).".to_string()]
+            vec![
+                "result for seam `s`: weak -> weak (weakly_gripped -> weakly_gripped, unchanged)."
+                    .to_string()
+            ]
         );
     }
 
@@ -2172,7 +2185,7 @@ mod repair_summary_tests {
         let movement = r#""seam": {"seam_id": "s"},
             "provenance": {"before_class": "weakly_gripped", "after_class": "strongly_gripped", "movement": "improved"}"#;
         let result =
-            "result for seam `s`: weakly_gripped -> strongly_gripped (improved). Static grip improved."
+            "result for seam `s`: weak -> exposed (weakly_gripped -> strongly_gripped, improved). Static grip improved."
                 .to_string();
         let step = "This receipt is not review evidence because its status is `invalid` (Analysis outcome artifact base does not match its typed identity); do not include it in review.";
         let invalid = format!(

@@ -11,8 +11,8 @@ Start here:
   State: static_limited
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/helper_chain_one_hop/input/src/lib.rs:2
-  Static exposure: propagation_unknown (note, confidence 0.66)
-  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Static exposure: unknown (propagation_unknown, note, confidence 0.66)
+  Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: c == ' '
   Missing discriminator: c == ' '
   Related test: tests/classify.rs:4 leading_space_classifies_other

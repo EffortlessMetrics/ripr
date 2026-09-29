@@ -506,7 +506,7 @@ pub(crate) fn actionability_for(
             ),
             RepairRouteState::Ready if related_test => (
                 "actionable_related_test_extension",
-                "extend the nearest related test with the missing discriminator",
+                "add a focused test with the missing discriminator next to the nearest related test",
             ),
             RepairRouteState::Ready if missing_discriminator || candidate_values => (
                 "actionable_focused_test",
