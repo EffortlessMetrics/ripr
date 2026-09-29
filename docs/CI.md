@@ -447,6 +447,33 @@ fork or otherwise untrusted PR:
   GitHub-hosted only
 ```
 
+Label events are not an implicit full-gate refresh:
+
+```text
+opened / reopened / synchronize / push to main / workflow_dispatch:
+  launch the required Rust or docs gate (unchanged)
+
+labeled full-ci:
+  launch the required gate with advisory reports and success artifacts
+
+labeled windows-ci, coverage, release-check, or any other non-full-ci label:
+  do not launch rust-gates; post Ripr Rust Small Ignored Label Event;
+  leave the previous exact-head Ripr Rust Small Result in place
+
+unlabeled (including windows-ci or full-ci removal):
+  do not start Routed Rust Small; the previous exact-head result remains
+```
+
+`windows-ci` continues to opt into `.github/workflows/windows-advisory.yml` only.
+Removing that label does not imply Windows proof and must not spend a required
+Rust run. `full-ci` unlabeled does not re-run the gate to turn advisories off;
+the next opened/synchronize/reopened proof observes the current labels.
+`cancel-in-progress` stays synchronize-only. Unrelated `labeled` events use a
+distinct `Routed Rust Small-<pr>-label-ignore` concurrency group so they cannot
+replace a pending synchronize proof. An ignored labeled run is cheap, does not
+post the protected result context, and cannot manufacture a green required
+check for untested or previously failed code.
+
 The router uses the repository or organization `EM_RUNNER_READ_TOKEN` secret
 when available. It selects a self-hosted runner only when the runner is idle and
 has both the host label (`CX43`, `CPX42`, or `CX53`) and the `em-ci-rust-1.95`
