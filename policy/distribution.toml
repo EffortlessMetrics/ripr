@@ -1,0 +1,81 @@
+schema_version = "1.0"
+
+[product]
+name = "ripr"
+cargo_package = "ripr"
+cargo_manifest = "crates/ripr/Cargo.toml"
+binary = "ripr"
+version_source = "Cargo.toml:[workspace.package].version"
+default_features = true
+features = ["lang-python", "lang-rust", "lang-typescript"]
+
+[python]
+distribution = "ripr-rs"
+executable = "ripr"
+binding = "bin"
+version_scheme = "pep440-from-semver"
+source_distribution = false
+
+[npm]
+scope = "@effortlessmetrics"
+launcher = "@effortlessmetrics/ripr"
+executable = "ripr"
+dependency_policy = "exact"
+install_scripts = false
+
+[[target]]
+rust_target = "x86_64-unknown-linux-gnu"
+executable = "ripr"
+archive = "tar.gz"
+wheel_family = "manylinux"
+npm_package = "@effortlessmetrics/ripr-linux-x64-gnu"
+npm_os = "linux"
+npm_cpu = "x64"
+npm_libc = "glibc"
+compatibility_state = "unqualified"
+qualification_issue = 4489
+
+[[target]]
+rust_target = "aarch64-unknown-linux-gnu"
+executable = "ripr"
+archive = "tar.gz"
+wheel_family = "manylinux"
+npm_package = "@effortlessmetrics/ripr-linux-arm64-gnu"
+npm_os = "linux"
+npm_cpu = "arm64"
+npm_libc = "glibc"
+compatibility_state = "unqualified"
+qualification_issue = 4489
+
+[[target]]
+rust_target = "x86_64-apple-darwin"
+executable = "ripr"
+archive = "tar.gz"
+wheel_family = "macosx"
+npm_package = "@effortlessmetrics/ripr-darwin-x64"
+npm_os = "darwin"
+npm_cpu = "x64"
+compatibility_state = "unqualified"
+qualification_issue = 4489
+
+[[target]]
+rust_target = "aarch64-apple-darwin"
+executable = "ripr"
+archive = "tar.gz"
+wheel_family = "macosx"
+npm_package = "@effortlessmetrics/ripr-darwin-arm64"
+npm_os = "darwin"
+npm_cpu = "arm64"
+compatibility_state = "unqualified"
+qualification_issue = 4489
+
+[[target]]
+rust_target = "x86_64-pc-windows-msvc"
+executable = "ripr.exe"
+archive = "zip"
+wheel_family = "win"
+npm_package = "@effortlessmetrics/ripr-win32-x64-msvc"
+npm_os = "win32"
+npm_cpu = "x64"
+compatibility_state = "unqualified"
+qualification_issue = 4489
