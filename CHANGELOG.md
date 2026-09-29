@@ -1313,6 +1313,15 @@ are scoped or reviewed.
   `--base`
   ([#4285](https://github.com/EffortlessMetrics/ripr-swarm/issues/4285),
   [#4290](https://github.com/EffortlessMetrics/ripr-swarm/pull/4290)).
+- Report and pilot outputs are replaced atomically. `--out` and `--out-md`
+  report writers and `ripr pilot` artifacts used to truncate the destination
+  and then write it, so Ctrl-C, a cancelled CI step or a full disk mid-write left
+  an empty or half-written JSON file in place of the previous complete one,
+  and a reader such as `ripr lsp` could see the torn file. They now write a
+  temporary file beside the destination, flush it and rename it over the
+  old one. Symlinked, non-regular and read-only destinations are still
+  refused, an existing file's permissions are kept, and a long destination
+  name does not lengthen the temporary file's name.
 - Generated `first-pr`, first-useful-action, PR-review front-panel and
   agent workflow commands now carry the absolute selected root in `--root`
   (and anchor their `--repo-exposure` and redirect paths to it), so a

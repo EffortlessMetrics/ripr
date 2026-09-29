@@ -62,19 +62,23 @@ fn write_pilot_repo_exposure_json(
         None,
         config,
     )?;
-    let file = output::file_write::create(path)
-        .map_err(|err| format!("write output {} failed: {err}", path.display()))?;
-    let mut writer = std::io::BufWriter::new(file);
-    output::repo_exposure::write_repo_exposure_json_with_context(
-        classified,
-        limit_info,
-        ts_guidance.as_ref(),
-        python_guidance.as_ref(),
-        &context,
-        &mut writer,
-    )
-    .map_err(write_failed)?;
-    std::io::Write::flush(&mut writer).map_err(|err| write_failed(err.to_string()))
+    let mut render_error = None;
+    output::file_write::write_with(path, |file| {
+        let mut writer = std::io::BufWriter::new(file);
+        if let Err(err) = output::repo_exposure::write_repo_exposure_json_with_context(
+            classified,
+            limit_info,
+            ts_guidance.as_ref(),
+            python_guidance.as_ref(),
+            &context,
+            &mut writer,
+        ) {
+            render_error = Some(err);
+            return Err(std::io::Error::other("repo exposure rendering failed"));
+        }
+        std::io::Write::flush(&mut writer)
+    })
+    .map_err(|err| write_failed(render_error.take().unwrap_or_else(|| err.to_string())))
 }
 
 pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {

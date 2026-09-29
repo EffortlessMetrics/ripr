@@ -46,21 +46,70 @@ fn write_with_sync(
     sync_before_publish: bool,
     error_path_policy: ErrorPathPolicy,
 ) -> Result<(), String> {
+    replace_with(path, sync_before_publish, |file| file.write_all(bytes)).map_err(|failure| {
+        let subject = error_path_policy.suffix(&failure.subject);
+        let err = failure.error;
+        match failure.stage {
+            Stage::CreateDirectory => format!("failed to create {label} directory{subject}: {err}"),
+            Stage::NoFileName => format!("atomic write path{subject} has no file name"),
+            Stage::CreateTemp => format!("failed to create {label} temp file{subject}: {err}"),
+            Stage::Fill => format!("failed to write {label} temp file{subject}: {err}"),
+            Stage::Permissions => {
+                format!("failed to preserve {label} permissions for{subject}: {err}")
+            }
+            Stage::Sync => format!("failed to fsync {label} temp file{subject}: {err}"),
+            Stage::Finalize => format!("failed to finalize {label}{subject}: {err}"),
+        }
+    })
+}
+
+/// Stream `fill` into a same-directory temporary file, then atomically
+/// replace `path` with it, so a reader sees the old file or the complete new
+/// one and an interrupted or failed write leaves the old file in place. The
+/// temporary file is created exclusively under a short name that does not
+/// grow with the destination's name, and is removed on failure.
+pub(crate) fn replace_streamed(
+    path: &Path,
+    fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    replace_with(path, true, fill).map_err(|failure| failure.error)
+}
+
+#[derive(Clone, Copy)]
+enum Stage {
+    CreateDirectory,
+    NoFileName,
+    CreateTemp,
+    Fill,
+    Permissions,
+    Sync,
+    Finalize,
+}
+
+struct ReplaceFailure {
+    stage: Stage,
+    subject: std::path::PathBuf,
+    error: std::io::Error,
+}
+
+fn replace_with(
+    path: &Path,
+    sync_before_publish: bool,
+    fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<(), ReplaceFailure> {
+    let fail = |stage, subject: &Path, error| ReplaceFailure {
+        stage,
+        subject: subject.to_path_buf(),
+        error,
+    };
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty());
     let dir = parent.unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(dir).map_err(|err| {
-        format!(
-            "failed to create {label} directory{}: {err}",
-            error_path_policy.suffix(dir)
-        )
-    })?;
+    std::fs::create_dir_all(dir).map_err(|err| fail(Stage::CreateDirectory, dir, err))?;
     if path.file_name().is_none() {
-        return Err(format!(
-            "atomic write path{} has no file name",
-            error_path_policy.suffix(path)
-        ));
+        let err = std::io::Error::new(std::io::ErrorKind::InvalidInput, "path has no file name");
+        return Err(fail(Stage::NoFileName, path, err));
     }
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -71,19 +120,15 @@ fn write_with_sync(
         ".ripr-atomic-{}-{nanos}-{sequence}.tmp",
         std::process::id()
     ));
-    let result = (|| -> Result<(), String> {
-        let mut file = std::fs::File::create(&tmp_path).map_err(|err| {
-            format!(
-                "failed to create {label} temp file{}: {err}",
-                error_path_policy.suffix(&tmp_path)
-            )
-        })?;
-        file.write_all(bytes).map_err(|err| {
-            format!(
-                "failed to write {label} temp file{}: {err}",
-                error_path_policy.suffix(&tmp_path)
-            )
-        })?;
+    let result = (|| {
+        // `create_new` never opens an existing path, so a file or link
+        // planted at the temporary name cannot redirect the write.
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .map_err(|err| fail(Stage::CreateTemp, &tmp_path, err))?;
+        fill(&mut file).map_err(|err| fail(Stage::Fill, &tmp_path, err))?;
         // Only an existing *file* has permissions to carry over. A directory
         // at the destination makes the rename below fail with the finalize
         // error; copying its attributes first would fail earlier on Windows,
@@ -93,29 +138,14 @@ fn write_with_sync(
             && metadata.is_file()
         {
             file.set_permissions(metadata.permissions())
-                .map_err(|err| {
-                    format!(
-                        "failed to preserve {label} permissions for{}: {err}",
-                        error_path_policy.suffix(path)
-                    )
-                })?;
+                .map_err(|err| fail(Stage::Permissions, path, err))?;
         }
         if sync_before_publish {
-            file.sync_all().map_err(|err| {
-                format!(
-                    "failed to fsync {label} temp file{}: {err}",
-                    error_path_policy.suffix(&tmp_path)
-                )
-            })?;
+            file.sync_all()
+                .map_err(|err| fail(Stage::Sync, &tmp_path, err))?;
         }
         drop(file);
-        std::fs::rename(&tmp_path, path).map_err(|err| {
-            format!(
-                "failed to finalize {label}{}: {err}",
-                error_path_policy.suffix(path)
-            )
-        })?;
-        Ok(())
+        std::fs::rename(&tmp_path, path).map_err(|err| fail(Stage::Finalize, path, err))
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp_path);
