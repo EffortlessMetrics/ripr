@@ -471,7 +471,7 @@ Initial implementation should add tests for:
 
 The first implementation should map this spec to:
 
-- `crates/ripr/src/cli/commands.rs` or a focused CLI adapter for the
+- `crates/ripr/src/cli/commands/review_comments.rs` for the
   `review-comments` command;
 - an app/use-case module that joins existing repo exposure, agent packet, diff,
   config, and suppression evidence;

@@ -308,7 +308,7 @@ these states as success:
 - `crates/ripr/src/output/review_comments.rs::tests::review_comments_gap_ledger_renders_only_eligible_repair_cards`
   — gap-ledger review guidance carries `analysis_scope.run_status =
   "artifact_scope"` and the named ledger-artifact limitation.
-- `crates/ripr/src/cli/commands.rs::tests::review_comments_gap_ledger_writes_repair_cards_without_loading_diff`
+- `crates/ripr/src/cli/commands/review_comments.rs::tests::review_comments_gap_ledger_writes_repair_cards_without_loading_diff`
   — `ripr review-comments --gap-ledger` writes the same ledger-artifact scope
   without loading the diff.
 - `crates/ripr/src/output/pr_inline_comment_publish_plan.rs::tests::inline_comment_publish_plan_uses_spec0068_inline_cap_token`

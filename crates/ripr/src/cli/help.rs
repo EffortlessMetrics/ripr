@@ -849,6 +849,7 @@ mod tests {
     const AGENT_PARSER_RS: &str = include_str!("agent.rs");
     const CLI_COMMANDS_RS: &str = include_str!("commands.rs");
     const CHECK_PARSER_RS: &str = include_str!("commands/check.rs");
+    const REVIEW_COMMENTS_PARSER_RS: &str = include_str!("commands/review_comments.rs");
     const CONTEXT_PARSER_RS: &str = include_str!("commands/context.rs");
     const CONFIG_PARSER_RS: &str = include_str!("commands/config.rs");
     const DOCTOR_PARSER_RS: &str = include_str!("commands/doctor.rs");
@@ -1111,7 +1112,7 @@ mod tests {
         ("rerun", RERUN_PARSER_RS, &["parse_options"]),
         (
             "review-comments",
-            CLI_COMMANDS_RS,
+            REVIEW_COMMENTS_PARSER_RS,
             &["parse_review_comments_options"],
         ),
         ("swarm ingest", SWARM_INGEST_PARSER_RS, &["parse_options"]),
@@ -1384,7 +1385,8 @@ mod tests {
     /// `*_requires_values_for_value_flags`, `*_rejects_unknown_argument`, and
     /// `*_suggests_the_nearest_flag_for_a_typo` in `commands/context.rs`,
     /// `commands/check.rs`, `commands/doctor.rs`, `commands/pilot.rs`,
-    /// `commands/config.rs`, `commands/receipt.rs`, `commands.rs`, and
+    /// `commands/config.rs`, `commands/receipt.rs`, `commands/review_comments.rs`,
+    /// `commands.rs`, and
     /// `agent.rs`. The suggestion scoping tests in `suggest.rs` pin which of
     /// those flags belong to which sibling of a shared help body. Tightening
     /// this scanner to scrutinee position without a real Rust parser would
