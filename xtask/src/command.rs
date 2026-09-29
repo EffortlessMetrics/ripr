@@ -69,6 +69,7 @@ pub(crate) enum XtaskCommand {
     ReleaseServerArchive(Vec<String>),
     ReleaseServerManifest(Vec<String>),
     ReleaseFinalServerSubjects(Vec<String>),
+    ReleaseFinalServerAttestationFixture(Vec<String>),
     ReleaseFinalServerAttestationReceipt(Vec<String>),
     ReleaseDistributionCatalog(Vec<String>),
     ReleaseUploadAssets(Vec<String>),
@@ -234,6 +235,9 @@ impl XtaskCommand {
             "release-server-archive" => Self::ReleaseServerArchive(rest),
             "release-server-manifest" => Self::ReleaseServerManifest(rest),
             "release-final-server-subjects" => Self::ReleaseFinalServerSubjects(rest),
+            "release-final-server-attestation-fixture" => {
+                Self::ReleaseFinalServerAttestationFixture(rest)
+            }
             "release-final-server-attestation-receipt" => {
                 Self::ReleaseFinalServerAttestationReceipt(rest)
             }
@@ -456,6 +460,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-server-archive --version <version> --target <triple> --executable <name> --archive <zip|tar.gz>",
         "release-server-manifest --version <version> --repository <owner/repo>",
         "release-final-server-subjects --version <version> --repository <owner/repo>",
+        "release-final-server-attestation-fixture --version <version> --expected-source-sha <sha>",
         "release-final-server-attestation-receipt --version <version> --verified-subjects <path>",
         "release-upload-assets --version <version>",
         "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
@@ -1286,6 +1291,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             true,
             "Inventories the exact final server archives, manifest, and SHA256SUMS, binds them to the accepted assembly receipt, and rejects staging or checksum drift without publishing.",
+        ),
+        command_entry(
+            "release-final-server-attestation-fixture --version <version> --expected-source-sha <sha>",
+            "mutating",
+            "dist/ripr-server-attestation-v<version>.receipt.json",
+            false,
+            true,
+            "Writes an exact-SHA-bound not_authorized provenance fixture for manual rehearsal without OIDC, attestation, release, or registry authority.",
         ),
         command_entry(
             "release-final-server-attestation-receipt --version <version> --verified-subjects <path>",
