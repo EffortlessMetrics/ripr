@@ -155,10 +155,30 @@ jobs:
           name: ripr-vsix
           path: dist
 
-      - name: Attach VSIX to GitHub Release
+      - name: Attach exact VSIX to existing GitHub Release
         run: |
-          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" --title "ripr ${{ github.ref_name }}"
-          gh release upload "${{ github.ref_name }}" dist/*.vsix --clobber
+          tag="${{ github.ref_name }}"
+          vsix_file="$(find dist -maxdepth 1 -type f -name '*.vsix' -print -quit)"
+          test -n "$vsix_file"
+          asset_name="$(basename "$vsix_file")"
+          local_sha="$(sha256sum "$vsix_file" | awk '{print $1}')"
+          gh release view "$tag" >/dev/null
+          if gh release view "$tag" --json assets --jq '.assets[].name' | grep -Fxq "$asset_name"; then
+            mkdir -p existing
+            gh release download "$tag" --pattern "$asset_name" --dir existing
+            existing_sha="$(sha256sum "existing/$asset_name" | awk '{print $1}')"
+            if [ "$existing_sha" != "$local_sha" ]; then
+              echo "::error::GitHub Release already contains $asset_name with a different SHA-256." >&2
+              exit 1
+            fi
+            echo "GitHub Release already contains the exact VSIX; no upload needed."
+            exit 0
+          fi
+          gh release upload "$tag" "$vsix_file"
+          mkdir -p verified
+          gh release download "$tag" --pattern "$asset_name" --dir verified
+          uploaded_sha="$(sha256sum "verified/$asset_name" | awk '{print $1}')"
+          test "$uploaded_sha" = "$local_sha"
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
