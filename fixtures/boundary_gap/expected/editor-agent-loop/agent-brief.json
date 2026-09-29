@@ -86,7 +86,7 @@
       "severity": "warning",
       "verification": {
         "after_snapshot_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/after.repo-exposure.json",
-        "before_snapshot_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/before.repo-exposure.json",
+        "before_snapshot_command": "mkdir -p <cwd>/fixtures/boundary_gap/input/target/ripr/workflow && ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/before.repo-exposure.json",
         "suggested_test_command": "cargo test discounted_total_boundary_discriminator",
         "verify_command": "ripr agent verify --root <cwd>/fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       },

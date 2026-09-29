@@ -63,6 +63,11 @@ are scoped or reviewed.
   root they started with, are told which folder is not analyzed, and hover
   on a file from that folder says it is outside the analyzed root. The VS
   Code extension keeps its folder-picker behavior.
+- `ripr agent brief --json`: `before_snapshot_command` now creates
+  `target/ripr/workflow` before redirecting into it, so the first loop command
+  works in a fresh checkout. When the requested scope matches nothing and no
+  other agent-actionable seam is visible, the warning says so instead of
+  claiming it is showing all repo-actionable seams (#4592).
 - LSP: an editor that opens two workspace folders, or none, now hears why
   ripr is silent. Before, the server stopped analysis and sent nothing: the
   startup `ripr/analysisStatus` was dropped because the transport discards
