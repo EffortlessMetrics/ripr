@@ -71,6 +71,7 @@ Packaging and manifest assembly intentionally live in Rust-first automation:
 ```bash
 cargo xtask release-server-archive --version <VERSION> --target <target> --executable <ripr-or-ripr.exe> --archive <zip-or-tar.gz>
 cargo xtask release-server-manifest --version <VERSION> --repository <owner/repo>
+cargo xtask release-server-final-subjects --version <VERSION>
 cargo xtask release-upload-assets --version <VERSION>
 ```
 
@@ -94,17 +95,19 @@ release asset; downstream provenance and placement-independent subject
 selection consume this evidence.
 
 The release-server evidence contracts are versioned independently of release
-placement: per-target build receipts use schema `0.2`, the assembled manifest
-uses schema `0.1`, and the internal assembly receipt uses schema `0.1`.
+placement: per-target build receipts use schema `0.2`, the placement-independent
+manifest uses schema `2`, and the internal assembly receipt uses schema `0.2`.
 Manifest assembly accepts only per-target receipts with schema `0.2`, validates
 the platform-neutral compiler release/commit identity across runner hosts, and
-retains host-specific `rustc -vV` text only as per-target evidence. The
-publication command selects the archives, archive sidecars, versioned
-manifest, and `SHA256SUMS` explicitly; receipt files remain downstream
-evidence and are never release assets.
+retains host-specific `rustc -vV` text only as per-target evidence. The final
+subject admission command then revalidates the exact archive + manifest +
+`SHA256SUMS` public set before provenance. Per-archive `.sha256` sidecars and
+receipt files remain control evidence and are not 0.11 public release subjects.
 
-The `SHA256SUMS` sidecar is `sha256sum -c SHA256SUMS`-compatible (one
-`<sha256>  <file_name>` line per asset). Releases through `v0.7.0` published the
+The `SHA256SUMS` checksum manifest is `sha256sum -c SHA256SUMS`-compatible
+(one `<sha256>  <file_name>` line for each archive and the server manifest).
+It is itself a separately attested public subject and therefore intentionally
+does not self-list. Releases through `v0.7.0` published the
 same manifest under the legacy name `checksums.txt`; the content format is
 unchanged.
 
