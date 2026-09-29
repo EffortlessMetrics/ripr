@@ -29402,6 +29402,7 @@ fn known_commands_include_current_report_and_policy_commands() {
     assert!(commands.contains(&"repo-seam-inventory"));
     assert!(commands.contains(&"repo-exposure-report"));
     assert!(commands.contains(&"repo-exposure-latency-report"));
+    assert!(commands.contains(&"lsp-performance-report"));
     assert!(commands.contains(&"lane1-evidence-audit"));
     assert!(commands.contains(&"evidence-quality-audit"));
     assert!(commands.contains(&"evidence-quality-scorecard"));

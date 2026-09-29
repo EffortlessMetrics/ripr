@@ -125,6 +125,7 @@ cargo xtask install-hooks
 cargo xtask issue-intake --issue <number>
 cargo xtask lane1-evidence-audit
 cargo xtask lsp-cockpit-report
+cargo xtask lsp-performance-report
 cargo xtask markdown-links
 cargo xtask metrics
 cargo xtask module-health [--threshold <n>]
@@ -367,6 +368,15 @@ e2e smoke test file and writes `target/ripr/reports/lsp-cockpit.md` and
 `target/ripr/reports/lsp-cockpit.json`. It summarizes which fixtures produce
 editor diagnostics, which code actions are exposed, which context/action fields
 are present, and which VS Code commands are covered by e2e tests.
+
+`lsp-performance-report` runs the saved-edit sequence harness from
+`crates/ripr/src/lsp/saved_edit_sequence.rs`, overlays source/binary identity,
+and writes `target/ripr/reports/lsp-performance.md` and
+`target/ripr/reports/lsp-performance.json`. It records scheduler, delivery, and
+cache-load work counts for cold start through explicit full refresh. Historical
+2s/10s/30s envelopes remain proposals. Existing rust tests absorb the
+deterministic sequence; the command is not a CI gate and does not add a
+full-workspace job.
 
 `repo-exposure-latency-report` builds the local debug `ripr` binary, runs
 repo-exposure formats under a bounded timeout, captures opt-in analyzer phase

@@ -16773,6 +16773,85 @@ p50 no greater than 30 seconds, and a cold-full-to-warm-targeted p50 speedup of
 at least 5x. Otherwise the receipt remains `inconclusive` and preserves the
 measured values.
 
+## LSP saved-edit sequence report
+
+`cargo xtask lsp-performance-report` writes:
+
+```text
+target/ripr/reports/lsp-performance.json
+target/ripr/reports/lsp-performance.md
+```
+
+The JSON schema is `ripr-lsp-saved-edit-sequence-v1`. It is an identity-bound
+receipt of one saved-workspace sequence, not a latency gate and not a best-run
+benchmark. Existing rust tests absorb the deterministic discriminators; the
+xtask command overlays source SHA. The sequence is a `ripr --lib` harness, so
+`binary_digest` stays `not_measured` rather than hashing an unexercised
+`target/debug/ripr`. Historical 2-second
+warm-save p95, 10-second cold-small-project, and 30-second warm-PR figures
+remain `proposal`. A stale cached answer cannot satisfy a speed target. Complete-scope
+semantic parity fails independently of elapsed time. A
+fast elapsed time cannot hide a redundant full rescan or duplicate diagnostic
+publication.
+
+```json
+{
+  "schema_version": "ripr-lsp-saved-edit-sequence-v1",
+  "tool": "ripr",
+  "report": "lsp-performance",
+  "identity": {
+    "source_sha": "abc123",
+    "binary_path": "ripr --lib saved_edit_sequence",
+    "binary_digest": "not_measured",
+    "host_class": "linux-x86_64",
+    "features": ["lang-rust"],
+    "cache_reset_procedure": "isolated RIPR_CACHE_DIR per sequence",
+    "sample_count": 1
+  },
+  "proposed_envelopes": [
+    {"name": "warm_bounded_save_p95_ms", "proposed_ms": 2000, "class": "proposal"},
+    {"name": "cold_small_project_ms", "proposed_ms": 10000, "class": "proposal"},
+    {"name": "warm_pr_sized_ms", "proposed_ms": 30000, "class": "proposal"}
+  ],
+  "steps": [
+    {
+      "step": "cold_start",
+      "analyses_started_delta": 1,
+      "requests_coalesced_delta": 0,
+      "completed_but_superseded_delta": 0,
+      "published_payload_bytes": 8,
+      "suppressed_payload_bytes": 0,
+      "run_status": "seams_deferred",
+      "cache_load_status": "miss",
+      "full_scan_fallback_reason": null,
+      "full_rescan": false,
+      "input_identity_unchanged": false,
+      "semantic_scope": "interactive",
+      "stale_semantic_output": false,
+      "elapsed_ms": 1,
+      "rss_bytes": "not_measured"
+    }
+  ],
+  "optimization_verdict": "no_change",
+  "claim_boundary": "sequence work counts, invalidation, stale-publication rejection, and semantic parity; historical latency figures remain proposals"
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"ripr-lsp-saved-edit-sequence-v1"`.
+- `identity.binary_path` - exact installed or development binary. A hidden
+  workspace binary cannot satisfy the harness.
+- `proposed_envelopes[].class` - `proposal` for the historical 2s/10s/30s
+  figures. `gating` and `achieved` are rejected for those names.
+- `steps[].cache_load_status` - `hit`, `miss`, `corrupt_ignored`, or
+  `not_observed`.
+- `steps[].semantic_scope` - `interactive` or `full`. Explicit full refresh
+  must be `full` and must not use `run_status: "seams_deferred"`.
+- `rss_bytes` - integer bytes, or the string `"not_measured"`.
+- `optimization_verdict` - `no_change` or `not_established` for this first
+  delivery. Semantic-reuse optimization remains #3796.
+
 ## Python repair verification records
 
 `ripr agent repair --phase prepare` retains a schema-`0.1`

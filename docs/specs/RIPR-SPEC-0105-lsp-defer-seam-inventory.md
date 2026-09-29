@@ -268,3 +268,7 @@ collect_workspace_status → run_status: "full" (or "limited"/"stale" per existi
   `run_status: "full"` and always reports `run_status: "seams_deferred"` with the
   `refresh_command` affordance. An explicit refresh snapshot reports `run_status: "full"`
   (or limited/stale/cache_limited per existing rules) — never `"seams_deferred"`.
+
+The saved-edit sequence that measures this interactive/full distinction is
+[RIPR-SPEC-0180](RIPR-SPEC-0180-lsp-saved-edit-sequence.md). That sequence
+reuses `seams_deferred` and does not replace this spec.

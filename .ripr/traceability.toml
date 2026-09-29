@@ -9566,3 +9566,49 @@ metrics = [
   "usefulness_feedback_receipts_recorded",
   "usefulness_feedback_join_unmatched",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0180"
+name = "LSP saved-edit sequence harness"
+spec = "docs/specs/RIPR-SPEC-0180-lsp-saved-edit-sequence.md"
+tests = [
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::honest_sequence_passes",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::stale_cached_answer_cannot_satisfy_speed_target",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::stale_semantic_output_fails_independently_of_elapsed_time",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::fast_redundant_full_rescan_is_caught",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::duplicate_diagnostic_publication_is_caught_even_when_fast",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::related_test_edit_must_invalidate_evidence",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::unrelated_test_edit_cannot_manufacture_actionable_findings",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::unrelated_test_edit_cannot_claim_no_work_was_needed",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::explicit_full_refresh_cannot_be_labelled_interactive",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::proposed_latency_targets_cannot_be_gates",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::hidden_workspace_binary_is_rejected",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::superseded_work_cannot_present_as_current_zero_gap",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::corrupt_cache_hit_is_rejected",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::config_change_warm_hit_is_rejected",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::missing_step_is_rejected",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::proposed_envelopes_are_not_achieved_results",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::envelope_and_verdict_vocabulary_is_complete",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::timeout_must_not_fabricate_later_phases",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::cancellation_must_count_superseded_or_coalesced_work",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::interactive_cold_start_cannot_report_full",
+  "crates/ripr/src/lsp/saved_edit_sequence.rs::tests::saved_edit_sequence_fixture_harness",
+  "xtask/src/reports/lsp_performance.rs::tests::overlay_identity_binds_source_sha_and_binary_path",
+  "xtask/src/reports/lsp_performance.rs::tests::overlay_does_not_claim_an_unexercised_debug_binary",
+  "xtask/src/reports/lsp_performance.rs::tests::reject_promoted_proposals_keeps_historical_figures_as_proposals",
+  "xtask/src/reports/lsp_performance.rs::tests::markdown_names_proposals_and_refuses_speed_target_language",
+  "xtask/src/reports/lsp_performance.rs::tests::overlay_rejects_wrong_schema",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/lsp/saved_edit_sequence.rs",
+  "xtask/src/reports/lsp_performance.rs",
+  "xtask/src/command.rs",
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "lsp_saved_edit_sequence_honesty",
+]

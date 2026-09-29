@@ -9,6 +9,16 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Added
+
+- LSP: `cargo xtask lsp-performance-report` writes an identity-bound saved-edit
+  sequence receipt (`ripr-lsp-saved-edit-sequence-v1`) covering cold start,
+  unchanged save/refresh, production/related/unrelated edits, rename, config
+  change, cancellation, corrupt cache, and explicit full refresh. A stale
+  cached answer cannot satisfy a speed target, and a fast elapsed time cannot
+  hide a redundant full rescan or duplicate diagnostic publication. The
+  historical 2s/10s/30s figures remain proposals, not gates.
+
 ### Fixed
 
 - Security: Rust source discovery skips symlinked `.rs` entries, as the
