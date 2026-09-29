@@ -197,11 +197,24 @@ comments, strings, and docstrings:
   owner module (`import pricing` then `pricing.loyalty_price`, or
   `import pricing as p` then `p.loyalty_price`);
 - method or class-method owner: an attribute reference `.name`, consistent
-  with the direct rule that relates any `.name(` call for these owners; a
-  dunder method (`__init__`, `__eq__`, ...) is also referenced by a reference
-  to its class, which invokes it implicitly;
+  with the direct rule that relates any `.name(` call for these owners;
+- dunder method owner (`__init__`, `__eq__`, `__setitem__`, ...): only a
+  reference to its class. Every class defines the same dunder names, so a
+  test-local `def __init__` or `super().__init__(...)` in a helper class is
+  not a reference. Constructing the class (`Class(...)`, a renamed import, or
+  `module.Class(...)`) relates `__init__`, `__new__`, and `__post_init__` as
+  `constructor_call`, an oracle-eligible relation; for any other dunder it
+  relates as `dunder_protocol`, which stays uncertain because syntax cannot
+  bind `obj[key] = value` or `a == b` to the constructed instance. A dunder
+  owner with no related test, in a workspace whose tests import its class or
+  module, reads `static_unknown` with the `dynamic_dispatch` limit instead of
+  `no_static_path`: the adapter cannot bind a unittest mixin's `self.Cache` or
+  a test-local subclass to the owner class;
 - module-level owner: a local bound by an import of, or from, the owner
   module.
+
+A `def name(`, `async def name(`, or `class name(` header in a test defines a
+local; it is not a call of `name`.
 
 A title, a fixture name, a file stem, or an object-member use such as
 `order.loyalty_price` on a receiver that is not the owner module is not a
@@ -233,6 +246,13 @@ function (no removed counterpart) whose body holds another added behavior
 line: the body lines carry its behavior. A header with a default value, a
 changed header, a one-line `def f(x): return x`, and a multi-line header keep
 their probe.
+
+In diff mode the adapter must not emit a probe for a line of a multi-line
+`def` header that only names parameters or opens or closes the header
+(`self,`, `key: int,`, `*args,`, `*,`, `def name(`, `):`, `) -> bool:`),
+when the paired old line, if any, has the same shape. A parameter default, an
+annotation with a call, a trailing comment, and a `)` that closes a call in a
+body keep their probe.
 
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:

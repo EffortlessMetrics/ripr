@@ -59,7 +59,8 @@ the Rust adapter runs a bounded BFS walk over the lexical call facts in the Rust
 
 1. Collect all tests from the index (unit + integration).
 2. For each test's `CallFact` that is NOT a macro invocation and NOT a direct call to the owner:
-   find the corresponding production `FunctionFact` in-crate by name.
+   find every production `FunctionFact` in-crate with that name (name-only facts cannot
+   tell same-named methods of different types apart, so the walk follows each of them).
 3. BFS from that production function through `FunctionFact.calls`, depth ≤ 5:
    - Stop at macro invocations (`name!`).
    - Stop when callee name not found in-crate (external / unresolved).

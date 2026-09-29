@@ -61,7 +61,7 @@ use super::super::source_facts::{
     source_fact_snapshot_observation, source_facts_parse_error,
 };
 use super::super::source_utils::normalized_path;
-use super::super::static_limits::static_limit_for_change;
+use super::super::static_limits::{implicit_dunder_dispatch_limit, static_limit_for_change};
 use super::super::workspace::owner_for_changed_line;
 use super::super::{PythonOwner, PythonTest};
 use super::roles::PythonFileRole;
@@ -690,7 +690,9 @@ fn build_behavior_item(
     all_tests: &[PythonTest],
 ) -> PythonRepoBehaviorItem {
     let (family, delta) = classify_probe_shape(text);
-    let static_limit = static_limit_for_change(text, owner, candidates).map(|limit| limit.kind);
+    let static_limit = static_limit_for_change(text, owner, candidates)
+        .or_else(|| implicit_dunder_dispatch_limit(owner, all_tests, candidates))
+        .map(|limit| limit.kind);
     let canonical_gap = static_limit
         .is_none()
         .then(|| canonical_python_gap_for(relative, owner, &family, text));

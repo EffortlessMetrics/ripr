@@ -29,6 +29,27 @@ are scoped or reviewed.
   derived tuple slice, and computes each related test's value facts once
   per owner instead of once per probe; a ripr commit went
   from 11.1 s to 8.1 s.
+- Python: a changed dunder method now relates to the tests that use its class.
+  `LowerBound.__init__` relates to tests that construct `LowerBound(...)`,
+  instead of tests that define their own helper class with `def __init__`.
+  Other dunders such as `__setitem__` relate, uncertain, to tests that build
+  an instance. When tests import the class but reach it in a shape ripr cannot
+  bind (a unittest mixin's `self.Cache`), the finding is `static_unknown` with
+  the `dynamic_dispatch` limit rather than `no_static_path`. A `def name(`
+  header in a test is no longer read as a call of `name`. Replays of
+  packaging and cachetools bug fixes moved 25 false `no_static_path` or
+  wrongly related findings; each flagged line's mutants were killed by the
+  project's own suite.
+- Rust: the bounded transitive-reach walk behind `no_static_path` disclosures
+  now follows every function sharing a callee's name. It followed only the
+  first one indexed, so jiter's `decode_to_tape`, reached through one of two
+  `decode` impls, and indexmap's `get_disjoint_mut` helpers read a silent
+  `no_static_path` with no named limitation. Classification is unchanged;
+  those findings now name the unresolved path and a test to inspect.
+- Python: a reflowed multi-line function signature no longer produces a probe
+  per parameter line. `self,`, `key,`, `*args,` and the closing `):` carry no
+  behavior of their own; four of cachetools c0fdf6a's thirteen probes were
+  these lines. Parameter defaults keep their probe.
 - Security: Rust source discovery skips symlinked `.rs` entries, as the
   Python and TypeScript readers already did. A cloned repository or pull
   request that committed `src/zero.rs -> /dev/zero` made `ripr check` read

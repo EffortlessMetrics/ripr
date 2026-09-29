@@ -5070,6 +5070,304 @@ fn method_owners_need_an_attribute_reference_and_dunders_a_class_reference() -> 
 }
 
 #[test]
+fn dunder_owner_relates_by_owner_class_not_by_shared_dunder_name() -> Result<(), String> {
+    // packaging 55cbf1b: `LowerBound.__init__` was related to tests that define
+    // their own helper class with `def __init__` (and `super().__init__`),
+    // while the tests that construct `LowerBound(None, True)` were missed.
+    let owners = extract_owners(
+        Path::new("src/packaging/_ranges.py"),
+        "class LowerBound:\n    def __init__(self, version, inclusive):\n        if version is None:\n            inclusive = False\n        self.inclusive = inclusive\n\n    def __eq__(self, other):\n        return self.inclusive == other.inclusive\n",
+    );
+    let init = flat_owner(&owners, "LowerBound.__init__")?;
+    let eq = flat_owner(&owners, "LowerBound.__eq__")?;
+    let tests = extract_tests(
+        Path::new("tests/test_ranges.py"),
+        "from packaging._ranges import LowerBound\n\n\ndef test_lower_spellings_are_one_bound():\n    bound = LowerBound(None, True)\n    assert bound.inclusive is False\n\n\ndef test_helper_class_defines_its_own_init():\n    class LibcVersion:\n        def __init__(self, value):\n            self.value = value\n\n    class Child(LibcVersion):\n        def __init__(self):\n            super().__init__(1)\n\n    assert Child().value == 1\n",
+    );
+    assert_eq!(tests.len(), 2, "fixture must parse both tests");
+    assert_eq!(
+        candidate_relations(init, &tests),
+        vec![(
+            "test_lower_spellings_are_one_bound".to_string(),
+            "constructor_call"
+        )],
+        "constructing the owner class calls `__init__`; a test-local `__init__` does not"
+    );
+    assert_eq!(
+        candidate_relations(eq, &tests),
+        vec![(
+            "test_lower_spellings_are_one_bound".to_string(),
+            "dunder_protocol"
+        )],
+        "other dunders run through syntax on an instance the test built: related, but uncertain"
+    );
+
+    // A class reached through a module alias and a renamed import both count.
+    let aliased = extract_tests(
+        Path::new("tests/test_bounds.py"),
+        "import packaging._ranges as r\nfrom packaging._ranges import LowerBound as LB\n\n\ndef test_module_member():\n    assert r.LowerBound(None, True).inclusive is False\n\n\ndef test_renamed():\n    assert LB(None, True).inclusive is False\n",
+    );
+    assert_eq!(aliased.len(), 2);
+    assert_eq!(
+        candidate_relations(init, &aliased),
+        vec![
+            ("test_module_member".to_string(), "constructor_call"),
+            ("test_renamed".to_string(), "constructor_call"),
+        ]
+    );
+    Ok(())
+}
+
+#[test]
+fn dunder_owner_needs_its_class_imported_from_the_owner_package() -> Result<(), String> {
+    let owners = extract_owners(
+        Path::new("src/pkg/cache.py"),
+        "class Cache:\n    def __init__(self, n):\n        self.n = n\n",
+    );
+    let init = flat_owner(&owners, "Cache.__init__")?;
+    // A same-named class from another module, or a bare name with no import,
+    // is not the owner's class.
+    let foreign = extract_tests(
+        Path::new("tests/test_other.py"),
+        "from other.cache import Cache\n\n\ndef test_other_cache():\n    assert Cache(3).n == 3\n",
+    );
+    let unimported = extract_tests(
+        Path::new("tests/test_bare.py"),
+        "def test_bare_cache():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!((foreign.len(), unimported.len()), (1, 1));
+    assert!(candidate_relations(init, &foreign).is_empty());
+    assert!(candidate_relations(init, &unimported).is_empty());
+    // The owner's package re-exports its submodules' classes.
+    let package = extract_tests(
+        Path::new("tests/test_pkg.py"),
+        "import pkg\nfrom pkg import Cache\n\n\ndef test_package_import():\n    assert Cache(3).n == 3\n\n\ndef test_package_member():\n    assert pkg.Cache(3).n == 3\n",
+    );
+    assert_eq!(package.len(), 2);
+    assert_eq!(
+        candidate_relations(init, &package),
+        vec![
+            ("test_package_import".to_string(), "constructor_call"),
+            ("test_package_member".to_string(), "constructor_call"),
+        ]
+    );
+    // `pk` is not a package above `pkg.cache`.
+    let prefix = extract_tests(
+        Path::new("tests/test_prefix.py"),
+        "from pk import Cache\n\n\ndef test_prefix():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!(prefix.len(), 1);
+    assert!(candidate_relations(init, &prefix).is_empty());
+    // A `cache` module from another package, and the bare `src` layout root.
+    let other_module = extract_tests(
+        Path::new("tests/test_other_module.py"),
+        "import other.cache\nimport other.cache as oc\nfrom other import cache\nfrom src import Cache\n\n\ndef test_from_other():\n    assert cache.Cache(3).n == 3\n\n\ndef test_dotted_other():\n    assert other.cache.Cache(3).n == 3\n\n\ndef test_aliased_other():\n    assert oc.Cache(3).n == 3\n\n\ndef test_src_root():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!(other_module.len(), 4);
+    assert!(candidate_relations(init, &other_module).is_empty());
+    // A star import from the owner module binds the class by name.
+    let star = extract_tests(
+        Path::new("tests/test_star.py"),
+        "from pkg.cache import *\n\n\ndef test_star():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!(star.len(), 1);
+    assert_eq!(
+        candidate_relations(init, &star),
+        vec![("test_star".to_string(), "constructor_call")]
+    );
+    // A trailing part of the owner's module path names another module: the
+    // standard library's `collections`, or `util` below `src/pkg`.
+    let shadow_owners = extract_owners(
+        Path::new("src/mylib/collections.py"),
+        "class OrderedDict:\n    def __init__(self, n):\n        self.n = n + 1\n",
+    );
+    let shadow_init = flat_owner(&shadow_owners, "OrderedDict.__init__")?;
+    let stdlib_tests = extract_tests(
+        Path::new("tests/test_stdlib.py"),
+        "import collections\nfrom collections import OrderedDict\n\n\ndef test_from_stdlib():\n    assert OrderedDict(a=1)[\"a\"] == 1\n\n\ndef test_stdlib_member():\n    assert collections.OrderedDict(a=1)[\"a\"] == 1\n",
+    );
+    assert_eq!(stdlib_tests.len(), 2);
+    assert!(candidate_relations(shadow_init, &stdlib_tests).is_empty());
+    let nested_owners = extract_owners(
+        Path::new("src/pkg/util/cache.py"),
+        "class Cache:\n    def __init__(self, n):\n        self.n = n\n",
+    );
+    let nested_init = flat_owner(&nested_owners, "Cache.__init__")?;
+    let middle_tests = extract_tests(
+        Path::new("tests/test_middle.py"),
+        "import util\nfrom util import Cache\n\n\ndef test_from_util():\n    assert Cache(3).n == 3\n\n\ndef test_util_member():\n    assert util.Cache(3).n == 3\n",
+    );
+    assert_eq!(middle_tests.len(), 2);
+    assert!(candidate_relations(nested_init, &middle_tests).is_empty());
+    Ok(())
+}
+
+#[test]
+fn unbound_dunder_owner_is_a_dynamic_dispatch_limit_not_no_static_path() -> Result<(), String> {
+    // cachetools 39b31bc: `Cache.__setitem__` is exercised by `cache[key] = v`
+    // on `self.Cache(...)` from a unittest mixin; the suite kills the mutants
+    // while ripr said `no_static_path`.
+    let owner_file = Path::new("src/cachetools/__init__.py");
+    let owner_source =
+        "class Cache:\n    def __setitem__(self, key, value):\n        self.data[key] = value\n";
+    let owners = extract_owners(owner_file, owner_source);
+    let setitem = flat_owner(&owners, "Cache.__setitem__")?;
+    let mixin_tests = extract_tests(
+        Path::new("tests/test_cache.py"),
+        "import cachetools\n\n\nclass TestCache:\n    Cache = cachetools.Cache\n\n    def test_insert(self):\n        cache = self.Cache(maxsize=2)\n        cache[1] = 1\n        assert cache[1] == 1\n",
+    );
+    assert_eq!(mixin_tests.len(), 1, "fixture must parse the mixin test");
+    assert!(candidate_relations(setitem, &mixin_tests).is_empty());
+    let finding = classify_change(
+        owner_file,
+        3,
+        "        self.data[key] = value",
+        &owners,
+        &mixin_tests,
+    )
+    .ok_or("the changed line must produce a finding")?;
+    assert_eq!(finding.class, ExposureClass::StaticUnknown);
+    assert!(
+        finding
+            .missing
+            .iter()
+            .any(|line| line.contains("dynamic_dispatch") && line.contains("Cache.__setitem__")),
+        "the limit must name the dunder owner: {:?}",
+        finding.missing
+    );
+
+    // Control: no test imports the class or its module, so the owner is
+    // genuinely unreached and keeps `no_static_path`.
+    let unrelated_tests = extract_tests(
+        Path::new("tests/test_other.py"),
+        "import json\n\n\ndef test_dumps():\n    assert json.dumps(1) == \"1\"\n",
+    );
+    assert_eq!(unrelated_tests.len(), 1);
+    let finding = classify_change(
+        owner_file,
+        3,
+        "        self.data[key] = value",
+        &owners,
+        &unrelated_tests,
+    )
+    .ok_or("the changed line must produce a finding")?;
+    assert_eq!(finding.class, ExposureClass::NoStaticPath);
+
+    // An import this adapter does not read (inside `try:`) still names the
+    // class: an unknown, not an actionable `no_static_path`.
+    let guarded_tests = extract_tests(
+        Path::new("tests/test_guarded.py"),
+        "try:\n    from cachetools import Cache\nexcept ImportError:\n    Cache = None\n\n\ndef test_insert():\n    cache = Cache(maxsize=2)\n    cache[1] = 1\n    assert cache[1] == 1\n",
+    );
+    assert_eq!(
+        guarded_tests.len(),
+        1,
+        "fixture must parse the guarded test"
+    );
+    let finding = classify_change(
+        owner_file,
+        3,
+        "        self.data[key] = value",
+        &owners,
+        &guarded_tests,
+    )
+    .ok_or("the changed line must produce a finding")?;
+    assert_eq!(finding.class, ExposureClass::StaticUnknown);
+    Ok(())
+}
+
+#[test]
+fn structural_lines_of_a_multi_line_def_header_carry_no_behavior() {
+    use super::no_behavior::{is_structural_def_header_line, is_structural_def_header_text};
+    // cachetools c0fdf6a reflowed `TLRUCache.__setitem__`'s signature.
+    let source = "class TLRUCache:\n    def __setitem__(\n        self,\n        key,\n        value: int | None,\n        cache_setitem=Cache.__setitem__,\n        *,\n        **kwargs,\n    ) -> None:\n        self.data[key] = value\n";
+    let structural = |line| is_structural_def_header_line(source, 2, line);
+    for line in [2, 3, 4, 5, 7, 8, 9] {
+        assert!(structural(line), "line {line} only shapes the header");
+    }
+    assert!(!structural(6), "a parameter default is behavior");
+    assert!(!structural(10), "the body is behavior");
+
+    // Outside a multi-line header the same text is not structural: a
+    // one-line header, or a `)` closing a call in a body.
+    let body_paren =
+        "def f(value):\n    total = compute(\n        value,\n    )\n    return total\n";
+    assert!(!is_structural_def_header_line(body_paren, 1, 3));
+    assert!(!is_structural_def_header_line(body_paren, 1, 4));
+
+    // Annotations that call code, and trailing comments, fail closed.
+    assert!(!is_structural_def_header_text("    value: make_type(),"));
+    assert!(!is_structural_def_header_text("    value,  # was key"));
+    assert!(!is_structural_def_header_text("    ) -> build():"));
+
+    // A header closed by `):  # note` still ends there: the call's argument
+    // lines in the body are not header lines.
+    let commented = "def pick(\n    a,\n    b,\n):  # note\n    return combine(\n        b,\n        a,\n    )\n";
+    assert!(is_structural_def_header_line(commented, 1, 2));
+    assert!(is_structural_def_header_line(commented, 1, 3));
+    for line in [6, 7, 8] {
+        assert!(
+            !is_structural_def_header_line(commented, 1, line),
+            "line {line} is in the body"
+        );
+    }
+    // A one-line header with a trailing comment is not a multi-line header.
+    let one_line = "def pick(a, b):  # note\n    return combine(\n        b,\n    )\n";
+    assert!(!is_structural_def_header_line(one_line, 1, 3));
+    assert!(!is_structural_def_header_line(one_line, 1, 4));
+}
+
+#[test]
+fn diff_mode_emits_no_probe_for_structural_def_header_lines() -> Result<(), String> {
+    let file = Path::new("src/cache.py");
+    let source = "class Cache:\n    def __setitem__(\n        self,\n        key,\n        value,\n    ):\n        self.data[key] = value\n";
+    let owners = extract_owners(file, source);
+    let context = |line| PythonNoBehaviorContext {
+        structural_def_header_line: super::no_behavior::is_structural_def_header_line(
+            source, 2, line,
+        ),
+        ..PythonNoBehaviorContext::default()
+    };
+    let classify = |line: usize, text: &str, old: Option<&str>| {
+        classify_change_with_context(file, line, text, old, &owners, &[], context(line))
+    };
+    assert!(classify(3, "        self,", None).is_none());
+    assert!(classify(6, "    ):", None).is_none());
+    // `key=None,` -> `key,` removes a default: behavior, keeps its probe.
+    assert!(classify(4, "        key,", Some("        key=None,")).is_some());
+    // The body line keeps its probe.
+    assert!(classify(7, "        self.data[key] = value", None).is_some());
+    Ok(())
+}
+
+#[test]
+fn a_def_or_class_header_is_not_a_call_of_that_name() -> Result<(), String> {
+    let owners = extract_owners(
+        Path::new("src/pricing.py"),
+        "def loyalty_price(total):\n    return total - 10\n",
+    );
+    let loyalty = flat_owner(&owners, "loyalty_price")?;
+    let tests = extract_tests(
+        Path::new("tests/test_pricing.py"),
+        "def test_local_stub():\n    def loyalty_price(total):\n        return total\n\n    assert loyalty_price is not None\n\n\ndef test_async_local_stub():\n    async def loyalty_price(total):\n        return total\n\n    assert loyalty_price is not None\n\n\ndef test_local_class():\n    class loyalty_price(dict):\n        pass\n\n    assert loyalty_price is not None\n",
+    );
+    assert_eq!(tests.len(), 3, "fixture must parse all three tests");
+    assert!(
+        tests
+            .iter()
+            .all(|test| !body_calls_owner(&test.body_text, loyalty)),
+        "`def loyalty_price(` / `class loyalty_price(` define a local; they do not call the owner"
+    );
+    let control = extract_tests(
+        Path::new("tests/test_pricing.py"),
+        "from pricing import loyalty_price\n\n\ndef test_call():\n    assert loyalty_price(20) == 10\n",
+    );
+    assert_eq!(control.len(), 1);
+    assert!(body_calls_owner(&control[0].body_text, loyalty));
+    Ok(())
+}
+
+#[test]
 fn module_owner_needs_a_local_imported_from_the_owner_module() -> Result<(), String> {
     let owners = extract_owners(Path::new("src/constants.py"), "BASE_DISCOUNT = 12\n");
     let module = flat_owner(&owners, "<module>")?;

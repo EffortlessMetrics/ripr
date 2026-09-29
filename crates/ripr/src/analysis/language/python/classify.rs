@@ -3,6 +3,7 @@ use super::discriminators::python_missing_discriminators;
 use super::no_behavior::{
     changed_default_overridden_params, format_param_name_list, is_annotation_only_def_change,
     is_annotation_only_var_change, is_new_def_header_without_defaults, is_python_no_behavior_line,
+    is_structural_def_header_text,
 };
 use super::probe_shape::{
     canonical_python_gap_for, classify_probe_shape, python_flow_sink_for,
@@ -13,7 +14,7 @@ use super::related_tests::{
     verify_command_for_test,
 };
 use super::sink_alignment::{SinkAlignment, classify_sink_alignment_with_old};
-use super::static_limits::static_limit_for_change;
+use super::static_limits::{implicit_dunder_dispatch_limit, static_limit_for_change};
 use super::{
     PythonOracleShape, PythonOwner, PythonTest, fingerprint_probe_id, normalize_expression,
     owner_for_changed_line, python_recommended_next_step, python_weak_missing_summary,
@@ -67,6 +68,9 @@ pub(super) struct PythonNoBehaviorContext {
     /// The changed line is the first line of its enclosing owner, and that
     /// owner's span carries at least one other added behavior line.
     pub(super) opens_owner_with_added_body: bool,
+    /// The changed line only names parameters or opens/closes a multi-line
+    /// `def` header (`no_behavior::multi_line_def_header_span`).
+    pub(super) structural_def_header_line: bool,
 }
 
 /// Classify a change from producer-owned owner, relation, and oracle facts.
@@ -90,6 +94,15 @@ pub(super) fn classify_change_with_context(
     let old_is_noop = old_line_text
         .is_none_or(|old| no_behavior.old_line_in_docstring || is_python_no_behavior_line(old));
     if new_is_noop && old_is_noop {
+        return None;
+    }
+    // Structural `def`-header guard: `self,`, `key,`, `):` inside a
+    // multi-line header carry no behavior of their own (cachetools c0fdf6a
+    // probed nine such lines of a reflowed `__setitem__` signature). A paired
+    // old line must be structural too, so `key=None,` -> `key,` keeps its probe.
+    if no_behavior.structural_def_header_line
+        && old_line_text.is_none_or(is_structural_def_header_text)
+    {
         return None;
     }
     // Annotation-only `def`-header guard (#1289): Python does not enforce type
@@ -137,7 +150,8 @@ pub(super) fn classify_change_with_context(
     let related = find_related_tests(owner, all_tests);
     let alignment =
         classify_sink_alignment_with_old(owner, line_text, old_line_text, &related, all_tests);
-    let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
+    let static_limit = static_limit_for_change(line_text, owner, &related_candidates)
+        .or_else(|| implicit_dunder_dispatch_limit(owner, all_tests, &related_candidates));
     let (family, delta) = classify_probe_shape(line_text);
     let has_oracle_eligible_relation = related_candidates
         .iter()

@@ -89,7 +89,7 @@ use no_behavior::{
 };
 use no_behavior::{
     is_python_import_line, is_python_no_behavior_line, is_python_structural_line,
-    python_quiet_lines_covered_by_run,
+    is_structural_def_header_text, multi_line_def_header_span, python_quiet_lines_covered_by_run,
 };
 use oracles::collect_assertions_from_statements;
 #[cfg(test)]
@@ -676,6 +676,8 @@ impl PythonAdapter {
                     || is_python_no_behavior_line(&added.text)
                     || is_python_structural_line(&added.text)
             });
+            // Header span per owner, computed once per changed file.
+            let mut header_spans: BTreeMap<usize, Option<(usize, usize)>> = BTreeMap::new();
             for (added_index, added) in changed.added_lines.iter().enumerate() {
                 // Pair the in-place removed line (same new-side position) so the
                 // classifier can credit the changed-sink token on the DELTA only.
@@ -719,6 +721,23 @@ impl PythonAdapter {
                                     && !is_python_no_behavior_line(&other.text)
                             })
                     }),
+                    structural_def_header_line: is_structural_def_header_text(&added.text)
+                        && workspace_read
+                            .sources
+                            .get(&changed.path)
+                            .zip(owner_for_changed_line(
+                                &changed.path,
+                                added.line,
+                                &all_owners,
+                            ))
+                            .and_then(|(source, owner)| {
+                                *header_spans.entry(owner.start_line).or_insert_with(|| {
+                                    multi_line_def_header_span(source, owner.start_line)
+                                })
+                            })
+                            .is_some_and(|(def_line, header_end)| {
+                                (def_line..=header_end).contains(&added.line)
+                            }),
                 };
                 if let Some(finding) = classify_change_with_context(
                     &changed.path,

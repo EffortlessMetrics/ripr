@@ -13,7 +13,9 @@ pub(super) enum PythonRelationKind {
     ImportAliasCall,
     ApiClientRouteCall,
     ConstructCall,
+    ConstructorCall,
     LocalBinding,
+    DunderProtocol,
     SameStem,
     TestNameSimilarity,
     FixtureName,
@@ -26,7 +28,9 @@ impl PythonRelationKind {
             Self::ImportAliasCall => 4,
             Self::ApiClientRouteCall => 4,
             Self::ConstructCall => 4,
+            Self::ConstructorCall => 4,
             Self::LocalBinding => 4,
+            Self::DunderProtocol => 3,
             Self::SameStem => 3,
             Self::TestNameSimilarity => 2,
             Self::FixtureName => 1,
@@ -40,6 +44,7 @@ impl PythonRelationKind {
                 | Self::ImportAliasCall
                 | Self::ApiClientRouteCall
                 | Self::ConstructCall
+                | Self::ConstructorCall
                 | Self::LocalBinding
         )
     }
@@ -54,7 +59,9 @@ impl PythonRelationKind {
             Self::ImportAliasCall => "import_alias_call",
             Self::ApiClientRouteCall => "api_client_route_call",
             Self::ConstructCall => "construct_call",
+            Self::ConstructorCall => "constructor_call",
             Self::LocalBinding => "local_binding",
+            Self::DunderProtocol => "dunder_protocol",
             Self::SameStem => "same_stem",
             Self::TestNameSimilarity => "test_name_similarity",
             Self::FixtureName => "fixture_name",
@@ -244,6 +251,9 @@ pub(super) fn related_test_relation(
     test: &PythonTest,
     owner: &PythonOwner,
 ) -> Option<PythonRelationKind> {
+    if let Some(class) = dunder_method_class(owner) {
+        return dunder_method_relation(test, owner, class);
+    }
     if body_calls_owner(&test.body_text, owner) {
         return Some(PythonRelationKind::SyntacticCall);
     }
@@ -279,6 +289,198 @@ pub(super) fn related_test_relation(
         return Some(PythonRelationKind::FixtureName);
     }
     None
+}
+
+/// The class of a dunder method owner (`LowerBound` for
+/// `LowerBound.__init__`), or `None` for any other owner.
+pub(super) fn dunder_method_class(owner: &PythonOwner) -> Option<&str> {
+    if !matches!(
+        owner.owner_kind,
+        Some(OwnerKind::Method | OwnerKind::ClassMethod)
+    ) || !is_dunder_name(&owner.name)
+    {
+        return None;
+    }
+    owner
+        .qualified_name
+        .rsplit_once('.')
+        .map(|(class, _)| class)
+        .filter(|class| !class.is_empty())
+}
+
+pub(super) fn is_dunder_name(name: &str) -> bool {
+    name.len() > 4 && name.starts_with("__") && name.ends_with("__")
+}
+
+/// Relation for a dunder method owner (`__init__`, `__setitem__`, ...).
+///
+/// Every class defines the same dunder names, so the bare name says nothing
+/// about which class a test exercises: `super().__init__(...)` or a local
+/// `def __init__(self)` in a test-local helper class is not a call of
+/// `LowerBound.__init__`. A test relates only when it references the owner
+/// class. Python invokes these methods through syntax rather than by name:
+///
+/// - an explicit `Class.__x__(` or `obj.__x__(` call is a syntactic call;
+/// - constructing the class (`Class(...)`, an alias, or `module.Class(...)`)
+///   calls its `__init__` / `__new__` / `__post_init__`, so a constructor
+///   owner relates like a direct call;
+/// - any other dunder (`obj[key] = value` for `__setitem__`, `a == b` for
+///   `__eq__`) runs on an instance the test built, but syntax alone cannot
+///   bind the protocol use to that instance, so the relation stays uncertain.
+fn dunder_method_relation(
+    test: &PythonTest,
+    owner: &PythonOwner,
+    class: &str,
+) -> Option<PythonRelationKind> {
+    if !test_references_owner_class(test, owner, class) {
+        return None;
+    }
+    let body = &test.body_text;
+    if contains_call_name(body, &owner.qualified_name)
+        || contains_any_attribute_call(body, &owner.name)
+    {
+        return Some(PythonRelationKind::SyntacticCall);
+    }
+    if construct_call_invokes_owner(test, owner) {
+        return Some(PythonRelationKind::ConstructCall);
+    }
+    if local_binding_calls_owner(test, owner) {
+        return Some(PythonRelationKind::LocalBinding);
+    }
+    if test_constructs_class(test, owner, class) {
+        return Some(
+            if matches!(
+                owner.name.as_str(),
+                "__init__" | "__new__" | "__post_init__"
+            ) {
+                PythonRelationKind::ConstructorCall
+            } else {
+                PythonRelationKind::DunderProtocol
+            },
+        );
+    }
+    if same_stem_related(test, owner) {
+        return Some(PythonRelationKind::SameStem);
+    }
+    if test_name_similar_to_owner(test, owner) {
+        return Some(PythonRelationKind::TestNameSimilarity);
+    }
+    if fixture_name_related_to_owner(test, owner) {
+        return Some(PythonRelationKind::FixtureName);
+    }
+    None
+}
+
+/// Whether the test references the owner's `class` through an import that
+/// reaches the owner's module: the bare name imported from it, a renamed
+/// import (`from pkg.cache import Cache as C`), or a member of an imported
+/// owner module (`cache.Cache`). A bare `Cache` with no such import, or one
+/// imported from another module, is a different class.
+fn test_references_owner_class(test: &PythonTest, owner: &PythonOwner, class: &str) -> bool {
+    test_uses_owner_class(
+        test,
+        owner,
+        class,
+        contains_name_reference,
+        contains_member_reference,
+    )
+}
+
+/// Whether the test calls the owner's `class` (see
+/// [`test_references_owner_class`] for which spellings reach it).
+fn test_constructs_class(test: &PythonTest, owner: &PythonOwner, class: &str) -> bool {
+    test_uses_owner_class(
+        test,
+        owner,
+        class,
+        contains_call_name,
+        contains_attribute_call,
+    )
+}
+
+fn test_uses_owner_class(
+    test: &PythonTest,
+    owner: &PythonOwner,
+    class: &str,
+    uses_name: fn(&str, &str) -> bool,
+    uses_member: fn(&str, &str, &str) -> bool,
+) -> bool {
+    let body = &test.body_text;
+    test.imports.iter().any(|import| {
+        if imports_owner_class(import, owner, class) {
+            // `from pkg.cache import *` binds the class under its own name.
+            let local = if import.imported == "*" {
+                class
+            } else {
+                import.alias.as_str()
+            };
+            return !test_binds_local(test, local) && uses_name(body, local);
+        }
+        imports_owner_module(import, owner)
+            && !test_binds_local(test, &import.alias)
+            && uses_member(body, &import.alias, class)
+    })
+}
+
+/// `from M import <class>` (or `from M import *`) where `M` is the owner's
+/// module or a package that contains it (`from attr import Attribute` for
+/// `src/attr/_make.py`: packages re-export their submodules' classes). Method
+/// owners carry no resolved re-export set, so the package prefix stands in
+/// for it.
+fn imports_owner_class(import: &PythonImport, owner: &PythonOwner, class: &str) -> bool {
+    (import.imported == class || import.imported == "*")
+        && module_contains_owner(&import.source_module, owner)
+}
+
+/// An import that binds the owner's module or a package containing it:
+/// `import pkg.cache`, `from pkg import cache`, `import cachetools` for
+/// `src/cachetools/__init__.py`, `import attr` for `src/attr/_make.py`. The
+/// full dotted path must match: `from other import cache` binds a different
+/// `cache` module.
+fn imports_owner_module(import: &PythonImport, owner: &PythonOwner) -> bool {
+    if import.imported == "*" {
+        return false;
+    }
+    let module = if import.source_module.is_empty() {
+        import.imported.clone()
+    } else {
+        format!("{}.{}", import.source_module, import.imported)
+    };
+    module_contains_owner(&module, owner)
+}
+
+/// Whether dotted `module` names the owner's module or a package above it.
+/// Only the owner's own module paths count (repository root, or below
+/// `src`): a trailing part of one (`collections` for
+/// `src/mylib/collections.py`, `util.cache` for `src/pkg/util/cache.py`)
+/// can name an unrelated module, such as the standard library's. A bare `src`
+/// layout root is not a package. Empty never matches.
+fn module_contains_owner(module: &str, owner: &PythonOwner) -> bool {
+    !module.is_empty()
+        && module != "src"
+        && owner_module_paths(&owner.file).iter().any(|path| {
+            path == module
+                || path
+                    .strip_prefix(module)
+                    .is_some_and(|rest| rest.starts_with('.'))
+        })
+}
+
+/// Whether a test may reach the dunder owner's class in a shape this adapter
+/// cannot bind: its module imports the class or the owner module
+/// (`self.Cache(...)` through a unittest mixin attribute, or a test-local
+/// subclass), or its body names the class through an import this adapter
+/// does not read (`try: from pkg.cache import Cache`). Such a test makes the
+/// owner a dynamic-dispatch limit rather than `no_static_path`.
+pub(super) fn test_may_reach_owner_class(
+    test: &PythonTest,
+    owner: &PythonOwner,
+    class: &str,
+) -> bool {
+    contains_name_reference(&test.body_text, class)
+        || test.imports.iter().any(|import| {
+            imports_owner_module(import, owner) || imports_owner_class(import, owner, class)
+        })
 }
 
 pub(super) fn body_calls_owner(body_text: &str, owner: &PythonOwner) -> bool {
@@ -667,7 +869,19 @@ fn contains_call_name(body_text: &str, call_name: &str) -> bool {
     body_text.match_indices(&needle).any(|(idx, _)| {
         python_callee_start_has_boundary(body_text, idx)
             && !line_prefix_looks_like_comment_or_string(body_text, idx)
+            && !is_definition_name(body_text, idx)
     })
+}
+
+/// `def name(` / `async def name(` / `class name(` defines `name`; it does not
+/// call it.
+fn is_definition_name(body_text: &str, idx: usize) -> bool {
+    matches!(
+        line_prefix_before(body_text, idx)
+            .split_whitespace()
+            .next_back(),
+        Some("def" | "class")
+    )
 }
 
 fn contains_attribute_call(body_text: &str, receiver: &str, attr: &str) -> bool {
@@ -867,9 +1081,7 @@ pub(super) fn test_references_owner(test: &PythonTest, owner: &PythonOwner) -> b
         if contains_attribute_reference(&test.body_text, &owner.name) {
             return true;
         }
-        let is_dunder =
-            owner.name.len() > 4 && owner.name.starts_with("__") && owner.name.ends_with("__");
-        return is_dunder
+        return is_dunder_name(&owner.name)
             && owner
                 .qualified_name
                 .rsplit_once('.')

@@ -460,7 +460,10 @@ fn collect_all_tests(index: &RustIndex) -> Vec<&TestFact> {
 /// changing any traversal order, first-match resolution, or witness selection
 /// (goldens depend on all three).
 struct ReachSweep<'a> {
-    by_name: HashMap<&'a str, &'a FunctionSummary>,
+    /// Every production function with a given name. Name-only facts cannot
+    /// tell `StringDecoder::decode` from `StringDecoderRange::decode`, so the
+    /// walk follows all of them rather than whichever one was indexed first.
+    by_name: HashMap<&'a str, Vec<&'a FunctionSummary>>,
     owner_name: String,
     reach_memo: HashMap<String, bool>,
     macro_edge_memo: HashMap<String, Option<MacroReachEdge>>,
@@ -469,9 +472,13 @@ struct ReachSweep<'a> {
 
 impl<'a> ReachSweep<'a> {
     fn new(prod_fns: &[&'a FunctionSummary], owner_name: &str) -> Self {
-        let mut by_name: HashMap<&str, &FunctionSummary> = HashMap::with_capacity(prod_fns.len());
+        let mut by_name: HashMap<&str, Vec<&FunctionSummary>> =
+            HashMap::with_capacity(prod_fns.len());
         for function in prod_fns {
-            by_name.entry(function.name.as_str()).or_insert(function);
+            by_name
+                .entry(function.name.as_str())
+                .or_default()
+                .push(function);
         }
         Self {
             by_name,
@@ -482,8 +489,8 @@ impl<'a> ReachSweep<'a> {
         }
     }
 
-    fn resolve(&self, name: &str) -> Option<&'a FunctionSummary> {
-        self.by_name.get(name).copied()
+    fn resolve(&self, name: &str) -> &[&'a FunctionSummary] {
+        self.by_name.get(name).map_or(&[], Vec::as_slice)
     }
 
     fn reaches(&mut self, start_name: &str) -> bool {
@@ -513,21 +520,21 @@ impl<'a> ReachSweep<'a> {
             if depth > MAX_TRANSITIVE_DEPTH {
                 continue;
             }
-            let Some(current_fn) = self.resolve(current_name) else {
-                // Callee not found in-crate - stop this branch (fail closed).
-                continue;
-            };
-            for call in calls_of(current_fn) {
-                // Stop at macro invocations.
-                if is_macro_call(call.name.as_str()) {
-                    continue;
-                }
-                if call.name == owner_name {
-                    return true;
-                }
-                if !visited.contains(call.name.as_str()) {
-                    visited.insert(call.name.as_str());
-                    queue.push_back((call.name.as_str(), depth + 1));
+            // A callee not found in-crate resolves to nothing and stops this
+            // branch (fail closed).
+            for current_fn in self.resolve(current_name) {
+                for call in calls_of(current_fn) {
+                    // Stop at macro invocations.
+                    if is_macro_call(call.name.as_str()) {
+                        continue;
+                    }
+                    if call.name == owner_name {
+                        return true;
+                    }
+                    if !visited.contains(call.name.as_str()) {
+                        visited.insert(call.name.as_str());
+                        queue.push_back((call.name.as_str(), depth + 1));
+                    }
                 }
             }
         }
@@ -560,29 +567,29 @@ impl<'a> ReachSweep<'a> {
             if depth > MAX_TRANSITIVE_DEPTH {
                 continue;
             }
-            let Some(current_fn) = self.resolve(current_name) else {
-                continue;
-            };
-            for macro_invocation in
-                macro_invocations_in_text(&current_fn.body, current_fn.start_line)
-            {
-                if let Some(edge) = Self::macro_edge_for_invocation(
-                    &mut self.macro_mention_memo,
-                    &macro_invocation,
-                    &current_fn.file,
-                    &current_fn.name,
-                    &self.owner_name,
-                    index,
-                ) {
-                    return Some(edge);
+            let candidates: Vec<&'a FunctionSummary> = self.resolve(current_name).to_vec();
+            for current_fn in candidates {
+                for macro_invocation in
+                    macro_invocations_in_text(&current_fn.body, current_fn.start_line)
+                {
+                    if let Some(edge) = Self::macro_edge_for_invocation(
+                        &mut self.macro_mention_memo,
+                        &macro_invocation,
+                        &current_fn.file,
+                        &current_fn.name,
+                        &self.owner_name,
+                        index,
+                    ) {
+                        return Some(edge);
+                    }
                 }
-            }
-            for call in calls_of(current_fn) {
-                if is_macro_call(call.name.as_str()) || call.name == self.owner_name {
-                    continue;
-                }
-                if visited.insert(call.name.as_str()) {
-                    queue.push_back((call.name.as_str(), depth + 1));
+                for call in calls_of(current_fn) {
+                    if is_macro_call(call.name.as_str()) || call.name == self.owner_name {
+                        continue;
+                    }
+                    if visited.insert(call.name.as_str()) {
+                        queue.push_back((call.name.as_str(), depth + 1));
+                    }
                 }
             }
         }
@@ -972,6 +979,38 @@ mod tests {
             Some("outer")
         );
         assert_eq!(witness.as_ref().map(|w| w.other_test_count), Some(0));
+    }
+
+    // (a'') Same-named functions: jiter's parser calls `decode` on a generic
+    // decoder; two impls define `decode` and only one of them calls the
+    // changed `decode_to_tape`. The walk must follow every `decode`, not the
+    // one indexed first.
+    #[test]
+    fn given_same_named_functions_then_the_walk_follows_each_of_them() {
+        let range_decode = make_fn("decode", vec!["decode_chunk"]);
+        let string_decode = make_fn("decode", vec!["decode_to_tape"]);
+        let parse = make_fn("parse_str", vec!["decode"]);
+        let index = index_with(
+            vec![range_decode, string_decode, parse],
+            vec![make_test("test_partial_escape", vec!["parse_str"])],
+        );
+
+        let witness = find_transitive_witness("decode_to_tape", &index);
+        assert_eq!(
+            witness.as_ref().map(|w| w.entry_symbol.as_str()),
+            Some("parse_str")
+        );
+
+        // Control: neither `decode` reaches the owner.
+        let only_range = index_with(
+            vec![
+                make_fn("decode", vec!["decode_chunk"]),
+                make_fn("decode", vec!["decode_bytes"]),
+                make_fn("parse_str", vec!["decode"]),
+            ],
+            vec![make_test("test_partial_escape", vec!["parse_str"])],
+        );
+        assert!(find_transitive_witness("decode_to_tape", &only_range).is_none());
     }
 
     // (b) No path -> witness must be None.
