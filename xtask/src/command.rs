@@ -1280,6 +1280,22 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Builds local release server manifest artifacts.",
         ),
         command_entry(
+            "release-final-server-subjects --version <version> --repository <owner/repo>",
+            "mutating",
+            "dist/ripr-server-final-subjects-v<version>.json",
+            false,
+            true,
+            "Inventories the exact final server archives, manifest, and SHA256SUMS, binds them to the accepted assembly receipt, and rejects staging or checksum drift without publishing.",
+        ),
+        command_entry(
+            "release-final-server-attestation-receipt --version <version> --verified-subjects <path>",
+            "mutating",
+            "dist/ripr-server-attestation-v<version>.receipt.json",
+            false,
+            true,
+            "Binds one successful attestation-verification row to every inventoried final server subject and emits the upload-eligibility receipt without publishing.",
+        ),
+        command_entry(
             "release-upload-assets --version <version>",
             "external_state_mutating",
             "GitHub release assets",
