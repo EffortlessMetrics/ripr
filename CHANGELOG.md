@@ -59,6 +59,18 @@ are scoped or reviewed.
 - Security: a base ref starting with `-` is refused before `git diff` runs,
   including from LSP `baseRef` settings, so it can never be parsed as a diff
   option such as `--output` (#4730).
+- Rust: a test related to a finding only because its name shares a word with
+  the changed code or names the changed function no longer supplies the
+  finding's discriminator when another related test actually calls the
+  changed code. Before, a test that pinned
+  `ParseError::MalformedSource == ParseError::MalformedSource` without calling
+  the changed `try_parse` turned a mutation no test catches into `exposed`
+  (#4486). Its assertions still appear among the related tests. On a 14-file
+  diff of ripr itself, 7 of 40 `exposed` findings moved to `weakly_exposed`;
+  each had credited an assertion from an unrelated module, such as an LSP
+  transport test for a change in `reach.rs`. Same-file and same-module tests
+  still credit, since they commonly reach private helpers through the
+  module's own entry point.
 - Security: `ripr pilot` and other commands that write to default paths
   inside the analyzed repository no longer write through a symlink committed
   there. A cloned repository could commit

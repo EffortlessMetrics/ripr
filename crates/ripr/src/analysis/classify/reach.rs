@@ -221,7 +221,7 @@ fn invokes_opaque_macro(body: &str) -> bool {
 
 /// Relations that come from file or name proximity alone, with no captured
 /// call, helper chain, or assertion affinity tying the test to the owner.
-fn is_proximity_only(reason: RelationReason) -> bool {
+pub(super) fn is_proximity_only(reason: RelationReason) -> bool {
     matches!(
         reason,
         RelationReason::SameTestFile

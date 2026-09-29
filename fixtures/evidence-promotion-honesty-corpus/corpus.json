@@ -19,6 +19,19 @@
       ]
     },
     {
+      "id": "rust_proximity_name_oracle_not_credited",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/proximity_name_oracle_not_credited",
+      "vector": "name_proximity_test_supplies_oracle_for_reach_from_another_test",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "expected_finding_count", "count": 2 },
+        { "type": "must_not_promote" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "py_multiline_docstring_interior_no_behavior",
       "language": "python",
       "tier": "pure",

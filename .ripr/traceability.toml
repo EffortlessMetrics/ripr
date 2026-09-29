@@ -6271,11 +6271,13 @@ tests = [
   "crates/ripr/src/analysis/classify/reveal.rs::tests::call_deletion_whole_object_observer_without_token_clears_observation_unverified",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::return_value_whole_object_without_token_still_emits_observation_unverified",
   "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_sibling_qualifier_does_not_clear_observation_unverified",
-  "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_variant_token_match_keeps_discriminate_yes"
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::match_arm_variant_token_match_keeps_discriminate_yes",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::name_only_test_cannot_supply_the_oracle_for_reach_from_another_test"
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",
   "fixtures/oracle_confirmation_mixed",
+  "fixtures/proximity_name_oracle_not_credited",
   "fixtures/observation_unverified_return_value",
   "fixtures/observation_verified_return_value",
   "fixtures/observation_unverified_field_construction",
@@ -6294,6 +6296,8 @@ outputs = [
   "fixtures/oracle_confirmation_mixed/expected/check.json",
   "fixtures/oracle_confirmation_mixed/expected/human.txt",
   "fixtures/oracle_confirmation_mixed/expected/human-full.txt",
+  "fixtures/proximity_name_oracle_not_credited/expected/check.json",
+  "fixtures/proximity_name_oracle_not_credited/expected/human.txt",
   "fixtures/observation_unverified_return_value/expected/check.json",
   "fixtures/observation_unverified_return_value/expected/human.txt",
   "fixtures/observation_verified_return_value/expected/check.json",
