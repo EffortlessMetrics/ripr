@@ -1992,6 +1992,7 @@ weakly_gripped = "note"
                 reason: "observed values do not include equality boundary".to_string(),
                 flow_sink: None,
             }],
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,

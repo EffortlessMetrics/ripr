@@ -635,11 +635,146 @@ fn is_cfg_test_module_member(function: &ast::Fn) -> bool {
         .syntax()
         .ancestors()
         .filter_map(ast::Module::cast)
-        .any(|module| {
-            cfg_predicates::attributes_require_test(
-                module.attrs().map(|attr| attr.syntax().text().to_string()),
-            )
-        })
+        .any(|module| module_attributes_require_test(&module))
+}
+
+/// One parser-backed inline or out-of-line module whose attributes structurally
+/// require a test build. Nested modules inside an already test-gated module
+/// are omitted so they cannot compete as insertion anchors.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct GovernedCfgTestModule {
+    pub(crate) name: String,
+    pub(crate) parent_modules: Vec<String>,
+    pub(crate) item_start: usize,
+    pub(crate) body_start: Option<usize>,
+    pub(crate) close_brace_start: Option<usize>,
+    pub(crate) is_inline: bool,
+}
+
+/// Parser-owned inventory of governed `cfg(test)` modules in one source file.
+///
+/// Uses the same `cfg_predicates` authority as cfg-test membership. `None`
+/// means the file was not parser-valid; callers stay Missing rather than
+/// guessing from line text.
+pub(crate) fn governed_cfg_test_modules(source: &str) -> Option<Vec<GovernedCfgTestModule>> {
+    let parse = parse_clean_source_file(source)?;
+    let file = parse.tree();
+    let mut modules = Vec::new();
+    for module in file.syntax().descendants().filter_map(ast::Module::cast) {
+        if module
+            .syntax()
+            .ancestors()
+            .skip(1)
+            .any(|node| ast::Fn::can_cast(node.kind()))
+        {
+            continue;
+        }
+        if !module_attributes_require_test(&module) {
+            continue;
+        }
+        if ancestor_module_requires_test(&module) {
+            continue;
+        }
+        let Some(name) = module.name() else {
+            continue;
+        };
+        let parent_modules = ancestor_module_names(&module);
+        let item_start = usize::from(module.syntax().text_range().start());
+        match module.item_list() {
+            Some(items) => {
+                let Some(open) = items.l_curly_token() else {
+                    continue;
+                };
+                let Some(close) = items.r_curly_token() else {
+                    continue;
+                };
+                modules.push(GovernedCfgTestModule {
+                    name: name.text().to_string(),
+                    parent_modules,
+                    item_start,
+                    body_start: Some(usize::from(open.text_range().end())),
+                    close_brace_start: Some(usize::from(close.text_range().start())),
+                    is_inline: true,
+                });
+            }
+            None => modules.push(GovernedCfgTestModule {
+                name: name.text().to_string(),
+                parent_modules,
+                item_start,
+                body_start: None,
+                close_brace_start: None,
+                is_inline: false,
+            }),
+        }
+    }
+    modules.sort_by(|left, right| {
+        left.parent_modules
+            .cmp(&right.parent_modules)
+            .then(left.name.cmp(&right.name))
+            .then(left.item_start.cmp(&right.item_start))
+    });
+    Some(modules)
+}
+
+/// Enclosing module names of the production function on `start_line`, excluding
+/// cfg-test modules. `None` when the file does not parse or the function is
+/// missing.
+pub(crate) fn production_owner_module_path(source: &str, start_line: usize) -> Option<Vec<String>> {
+    let parse = parse_clean_source_file(source)?;
+    let line_index = LineIndex::new(source);
+    parse.tree().syntax().descendants().find_map(|node| {
+        let function = ast::Fn::cast(node)?;
+        let line = function
+            .fn_token()
+            .map(|token| line_index.line(token.text_range().start()))
+            .unwrap_or_else(|| line_index.line(function.syntax().text_range().start()));
+        if line != start_line {
+            return None;
+        }
+        let mut modules = Vec::new();
+        for module in function
+            .syntax()
+            .ancestors()
+            .skip(1)
+            .filter_map(ast::Module::cast)
+        {
+            if module_attributes_require_test(&module) {
+                continue;
+            }
+            if let Some(name) = module.name() {
+                modules.push(name.text().to_string());
+            }
+        }
+        modules.reverse();
+        Some(modules)
+    })
+}
+
+fn module_attributes_require_test(module: &ast::Module) -> bool {
+    cfg_predicates::attributes_require_test(
+        module.attrs().map(|attr| attr.syntax().text().to_string()),
+    )
+}
+
+fn ancestor_module_requires_test(module: &ast::Module) -> bool {
+    module
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .filter_map(ast::Module::cast)
+        .any(|ancestor| module_attributes_require_test(&ancestor))
+}
+
+fn ancestor_module_names(module: &ast::Module) -> Vec<String> {
+    let mut names = module
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .filter_map(ast::Module::cast)
+        .filter_map(|ancestor| ancestor.name().map(|name| name.text().to_string()))
+        .collect::<Vec<_>>();
+    names.reverse();
+    names
 }
 
 fn collect_attr_syntax(function: &ast::Fn) -> Vec<String> {

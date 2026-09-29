@@ -8,6 +8,7 @@ mod extract;
 mod facts;
 pub(crate) mod harness_projection;
 mod language;
+mod new_test_target;
 pub(crate) mod path_glob;
 mod pipeline;
 mod probes;

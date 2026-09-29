@@ -939,6 +939,7 @@ mod tests {
                     reason: "missing equality boundary".to_string(),
                     flow_sink: None,
                 }],
+                new_test_target: None,
             },
         }
     }

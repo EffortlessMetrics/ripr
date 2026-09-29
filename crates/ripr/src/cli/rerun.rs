@@ -3692,6 +3692,7 @@ mod tests {
                 reason: "the changed error variant is not asserted exactly".to_string(),
                 flow_sink: None,
             }],
+            new_test_target: None,
         };
         let class = classify_seam(&seam, &evidence);
         ClassifiedSeam {

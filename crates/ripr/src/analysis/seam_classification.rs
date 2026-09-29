@@ -236,6 +236,7 @@ mod tests {
             discriminate: stage(discriminate),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: missing,
+            new_test_target: None,
         }
     }
 
@@ -514,6 +515,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
         let ungripped_evidence = TestGripEvidence {
             seam_id: ungripped_seam.id().clone(),
@@ -525,6 +527,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
 
         // Seams in one order, evidence in the OPPOSITE order. With
@@ -574,6 +577,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
 
         let classified = classify_seams(std::slice::from_ref(&seam), &[evidence]);
@@ -606,6 +610,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
         let matching_evidence = evidence_with(
             StageState::Yes,

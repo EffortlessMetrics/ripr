@@ -3265,6 +3265,7 @@ mod tests {
                 discriminate: stage(StageState::No),
                 observed_values: Vec::new(),
                 missing_discriminators: Vec::new(),
+                new_test_target: None,
             },
             class,
         }
@@ -3340,6 +3341,7 @@ mod tests {
                 reason: "observed values do not include the equality-boundary case".to_string(),
                 flow_sink: None,
             }],
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,
@@ -3360,6 +3362,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::new(),
             missing_discriminators: Vec::new(),
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,
@@ -3380,6 +3383,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::new(),
             missing_discriminators: Vec::new(),
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,
@@ -5440,6 +5444,36 @@ mod tests {
             RecommendedTestTargetKind::Unresolved
         );
         assert_eq!(unresolved.file, "not_applicable");
+    }
+
+    #[test]
+    fn producer_owned_inline_unit_proposal_projects_as_new_inline_module() {
+        use crate::analysis::repair_route::{
+            NewTestKind, NewTestProposalProvenance, NewTestTargetAdmission, NewTestTargetProposal,
+        };
+        let mut entry = classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, Vec::new());
+        entry.evidence.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount >= discount_threshold".to_string(),
+            reason: "no observed activation values for boundary predicate".to_string(),
+            flow_sink: None,
+        }];
+        entry.evidence.new_test_target = Some(NewTestTargetAdmission {
+            proposal: Some(NewTestTargetProposal {
+                kind: NewTestKind::InlineUnit,
+                file: PathBuf::from("src/pricing.rs"),
+                owner: "pricing::discounted_total".to_string(),
+                provenance: NewTestProposalProvenance::ProducerOwned,
+            }),
+            region: None,
+            blocker: None,
+        });
+        let recommended = recommended_test_for(&entry);
+        assert_eq!(
+            recommended.target_kind,
+            RecommendedTestTargetKind::NewInlineTestModule
+        );
+        assert_eq!(recommended.file.replace('\\', "/"), "src/pricing.rs");
+        assert!(recommended.symbol_id.is_none());
     }
 
     #[test]
