@@ -4578,6 +4578,13 @@ impl LanguageServer for Backend {
     }
 }
 
+/// Parse-layer lookup for a context command's first argument object.
+///
+/// `None` means the arguments are unreadably shaped (missing first element,
+/// or first element is not an object). That miss is a **bad request**, not
+/// "no evidence found". Callers must convert it through
+/// [`context_command_target`], which returns JSON-RPC `InvalidParams`
+/// (`-32602`). Do not `?` this `None` into `Ok(None)` / `result: null`.
 fn context_arguments(arguments: &[LSPAny]) -> Option<&serde_json::Map<String, serde_json::Value>> {
     let first = arguments.first()?;
     first.as_object()
@@ -8090,15 +8097,83 @@ mod gap_record_context_tests {
         Ok(())
     }
 
-    #[test]
-    fn context_arguments_returns_none_for_empty_argument_list() {
-        assert!(context_arguments(&[]).is_none());
+    /// Parse miss for unreadably shaped arguments: `None` here is a bad
+    /// request, not "no evidence". Dispatch converts it to InvalidParams
+    /// (#4358) instead of JSON-RPC `result: null`.
+    fn assert_context_arguments_parse_miss_is_typed_invalid_params(
+        arguments: &[LSPAny],
+        command: &str,
+        keys: &[&'static str],
+        shapes: &str,
+    ) -> Result<(), String> {
+        if context_arguments(arguments).is_some() {
+            return Err(
+                "unreadably shaped args are a parse miss at `context_arguments`, not a packet"
+                    .to_string(),
+            );
+        }
+        let error = match context_command_target(command, arguments, keys, shapes) {
+            Ok(target) => {
+                return Err(format!(
+                    "dispatch must convert a parse miss into InvalidParams, got target {target:?}"
+                ));
+            }
+            Err(error) => error,
+        };
+        if error.code != tower_lsp_server::jsonrpc::ErrorCode::InvalidParams {
+            return Err(format!(
+                "expected InvalidParams, got code {:?}: {}",
+                error.code, error.message
+            ));
+        }
+        if !(error.message.contains(command) && error.message.contains("expects one object")) {
+            return Err(format!(
+                "error must name the command and accepted object shape: {}",
+                error.message
+            ));
+        }
+        Ok(())
     }
 
     #[test]
-    fn context_arguments_returns_none_when_first_argument_is_not_an_object() {
+    fn context_arguments_returns_none_for_empty_argument_list() -> Result<(), String> {
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            &[],
+            COLLECT_CONTEXT_COMMAND,
+            &["gap_id", "seam_id", "finding_id"],
+            COLLECT_CONTEXT_ARGUMENT_SHAPES,
+        )?;
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            &[],
+            COLLECT_EVIDENCE_CONTEXT_COMMAND,
+            &["seam_id"],
+            COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES,
+        )
+    }
+
+    #[test]
+    fn context_arguments_returns_none_when_first_argument_is_not_an_object() -> Result<(), String> {
         let arg = serde_json::Value::String("not-an-object".to_string());
-        assert!(context_arguments(std::slice::from_ref(&arg)).is_none());
+        let arguments = std::slice::from_ref(&arg);
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            arguments,
+            COLLECT_CONTEXT_COMMAND,
+            &["gap_id", "seam_id", "finding_id"],
+            COLLECT_CONTEXT_ARGUMENT_SHAPES,
+        )?;
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            arguments,
+            COLLECT_EVIDENCE_CONTEXT_COMMAND,
+            &["seam_id"],
+            COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES,
+        )?;
+        let null_arg = serde_json::Value::Null;
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            std::slice::from_ref(&null_arg),
+            COLLECT_CONTEXT_COMMAND,
+            &["gap_id", "seam_id", "finding_id"],
+            COLLECT_CONTEXT_ARGUMENT_SHAPES,
+        )
     }
 
     #[test]
