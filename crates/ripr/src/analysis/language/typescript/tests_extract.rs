@@ -1339,7 +1339,7 @@ fn argument_parameter_names(argument: &oxc_ast::ast::Argument<'_>) -> Vec<String
 
 pub(crate) fn describe_body_from_statement<'a>(
     stmt: &'a Statement<'a>,
-    source: &str,
+    source: &SourceText<'_>,
 ) -> Option<(String, &'a oxc_allocator::Vec<'a, Statement<'a>>)> {
     let Statement::ExpressionStatement(expr_stmt) = stmt else {
         return None;
@@ -1472,7 +1472,7 @@ fn is_active_declaration_modifier(name: &str) -> bool {
 /// runtime value. A spread argument is not a title.
 fn title_argument(
     arg: &oxc_ast::ast::Argument<'_>,
-    source: &str,
+    source: &SourceText<'_>,
     registration_start: usize,
 ) -> Option<String> {
     match arg {
@@ -1481,9 +1481,7 @@ fn title_argument(
         oxc_ast::ast::Argument::TemplateLiteral(template) if template.single_quasi().is_some() => {
             template.single_quasi().map(|quasi| quasi.to_string())
         }
-        _ => Some(computed_title(
-            SourceText::new(source).line_for_offset(registration_start),
-        )),
+        _ => Some(computed_title(source.line_for_offset(registration_start))),
     }
 }
 
