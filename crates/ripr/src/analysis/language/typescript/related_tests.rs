@@ -687,6 +687,7 @@ pub(crate) fn owner_call_relation(
         // property binding of the name) calls the local declaration, not the
         // imported owner — do not credit DirectOwnerCall.
         && !local_identifier_declared_in_test_body(&test.body_text, &owner.name)
+        && !enclosing_scope_shadows(test, &owner.name)
         && !owner_name_destructured_from_unrelated_source(test, owner, alias_map, workspace_root)
         // #4103 shape 1: a bare `ownerName(...)` only counts when a
         // declaration anchors the name to the owner (same file, or an import
@@ -706,6 +707,7 @@ pub(crate) fn owner_call_relation(
             && import.local != owner.name
             && contains_call_name(&test.body_text, &import.local)
             && !local_identifier_declared_in_test_body(&test.body_text, &import.local)
+            && !enclosing_scope_shadows(test, &import.local)
     }) {
         return Some(TypeScriptRelationKind::ImportAliasOwnerCall);
     }
@@ -720,7 +722,9 @@ pub(crate) fn owner_call_relation(
         if !import_source_matches_owner(import, &test.file, owner, alias_map, workspace_root) {
             return false;
         }
-        if local_identifier_declared_in_test_body(&test.body_text, &import.local) {
+        if local_identifier_declared_in_test_body(&test.body_text, &import.local)
+            || enclosing_scope_shadows(test, &import.local)
+        {
             return false;
         }
         if !import.namespace
@@ -776,11 +780,7 @@ pub(crate) fn owner_call_relation(
         }
         // An enclosing `describe`/`beforeEach` binding of the local name
         // shadows the import for every test in that scope.
-        if test
-            .scope_bindings
-            .iter()
-            .any(|binding| &binding.name == local)
-        {
+        if enclosing_scope_shadows(test, local) {
             return false;
         }
         reexport_index.resolve_to_owner(
@@ -931,6 +931,16 @@ pub(crate) fn class_method_owner_call_relation(
         .any(|class_name| contains_member_call_name(&test.body_text, class_name, &owner.name))
 }
 
+/// `true` when a binding outside the test body but inside the file-level
+/// scope (a `describe` body or parameter, a loop header, a hook write, a
+/// test callback parameter) rebinds `name` for this test, so a call through
+/// `name` reaches that binding rather than an import or owner of the name.
+fn enclosing_scope_shadows(test: &TypeScriptTest, name: &str) -> bool {
+    test.scope_bindings
+        .iter()
+        .any(|binding| binding.name == name && !binding.file_level)
+}
+
 pub(crate) fn class_names_for_class_method_owner(
     test: &TypeScriptTest,
     owner: &TypeScriptOwner,
@@ -943,6 +953,7 @@ pub(crate) fn class_names_for_class_method_owner(
     let mut names = Vec::new();
     if normalized_module_path(&test.file) == normalized_module_path(&owner.file)
         && !local_identifier_declared_in_test_body(&test.body_text, class_name)
+        && !enclosing_scope_shadows(test, class_name)
     {
         push_unique_string(&mut names, class_name.to_string());
     }
@@ -954,6 +965,7 @@ pub(crate) fn class_names_for_class_method_owner(
         }
         if import.imported.as_deref() == Some(class_name)
             && !local_identifier_declared_in_test_body(&test.body_text, &import.local)
+            && !enclosing_scope_shadows(test, &import.local)
         {
             push_unique_string(&mut names, import.local.clone());
         }

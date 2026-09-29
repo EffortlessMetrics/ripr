@@ -131,6 +131,13 @@ pub(crate) struct TypeScriptScopeBinding {
     /// tests), is only declared, or anything else in the file could rebind
     /// the name or the class.
     pub(crate) constructed_by: Option<String>,
+    /// `true` when the innermost binding of `name` is a file-level
+    /// declaration. Such a name cannot shadow an import (redeclaring an
+    /// imported name is a syntax error); it is the owner itself in a
+    /// same-file test. Any other level (a `describe` body or parameter, a
+    /// loop header, a hook write, a test callback parameter) shadows an
+    /// import or owner of the same name for the test.
+    pub(crate) file_level: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

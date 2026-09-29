@@ -13029,7 +13029,8 @@ fn analyze_diff_discloses_changed_test_file_parse_error() -> Result<(), String> 
 }
 
 /// (b) A recognized test file that parses but registers a test with a
-/// template-literal title must emit `typescript_test_extraction_partial`.
+/// template-literal title in a body the extractor does not walk (an `if`
+/// block) must emit `typescript_test_extraction_partial`.
 #[test]
 fn analyze_diff_emits_test_extraction_partial_for_template_literal_title() -> Result<(), String> {
     let root = ts_unique_tempdir("tmpltitle")?;
@@ -13039,7 +13040,7 @@ fn analyze_diff_emits_test_extraction_partial_for_template_literal_title() -> Re
     )?;
     ts_write_file(
         &root.join("tests/calc.test.ts"),
-        "import { add } from '../src/calc';\nit(`adds ${1} and ${2}`, () => {\n  expect(add(1, 2)).toBe(3);\n});\n",
+        "import { add } from '../src/calc';\nif (process.env.CI) {\n  it(`adds ${1} and ${2}`, () => {\n    expect(add(1, 2)).toBe(3);\n  });\n}\n",
     )?;
 
     let adapter = TypeScriptAdapter;
@@ -13075,7 +13076,7 @@ fn analyze_diff_collapses_test_extraction_partial_into_one_summary() -> Result<(
     for index in 1..=5 {
         ts_write_file(
             &root.join(format!("tests/calc{index}.test.ts")),
-            "import { add } from '../src/calc';\nit(`adds ${1} and ${2}`, () => {\n  expect(add(1, 2)).toBe(3);\n});\n",
+            "import { add } from '../src/calc';\nif (process.env.CI) {\n  it(`adds ${1} and ${2}`, () => {\n    expect(add(1, 2)).toBe(3);\n  });\n}\n",
         )?;
     }
 
@@ -13281,37 +13282,40 @@ fn detect_partial_flags_tagged_template_each() -> Result<(), String> {
     Ok(())
 }
 
-/// Detector unit shape: `it(...)` generated inside a loop body is flagged.
+/// Detector unit shape: `it(...)` generated inside a `while` loop body (the
+/// extractor walks `for` loops and `.forEach` callbacks only) is flagged.
 #[test]
-fn detect_partial_flags_test_registered_in_loop() -> Result<(), String> {
+fn detect_partial_flags_test_registered_in_while_loop() -> Result<(), String> {
     let file = Path::new("tests/loop.test.ts");
-    let source = "for (const n of [1, 2]) {\n  it(\"case \" + n, () => {\n    expect(n).toBe(1);\n  });\n}\n";
+    let source = "let n = 0;\nwhile (n < 2) {\n  it(\"case \" + n, () => {\n    expect(n).toBe(1);\n  });\n  n++;\n}\n";
     let extracted = extract_tests(file, source);
     assert!(
         extracted.is_empty(),
-        "loop-generated tests are not extractable by design, got {extracted:?}"
+        "while-loop tests are not extracted, got {extracted:?}"
     );
     let gap = detect_partial_test_extraction(file, source, &extracted)
         .ok_or_else(|| "loop-generated test must be disclosed".to_string())?;
     assert_eq!(gap.shape, "test/it call in loop/callback/nested body");
-    assert_eq!(gap.sample_line, 2);
+    assert_eq!(gap.sample_line, 3);
     Ok(())
 }
 
-/// Detector unit shape: template-literal `it(`/`test(` titles are flagged.
+/// Detector unit shape: a template-literal `it(`/`test(` title in a body the
+/// extractor does not walk (a helper function) is flagged with that shape.
 #[test]
 fn detect_partial_flags_template_literal_title() -> Result<(), String> {
     let file = Path::new("tests/tmpl.test.ts");
-    let source = "it(`adds ${1}`, () => {\n  expect(1 + 1).toBe(2);\n});\n";
+    let source =
+        "function register() {\n  it(`adds ${1}`, () => {\n    expect(1 + 1).toBe(2);\n  });\n}\n";
     let extracted = extract_tests(file, source);
     assert!(
         extracted.is_empty(),
-        "template-literal titles are not extractable by design, got {extracted:?}"
+        "a helper function body is not walked, got {extracted:?}"
     );
     let gap = detect_partial_test_extraction(file, source, &extracted)
         .ok_or_else(|| "template-literal title must be disclosed".to_string())?;
     assert_eq!(gap.shape, "template-literal title");
-    assert_eq!(gap.sample_line, 1);
+    assert_eq!(gap.sample_line, 2);
     Ok(())
 }
 
@@ -14642,6 +14646,7 @@ fn undercredit_4103_owner_extraction_records_default_export_fact() {
     assert!(!plain[0].exported_as_default);
 }
 
+mod loop_declared_tests;
 mod mock_form_tests;
 mod reexport_chain_tests;
 mod scope_receiver_tests;

@@ -312,6 +312,16 @@ are scoped or reviewed.
   unrelated. (ufo's own `withBase` tests are still missed: they
   register from a `for` loop with computed titles, which test extraction does
   not index and discloses as partial.)
+- TypeScript: tests declared inside a `for`, `for...of` or `for...in` loop
+  or a `.forEach` callback are now extracted, including tests with a
+  template-literal or other computed title. Before, a suite written like
+  unjs/ufo (``for (const t of tests) { test(`${t.input}`, ...) }``) left the
+  owners it calls reading `no_static_path`. A computed title is named
+  `<computed title, line N>` under its `describe`; the test relates to an
+  owner only when its own body calls it. A loop is walked only when it is
+  known to run at least once (a non-empty literal, or a `const` bound to
+  one), and a loop variable or `describe` parameter that reuses an imported
+  owner's name shadows it.
 
 - Python pytest verify commands now run as `python -m pytest path::node`
   instead of bare `pytest path::node`. `-m` puts the repository root on
