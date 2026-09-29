@@ -71,6 +71,17 @@ pub(crate) struct ParsedDiff {
     pub(crate) limitations: Vec<AnalysisLimitation>,
 }
 
+/// Text of one changed line. A UTF-8 byte-order mark opening line 1 is file
+/// encoding metadata, not source, so it is dropped the way compilers and
+/// the Rust index drop it; otherwise the changed text of an item on line 1
+/// never matches its parsed owner.
+fn source_line_text(line: usize, text: &str) -> String {
+    match text.strip_prefix('\u{feff}') {
+        Some(rest) if line == 1 => rest.to_string(),
+        _ => text.to_string(),
+    }
+}
+
 fn parse_hunk_header(raw: &str) -> Option<(usize, usize)> {
     // Format: @@ -old,count +new,count @@ optional
     let mut parts = raw.split_whitespace();
@@ -94,7 +105,7 @@ mod parser_state {
         AnalysisStage, ChangedFile, ChangedLine, is_dev_null_new_path_marker, is_new_path_marker,
         parse_git_old_path, parse_hunk_header, parse_new_path_marker,
         parse_old_path_for_confinement, parse_old_path_marker, parse_rename_from_path,
-        parse_rename_to_path,
+        parse_rename_to_path, source_line_text,
     };
     use std::collections::BTreeMap;
     use std::path::PathBuf;
@@ -639,7 +650,7 @@ mod parser_state {
                 file.added_lines.push(ChangedLine {
                     line: self.new_line,
                     new_side_line: self.new_line,
-                    text: text.to_string(),
+                    text: source_line_text(self.new_line, text),
                 });
                 // Fail closed on overflow: if the new-side counter is already
                 // at usize::MAX (from a malicious or malformed @@ header), it
@@ -663,7 +674,7 @@ mod parser_state {
                 file.removed_lines.push(ChangedLine {
                     line: self.old_line,
                     new_side_line: self.new_line,
-                    text: text.to_string(),
+                    text: source_line_text(self.old_line, text),
                 });
                 if let Some(next) = self.old_line.checked_add(1) {
                     self.old_line = next;
@@ -1309,6 +1320,35 @@ deleted file mode 100644
             let text = fuzz_case_as_adversarial_diff(&mut seed);
             assert_parser_invariants(&text);
         }
+    }
+
+    #[test]
+    fn byte_order_mark_is_dropped_only_from_line_one() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,2 +1,2 @@\n-\u{feff}pub fn b(x: u32) -> bool { x > 5 }\n-\u{feff}// kept\n+\u{feff}pub fn b(x: u32) -> bool { x >= 5 }\n+\u{feff}// kept\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        let texts = |lines: &[ChangedLine]| {
+            lines
+                .iter()
+                .map(|line| (line.line, line.text.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            texts(&files[0].removed_lines),
+            vec![
+                (1, "pub fn b(x: u32) -> bool { x > 5 }".to_string()),
+                (2, "\u{feff}// kept".to_string()),
+            ]
+        );
+        assert_eq!(
+            texts(&files[0].added_lines),
+            vec![
+                (1, "pub fn b(x: u32) -> bool { x >= 5 }".to_string()),
+                (2, "\u{feff}// kept".to_string()),
+            ]
+        );
     }
 
     #[test]

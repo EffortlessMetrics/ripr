@@ -40,9 +40,10 @@ pub(crate) fn read(path: impl AsRef<Path>) -> std::io::Result<Vec<u8>> {
     read_with_limit(path, MAX_CLI_INPUT_BYTES)
 }
 
-/// Bounded read of an already-open stream (stdin for `--diff -`).
-pub(crate) fn read_reader_to_string(reader: impl Read) -> std::io::Result<String> {
-    read_reader_to_string_with_limit(reader, MAX_CLI_INPUT_BYTES)
+/// Bounded byte read of an already-open stream, for callers that decode
+/// non-UTF-8 input themselves (`--diff -`, #4584).
+pub(crate) fn read_reader(reader: impl Read) -> std::io::Result<Vec<u8>> {
+    read_reader_with_limit(reader, MAX_CLI_INPUT_BYTES)
 }
 
 /// `limit` is a parameter so tests can exercise the cap without
@@ -165,6 +166,15 @@ mod tests {
                 .to_string()
                 .contains("268435456 byte input limit (256 MiB)"),
         );
+        Ok(())
+    }
+
+    #[test]
+    fn stream_byte_read_keeps_non_utf8_bytes() -> Result<(), String> {
+        // `--diff -` decodes non-UTF-8 itself (#4584), so the byte read
+        // must not reject or rewrite them.
+        let bytes = read_reader(&b"+caf\xe9\n"[..]).map_err(|err| err.to_string())?;
+        assert_eq!(bytes, b"+caf\xe9\n");
         Ok(())
     }
 

@@ -57,8 +57,8 @@ are scoped or reviewed.
   temporary files, now refuse a symlink, FIFO or directory at the output
   path (#4719).
 - Nested `rerun --json` cache-identity versions in `docs/OUTPUT_SCHEMA.md`
-  now track live `FILE_FACT_CACHE_SCHEMA_VERSION` (`1.10`) and
-  `CACHE_SCHEMA_VERSION` (`1.16`). Producer-backed docs tests fail when those
+  now track live `FILE_FACT_CACHE_SCHEMA_VERSION` (`1.11`) and
+  `CACHE_SCHEMA_VERSION` (`1.17`). Producer-backed docs tests fail when those
   nested values, the command-to-version table, swarm-queue envelope, or
   cache-status field contract drift from producers (#4618).
 - Default human `Hidden:` output names the language and preview status of
@@ -74,6 +74,14 @@ are scoped or reviewed.
   relation follows at most three same-module calls, respects parameter and
   local shadowing, and reports such reach as `weakly_exposed`, naming the
   exported callers, never `exposed` on its own.
+- Rust files saved with a UTF-8 byte-order mark now analyze like the same
+  file without one. The mark made the parser fail, so the file silently fell
+  back to lexical facts and a change to an item on line 1 got false
+  `no_static_path` warnings (#4583). A Rust file that is not UTF-8, such as a
+  Latin-1 test fixture, no longer stops `ripr check` for the whole workspace
+  with exit 2; it is indexed on lexical fallback and named with
+  `rust_source_not_utf8` (#4582). `--diff FILE` and `--diff -` now accept a
+  diff containing non-UTF-8 bytes, as `--base` already did (#4584).
 - Commands ripr prints now run. For a missing agent receipt, `ripr reports
   index` suggests `ripr agent status`, which names the repair attempt's
   next step, instead of an `agent receipt` call missing its required

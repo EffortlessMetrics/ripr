@@ -1517,3 +1517,17 @@ fn perl_executable_from_repo_config_needs_user_opt_in() -> Result<(), String> {
     );
     Ok(())
 }
+
+#[test]
+fn bytes_fingerprint_matches_text_fingerprint_and_keeps_invalid_bytes_distinct() {
+    // Recorded check artifacts hash `--diff` input bytes; UTF-8 input keeps
+    // the hash it had as text, and two invalid bytes never share one.
+    assert_eq!(
+        bytes_fingerprint("-a\n+b\n".as_bytes()),
+        config_fingerprint("-a\n+b\n")
+    );
+    assert_ne!(
+        bytes_fingerprint(b"+caf\x80\n"),
+        bytes_fingerprint(b"+caf\x81\n")
+    );
+}

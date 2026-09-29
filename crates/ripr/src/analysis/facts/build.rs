@@ -119,7 +119,7 @@ fn build_index_with_file_fact_cache(
                 let (file, bytes) = &files[position];
                 (
                     position,
-                    summarize_loaded_file(root, file, bytes, adapter, fallback),
+                    summarize_loaded_file(file, bytes, adapter, fallback),
                 )
             })
             .collect();
@@ -134,7 +134,11 @@ fn build_index_with_file_fact_cache(
     // checkpoint ordering (error first, then checkpoint) unchanged.
     let mut index = RustIndex::default();
     for (position, entry) in pending.into_iter().enumerate() {
-        let (file, _) = &files[position];
+        let (file, bytes) = &files[position];
+        // Recorded on cache hits too, so a warm run discloses the same file.
+        if rust_source_text(bytes).not_utf8 {
+            index.non_utf8_sources.insert(file.clone());
+        }
         let summary = match entry {
             Pending::Ready(facts) => facts,
             Pending::Parse { key } => {
@@ -178,14 +182,14 @@ fn build_index_with_adapters(
         // Read + parse run on rayon workers; every file is independent.
         // `collect` on an indexed parallel iterator preserves input order,
         // so `results[i]` corresponds to `batch[i]`.
-        let results: Vec<Result<(PathBuf, super::FileFacts), String>> = batch
+        let results: Vec<Result<(PathBuf, super::FileFacts, bool), String>> = batch
             .par_iter()
             .map(|file| {
                 let full = root.join(file);
-                let text = std::fs::read_to_string(&full)
+                let bytes = std::fs::read(&full)
                     .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
-                let summary = summarize_file_with_adapters(file, &text, adapter, fallback)?;
-                Ok((file.clone(), summary))
+                let summary = summarize_loaded_file(file, &bytes, adapter, fallback)?;
+                Ok((file.clone(), summary, rust_source_text(&bytes).not_utf8))
             })
             .collect();
         // Insert sequentially in original input order: `RustIndex.tests`
@@ -194,7 +198,10 @@ fn build_index_with_adapters(
         // in input order wins and the per-iteration checkpoint ordering
         // (error first, then checkpoint) is unchanged.
         for result in results {
-            let (file, summary) = result?;
+            let (file, summary, not_utf8) = result?;
+            if not_utf8 {
+                index.non_utf8_sources.insert(file.clone());
+            }
             insert_file_summary(&mut index, file, summary);
             cancellation::checkpoint()?;
         }
@@ -249,16 +256,47 @@ fn manifest_package_names(root: &Path) -> std::collections::BTreeSet<String> {
     names
 }
 
+/// Source text of one Rust file as the index reads it.
+///
+/// rustc drops a leading UTF-8 byte-order mark before lexing, so the index
+/// does too: left in place, the stray `U+FEFF` was a parse error, the whole
+/// file fell to lexical fallback, and an item on line 1 lost its owner. The
+/// mark has no newline, so line numbers are unchanged.
+///
+/// Bytes that are not UTF-8 do not abort the run: rustc rejects such a file,
+/// so one stray fixture used to fail every `ripr check` in the workspace. The
+/// text is decoded lossily and `not_utf8` is set so the caller keeps it on
+/// lexical fallback and discloses `rust_source_not_utf8`.
+pub(crate) struct RustSourceText<'a> {
+    pub(crate) text: std::borrow::Cow<'a, str>,
+    pub(crate) not_utf8: bool,
+}
+
+pub(crate) fn rust_source_text(bytes: &[u8]) -> RustSourceText<'_> {
+    let bytes = bytes.strip_prefix(UTF8_BOM).unwrap_or(bytes);
+    let text = String::from_utf8_lossy(bytes);
+    let not_utf8 = matches!(text, std::borrow::Cow::Owned(_));
+    RustSourceText { text, not_utf8 }
+}
+
+const UTF8_BOM: &[u8] = b"\xEF\xBB\xBF";
+
+/// Typed static-limit reason for a Rust source that is not UTF-8.
+pub(crate) const RUST_SOURCE_NOT_UTF8_REASON: &str = "static limit rust_source_not_utf8: the file is not valid UTF-8, which rustc rejects; indexed from a lossy decode on lexical fallback";
+
 fn summarize_loaded_file(
-    root: &Path,
     file: &Path,
     bytes: &[u8],
     adapter: &dyn RustSyntaxAdapter,
     fallback: &dyn RustSyntaxAdapter,
 ) -> Result<super::FileFacts, String> {
-    let text = std::str::from_utf8(bytes)
-        .map_err(|err| format!("failed to read {}: {err}", root.join(file).display()))?;
-    summarize_file_with_adapters(file, text, adapter, fallback)
+    let source = rust_source_text(bytes);
+    if source.not_utf8 {
+        let mut facts = fallback.summarize_file(file, &source.text)?;
+        facts.used_lexical_fallback = true;
+        return Ok(facts);
+    }
+    summarize_file_with_adapters(file, &source.text, adapter, fallback)
 }
 
 fn summarize_file_with_adapters(
@@ -680,6 +718,129 @@ pub fn check(x: i32) -> bool {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.root);
         }
+    }
+
+    fn build_loaded(
+        fixture: &CacheInventoryFixture,
+        files: &[(PathBuf, Vec<u8>)],
+    ) -> Result<CachedRustIndex, String> {
+        build_index_with_file_fact_cache(
+            &fixture.root,
+            files,
+            &RaRustSyntaxAdapter,
+            &LexicalRustSyntaxAdapter,
+            &fixture.cache,
+            || fixture.cache.known_file_paths(),
+        )
+    }
+
+    #[test]
+    fn leading_bom_is_dropped_so_a_line_one_item_stays_parser_backed() -> Result<(), Box<dyn Error>>
+    {
+        let fixture = CacheInventoryFixture::new("index_bom")?;
+        let file = PathBuf::from("src/lib.rs");
+        let source = b"pub fn b(x: u32) -> u32 { if x >= 5 { 1 } else { 0 } }\n";
+        let with_bom = [(file.clone(), [UTF8_BOM, source.as_slice()].concat())];
+        fs::write(fixture.root.join(&file), &with_bom[0].1)?;
+
+        let index = build_loaded(&fixture, &with_bom)?.index;
+        let facts = index
+            .files
+            .get(&file)
+            .ok_or("bom file missing from index")?;
+        assert!(!facts.used_lexical_fallback);
+        assert!(!facts.source.starts_with('\u{feff}'));
+        let owner = index
+            .functions
+            .iter()
+            .find(|function| function.name == "b")
+            .ok_or("line-1 owner missing")?;
+        assert_eq!(owner.start_line, 1);
+        assert!(!facts.probe_shapes.is_empty());
+        assert!(index.non_utf8_sources.is_empty());
+
+        // The currentness authority re-reads the on-disk bytes (BOM included)
+        // through the same decode, so the file's evidence stays admissible.
+        let authority = index
+            .workspace_authority
+            .as_ref()
+            .ok_or("missing workspace authority")?;
+        assert!(authority.validates_target(&file, &file, &facts.source));
+
+        // The same bytes without the mark index to the same facts.
+        let fixture = CacheInventoryFixture::new("index_no_bom")?;
+        let plain = build_loaded(&fixture, &[(file.clone(), source.to_vec())])?.index;
+        assert_eq!(plain.functions, index.functions);
+        Ok(())
+    }
+
+    #[test]
+    fn non_utf8_source_is_indexed_on_fallback_with_typed_reason() -> Result<(), Box<dyn Error>> {
+        let fixture = CacheInventoryFixture::new("index_non_utf8")?;
+        let latin = PathBuf::from("tests/data/latin.rs");
+        let lib = PathBuf::from("src/lib.rs");
+        let files = [
+            (
+                latin.clone(),
+                b"pub fn l(x: u32) -> u32 {\n    // caf\xe9\n    if x > 5 { 1 } else { 0 }\n}\n"
+                    .to_vec(),
+            ),
+            (lib.clone(), b"pub fn ok(x: u32) -> u32 { x }\n".to_vec()),
+        ];
+
+        // Before: the whole build failed with "failed to read ...".
+        let cold = build_loaded(&fixture, &files)?;
+        let latin_facts = cold.index.files.get(&latin).ok_or("latin file missing")?;
+        assert!(latin_facts.used_lexical_fallback);
+        assert!(cold.index.functions.iter().any(|f| f.name == "l"));
+        assert!(
+            !cold
+                .index
+                .files
+                .get(&lib)
+                .ok_or("lib missing")?
+                .used_lexical_fallback
+        );
+        assert_eq!(
+            cold.index.non_utf8_sources.iter().collect::<Vec<_>>(),
+            vec![&latin]
+        );
+        let cold_disclosure = crate::analysis::rust_index::lexical_fallback_disclosure(&cold.index)
+            .ok_or("missing fallback disclosure")?;
+        assert!(
+            cold_disclosure.contains(&format!(
+                "ripr: tests/data/latin.rs: {RUST_SOURCE_NOT_UTF8_REASON}"
+            )),
+            "{cold_disclosure}"
+        );
+        assert!(!cold_disclosure.contains("src/lib.rs"), "{cold_disclosure}");
+
+        // A warm file-fact hit still records the file.
+        let warm = build_loaded(&fixture, &files)?;
+        assert_eq!(warm.file_fact_cache.hits, 2);
+        assert_eq!(warm.index.non_utf8_sources, cold.index.non_utf8_sources);
+
+        // The classified-seam warm route re-reads the file from disk.
+        fs::create_dir_all(fixture.root.join("tests/data"))?;
+        fs::write(fixture.root.join(&latin), &files[0].1)?;
+        let reread = crate::analysis::rust_index::lexical_fallback_disclosure_at(
+            &fixture.root,
+            &crate::analysis::rust_index::lexical_fallback_files(&cold.index),
+        );
+        assert_eq!(reread.as_deref(), Some(cold_disclosure.as_str()));
+        Ok(())
+    }
+
+    #[test]
+    fn rust_source_text_strips_only_a_leading_bom() {
+        let decoded = rust_source_text(b"\xEF\xBB\xBFfn a() {}");
+        assert_eq!(decoded.text, "fn a() {}");
+        assert!(!decoded.not_utf8);
+        let inner = rust_source_text(b"fn a() {}\n// \xEF\xBB\xBF\n");
+        assert_eq!(inner.text, "fn a() {}\n// \u{feff}\n");
+        let invalid = rust_source_text(b"// \xFF\n");
+        assert!(invalid.not_utf8);
+        assert_eq!(invalid.text, "// \u{fffd}\n");
     }
 
     #[test]
@@ -1172,16 +1333,42 @@ pub fn check(x: i32) -> bool {
         let root = temp_dir("index_cached_error_order")?;
         fs::create_dir_all(root.join("src"))?;
 
+        // Non-UTF-8 bytes no longer fail the build (#4582), so both adapters
+        // fail here and name the file they were given.
+        struct PathNamingFailure;
+        impl RustSyntaxAdapter for PathNamingFailure {
+            fn summarize_file(
+                &self,
+                path: &Path,
+                _text: &str,
+            ) -> Result<super::super::FileFacts, String> {
+                Err(format!("synthetic failure for {}", path.display()))
+            }
+
+            fn changed_nodes(
+                &self,
+                _facts: &super::super::FileFacts,
+                _ranges: &[TextRange],
+            ) -> Vec<SyntaxNodeFact> {
+                Vec::new()
+            }
+        }
+
         let files = [
-            (PathBuf::from("src/z_invalid.rs"), vec![0xff, 0xfe]),
-            (PathBuf::from("src/a_invalid.rs"), vec![0xff, 0xfe]),
+            (PathBuf::from("src/z_failing.rs"), b"fn z() {}".to_vec()),
+            (PathBuf::from("src/a_failing.rs"), b"fn a() {}".to_vec()),
         ];
-        let result = build_index_from_loaded_files_with_cache(&root, &files);
+        let result = build_index_from_loaded_files_with_cache_and_adapters(
+            &root,
+            &files,
+            &PathNamingFailure,
+            &PathNamingFailure,
+        );
         let Err(error) = result else {
-            return Err("expected invalid UTF-8 inputs to fail the cached build".into());
+            return Err("expected failing adapters to fail the cached build".into());
         };
         assert!(
-            error.contains("z_invalid.rs"),
+            error.contains("z_failing.rs"),
             "first error in input order must win: {error}"
         );
         Ok(())

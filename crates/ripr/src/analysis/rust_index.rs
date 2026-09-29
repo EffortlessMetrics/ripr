@@ -1,3 +1,4 @@
+use super::facts::RUST_SOURCE_NOT_UTF8_REASON;
 #[cfg(test)]
 use super::facts::RustIncludeLimitation;
 use crate::config::OraclePolicy;
@@ -76,13 +77,17 @@ fn escaped_path_display(path: &Path) -> String {
 
 /// Returns a stable disclosure when indexed Rust files used lexical fallback.
 /// A file the Rust nesting budget refused also gets its typed
-/// `rust_nesting_budget` reason, recomputed from the indexed source.
+/// `rust_nesting_budget` reason, recomputed from the indexed source, and a
+/// file that is not UTF-8 gets `rust_source_not_utf8`.
 pub(crate) fn lexical_fallback_disclosure(index: &RustIndex) -> Option<String> {
     let files = lexical_fallback_files(index);
     let disclosure = lexical_fallback_disclosure_for_files(&files)?;
     Some(with_nesting_budget_reasons(
         disclosure,
         files.iter().filter_map(|path| {
+            if index.non_utf8_sources.contains(path) {
+                return Some((path.as_path(), RUST_SOURCE_NOT_UTF8_REASON.to_string()));
+            }
             let facts = index.files.values().find(|facts| &facts.path == path)?;
             Some((
                 path.as_path(),
@@ -94,17 +99,20 @@ pub(crate) fn lexical_fallback_disclosure(index: &RustIndex) -> Option<String> {
 
 /// Same disclosure for a classified-seam cache hit, which stores only the
 /// fallback paths. Each fallback file is re-read under `root` so a warm run
-/// names the same `rust_nesting_budget` reasons as the cold run.
+/// names the same typed reasons as the cold run.
 pub(crate) fn lexical_fallback_disclosure_at(root: &Path, files: &[PathBuf]) -> Option<String> {
     let disclosure = lexical_fallback_disclosure_for_files(files)?;
     Some(with_nesting_budget_reasons(
         disclosure,
         files.iter().filter_map(|path| {
-            let source = std::fs::read_to_string(root.join(path)).ok()?;
-            Some((
-                path.as_path(),
-                super::syntax::rust_nesting_refusal(&source)?,
-            ))
+            let bytes = std::fs::read(root.join(path)).ok()?;
+            let source = super::facts::rust_source_text(&bytes);
+            let reason = if source.not_utf8 {
+                RUST_SOURCE_NOT_UTF8_REASON.to_string()
+            } else {
+                super::syntax::rust_nesting_refusal(&source.text)?
+            };
+            Some((path.as_path(), reason))
         }),
     ))
 }
