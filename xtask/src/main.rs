@@ -40,6 +40,7 @@ mod gap_source_subject_shared;
 mod identity_registry;
 mod no_panic;
 mod output_enum_contracts;
+mod package_qualification;
 mod policy;
 mod product_gate_plan;
 mod public_api_surface;

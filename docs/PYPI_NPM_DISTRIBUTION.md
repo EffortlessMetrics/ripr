@@ -81,6 +81,11 @@ packaging/npm/README.md
 ```
 
 The package authoring and qualification paths above remain implementation work.
+Swarm now owns a typed package-qualification receipt and aggregate gate
+(`cargo xtask package-qualification-gate --receipt <path>`; #4630). That
+command parses one versioned DTO and fails closed on missing, zero-subject,
+stale, mismatched, or substituted required rows. It does not install a
+wheel or npm package, open a workflow, or publish.
 Source PRs
 [`ripr#1783`](https://github.com/EffortlessMetrics/ripr/pull/1783) and
 [`ripr#1785`](https://github.com/EffortlessMetrics/ripr/pull/1785) establish the
@@ -187,8 +192,12 @@ cold/warm install time and launcher overhead without mixing their conditions.
 
 A receipt binds source and artifact identities, runtime/tool versions, selected
 and executed counts, failures/skips, actual commands and cleanup. Missing or
-zero-subject required rows are not pass. Reuse existing Windows/root/command
-owners linked from the epic rather than creating a second execution framework.
+zero-subject required rows are not pass. The current typed contract lives in
+`xtask/src/package_qualification/` and is reusable locally or in later CI;
+`skipped` is not a row status, `unsupported_by_contract` is recorded but cannot
+make a required row green, and an `explicit_subset` cannot render as the full
+five-target matrix. Reuse existing Windows/root/command owners linked from the
+epic rather than creating a second execution framework.
 
 ## Publication and completion
 

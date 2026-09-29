@@ -1,0 +1,59 @@
+schema_version = "2.0"
+id = "ripr.slice.package-qualification-receipt.v1"
+generation = 1
+
+source_issue = "issue:4630"
+design_reference = "docs/PYPI_NPM_DISTRIBUTION.md#installed-qualification"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds a typed package-qualification receipt and fail-closed aggregate gate
+for exact candidate, package, and payload identity. JSON and Markdown render
+from the same DTO. Missing, skipped, zero-subject, stale, mismatched, and
+substituted required rows cannot pass. This does not install packages, add
+a workflow, publish, or close parent #4493.
+"""
+
+non_goals = [
+  "wheel or npm consumer installation",
+  "package-distribution-qualification workflow",
+  "registry publication or signing",
+  "support-tier promotion",
+  "source-release artifact consumption",
+]
+
+return_conditions = [
+  "Return to root if a required missing, zero-subject, not_run, or unsupported row can render green.",
+  "Return to root if a planted executed payload hash or stale expected SHA can pass.",
+  "Return to root if declared_full_matrix can pass without the complete target set.",
+  "Return to root if credential material is accepted as receipt identity.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:package-qualification-receipt",
+  "seam:ripr:xtask:package-qualification-gate",
+]
+
+shared_seams = [
+  "seam:ripr:policy:distribution-contract",
+  "seam:ripr:docs:pypi-npm-distribution",
+]
+
+forbidden_seams = [
+  "seam:ripr:release:publication",
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:analysis:runtime-mutation",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:4630#typed-receipt-and-aggregate-gate"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "tests_added"
+
+[support_claim]
+state = "unchanged"
