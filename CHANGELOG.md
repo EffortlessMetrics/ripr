@@ -392,6 +392,15 @@ are scoped or reviewed.
   `actionable-gaps.json` does not hold no longer gets that report's first
   packet: the gap ledger is tried, then a status packet naming the gap.
 
+- `ripr check` human output for a budget-stopped (`limited_partial_scope`)
+  run now names the budget that stopped it and its size (for example
+  `the file budget of 200 changed file(s) (RIPR_PARTIAL_DIFF_FILE_BUDGET=200)`),
+  says how many findings were produced before the stop and that more may
+  exist beyond the budget, and tells you to raise that variable, noting the
+  other budget the next file may also need. When every changed file ripr's language adapters read was
+  selected (a single oversized first file), it no longer prints "at least 0
+  changed file(s) ... may contain additional findings"; it says the result
+  stays partial instead.
 - Rust cache entries now reject same-key semantic payload edits before serving
   facts or classified evidence. File-fact, full/compact classified, shard and
   corpus-fingerprint generations cold-recompute once; checksums do not

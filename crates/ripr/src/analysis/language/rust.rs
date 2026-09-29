@@ -204,6 +204,17 @@ impl PartialDiffStopReason {
             Self::LineBudgetExceededOnFirstFile => "line_budget_exceeded_on_first_file",
         }
     }
+
+    /// The env override that controls the budget which stopped selection:
+    /// the only continuation route for a partial run (RIPR-PROP-0019
+    /// decision 6). Owned here so every renderer names the same variable for
+    /// the same stop reason.
+    pub(crate) fn budget_env(self) -> &'static str {
+        match self {
+            Self::FileBudget => PARTIAL_DIFF_FILE_BUDGET_ENV,
+            Self::LineBudget | Self::LineBudgetExceededOnFirstFile => PARTIAL_DIFF_LINE_BUDGET_ENV,
+        }
+    }
 }
 
 /// The typed run state of a `limited_partial_scope` diff analysis
@@ -257,6 +268,39 @@ impl PartialDiffScope {
     pub const CONTINUATION_DISCLOSURE: &'static str = "partial result: raise RIPR_PARTIAL_DIFF_FILE_BUDGET and/or \
          RIPR_PARTIAL_DIFF_LINE_BUDGET to widen the analyzed partition; named \
          partition continuation is not available";
+
+    /// The effective (post-clamp) size of the budget that stopped selection:
+    /// the file budget for [`PartialDiffStopReason::FileBudget`], otherwise
+    /// the line budget.
+    pub(crate) fn stopping_budget(&self) -> usize {
+        match self.stop_reason {
+            PartialDiffStopReason::FileBudget => self.file_budget,
+            PartialDiffStopReason::LineBudget
+            | PartialDiffStopReason::LineBudgetExceededOnFirstFile => self.line_budget,
+        }
+    }
+
+    /// The env override and effective size of the budget that did NOT stop
+    /// selection. Raising only the stopping budget may not widen the
+    /// partition: when the next file hits both budgets the stop reason is the
+    /// file budget, and the unchanged line budget then rejects that file.
+    pub(crate) fn other_budget(&self) -> (&'static str, usize) {
+        match self.stop_reason {
+            PartialDiffStopReason::FileBudget => (PARTIAL_DIFF_LINE_BUDGET_ENV, self.line_budget),
+            PartialDiffStopReason::LineBudget
+            | PartialDiffStopReason::LineBudgetExceededOnFirstFile => {
+                (PARTIAL_DIFF_FILE_BUDGET_ENV, self.file_budget)
+            }
+        }
+    }
+
+    /// Whether any changed-line file of the diff is known to be outside the
+    /// selected partition. `false` only when every changed-line file was
+    /// selected (for example a single oversized first file); the run still
+    /// stays `limited_partial_scope` and never claims complete findings.
+    pub(crate) fn has_known_uninspected_scope(&self) -> bool {
+        self.uninspected_files_lower_bound > 0 || self.uninspected_changed_lines_lower_bound > 0
+    }
 
     /// Whether `path` (any spelling) names a selected file.
     pub(crate) fn selects(&self, path: &Path) -> bool {
@@ -3235,6 +3279,79 @@ fn absent_delimiter_boundary_returns_head() {
         assert_eq!(scope.selected_changed_lines, 60);
         assert_eq!(scope.uninspected_files_lower_bound, 1);
         assert_eq!(scope.uninspected_changed_lines_lower_bound, 60);
+        Ok(())
+    }
+
+    /// The human partial-scope disclosure tests hand-build scope records; this
+    /// pins that the real selector produces those shapes, including a
+    /// first-file stop with a changed non-source file beside it: the file is
+    /// never a candidate, so no uninspected scope is known and the disclosure
+    /// may only claim that every file ripr's adapters read was selected.
+    #[test]
+    fn partial_stop_reason_shapes_match_the_human_disclosure_fixtures() -> Result<(), String> {
+        let file_stop = require_partial(
+            select_partial_diff_partition(
+                &[
+                    changed_file("src/a.rs", 30, 0),
+                    changed_file("src/b.rs", 30, 0),
+                ],
+                &budgets(1, 40),
+                ALL_LANGUAGES,
+            ),
+            "file-budget stop",
+        )?;
+        assert_eq!(file_stop.stop_reason, PartialDiffStopReason::FileBudget);
+        assert_eq!(file_stop.selected_changed_lines, 30);
+        assert!(file_stop.has_known_uninspected_scope());
+        assert_eq!(file_stop.stopping_budget(), 1);
+        assert_eq!(
+            file_stop.stop_reason.budget_env(),
+            PARTIAL_DIFF_FILE_BUDGET_ENV
+        );
+        assert_eq!(file_stop.other_budget(), (PARTIAL_DIFF_LINE_BUDGET_ENV, 40));
+
+        let line_stop = require_partial(
+            select_partial_diff_partition(
+                &[
+                    changed_file("src/a.rs", 35, 0),
+                    changed_file("src/b.rs", 30, 0),
+                ],
+                &budgets(7, 40),
+                ALL_LANGUAGES,
+            ),
+            "line-budget stop",
+        )?;
+        assert_eq!(line_stop.stop_reason, PartialDiffStopReason::LineBudget);
+        assert_eq!(line_stop.selected_changed_lines, 35);
+        assert!(line_stop.has_known_uninspected_scope());
+        assert_eq!(line_stop.stopping_budget(), 40);
+        assert_eq!(
+            line_stop.stop_reason.budget_env(),
+            PARTIAL_DIFF_LINE_BUDGET_ENV
+        );
+        assert_eq!(line_stop.other_budget(), (PARTIAL_DIFF_FILE_BUDGET_ENV, 7));
+
+        let first_file_stop = require_partial(
+            select_partial_diff_partition(
+                &[
+                    changed_file("src/a.rs", 60, 0),
+                    changed_file("README.md", 1, 0),
+                ],
+                &budgets(7, 40),
+                ALL_LANGUAGES,
+            ),
+            "first-file stop beside a non-source file",
+        )?;
+        assert_eq!(
+            first_file_stop.stop_reason,
+            PartialDiffStopReason::LineBudgetExceededOnFirstFile
+        );
+        assert_eq!(first_file_stop.selected_changed_lines, 60);
+        assert!(
+            !first_file_stop.has_known_uninspected_scope(),
+            "README.md is never a partition candidate, so no uninspected scope is known"
+        );
+        assert_eq!(first_file_stop.stopping_budget(), 40);
         Ok(())
     }
 
