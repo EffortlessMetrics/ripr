@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Nested `rerun --json` cache-identity versions in `docs/OUTPUT_SCHEMA.md`
+  now track live `FILE_FACT_CACHE_SCHEMA_VERSION` (`1.10`) and
+  `CACHE_SCHEMA_VERSION` (`1.16`). Producer-backed docs tests fail when those
+  nested values, the command-to-version table, swarm-queue envelope, or
+  cache-status field contract drift from producers (#4618).
 - Default human `Hidden:` output names the language and preview status of
   omitted findings (`Python preview: 1`) so a mixed-repo remainder is not a
   bare count. Rust-only remainder stays the count line. (#4395)
