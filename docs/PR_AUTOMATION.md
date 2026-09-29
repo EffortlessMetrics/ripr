@@ -128,6 +128,7 @@ cargo xtask release-readiness --version <version>
 cargo xtask release-server-archive --version <version> --target <triple> --executable <name> --archive <zip\|tar.gz>
 cargo xtask release-server-manifest --version <version> --repository <owner/repo>
 cargo xtask release-final-server-subjects --version <version> --repository <owner/repo>
+cargo xtask release-final-server-attestation-fixture --version <version> --expected-source-sha <sha>
 cargo xtask release-final-server-attestation-receipt --version <version> --verified-subjects <path>
 cargo xtask release-upload-assets --version <version>
 cargo xtask repo-badge-artifacts [--gap-ledger <path>]
