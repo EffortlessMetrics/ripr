@@ -185,7 +185,10 @@ async function downloadAdmittedAsset(
     expectedSha256: asset.sha256,
     bytes,
     admittedManifestSha256: expectedDigest,
-    selectedManifestUrl: admitted.manifestUrl
+    selectedManifestUrl: admitted.manifestUrl,
+    manifestSelection: admitted.manifestSelection,
+    preferredManifestObservation: admitted.preferredManifestObservation,
+    fallbackManifestObservation: admitted.fallbackManifestObservation
   };
 }
 
@@ -197,6 +200,9 @@ export type FetchAdmittedManifest = (
 export interface AdmittedManifestSelection {
   readonly manifest: AdmittedServerManifest;
   readonly manifestUrl: string;
+  readonly manifestSelection: 'preferred_exact' | 'fallback_exact_after_preferred_absent';
+  readonly preferredManifestObservation: 'accepted' | 'direct_not_found';
+  readonly fallbackManifestObservation: 'not_requested' | 'accepted';
 }
 
 /**
@@ -216,7 +222,10 @@ export async function fetchAdmittedManifestForDistribution(
   try {
     return {
       manifest: await fetchImpl(preferred, expectedDigest),
-      manifestUrl: preferred
+      manifestUrl: preferred,
+      manifestSelection: 'preferred_exact',
+      preferredManifestObservation: 'accepted',
+      fallbackManifestObservation: 'not_requested'
     };
   } catch (error) {
     const fallback = fallbacks[0];
@@ -225,7 +234,10 @@ export async function fetchAdmittedManifestForDistribution(
     }
     return {
       manifest: await fetchImpl(fallback, expectedDigest),
-      manifestUrl: fallback
+      manifestUrl: fallback,
+      manifestSelection: 'fallback_exact_after_preferred_absent',
+      preferredManifestObservation: 'direct_not_found',
+      fallbackManifestObservation: 'accepted'
     };
   }
 }
