@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tar::Builder;
 
-use crate::{command_success_owned, run_output, run_owned};
+use crate::run_output;
 
 pub(crate) fn release_server_archive(args: &[String]) -> Result<(), String> {
     let version = required_release_arg(args, "version", "RAW_VERSION")?;
@@ -1263,7 +1263,7 @@ pub(crate) fn write_release_server_outputs_transactional(
     Ok(())
 }
 
-pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
+pub(crate) pub(crate) fn sha256_bytes(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     format!("{digest:x}")
 }
