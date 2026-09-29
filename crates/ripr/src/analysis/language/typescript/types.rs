@@ -47,6 +47,11 @@ pub(crate) struct TypeScriptOwner {
     /// export. Constructor matching uses it to credit
     /// `new <default-import local>(...)` (#4104-B, review #4138).
     pub(crate) class_default_export: bool,
+    /// Exported names of the owner's module whose code reaches this
+    /// top-level function through a bounded same-module call graph (an
+    /// exported wrapper, or a value a same-module factory built). Empty for
+    /// methods and for owners no other export reaches. See `module_entries`.
+    pub(crate) module_entries: Vec<TypeScriptModuleEntry>,
     /// `Some(n)` only when every parameter is a plain binding identifier and
     /// there is no rest parameter; `None` when the list could not be resolved
     /// (destructuring, rest, or extraction unavailable). A boundary witness
@@ -213,6 +218,14 @@ pub(crate) enum TypeScriptRelationKind {
     /// lands on the owner's own export. Deeper, cyclic or ambiguous chains
     /// fail closed.
     ReExportChainFollowed,
+    /// Test calls an exported name of the owner's module whose code reaches
+    /// the owner through a bounded same-module call graph: an exported
+    /// wrapper, or a value a same-module factory built (`export const defu =
+    /// createDefu()` whose returned closure calls the changed `_defu`). The
+    /// entry call passes the same identity gates as a direct owner call.
+    /// Admitted only when no test calls the owner itself. Reach is real but
+    /// indirect, so the classifier never promotes it to `exposed`.
+    ModuleEntryCall,
     SameFileProximity,
     DescribeName,
     TestName,
@@ -229,6 +242,8 @@ impl TypeScriptRelationKind {
             // Re-export chain: same rank as other imported calls — the test
             // genuinely exercises the owner, just via an intermediate file.
             Self::ReExportChainFollowed => 4,
+            // Below every relation that calls the owner itself.
+            Self::ModuleEntryCall => 3,
             Self::SameFileProximity => 3,
             Self::DescribeName => 2,
             Self::TestName => 1,
@@ -245,6 +260,7 @@ impl TypeScriptRelationKind {
                 | Self::ReceiverOwnerCall
                 | Self::ClassMethodCall
                 | Self::ReExportChainFollowed
+                | Self::ModuleEntryCall
         )
     }
 
@@ -261,6 +277,7 @@ impl TypeScriptRelationKind {
             Self::ReceiverOwnerCall => "receiver_owner_call",
             Self::ClassMethodCall => "class_method_call",
             Self::ReExportChainFollowed => "re_export_chain_followed",
+            Self::ModuleEntryCall => "module_entry_call",
             Self::SameFileProximity => "same_file_proximity",
             Self::DescribeName => "describe_name",
             Self::TestName => "test_name",

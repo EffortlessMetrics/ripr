@@ -2491,6 +2491,15 @@ pub(crate) fn classify_change_with_alias_state(
     let has_oracle_eligible_relation = related_candidates
         .iter()
         .any(|candidate| candidate.relation.uses_oracle());
+    // Reach only through a same-module entry (an exported wrapper or factory
+    // product that calls the owner) is indirect: the entry's assertions see
+    // the owner's effect only after the entry's own code. Such reach stays
+    // `weakly_exposed`; `exposed` needs a relation that calls the owner.
+    let reach_only_through_module_entry = has_oracle_eligible_relation
+        && related_candidates
+            .iter()
+            .filter(|candidate| candidate.relation.uses_oracle())
+            .all(|candidate| candidate.relation == TypeScriptRelationKind::ModuleEntryCall);
     // Owner-call evidence is broader than trusted relation credit: a test
     // whose relation was denied by the #4102/#4103 gates still observes an
     // owner-name call, so its oracle classification and missing-discriminator
@@ -2568,6 +2577,20 @@ pub(crate) fn classify_change_with_alias_state(
             vec![format!(
                 "Only heuristic TypeScript test links were found for `{}`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.",
                 owner.name
+            )],
+        )
+    } else if reach_only_through_module_entry {
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Yes,
+            StageState::Weak,
+            StageState::Weak,
+            vec![module_entry_reach_summary(
+                owner,
+                &related_candidates,
+                reexport_index,
+                alias_map,
+                workspace_root,
             )],
         )
     } else if strongest_strength >= OracleStrength::Strong.rank() && observation_confirmed {
@@ -2934,4 +2957,45 @@ pub(crate) fn no_static_path_recommendation(owner: &TypeScriptOwner) -> String {
             "TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.".to_string()
         }
     }
+}
+
+/// Missing-evidence line for an owner reached only through same-module
+/// entries: names the entries the related tests call.
+/// An entry is named when a related test passes the same relation gate for
+/// it, so a default or renamed import names the export it binds.
+fn module_entry_reach_summary(
+    owner: &TypeScriptOwner,
+    candidates: &[TypeScriptRelatedCandidate<'_>],
+    reexport_index: &ReExportIndex,
+    alias_map: Option<&TsAliasMap>,
+    workspace_root: Option<&Path>,
+) -> String {
+    let called: Vec<String> = owner
+        .module_entries
+        .iter()
+        .filter(|entry| {
+            let entry_owner = module_entry_owner(owner, entry);
+            candidates.iter().any(|candidate| {
+                candidate.relation == TypeScriptRelationKind::ModuleEntryCall
+                    && owner_call_relation(
+                        candidate.test,
+                        &entry_owner,
+                        reexport_index,
+                        alias_map,
+                        workspace_root,
+                    )
+                    .is_some_and(TypeScriptRelationKind::uses_oracle)
+            })
+        })
+        .map(|entry| format!("`{}`", entry.name))
+        .collect();
+    let entries = if called.is_empty() {
+        "an exported caller".to_string()
+    } else {
+        called.join(", ")
+    };
+    format!(
+        "Related tests reach `{}` only through same-module callers ({}); static evidence cannot confirm the changed behavior reaches their assertions. Add a test whose exact-value assertion depends on the changed behavior of `{}`.",
+        owner.name, entries, owner.name
+    )
 }

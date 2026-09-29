@@ -17,6 +17,15 @@ pub(crate) fn extract_owners(file: &Path, source: &str) -> Vec<TypeScriptOwner> 
         for stmt in &ret.program.body {
             owners.extend(owners_from_statement(stmt, file, source, &imports));
         }
+        let entries = module_entries_by_owner(&ret.program.body, source);
+        for owner in &mut owners {
+            if owner.class_name.is_none()
+                && owner.owner_kind != OwnerKind::ModuleFunction
+                && let Some(owner_entries) = entries.get(&owner.name)
+            {
+                owner.module_entries = owner_entries.clone();
+            }
+        }
         owners
     }) else {
         return Vec::new();
@@ -223,6 +232,7 @@ pub(crate) fn owner_from_variable_declarator(
             imports: imports.to_vec(),
             method_kind: TypeScriptMethodKind::Ordinary,
             class_default_export: false,
+            module_entries: Vec::new(),
             // Non-function initializers carry no resolvable signature facts:
             // no fixed positional signature the boundary witness could
             // arity-check against.
@@ -275,6 +285,7 @@ pub(crate) fn owner_from_function(
         imports: imports.to_vec(),
         method_kind: TypeScriptMethodKind::Ordinary,
         class_default_export: false,
+        module_entries: Vec::new(),
         params,
         arity,
         source_text: Some(source[func.span.start as usize..func.span.end as usize].to_string()),
@@ -303,6 +314,7 @@ pub(crate) fn owner_from_arrow(
         imports: imports.to_vec(),
         method_kind: TypeScriptMethodKind::Ordinary,
         class_default_export: false,
+        module_entries: Vec::new(),
         params,
         arity,
         source_text: Some(source[arrow.span.start as usize..arrow.span.end as usize].to_string()),
@@ -372,6 +384,7 @@ pub(crate) fn owner_from_method(
             oxc_ast::ast::MethodDefinitionKind::Method => TypeScriptMethodKind::Ordinary,
         },
         class_default_export: false,
+        module_entries: Vec::new(),
         params,
         arity,
         source_text: Some(source[method.span.start as usize..method.span.end as usize].to_string()),

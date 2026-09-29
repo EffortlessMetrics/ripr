@@ -11,6 +11,14 @@ are scoped or reviewed.
 
 ### Fixed
 
+- TypeScript: a change inside a module-private helper now relates to tests
+  that call an exported function reaching it in the same module, including a
+  value a same-module factory built. unjs/defu tests call `defu(...)`, built
+  by `export const defu = createDefu()`, whose returned closure calls the
+  changed `_defu`; ripr reported `no_static_path` for the tested change. The
+  relation follows at most three same-module calls, respects parameter and
+  local shadowing, and reports such reach as `weakly_exposed`, naming the
+  exported callers, never `exposed` on its own.
 - Commands ripr prints now run. For a missing agent receipt, `ripr reports
   index` suggests `ripr agent status`, which names the repair attempt's
   next step, instead of an `agent receipt` call missing its required

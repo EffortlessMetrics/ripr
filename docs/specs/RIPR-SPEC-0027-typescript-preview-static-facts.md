@@ -201,9 +201,30 @@ the test constructs a local receiver with `new ClassName(...)` or a named import
 alias for that class and then calls `receiver.method(...)`. Static class-method
 owners may use a bounded direct class member relation only when the test calls
 `ClassName.method(...)` through the same-file class name or an unshadowed named
-import alias. Factory returns, dependency injection, mocked modules, prototype
-aliases, namespace chains, and dynamic property access remain advisory or
-unsupported.
+import alias. Dependency injection, mocked modules, prototype aliases,
+namespace chains, and dynamic property access remain advisory or unsupported.
+
+A top-level function owner may also relate through a same-module entry: an
+exported name of the owner's module whose code reaches the owner within three
+call edges. An edge is a bare call to a top-level declaration name, and only
+when every mention of that name in the enclosing function is a bare call: a
+parameter (plain, destructured, or of a nested callback), a local
+declaration, an assignment or a value use may rebind it, so no edge is
+recorded. A function's own edges exclude the functions it directly returns.
+A value built by a same-module factory (`export const defu = createDefu()`,
+with `as`/`satisfies`/non-null/parentheses stripped) calls what the factory's
+directly returned function calls, checked against the factory's whole text so
+a captured factory parameter or local shadows too; calling the factory itself
+does not reach them, and a factory imported from another module is not
+followed. Named, listed (`export { local as name }`) and default exports,
+including an anonymous default function or arrow, count; type-only exports and
+re-exports from other modules do not. The test's call of
+the entry must pass every identity gate a direct or imported owner call does.
+The relation is `helper_owner_call` with `medium` confidence and is admitted
+only when no owner-call, import-call, receiver, class-method, module-observer,
+or re-export relation exists, so it never mixes with a relation that calls the
+owner. Reach only through entries is at most `weakly_exposed`, and the
+missing-evidence line names the entries the related tests call.
 
 A test is related to an owner only when the test references the owner. When
 no owner-call, import-call, receiver, class-method, module-observer, or
@@ -215,8 +236,8 @@ local declaration; a named-import local of the owner; or a namespace member
 `ns.owner` whose import resolves to the owner module. Such a link stays
 `weakly_exposed` with `actionability_category = ambiguous_related_test`. A
 test that only names the owner in its title, its `describe(...)` title, or its
-file stem, or that only calls a sibling owner from the same module, is not
-related: when no test references the owner, the finding is `no_static_path`
+file stem, or that only calls a sibling owner from the same module that is not
+a same-module entry reaching the owner, is not related: when no test references the owner, the finding is `no_static_path`
 with reach `no` and the missing reference named (`No test references
 \`owner(\``).
 
