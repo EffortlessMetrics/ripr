@@ -13773,25 +13773,33 @@ fn check_diff_badge_plus_excludes_unrelated_repo_wide_test_efficiency_debt() -> 
         fixture_test_efficiency_with_unrelated_actionable_test(),
     ))?;
     let root = workspace.display().to_string();
-    // Empty unified diff: no findings, no changed owners, no related
-    // tests. The unrelated TE entry must therefore be filtered out
-    // under diff scope.
-    let empty_diff = workspace.join("empty.patch");
+    // A complete diff with zero behavioral candidates (#4375): a valid
+    // unified diff whose only hunk touches a docs file, so no source
+    // owners and no related tests change. A header-only diff cannot
+    // serve here anymore: a stream that parses file headers but zero
+    // hunk bodies is typed as truncated, not as a complete empty
+    // analysis, so its badge headline is an analysis-incomplete message
+    // rather than the filtered count. The unrelated TE entry must be
+    // filtered out under diff scope regardless.
+    let docs_only_diff = workspace.join("docs_only.patch");
     std::fs::write(
-        &empty_diff,
-        r#"diff --git a/src/lib.rs b/src/lib.rs
+        &docs_only_diff,
+        r#"diff --git a/README.md b/README.md
 index 0000000..1111111 100644
---- a/src/lib.rs
-+++ b/src/lib.rs
+--- a/README.md
++++ b/README.md
+@@ -1,1 +1,2 @@
+ # fixture
++a line
 "#,
     )
-    .map_err(|e| format!("write empty.patch: {e}"))?;
+    .map_err(|e| format!("write docs_only.patch: {e}"))?;
     let output = run_ripr(&[
         "check",
         "--root",
         &root,
         "--diff",
-        &empty_diff.display().to_string(),
+        &docs_only_diff.display().to_string(),
         "--format",
         "badge-plus-json",
     ]);
@@ -13803,8 +13811,8 @@ index 0000000..1111111 100644
         stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#),
         "diff-scope `ripr+` must filter out unrelated repo-wide TE debt: {stdout}"
     );
-    // The headline must reflect the filter: no exposure gaps (empty
-    // diff) and no unrelated TE debt = 0.
+    // The headline must reflect the filter: no behavioral candidates
+    // (docs-only diff) and no unrelated TE debt = 0.
     assert!(stdout.contains(r#""message": "0""#));
 
     ignore_remove_dir_all(&workspace);

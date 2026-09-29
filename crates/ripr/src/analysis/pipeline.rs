@@ -458,6 +458,33 @@ fn deletion_disclosure_message(deleted_file_count: usize) -> Option<String> {
     })
 }
 
+/// The truncated-stream disclosure message (#4375): `N` file section(s)
+/// parsed a textual header but no hunk body, so the producer stream appears
+/// to have ended mid-diff. Per-section counts, so a complete hunk in one
+/// file cannot mask a later truncated section. Pure so the contract is
+/// testable without capturing stderr.
+fn truncated_diff_disclosure_message(truncated_file_sections: usize) -> Option<String> {
+    (truncated_file_sections > 0).then(|| {
+        format!(
+            "ripr: {truncated_file_sections} file section(s) parsed a header but no hunk body; \
+             the diff appears truncated. The empty result is not a complete analysis — the diff \
+             producer may have died mid-stream. Re-run with the full diff."
+        )
+    })
+}
+
+/// The truncated-stream gate (#4375), shared by the stderr disclosure and the
+/// typed limitation so the two arms cannot drift: at least one file section
+/// opened with a textual header, is not a submodule gitlink or binary
+/// sentinel section (both valid without hunks), and closed without a
+/// validated hunk body. Per-section evidence, so the exclusion stays scoped
+/// to the section that legitimately lacks a hunk instead of suppressing
+/// truncation detection for the whole diff. Pure so both arms are testable
+/// without capturing stderr.
+fn is_truncated_diff_stream(truncated_file_sections: usize) -> bool {
+    truncated_file_sections > 0
+}
+
 fn submodule_disclosure_message(submodule_file_count: usize) -> Option<String> {
     (submodule_file_count > 0).then(|| {
         format!(
@@ -588,6 +615,9 @@ fn run_pipeline_for_diff_text(
     let renamed_file_count = parsed_diff.renamed_file_count;
     let pure_rename_file_count = parsed_diff.pure_rename_file_count;
     let pure_rename_paths = parsed_diff.pure_rename_paths;
+    // Truncated-stream evidence (#4375): file sections that parsed a textual
+    // header but closed without a validated hunk body.
+    let truncated_file_sections = parsed_diff.truncated_file_sections;
     let analysis_changed_files = changed_files
         .iter()
         .filter(|file| !pure_rename_paths.contains(&file.path))
@@ -872,6 +902,21 @@ fn run_pipeline_for_diff_text(
         );
     }
 
+    // Disclose a truncated diff stream (#4375): at least one file section
+    // parsed a textual header but no hunk body, so the producer stream ended
+    // mid-diff (a CI `git diff` producer that died after the header block).
+    // The parsed file header makes the result look like a complete
+    // "no changed lines" analysis, so name the truncation on its own terms.
+    // The disclosure stays scoped to the empty-result case; the typed
+    // limitation below carries the evidence regardless of findings.
+    if findings.is_empty()
+        && !diff_text.trim().is_empty()
+        && is_truncated_diff_stream(truncated_file_sections)
+        && let Some(message) = truncated_diff_disclosure_message(truncated_file_sections)
+    {
+        eprintln!("{message}");
+    }
+
     if !diff_text.trim().is_empty()
         && changed_files.is_empty()
         && deleted_file_count == 0
@@ -891,6 +936,42 @@ fn run_pipeline_for_diff_text(
             .with_detail(
                 "The non-empty diff input contained no parseable file changes or hunks.",
             )?,
+        );
+    }
+
+    // #4375: a stream truncated after a valid file header is incomplete, not
+    // complete. A textual header parsed but the section closed without a
+    // validated hunk body, so those changed lines cannot have been missed by
+    // the adapters — they were never read. The typed contract forbids a
+    // complete outcome from carrying limitations, so this must route the
+    // outcome kind itself to `unsupported_input` via MalformedDiff (as the
+    // zero-file arm above does), not decorate a `no_changed_lines` result.
+    // A truncated stream is also not garbage: the disclosure above names the
+    // truncation when the result is empty, and this detail pins the exact
+    // evidence. The gate's exclusions (gitlink and binary sections) are
+    // per-section, so a valid hunkless section elsewhere in the diff cannot
+    // suppress this evidence. There is deliberately no `limitations.is_empty()`
+    // guard: a truncation observed beside an adapter or generated-file
+    // limitation is independent evidence and must survive into the typed
+    // outcome (a Rust-disabled or generated-skip diff with a truncated
+    // section still names the truncation), while diffs whose only refused
+    // content is deliberately quarantined (combined hunks, conflict markers)
+    // and diffs whose only malformed arm is the zero-file arm produce zero
+    // truncated sections and never stack a second MalformedDiff.
+    if !diff_text.trim().is_empty() && is_truncated_diff_stream(truncated_file_sections) {
+        limitations.push(
+            AnalysisLimitation::new(
+                AnalysisLimitationKind::MalformedDiff,
+                AnalysisStage::DiffParse,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::Retry,
+                    "Re-run the analysis with the complete diff stream.",
+                )?,
+            )
+            .with_detail(format!(
+                "{truncated_file_sections} file section(s) parsed a header but no hunk body; \
+                 the diff appears truncated."
+            ))?,
         );
     }
 
@@ -1632,6 +1713,25 @@ mod tests {
         }
     }
 
+    /// Draft-mode diff-text options over a temp root, the shape every
+    /// `run_pipeline_for_diff_text` behavioral test below uses.
+    fn draft_diff_options(root: PathBuf) -> AnalysisOptions {
+        AnalysisOptions {
+            root,
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            resolved_subject_identity: None,
+            include_unchanged_tests: false,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        }
+    }
+
     #[test]
     fn non_source_disclosure_message_names_count_and_extensions() -> Result<(), String> {
         // #2304: a docs/config-only diff yields the disclosure naming the
@@ -2191,6 +2291,352 @@ mod tests {
             limitation.kind == AnalysisLimitationKind::MalformedDiff
                 && limitation.producer_stage == AnalysisStage::DiffParse
         }));
+        Ok(())
+    }
+
+    #[test]
+    fn truncated_diff_after_file_header_projects_incomplete_outcome() -> Result<(), String> {
+        // #4375: the issue repro — a CI diff producer died mid-stream after a
+        // valid file header block and a valid `@@` hunk header, with zero
+        // hunk body lines. This must be a typed incomplete outcome carrying
+        // the truncation evidence, never a complete `no_changed_lines`.
+        let root = temp_root("analysis-outcome-truncated-diff")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "diff --git a/src/lib.rs b/src/lib.rs\nindex 0000000..1111111 100644\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,7 +1,7 @@\n",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "truncated diff must carry an analysis outcome".to_string())?;
+        assert_eq!(
+            outcome.kind,
+            AnalysisOutcomeKind::UnsupportedInput,
+            "a header-parsed zero-hunk stream is incomplete, not no_changed_lines"
+        );
+        assert!(
+            !outcome.kind.is_complete(),
+            "the outcome kind must not classify as complete"
+        );
+        let truncated = outcome
+            .limitations
+            .iter()
+            .find(|limitation| limitation.kind == AnalysisLimitationKind::MalformedDiff)
+            .ok_or_else(|| "truncated stream must carry a MalformedDiff limitation".to_string())?;
+        assert_eq!(truncated.producer_stage, AnalysisStage::DiffParse);
+        let detail = truncated
+            .bounded_detail
+            .as_deref()
+            .ok_or_else(|| "the truncation limitation must name its evidence".to_string())?;
+        assert!(
+            detail.contains("1 file section(s) parsed a header but no hunk body"),
+            "the detail must name the exact evidence, got: {detail}"
+        );
+        assert!(
+            detail.contains("the diff appears truncated"),
+            "the detail must name the truncation, got: {detail}"
+        );
+        assert!(result.findings.is_empty());
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn genuinely_empty_diff_stays_complete_no_scope() -> Result<(), String> {
+        // #4375 control: a zero-byte diff is a legitimately empty scope and
+        // must stay complete; the truncation gate must not fire on it.
+        let root = temp_root("analysis-outcome-empty-diff")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "empty diff must carry an analysis outcome".to_string())?;
+        assert_eq!(outcome.kind, AnalysisOutcomeKind::NoScope);
+        assert!(outcome.kind.is_complete());
+        assert!(outcome.limitations.is_empty());
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn garbage_diff_keeps_single_malformed_limitation_without_truncation_claim()
+    -> Result<(), String> {
+        // #4375 control: unparseable garbage keeps the existing malformed_diff
+        // contract, and the truncation arm must not stack a second
+        // MalformedDiff on top of it.
+        let root = temp_root("analysis-outcome-garbage-diff")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "this is not a unified diff\n",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "garbage diff must carry an analysis outcome".to_string())?;
+        assert_eq!(outcome.kind, AnalysisOutcomeKind::UnsupportedInput);
+        let malformed: Vec<_> = outcome
+            .limitations
+            .iter()
+            .filter(|limitation| limitation.kind == AnalysisLimitationKind::MalformedDiff)
+            .collect();
+        assert_eq!(
+            malformed.len(),
+            1,
+            "the zero-file arm alone must fire for garbage"
+        );
+        let detail = malformed[0].bounded_detail.as_deref().unwrap_or_default();
+        assert!(
+            !detail.contains("truncated"),
+            "garbage must keep its own evidence, not the truncation claim, got: {detail}"
+        );
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn hunkless_gitlink_addition_stays_complete_after_truncation_gate() -> Result<(), String> {
+        // #4375 control: a submodule gitlink addition registers a changed
+        // file through a `+++ ` marker without any hunk on valid git input.
+        // The gate's submodule exclusion must keep it complete.
+        let root = temp_root("analysis-outcome-gitlink-addition")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "diff --git a/vendor/new b/vendor/new\nnew file mode 160000\nindex 0000000..2222222\n--- /dev/null\n+++ b/vendor/new\n",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "gitlink addition must carry an analysis outcome".to_string())?;
+        assert_eq!(outcome.kind, AnalysisOutcomeKind::NoChangedLines);
+        assert!(outcome.kind.is_complete());
+        assert!(outcome.limitations.is_empty());
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn pure_rename_diff_stays_complete_after_truncation_gate() -> Result<(), String> {
+        // #4375 control: a hunkless but valid git section (pure rename) has
+        // no textual header evidence, so the truncation gate must not
+        // reclassify it.
+        let root = temp_root("analysis-outcome-pure-rename")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "diff --git a/src/old.rs b/src/new.rs\nsimilarity index 100%\nrename from src/old.rs\nrename to src/new.rs\n",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "pure rename must carry an analysis outcome".to_string())?;
+        assert_eq!(outcome.kind, AnalysisOutcomeKind::NoChangedLines);
+        assert!(outcome.kind.is_complete());
+        assert!(outcome.limitations.is_empty());
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn truncated_diff_disclosure_names_truncated_sections_and_truncation() -> Result<(), String> {
+        // #4375: the stderr disclosure names the exact evidence and never
+        // claims the empty result is correct. Per-section counts, so the
+        // message stays truthful for mixed diffs.
+        let message = truncated_diff_disclosure_message(2).ok_or_else(|| {
+            "a positive truncated-section count must produce the disclosure".to_string()
+        })?;
+        assert!(
+            message.contains("2 file section(s) parsed a header but no hunk body"),
+            "the disclosure must name the evidence, got: {message}"
+        );
+        assert!(
+            message.contains("the diff appears truncated"),
+            "the disclosure must name the truncation, got: {message}"
+        );
+        assert!(
+            !message.contains("The empty result is correct"),
+            "a truncated stream must never claim the empty result is correct, got: {message}"
+        );
+        assert!(
+            truncated_diff_disclosure_message(0).is_none(),
+            "a zero truncated-section count must not disclose"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn truncated_stream_gate_fires_only_on_truncated_sections() -> Result<(), String> {
+        // #4375: the shared gate — one owner for the stderr disclosure and
+        // the typed limitation, so the two arms cannot drift. The evidence
+        // is per-section, computed by the parser; the gate only decides.
+        assert!(is_truncated_diff_stream(1), "the issue repro fires");
+        assert!(
+            is_truncated_diff_stream(3),
+            "multi-section truncation fires"
+        );
+        assert!(
+            !is_truncated_diff_stream(0),
+            "garbage, empty, complete, and hunkless-valid inputs carry no truncated section"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn truncated_section_after_complete_hunk_projects_incomplete_outcome() -> Result<(), String> {
+        // #4375 review finding: per-section accounting. A complete hunk in
+        // one file must not mask a later section whose stream ends right
+        // after its header; global header/hunk counts would project the
+        // mixed diff as complete even though `src/b.rs` supplied no body.
+        let root = temp_root("analysis-outcome-mixed-complete-then-truncated")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,1 @@\n-old\n+new\ndiff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "mixed truncated diff must carry an analysis outcome".to_string())?;
+        assert_eq!(
+            outcome.kind,
+            AnalysisOutcomeKind::UnsupportedInput,
+            "a truncated section after a complete hunk is incomplete, not no_changed_lines"
+        );
+        assert!(
+            outcome.limitations.iter().any(|limitation| {
+                limitation.kind == AnalysisLimitationKind::MalformedDiff
+                    && limitation
+                        .bounded_detail
+                        .as_deref()
+                        .is_some_and(|detail| detail.contains("1 file section(s)"))
+            }),
+            "the truncation limitation must name the per-section evidence: {:?}",
+            outcome.limitations
+        );
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn truncated_source_section_after_gitlink_section_projects_incomplete_outcome()
+    -> Result<(), String> {
+        // #4375 review finding: the hunkless-gitlink exemption must stay
+        // scoped to the gitlink section. A valid gitlink section followed by
+        // a truncated source header must project incomplete; a global
+        // submodule exclusion would suppress truncation detection.
+        let root = temp_root("analysis-outcome-gitlink-then-truncated")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "diff --git a/vendor/new b/vendor/new\nnew file mode 160000\nindex 0000000..2222222\n--- /dev/null\n+++ b/vendor/new\ndiff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,7 +1,7 @@\n",
+        )?;
+        let outcome = result.analysis_outcome.ok_or_else(|| {
+            "gitlink-plus-truncated diff must carry an analysis outcome".to_string()
+        })?;
+        assert_eq!(
+            outcome.kind,
+            AnalysisOutcomeKind::UnsupportedInput,
+            "a truncated source section after a valid gitlink is incomplete"
+        );
+        assert!(
+            outcome.limitations.iter().any(|limitation| {
+                limitation.kind == AnalysisLimitationKind::MalformedDiff
+                    && limitation
+                        .bounded_detail
+                        .as_deref()
+                        .is_some_and(|detail| detail.contains("truncated"))
+            }),
+            "the truncation evidence must survive beside the gitlink section: {:?}",
+            outcome.limitations
+        );
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_line_after_hunk_header_projects_incomplete_outcome() -> Result<(), String> {
+        // #4375 review finding: only validated body forms count as parsed
+        // hunk evidence. An `@@` header followed by an unprefixed malformed
+        // line records no changed lines, so counting it as a parsed hunk
+        // would recreate the false-complete outcome this change prevents.
+        let root = temp_root("analysis-outcome-malformed-body-line")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\nnot-a-hunk-line\n",
+        )?;
+        let outcome = result
+            .analysis_outcome
+            .ok_or_else(|| "malformed-body diff must carry an analysis outcome".to_string())?;
+        assert_eq!(
+            outcome.kind,
+            AnalysisOutcomeKind::UnsupportedInput,
+            "a header plus a malformed body line is incomplete, not no_changed_lines"
+        );
+        assert!(result.findings.is_empty());
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn truncated_section_survives_beside_adapter_limitations() -> Result<(), String> {
+        // #4375 review finding: an adapter limitation (here: Rust disabled
+        // for a Rust diff) must not conceal the independently observed
+        // truncation. The typed outcome keeps both limitations, and the
+        // MalformedDiff routes the kind to unsupported_input.
+        let root = temp_root("analysis-outcome-truncated-with-adapter-limitation")?;
+        let result = run_pipeline_for_diff_text(
+            &draft_diff_options(root.clone()),
+            &OraclePolicy::default(),
+            &[],
+            &[],
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,7 +1,7 @@\n",
+        )?;
+        let outcome = result.analysis_outcome.ok_or_else(|| {
+            "truncated diff with adapter limitation must carry an outcome".to_string()
+        })?;
+        assert_eq!(
+            outcome.kind,
+            AnalysisOutcomeKind::UnsupportedInput,
+            "the truncation limitation dominates the kind derivation"
+        );
+        assert!(
+            outcome.limitations.iter().any(|limitation| {
+                limitation.kind == AnalysisLimitationKind::MalformedDiff
+                    && limitation.producer_stage == AnalysisStage::DiffParse
+                    && limitation
+                        .bounded_detail
+                        .as_deref()
+                        .is_some_and(|detail| detail.contains("truncated"))
+            }),
+            "the truncation evidence must survive beside adapter limitations: {:?}",
+            outcome.limitations
+        );
+        assert!(
+            outcome
+                .limitations
+                .iter()
+                .any(|limitation| limitation.kind != AnalysisLimitationKind::MalformedDiff),
+            "the adapter limitation must still be present: {:?}",
+            outcome.limitations
+        );
+        let _ = fs::remove_dir_all(root);
         Ok(())
     }
 

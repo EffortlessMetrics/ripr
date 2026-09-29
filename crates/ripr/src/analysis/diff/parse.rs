@@ -65,6 +65,12 @@ pub(crate) struct ParsedDiff {
     pub(crate) renamed_file_count: usize,
     pub(crate) pure_rename_file_count: usize,
     pub(crate) pure_rename_paths: Vec<PathBuf>,
+    /// File sections (#4375) that opened with a registered textual `+++ `
+    /// header, are not submodule gitlink or binary-sentinel sections, and
+    /// closed without a validated hunk body line. Positive means the
+    /// producer stream ended mid-diff for at least one file, even when
+    /// other sections parsed completely.
+    pub(crate) truncated_file_sections: usize,
     /// Typed record of diff regions this parser deliberately refused to read as
     /// ordinary source (#2828). An empty vector means the parser read the whole
     /// input; it never means "no such region existed but we said nothing".
@@ -207,6 +213,23 @@ mod parser_state {
         conflict_region: Option<ConflictSide>,
         combined_hunks: BTreeMap<Option<PathBuf>, u64>,
         conflict_regions: BTreeMap<Option<PathBuf>, u64>,
+        /// File sections (#4375) that opened with a registered textual `+++ `
+        /// header, are not submodule gitlink or binary-sentinel sections (both
+        /// valid without hunks), and closed — at a new file boundary or end of
+        /// stream — without a single validated hunk body line. Per-section
+        /// accounting: a complete hunk in one file must not mask a later
+        /// truncated section, and a valid hunkless gitlink must not mask a
+        /// truncated source section elsewhere in the same diff.
+        truncated_file_sections: usize,
+        /// Whether the section opened by the most recent textual `+++ ` header
+        /// still owes a hunk body. Submodule gitlink and binary-sentinel
+        /// sections are answered without one.
+        current_section_awaits_body: bool,
+        /// Whether the currently open section has produced at least one
+        /// validated hunk body line (`+`/`-`/context/empty, or a deliberately
+        /// quarantined conflict-marker line). A lone `@@` header or an
+        /// unprefixed malformed line is not body evidence (#4375).
+        current_section_has_body: bool,
         malformed_hunks: BTreeMap<Option<PathBuf>, u64>,
     }
 
@@ -247,6 +270,32 @@ mod parser_state {
 
         pub(super) fn pure_rename_paths(&self) -> Vec<PathBuf> {
             self.pure_rename_paths.clone()
+        }
+
+        /// File sections that parsed a textual header but closed without a
+        /// validated hunk body (#4375).
+        pub(super) fn truncated_file_sections(&self) -> usize {
+            self.truncated_file_sections
+        }
+
+        /// Close the currently open file section's truncation accounting
+        /// (#4375): a section that awaited a hunk body and never received a
+        /// validated one counts as truncated. Called at a new file boundary,
+        /// when a new textual header opens the next section, and at end of
+        /// stream.
+        pub(super) fn close_file_section_accounting(&mut self) {
+            if self.current_section_awaits_body && !self.current_section_has_body {
+                self.truncated_file_sections = self.truncated_file_sections.saturating_add(1);
+            }
+            self.current_section_awaits_body = false;
+            self.current_section_has_body = false;
+        }
+
+        /// Mark the currently open section as having produced a validated
+        /// hunk body line (#4375). `@@` headers and unprefixed malformed
+        /// lines must not reach this.
+        fn mark_section_body_seen(&mut self) {
+            self.current_section_has_body = true;
         }
 
         /// Advance line coordinates for a line the parser deliberately skipped,
@@ -566,6 +615,18 @@ mod parser_state {
             }
             if self.current_path.is_none() || self.saw_old_path_marker {
                 self.current_path = Some(path.clone());
+                // #4375: this is the one registration site that proves a
+                // textual file section opened and a hunk body was expected
+                // next. Rename and gitlink metadata register elsewhere, so
+                // hunkless-but-valid git sections never open a debt here.
+                // A submodule gitlink section also registers through this
+                // marker but is valid without a hunk, so it opens no body
+                // debt; a plain source section does. Opening a section also
+                // closes the previous one, so a complete hunk in an earlier
+                // file cannot mask this section's missing body.
+                self.close_file_section_accounting();
+                self.current_section_awaits_body = !self.submodule_section;
+                self.current_section_has_body = false;
                 files.entry(path.clone()).or_insert_with(|| ChangedFile {
                     path,
                     ..ChangedFile::default()
@@ -592,7 +653,14 @@ mod parser_state {
             if !is_boundary {
                 return false;
             }
+            // A file boundary closes a hunk that was still open (RANK-2):
+            // lines it promised but never delivered are malformed. #4375: the
+            // boundary also closes the previous section's truncation
+            // accounting; if the section owed a hunk body and never received
+            // one, it counts as truncated even when other sections parsed
+            // completely.
             self.close_hunk();
+            self.close_file_section_accounting();
             self.current_path = None;
             self.in_hunk = false;
             self.saw_old_path_marker = false;
@@ -620,6 +688,10 @@ mod parser_state {
             self.close_hunk();
             self.saw_old_path_marker = false;
             self.conflict_region = None;
+            // #4375: an `@@` header alone is not body evidence. The section's
+            // body debt is only answered by a validated body line, so a
+            // stream that ends here — or after an unprefixed malformed line —
+            // stays distinguishable from a section that parsed.
 
             // An n-way hunk header (`@@@` for a two-parent merge, `@@@@` for an
             // octopus) carries one prefix column per parent, so its body cannot
@@ -630,6 +702,12 @@ mod parser_state {
             if raw.chars().take_while(|c| *c == '@').count() > 2 {
                 self.in_hunk = false;
                 self.combined_quarantine = true;
+                // #4375: a quarantined combined hunk is validated hunk
+                // content the parser deliberately refused to read, carrying
+                // its own typed limitation. It answers the section's body
+                // debt, so a complete combined section (which does carry
+                // `--- `/`+++ ` markers) is never also claimed as truncated.
+                self.mark_section_body_seen();
                 let path = self
                     .current_path
                     .clone()
@@ -686,6 +764,10 @@ mod parser_state {
             }
             self.close_hunk();
             self.saw_old_path_marker = false;
+            // #4375: the sentinel is git's answer for a textual section whose
+            // content is binary — valid without any hunk body, so the section
+            // owes no body debt to the truncation gate.
+            self.current_section_awaits_body = false;
             true
         }
 
@@ -737,10 +819,16 @@ mod parser_state {
                     if closes {
                         self.conflict_region = None;
                     }
+                    // #4375: a quarantined conflict line is validated hunk
+                    // content the parser deliberately refused to read as
+                    // source; it answers the section's body debt, and the
+                    // typed conflict limitation carries the evidence onward.
+                    self.mark_section_body_seen();
                     self.advance_quarantined_line(side);
                     return;
                 }
                 (None, Some(open_side)) if is_conflict_marker(payload, "<<<<<<<") => {
+                    self.mark_section_body_seen();
                     self.conflict_region = Some(open_side);
                     let count = self.conflict_regions.entry(Some(path.clone())).or_insert(0);
                     *count = count.saturating_add(1);
@@ -748,6 +836,21 @@ mod parser_state {
                     return;
                 }
                 _ => {}
+            }
+
+            // #4375: only a validated body form answers the section's hunk
+            // debt. `+`/`-`/context/empty are the forms recorded or advanced
+            // below; quarantined conflict lines above are validated content
+            // with their own typed limitation. Anything else — notably an
+            // unprefixed malformed line after an `@@` header — is silently
+            // ignored by this parser and must not read as a parsed hunk, or
+            // a header-plus-garbage stream would project a complete
+            // zero-change outcome again.
+            let validated_body =
+                matches!(raw.as_bytes().first(), Some(b'+') | Some(b'-') | Some(b' '))
+                    || raw.is_empty();
+            if validated_body {
+                self.mark_section_body_seen();
             }
 
             if let Some(text) = raw.strip_prefix('+') {
@@ -1121,6 +1224,134 @@ deleted file mode 100644
             parse_unified_diff_with_metadata(traversal).deleted_file_count,
             0
         );
+    }
+
+    #[test]
+    fn metadata_counts_textual_headers_and_parsed_hunks_for_truncated_streams() {
+        // #4375: the truncated-stream evidence. The issue repro — a valid
+        // header block plus a valid `@@` hunk header, then EOF before any
+        // hunk body line — must count as one truncated file section so the
+        // pipeline can distinguish it from an empty input and from garbage.
+        // A hunk header alone is not a parsed hunk.
+        let truncated = "diff --git a/src/lib.rs b/src/lib.rs\nindex 0000000..1111111 100644\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,7 +1,7 @@\n";
+        let parsed = parse_unified_diff_with_metadata(truncated);
+        assert_eq!(parsed.truncated_file_sections, 1);
+        assert_eq!(parsed.changed_files.len(), 1);
+        assert!(parsed.changed_files[0].added_lines.is_empty());
+        assert!(parsed.changed_files[0].removed_lines.is_empty());
+
+        // The same header truncated before any `@@` header at all.
+        let header_only = "diff --git a/x b/x\n--- a/x\n+++ b/x\n";
+        let parsed = parse_unified_diff_with_metadata(header_only);
+        assert_eq!(parsed.truncated_file_sections, 1);
+
+        // The complete counterpart parses its hunk body.
+        let complete = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+        let parsed = parse_unified_diff_with_metadata(complete);
+        assert_eq!(parsed.truncated_file_sections, 0);
+
+        // Two files, two hunks.
+        let two = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,1 @@\n-a\n+b\ndiff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n@@ -5,1 +5,2 @@\n-old\n+new\n+extra\n";
+        let parsed = parse_unified_diff_with_metadata(two);
+        assert_eq!(parsed.truncated_file_sections, 0);
+
+        // Garbage and empty inputs carry no header evidence, so the existing
+        // malformed_diff and no_scope arms stay authoritative for them.
+        let parsed = parse_unified_diff_with_metadata("this is not a diff\n");
+        assert_eq!(parsed.truncated_file_sections, 0);
+        let parsed = parse_unified_diff_with_metadata("");
+        assert_eq!(parsed.truncated_file_sections, 0);
+    }
+
+    #[test]
+    fn metadata_counts_a_truncated_section_after_a_complete_hunk() {
+        // #4375 review finding: per-section accounting. A complete hunk in
+        // one file must not mask a later section whose stream ends right
+        // after its `+++ ` header; global header/hunk counts would read the
+        // mixed diff as complete.
+        let mixed = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,1 @@\n-old\n+new\ndiff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n";
+        let parsed = parse_unified_diff_with_metadata(mixed);
+        assert_eq!(parsed.truncated_file_sections, 1);
+        assert_eq!(parsed.changed_files.len(), 2);
+    }
+
+    #[test]
+    fn metadata_counts_a_truncated_source_section_after_a_gitlink_section() {
+        // #4375 review finding: the hunkless gitlink exemption must stay
+        // scoped to the gitlink section. A valid hunkless gitlink followed
+        // by a truncated source header must still count the truncated
+        // source section; a global submodule exclusion would suppress
+        // truncation detection for the whole diff.
+        let mixed = "diff --git a/vendor/new b/vendor/new\nnew file mode 160000\nindex 0000000..2222222\n--- /dev/null\n+++ b/vendor/new\ndiff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,7 +1,7 @@\n";
+        let parsed = parse_unified_diff_with_metadata(mixed);
+        assert_eq!(parsed.submodule_file_count, 1);
+        assert_eq!(parsed.truncated_file_sections, 1);
+    }
+
+    #[test]
+    fn metadata_does_not_count_an_unprefixed_line_as_hunk_body_evidence() {
+        // #4375 review finding: only validated body forms (`+`/`-`/
+        // context/empty, or quarantined conflict markers) answer a section's
+        // hunk debt. An unprefixed malformed line after an `@@` header is
+        // silently ignored, so it must not read as a parsed hunk.
+        let malformed = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\nnot-a-hunk-line\n";
+        let parsed = parse_unified_diff_with_metadata(malformed);
+        assert_eq!(parsed.truncated_file_sections, 1);
+        assert!(parsed.changed_files[0].added_lines.is_empty());
+        assert!(parsed.changed_files[0].removed_lines.is_empty());
+
+        // The no-newline escape after a real body line stays body evidence
+        // for the section (the `-old` line already answered the debt).
+        let no_newline = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n";
+        let parsed = parse_unified_diff_with_metadata(no_newline);
+        assert_eq!(parsed.truncated_file_sections, 0);
+    }
+
+    #[test]
+    fn metadata_counts_conflict_quarantine_as_body_evidence() {
+        // #4375: quarantined conflict markers are validated hunk content the
+        // parser deliberately refused to read as source, and they carry their
+        // own typed limitation. They answer the section's hunk debt: the
+        // stream was not truncated, it was refused on purpose.
+        let conflicted = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n<<<<<<< ours\n-old\n+new\n>>>>>>> theirs\n";
+        let parsed = parse_unified_diff_with_metadata(conflicted);
+        assert_eq!(parsed.truncated_file_sections, 0);
+        assert_eq!(parsed.changed_files.len(), 1);
+    }
+
+    #[test]
+    fn metadata_counts_combined_quarantine_as_body_evidence() {
+        // #4375: a combined diff section does carry `--- `/`+++ ` markers,
+        // and its `@@@` hunk body is deliberately unread with its own typed
+        // limitation. The quarantine answers the section's hunk debt, so a
+        // complete combined section is never also claimed as truncated.
+        let combined = "diff --cc src/lib.rs\nindex 1111111,2222222..3333333\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@@ -1,1 -1,1 +1,1 @@@\n-old\n+new\n";
+        let parsed = parse_unified_diff_with_metadata(combined);
+        assert_eq!(parsed.truncated_file_sections, 0);
+        assert_eq!(parsed.changed_files.len(), 1);
+    }
+
+    #[test]
+    fn metadata_keeps_hunkless_git_sections_out_of_truncation_evidence() {
+        // #4375 controls: valid git sections that legitimately carry no hunk
+        // must not read as truncated evidence. A pure rename registers the
+        // new path without any textual `+++ ` marker; a submodule gitlink
+        // addition registers through one but is a submodule section, which
+        // owes no hunk body; a binary sentinel answers its section the same
+        // way.
+        let pure_rename = "diff --git a/src/old.rs b/src/new.rs\nsimilarity index 100%\nrename from src/old.rs\nrename to src/new.rs\n";
+        let parsed = parse_unified_diff_with_metadata(pure_rename);
+        assert_eq!(parsed.truncated_file_sections, 0);
+        assert_eq!(parsed.pure_rename_file_count, 1);
+
+        let gitlink = "diff --git a/vendor/new b/vendor/new\nnew file mode 160000\nindex 0000000..2222222\n--- /dev/null\n+++ b/vendor/new\n";
+        let parsed = parse_unified_diff_with_metadata(gitlink);
+        assert_eq!(parsed.submodule_file_count, 1);
+        assert_eq!(parsed.truncated_file_sections, 0);
+
+        let binary = "diff --git a/logo.png b/logo.png\nindex 1111111..2222222 100644\nBinary files a/logo.png and b/logo.png differ\n";
+        let parsed = parse_unified_diff_with_metadata(binary);
+        assert_eq!(parsed.truncated_file_sections, 0);
     }
 
     #[test]
