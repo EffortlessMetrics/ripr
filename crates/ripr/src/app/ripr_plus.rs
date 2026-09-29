@@ -122,7 +122,9 @@ fn print_help() {
 /// Help body for `ripr plus`. Also the flag source for unknown-argument
 /// suggestions; keep accepted flags on option-list lines.
 pub(crate) const PLUS_HELP: &str = "\
-usage: ripr plus --repo-exposure-summary <path> | --gap-ledger <path> [--check]
+Compose the repo-wide RIPR+ receipt from an existing report artifact.
+
+Usage: ripr plus --repo-exposure-summary <path> | --gap-ledger <path> [--check]
 
 Options:
   --repo-exposure-summary <path>  Compose the receipt from a repo-exposure-summary-json artifact (pure composition).

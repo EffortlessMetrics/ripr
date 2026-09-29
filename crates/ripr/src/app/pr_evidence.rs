@@ -123,7 +123,9 @@ fn print_help() {
 /// Help body for `ripr pr-evidence`. Also the flag source for unknown-argument
 /// suggestions; keep accepted flags on option-list lines.
 pub(crate) const PR_EVIDENCE_HELP: &str = "\
-usage: ripr pr-evidence [--base <rev>] [--head <rev>] [--root <path>] [--check]
+Write the diff-scoped PR evidence packet for one base and head.
+
+Usage: ripr pr-evidence [--base <rev>] [--head <rev>] [--root <path>] [--check]
 
 Options:
   --base <rev>   PR base revision. When omitted, resolved like `ripr check`:

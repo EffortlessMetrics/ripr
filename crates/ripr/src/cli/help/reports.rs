@@ -4,6 +4,7 @@ Usage:
   ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --records PATH [--root PATH] [--out PATH] [--out-md PATH]
   ripr reports gap-ledger --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
+  ripr reports gap-ledger --repo-exposure PATH [--root PATH] [--out PATH] [--out-md PATH]
   ripr reports ts-limitations --check-output PATH [--root PATH] [--out PATH] [--out-md PATH]
   ripr reports ts-false-actionable --corpus PATH [--root PATH] [--out PATH] [--out-md PATH]
 

@@ -87,7 +87,9 @@ fn print_help() {
 /// Help body for `ripr annotations`. Also the flag source for unknown-argument
 /// suggestions; keep accepted flags on option-list lines.
 pub(crate) const ANNOTATIONS_HELP: &str = "\
-usage: ripr annotations [--comments <path>] [--out <path>] [--check]
+Render review comments as GitHub Actions warning annotations.
+
+Usage: ripr annotations [--comments <path>] [--out <path>] [--check]
 
 Options:
   --comments <path>  Path to comments.json (default: target/ripr/review/comments.json)

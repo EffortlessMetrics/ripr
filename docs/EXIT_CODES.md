@@ -100,10 +100,15 @@ enabled language runtimes stay visible but do not decide that profile's exit.
 
 ## CI integration
 
-In generated GitHub Actions workflows, ripr preserves the exit code:
+The GitHub Actions workflow that `ripr init --ci github` generates preserves
+the exit code:
 
-```yaml
-ripr check --root . --mode draft --format json > check.json || check_status=$?
+```bash
+check_status=0
+ripr check \
+  --root . \
+  --base "origin/${{ github.base_ref }}" \
+  --format json > target/ripr/pr/check.json || check_status=$?
 ```
 
 The `|| check_status=$?` pattern captures the exit code without failing the

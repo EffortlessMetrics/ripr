@@ -187,7 +187,9 @@ fn omitted_base_resolution(
 /// `parse_options` and before any filesystem write.
 fn print_side_effect_disclosure(options: &FirstPrOptions) {
     println!("ripr first-pr - side effects and cost disclosure");
-    println!("  cost class:      varies with diff and workspace size");
+    // first-pr composes existing artifacts; it runs no analysis, so it has
+    // no analysis cache or diff-sized runtime to disclose.
+    println!("  cost class:      artifact composition only; runs no analysis");
     if options.check {
         println!("  writes to:       none (--check validates an existing start-here packet)");
     } else {
@@ -196,10 +198,10 @@ fn print_side_effect_disclosure(options: &FirstPrOptions) {
             options.out_dir.trim_end_matches('/')
         );
     }
-    println!("  cache location:  target/ripr/cache/");
-    println!("  git reads:       yes (diff between base and head)");
+    println!("  cache location:  none");
+    println!("  git reads:       yes (base and head preflight)");
     println!("  network:         none");
-    println!("  runtime hint:    seconds on typical diffs; minutes on large diffs\n");
+    println!("  runtime hint:    seconds\n");
 }
 
 fn write_first_pr(repo: &Path, options: &FirstPrOptions) -> Result<(), String> {

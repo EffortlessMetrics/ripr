@@ -419,7 +419,7 @@ fn receipt_next_step(
         "Regenerate the analysis outcome for this workspace with `ripr check --format json`, written beside the agent verify JSON"
     };
     let step = format!(
-        "This receipt is not review evidence because its status is `{status}`{reason}; do not include it in review. {recovery}, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --phase before` and rerun `--phase after`."
+        "This receipt is not review evidence because its status is `{status}`{reason}; do not include it in review. {recovery}, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --seam-id <seam-id> --phase before` and run the `--phase after` command it prints."
     );
     (step.clone(), step)
 }
@@ -1108,7 +1108,7 @@ mod tests {
             status: AgentReceiptUnavailableStatus::Invalid,
             reason: "Analysis outcome artifact base does not match its typed identity.".to_string(),
         })?;
-        let invalid_step = "This receipt is not review evidence because its status is `invalid` (Analysis outcome artifact base does not match its typed identity); do not include it in review. Regenerate the analysis outcome for this workspace with `ripr check --format json`, written beside the agent verify JSON, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --phase before` and rerun `--phase after`.";
+        let invalid_step = "This receipt is not review evidence because its status is `invalid` (Analysis outcome artifact base does not match its typed identity); do not include it in review. Regenerate the analysis outcome for this workspace with `ripr check --format json`, written beside the agent verify JSON, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --seam-id <seam-id> --phase before` and run the `--phase after` command it prints.";
         assert_eq!(invalid["status"], "invalid");
         assert_eq!(
             invalid["summary"]["next_action"]["recommended_action"],
@@ -1131,7 +1131,7 @@ mod tests {
         )))?;
         assert_eq!(
             partial["summary"]["next_action"]["recommended_action"],
-            "This receipt is not review evidence because its status is `incomplete` (the analysis outcome is not complete; see `analysis_outcome`); do not include it in review. Resolve what kept the analysis from completing, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --phase before` and rerun `--phase after`."
+            "This receipt is not review evidence because its status is `incomplete` (the analysis outcome is not complete; see `analysis_outcome`); do not include it in review. Resolve what kept the analysis from completing, then rerun agent verify and agent receipt; in the repair loop, start a new attempt with `ripr agent repair --seam-id <seam-id> --phase before` and run the `--phase after` command it prints."
         );
         for receipt in [&invalid, &missing, &partial] {
             assert_ne!(receipt["status"], "advisory", "{receipt}");

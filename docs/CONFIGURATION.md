@@ -148,7 +148,7 @@ Missing `ripr.toml` is the normal first-run state; the command uses built-in
 defaults unless repo policy or explicit flags override them.
 
 ```text
-ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
+ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS]
 ```
 
 | Flag | Default | Notes |
@@ -286,10 +286,13 @@ ripr context [--root PATH] [--base REV | --diff PATH]
 ### `ripr doctor`
 
 ```text
-ripr doctor [--root PATH] [--json]
+ripr doctor [--root PATH] [--json] [--profile analysis|source-build]
 ```
 
 Reports local tooling and workspace shape. Takes no analysis-shaping flags.
+`--profile analysis` (the default) keeps a missing or old toolchain advisory;
+`--profile source-build` makes it a failure. See
+[Exit codes](EXIT_CODES.md#ripr-doctor-exit-codes).
 
 Use `--json` for the same core checks as the human report when onboarding an
 agent, editor, or CI wrapper:
@@ -792,8 +795,8 @@ The `badge-plus-*` and `repo-badge-plus-*` formats read
 neutral "needs test-efficiency" badge and warns on stderr. See
 [Badge adoption](BADGE_ADOPTION.md).
 
-The `context` command always returns JSON-shaped output regardless of
-`--format`.
+The `context` command does not accept `--format`; its output is always
+JSON-shaped, and `--json` is accepted for parity with `check`.
 
 ## `ripr.toml`
 

@@ -623,7 +623,9 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
             authority: false,
             description: "Focused repair receipt.",
             default_status: "available",
-            next_command: Some("ripr agent receipt --out target/ripr/reports/agent-receipt.json"),
+            // The repair after phase writes the receipt; agent status names the
+            // attempt's next command, or the route to start one.
+            next_command: Some("ripr agent status --root ."),
         },
         ArtifactSpec {
             id: "pr_summary",
@@ -636,7 +638,9 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
             authority: false,
             description: "Local reviewer packet.",
             default_status: "available",
-            next_command: Some("cargo xtask pr-summary"),
+            // Written by the ripr repository's own `cargo xtask pr-summary`;
+            // a user workspace has no xtask, so no command is suggested.
+            next_command: None,
         },
         ArtifactSpec {
             id: "check_pr",
@@ -649,7 +653,9 @@ fn artifact_specs(input: &ReportPacketIndexInput) -> Vec<ArtifactSpec> {
             authority: false,
             description: "Local review-ready gate receipt.",
             default_status: "pass",
-            next_command: Some("cargo xtask check-pr"),
+            // Written by the ripr repository's own `cargo xtask check-pr`;
+            // a user workspace has no xtask, so no command is suggested.
+            next_command: None,
         },
         ArtifactSpec {
             id: "sarif",

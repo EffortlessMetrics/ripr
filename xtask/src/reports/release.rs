@@ -1501,7 +1501,7 @@ fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
         &first_pr_help.stdout,
         &[
             "Create the start-here packet",
-            "usage: ripr first-pr",
+            "Usage: ripr first-pr",
             "--gap-ledger",
             "--receipts-dir",
             "--out-dir",

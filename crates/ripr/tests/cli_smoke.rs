@@ -2595,10 +2595,10 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     assert_success(&output);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("ripr first-pr - side effects and cost disclosure"));
-    assert!(stdout.contains("cost class:      varies with diff and workspace size"));
+    assert!(stdout.contains("cost class:      artifact composition only; runs no analysis"));
     assert!(stdout.contains(&format!("writes to:       {reports_arg}/")));
-    assert!(stdout.contains("cache location:  target/ripr/cache/"));
-    assert!(stdout.contains("git reads:       yes (diff between base and head)"));
+    assert!(stdout.contains("cache location:  none"));
+    assert!(stdout.contains("git reads:       yes (base and head preflight)"));
     assert!(stdout.contains("network:         none"));
     assert!(stdout.contains("Start here:"));
     // Summary and Wrote lines render the resolved locations with stable

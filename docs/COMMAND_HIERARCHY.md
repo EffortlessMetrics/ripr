@@ -73,7 +73,7 @@ establish static improvement or acceptance.
 
 `agent start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, and
 `review-summary` remain available for explicit control, compatibility, and
-debugging. Use their help and [Agent workflows](AGENT_WORKFLOWS.md) rather than
+debugging. Use their help and the [LLM operator guide](LLM_OPERATOR_GUIDE.md) rather than
 assembling them as mandatory first-run steps.
 
 ## Drift rule

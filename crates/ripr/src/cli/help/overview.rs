@@ -151,15 +151,16 @@ Reports:
   ripr receipt check [--path PATH] [--gap <canonical_gap_id>]
 
 What it does:
-  Reads changed Rust code, creates mutation-like probes, and estimates whether
-  tests appear to reach, infect, propagate, and reveal the changed behavior
-  through meaningful oracles. It does not run mutants.
+  Reads changed Rust code (Python and TypeScript in preview), creates
+  mutation-like probes, and estimates whether tests appear to reach, infect,
+  propagate, and reveal the changed behavior through meaningful oracles. It
+  does not run mutants.
 
 Quick start (one command per group):
   ripr doctor                                             # setup
-  ripr check                                           # ordinary first value
+  ripr check                                              # ordinary first value
   ripr agent repair --seam-id ID --phase before           # repair
-  ripr first-pr --root . --base BASE --head HEAD        # PR evidence
+  ripr first-pr --root . --base BASE --head HEAD          # PR evidence
   ripr init --ci github                                   # advisory CI
   # Replace BASE with your PR base ref.
   ripr reports index                                      # reports

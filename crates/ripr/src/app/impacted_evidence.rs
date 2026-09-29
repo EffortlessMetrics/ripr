@@ -102,7 +102,9 @@ fn print_help() {
 /// Help body for `ripr impacted-evidence`. Also the flag source for
 /// unknown-argument suggestions; keep accepted flags on option-list lines.
 pub(crate) const IMPACTED_EVIDENCE_HELP: &str = "\
-usage: ripr impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]
+Route mutation mode from PR evidence and PR labels.
+
+Usage: ripr impacted-evidence [--pr-evidence <path>] [--label <label>] [--labels <csv>] [--check]
 
 Options:
   --pr-evidence <path>  Path to repo-exposure.json (default: target/ripr/pr/repo-exposure.json)

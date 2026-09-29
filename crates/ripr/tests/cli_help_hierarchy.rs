@@ -17,6 +17,56 @@ const ROOT_README: &str = include_str!("../../../README.md");
 const QUICKSTART_DOC: &str = include_str!("../../../docs/QUICKSTART.md");
 const EXIT_CODES_DOC: &str = include_str!("../../../docs/EXIT_CODES.md");
 
+/// User-facing guides whose `ripr ...` commands a reader or agent copies.
+/// Internal specs, plans, and handoffs are historical records and stay out.
+const PUBLIC_COMMAND_DOCS: &[(&str, &str)] = &[
+    ("README.md", ROOT_README),
+    ("crates/ripr/README.md", include_str!("../README.md")),
+    (
+        "editors/vscode/README.md",
+        include_str!("../../../editors/vscode/README.md"),
+    ),
+    ("docs/QUICKSTART.md", QUICKSTART_DOC),
+    ("docs/COMMAND_HIERARCHY.md", COMMAND_HIERARCHY_DOC),
+    ("docs/EXIT_CODES.md", EXIT_CODES_DOC),
+    (
+        "docs/LLM_OPERATOR_GUIDE.md",
+        include_str!("../../../docs/LLM_OPERATOR_GUIDE.md"),
+    ),
+    (
+        "docs/FIRST_PR_WORKFLOW.md",
+        include_str!("../../../docs/FIRST_PR_WORKFLOW.md"),
+    ),
+    (
+        "docs/CONFIGURATION.md",
+        include_str!("../../../docs/CONFIGURATION.md"),
+    ),
+    (
+        "docs/AGENT_WORKFLOWS.md",
+        include_str!("../../../docs/AGENT_WORKFLOWS.md"),
+    ),
+    (
+        "docs/TARGETED_TEST_WORKFLOW.md",
+        include_str!("../../../docs/TARGETED_TEST_WORKFLOW.md"),
+    ),
+    (
+        "docs/interop/mcp.md",
+        include_str!("../../../docs/interop/mcp.md"),
+    ),
+    (
+        "docs/interop/neovim-lsp.md",
+        include_str!("../../../docs/interop/neovim-lsp.md"),
+    ),
+    (
+        "docs/interop/other-editors-lsp.md",
+        include_str!("../../../docs/interop/other-editors-lsp.md"),
+    ),
+    (
+        "docs/releases/0.11.0-release-notes.md",
+        include_str!("../../../docs/releases/0.11.0-release-notes.md"),
+    ),
+];
+
 fn run_ripr(args: &[&str]) -> Result<std::process::Output, String> {
     Command::new(env!("CARGO_BIN_EXE_ripr"))
         .args(args)
@@ -515,6 +565,213 @@ fn doctor_exit_code_guide_distinguishes_analysis_and_source_build() -> Result<()
             "docs/EXIT_CODES.md still says the default doctor fails on a missing toolchain"
                 .to_string(),
         );
+    }
+    Ok(())
+}
+
+/// One documented `ripr ...` invocation: the leading lowercase words (the
+/// candidate command path) and every `--flag` it passes.
+#[derive(Debug, PartialEq)]
+struct DocInvocation {
+    line: usize,
+    words: Vec<String>,
+    flags: Vec<String>,
+}
+
+/// Extract `ripr ...` invocations that pass at least one flag. A command
+/// ends at a code-span, pipe, or shell separator; a trailing `\` joins the
+/// next line so multi-line Bash examples are read whole.
+fn doc_invocations(doc: &str) -> Vec<DocInvocation> {
+    let lf = doc.replace("\r\n", "\n");
+    let lines: Vec<&str> = lf.lines().collect();
+    let mut found = Vec::new();
+    for (index, raw) in lines.iter().enumerate() {
+        let mut text = raw.to_string();
+        let mut next = index + 1;
+        while text.trim_end().ends_with('\\') && next < lines.len() {
+            text = format!("{} {}", text.trim_end().trim_end_matches('\\'), lines[next]);
+            next += 1;
+        }
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find("ripr ") {
+            let boundary = rest[..at]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !(c.is_alphanumeric() || "-_/.".contains(c)));
+            let tail = &rest[at + "ripr ".len()..];
+            rest = tail;
+            if !boundary {
+                continue;
+            }
+            let command = command_text(tail);
+            let tokens: Vec<&str> = command.split_whitespace().collect();
+            let words = tokens
+                .iter()
+                .take(2)
+                .take_while(|token| {
+                    token.starts_with(|c: char| c.is_ascii_lowercase())
+                        && token
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                })
+                .map(|token| (*token).to_string())
+                .collect::<Vec<_>>();
+            let flags = tokens
+                .iter()
+                .filter_map(|token| token.strip_prefix("--"))
+                .map(|flag| flag.split('=').next().unwrap_or(flag))
+                .map(|flag| flag.trim_end_matches(['.', ',', ':', ']']))
+                .filter(|flag| {
+                    flag.starts_with(|c: char| c.is_ascii_lowercase())
+                        && flag
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                })
+                .map(|flag| format!("--{flag}"))
+                .collect::<Vec<_>>();
+            if !words.is_empty() && !flags.is_empty() {
+                found.push(DocInvocation {
+                    line: index + 1,
+                    words,
+                    flags,
+                });
+            }
+        }
+    }
+    found
+}
+
+/// The command text after `ripr `: it ends at a code-span, pipe, or shell
+/// separator outside quotes. Each quoted value becomes one `VALUE` token, so
+/// a flag after `--diff "a b.patch"` is still checked; an unterminated quote
+/// ends the command.
+fn command_text(tail: &str) -> String {
+    let mut text = String::new();
+    let mut chars = tail.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '`' | '|' | ';' | '&' | ')' | '#' => break,
+            '"' | '\'' => {
+                if !chars.by_ref().any(|close| close == c) {
+                    break;
+                }
+                text.push_str("VALUE");
+            }
+            _ => text.push(c),
+        }
+    }
+    text
+}
+
+fn help_lists_flag(help: &str, flag: &str) -> bool {
+    help.match_indices(flag).any(|(at, _)| {
+        help[at + flag.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '-'))
+    })
+}
+
+/// Resolve the help screen for the longest documented command path that the
+/// CLI accepts. Prose such as "ripr check with --json" falls back to
+/// `ripr check`; a first word that is not a command is not an invocation.
+fn command_help(
+    words: &[String],
+    cache: &mut std::collections::BTreeMap<Vec<String>, Option<String>>,
+) -> Result<Option<(String, String)>, String> {
+    for len in (1..=words.len()).rev() {
+        let path = words[..len].to_vec();
+        if !cache.contains_key(&path) {
+            let mut args: Vec<&str> = path.iter().map(String::as_str).collect();
+            args.push("--help");
+            let output = run_ripr(&args)?;
+            let help = output
+                .status
+                .success()
+                .then(|| String::from_utf8_lossy(&output.stdout).into_owned());
+            cache.insert(path.clone(), help);
+        }
+        if let Some(Some(help)) = cache.get(&path) {
+            return Ok(Some((path.join(" "), help.clone())));
+        }
+    }
+    Ok(None)
+}
+
+fn undocumented_doc_flags(
+    docs: &[(&str, &str)],
+    cache: &mut std::collections::BTreeMap<Vec<String>, Option<String>>,
+) -> Result<Vec<String>, String> {
+    let mut drift = Vec::new();
+    for (name, doc) in docs {
+        for invocation in doc_invocations(doc) {
+            let Some((command, help)) = command_help(&invocation.words, cache)? else {
+                continue;
+            };
+            for flag in &invocation.flags {
+                if !help_lists_flag(&help, flag) {
+                    drift.push(format!(
+                        "{name}:{} `ripr {command} {flag}` is not an option of `ripr {command} --help`",
+                        invocation.line
+                    ));
+                }
+            }
+        }
+    }
+    Ok(drift)
+}
+
+/// Every flag a public guide passes to a `ripr` command must be an option that
+/// command's rendered help lists. The parser/help direction is already pinned
+/// (#2342); this pins the guide/help direction so a renamed or removed flag
+/// cannot survive in copy-paste examples.
+#[test]
+fn public_docs_only_pass_flags_the_command_help_lists() -> Result<(), String> {
+    let mut cache = std::collections::BTreeMap::new();
+    let drift = undocumented_doc_flags(PUBLIC_COMMAND_DOCS, &mut cache)?;
+    if !drift.is_empty() {
+        return Err(format!(
+            "documented flags drifted from the CLI:\n{}",
+            drift.join("\n")
+        ));
+    }
+    let checked = cache.values().filter(|help| help.is_some()).count();
+    if checked < 10 {
+        return Err(format!(
+            "doc flag guard resolved only {checked} command help screens; the extractor lost its subjects"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn doc_flag_guard_rejects_removed_flags_and_accepts_prose() -> Result<(), String> {
+    let mut cache = std::collections::BTreeMap::new();
+    let bad = "Run `ripr check --no-such-flag` first.\n";
+    let drift = undocumented_doc_flags(&[("bad.md", bad)], &mut cache)?;
+    if drift.len() != 1 || !drift[0].contains("bad.md:1 `ripr check --no-such-flag`") {
+        return Err(format!("guard missed a removed check flag: {drift:?}"));
+    }
+    let sub =
+        "```bash\nripr agent repair --root . \\\n  --seam-id ID --phase before --bogus\n```\n";
+    let drift = undocumented_doc_flags(&[("sub.md", sub)], &mut cache)?;
+    if drift.len() != 1 || !drift[0].contains("`ripr agent repair --bogus`") {
+        return Err(format!(
+            "guard missed a continued-line subcommand flag: {drift:?}"
+        ));
+    }
+    let quoted = "Run `ripr check --diff \"a b.patch\" --bogus`.\n";
+    let drift = undocumented_doc_flags(&[("quoted.md", quoted)], &mut cache)?;
+    if drift.len() != 1 || !drift[0].contains("`ripr check --bogus`") {
+        return Err(format!(
+            "guard missed a flag after a quoted value: {drift:?}"
+        ));
+    }
+    let good = "Use ripr check with --json, or `ripr pilot --root .`. The ripr is static; \
+                cargo-ripr --x and ripr-swarm --y are not invocations.\n";
+    let drift = undocumented_doc_flags(&[("good.md", good)], &mut cache)?;
+    if !drift.is_empty() {
+        return Err(format!("guard rejected valid prose: {drift:?}"));
     }
     Ok(())
 }

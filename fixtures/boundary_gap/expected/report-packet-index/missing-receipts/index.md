@@ -21,15 +21,13 @@ Repair and agent handoff:
 
 Validation receipts:
 - Agent receipt: missing
-  - next: `ripr agent receipt --out target/ripr/reports/agent-receipt.json`
+  - next: `ripr agent status --root .`
 - Check PR: missing
-  - next: `cargo xtask check-pr`
 
 Missing expected:
 - Agent receipt: not_generated
-  - next: `ripr agent receipt --out target/ripr/reports/agent-receipt.json`
+  - next: `ripr agent status --root .`
 - Check PR: not_generated
-  - next: `cargo xtask check-pr`
 
 Limits:
 - Advisory report-packet index only.

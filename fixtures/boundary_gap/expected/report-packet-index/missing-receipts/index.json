@@ -127,7 +127,7 @@
           "required": false,
           "authority": false,
           "description": "Focused repair receipt.",
-          "next_command": "ripr agent receipt --out target/ripr/reports/agent-receipt.json"
+          "next_command": "ripr agent status --root ."
         },
         {
           "id": "check_pr",
@@ -140,7 +140,7 @@
           "required": false,
           "authority": false,
           "description": "Local review-ready gate receipt.",
-          "next_command": "cargo xtask check-pr"
+          "next_command": null
         }
       ]
     }
@@ -153,7 +153,7 @@
       "path": "target/ripr/reports/agent-receipt.json",
       "required": false,
       "reason": "not_generated",
-      "next_command": "ripr agent receipt --out target/ripr/reports/agent-receipt.json"
+      "next_command": "ripr agent status --root ."
     },
     {
       "id": "check_pr",
@@ -162,7 +162,7 @@
       "path": "target/ripr/reports/check-pr.md",
       "required": false,
       "reason": "not_generated",
-      "next_command": "cargo xtask check-pr"
+      "next_command": null
     }
   ],
   "warnings": [

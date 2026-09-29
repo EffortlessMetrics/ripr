@@ -441,7 +441,7 @@ reads exactly one family, so point commands at the right one:
 | Receipt family | Written by | Default path | Read by |
 |---|---|---|---|
 | Gap receipt (RIPR-SPEC-0079) | `ripr receipt write` | `target/ripr/receipts/<sanitized canonical_gap_id>.json` — one file per gap; the filename percent-encodes characters that are unsafe in paths | `ripr receipt check`, which resolves this same default when you pass `--gap <canonical_gap_id>` without `--path` |
-| Agent-loop receipt | `ripr agent repair --phase after`, or the lower-level `ripr agent receipt --out target/ripr/reports/agent-receipt.json` | `target/ripr/reports/agent-receipt.json` — one file; each after phase replaces it | `ripr agent status` and `ripr agent review-summary` |
+| Agent-loop receipt | `ripr agent repair --phase after`, or the lower-level `ripr agent receipt --verify-json PATH --seam-id ID --json --out target/ripr/reports/agent-receipt.json` | `target/ripr/reports/agent-receipt.json` — one file; each after phase replaces it | `ripr agent status` and `ripr agent review-summary` |
 
 Notes:
 

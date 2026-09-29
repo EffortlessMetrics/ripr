@@ -41,11 +41,11 @@
 //! the projection only ever produces `Some(record)` for synthetic test
 //! findings. PR 16 lands the real Perl evidence path.
 
-use crate::agent::loop_commands::shell_arg;
 use crate::domain::{ExposureClass, Finding, LanguageId, LanguageStatus};
 use crate::output::gap_decision_ledger::{
     GapAnchor, GapRecord, GapRepairRoute, ProjectionEligibility,
 };
+use crate::output::receipt_write::receipt_write_command;
 use std::collections::BTreeMap;
 
 /// The authority-boundary string carried by all Perl preview packets.
@@ -249,27 +249,22 @@ pub(crate) fn perl_gap_record_for(finding: &Finding) -> Option<GapRecord> {
 
 /// Derive the receipt command for a Perl preview finding.
 ///
-/// A fixed `ripr outcome …` shape with no external provider, curl, or http
+/// The canonical `ripr receipt write` form (RIPR-SPEC-0079), the same builder
+/// the TypeScript projection uses, with no external provider, curl, or http
 /// request. It feeds only the shared validator, which checks that
 /// `receipt_command` is non-empty (`agent_seam_packets.rs:904-911`); public
-/// Perl output carries `receipt.command = null`. The TypeScript projection
-/// that this once mirrored now emits the canonical `ripr receipt write` form
-/// (RIPR-SPEC-0079).
+/// Perl output carries `receipt.command = null`. An earlier `ripr outcome
+/// ... --verify-cmd` shape named a flag `outcome` never accepted.
 pub(crate) fn perl_receipt_command(canonical_gap_id: &str, verify_command: &str) -> String {
     let slug = canonical_gap_id
         .chars()
         .map(|c| if c == ':' || c == '/' { '_' } else { c })
         .collect::<String>();
     let receipt_path = format!("target/ripr/receipts/{slug}.targeted-test-outcome.json");
-    // Route both operator-supplied values through the shared bash encoder
-    // rather than wrapping them in double quotes here: a verify command
-    // containing `$`, a backtick, or a redirect would otherwise execute when
-    // this advisory string is copied into a shell (#2347).
-    format!(
-        "ripr outcome --before <baseline> --after <repair> --verify-cmd {} --out {}",
-        shell_arg(verify_command),
-        shell_arg(&receipt_path)
-    )
+    // The shared builder routes every operator-supplied value through the bash
+    // encoder, so a verify command holding `$`, a backtick, or a redirect
+    // cannot execute when this advisory string is copied into a shell (#2347).
+    receipt_write_command(canonical_gap_id, verify_command, Some(&receipt_path))
 }
 
 /// Map the Perl repair kind (from `perl_repair_kind:` evidence) onto the
@@ -591,14 +586,14 @@ mod tests {
     // Non-parity tests: pin helper behavior + the ADR 0019 invariants.
     // ──────────────────────────────────────────────────────────────────────
 
-    /// `perl_receipt_command` produces a `ripr outcome` shape with no curl/http
-    /// (mirrors the TS receipt invariant).
+    /// `perl_receipt_command` produces the canonical `ripr receipt write`
+    /// shape with no curl/http (mirrors the TS receipt invariant).
     #[test]
-    fn perl_receipt_command_is_ripr_outcome_shape() {
+    fn perl_receipt_command_is_canonical_receipt_write_shape() {
         let cmd = perl_receipt_command("gap:perl:lib/My/App.pm:discount", "prove t/app.t");
         assert!(
-            cmd.starts_with("ripr outcome --before"),
-            "receipt must be a ripr outcome command: {cmd}"
+            cmd.starts_with("ripr receipt write --gap gap:perl:lib/My/App.pm:discount --verify-command 'prove t/app.t' --status not_run --out "),
+            "receipt must be the canonical receipt write command: {cmd}"
         );
         assert!(
             cmd.contains("target/ripr/receipts/"),

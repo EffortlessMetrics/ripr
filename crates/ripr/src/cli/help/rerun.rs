@@ -5,7 +5,7 @@ Usage: ripr rerun --changed-test PATH[::TEST_NODE] [--before PATH] [--root PATH]
 
 Options:
   --changed-test PATH[::TEST_NODE]
-                       Edited Rust integration or unit-test file, optionally narrowed to one parsed test node. Required.
+                       Edited Rust integration or unit-test file, optionally narrowed to one parsed test node. Required unless --gap is used.
   --gap ID             Canonical gap identity from the explicit gap ledger.
   --gap-ledger PATH    Gap decision ledger required by --gap.
   --before PATH        Explicit prior targeted-rerun, repo-exposure, or compatible static snapshot.

@@ -157,7 +157,7 @@ pub(super) fn print_help() {
 pub(crate) const FIRST_PR_HELP: &str = "\
 Create the start-here packet for one PR from existing RIPR artifacts.
 
-usage: ripr first-pr|start-here [--root <path>] [--base <rev>] [--head <rev>] [--check-output <path>] [--gap-ledger <path>] [--first-action <path>] [--review-comments <path>] [--agent-packet <path>] [--gate-decision <path>] [--receipts-dir <path>] [--out-dir <path>] [--check]
+Usage: ripr first-pr|start-here [--root <path>] [--base <rev>] [--head <rev>] [--check-output <path>] [--gap-ledger <path>] [--first-action <path>] [--review-comments <path>] [--agent-packet <path>] [--gate-decision <path>] [--receipts-dir <path>] [--out-dir <path>] [--check]
 
 Options:
   --root <path>              Workspace root. Defaults to .
@@ -165,7 +165,8 @@ Options:
                              `ripr check`: origin/HEAD, then origin/main,
                              origin/master, main, and master.
   --head <rev>               PR head revision. Defaults to HEAD.
-  --check-output <path>      Optional check JSON to consume instead of running analysis.
+  --check-output <path>      Existing `ripr check --json` output to derive the gap ledger from.
+                             first-pr never runs analysis itself.
   --gap-ledger <path>        Gap-decision ledger JSON. Defaults to target/ripr/reports/gap-decision-ledger.json.
   --first-action <path>      First-useful-action JSON. Defaults to target/ripr/reports/first-useful-action.json.
   --review-comments <path>   Review-comments JSON. Defaults to target/ripr/review/comments.json.

@@ -11,6 +11,18 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Commands ripr prints now run. For a missing agent receipt, `ripr reports
+  index` suggests `ripr agent status`, which names the repair attempt's
+  next step, instead of an `agent receipt` call missing its required
+  flags. It no longer suggests the repository-internal `cargo xtask
+  check-pr` and `cargo xtask pr-summary`. Invalid-receipt
+  guidance names `--seam-id`, and Perl receipt commands use the canonical
+  `ripr receipt write` form instead of a `--verify-cmd` flag `outcome` never
+  had. Help screens and guides that contradicted the CLI were corrected,
+  including the `first-pr` cost disclosure, which described an analysis the
+  command never runs, and `docs/CONFIGURATION.md`'s claim that `context`
+  accepts `--format`. A test now fails when a public guide passes a flag
+  that its command's help does not list (#4573).
 - LSP: a request whose method starts with `$/` and that ripr does not handle
   now gets a `-32601` method-not-found error, as the LSP spec requires. It got
   no response at all, so a client that sent one waited on it forever.
