@@ -43,16 +43,24 @@ suite('Managed Server Installation', () => {
     const digest = 'a'.repeat(64);
     const request: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: digest };
     const admitted = operations('binary-v1', '1.2.3');
+    const selectedManifestUrl =
+      'https://github.com/EffortlessMetrics/ripr/releases/download/v1.2.3-rc.1/ripr-server-manifest-v1.2.3.json';
     const withStamp: ManagedServerInstallOperations = {
       ...admitted,
-      resolveArchive: async () => ({ ...(await admitted.resolveArchive()), admittedManifestSha256: digest })
+      resolveArchive: async () => ({
+        ...(await admitted.resolveArchive()),
+        admittedManifestSha256: digest,
+        selectedManifestUrl
+      })
     };
     const installed = await installManagedServer(request, withStamp);
     assert.strictEqual(installed.receipt.manifestSha256, digest);
+    assert.strictEqual(installed.receipt.selectedManifestUrl, selectedManifestUrl);
 
     const cached = await readManagedServerInstallation(request);
     assert.notStrictEqual(cached, undefined);
     assert.strictEqual(cached?.receipt.manifestSha256, digest);
+    assert.strictEqual(cached?.receipt.selectedManifestUrl, selectedManifestUrl);
   });
 
   test('bound requests reject unstamped and mismatched receipts', async () => {
