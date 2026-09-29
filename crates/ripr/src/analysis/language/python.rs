@@ -120,8 +120,6 @@ pub(crate) use source_facts::detect_python_test_framework;
 use source_facts::parse_module;
 use source_facts::{extract_source_facts, source_fact_snapshot_observation};
 mod source_utils;
-#[cfg(test)]
-use source_utils::line_for_offset;
 use source_utils::{is_test_file, normalized_path};
 mod static_limits;
 use static_limits::{

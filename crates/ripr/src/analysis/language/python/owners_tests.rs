@@ -4,7 +4,7 @@ use super::module_constants::{
 #[cfg(test)]
 use super::source_facts::extract_source_facts;
 use super::source_utils::{
-    line_for_range_end, line_for_range_start, normalized_path, text_for_range,
+    SourceText, line_for_range_end, line_for_range_start, normalized_path, text_for_range,
 };
 use super::static_limits::{collect_static_cli_receiver_names, is_static_route_decorator};
 use super::{
@@ -25,7 +25,7 @@ pub(super) fn extract_owners(file: &Path, source: &str) -> Vec<PythonOwner> {
 
 pub(super) fn collect_owners_from_statements(
     file: &Path,
-    source: &str,
+    source: &SourceText<'_>,
     statements: &[Stmt],
     class_context: Option<&str>,
     imports: &[PythonImport],
@@ -99,7 +99,7 @@ pub(super) fn collect_owners_from_statements(
 #[derive(Clone, Copy)]
 struct PythonOwnerContext<'a> {
     file: &'a Path,
-    source: &'a str,
+    source: &'a SourceText<'a>,
     class_context: Option<&'a str>,
     imports: &'a [PythonImport],
     module_constants: &'a [PythonModuleConstant],
@@ -207,7 +207,7 @@ fn owner_from_class(
 
 pub(super) fn module_owner(
     file: &Path,
-    source: &str,
+    source: &SourceText<'_>,
     range: TextRange,
     imports: &[PythonImport],
 ) -> PythonOwner {
@@ -239,7 +239,7 @@ pub(super) fn extract_tests(file: &Path, source: &str) -> Vec<PythonTest> {
 /// Custom collection prefixes and hooks are not resolved here.
 pub(super) fn collect_tests_from_statements(
     file: &Path,
-    source: &str,
+    source: &SourceText<'_>,
     statements: &[Stmt],
     class_context: Option<&str>,
     in_unittest_class: bool,

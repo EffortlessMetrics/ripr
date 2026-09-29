@@ -329,3 +329,38 @@ fn mock_patching_in_a_test_file_counts_as_a_dynamic_writer() {
         "import pricing\n\ndef test_x():\n    assert pricing.shipping(5_000) == 0\n"
     ));
 }
+
+/// `walrus_target_names` finds exactly the names `walrus_targets` accepts,
+/// on every name drawn from the text and on names that are not in it.
+#[test]
+fn walrus_target_names_match_walrus_targets_for_every_name() {
+    let sources = [
+        "",
+        "x := 1",
+        "if (n := len(a)) > 10: pass",
+        "LIMIT:=5\nother = LIMIT",
+        "a ::= 1\nb :== 2\nc\t\n := 3",
+        "xLIMIT := 1\nLIMITx := 2",
+        "é_x := 1  # é_x\nif (y:=2): y",
+        ":= 1\n  := 2",
+        "LIMIT = 3\nprint(LIMIT, n := LIMIT)",
+    ];
+    let mut compared = 0;
+    for source in sources {
+        let names = super::walrus_target_names(source);
+        let mut candidates: Vec<&str> = source
+            .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
+            .filter(|word| !word.is_empty())
+            .collect();
+        candidates.extend(["LIMIT", "missing", "x", "n"]);
+        for name in candidates {
+            assert_eq!(
+                names.contains(name),
+                super::walrus_targets(source, name),
+                "{name:?} in {source:?}"
+            );
+            compared += 1;
+        }
+    }
+    assert!(compared > 40, "{compared}");
+}

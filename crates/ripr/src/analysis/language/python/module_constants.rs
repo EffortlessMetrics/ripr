@@ -30,7 +30,7 @@
 
 use super::PythonTest;
 use super::boundary::literal_value;
-use super::source_utils::{line_for_range_start, text_for_range};
+use super::source_utils::{SourceText, line_for_range_start, text_for_range};
 use rustpython_parser::ast::{self, Expr, Ranged, Stmt};
 
 /// A module-scope name bound once to a scalar literal and never rebound.
@@ -44,7 +44,7 @@ pub(super) struct PythonModuleConstant {
 
 /// The module-scope literal constants of one parsed module.
 pub(super) fn module_literal_constants(
-    source: &str,
+    source: &SourceText<'_>,
     statements: &[Stmt],
 ) -> Vec<PythonModuleConstant> {
     let mut bindings = ScopeBindings::default();
@@ -55,15 +55,20 @@ pub(super) fn module_literal_constants(
     let mut globals = Vec::new();
     collect_global_declarations(statements, &mut globals);
     // `alias.NAME = ...` can rebind the constant through a self-import.
+    let globals: std::collections::HashSet<&str> = globals.iter().map(String::as_str).collect();
     let attributes = assigned_attributes(source);
+    let attributes: std::collections::HashSet<&str> =
+        attributes.iter().map(String::as_str).collect();
+    let walrus = walrus_target_names(source);
+    let counts = bindings.counts();
     statements
         .iter()
         .filter_map(|stmt| literal_assignment(source, stmt))
         .filter(|constant| {
-            bindings.count(&constant.name) == 1
-                && !globals.contains(&constant.name)
-                && !attributes.contains(&constant.name)
-                && !walrus_targets(source, &constant.name)
+            counts.get(constant.name.as_str()) == Some(&1)
+                && !globals.contains(constant.name.as_str())
+                && !attributes.contains(constant.name.as_str())
+                && !walrus.contains(constant.name.as_str())
         })
         .collect()
 }
@@ -86,10 +91,11 @@ pub(super) fn constants_visible_in_function(
     let Some(locals) = function_scope_names(args, body) else {
         return Vec::new();
     };
+    let walrus = walrus_target_names(body_text);
     constants
         .iter()
         .filter(|constant| {
-            !locals.contains(&constant.name) && !walrus_targets(body_text, &constant.name)
+            !locals.contains(&constant.name) && !walrus.contains(constant.name.as_str())
         })
         .cloned()
         .collect()
@@ -152,10 +158,11 @@ pub(super) fn with_module_rebinding(source: &str, statements: &[Stmt], tests: &m
     // rebind an imported name before another test in the module runs.
     let mut globals = Vec::new();
     collect_global_declarations(statements, &mut globals);
+    let counts = module.counts();
     let rebound: Vec<&String> = module
         .names
         .iter()
-        .filter(|name| module.count(name) > 1)
+        .filter(|name| counts.get(name.as_str()).is_some_and(|&count| count > 1))
         .chain(globals.iter())
         .collect();
     let attributes = if dynamic {
@@ -277,7 +284,7 @@ fn assigned_attributes(source: &str) -> Vec<String> {
     attributes
 }
 
-fn literal_assignment(source: &str, stmt: &Stmt) -> Option<PythonModuleConstant> {
+fn literal_assignment(source: &SourceText<'_>, stmt: &Stmt) -> Option<PythonModuleConstant> {
     let (target, value) = match stmt {
         Stmt::Assign(assign) => match assign.targets.as_slice() {
             [target] => (target, assign.value.as_ref()),
@@ -307,8 +314,15 @@ struct ScopeBindings {
 }
 
 impl ScopeBindings {
-    fn count(&self, name: &str) -> usize {
-        self.names.iter().filter(|bound| *bound == name).count()
+    /// How many times each name is bound, counted in one pass. Counting per
+    /// name instead rescans every binding and is quadratic on a module with
+    /// thousands of constants.
+    fn counts(&self) -> std::collections::HashMap<&str, usize> {
+        let mut counts = std::collections::HashMap::new();
+        for name in &self.names {
+            *counts.entry(name.as_str()).or_insert(0) += 1;
+        }
+        counts
     }
 }
 
@@ -503,8 +517,34 @@ fn collect_global_declarations(statements: &[Stmt], out: &mut Vec<String>) {
 /// Whether `text` holds a walrus (`NAME :=`) targeting `name`. Textual on
 /// purpose: an assignment expression can sit inside any expression, and a
 /// false match only leaves the constant unresolved.
+/// Whether `text` binds `name` with `:=`: a whole-word `name`, optional
+/// whitespace, then `:=`. Kept as the reference for [`walrus_target_names`].
+#[cfg(test)]
 fn walrus_targets(text: &str, name: &str) -> bool {
     identifier_offsets(text, name).any(|end| text[end..].trim_start().starts_with(":="))
+}
+
+/// Every name `text` binds with `:=`, from one pass over the text.
+///
+/// Asking `walrus_targets` once per module constant rescanned the whole
+/// source per constant, which is quadratic on a module with many constants.
+/// Walking back from each `:=` over whitespace to the maximal word run before
+/// it finds exactly the names `walrus_targets` accepts: that run is a
+/// whole-word occurrence followed by whitespace and `:=`.
+fn walrus_target_names(text: &str) -> std::collections::HashSet<&str> {
+    let is_word = |ch: char| ch.is_alphanumeric() || ch == '_';
+    text.match_indices(":=")
+        .filter_map(|(start, _)| {
+            let before = text[..start].trim_end();
+            let name_start = before
+                .char_indices()
+                .rev()
+                .take_while(|&(_, ch)| is_word(ch))
+                .last()
+                .map(|(idx, _)| idx)?;
+            Some(&before[name_start..])
+        })
+        .collect()
 }
 
 /// Whether `text` holds `identifier` as a whole word.

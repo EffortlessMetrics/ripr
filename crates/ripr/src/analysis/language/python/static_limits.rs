@@ -2,6 +2,7 @@ use super::related_tests::{
     PythonRelatedCandidate, body_calls_owner, is_python_identifier_char,
     line_prefix_looks_like_comment_or_string,
 };
+use super::source_utils::SourceText;
 use super::{PythonImport, PythonOracleShape, PythonOwner, PythonTest, split_python_assignment};
 use crate::domain::{OracleStrength, StaticLimitKind};
 
@@ -292,12 +293,17 @@ fn has_typer_import(import: &PythonImport) -> bool {
 }
 
 pub(super) fn collect_static_cli_receiver_names(
-    source: &str,
+    source: &SourceText<'_>,
     imports: &[PythonImport],
 ) -> Vec<String> {
     if !imports.iter().any(has_typer_import) {
         return Vec::new();
     }
+    // One scan per file, not per owner: every owner of a Typer module asks.
+    source.cli_receiver_names(scan_cli_receiver_names).to_vec()
+}
+
+fn scan_cli_receiver_names(source: &str) -> Vec<String> {
     let mut receivers: Vec<String> = source
         .lines()
         .filter_map(|line| {
