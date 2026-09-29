@@ -80,6 +80,10 @@ impl zed::Extension for RiprExtension {
 
 /// Builds the launch command from what Zed reports about the worktree.
 ///
+/// `found` comes from the worktree's PATH, before `extra_env` applies: the
+/// extension runs sandboxed and cannot search a PATH of its own, so a binary
+/// outside the worktree PATH needs `lsp.ripr.binary.path`.
+///
 /// Configured arguments replace the defaults; configured environment entries
 /// override the shell environment key by key, as Zed does for a configured
 /// binary path.

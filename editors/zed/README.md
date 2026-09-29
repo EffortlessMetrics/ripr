@@ -51,6 +51,9 @@ Zed passes the `lsp.ripr` entry of `settings.json` to ripr:
   [Other LSP editors](../../docs/interop/other-editors-lsp.md#what-every-client-needs-to-know).
 - `initialization_options` is sent as `initializationOptions` unchanged.
 - `binary.arguments` and `binary.env` change how the `PATH` binary starts.
+  The binary is found on the worktree's `PATH` before `binary.env` applies,
+  so a `PATH` entry in `binary.env` does not help Zed find ripr. For a binary
+  outside your `PATH`, use `binary.path`.
 - `binary.path` makes Zed start that file directly. Zed then passes only
   `binary.arguments`, so set them too:
 
