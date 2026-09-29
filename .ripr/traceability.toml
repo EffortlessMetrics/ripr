@@ -9884,3 +9884,41 @@ metrics = [
   "executed_control_pass_requires_executed_evidence",
   "executed_control_projections_deterministic",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0184"
+name = "typed public command catalog and parser/alias parity"
+spec = "docs/specs/RIPR-SPEC-0184-public-command-catalog.md"
+tests = [
+  "crates/ripr/src/cli/command_catalog.rs::tests::production_catalog_is_well_formed",
+  "crates/ripr/src/cli/command_catalog.rs::tests::catalog_lookup_is_pure_static_data",
+  "crates/ripr/src/cli/command_catalog.rs::tests::reordered_source_rows_are_byte_stable_when_normalized",
+  "crates/ripr/src/cli/command_catalog.rs::tests::typo_suggestions_derive_from_the_catalog",
+  "crates/ripr/src/cli/command_catalog.rs::tests::catalog_retains_the_pre_c1_known_command_surface",
+  "crates/ripr/src/cli/command_catalog.rs::tests::public_inventory_excludes_compatibility_and_advanced",
+  "crates/ripr/src/cli/command_catalog.rs::tests::nested_and_top_level_same_spelling_keep_distinct_identities",
+  "crates/ripr/src/cli/command_catalog.rs::tests::start_here_parses_to_first_pr",
+  "crates/ripr/src/cli/command_catalog.rs::tests::every_catalog_top_level_spelling_is_accepted_by_the_parser",
+  "crates/ripr/src/cli/command_catalog.rs::tests::two_way_top_level_parity_matches_parser_and_catalog",
+  "crates/ripr/src/cli/command_catalog.rs::tests::parser_only_and_catalog_only_paths_fail_closed",
+  "crates/ripr/src/cli/command_catalog.rs::tests::duplicate_alias_and_cycle_fail_closed",
+  "crates/ripr/src/cli/command_catalog.rs::tests::internal_and_retired_rows_cannot_leak_into_public_or_typo_surfaces",
+  "crates/ripr/src/cli/command_catalog.rs::tests::nested_parser_families_have_two_way_parity_with_the_catalog",
+  "crates/ripr/src/cli/command.rs::tests::known_commands_covers_every_parser_spelling",
+  "crates/ripr/src/cli/help.rs::tests::help_all_documents_every_public_command",
+  "crates/ripr/tests/cli_help_hierarchy.rs::default_help_keeps_the_task_roles_distinct",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/cli/command_catalog.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/help.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0184-public-command-catalog.md",
+  "docs/COMMAND_HIERARCHY.md",
+]
+metrics = [
+  "public_command_catalog_entries",
+  "public_command_catalog_two_way_violations",
+]

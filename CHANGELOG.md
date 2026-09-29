@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- CLI: one typed public command catalog now owns RIPR command paths, aliases,
+  and public/compatibility/advanced/internal classification, with parser and
+  typo-suggestion two-way parity. Human help, workflow discovery, and
+  `help --json` are unchanged (#4822).
 - CLI: `ripr pr-ledger record --out-jsonl` and `ripr policy history --out-jsonl`
   append one compact JSONL record so adopting consumers can populate history
   trend fields. Generated CI still only reads those files when present and

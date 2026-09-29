@@ -87,8 +87,11 @@ surface.
 
 README, Quickstart, editor onboarding, and CLI help should agree on each
 command's job. Keep detailed options in command help and the relevant reference;
-do not copy them into every introduction. The typed discovery catalog is tracked
-in [#1613](https://github.com/EffortlessMetrics/ripr-swarm/issues/1613).
+do not copy them into every introduction. The typed command-identity catalog lives in
+`crates/ripr/src/cli/command_catalog.rs` ([RIPR-SPEC-0184](specs/RIPR-SPEC-0184-public-command-catalog.md),
+[#4822](https://github.com/EffortlessMetrics/ripr-swarm/issues/4822)).
+Richer discovery metadata, workflow help, and `help --json` remain tracked in
+[#1613](https://github.com/EffortlessMetrics/ripr-swarm/issues/1613).
 
 ## Non-claims
 

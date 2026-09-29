@@ -377,7 +377,7 @@ mod tests {
         print_rerun_help, print_review_comments_help, print_swarm_help, print_swarm_ingest_help,
         print_swarm_queue_help, print_zero_help,
     };
-    use crate::cli::command::KNOWN_COMMANDS;
+    use crate::cli::command::known_commands;
 
     /// The exhaustive reference owns the full inventory. This assertion used to
     /// target the default screen, which is why that screen had grown to 91
@@ -490,16 +490,15 @@ mod tests {
         // `help` documents itself in the header and `More:` lines rather than as
         // a catalog entry.
         let documented_elsewhere = ["help"];
-        let missing: Vec<&str> = KNOWN_COMMANDS
-            .iter()
-            .copied()
+        let missing: Vec<&str> = known_commands()
+            .into_iter()
             .filter(|command| !documented_elsewhere.contains(command))
             .filter(|command| !HELP_ALL.contains(&format!("ripr {command}")))
             .collect();
         assert!(
             missing.is_empty(),
             "ripr help --all omits reachable command(s): {missing:?}; \
-             every KNOWN_COMMANDS entry must appear in the full reference"
+             every catalog-derived known command must appear in the full reference"
         );
     }
 

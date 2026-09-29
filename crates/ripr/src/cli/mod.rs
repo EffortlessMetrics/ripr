@@ -1,5 +1,6 @@
 mod agent;
 mod command;
+mod command_catalog;
 mod commands;
 mod commands_agent_support;
 mod commands_context;
