@@ -51,7 +51,11 @@ suite('catalog admission script', () => {
     sourceRepository: 'https://github.com/EffortlessMetrics/ripr',
     distributionGeneration: digest('a'),
     manifestSha256: digest('b'),
-    targetSetDigest: digest('c')
+    targetSetDigest: digest('c'),
+    producer: {
+      tool: 'xtask release-distribution-catalog',
+      schema: 'distribution-catalog/1'
+    }
   };
 
   test('admits a producer catalog and reports bound release identity', () => {
@@ -67,6 +71,26 @@ suite('catalog admission script', () => {
       assert.match(String(receipt['catalogIdentity']), /^sha256:[0-9a-f]{64}$/);
     } finally {
       fs.rmSync(path.dirname(catalog), { recursive: true, force: true });
+    }
+  });
+
+  test('rejects release catalogs without the canonical producer identity', () => {
+    const { producer: _producer, ...withoutProducer } = stableCatalog;
+    const missing = writeCatalog(withoutProducer);
+    const wrong = writeCatalog({
+      ...stableCatalog,
+      producer: { tool: 'other-tool', schema: 'distribution-catalog/1' }
+    });
+    try {
+      const missingResult = admit(['--catalog', missing, '--package-version', '0.11.0']);
+      assert.strictEqual(missingResult.status, 2);
+      assert.match(missingResult.stderr, /requires producer identity/);
+      const wrongResult = admit(['--catalog', wrong, '--package-version', '0.11.0']);
+      assert.strictEqual(wrongResult.status, 2);
+      assert.match(wrongResult.stderr, /unsupported distribution catalog producer identity/);
+    } finally {
+      fs.rmSync(path.dirname(missing), { recursive: true, force: true });
+      fs.rmSync(path.dirname(wrong), { recursive: true, force: true });
     }
   });
 
