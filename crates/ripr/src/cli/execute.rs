@@ -44,6 +44,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), CommandError> {
         CliCommand::Reports(args) => commands::reports(&args).map_err(CommandError::from),
         CliCommand::Calibrate(args) => commands::calibrate(&args).map_err(CommandError::from),
         CliCommand::Receipt(args) => commands::receipt(&args).map_err(CommandError::from),
+        CliCommand::Feedback(args) => commands::feedback(&args).map_err(CommandError::from),
         // Agent typed refusals carry the Decision variant (exit code 3).
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Swarm(args) => commands::swarm(&args).map_err(CommandError::from),
@@ -255,6 +256,14 @@ mod tests {
             execute(CliCommand::Cache(Vec::new())),
             Err(CommandError::Failure(
                 "cache requires subcommand `status` or `clear`".to_string()
+            ))
+        );
+        assert_eq!(execute(CliCommand::Feedback(Vec::new())), Ok(()));
+        assert_eq!(
+            execute(CliCommand::Feedback(args(&["record"]))),
+            Err(CommandError::Failure(
+                "feedback record requires --snapshot; file and line are not a result identity"
+                    .to_string()
             ))
         );
     }

@@ -6,6 +6,7 @@ mod command_spec;
 pub mod context_packet;
 mod diagnostic_witness;
 mod evidence;
+mod feedback;
 mod finding_test_evidence;
 mod fix_instruction;
 mod git_candidate;
@@ -42,6 +43,11 @@ pub use diagnostic_witness::{
 pub use evidence::{
     Confidence, OracleKind, OracleStrength, RelationConfidence, RelationReason, RevealEvidence,
     RiprEvidence, StageEvidence, StageState,
+};
+pub(crate) use feedback::{
+    ActorKind, FEEDBACK_NOTE_MAX_BYTES, FEEDBACK_SCHEMA_VERSION, FeedbackJudgment, FeedbackPayload,
+    FeedbackReason, FeedbackReceipt, ReferenceState, ResultIdentity, ReviewStatus,
+    classify_reference,
 };
 pub use fix_instruction::{FixInstructionState, FixInstructionSummary};
 pub use git_candidate::{

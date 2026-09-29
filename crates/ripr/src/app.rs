@@ -16,6 +16,7 @@ pub(crate) mod impacted_evidence;
 mod navigation;
 pub mod pr_evidence;
 pub use pr_evidence::reject_pr_evidence_error_packet;
+pub(crate) mod feedback;
 /// Shared PR-evidence summary projection used by the `ripr` binary and the
 /// compatibility `xtask` route.
 pub mod pr_summary;

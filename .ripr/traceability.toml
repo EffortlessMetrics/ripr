@@ -9456,3 +9456,48 @@ metrics = [
   "typescript_parse_aborts",
   "typescript_parse_refusal_disclosure_parity",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0179"
+name = "Local result-bound usefulness feedback receipts"
+spec = "docs/specs/RIPR-SPEC-0179-local-usefulness-feedback-receipts.md"
+tests = [
+  "crates/ripr/src/domain/feedback.rs::tests::every_reason_maps_onto_one_of_the_five_judgments",
+  "crates/ripr/src/domain/feedback.rs::tests::snapshot_is_required_and_file_line_is_not_identity",
+  "crates/ripr/src/domain/feedback.rs::tests::useful_limitation_may_omit_canonical_item",
+  "crates/ripr/src/domain/feedback.rs::tests::other_requires_a_note_and_explicit_judgment",
+  "crates/ripr/src/domain/feedback.rs::tests::closed_reason_rejects_a_mismatched_judgment",
+  "crates/ripr/src/domain/feedback.rs::tests::a_later_attempt_keeps_the_historical_reference",
+  "crates/ripr/src/domain/feedback.rs::tests::absent_live_identity_is_current_not_staleness",
+  "crates/ripr/src/app/feedback.rs::tests::recording_the_same_key_and_payload_is_idempotent",
+  "crates/ripr/src/app/feedback.rs::tests::same_key_with_a_different_payload_is_a_conflict",
+  "crates/ripr/src/app/feedback.rs::tests::useful_limitation_does_not_require_an_attempt_or_item",
+  "crates/ripr/src/app/feedback.rs::tests::recording_does_not_mutate_policy_or_gate_artifacts",
+  "crates/ripr/src/app/feedback.rs::tests::agent_feedback_is_never_counted_as_human_reviewed",
+  "crates/ripr/src/app/feedback.rs::tests::unreviewed_and_missing_feedback_do_not_become_success_rates",
+  "crates/ripr/src/app/feedback.rs::tests::join_attaches_to_existing_route_quality_rows_without_a_second_ledger",
+  "crates/ripr/src/app/feedback.rs::tests::path_escape_and_secret_notes_fail_closed",
+  "crates/ripr/src/app/feedback.rs::tests::leftover_temp_files_are_not_loaded_as_receipts",
+  "crates/ripr/src/app/feedback.rs::tests::malformed_receipt_fails_closed",
+  "crates/ripr/src/app/feedback.rs::tests::production_source_does_not_reach_policy_process_or_network_surfaces",
+  "crates/ripr/src/cli/commands/feedback.rs::tests::public_cli_records_idempotently_and_rejects_file_line_identity",
+  "crates/ripr/src/cli/commands/feedback.rs::tests::public_cli_export_joins_without_network_or_policy_verbs",
+  "crates/ripr/src/cli/commands/feedback.rs::tests::public_cli_rejects_other_without_judgment_and_mismatched_class",
+  "crates/ripr/src/cli/commands/feedback.rs::tests::help_states_writes_privacy_output_and_non_effects",
+  "crates/ripr/src/output/feedback.rs::tests::receipt_json_round_trips_and_states_non_effects",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/domain/feedback.rs",
+  "crates/ripr/src/app/feedback.rs",
+  "crates/ripr/src/output/feedback.rs",
+  "crates/ripr/src/cli/commands/feedback.rs",
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+]
+metrics = [
+  "usefulness_feedback_receipts_recorded",
+  "usefulness_feedback_join_unmatched",
+]

@@ -389,6 +389,7 @@ fn assert_doc_command_routes(doc: &str) -> Result<(), String> {
         ("Compose PR evidence", "ripr first-pr"),
         ("Add advisory CI", "ripr init --ci github"),
         ("Diagnose setup", "ripr doctor"),
+        ("Record result usefulness", "ripr feedback record"),
     ] {
         let mut matches = doc.lines().filter_map(|line| {
             let mut cells = line.trim().strip_prefix('|')?.split('|');

@@ -49,6 +49,7 @@ map is:
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
+| `ripr feedback record/export` | `schema_version` | `0.1` |
 | badge JSON | `schema_version` | `0.8` |
 | `ripr cache status --json` | `schema_version` | `0.1` |
 | `ripr mcp` status tool and resource | `schema_version` | `ripr-mcp-workspace-status-v1` (see [MCP workspace status server](interop/mcp.md)) |
@@ -16851,6 +16852,71 @@ Do not remove fields, rename fields, or change enum meanings without bumping the
 schema version.
 
 Do not emit mutation-runtime terms such as `killed` or `survived` in static JSON.
+
+## Usefulness feedback receipts
+
+`ripr feedback record` writes one local ignored JSON receipt under
+`target/ripr/feedback/`. `ripr feedback export` joins stored receipts onto
+existing route-quality rows. Recording is explicit; analyze, hover, and packet
+paths never record feedback implicitly. Neither command changes diagnostics,
+classification, baselines, suppressions, gates, or gap closure. Neither command
+makes a network, process, editor, LSP, or MCP write. Identity is snapshot plus
+optional canonical item; file/line is rejected.
+
+Receipt JSON (`schema_version` `0.1`, `kind` `usefulness_feedback_receipt`):
+
+```json
+{
+  "schema_version": "0.1",
+  "kind": "usefulness_feedback_receipt",
+  "status": "created",
+  "tool": "ripr",
+  "feedback_id": "fb-…",
+  "idempotency_key": "key",
+  "snapshot_id": "snap-1",
+  "canonical_item": null,
+  "route_digest": "add_missing_test",
+  "attempt_id": null,
+  "receipt_id": null,
+  "actor_kind": "human",
+  "review_status": "unreviewed",
+  "review_actor_kind": null,
+  "reason": "useful_limitation",
+  "judgment": "useful",
+  "note": null,
+  "reference_state": "current",
+  "recorded_at": "unix_ms:1",
+  "policy_effects": {
+    "diagnostics": "unchanged",
+    "classification": "unchanged",
+    "baseline": "unchanged",
+    "suppressions": "unchanged",
+    "gates": "unchanged",
+    "gap_closure": "unchanged"
+  },
+  "must_not_infer": [
+    "helpful feedback does not establish correctness",
+    "a negative opinion does not automatically establish a false positive",
+    "agent feedback is not human-approved until a human review actor is recorded",
+    "recording this receipt changes no diagnostic, classification, baseline, suppression, gate, or gap-closure state"
+  ]
+}
+```
+
+`status` is `created` or `already_recorded`. A same-key different payload is a
+conflict, not a second record. `actor_kind` is independent of `review_status`.
+`judgment` is one of `useful`, `incorrect`, `unclear`, `expensive`, or
+`intentional_no_action`. `reference_state` is `current`, `historical`, or
+`mismatched`.
+
+Join JSON (`schema_version` `0.1`, `kind` `usefulness_feedback_join`) keeps
+objective route-quality counts (`repair_kind_attempted`,
+`repair_kind_improved`) separate from subjective usefulness counts. It reports
+denominators for receipts, reviewed/human/unreviewed/agent, unmatched,
+historical, mismatched, and missing-feedback rows. `reviewed_human_useful_rate`
+is a number only when `reviewed_human_total` is nonzero; otherwise it is `null`.
+Unreviewed, stale, unmatched, and missing-feedback states are counts, not
+success percentages. The join does not invent a second attempt ledger.
 
 ## Historical 0.11 candidate execution-scope report
 

@@ -17,6 +17,7 @@ pub(crate) mod doctor;
 pub(crate) mod doctor_binary;
 pub(crate) mod evidence_health;
 pub(crate) mod evidence_record;
+pub(crate) mod feedback;
 pub(crate) mod file_write;
 pub(crate) mod first_pr;
 pub(crate) mod first_useful_action;

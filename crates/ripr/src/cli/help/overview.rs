@@ -149,6 +149,8 @@ Reports:
   ripr reports ts-false-actionable --corpus <path> [--out target/ripr/reports/typescript-false-actionable-audit.json]
   ripr receipt write --gap <canonical_gap_id> --verify-command "<cmd>" --status <verify_status> [--packet <packet_id>] [--out PATH] [--json]
   ripr receipt check [--path PATH] [--gap <canonical_gap_id>]
+  ripr feedback record --snapshot ID --reason CODE [--item ID] [--root PATH] [--json]
+  ripr feedback export [--root PATH] [--route-quality PATH] [--out PATH] [--json]
 
 What it does:
   Reads changed Rust code (Python and TypeScript in preview), creates

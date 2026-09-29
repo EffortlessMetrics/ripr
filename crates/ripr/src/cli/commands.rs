@@ -224,6 +224,8 @@ mod cache_command;
 mod config_command;
 #[path = "commands/context.rs"]
 mod context;
+#[path = "commands/feedback.rs"]
+mod feedback_command;
 #[path = "commands/policy.rs"]
 mod policy_commands;
 #[path = "commands/receipt.rs"]
@@ -233,9 +235,9 @@ mod swarm_command;
 
 pub(super) use agent::agent;
 pub(super) use context::context;
-// The receipt help bodies live beside the receipt parser but are also the
-// flag source for `ripr receipt write|check` suggestions, so `cli::help` needs
-// a path to them.
+// Flag-documenting help bodies live beside their parsers so `cli::help`
+// suggestions mine the same text `--help` prints.
+pub(super) use feedback_command::{FEEDBACK_EXPORT_HELP, FEEDBACK_RECORD_HELP};
 #[cfg(test)]
 use policy_commands::{
     parse_policy_history_options, parse_policy_operations_options,
@@ -255,6 +257,10 @@ pub(super) use cache_command::{CACHE_CLEAR_HELP, CACHE_STATUS_HELP};
 
 pub(super) fn receipt(args: &[String]) -> Result<(), String> {
     receipt_command::run_receipt(args)
+}
+
+pub(super) fn feedback(args: &[String]) -> Result<(), String> {
+    feedback_command::run_feedback(args)
 }
 
 pub(super) fn swarm(args: &[String]) -> Result<(), String> {
