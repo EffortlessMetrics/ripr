@@ -129,7 +129,7 @@ pub(crate) fn parser_oracles_for_function(
     Some(oracles)
 }
 
-fn include_literal_path(expression: &str) -> Option<PathBuf> {
+pub(super) fn include_literal_path(expression: &str) -> Option<PathBuf> {
     let (_, arguments) = expression.split_once('!')?;
     let arguments = arguments.trim();
     let arguments = arguments.strip_suffix(';').unwrap_or(arguments).trim();
@@ -491,7 +491,7 @@ pub(crate) fn shadow_facts_for_body_text(body: &str) -> (Vec<String>, Vec<LetBin
 /// statically resolvable. Returning `Default` here would resolve the default
 /// file that Rust does not compile under the conditional configuration and
 /// could hand its functions an evidence role they did not earn.
-fn path_target_from_attributes(attributes: &[String]) -> ModulePathTarget {
+pub(super) fn path_target_from_attributes(attributes: &[String]) -> ModulePathTarget {
     if cfg_predicates::attributes_conditionally_introduce_path(
         attributes.iter().map(String::as_str),
     ) {

@@ -121,6 +121,12 @@ pub(crate) struct SourceRoleContext {
     /// compiles them wherever they sit, so a changed one seeds probes even
     /// outside a `src` layout.
     pub(crate) declared_production_sources: BTreeSet<PathBuf>,
+    /// Relative paths the owning package's complete module-tree walk does
+    /// not reach (#4435): no `mod`, `#[path]` or `include!` from any Cargo
+    /// target root names them, so rustc never compiles them. They seed no
+    /// diff probes whatever their layout says. Recorded only for the files a
+    /// caller asks about (`apply_module_graph_evidence`).
+    pub(crate) module_graph_orphans: BTreeSet<PathBuf>,
 }
 
 impl SourceRoleContext {
@@ -301,12 +307,20 @@ fn is_repo_automation_subject(path: &Path, role: SourceRole) -> bool {
 ///   "lib/foo.rs"`) and the files that package owns below such a root
 ///   ([`SourceRoleContext::declared_production_sources`]).
 ///
+/// A file the owning package's complete module-tree walk does not reach
+/// ([`SourceRoleContext::module_graph_orphans`]) seeds nothing, whatever its
+/// layout (#4435).
+///
 /// Repo mode keeps all three out of the seam inventory. Registered non-source
 /// directories (`fixtures/`, `target/`, ...) stay evidence even inside
 /// `xtask/`, and other loose non-`src` files (panel subjects under
 /// `metrics/`, for example) are data Cargo never compiles.
 pub(crate) fn seeds_diff_probes(path: &Path, context: &SourceRoleContext) -> bool {
     match classify_with(path, context) {
+        // The explicit opt-in still wins; every other role needs a module
+        // tree that compiles the file.
+        SourceRole::ProductionLikeTestInfrastructure => true,
+        _ if context.module_graph_orphans.contains(&normalize(path)) => false,
         role if role.seeds_production_findings() => true,
         role @ SourceRole::FixtureOrReceiptEvidence => {
             let normalized = normalize(path);
@@ -417,6 +431,27 @@ mod tests {
                 "non-test path `{rejected}` was accepted"
             );
         }
+    }
+
+    #[test]
+    fn module_graph_orphans_seed_nothing_but_the_opt_in_still_wins() {
+        // #4435: an unreached file never seeds, whatever its layout or
+        // declared-root grant says; an explicit production-like opt-in is
+        // the one authority above the module tree.
+        let orphan = PathBuf::from("src/unused.rs");
+        let declared = PathBuf::from("lib/stray.rs");
+        let opted_in = PathBuf::from("src/opted_in.rs");
+        let mut context = SourceRoleContext::empty();
+        context.declared_production_sources.insert(declared.clone());
+        context.production_like_targets.insert(opted_in.clone());
+        assert!(seeds_diff_probes(&orphan, &context));
+        assert!(seeds_diff_probes(&declared, &context));
+        context.module_graph_orphans =
+            BTreeSet::from([orphan.clone(), declared.clone(), opted_in.clone()]);
+        assert!(!seeds_diff_probes(&orphan, &context));
+        assert!(!seeds_diff_probes(&declared, &context));
+        assert!(seeds_diff_probes(&opted_in, &context));
+        assert!(seeds_diff_probes(Path::new("src/used.rs"), &context));
     }
 
     #[test]

@@ -2543,6 +2543,20 @@ fn partition_out_of_scope_test_file_findings(
         root,
         config.analysis().test_harnesses(),
     );
+    // #4435: the same module-tree evidence the diff loop records for the
+    // changed files, computed for the finding anchors.
+    let anchors = findings
+        .iter()
+        .map(|finding| {
+            let file = &finding.probe.location.file;
+            file.strip_prefix(root).unwrap_or(file).to_path_buf()
+        })
+        .collect::<Vec<_>>();
+    crate::analysis::apply_module_graph_evidence(
+        root,
+        &mut context,
+        anchors.iter().map(|path| path.as_path()),
+    );
     let mut scoped = Vec::with_capacity(findings.len());
     let mut out_of_scope = 0usize;
     for finding in findings {
@@ -3687,6 +3701,53 @@ mod seam_diagnostic_tests {
 
         let path = absolute_related_test_path(Path::new("/repo"), &test);
         assert_eq!(path, Path::new("/tmp/workspace/tests/pricing.rs"));
+    }
+
+    #[test]
+    fn partition_drops_anchors_no_module_tree_reaches() -> Result<(), String> {
+        // #4435: the editor partition consults the same module-tree
+        // evidence as the diff loop, so an orphan anchor is out of scope
+        // and a declared module stays published.
+        let root = temp_gap_root()?;
+        for (path, text) in [
+            (
+                "Cargo.toml",
+                "[package]\nname='shop'\nversion='0.1.0'\nedition='2021'\n",
+            ),
+            ("src/lib.rs", "pub mod used;\n"),
+            ("src/used.rs", ""),
+            ("src/unused.rs", ""),
+        ] {
+            let path = root.join(path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+            }
+            fs::write(&path, text).map_err(|err| err.to_string())?;
+        }
+        let findings = ["src/used.rs", "src/unused.rs"]
+            .into_iter()
+            .map(|file| {
+                let mut finding = crate::lsp::tests::sample_finding();
+                finding.probe.location.file = root.join(file);
+                finding
+            })
+            .collect::<Vec<_>>();
+
+        let (scoped, out_of_scope) = partition_out_of_scope_test_file_findings(
+            &root,
+            &crate::config::RiprConfig::default(),
+            findings,
+        );
+
+        assert_eq!(out_of_scope, 1);
+        assert_eq!(
+            scoped
+                .iter()
+                .map(|finding| finding.probe.location.file.clone())
+                .collect::<Vec<_>>(),
+            vec![root.join("src/used.rs")]
+        );
+        fs::remove_dir_all(&root).map_err(|err| err.to_string())
     }
 }
 

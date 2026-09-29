@@ -996,6 +996,36 @@ impl RustAdapter {
             .into_iter()
             .filter(|path| !is_generated_rust_file_with_patterns(path, generated_file_patterns))
             .collect::<Vec<_>>();
+        // Authoritative source-role context (#3283): declared Cargo
+        // test/bench targets confirm evidence role outside the default
+        // layouts, and the repository opt-in restores production-like
+        // analysis for selected targets.
+        let mut source_role_context = workspace::context_for_files(
+            &options.root,
+            analyzable_rust_files.iter().map(|path| path.as_path()),
+        );
+        source_role_context.production_like_targets = options.production_like_targets.clone();
+        // Cargo-validated file-wide harness evidence (#3608): only
+        // registrations whose manifest declares `harness = false` keep
+        // the grant.
+        source_role_context.harness_targets =
+            rust_index::validated_file_wide_harness_targets(&options.root, &options.test_harnesses);
+        // #4435: a changed file seeds only when a Cargo target's module
+        // tree reaches it. The walk covers the changed files' packages only.
+        // Only a file the layout rule would seed loses anything to an
+        // orphan verdict; an unreached fixture or `tests/data` file was
+        // evidence before and stays silent, so it earns no limitation.
+        let layout_seeded_rust_paths = changed_rust_paths
+            .iter()
+            .filter(|path| workspace::seeds_diff_probes(path, &source_role_context))
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        let external_module_packages = workspace::apply_module_graph_evidence(
+            &options.root,
+            &mut source_role_context,
+            changed_rust_paths.iter().map(|path| path.as_path()),
+        );
+
         // #2970 slice C: in the modes whose selection narrows to changed
         // packages (Draft/Fast with unchanged tests), a behavior change in a
         // path dependency can surface in every crate that depends on it, so
@@ -1011,9 +1041,14 @@ impl RustAdapter {
             if matches!(options.mode, AnalysisMode::Draft | AnalysisMode::Fast)
                 && options.include_unchanged_tests
             {
+                // A module an external crate root reaches (#4435) belongs to
+                // the declaring package, whose tests must stay in scope.
                 let changed_package_roots = changed_rust_paths
                     .iter()
-                    .filter_map(|path| workspace::package_root(path))
+                    .flat_map(|path| match external_module_packages.get(path) {
+                        Some(prefixes) => prefixes.iter().cloned().collect::<Vec<_>>(),
+                        None => workspace::package_root(path).into_iter().collect(),
+                    })
                     .collect::<std::collections::BTreeSet<_>>();
                 // Files the layout heuristics cannot place (custom Cargo
                 // target paths, #3616 review) would previously drop out of
@@ -1021,7 +1056,10 @@ impl RustAdapter {
                 // attribution against the discovered manifest inventory.
                 let unattributed_changed_files = changed_rust_paths
                     .iter()
-                    .filter(|path| workspace::package_root(path).is_none())
+                    .filter(|path| {
+                        !external_module_packages.contains_key(*path)
+                            && workspace::package_root(path).is_none()
+                    })
                     .map(|path| workspace::normalize_path(path))
                     .collect::<std::collections::BTreeSet<_>>();
                 if changed_package_roots.is_empty() && unattributed_changed_files.is_empty() {
@@ -1036,7 +1074,9 @@ impl RustAdapter {
                         eprintln!("{disclosure}");
                     }
                     let manifest_dir_prefixes = expansion.manifest_dir_prefixes().to_vec();
-                    let dependent_package_roots = expansion.into_dependent_package_roots();
+                    let mut dependent_package_roots = expansion.into_dependent_package_roots();
+                    dependent_package_roots
+                        .extend(external_module_packages.values().flatten().cloned());
                     (dependent_package_roots, manifest_dir_prefixes)
                 }
             } else {
@@ -1106,21 +1146,6 @@ impl RustAdapter {
         let mut findings = Vec::new();
         let mut changed_rust_files = 0usize;
         let mut candidate_lines = BTreeSet::new();
-
-        // Authoritative source-role context (#3283): declared Cargo
-        // test/bench targets confirm evidence role outside the default
-        // layouts, and the repository opt-in restores production-like
-        // analysis for selected targets.
-        let mut source_role_context = workspace::context_for_files(
-            &options.root,
-            analyzable_rust_files.iter().map(|path| path.as_path()),
-        );
-        source_role_context.production_like_targets = options.production_like_targets.clone();
-        // Cargo-validated file-wide harness evidence (#3608): only
-        // registrations whose manifest declares `harness = false` keep
-        // the grant.
-        source_role_context.harness_targets =
-            rust_index::validated_file_wide_harness_targets(&options.root, &options.test_harnesses);
 
         // #2971: The cross-crate calls_owner bypass in find_related_tests
         // requires a workspace-complete function index. In Instant/Draft/Fast
@@ -1283,9 +1308,66 @@ impl RustAdapter {
                     is_generated_rust_file_with_patterns(&file.path, generated_file_patterns)
                 })
                 .count(),
-            limitations,
+            limitations: limitations
+                .into_iter()
+                .chain(unreached_module_limitations(
+                    changed_rust_paths.iter().filter(|path| {
+                        layout_seeded_rust_paths.contains(*path)
+                            && source_role_context.module_graph_orphans.contains(*path)
+                    }),
+                )?)
+                .collect(),
         })
     }
+}
+
+/// One typed limitation per changed Rust file that no Cargo target's module
+/// tree reaches (#4435). rustc never compiles such a file, so its change
+/// seeds no finding; the run says so instead of reading as complete.
+fn unreached_module_limitations<'a>(
+    paths: impl Iterator<Item = &'a std::path::PathBuf>,
+) -> Result<Vec<crate::analysis_outcome::AnalysisLimitation>, String> {
+    use crate::analysis_outcome::{
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage,
+    };
+    paths
+        .map(|path| {
+            let display = path.to_string_lossy().replace('\\', "/");
+            // The recovery text is bounded; a long path shortens the
+            // sentence, never fails the analysis.
+            let named = if display.chars().count() > 160 {
+                format!("{}…", display.chars().take(159).collect::<String>())
+            } else {
+                display.clone()
+            };
+            let limitation = AnalysisLimitation::new(
+                AnalysisLimitationKind::LanguageScopeUnsupported,
+                AnalysisStage::LanguageAdapter,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::InspectFailure,
+                    format!(
+                        "No `mod`, `#[path]` or `include!` from a Cargo target reaches \
+                         {named}, so rustc does not compile it and its change was not \
+                         analyzed. Declare it from a module its crate compiles, or delete it \
+                         if it is dead code."
+                    ),
+                )?,
+            );
+            // A path the portable form rejects drops the field, never the run;
+            // the recovery text still names the file.
+            limitation
+                .clone()
+                .with_path(&display)
+                .unwrap_or(limitation)
+                .with_affected_items(1)?
+                .with_detail(
+                    "No Cargo target's module tree reaches this changed Rust file: no `mod`, \
+                 `#[path]` or `include!` names it, so rustc does not compile it and its \
+                 change seeds no finding.",
+                )
+        })
+        .collect()
 }
 
 /// One typed limitation per changed Rust file whose facts came from the
@@ -1928,7 +2010,7 @@ mod tests {
         )?;
         write(
             &root.join("src/lib.rs"),
-            "pub fn production_control(value: i32) -> Result<i32, String> {\n    if value < 0 { return Err(\"negative\".to_string()); }\n    Ok(value)\n}\n\n#[cfg(all(feature = \"slow\", test))]\nmod tests {\n    fn helper_returns_result(value: i32) -> Result<(), String> {\n        if value < 0 { return Err(\"negative\".to_string()); }\n        Ok(())\n    }\n\n    #[test]\n    fn equivalent_assertion() {\n        if helper_returns_result(1).is_err() { return; }\n    }\n}\n",
+            "pub fn production_control(value: i32) -> Result<i32, String> {\n    if value < 0 { return Err(\"negative\".to_string()); }\n    Ok(value)\n}\n\n#[cfg(all(feature = \"slow\", test))]\nmod tests {\n    fn helper_returns_result(value: i32) -> Result<(), String> {\n        if value < 0 { return Err(\"negative\".to_string()); }\n        Ok(())\n    }\n\n    #[test]\n    fn equivalent_assertion() {\n        if helper_returns_result(1).is_err() { return; }\n    }\n}\npub mod test_helper;\n",
         )?;
         write(
             &root.join("src/test_helper.rs"),
@@ -2118,7 +2200,13 @@ mod tests {
             };
             for (path, expected_count, expected_family) in [
                 ("src/production.rs", 1, ProbeFamily::StaticUnknown),
-                (child_path, usize::from(!test_only), child_family),
+                // #4435: with no declaring module, rustc never compiles the
+                // child, so it seeds nothing at all.
+                (
+                    child_path,
+                    usize::from(!test_only && name != "missing-parent"),
+                    child_family,
+                ),
             ] {
                 let expected_path = root.join(path);
                 let findings = result
@@ -4185,6 +4273,420 @@ fn absent_delimiter_boundary_returns_head() {
         Ok(())
     }
 
+    /// Runs a Draft diff analysis over `diff` in `root` (#4435 fixtures).
+    fn module_graph_diff(
+        root: &Path,
+        diff: &str,
+    ) -> Result<crate::analysis::language::LanguageDiffResult, String> {
+        RustAdapter.analyze_diff(
+            &AnalysisOptions {
+                root: root.to_path_buf(),
+                base: None,
+                diff_file: None,
+                mode: AnalysisMode::Draft,
+                resolved_subject_identity: None,
+                include_unchanged_tests: true,
+                resolve_tsconfig_paths: false,
+                perl_facts_path: None,
+                git_timeout: None,
+                git_candidate: None,
+                production_like_targets: Default::default(),
+                test_harnesses: Vec::new(),
+            },
+            &OraclePolicy::default(),
+            &diff::parse_unified_diff(diff),
+        )
+    }
+
+    /// A one-line predicate change in `path`, from `>=` to `>`.
+    fn predicate_change_diff(path: &str) -> String {
+        format!(
+            "diff --git a/{path} b/{path}\n\
+             --- a/{path}\n\
+             +++ b/{path}\n\
+             @@ -1,3 +1,3 @@\n \
+             pub fn discount(total: u32) -> u32 {{\n\
+             -    if total >= 100 {{ total - 10 }} else {{ total }}\n\
+             +    if total > 100 {{ total - 10 }} else {{ total }}\n \
+             }}\n"
+        )
+    }
+
+    const DISCOUNT_SOURCE: &str = "pub fn discount(total: u32) -> u32 {\n    if total > 100 { total - 10 } else { total }\n}\n";
+
+    /// Root-relative finding anchors (the adapter reports them anchored).
+    fn finding_files(
+        root: &Path,
+        result: &crate::analysis::language::LanguageDiffResult,
+    ) -> Vec<String> {
+        result
+            .findings
+            .iter()
+            .map(|finding| {
+                let file = &finding.probe.location.file;
+                file.strip_prefix(root)
+                    .unwrap_or(file)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect()
+    }
+
+    fn orphan_limitation_paths(
+        result: &crate::analysis::language::LanguageDiffResult,
+    ) -> Vec<String> {
+        result
+            .limitations
+            .iter()
+            .filter(|limitation| {
+                limitation
+                    .bounded_detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("No Cargo target's module tree"))
+            })
+            .filter_map(|limitation| limitation.path.clone())
+            .collect()
+    }
+
+    #[test]
+    fn diff_analysis_skips_src_file_no_module_declares() -> Result<(), String> {
+        // #4435: `src/unused.rs` sits in the source layout, but no `mod`
+        // names it, so rustc never compiles it. The declared sibling in the
+        // same diff is the positive control.
+        let root = temp_root("module-graph-src-orphan")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='shop'\nversion='0.1.0'\nedition='2021'\n",
+        )?;
+        write(&root.join("src/lib.rs"), "pub mod used;\n")?;
+        write(&root.join("src/used.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("src/unused.rs"), DISCOUNT_SOURCE)?;
+        let diff = format!(
+            "{}{}",
+            predicate_change_diff("src/used.rs"),
+            predicate_change_diff("src/unused.rs")
+        );
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        let files = finding_files(&root, &result);
+        assert!(
+            files.iter().any(|file| file == "src/used.rs"),
+            "the declared module must seed: {files:?}"
+        );
+        assert!(
+            !files.iter().any(|file| file == "src/unused.rs"),
+            "an undeclared src file must not seed: {files:?}"
+        );
+        assert_eq!(orphan_limitation_paths(&result), vec!["src/unused.rs"]);
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_limits_only_orphans_the_layout_rule_would_seed() -> Result<(), String> {
+        // #4802 review: an unreached fixture or `tests/data` source was
+        // evidence under the layout rule and never seeded, so the module
+        // tree takes nothing from it and it earns no limitation. The
+        // undeclared `src` file is the control that still does.
+        let root = temp_root("module-graph-evidence-orphans")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='shop'\nversion='0.1.0'\nedition='2021'\n",
+        )?;
+        write(&root.join("src/lib.rs"), "pub mod used;\n")?;
+        write(&root.join("src/used.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("src/unused.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("fixtures/case/input.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("tests/data/sample.rs"), DISCOUNT_SOURCE)?;
+        let diff = format!(
+            "{}{}{}",
+            predicate_change_diff("src/unused.rs"),
+            predicate_change_diff("fixtures/case/input.rs"),
+            predicate_change_diff("tests/data/sample.rs")
+        );
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        assert_eq!(orphan_limitation_paths(&result), vec!["src/unused.rs"]);
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_skips_orphan_beside_declared_root_outside_src() -> Result<(), String> {
+        // #4435 / #4422 review: below `[lib] path = "lib/odd.rs"` the layout
+        // rule granted every file the package owns. `lib/helper.rs` is
+        // declared by the root and seeds; `lib/stray.rs` is not and must not.
+        let root = temp_root("module-graph-lib-orphan")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='odd'\nversion='0.1.0'\nedition='2021'\n[lib]\npath='lib/odd.rs'\n",
+        )?;
+        write(&root.join("lib/odd.rs"), "pub mod helper;\n")?;
+        write(&root.join("lib/helper.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("lib/stray.rs"), DISCOUNT_SOURCE)?;
+        let diff = format!(
+            "{}{}",
+            predicate_change_diff("lib/helper.rs"),
+            predicate_change_diff("lib/stray.rs")
+        );
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        let files = finding_files(&root, &result);
+        assert!(
+            files.iter().any(|file| file == "lib/helper.rs"),
+            "the root's declared module must seed: {files:?}"
+        );
+        assert!(
+            !files.iter().any(|file| file == "lib/stray.rs"),
+            "an undeclared file beside the root must not seed: {files:?}"
+        );
+        assert_eq!(orphan_limitation_paths(&result), vec!["lib/stray.rs"]);
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_seeds_external_root_module_with_its_package_tests() -> Result<(), String> {
+        // #4435 / #4422 review: `[lib] path = "../shared/lib.rs"` resolves the
+        // root's `mod helper;` to `shared/helper.rs`, whose nearest manifest
+        // is not the declaring package. The module seeds and the declaring
+        // package's integration test relates to it.
+        let root = temp_root("module-graph-external-root")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers=['pkg']\nresolver='2'\n",
+        )?;
+        write(
+            &root.join("pkg/Cargo.toml"),
+            "[package]\nname='pkg'\nversion='0.1.0'\nedition='2021'\n[lib]\npath='../shared/lib.rs'\n",
+        )?;
+        write(
+            &root.join("shared/lib.rs"),
+            "mod helper;\npub use helper::discount;\n#[path = \"../other/redirected.rs\"]\npub mod redirected;\n",
+        )?;
+        write(&root.join("shared/helper.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("shared/stray.rs"), DISCOUNT_SOURCE)?;
+        // A `#[path]` edge from the external root may leave its directory
+        // entirely; that file is declared by `pkg` too.
+        write(&root.join("other/redirected.rs"), DISCOUNT_SOURCE)?;
+        write(
+            &root.join("pkg/tests/t.rs"),
+            "#[test]\nfn discount_applies() {\n    assert_eq!(pkg::discount(150), 140);\n}\n",
+        )?;
+        let diff = format!(
+            "{}{}",
+            predicate_change_diff("shared/helper.rs"),
+            predicate_change_diff("shared/stray.rs")
+        );
+        let diff = format!("{diff}{}", predicate_change_diff("other/redirected.rs"));
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        let finding = result
+            .findings
+            .iter()
+            .find(|finding| finding.probe.location.file.ends_with("shared/helper.rs"))
+            .ok_or_else(|| {
+                format!(
+                    "the external root's module must seed: {:?}",
+                    finding_files(&root, &result)
+                )
+            })?;
+        assert!(
+            finding
+                .related_tests
+                .iter()
+                .any(|test| test.name == "discount_applies"),
+            "the declaring package's test must relate: {:?}",
+            finding.related_tests
+        );
+        assert!(
+            !finding_files(&root, &result)
+                .iter()
+                .any(|file| file == "shared/stray.rs"),
+            "an undeclared file beside the external root must not seed"
+        );
+        assert!(
+            finding_files(&root, &result)
+                .iter()
+                .any(|file| file == "other/redirected.rs"),
+            "a `#[path]` module outside the external root's directory must seed: {:?}",
+            finding_files(&root, &result)
+        );
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_keeps_every_package_sharing_an_external_root_in_scope() -> Result<(), String> {
+        // #4802 review: two packages compile the same external root. Only
+        // the second holds the discriminating test, so keeping just the
+        // first declaring package would drop the test that relates.
+        let root = temp_root("module-graph-shared-external-root")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[workspace]\nmembers=['first','second']\nresolver='2'\n",
+        )?;
+        for name in ["first", "second"] {
+            write(
+                &root.join(format!("{name}/Cargo.toml")),
+                &format!(
+                    "[package]\nname='{name}'\nversion='0.1.0'\nedition='2021'\n[lib]\npath='../shared/lib.rs'\n"
+                ),
+            )?;
+        }
+        write(
+            &root.join("shared/lib.rs"),
+            "mod helper;\npub use helper::discount;\n",
+        )?;
+        write(&root.join("shared/helper.rs"), DISCOUNT_SOURCE)?;
+        write(
+            &root.join("second/tests/t.rs"),
+            "#[test]\nfn discount_applies() {\n    assert_eq!(second::discount(150), 140);\n}\n",
+        )?;
+        let diff = predicate_change_diff("shared/helper.rs");
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        let finding = result
+            .findings
+            .iter()
+            .find(|finding| finding.probe.location.file.ends_with("shared/helper.rs"))
+            .ok_or_else(|| {
+                format!(
+                    "the shared root's module must seed: {:?}",
+                    finding_files(&root, &result)
+                )
+            })?;
+        assert!(
+            finding
+                .related_tests
+                .iter()
+                .any(|test| test.name == "discount_applies"),
+            "the second declaring package's test must relate: {:?}",
+            finding.related_tests
+        );
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_skips_children_of_a_replaced_default_lib_root() -> Result<(), String> {
+        // #4802 review: `[lib] path = "lib/real.rs"` replaces `src/lib.rs` as
+        // the library root, so a module only the unused `src/lib.rs`
+        // declares is never compiled. The real root's module is the control.
+        let root = temp_root("module-graph-replaced-lib-root")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='real'\nversion='0.1.0'\nedition='2021'\n[lib]\npath='lib/real.rs'\n",
+        )?;
+        write(&root.join("lib/real.rs"), "pub mod declared;\n")?;
+        write(&root.join("lib/declared.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("src/lib.rs"), "pub mod orphan;\n")?;
+        write(&root.join("src/orphan.rs"), DISCOUNT_SOURCE)?;
+        let diff = format!(
+            "{}{}",
+            predicate_change_diff("lib/declared.rs"),
+            predicate_change_diff("src/orphan.rs")
+        );
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        let files = finding_files(&root, &result);
+        assert!(
+            files.iter().any(|file| file == "lib/declared.rs"),
+            "the declared library root's module must seed: {files:?}"
+        );
+        assert!(
+            !files.iter().any(|file| file == "src/orphan.rs"),
+            "a module only the replaced src/lib.rs declares must not seed: {files:?}"
+        );
+        assert_eq!(orphan_limitation_paths(&result), vec!["src/orphan.rs"]);
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_follows_path_include_and_nested_module_edges() -> Result<(), String> {
+        // #4435: `#[path]`, literal `include!`, an out-of-line module nested
+        // in an inline one, and a raw-identifier module (`mod r#type;` loads
+        // `type.rs`) are all module-tree evidence.
+        let root = temp_root("module-graph-edges")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='edges'\nversion='0.1.0'\nedition='2021'\n",
+        )?;
+        write(
+            &root.join("src/lib.rs"),
+            "#[path = \"elsewhere/placed.rs\"]\npub mod placed;\n\
+             pub mod outer { pub mod inner; }\n\
+             pub mod r#type;\n\
+             include!(\"fragment.rs\");\n",
+        )?;
+        write(&root.join("src/elsewhere/placed.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("src/outer/inner.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("src/fragment.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("src/type.rs"), DISCOUNT_SOURCE)?;
+        let diff = format!(
+            "{}{}{}{}",
+            predicate_change_diff("src/elsewhere/placed.rs"),
+            predicate_change_diff("src/outer/inner.rs"),
+            predicate_change_diff("src/fragment.rs"),
+            predicate_change_diff("src/type.rs")
+        );
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        let files = finding_files(&root, &result);
+        for expected in [
+            "src/elsewhere/placed.rs",
+            "src/outer/inner.rs",
+            "src/fragment.rs",
+            "src/type.rs",
+        ] {
+            assert!(
+                files.iter().any(|file| file == expected),
+                "`{expected}` is in the module tree and must seed: {files:?}"
+            );
+        }
+        assert!(orphan_limitation_paths(&result).is_empty());
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_keeps_layout_rule_when_module_tree_is_unknown() -> Result<(), String> {
+        // #4435: a `cfg_if!`-wrapped declaration only exists after macro
+        // expansion. The walk cannot prove the file unreached, so the
+        // layout rule still seeds it rather than dropping a real change.
+        let root = temp_root("module-graph-unknown")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='plat'\nversion='0.1.0'\nedition='2021'\n",
+        )?;
+        write(
+            &root.join("src/lib.rs"),
+            "cfg_if::cfg_if! {\n    if #[cfg(unix)] { mod unix; }\n}\n",
+        )?;
+        write(&root.join("src/unix.rs"), DISCOUNT_SOURCE)?;
+
+        let result = module_graph_diff(&root, &predicate_change_diff("src/unix.rs"))?;
+
+        assert!(
+            finding_files(&root, &result)
+                .iter()
+                .any(|file| file == "src/unix.rs"),
+            "an unresolvable module tree must keep the layout rule: {:?}",
+            finding_files(&root, &result)
+        );
+        assert!(orphan_limitation_paths(&result).is_empty());
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
     #[test]
     fn diff_analysis_skips_build_scripts_cargo_never_compiles() -> Result<(), String> {
         // `package.build = false`: Cargo never compiles this `build.rs`
@@ -4255,7 +4757,9 @@ fn absent_delimiter_boundary_returns_head() {
         )?;
         write(
             &root.join("src/lib.rs"),
-            "pub fn price(amount: i32) -> i32 {\n    if amount > 100 { amount - 10 } else { amount }\n}\n",
+            // #4435: the declarations keep the files in the module tree;
+            // the diff below covers only the first three lines.
+            "pub fn price(amount: i32) -> i32 {\n    if amount > 100 { amount - 10 } else { amount }\n}\nmod unconfirmed_test;\n",
         )?;
         write(
             &root.join("src/contract_test.rs"),
@@ -4371,7 +4875,9 @@ fn absent_delimiter_boundary_returns_head() {
         )?;
         write(
             &root.join("src/lib.rs"),
-            "pub fn price(amount: i32) -> i32 {\n    if amount > 100 { amount - 10 } else { amount }\n}\n",
+            // #4435: the declarations keep the files in the module tree;
+            // the diff below covers only the first three lines.
+            "pub fn price(amount: i32) -> i32 {\n    if amount > 100 { amount - 10 } else { amount }\n}\nmod unregistered_helper;\n",
         )?;
         write(
             &root.join("src/price_mimic.rs"),
@@ -4508,7 +5014,9 @@ fn absent_delimiter_boundary_returns_head() {
         )?;
         write(
             &root.join("src/lib.rs"),
-            "pub fn price(amount: i32) -> i32 {\n    if amount > 100 { amount - 10 } else { amount }\n}\n",
+            // #4435: the declarations keep the files in the module tree;
+            // the diff below covers only the first three lines.
+            "pub fn price(amount: i32) -> i32 {\n    if amount > 100 { amount - 10 } else { amount }\n}\nmod price_mimic;\nmod unregistered_helper;\n",
         )?;
         write(
             &root.join("src/price_mimic.rs"),

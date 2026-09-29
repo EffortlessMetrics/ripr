@@ -111,7 +111,7 @@ fn build_script_from_manifest(value: &toml::Value, manifest_dir: &Path) -> Optio
     Some(normalize(&path))
 }
 
-fn collect_explicit_paths(
+pub(super) fn collect_explicit_paths(
     target_entries: Option<&toml::Value>,
     manifest_dir: &Path,
     out: &mut BTreeSet<PathBuf>,
@@ -773,7 +773,7 @@ where
 /// ancestor manifest inside the workspace. Files outside every source
 /// layout (a build script beside its manifest, a declared `[lib] path =
 /// "lib/foo.rs"` root) take the second route.
-fn owning_package_dir(workspace_root: &Path, anchored: &Path) -> Option<PathBuf> {
+pub(super) fn owning_package_dir(workspace_root: &Path, anchored: &Path) -> Option<PathBuf> {
     package_root_of(anchored).or_else(|| nearest_manifest_dir(workspace_root, anchored))
 }
 
@@ -797,7 +797,7 @@ fn strip_root(workspace_root: &Path, targets: &BTreeSet<PathBuf>) -> BTreeSet<Pa
 /// The nearest ancestor directory of `file` that holds a `Cargo.toml`,
 /// bounded by the workspace root so a manifest above the analyzed
 /// workspace is never consulted.
-fn nearest_manifest_dir(workspace_root: &Path, file: &Path) -> Option<PathBuf> {
+pub(super) fn nearest_manifest_dir(workspace_root: &Path, file: &Path) -> Option<PathBuf> {
     file.ancestors()
         .skip(1)
         .take_while(|dir| dir.starts_with(workspace_root))
@@ -822,7 +822,7 @@ fn package_root_of(file: &Path) -> Option<PathBuf> {
     }
 }
 
-fn normalize(path: &Path) -> PathBuf {
+pub(super) fn normalize(path: &Path) -> PathBuf {
     PathBuf::from(path.to_string_lossy().replace('\\', "/"))
 }
 
@@ -833,7 +833,7 @@ fn normalize(path: &Path) -> PathBuf {
 /// registration spelling. A leading ParentDir chain — the path escaping
 /// above its base — is kept as spelled, so outside-root declarations
 /// resolve consistently without being silently clamped into the root.
-fn lexical(path: &Path) -> PathBuf {
+pub(super) fn lexical(path: &Path) -> PathBuf {
     let mut resolved: Vec<std::path::Component> = Vec::new();
     for component in path.components() {
         match component {

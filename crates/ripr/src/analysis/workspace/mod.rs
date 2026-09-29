@@ -1,6 +1,7 @@
 mod cargo_targets;
 mod classify;
 mod discover;
+mod module_graph;
 mod path_dependencies;
 mod select;
 mod source_role;
@@ -9,6 +10,7 @@ pub(crate) use cargo_targets::{
     CargoHarnessVerdict, ManifestInventory, context_for_files,
     declared_crate_root_paths_from_manifest,
 };
+pub(crate) use module_graph::apply_module_graph_evidence;
 pub(crate) use path_dependencies::{
     PathDependencyAdjacency, PathDependencyGraphStatus, reverse_dependent_scope_expansion,
 };

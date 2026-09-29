@@ -187,6 +187,21 @@ pub(crate) fn with_overlay<T>(
     work()
 }
 
+/// Root-relative paths the installed overlay serves from `HEAD` although the
+/// working tree lacks them; empty without an overlay for `root`. A caller
+/// that lists the working tree adds these to see the committed file set.
+pub(crate) fn committed_paths_missing_on_disk(root: &Path) -> Vec<String> {
+    CURRENT_OVERLAY.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .filter(|overlay| {
+                overlay.root == root || overlay.canonical_root.as_deref() == Some(root)
+            })
+            .map(|overlay| overlay.committed_paths_missing_on_disk())
+            .unwrap_or_default()
+    })
+}
+
 /// What a read of `root.join(relative)` should observe under the installed
 /// overlay. Without an overlay every path reads the working tree.
 pub(crate) fn lookup(root: &Path, relative: &Path) -> CommittedSourceRead {
