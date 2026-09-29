@@ -170,6 +170,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckSourceRoleAuthority => super::check_rust_source_role_authority(),
         XtaskCommand::CheckPublicApi => super::check_public_api(),
         XtaskCommand::CheckOutputContracts => super::check_output_contracts(),
+        XtaskCommand::CheckIdentityRegistry => super::identity_registry::check_identity_registry(),
         XtaskCommand::CheckDocArtifacts => super::check_doc_artifacts(),
         XtaskCommand::CheckSupportTiers => super::check_support_tiers(),
         XtaskCommand::CheckDocIndex => super::check_doc_index(),

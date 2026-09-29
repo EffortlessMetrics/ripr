@@ -10,6 +10,7 @@ mod feedback;
 mod finding_test_evidence;
 mod fix_instruction;
 mod git_candidate;
+mod identity;
 mod language;
 mod probe;
 mod summary;
@@ -53,6 +54,11 @@ pub use fix_instruction::{FixInstructionState, FixInstructionSummary};
 pub use git_candidate::{
     GitCandidateBase, GitCandidateDiffSemantics, GitCandidateSubject, GitCandidateSubjectError,
     GitHashFormat, GitObjectId, GitTreeish,
+};
+pub use identity::{
+    GOVERNED_IDENTITY_SURFACES, IDENTITY_REGISTRY_JSON_PATH, IDENTITY_REGISTRY_MARKDOWN_PATH,
+    REQUIRED_TAXONOMY_KINDS, identity_field_disposition, identity_registry_canonical_json,
+    identity_registry_markdown, identity_registry_violations,
 };
 pub(crate) use language::PERL_FACT_EXPORTER;
 #[cfg(feature = "lang-perl")]

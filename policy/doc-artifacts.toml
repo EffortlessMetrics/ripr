@@ -915,7 +915,6 @@ path = "docs/specs/RIPR-SPEC-0180-lsp-saved-edit-sequence.md"
 status = "proposed"
 owner = "product-swarm"
 standalone_reason = "Issue #1578 records the saved-edit sequence harness: a repeatable cold-start through explicit-full refresh sequence reuses landed cache, scheduler, and delivery metrics; a stale cached answer cannot satisfy a speed target; a fast run cannot hide redundant full rescans or duplicate diagnostics; and historical 2s/10s/30s figures remain proposals rather than gates."
-
 [[artifact]]
 id = "RIPR-SPEC-0181"
 kind = "spec"
@@ -923,3 +922,10 @@ path = "docs/specs/RIPR-SPEC-0181-inline-test-module-region-cage.md"
 status = "proposed"
 owner = "product-analysis"
 standalone_reason = "Issue #4783 records the producer-neutral inline test-module region cage: an external before/after edit of a production Rust file is admitted only as a pure insertion into one exact existing test-required inline module, without granting whole-file production permission or InlineUnit producer admission."
+[[artifact]]
+id = "RIPR-SPEC-0182"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0182-governed-identity-registry.md"
+status = "proposed"
+owner = "product-swarm"
+standalone_reason = "Issue #4804 records the governed identity registry: one checked vocabulary and compatibility map for #1932 identifiers, fail-closed unknown governed fields, byte-stable JSON/Markdown projections, and no consumer migration or replacement of existing snapshot, command, or repair-attempt authority."

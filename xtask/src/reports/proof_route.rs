@@ -1146,6 +1146,16 @@ mod tests {
     }
 
     #[test]
+    fn identity_registry_diff_routes_to_the_identity_registry_pack() -> Result<(), String> {
+        let route = route_for(&["crates/ripr/src/domain/identity/catalog.rs"])?;
+        assert_eq!(matched_pack_ids(&route), vec!["identity-registry"]);
+        assert_eq!(required_lane_ids(&route), vec!["routed-rust-small"]);
+        assert!(!route.full_proof);
+        assert!(!route.release_proof_required);
+        Ok(())
+    }
+
+    #[test]
     fn release_file_routes_release_pack_and_is_never_skipped() -> Result<(), String> {
         let route = route_for(&["Cargo.toml"])?;
         assert_eq!(matched_pack_ids(&route), vec!["release-package"]);

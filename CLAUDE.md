@@ -363,6 +363,8 @@ cargo xtask check-traceability
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
+cargo xtask check-doc-artifacts
 cargo xtask check-doc-index
 cargo xtask check-generated-clean
 cargo xtask check-dependencies

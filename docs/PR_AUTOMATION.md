@@ -81,6 +81,7 @@ cargo xtask check-local-context
 cargo xtask check-network-policy
 cargo xtask check-no-panic-family [--propose]
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-positioning-language
 cargo xtask check-pr
 cargo xtask check-process-policy
@@ -575,6 +576,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
@@ -615,6 +617,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
@@ -765,6 +768,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-artifacts
 cargo xtask check-doc-index
 cargo xtask check-readme-state

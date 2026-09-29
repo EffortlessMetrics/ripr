@@ -271,6 +271,7 @@ pub use ripr::domain::FixInstructionState
 pub use ripr::domain::FixInstructionSummary
 pub use ripr::domain::FlowSinkFact
 pub use ripr::domain::FlowSinkKind
+pub use ripr::domain::GOVERNED_IDENTITY_SURFACES
 pub use ripr::domain::GapState
 pub use ripr::domain::GitCandidateBase
 pub use ripr::domain::GitCandidateDiffSemantics
@@ -279,6 +280,8 @@ pub use ripr::domain::GitCandidateSubjectError
 pub use ripr::domain::GitHashFormat
 pub use ripr::domain::GitObjectId
 pub use ripr::domain::GitTreeish
+pub use ripr::domain::IDENTITY_REGISTRY_JSON_PATH
+pub use ripr::domain::IDENTITY_REGISTRY_MARKDOWN_PATH
 pub use ripr::domain::LanguageFileCount
 pub use ripr::domain::LanguageId
 pub use ripr::domain::LanguageStatus
@@ -291,6 +294,7 @@ pub use ripr::domain::OwnerKind
 pub use ripr::domain::Probe
 pub use ripr::domain::ProbeFamily
 pub use ripr::domain::ProbeId
+pub use ripr::domain::REQUIRED_TAXONOMY_KINDS
 pub use ripr::domain::RelatedTest
 pub use ripr::domain::RelationConfidence
 pub use ripr::domain::RelationReason
@@ -317,6 +321,10 @@ pub use ripr::domain::VerificationExecutionResultValidationError
 pub use ripr::domain::VerificationProcessDispositionV1
 pub use ripr::domain::command_spec_sha256
 pub use ripr::domain::compare_fixture_delta
+pub use ripr::domain::identity_field_disposition
+pub use ripr::domain::identity_registry_canonical_json
+pub use ripr::domain::identity_registry_markdown
+pub use ripr::domain::identity_registry_violations
 pub use ripr::explain_finding
 pub use ripr::explain_finding_with_input
 pub use ripr::lsp::DiagnosticBatch

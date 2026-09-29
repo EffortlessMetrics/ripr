@@ -26,6 +26,9 @@ are scoped or reviewed.
   cached answer cannot satisfy a speed target, and a fast elapsed time cannot
   hide a redundant full rescan or duplicate diagnostic publication. The
   historical 2s/10s/30s figures remain proposals, not gates.
+- Identity: `cargo xtask check-identity-registry` enforces one governed
+  identifier catalog and generated `docs/identity` table. Vocabulary and
+  compatibility map only; it does not migrate consumers (#4804).
 
 ### Fixed
 

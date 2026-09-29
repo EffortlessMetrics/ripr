@@ -349,6 +349,7 @@ cargo xtask check-python-judged-panel
 cargo xtask check-rust-source-role-authority
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-artifacts
 cargo xtask check-doc-index
 cargo xtask check-pr-shape # advisory

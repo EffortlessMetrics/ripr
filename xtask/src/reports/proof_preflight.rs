@@ -650,6 +650,7 @@ mod tests {
                 "analysis-fixture",
                 "editor-lsp",
                 "release-package",
+                "identity-registry",
             ]
         );
         let commands = plan_commands(&plan);
@@ -659,12 +660,27 @@ mod tests {
             "cargo test --workspace",
             "cargo xtask vscode-compile",
             "cargo publish -p ripr --dry-run",
+            "cargo xtask check-identity-registry",
         ] {
             assert!(
                 commands.contains(&expected),
                 "full plan should contain `{expected}`: {commands:?}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn identity_registry_file_plan_runs_the_registry_check() -> Result<(), String> {
+        let plan = plan_for(&["crates/ripr/src/domain/identity/catalog.rs"])?;
+        assert_eq!(plan.routed_pack_ids, vec!["identity-registry"]);
+        assert!(!plan.full_proof);
+        assert!(!plan.release_proof_required);
+        assert!(
+            plan_commands(&plan).contains(&"cargo xtask check-identity-registry"),
+            "identity-registry pack must require the registry check: {:?}",
+            plan_commands(&plan)
+        );
         Ok(())
     }
 

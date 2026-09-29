@@ -1,0 +1,575 @@
+{
+  "schema_version": "1.0",
+  "identities": [
+    {
+      "kind": "ActionId",
+      "canonical_type": "(fingerprint in lsp::action_contract::action_data; typed wrapper is #4806)",
+      "owner_path": "crates/ripr/src/lsp/action_contract.rs",
+      "owner_issue": "#1892/#1661/#4806",
+      "portability": "session-bound",
+      "semantic_inputs": ["action_class", "canonical_identity", "command_id", "action_name"],
+      "volatile_excluded": ["title", "display", "markdown", "client_name", "timestamp", "pid", "effective_root"],
+      "parents": ["InstructionInstanceId", "CommandId"],
+      "children": [],
+      "invalidation": "Action class, addressed canonical identity, command id, or stable action name change. Title text must not.",
+      "persistence": "Session/code-action payload only. Must not be reused as InstructionSemanticId.",
+      "serialization": [
+        {
+          "name": "action_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["LSP Command.title must not be treated as ActionId"]
+    },
+    {
+      "kind": "AnalysisAttemptId",
+      "canonical_type": "lsp refresh generation echoed as snapshot_id (not #1602 handle)",
+      "owner_path": "crates/ripr/src/lsp/agent_protocol.rs",
+      "owner_issue": "#1603/#1765/#4807",
+      "portability": "session-bound",
+      "semantic_inputs": ["refresh_generation", "accepted_request_identity"],
+      "volatile_excluded": ["timestamp", "pid", "client_name", "display", "markdown", "absolute_checkout"],
+      "parents": [],
+      "children": [],
+      "invalidation": "A new accepted refresh. Scheduler coalescing must not mint a completed snapshot handle.",
+      "persistence": "Must not be stored where CompletedAnalysisSnapshotId is required. snapshot_handles remains false until #1602.",
+      "serialization": [
+        {
+          "name": "snapshot_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/ripr-agent-request.schema.json",
+          "visibility": "public",
+          "removal_generation": "do not read as #1602 immutable snapshot handle; removal when CompletedAnalysisSnapshotId occupies the handle slot"
+        },
+        {
+          "name": "snapshot_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": "do not read as #1602 immutable snapshot handle; removal when CompletedAnalysisSnapshotId occupies the handle slot"
+        },
+        {
+          "name": "snapshot_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/ripr-agent-error.schema.json",
+          "visibility": "public",
+          "removal_generation": "do not read as #1602 immutable snapshot handle; removal when CompletedAnalysisSnapshotId occupies the handle slot"
+        },
+        {
+          "name": "snapshot_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": "nested evidence_identity.snapshot_id echoes refresh generation, not #1602"
+        },
+        {
+          "name": "evidence_identity",
+          "role": "component",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["agent snapshot_id currently echoes refresh generation, not CompletedAnalysisSnapshotId"]
+    },
+    {
+      "kind": "CanonicalItemId",
+      "canonical_type": "analysis::canonical_gap::CanonicalGapIdentity",
+      "owner_path": "crates/ripr/src/analysis/canonical_gap.rs",
+      "owner_issue": "#1932/#4804 (records PR-era Lane 1 gap identity; typed wrapper is #4805)",
+      "portability": "portable",
+      "semantic_inputs": ["owner", "seam_kind", "flow_sink", "missing_discriminator", "assertion_shape"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": [],
+      "children": ["FindingId", "InstructionSemanticId"],
+      "invalidation": "Owner, seam kind, flow sink, missing discriminator, or assertion shape change. Line numbers are locators, not identity.",
+      "persistence": "May be persisted as a burn-down key. Must not be reused as a seam location or diagnostic transport id.",
+      "serialization": [
+        {
+          "name": "canonical_gap_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/check.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "canonical_gap_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/repair-assurance.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "canonical_gap_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "gap_id",
+          "role": "compatibility_alias",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": "retire after CanonicalItemId typed migration (#4805/#4809)"
+        }
+      ],
+      "competing_wrappers": ["gap_id on some diagnostic payloads still names the same burn-down key"]
+    },
+    {
+      "kind": "CommandId",
+      "canonical_type": "domain::command_spec::CommandSpec.command_id",
+      "owner_path": "crates/ripr/src/domain/command_spec.rs",
+      "owner_issue": "#1617/#1754/#4808",
+      "portability": "portable",
+      "semantic_inputs": ["command_id", "program", "args", "role", "execution_mode", "policies"],
+      "volatile_excluded": ["human_display", "display", "timestamp", "pid", "client_name", "markdown", "absolute_checkout"],
+      "parents": [],
+      "children": ["ActionId", "ReceiptId"],
+      "invalidation": "Semantic argv, role, or policy change. Display-string-only changes must not.",
+      "persistence": "May be persisted as a route name. Display text is never reconstructive authority.",
+      "serialization": [
+        {
+          "name": "command_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/domain/command_spec.rs",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "command_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/repair-assurance.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["legacy verify/receipt display strings are not CommandId"]
+    },
+    {
+      "kind": "CompletedAnalysisSnapshotId",
+      "canonical_type": "analysis_outcome::AnalysisIdentity.snapshot_identity",
+      "owner_path": "crates/ripr/src/analysis_outcome.rs",
+      "owner_issue": "#1765/#1602/#4807",
+      "portability": "snapshot-bound",
+      "semantic_inputs": ["completed_analysis_inputs", "result_commitment"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": ["InputIdentity"],
+      "children": ["InstructionInstanceId", "DiagnosticResultId", "ContinuationId", "FeedbackReceiptId"],
+      "invalidation": "Any completed-analysis input or result commitment change. Request order and scheduler generation do not define this id.",
+      "persistence": "The immutable handle. Never accept AnalysisAttemptId in this slot.",
+      "serialization": [
+        {
+          "name": "snapshot_identity",
+          "role": "canonical",
+          "surface": "schemas/ripr/check.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["agent protocol snapshot_id is not this identity while snapshot_handles is false"]
+    },
+    {
+      "kind": "ContinuationId",
+      "canonical_type": "(request continuation_id / success continuation_identity; typed wrapper is #4807)",
+      "owner_path": "crates/ripr/src/lsp/agent_protocol.rs",
+      "owner_issue": "#1603/#1899/#4807",
+      "portability": "transport-bound",
+      "semantic_inputs": ["snapshot", "profile", "budget", "page_order"],
+      "volatile_excluded": ["timestamp", "pid", "client_name", "display", "markdown", "absolute_checkout"],
+      "parents": ["CompletedAnalysisSnapshotId"],
+      "children": [],
+      "invalidation": "Snapshot, profile, budget, or page-order change.",
+      "persistence": "Page token only. Must not become CanonicalItemId.",
+      "serialization": [
+        {
+          "name": "continuation_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/ripr-agent-request.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "continuation_identity",
+          "role": "compatibility_alias",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": "unify on ContinuationId during #4807 typed migration"
+        },
+        {
+          "name": "budget_identity",
+          "role": "component",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "complete_evidence_identity",
+          "role": "component",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["continuation_id and continuation_identity are one authority with two wire names"]
+    },
+    {
+      "kind": "DiagnosticCodeId",
+      "canonical_type": "LSP Diagnostic.code / diagnostic data diagnostic_id",
+      "owner_path": "crates/ripr/src/lsp/action_contract.rs",
+      "owner_issue": "#1892/#4804 (distinct from DiagnosticResultId)",
+      "portability": "transport-bound",
+      "semantic_inputs": ["diagnostic_code"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": [],
+      "children": [],
+      "invalidation": "Diagnostic code change. Result-id payload digest must not be substituted.",
+      "persistence": "Code-action payload only.",
+      "serialization": [
+        {
+          "name": "diagnostic_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["DiagnosticResultIdCache document/workspace ids are a different identity"]
+    },
+    {
+      "kind": "DiagnosticResultId",
+      "canonical_type": "lsp::diagnostics::DiagnosticResultIdCache",
+      "owner_path": "crates/ripr/src/lsp/diagnostics.rs",
+      "owner_issue": "#1565/#1566/#4807",
+      "portability": "transport-bound",
+      "semantic_inputs": ["completed_snapshot", "document_uri", "normalized_payload", "delivery_selection"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": ["CompletedAnalysisSnapshotId"],
+      "children": [],
+      "invalidation": "Snapshot, document, delivery selection, or diagnostic payload change.",
+      "persistence": "Pull/push diagnostics transport only. Must never become CanonicalItemId.",
+      "serialization": [
+        {
+          "name": "document_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/diagnostics.rs",
+          "visibility": "private",
+          "removal_generation": null
+        },
+        {
+          "name": "workspace_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/diagnostics.rs",
+          "visibility": "private",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["action_data diagnostic_id is DiagnosticCodeId, not this result identity"]
+    },
+    {
+      "kind": "EditInstructionId",
+      "canonical_type": "(not yet typed; #4806)",
+      "owner_path": "crates/ripr/src/lsp/saved_edit_sequence.rs",
+      "owner_issue": "#1571/#1895/#4806",
+      "portability": "snapshot-bound",
+      "semantic_inputs": ["instruction_instance", "original_source_digest", "range", "document_version"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": ["InstructionInstanceId"],
+      "children": [],
+      "invalidation": "Any source, range, or document-version change. Cannot survive an edit.",
+      "persistence": "Must not be persisted across document versions.",
+      "serialization": [
+      ],
+      "competing_wrappers": ["SequenceIdentity is harness identity, not an edit instruction"]
+    },
+    {
+      "kind": "FeedbackReceiptId",
+      "canonical_type": "domain::feedback::FeedbackReceipt.feedback_id / identity.receipt_id",
+      "owner_path": "crates/ripr/src/domain/feedback.rs",
+      "owner_issue": "#4585/#4804 (same field name as repair ReceiptId; different authority)",
+      "portability": "snapshot-bound",
+      "semantic_inputs": ["snapshot_id", "canonical_item", "route_digest", "judgment"],
+      "volatile_excluded": ["recorded_at", "timestamp", "pid", "client_name", "display", "markdown"],
+      "parents": ["CompletedAnalysisSnapshotId"],
+      "children": [],
+      "invalidation": "Referenced snapshot or judgment identity change. Timestamp is outside payload identity.",
+      "persistence": "Local usefulness receipt only. Never a repair-evidence ReceiptId.",
+      "serialization": [
+        {
+          "name": "receipt_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/output/feedback.rs",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "snapshot_id",
+          "role": "component",
+          "surface": "crates/ripr/src/output/feedback.rs",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["repair ReceiptId is a different identity that must not share this surface's receipt_id meaning"]
+    },
+    {
+      "kind": "FindingId",
+      "canonical_type": "domain::support::ProbeId",
+      "owner_path": "crates/ripr/src/domain/support.rs",
+      "owner_issue": "#1932 (producer finding/probe identity; typed CanonicalItemId family is #4805)",
+      "portability": "portable",
+      "semantic_inputs": ["owner", "probe_family", "changed_span"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": ["CanonicalItemId"],
+      "children": [],
+      "invalidation": "Changed owner or probe family. Display titles do not participate.",
+      "persistence": "May be referenced from packets. Must not become DiagnosticResultId.",
+      "serialization": [
+        {
+          "name": "finding_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["ProbeId remains the current Rust type; this row records it rather than wrapping it"]
+    },
+    {
+      "kind": "InputIdentity",
+      "canonical_type": "lsp::input_identity::LspAnalysisInputIdentity",
+      "owner_path": "crates/ripr/src/lsp/input_identity.rs",
+      "owner_issue": "#1642/#1671/#2000/#4804",
+      "portability": "repository-bound",
+      "semantic_inputs": ["repository_config_identity", "session_options_identity", "requested_base", "resolved_base", "mode", "profile", "enabled_languages", "manifest_identity", "lockfile_identity", "analyzer_version", "schema_version", "saved_workspace_revision"],
+      "volatile_excluded": ["timestamp", "pid", "client_name", "display", "markdown", "scheduler_generation"],
+      "parents": [],
+      "children": ["CompletedAnalysisSnapshotId"],
+      "invalidation": "Any listed semantic input change. Absolute checkout spelling is recorded separately as root_identity containment evidence.",
+      "persistence": "Session/analysis input identity. Equivalent sources in a different checkout are a different InputIdentity while portable CanonicalItemId can remain stable.",
+      "serialization": [
+        {
+          "name": "input_identity",
+          "role": "canonical",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "input_identity",
+          "role": "canonical",
+          "surface": "schemas/ripr/check.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "input_identity",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "root_identity",
+          "role": "component",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "root_identity",
+          "role": "component",
+          "surface": "schemas/ripr/check.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "root_identity",
+          "role": "component",
+          "surface": "schemas/ripr/repair-assurance.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "config_identity",
+          "role": "component",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "config_identity",
+          "role": "component",
+          "surface": "schemas/ripr/check.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "base_identity",
+          "role": "component",
+          "surface": "schemas/ripr/ripr-agent-success.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "repository_identity",
+          "role": "component",
+          "surface": "schemas/ripr/check.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["LspAnalysisInputIdentity::stable_id currently fingerprints effective_root; that is repository-bound containment, not a portable semantic input"]
+    },
+    {
+      "kind": "InstructionInstanceId",
+      "canonical_type": "(not yet typed; #4805)",
+      "owner_path": "crates/ripr/src/domain/fix_instruction.rs",
+      "owner_issue": "#1663/#1894/#4805",
+      "portability": "snapshot-bound",
+      "semantic_inputs": ["instruction_semantic", "completed_snapshot", "source_facts"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": ["InstructionSemanticId", "CompletedAnalysisSnapshotId"],
+      "children": ["ActionId", "EditInstructionId"],
+      "invalidation": "Snapshot or source-fact change. Semantic meaning can remain stable while this instance does not.",
+      "persistence": "Must not outlive the snapshot that produced it.",
+      "serialization": [
+      ],
+      "competing_wrappers": []
+    },
+    {
+      "kind": "InstructionSemanticId",
+      "canonical_type": "(not yet typed; #4805)",
+      "owner_path": "crates/ripr/src/domain/fix_instruction.rs",
+      "owner_issue": "#1663/#1894/#4805",
+      "portability": "portable",
+      "semantic_inputs": ["safe_next_action_concept", "canonical_item"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": ["CanonicalItemId"],
+      "children": ["InstructionInstanceId"],
+      "invalidation": "The portable next-action concept changes. Client name, display text, and snapshot identity must not.",
+      "persistence": "Portable across equivalent checkouts. Must not be used as an executable action or edit id.",
+      "serialization": [
+      ],
+      "competing_wrappers": ["FixInstructionSummary is state, not this identity"]
+    },
+    {
+      "kind": "ReceiptId",
+      "canonical_type": "(agent/repair evidence receipt; typed wrapper is #4808)",
+      "owner_path": "crates/ripr/src/app/repair_attempt.rs",
+      "owner_issue": "#1941/#4808",
+      "portability": "snapshot-bound",
+      "semantic_inputs": ["exact_heads", "command_id", "proof_identity", "movement_facts"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": ["RepairAttemptId", "CommandId"],
+      "children": [],
+      "invalidation": "Exact head, command/proof identity, or movement-fact change.",
+      "persistence": "Evidence of one before/after attempt. Must not be confused with FeedbackReceiptId.",
+      "serialization": [
+      ],
+      "competing_wrappers": ["feedback receipt_id is FeedbackReceiptId on a different surface"]
+    },
+    {
+      "kind": "RepairAttemptId",
+      "canonical_type": "app::repair_attempt::RepairAttemptId",
+      "owner_path": "crates/ripr/src/app/repair_attempt.rs",
+      "owner_issue": "#2927/#3511/#4808",
+      "portability": "repository-bound",
+      "semantic_inputs": ["durable_attempt_nonce"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": [],
+      "children": ["ReceiptId"],
+      "invalidation": "A new reserved attempt directory. May span several completed snapshots. Must not alias AnalysisAttemptId or CompletedAnalysisSnapshotId.",
+      "persistence": "The durable repair transaction. Repository-global latest-receipt files are compatibility projections of this attempt.",
+      "serialization": [
+        {
+          "name": "repair_attempt_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/repair-attempt.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "attempt_id",
+          "role": "compatibility_alias",
+          "surface": "schemas/ripr/repair-attempt.schema.json",
+          "visibility": "public",
+          "removal_generation": "after.attempt_id is the same RepairAttemptId; do not treat as AnalysisAttemptId"
+        }
+      ],
+      "competing_wrappers": ["feedback ResultIdentity.attempt_id is a caller-supplied reference slot, not this authority"]
+    },
+    {
+      "kind": "SeamLocationId",
+      "canonical_type": "analysis::seams::SeamId",
+      "owner_path": "crates/ripr/src/analysis/seams.rs",
+      "owner_issue": "#1932 (location-tied seam identity; distinct from CanonicalItemId)",
+      "portability": "repository-bound",
+      "semantic_inputs": ["owner_span", "source_location", "seam_kind"],
+      "volatile_excluded": ["timestamp", "timestamps", "created_unix_ms", "pid", "client_name", "display", "display_text", "markdown", "scheduler_generation", "request_order", "traversal_order", "absolute_checkout", "absolute_path", "effective_root"],
+      "parents": [],
+      "children": [],
+      "invalidation": "Source location or seam span change. Canonical gap grouping must not be used as a substitute.",
+      "persistence": "Usable as a before/after locator. Must not be persisted as CanonicalItemId.",
+      "serialization": [
+        {
+          "name": "seam_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/repair-attempt.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "seam_id",
+          "role": "canonical",
+          "surface": "schemas/ripr/repair-assurance.schema.json",
+          "visibility": "public",
+          "removal_generation": null
+        },
+        {
+          "name": "seam_id",
+          "role": "canonical",
+          "surface": "crates/ripr/src/lsp/action_contract.rs",
+          "visibility": "public",
+          "removal_generation": null
+        }
+      ],
+      "competing_wrappers": ["CanonicalGapIdentity is a separate burn-down key and must not alias seam_id"]
+    }
+  ],
+  "adjacent_fields": [
+    {
+      "name": "after_artifact_identity",
+      "surfaces": ["schemas/ripr/repair-assurance.schema.json"],
+      "reason": "Repair artifact digest identity; tracked so the scanner cannot treat it as a new taxonomy id"
+    },
+    {
+      "name": "attempt_id",
+      "surfaces": ["crates/ripr/src/output/feedback.rs"],
+      "reason": "Caller-supplied feedback --attempt slot; must not collapse RepairAttemptId and AnalysisAttemptId"
+    },
+    {
+      "name": "before_artifact_identity",
+      "surfaces": ["schemas/ripr/repair-assurance.schema.json"],
+      "reason": "Repair artifact digest identity; tracked so the scanner cannot treat it as a new taxonomy id"
+    },
+    {
+      "name": "diff_identity",
+      "surfaces": ["schemas/ripr/check.schema.json"],
+      "reason": "Git candidate diff digest (#3278); not an agentic-LSP item/instruction/action identity"
+    },
+    {
+      "name": "feedback_id",
+      "surfaces": ["crates/ripr/src/output/feedback.rs"],
+      "reason": "Idempotency/store key for a usefulness receipt, not ReceiptId"
+    },
+    {
+      "name": "registration_id",
+      "surfaces": ["schemas/ripr/check.schema.json"],
+      "reason": "Test harness registration identity; not a CanonicalItemId"
+    }
+  ]
+}
