@@ -50,6 +50,19 @@ pub fn check_workspace_worktree_with_config(
     check_with_progress(input, config, AnalysisProgressScope::Worktree, None)
 }
 
+pub(crate) fn check_workspace_worktree_with_origins(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    ),
+    String,
+> {
+    check_with_progress_and_origins(input, config, AnalysisProgressScope::Worktree, None)
+}
+
 /// Runs the repo-baseline static exposure analysis for a workspace. This
 /// seeds probes from every currently-probeable production syntax shape
 /// rather than from a diff. Use this when the answer to "is the repo's
@@ -71,13 +84,42 @@ pub fn check_workspace_repo_with_config(
     check_with_progress(input, config, AnalysisProgressScope::Repo, None)
 }
 
+#[cfg(test)]
+pub(crate) fn check_workspace_repo_with_origins(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    ),
+    String,
+> {
+    check_with_progress_and_origins(input, config, AnalysisProgressScope::Repo, None)
+}
+
 /// Run a check while observing producer-owned progress boundaries.
 pub(crate) fn check_with_progress(
-    mut input: CheckInput,
+    input: CheckInput,
     config: &RiprConfig,
     scope: AnalysisProgressScope,
     sink: Option<&dyn AnalysisProgressSink>,
 ) -> Result<CheckOutput, String> {
+    Ok(check_with_progress_and_origins(input, config, scope, sink)?.0)
+}
+
+fn check_with_progress_and_origins(
+    mut input: CheckInput,
+    config: &RiprConfig,
+    scope: AnalysisProgressScope,
+    sink: Option<&dyn AnalysisProgressSink>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    ),
+    String,
+> {
     let mut progress = ProgressRun::new(sink, scope);
     progress.emit(AnalysisProgressStage::LoadingInput);
     // Immutable Git candidate subjects (#3237 / #3276): bind-and-validate
@@ -171,12 +213,13 @@ pub(crate) fn check_with_progress(
 
     progress.emit(AnalysisProgressStage::BuildingOutput);
     let suppression_policy = input.suppression_policy.clone();
+    let origins = analysis.rust_diagnostic_origins.clone();
     let mut output = output_builder::check_output_from_analysis(input, analysis);
     if let Some(policy) = suppression_policy {
         apply_suppression_policy(&mut output, &policy)?;
     }
     progress.complete();
-    Ok(output)
+    Ok((output, origins))
 }
 
 /// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
@@ -205,6 +248,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
             // No analysis ran, so no loader chose a base (#3940).
             effective_base: None,
             uncommitted_source_paths: Vec::new(),
+            rust_diagnostic_origins: Default::default(),
         },
     )
 }
@@ -738,6 +782,7 @@ mod tests {
             partial_scope: None,
             effective_base,
             uncommitted_source_paths: Vec::new(),
+            rust_diagnostic_origins: Default::default(),
         }
     }
 

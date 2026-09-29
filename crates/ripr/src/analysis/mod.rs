@@ -3,6 +3,7 @@ pub(crate) mod canonical_gap;
 mod classifier;
 mod classify;
 pub(crate) mod committed_source;
+pub(crate) mod diagnostic_origin;
 mod diff;
 mod extract;
 mod facts;
@@ -725,6 +726,8 @@ pub struct AnalysisResult {
     /// add; they decide the uncommitted-edits note. Empty for every other
     /// mode.
     pub(crate) uncommitted_source_paths: Vec<String>,
+    /// Crate-private numeric diagnostic origins for Rust findings (#4464).
+    pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
 }
 
 /// Default language list when callers do not pass `[languages]` config.

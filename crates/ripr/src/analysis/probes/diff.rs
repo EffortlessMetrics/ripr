@@ -3,8 +3,9 @@ use super::super::rust_index::{
     RustIndex, SyntaxNodeFact, changed_nodes_for_lines, extract_identifier_tokens, find_file_facts,
     find_owner_function,
 };
+use super::SeededProbe;
 use super::binding_predicate::{
-    BindingPredicateResolution, ChangedBindingPredicateUse, masked_brace_delta, masked_paren_delta,
+    BindingPredicateResolution, masked_brace_delta, masked_paren_delta,
     resolve_changed_binding_uses,
 };
 use super::classify::{
@@ -14,16 +15,12 @@ use super::expectations::{expected_sinks, required_oracles};
 use super::family::delta_for_family;
 use super::ids::{diff_probe_id, normalize_expression};
 use super::lexical::classify_changed_line;
+use crate::analysis::diagnostic_origin::ParserByteSpan;
 use crate::analysis::extract::mask_comments_and_strings;
 use crate::analysis::facts::cfg_predicates::{attributes_require_test, split_leading_attribute};
 use crate::analysis::language::changed_let_binding;
 use crate::domain::{Probe, ProbeFamily, SourceLocation};
 use std::path::Path;
-
-/// One seeded probe plus the #3294 changed-binding relation when the
-/// probe was retargeted from a changed `let` initializer to its
-/// same-function predicate use.
-pub(crate) type ProbeWithRelation = (Probe, Option<ChangedBindingPredicateUse>);
 
 /// Test surface: the probe vec without the #3294 relations. Production
 /// callers use [`probes_for_file_with_relations`].
@@ -31,7 +28,7 @@ pub(crate) type ProbeWithRelation = (Probe, Option<ChangedBindingPredicateUse>);
 pub(crate) fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) -> Vec<Probe> {
     probes_for_file_with_relations(root, changed, index)
         .into_iter()
-        .map(|(probe, _)| probe)
+        .map(|seeded| seeded.probe)
         .collect()
 }
 
@@ -39,7 +36,7 @@ pub(crate) fn probes_for_file_with_relations(
     root: &Path,
     changed: &ChangedFile,
     index: &RustIndex,
-) -> Vec<ProbeWithRelation> {
+) -> Vec<SeededProbe> {
     let mut probes = Vec::new();
     // Use `new_side_line` for all lines: for added lines this equals `line`; for
     // removed lines `new_side_line` is the new-file coordinate, which is what
@@ -104,36 +101,32 @@ pub(crate) fn probes_for_file_with_relations(
                 }
                 emitted_parser_shapes.push(key);
                 let canonical_text = canonical_probe_text(text, shape.text);
+                let parser_span = parser_span_for_canonical_shape(&canonical_text, &shape);
                 let canonical_line = ChangedLine {
                     line: shape.start_line,
                     new_side_line: shape.start_line,
                     text: canonical_text.clone(),
                 };
-                probes.push((
-                    build_probe(
-                        &build_context,
-                        &canonical_line,
-                        shape.family,
-                        nearby_removed_line(shape.start_line, &canonical_text, changed),
-                        Some(canonical_text),
-                    ),
-                    None,
-                ));
+                let probe = build_probe(
+                    &build_context,
+                    &canonical_line,
+                    shape.family,
+                    nearby_removed_line(shape.start_line, &canonical_text, changed),
+                    Some(canonical_text.clone()),
+                );
+                probes.push(SeededProbe::maybe_with_span(probe, parser_span));
             }
             continue;
         }
         if !parser_shapes.is_empty() {
             for shape in parser_shapes {
-                probes.push((
-                    build_probe(
-                        &build_context,
-                        added,
-                        shape.family,
-                        nearby_removed_line(added.new_side_line, text, changed),
-                        Some(text.to_string()),
-                    ),
-                    None,
-                ));
+                probes.push(SeededProbe::from_probe(build_probe(
+                    &build_context,
+                    added,
+                    shape.family,
+                    nearby_removed_line(added.new_side_line, text, changed),
+                    Some(text.to_string()),
+                )));
             }
             continue;
         }
@@ -152,16 +145,13 @@ pub(crate) fn probes_for_file_with_relations(
             continue;
         }
         for family in families {
-            probes.push((
-                build_probe(
-                    &build_context,
-                    added,
-                    family,
-                    nearby_removed_line(added.new_side_line, text, changed),
-                    Some(text.to_string()),
-                ),
-                None,
-            ));
+            probes.push(SeededProbe::from_probe(build_probe(
+                &build_context,
+                added,
+                family,
+                nearby_removed_line(added.new_side_line, text, changed),
+                Some(text.to_string()),
+            )));
         }
     }
 
@@ -185,16 +175,13 @@ pub(crate) fn probes_for_file_with_relations(
             if has_matching_added_line(removed, &family, changed) {
                 continue;
             }
-            probes.push((
-                build_probe(
-                    &build_context,
-                    removed,
-                    family,
-                    Some(text.to_string()),
-                    None,
-                ),
+            probes.push(SeededProbe::from_probe(build_probe(
+                &build_context,
+                removed,
+                family,
+                Some(text.to_string()),
                 None,
-            ));
+            )));
         }
     }
 
@@ -263,7 +250,7 @@ fn retarget_changed_binding_predicates(
     added: &ChangedLine,
     text: &str,
     changed_lines: &[usize],
-) -> Option<Vec<ProbeWithRelation>> {
+) -> Option<Vec<SeededProbe>> {
     let (binding, initializer) = changed_let_binding(text)?;
     // Only a complete single-line declaration retargets: a multi-line
     // initializer's first added line would otherwise retarget with a
@@ -305,7 +292,7 @@ fn retarget_changed_binding_predicates(
             new_side_line: use_site.predicate_line,
             text: use_site.predicate_expression.clone(),
         };
-        retargeted.push((
+        retargeted.push(SeededProbe::retargeted(
             build_probe(
                 context,
                 &predicate_line,
@@ -313,7 +300,7 @@ fn retarget_changed_binding_predicates(
                 before_initializer.clone(),
                 Some(use_site.initializer.clone()),
             ),
-            Some(use_site),
+            use_site,
         ));
     }
     (!retargeted.is_empty()).then_some(retargeted)
@@ -328,16 +315,26 @@ fn canonical_probe_text(changed_head: &str, parser_expression: &str) -> String {
     }
 }
 
+fn parser_span_for_canonical_shape(
+    canonical_text: &str,
+    shape: &super::classify::ParserProbeShape<'_>,
+) -> Option<ParserByteSpan> {
+    if canonical_text != shape.text {
+        return None;
+    }
+    ParserByteSpan::same_line(shape.text, shape.start_byte)
+}
+
 /// Scan `probes` in order; for any id that appears more than once, rewrite the
 /// 2nd+ occurrences to append `.2`, `.3`, … (ordinal-based collision suffix).
-fn dedup_probe_ids(probes: &mut [ProbeWithRelation]) {
+fn dedup_probe_ids(probes: &mut [SeededProbe]) {
     use std::collections::HashMap;
     let mut seen: HashMap<String, u32> = HashMap::new();
-    for (probe, _) in probes.iter_mut() {
-        let count = seen.entry(probe.id.0.clone()).or_insert(0);
+    for seeded in probes.iter_mut() {
+        let count = seen.entry(seeded.probe.id.0.clone()).or_insert(0);
         *count += 1;
         if *count > 1 {
-            probe.id.0 = format!("{}.{}", probe.id.0, count);
+            seeded.probe.id.0 = format!("{}.{}", seeded.probe.id.0, count);
         }
     }
 }
@@ -905,6 +902,142 @@ mod tests {
                 .iter()
                 .any(|sink| sink == "branch result")
         );
+    }
+
+    fn require_find(source: &str, needle: &str, label: &str) -> Result<usize, String> {
+        source
+            .find(needle)
+            .ok_or_else(|| format!("{label} {needle:?} missing from {source:?}"))
+    }
+
+    fn require_second(source: &str, needle: &str) -> Result<(usize, usize), String> {
+        let first = require_find(source, needle, "first")?;
+        let rest = source
+            .get(first.saturating_add(1)..)
+            .ok_or_else(|| format!("slice after first {needle:?} is not a scalar boundary"))?;
+        let second = rest
+            .find(needle)
+            .map(|offset| first.saturating_add(1).saturating_add(offset))
+            .ok_or_else(|| format!("second {needle:?} missing from {source:?}"))?;
+        Ok((first, second))
+    }
+
+    fn predicate_shape(
+        start_byte: usize,
+        text: &str,
+    ) -> super::super::classify::ParserProbeShape<'_> {
+        super::super::classify::ParserProbeShape {
+            family: ProbeFamily::Predicate,
+            start_line: 2,
+            start_byte,
+            text,
+            standalone_call: false,
+            unsafe_boundary: false,
+        }
+    }
+
+    #[test]
+    fn canonical_parser_span_skips_string_decoy_on_the_same_line() -> Result<(), String> {
+        const PREDICATE: &str = "montant_é > discount_threshold";
+        let path = PathBuf::from("src/lib.rs");
+        let source = concat!(
+            "pub fn price(montant_é: i32, discount_threshold: i32) -> bool {\n",
+            "    let decoy = \"montant_é > discount_threshold\"; if montant_é > discount_threshold { false } else { true }\n",
+            "}\n",
+        );
+        let (decoy, producer) = require_second(source, PREDICATE)?;
+        if decoy >= producer {
+            return Err(format!("decoy {decoy} is not before producer {producer}"));
+        }
+        let line = source
+            .lines()
+            .nth(1)
+            .ok_or_else(|| "missing predicate line".to_string())?
+            .to_string();
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: line,
+            }],
+            removed_lines: vec![ChangedLine {
+                line: 2,
+                new_side_line: 2,
+                text: "    let decoy = \"montant_é > discount_threshold\"; if montant_é > discount_threshold { true } else { false }".to_string(),
+            }],
+        };
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    source: source.to_string(),
+                    functions: vec![FunctionFact {
+                        id: SymbolId("price".to_string()),
+                        name: "price".to_string(),
+                        file: path.clone(),
+                        start_line: 1,
+                        end_line: 3,
+                        body: source.to_string(),
+                        calls: vec![],
+                        returns: vec![],
+                        literals: vec![],
+                        source_role: FunctionSourceRole::Production,
+                        attrs: vec![],
+                        impl_attrs: Vec::new(),
+                        nested_fn_names: Vec::new(),
+                        let_bindings: Vec::new(),
+                        impl_context: Default::default(),
+                    }],
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 2,
+                        end_line: 2,
+                        start_byte: producer,
+                        kind: PROBE_SHAPE_PREDICATE.to_string(),
+                        text: PREDICATE.to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+        let seeded = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        let predicate = seeded
+            .iter()
+            .find(|item| item.probe.family == ProbeFamily::Predicate)
+            .ok_or_else(|| "predicate probe missing".to_string())?;
+        assert_eq!(
+            predicate.parser_span,
+            Some(crate::analysis::diagnostic_origin::ParserByteSpan {
+                start_byte: producer,
+            })
+        );
+        assert_ne!(
+            predicate.parser_span.map(|span| span.start_byte),
+            Some(decoy)
+        );
+        assert_eq!(predicate.probe.expression, PREDICATE);
+        Ok(())
+    }
+
+    #[test]
+    fn parser_span_is_dropped_when_canonical_text_differs_from_shape() {
+        let shape = predicate_shape(12, "montant_é > discount_threshold");
+        assert_eq!(
+            parser_span_for_canonical_shape("let _ = montant_é > discount_threshold;", &shape),
+            None
+        );
+        assert_eq!(
+            parser_span_for_canonical_shape(shape.text, &shape),
+            Some(ParserByteSpan { start_byte: 12 })
+        );
+    }
+
+    #[test]
+    fn parser_span_is_dropped_for_multiline_shape_text() {
+        let shape = predicate_shape(0, "montant_é >\ndiscount_threshold");
+        assert_eq!(parser_span_for_canonical_shape(shape.text, &shape), None);
     }
 
     #[test]
@@ -1863,9 +1996,11 @@ mod tests {
 
         let probes = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
 
-        let [(probe, relation)] = probes.as_slice() else {
+        let [seeded] = probes.as_slice() else {
             return Err(format!("expected one retargeted probe, got {probes:?}"));
         };
+        let probe = &seeded.probe;
+        let relation = &seeded.binding_relation;
         if probe.family != ProbeFamily::Predicate {
             return Err(format!("expected predicate family, got {probe:?}"));
         }
@@ -1936,10 +2071,10 @@ mod tests {
 
         let probes = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
 
-        let [(probe, relation)] = probes.as_slice() else {
+        let [seeded] = probes.as_slice() else {
             return Err(format!("expected the generic probe only, got {probes:?}"));
         };
-        if probe.family != ProbeFamily::StaticUnknown || relation.is_some() {
+        if seeded.probe.family != ProbeFamily::StaticUnknown || seeded.binding_relation.is_some() {
             return Err(format!(
                 "shadowed binding must keep the generic path: {probes:?}"
             ));
@@ -2004,7 +2139,10 @@ mod tests {
         if probes.len() != 2 {
             return Err(format!("expected two direct probes, got {probes:?}"));
         }
-        if probes.iter().any(|(_, relation)| relation.is_some()) {
+        if probes
+            .iter()
+            .any(|seeded| seeded.binding_relation.is_some())
+        {
             return Err(format!(
                 "no retarget may attach to a changed predicate: {probes:?}"
             ));

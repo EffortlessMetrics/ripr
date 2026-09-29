@@ -1,12 +1,26 @@
 use super::super::rust_index::{RustIndex, find_owner_function};
+use super::SeededProbe;
 use super::expectations::{expected_sinks, required_oracles};
 use super::family::family_for_probe_shape;
 use super::ids::{normalize_expression, repo_probe_id};
+use crate::analysis::diagnostic_origin::ParserByteSpan;
 use crate::domain::{DeltaKind, Probe, SourceLocation};
 use std::collections::HashMap;
 use std::path::Path;
 
+#[cfg(test)]
 pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<Probe> {
+    probes_for_repo_file_seeded(root, path, index)
+        .into_iter()
+        .map(|seeded| seeded.probe)
+        .collect()
+}
+
+pub(crate) fn probes_for_repo_file_seeded(
+    root: &Path,
+    path: &Path,
+    index: &RustIndex,
+) -> Vec<SeededProbe> {
     let mut probes = Vec::new();
     let Some(facts) = index.files.get(path) else {
         return probes;
@@ -42,7 +56,7 @@ pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<
         let expected_sinks = expected_sinks(&shape.text, &family);
         let required_oracles = required_oracles(&shape.text, &family);
 
-        probes.push(Probe {
+        let probe = Probe {
             id,
             location: SourceLocation::new(root.join(path), shape.start_line, 1),
             owner,
@@ -53,17 +67,21 @@ pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<
             expression: shape.text.clone(),
             expected_sinks,
             required_oracles,
-        });
+        };
+        let parser_span = (shape.start_line == shape.end_line)
+            .then(|| ParserByteSpan::same_line(&shape.text, shape.start_byte))
+            .flatten();
+        probes.push(SeededProbe::maybe_with_span(probe, parser_span));
     }
 
     // Post-hoc collision de-dup: if two probes got the same id, append .2, .3, …
     // to the 2nd+ occurrences.
     let mut seen: HashMap<String, u32> = HashMap::new();
-    for probe in probes.iter_mut() {
-        let count = seen.entry(probe.id.0.clone()).or_insert(0);
+    for seeded in probes.iter_mut() {
+        let count = seen.entry(seeded.probe.id.0.clone()).or_insert(0);
         *count += 1;
         if *count > 1 {
-            probe.id.0 = format!("{}.{}", probe.id.0, count);
+            seeded.probe.id.0 = format!("{}.{}", seeded.probe.id.0, count);
         }
     }
 

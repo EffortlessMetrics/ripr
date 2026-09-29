@@ -706,6 +706,7 @@ impl LanguageAdapter for TypeScriptAdapter {
             partial_scope: None,
             skipped_files,
             limitations,
+            rust_diagnostic_origins: Default::default(),
         })
     }
 
@@ -733,6 +734,7 @@ impl LanguageAdapter for TypeScriptAdapter {
             production_files: 0,
             skipped_files: 0,
             partial_reason: Some("typescript_repo_mode_not_implemented_diff_first".to_string()),
+            rust_diagnostic_origins: Default::default(),
         })
     }
 }

@@ -595,6 +595,8 @@ fn run_pipeline_for_diff_text(
         .collect::<Vec<_>>();
 
     let mut findings: Vec<Finding> = Vec::new();
+    let mut rust_diagnostic_origins =
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default();
     // `changed_rust_files` counts Rust adapter files only (#2103); every
     // adapter that ran records its own count in `changed_files_by_language`.
     let mut rust_changed_files: usize = 0;
@@ -665,6 +667,7 @@ fn run_pipeline_for_diff_text(
         limitations.extend(result.limitations);
         partial_scope = result.partial_scope.clone();
         harness_projections.extend(result.harness_projections);
+        rust_diagnostic_origins = result.rust_diagnostic_origins;
         findings.extend(result.findings);
         rust_changed_files += result.changed_files;
         candidate_line_count += result.candidate_line_count;
@@ -971,6 +974,7 @@ fn run_pipeline_for_diff_text(
         // effective base (#3940); every other path involves no base.
         effective_base: None,
         uncommitted_source_paths: Vec::new(),
+        rust_diagnostic_origins,
     })
 }
 
@@ -1064,6 +1068,8 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
     generated_file_patterns: &[String],
 ) -> Result<AnalysisResult, String> {
     let mut findings: Vec<Finding> = Vec::new();
+    let mut rust_diagnostic_origins =
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default();
     // Same accounting as the diff loop (#2103): `changed_rust_files` carries
     // the Rust adapter's count only; every adapter records its own count.
     let mut rust_production_files: usize = 0;
@@ -1095,6 +1101,7 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
                 });
             }
             rust_harness_projections = result.harness_projections;
+            rust_diagnostic_origins = result.rust_diagnostic_origins;
             findings.extend(result.findings);
             rust_production_files += result.production_files;
             files_by_language.push((LanguageId::Rust, result.production_files));
@@ -1159,9 +1166,9 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
         // Repo-scope analysis indexes the whole workspace; the partial
         // diff-selection budget (RIPR-PROP-0019) does not apply here.
         partial_scope: None,
-        // Repo-scope analysis has no diff denominator and no base (#3940).
         effective_base: None,
         uncommitted_source_paths: Vec::new(),
+        rust_diagnostic_origins,
     })
 }
 

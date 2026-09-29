@@ -43,6 +43,9 @@ pub(crate) struct LanguageDiffResult {
     /// Typed adapter-owned limitations that the pipeline publishes in the
     /// shared analysis outcome.
     pub(crate) limitations: Vec<AnalysisLimitation>,
+    /// Crate-private numeric diagnostic origins for Rust findings (#4464).
+    /// Empty for preview adapters.
+    pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
 }
 
 /// Per-language results returned by [`LanguageAdapter::analyze_repo`].
@@ -67,6 +70,9 @@ pub(crate) struct LanguageRepoResult {
     /// human/JSON output renders and gates fail closed on. `None` for
     /// complete runs and honest zeros.
     pub(crate) partial_reason: Option<String>,
+    /// Crate-private numeric diagnostic origins for Rust findings (#4464).
+    /// Empty for preview adapters.
+    pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
 }
 
 /// Boundary trait for per-language adapters.

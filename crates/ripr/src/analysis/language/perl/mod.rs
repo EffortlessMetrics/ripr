@@ -243,6 +243,7 @@ impl LanguageAdapter for PerlAdapter {
             // for every non-Rust adapter (#3532).
             harness_projections: Vec::new(),
             limitations,
+            rust_diagnostic_origins: Default::default(),
         })
     }
 
@@ -291,6 +292,7 @@ impl LanguageAdapter for PerlAdapter {
             // for every non-Rust adapter (#3532).
             harness_projections: Vec::new(),
             partial_reason,
+            rust_diagnostic_origins: Default::default(),
         })
     }
 }

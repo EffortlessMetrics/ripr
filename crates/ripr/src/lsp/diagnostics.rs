@@ -16,7 +16,7 @@ use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
-use crate::app::check_workspace_worktree_with_config;
+use crate::app::check_workspace_worktree_with_origins;
 use crate::config::{ConfigSeverity, LspDiagnosticProfile, SeverityConfig};
 #[cfg(test)]
 use crate::domain::RelatedTest;
@@ -304,6 +304,35 @@ pub(super) fn canonical_group_has_mixed_classes(raw_findings: &[Finding]) -> boo
         > 1
 }
 
+/// Profile, encoding, and producer-owned ranges for one finding diagnostic
+/// projection. Bundled so the grouping function stays under the arity gate.
+pub(super) struct FindingDiagnosticProjection<'a> {
+    pub profile: LspDiagnosticProfile,
+    pub position_encoding: &'a PositionEncodingKind,
+    pub origins: &'a crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    pub causal_projection: Option<&'a CausalDeltaArtifact>,
+}
+
+impl<'a> FindingDiagnosticProjection<'a> {
+    pub(super) fn new(
+        profile: LspDiagnosticProfile,
+        position_encoding: &'a PositionEncodingKind,
+        origins: &'a crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    ) -> Self {
+        Self {
+            profile,
+            position_encoding,
+            origins,
+            causal_projection: None,
+        }
+    }
+
+    fn with_causal(mut self, causal_projection: Option<&'a CausalDeltaArtifact>) -> Self {
+        self.causal_projection = causal_projection;
+        self
+    }
+}
+
 #[cfg(test)]
 pub(super) fn finding_diagnostics_by_uri(
     root: &Path,
@@ -317,9 +346,12 @@ pub(super) fn finding_diagnostics_by_uri(
         findings,
         severity,
         is_full_run,
-        LspDiagnosticProfile::Full,
-        causal_projection,
-        &PositionEncodingKind::UTF16,
+        FindingDiagnosticProjection::new(
+            LspDiagnosticProfile::Full,
+            &PositionEncodingKind::UTF16,
+            &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+        )
+        .with_causal(causal_projection),
     )
 }
 
@@ -328,13 +360,11 @@ pub(super) fn finding_diagnostics_by_uri_with_profile(
     findings: &[Finding],
     severity: &SeverityConfig,
     is_full_run: bool,
-    profile: LspDiagnosticProfile,
-    causal_projection: Option<&CausalDeltaArtifact>,
-    position_encoding: &PositionEncodingKind,
+    projection: FindingDiagnosticProjection<'_>,
 ) -> Result<BTreeMap<Uri, Vec<Diagnostic>>, String> {
     let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
     for (primary, raw_findings) in canonical_finding_groups(findings) {
-        if !finding_is_visible_in_profile(profile, &primary) {
+        if !finding_is_visible_in_profile(projection.profile, &primary) {
             continue;
         }
         let path = absolute_finding_path(root, &primary);
@@ -343,8 +373,9 @@ pub(super) fn finding_diagnostics_by_uri_with_profile(
             root,
             &primary,
             severity,
-            causal_projection,
-            position_encoding,
+            projection.causal_projection,
+            projection.position_encoding,
+            projection.origins,
         );
         // Producer authority: reaching this point means the finding passed
         // `finding_is_visible_in_profile`. The delivery budget consumes this
@@ -731,8 +762,9 @@ pub(super) fn workspace_diagnostics_with_config(
     // client has persisted, through the same canonical path as
     // `ripr check --worktree`. Document quarantine remains the independent
     // authority that prevents unsaved buffers from being served as current.
-    let output = match check_workspace_worktree_with_config(input, config.repo_config()) {
-        Ok(output) => output,
+    let (output, origins) = match check_workspace_worktree_with_origins(input, config.repo_config())
+    {
+        Ok(pair) => pair,
         // #2303: a git invocation that exceeded the configured cooperative
         // deadline commits a limited snapshot (zero findings, one typed
         // failed `diff` outcome) instead of dropping the refresh with no
@@ -930,9 +962,12 @@ pub(super) fn workspace_diagnostics_with_config(
         &findings,
         config.repo_config().severity(),
         is_full_run,
-        config.diagnostic_profile,
-        causal_projection.as_ref(),
-        &config.position_encoding,
+        FindingDiagnosticProjection::new(
+            config.diagnostic_profile,
+            &config.position_encoding,
+            &origins,
+        )
+        .with_causal(causal_projection.as_ref()),
     )?;
 
     let classified_seams = raw_seams
@@ -2234,7 +2269,14 @@ pub(super) fn diagnostic_for_finding_with_config(
     finding: &Finding,
     config: &SeverityConfig,
 ) -> Diagnostic {
-    diagnostic_for_finding_with_causal(root, finding, config, None, &PositionEncodingKind::UTF16)
+    diagnostic_for_finding_with_causal(
+        root,
+        finding,
+        config,
+        None,
+        &PositionEncodingKind::UTF16,
+        &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+    )
 }
 
 fn diagnostic_for_finding_with_causal(
@@ -2243,6 +2285,7 @@ fn diagnostic_for_finding_with_causal(
     config: &SeverityConfig,
     causal_projection: Option<&CausalDeltaArtifact>,
     position_encoding: &PositionEncodingKind,
+    origins: &crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
 ) -> Diagnostic {
     let file = display_repo_path(root, &finding.probe.location.file);
     let owner = finding
@@ -2340,7 +2383,7 @@ fn diagnostic_for_finding_with_causal(
         }
     }
     Diagnostic {
-        range: diagnostic_range_for_finding(root, finding, position_encoding),
+        range: diagnostic_range_for_finding(root, finding, position_encoding, origins),
         severity: lsp_severity(config.for_exposure(&finding.class)),
         code: Some(NumberOrString::String(
             super::diagnostic_catalog::finding_code(&finding.class),
@@ -2358,7 +2401,13 @@ fn diagnostic_range_for_finding(
     root: &Path,
     finding: &Finding,
     position_encoding: &PositionEncodingKind,
+    origins: &crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
 ) -> Range {
+    if let Some(origin) = origins.for_finding(finding) {
+        // Numeric-only: a stored record, including coarse refusals, is not
+        // replaced by a saved-line search. Absent maps keep the heuristic.
+        return crate::lsp::position::range_from_encoded_origin(origin, position_encoding);
+    }
     let line = finding.probe.location.line.saturating_sub(1) as u32;
     let column = finding.probe.location.column;
     let saved_line = saved_line_for_finding(root, finding);
@@ -3960,9 +4009,11 @@ mod diagnostic_policy_tests {
             &[finding],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Actionable,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Actionable,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         if !grouped.is_empty() {
             return Err("actionable profile published an exposed finding".to_string());
@@ -3975,9 +4026,11 @@ mod diagnostic_policy_tests {
             &[unknown],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Actionable,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Actionable,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         if !grouped.is_empty() {
             return Err("actionable profile published a static unknown".to_string());
@@ -4009,9 +4062,11 @@ mod diagnostic_policy_tests {
             &[finding],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Actionable,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Actionable,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         if grouped.values().flatten().count() != 1 {
             return Err("actionable profile dropped a concrete producer-backed route".to_string());
@@ -4081,9 +4136,11 @@ mod diagnostic_policy_tests {
             &[finding],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Full,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Full,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         let diagnostic = grouped
             .values()
@@ -4117,9 +4174,11 @@ mod diagnostic_policy_tests {
                 std::slice::from_ref(&finding),
                 &SeverityConfig::default(),
                 true,
-                LspDiagnosticProfile::Full,
-                None,
-                encoding,
+                FindingDiagnosticProjection::new(
+                    LspDiagnosticProfile::Full,
+                    encoding,
+                    &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+                ),
             )?;
             let diagnostic = grouped
                 .values()

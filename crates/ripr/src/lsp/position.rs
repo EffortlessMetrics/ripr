@@ -17,8 +17,9 @@
 //! of the probe expression. If the expression is empty or not on the line, the
 //! start is the first non-whitespace character. If the saved file cannot be
 //! read, the start stays `column - 1`. This is LSP-local; it does not change
-//! analyzer columns or SARIF. Producer-owned byte origins remain a separate
-//! claim (#4464). Width-only non-ASCII fixtures remain #1737.
+//! analyzer columns or SARIF. Producer-owned byte origins (#4464) override this
+//! heuristic when the analysis context carries an exact or coarse Rust record.
+//! Width-only non-ASCII fixtures remain #1737.
 //!
 //! **Range-constructor inventory** — which spans depend on source-text width:
 //! - [`expression_span_range`] / [`expression_span_range_on_saved_line`] — the
@@ -144,6 +145,30 @@ fn first_non_whitespace_byte(line: &str) -> usize {
         .map_or(line.len(), |(idx, _)| idx)
 }
 
+/// Select stored producer-owned endpoints for the negotiated encoding.
+pub(crate) fn range_from_encoded_origin(
+    origin: &crate::analysis::diagnostic_origin::EncodedOrigin,
+    encoding: &PositionEncodingKind,
+) -> Range {
+    let span = if *encoding == PositionEncodingKind::UTF8 {
+        origin.for_utf8()
+    } else if *encoding == PositionEncodingKind::UTF32 {
+        origin.for_utf32()
+    } else {
+        origin.for_utf16()
+    };
+    Range {
+        start: Position {
+            line: origin.line,
+            character: span.start,
+        },
+        end: Position {
+            line: origin.line,
+            character: span.end,
+        },
+    }
+}
+
 /// Build a [`Range`] covering a full line (character 0 to
 /// [`MAX_LINE_SPAN_WIDTH`]). Used for seam/gap diagnostics that don't have
 /// a specific expression to highlight.
@@ -225,6 +250,14 @@ mod tests {
         ] {
             assert_eq!(character_width("\t", &encoding), 1);
         }
+    }
+
+    #[test]
+    fn origin_max_span_matches_position_cap() {
+        assert_eq!(
+            crate::analysis::diagnostic_origin::ORIGIN_MAX_SPAN_WIDTH,
+            MAX_LINE_SPAN_WIDTH
+        );
     }
 
     #[test]

@@ -1870,6 +1870,72 @@ pub fn validate(value: i32) -> Result<i32, String> {
     }
 
     #[test]
+    fn predicate_start_byte_skips_a_string_decoy_on_the_same_line() -> Result<(), Box<dyn Error>> {
+        let source = concat!(
+            "pub fn price(montant_é: i32, discount_threshold: i32) -> bool {\n",
+            "    let decoy = \"montant_é > discount_threshold { false } else { true }\"; if montant_é > discount_threshold { false } else { true }\n",
+            "}\n",
+        );
+        let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let predicates: Vec<_> = facts
+            .probe_shapes
+            .iter()
+            .filter(|shape| shape.kind == PROBE_SHAPE_PREDICATE)
+            .collect();
+        assert!(
+            !predicates.is_empty(),
+            "expected predicate shapes, got {:?}",
+            facts.probe_shapes
+        );
+        let decoy = source
+            .find("montant_é > discount_threshold")
+            .ok_or("decoy missing")?;
+        let rest = source
+            .get(decoy.saturating_add(1)..)
+            .ok_or("slice after decoy is not a scalar boundary")?;
+        let producer = rest
+            .find("montant_é > discount_threshold")
+            .map(|offset| decoy.saturating_add(1).saturating_add(offset))
+            .ok_or("producer missing")?;
+        assert!(
+            predicates.iter().any(|shape| shape.start_byte == producer),
+            "if-condition start_byte missing: decoy={decoy} producer={producer} shapes={predicates:?}"
+        );
+        assert!(
+            predicates.iter().all(|shape| shape.start_byte != decoy),
+            "string decoy was credited as a predicate origin: {predicates:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn predicate_start_byte_survives_tab_cjk_astral_and_combining_prefix()
+    -> Result<(), Box<dyn Error>> {
+        let prefix = "\tlet 日本語 = \"🎉e\u{0301}\"; if ";
+        let source = format!(
+            "pub fn price(montant_é: i32, discount_threshold: i32) -> bool {{\n{prefix}montant_é > discount_threshold {{ false }} else {{ true }}\n}}\n"
+        );
+        let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), &source)?;
+        assert!(
+            !facts.used_lexical_fallback,
+            "parser should own this unicode prefix"
+        );
+        let predicates: Vec<_> = facts
+            .probe_shapes
+            .iter()
+            .filter(|shape| shape.kind == PROBE_SHAPE_PREDICATE)
+            .collect();
+        let producer = source
+            .find("montant_é > discount_threshold")
+            .ok_or("predicate missing")?;
+        assert!(
+            predicates.iter().any(|shape| shape.start_byte == producer),
+            "producer={producer} shapes={predicates:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn ra_adapter_extracts_unsafe_execution_boundaries_without_lexical_false_positives()
     -> Result<(), Box<dyn Error>> {
         let root = temp_dir("ra_unsafe_boundaries")?;
