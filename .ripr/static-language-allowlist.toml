@@ -119,6 +119,21 @@ owner = "extension"
 reason = "Store-facing extension README explains what ripr does and does not claim, which requires naming the prohibited outcome terms."
 
 [[allow]]
+path = "metrics/rust-judged-behavior-panel/README.md"
+owner = "ripr/evidence-quality"
+reason = "#4795 judged-panel runtime calibration names the closed runtime-result vocabulary, including the imported live-mutant label, to keep it independent of static exposure language."
+
+[[allow]]
+path = "metrics/rust-judged-behavior-panel/calibration-scorecard.json"
+owner = "ripr/evidence-quality"
+reason = "Retained #4795 scorecard JSON includes the closed runtime-result matrix keys, including the imported live-mutant label, as empty not-run cells rather than static exposure claims."
+
+[[allow]]
+path = "metrics/rust-judged-behavior-panel/calibration-scorecard.md"
+owner = "ripr/evidence-quality"
+reason = "Retained #4795 scorecard Markdown quotes the closed runtime-result vocabulary so the static/runtime matrix stays independently inspectable."
+
+[[allow]]
 path = "xtask/src/fixture_contracts/editor_validators.rs"
 owner = "devtools"
 reason = "The editor fixture validators (moved verbatim out of main.rs in the #2119 decomposition) contain literal prohibited terms in forbidden-claim lists that assert fixture packets never claim them."
@@ -132,6 +147,31 @@ reason = "The static-language checker implementation contains the literal prohib
 path = "xtask/src/reports/mutation.rs"
 owner = "devtools"
 reason = "The mutation calibration importer (moved verbatim out of main.rs in the #2119 decomposition) matches literal cargo-mutants runtime outcome labels when joining supplied runtime data, so it must name the prohibited terms."
+
+[[allow]]
+path = "xtask/src/rust_judged_panel/calibration.rs"
+owner = "ripr/evidence-quality"
+reason = "Judged-panel calibration owner binds the closed runtime-result vocabulary required by #4795; it does not emit static exposure claims."
+
+[[allow]]
+path = "xtask/src/rust_judged_panel/calibration/classify.rs"
+owner = "ripr/evidence-quality"
+reason = "Closed runtime-result classifier for #4795 must name the imported live-mutant label so it cannot be collapsed into caught."
+
+[[allow]]
+path = "xtask/src/rust_judged_panel/calibration/receipts.rs"
+owner = "ripr/evidence-quality"
+reason = "Typed calibration receipts compare claimed runtime results against nonzero subject counts using the #4795 closed vocabulary."
+
+[[allow]]
+path = "xtask/src/rust_judged_panel/calibration/scorecard.rs"
+owner = "ripr/evidence-quality"
+reason = "The #4795 scorecard renderer emits the static-by-runtime matrix, including the imported live-mutant label, without rewriting structural judgments."
+
+[[allow]]
+path = "xtask/src/rust_judged_panel/calibration/tests.rs"
+owner = "ripr/evidence-quality"
+reason = "Discriminating #4795 controls must quote the closed runtime-result vocabulary, including the imported live-mutant label, to reject automatic false-exposed promotion."
 
 [[allow]]
 path = "xtask/src/tests.rs"

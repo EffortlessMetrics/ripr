@@ -58,11 +58,11 @@ pub(crate) struct ReleaseJudgments {
     kind: String,
     authority: String,
     selection_path: String,
-    selection_sha256: String,
+    pub(super) selection_sha256: String,
     reference_run: ReferenceRun,
     roles: Vec<ReviewRole>,
     limits: Vec<String>,
-    judgments: Vec<RowJudgment>,
+    pub(super) judgments: Vec<RowJudgment>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,10 +84,10 @@ struct ReviewRole {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RowJudgment {
-    case_id: String,
+pub(super) struct RowJudgment {
+    pub(super) case_id: String,
     expected_direction: String,
-    terminal: String,
+    pub(super) terminal: String,
     structural: Structural,
     reviews: Vec<Review>,
     disagreement: Option<Disagreement>,

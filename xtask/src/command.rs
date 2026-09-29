@@ -380,6 +380,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "rust-judged-panel check",
         "rust-judged-panel replay [--out target/ripr/<path>]",
         "rust-judged-panel packet [--host-current target/ripr/<path>/current.json]",
+        "rust-judged-panel calibrate [--records <dir>] [--out <dir>] [--check]",
         "check-rust-judged-panel",
         "check-release-challenge-selection",
         "check-release-challenge-judgments",
@@ -751,7 +752,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "stdout only",
             false,
             false,
-            "Validates the governed Rust judged-panel seed, portable packets, and rolling production-quiet/actionability observation.",
+            "Validates the governed Rust judged-panel seed, portable packets, rolling production-quiet/actionability observation, and the #4795 calibration scorecard.",
         ),
         command_entry(
             "rust-judged-panel replay [--out target/ripr/<path>]",
@@ -770,12 +771,20 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Projects one validated complete host run into three bounded portable semantic packets; it does not build or execute RIPR.",
         ),
         command_entry(
+            "rust-judged-panel calibrate [--records <dir>] [--out <dir>] [--check]",
+            "report_only",
+            "target/ripr/rust-judged-panel/calibration or retained metrics/rust-judged-behavior-panel/calibration-scorecard.{json,md}",
+            false,
+            false,
+            "Joins independently judged Rust cases to exact runtime calibration receipts and emits one denominator-bearing JSON/Markdown scorecard without rewriting structural judgments.",
+        ),
+        command_entry(
             "check-rust-judged-panel",
             "non_mutating_check",
             "stdout only",
             false,
             true,
-            "Precommit alias for the same Rust judged-panel semantic validator, including rolling production-quiet and canonical actionability observation.",
+            "Precommit alias for the same Rust judged-panel semantic validator, including rolling production-quiet observation and the retained calibration scorecard.",
         ),
         command_entry(
             "check-release-challenge-selection",
