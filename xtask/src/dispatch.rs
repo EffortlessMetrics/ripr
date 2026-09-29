@@ -138,6 +138,12 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseServerManifest(args) => {
             super::reports::release_server::release_server_manifest(&args)
         }
+        XtaskCommand::ReleaseFinalServerSubjects(args) => {
+            super::reports::release_server::release_final_server_subjects(&args)
+        }
+        XtaskCommand::ReleaseFinalServerAttestationReceipt(args) => {
+            super::reports::release_server::release_final_server_attestation_receipt(&args)
+        }
         XtaskCommand::ReleaseDistributionCatalog(args) => {
             super::reports::distribution_catalog::release_distribution_catalog(&args)
         }
