@@ -69,7 +69,7 @@ diff --git a/src/ambiguous.ts b/src/ambiguous.ts
 index 0000000..1111111 100644
 --- a/src/ambiguous.ts
 +++ b/src/ambiguous.ts
-@@ -1,10 +1,10 @@
+@@ -1,11 +1,11 @@
  type Handler = (value: number) => void;
  
  export function summarize(amount: number, threshold: number, handlers: Record<string, Handler>, name: string): number {

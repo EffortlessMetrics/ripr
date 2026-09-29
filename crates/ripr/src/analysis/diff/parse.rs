@@ -71,6 +71,13 @@ pub(crate) struct ParsedDiff {
     pub(crate) limitations: Vec<AnalysisLimitation>,
 }
 
+struct HunkHeader {
+    old_start: usize,
+    old_count: usize,
+    new_start: usize,
+    new_count: usize,
+}
+
 /// Text of one changed line. A UTF-8 byte-order mark opening line 1 is file
 /// encoding metadata, not source, so it is dropped the way compilers and
 /// the Rust index drop it; otherwise the changed text of an item on line 1
@@ -82,21 +89,44 @@ fn source_line_text(line: usize, text: &str) -> String {
     }
 }
 
-fn parse_hunk_header(raw: &str) -> Option<(usize, usize)> {
+fn parse_hunk_header(raw: &str) -> Option<HunkHeader> {
     // Format: @@ -old,count +new,count @@ optional
     let mut parts = raw.split_whitespace();
-    let _at = parts.next()?;
-    let old = parts.next()?;
-    let new = parts.next()?;
-    Some((
-        parse_start(old.trim_start_matches('-'))?,
-        parse_start(new.trim_start_matches('+'))?,
-    ))
+    if parts.next()? != "@@" {
+        return None;
+    }
+    let (old_start, old_count) = parse_range(parts.next()?.strip_prefix('-')?)?;
+    let (new_start, new_count) = parse_range(parts.next()?.strip_prefix('+')?)?;
+    if parts.next()? != "@@" {
+        return None;
+    }
+    Some(HunkHeader {
+        old_start,
+        old_count,
+        new_start,
+        new_count,
+    })
 }
 
-fn parse_start(segment: &str) -> Option<usize> {
-    let start = segment.split(',').next()?;
-    start.parse::<usize>().ok()
+fn parse_range(segment: &str) -> Option<(usize, usize)> {
+    let (start, count) = match segment.split_once(',') {
+        Some((start, count)) => (start, parse_hunk_number(count)?),
+        None => (segment, 1),
+    };
+    let start = parse_hunk_number(start)?;
+    // Positive spans name real one-based lines. The exclusive end must fit:
+    // usize::MAX itself is not a usable source coordinate (see hunk guard).
+    if (count > 0 && start == 0) || start.checked_add(count).is_none() {
+        return None;
+    }
+    Some((start, count))
+}
+
+fn parse_hunk_number(raw: &str) -> Option<usize> {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    raw.parse().ok()
 }
 
 mod parser_state {
@@ -148,6 +178,7 @@ mod parser_state {
         old_line: usize,
         new_line: usize,
         in_hunk: bool,
+        remaining_hunk_lines: Option<(usize, usize)>,
         saw_old_path_marker: bool,
         section_old_path: Option<PathBuf>,
         deletion_section: bool,
@@ -176,12 +207,22 @@ mod parser_state {
         conflict_region: Option<ConflictSide>,
         combined_hunks: BTreeMap<Option<PathBuf>, u64>,
         conflict_regions: BTreeMap<Option<PathBuf>, u64>,
+        malformed_hunks: BTreeMap<Option<PathBuf>, u64>,
     }
 
     impl ParserState {
         /// Whether the parser is currently inside a hunk body.
         pub(super) fn in_hunk(&self) -> bool {
             self.in_hunk
+        }
+
+        pub(super) fn can_end_at_plain_boundary(&self) -> bool {
+            // A source removal of `-- a/name` and addition of `++ b/name`
+            // has exactly the same bytes as a plain section marker pair.
+            // Declared spans take precedence while both can consume it.
+            !self
+                .remaining_hunk_lines
+                .is_some_and(|(old, new)| old > 0 && new > 0)
         }
 
         pub(super) fn combined_quarantine(&self) -> bool {
@@ -252,9 +293,19 @@ mod parser_state {
                     *count,
                 )
             });
+            let malformed = self.malformed_hunks.iter().map(|(path, count)| {
+                (
+                    AnalysisLimitationKind::MalformedDiff,
+                    AnalysisRecoveryKind::Retry,
+                    "A two-way hunk has invalid ranges or its body does not match the declared old/new line counts. Obtain the complete valid unified diff and re-run; retained changed lines are advisory only.",
+                    path,
+                    *count,
+                )
+            });
 
             combined
                 .chain(conflicts)
+                .chain(malformed)
                 .filter_map(|(kind, recovery_kind, detail, path, count)| {
                     let Ok(recovery) = AnalysisRecovery::new(recovery_kind, detail) else {
                         return None;
@@ -395,12 +446,47 @@ mod parser_state {
         /// outer loop when it detects a plain-diff file-section boundary while
         /// a hunk is still open (RANK-2 fix).
         pub(super) fn close_hunk(&mut self) {
+            if let Some(remaining) = self.remaining_hunk_lines.take()
+                && remaining != (0, 0)
+            {
+                self.record_malformed_hunk();
+            }
             self.in_hunk = false;
             // A plain-diff file boundary also ends a symlink section; git's
             // own sections reset it at `diff --git` (#4594 review).
             self.symlink_section = false;
             self.saw_old_path_marker = false;
             self.conflict_region = None;
+        }
+
+        fn record_malformed_hunk(&mut self) {
+            let path = self
+                .current_path
+                .clone()
+                .or_else(|| self.section_old_path.clone());
+            let count = self.malformed_hunks.entry(path).or_insert(0);
+            *count = count.saturating_add(1);
+        }
+
+        fn account_hunk_line(&mut self, raw: &str) {
+            let Some((old, new)) = self.remaining_hunk_lines else {
+                return;
+            };
+            let consumed = match raw.as_bytes().first() {
+                Some(b'-') => (1, 0),
+                Some(b'+') => (0, 1),
+                Some(b' ') | None => (1, 1),
+                _ => return,
+            };
+            match (old.checked_sub(consumed.0), new.checked_sub(consumed.1)) {
+                (Some(old), Some(new)) => self.remaining_hunk_lines = Some((old, new)),
+                _ => {
+                    self.record_malformed_hunk();
+                    // One record per malformed hunk; keep its earlier lines as
+                    // advisory evidence rather than discarding parsed changes.
+                    self.remaining_hunk_lines = None;
+                }
+            }
         }
 
         pub(super) fn close_combined_quarantine(&mut self) {
@@ -506,6 +592,7 @@ mod parser_state {
             if !is_boundary {
                 return false;
             }
+            self.close_hunk();
             self.current_path = None;
             self.in_hunk = false;
             self.saw_old_path_marker = false;
@@ -530,6 +617,7 @@ mod parser_state {
             if !raw.starts_with("@@") {
                 return false;
             }
+            self.close_hunk();
             self.saw_old_path_marker = false;
             self.conflict_region = None;
 
@@ -551,7 +639,7 @@ mod parser_state {
                 return true;
             }
             self.combined_quarantine = false;
-            if let Some((old_start, new_start)) = parse_hunk_header(raw) {
+            if let Some(header) = parse_hunk_header(raw) {
                 // Overflow guard: if either start coordinate is at usize::MAX,
                 // the counter cannot advance and every line in this hunk would
                 // be tagged with a meaningless line number. usize::MAX is never
@@ -564,14 +652,17 @@ mod parser_state {
                 // variant drops even that first line, because usize::MAX is
                 // not an honest coordinate for any line. See the post-merge
                 // review of #2050.
-                if old_start == usize::MAX || new_start == usize::MAX {
+                if header.old_start == usize::MAX || header.new_start == usize::MAX {
+                    self.record_malformed_hunk();
                     self.in_hunk = false;
                     return true;
                 }
-                self.old_line = old_start;
-                self.new_line = new_start;
+                self.old_line = header.old_start;
+                self.new_line = header.new_start;
+                self.remaining_hunk_lines = Some((header.old_count, header.new_count));
                 self.in_hunk = true;
             } else {
+                self.record_malformed_hunk();
                 self.in_hunk = false;
             }
             true
@@ -593,7 +684,7 @@ mod parser_state {
             if !raw.starts_with("Binary files ") || !raw.ends_with(" differ") {
                 return false;
             }
-            self.in_hunk = false;
+            self.close_hunk();
             self.saw_old_path_marker = false;
             true
         }
@@ -607,6 +698,19 @@ mod parser_state {
                 self.saw_old_path_marker = false;
                 return;
             }
+            self.account_hunk_line(raw);
+            if raw.starts_with("\\ No newline at end of file") {
+                return;
+            }
+
+            // Empty sides may start at zero, but an excess body line cannot
+            // turn that cursor into a real one-based source coordinate.
+            if (raw.starts_with('+') && self.new_line == 0)
+                || (raw.starts_with('-') && self.old_line == 0)
+            {
+                return;
+            }
+
             let Some(path) = self.current_path.clone() else {
                 return;
             };
@@ -647,24 +751,23 @@ mod parser_state {
             }
 
             if let Some(text) = raw.strip_prefix('+') {
+                // A malformed excess body can exhaust even a valid header's
+                // counter. Refuse that coordinate before emitting the line.
+                let Some(next) = self.new_line.checked_add(1) else {
+                    self.close_hunk();
+                    return;
+                };
                 file.added_lines.push(ChangedLine {
                     line: self.new_line,
                     new_side_line: self.new_line,
                     text: source_line_text(self.new_line, text),
                 });
-                // Fail closed on overflow: if the new-side counter is already
-                // at usize::MAX (from a malicious or malformed @@ header), it
-                // cannot advance. Earlier behaviour silently emitted every
-                // subsequent line in this hunk tagged `line: usize::MAX`,
-                // producing ownerless probes that masqueraded as a long run of
-                // changes. Close the hunk instead so only the first overflowed
-                // line is recorded (and the rest are dropped as ambiguous).
-                if let Some(next) = self.new_line.checked_add(1) {
-                    self.new_line = next;
-                } else {
-                    self.close_hunk();
-                }
+                self.new_line = next;
             } else if let Some(text) = raw.strip_prefix('-') {
+                let Some(next) = self.old_line.checked_add(1) else {
+                    self.close_hunk();
+                    return;
+                };
                 // RANK-1 fix: record both the old-side line (`line`) and the
                 // current new-side position (`new_side_line`).  When an earlier
                 // hunk has a non-zero net line-delta, `line != new_side_line`.
@@ -676,11 +779,7 @@ mod parser_state {
                     new_side_line: self.new_line,
                     text: source_line_text(self.old_line, text),
                 });
-                if let Some(next) = self.old_line.checked_add(1) {
-                    self.old_line = next;
-                } else {
-                    self.close_hunk();
-                }
+                self.old_line = next;
             } else if raw.starts_with(' ') || raw.is_empty() {
                 if let (Some(o), Some(n)) =
                     (self.old_line.checked_add(1), self.new_line.checked_add(1))
@@ -1603,35 +1702,38 @@ deleted file mode 100644
     }
 
     #[test]
-    fn parser_drops_all_lines_after_usize_max_overflow_in_hunk() {
-        // Secondary overflow defense: a hunk header whose start is NEAR but
-        // not AT usize::MAX (here usize::MAX - 2) enters the hunk normally,
-        // but after the first few lines the counter saturates and the parser
-        // closes the hunk fail-closed. This test exercises the checked_add
-        // close-on-overflow path in consume_hunk_line (the primary defense
-        // is in handle_hunk_header, tested by parser_handles_hunk_line_numbers_at_usize_max).
-        //
-        // Start at usize::MAX - 2 = 18446744073709551613. The first `+first`
-        // line is recorded at that line number (a valid coordinate). The
-        // second `+second` advances to usize::MAX - 1 (valid). The third
-        // `+third` advances to usize::MAX (valid). The fourth context line
-        // ` fourth` cannot advance (usize::MAX + 1 overflows), so the hunk
-        // closes and `-fifth` is dropped.
-        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551613,5 +18446744073709551613,5 @@\n+first\n+second\n+third\n fourth\n-fifth\n";
-        let files = parse_unified_diff(diff);
-        assert_eq!(files.len(), 1);
-        let file = &files[0];
-        // Three added lines recorded (at usize::MAX-2, usize::MAX-1, usize::MAX);
-        // the context line ` fourth` triggers the close; `-fifth` is dropped.
-        assert_eq!(file.added_lines.len(), 3);
-        assert_eq!(file.added_lines[0].text, "first");
-        assert_eq!(file.added_lines[0].line, usize::MAX - 2);
-        assert_eq!(file.added_lines[1].text, "second");
-        assert_eq!(file.added_lines[1].line, usize::MAX - 1);
-        assert_eq!(file.added_lines[2].text, "third");
-        assert_eq!(file.added_lines[2].line, usize::MAX);
-        // The fifth line (`-fifth`) is dropped fail-closed.
-        assert_eq!(file.removed_lines.len(), 0);
+    fn parser_rejects_hunk_whose_declared_range_overflows() -> Result<(), String> {
+        // Reject the declared range before emitting a usize::MAX coordinate.
+        // The former secondary-overflow expectation called that coordinate
+        // valid, contradicting the existing primary start-coordinate guard.
+        let start = usize::MAX - 2;
+        let diff = format!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -{start},5 +{start},5 @@\n+first\n+second\n+third\n fourth\n-fifth\n"
+        );
+        let parsed = parse_unified_diff_with_metadata(&diff);
+        let file = parsed
+            .changed_files
+            .first()
+            .ok_or_else(|| "overflow control lost its admitted file".to_string())?;
+        if parsed.changed_files.len() != 1
+            || !file.added_lines.is_empty()
+            || !file.removed_lines.is_empty()
+            || !parsed
+                .limitations
+                .iter()
+                .any(|item| item.kind == AnalysisLimitationKind::MalformedDiff)
+        {
+            return Err(
+                "overflowing declared range must be rejected with a typed limitation".to_string(),
+            );
+        }
+        if parse_unified_diff(&diff)
+            .iter()
+            .any(|file| !file.added_lines.is_empty() || !file.removed_lines.is_empty())
+        {
+            return Err("legacy inventory must not emit lines from an invalid range".to_string());
+        }
+        Ok(())
     }
 
     #[test]

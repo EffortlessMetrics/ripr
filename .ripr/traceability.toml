@@ -7185,6 +7185,14 @@ id = "RIPR-SPEC-0147"
 name = "typed analysis outcome projection"
 spec = "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md"
 tests = [
+  "crates/ripr/src/analysis/diff/parse/stream/tests.rs::unfinished_declared_hunks_are_malformed_at_eof_and_boundaries",
+  "crates/ripr/src/analysis/diff/parse/stream/tests.rs::declared_hunk_counts_reject_excess_body_and_invalid_numbers",
+  "crates/ripr/src/analysis/diff/parse/stream/tests.rs::declared_ranges_reject_line_zero_and_unusable_end_coordinates",
+  "crates/ripr/src/analysis/diff/parse/stream/tests.rs::excess_body_counter_overflow_keeps_only_usable_advisory_coordinates",
+  "crates/ripr/src/analysis/diff/parse/stream/tests.rs::malformed_hunk_counts_are_not_duplicated_by_later_boundaries",
+  "crates/ripr/src/analysis/diff/parse.rs::tests::parser_rejects_hunk_whose_declared_range_overflows",
+  "crates/ripr/src/analysis/diff/parse/stream/tests.rs::complete_declared_hunks_preserve_ordinary_and_quarantined_controls",
+  "crates/ripr/tests/cli_smoke.rs::truncated_declared_hunk_is_incomplete_through_file_and_stdin",
   "crates/ripr/src/analysis/pipeline.rs::tests::diff_pipeline_projects_parser_limitation_and_distinguishes_complete_zero",
   "crates/ripr/src/output/json/mod.rs::tests::typed_incomplete_outcome_matches_human_and_json_projection",
   "crates/ripr/src/output/gate/tests.rs::tests::gate_fails_closed_on_typed_incomplete_analysis_outcome",

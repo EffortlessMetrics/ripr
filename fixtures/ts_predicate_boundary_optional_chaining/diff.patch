@@ -2,21 +2,21 @@ diff --git a/src/guards.ts b/src/guards.ts
 index 0000000..1111111 100644
 --- a/src/guards.ts
 +++ b/src/guards.ts
-@@ -1,6 +1,6 @@
+@@ -1,5 +1,5 @@
  export function userIsAdmin(order: { role?: string }): boolean {
 -    if (order?.role !== "admin") {
 +    if (order?.role === "admin") {
          return true;
      }
      return false;
-@@ -8,7 +8,7 @@
+@@ -8,5 +8,5 @@
  export function pickLabel(name: string | null): string {
 -    if (name ?? "") {
 +    if (name ?? "temp") {
          return "named";
      }
      return "anonymous";
-@@ -14,7 +14,7 @@
+@@ -14,4 +14,4 @@
  export function* thresholdsAbove(total: number): Generator<number> {
 -    yield total > 50;
 +    yield total >= 50;

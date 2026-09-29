@@ -1,6 +1,6 @@
 --- a/src/bridge.ts
 +++ b/src/bridge.ts
-@@ -1,6 +1,6 @@
+@@ -1,5 +1,5 @@
  export function processData(input: string): string {
 -    if (input.length > 0) {
 +    if (input.length >= 0) {

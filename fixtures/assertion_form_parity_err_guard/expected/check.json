@@ -6,7 +6,7 @@
   "summary": {"changed_rust_files":2,"probes":3,"findings":3,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":2,"changed_files_by_language":[{"language":"rust","files":2}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:eeba2e2b66d5c5edb1e9759ab6f7f5f89a594d94fcd284b9931e3896cf1412b4","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":2,"changed_line_count":18,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:162786730ebb6949db763185218e2e45d7020188bbe0af601a4a0430c40bf694","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":2,"changed_line_count":18,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {

@@ -81,6 +81,7 @@ fn parse_lines<'a, E>(
         }
 
         if state.in_hunk()
+            && state.can_end_at_plain_boundary()
             && parse_old_path_marker(raw)
             && lines.peek().is_some_and(|next| is_new_path_marker(next))
         {
@@ -99,6 +100,7 @@ fn parse_lines<'a, E>(
         state.consume_hunk_line(raw, &mut files);
     }
 
+    state.close_hunk();
     Ok(ParsedDiff {
         changed_files: files.into_values().collect(),
         deleted_file_count: state.deleted_file_count(),

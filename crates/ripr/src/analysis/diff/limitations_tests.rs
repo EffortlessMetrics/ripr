@@ -188,7 +188,7 @@ fn isolated_separator_and_marker_text_inside_source_do_not_false_trigger() -> Re
         "diff --git a/src/lib.rs b/src/lib.rs\n\
          --- a/src/lib.rs\n\
          +++ b/src/lib.rs\n\
-         @@ -1,1 +1,3 @@\n\
+         @@ -0,0 +1,3 @@\n\
          +=======\n\
          +let marker = \"<<<<<<< not a conflict region\";\n\
          +let arrows = \">>>>>>> also text\";\n",

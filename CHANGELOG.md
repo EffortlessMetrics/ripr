@@ -1699,6 +1699,11 @@ are scoped or reviewed.
   the mutants. The comparison-boundary check still applies to these calls
   (#4567).
 
+- Two-way diff hunks with missing or excess body lines, or invalid numeric
+  ranges, disclose incomplete analysis instead of reporting a complete result.
+  File and piped input retain earlier changes as advisory evidence and carry
+  the typed malformed-diff recovery route (#4375).
+
 ### Added
 
 - Zed: a Zed extension in `editors/zed` starts `ripr lsp --stdio` from your
