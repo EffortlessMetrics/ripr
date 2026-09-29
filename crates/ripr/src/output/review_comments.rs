@@ -1036,7 +1036,7 @@ fn review_recommendation_json(
             "expression": seam.expression(),
         },
         "source_location": source_location_json(&seam_file, Some(seam_line)),
-        "reason": reason_for(selected, missing_value.as_deref()),
+        "reason": reason_for(selected, gap_state, missing_value.as_deref()),
         "missing_discriminator": missing_value,
         "suggested_test": suggested_test,
         "llm_guidance": llm_guidance,
@@ -1269,7 +1269,18 @@ fn nearest_line_ordering(left: usize, right: usize, target: usize) -> Ordering {
         .then_with(|| left.cmp(&right))
 }
 
-fn reason_for(selected: &AgentBriefSelectedSeam<'_>, missing: Option<&str>) -> String {
+fn reason_for(
+    selected: &AgentBriefSelectedSeam<'_>,
+    gap_state: &str,
+    missing: Option<&str>,
+) -> String {
+    // Optional discriminator values do not grant repair authority. Project
+    // the same canonical decision that owns the card's typed guidance.
+    if gap_state != "actionable" {
+        return format!(
+            "Static evidence state is {gap_state}; no repair test is offered by this card. Inspect the producer-owned evidence and policy state."
+        );
+    }
     if let Some(missing) = missing {
         return format!(
             "Static evidence names missing discriminator {} for this seam.",
@@ -3048,6 +3059,17 @@ mod tests {
         );
 
         assert_eq!(item["gap_state"], "static_limitation");
+        let reason = item
+            .get("reason")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "static-limitation card must carry a reason".to_string())?;
+        if !reason.contains("Static evidence state is static_limitation")
+            || reason.contains("a focused test can strengthen")
+        {
+            return Err(format!(
+                "static-limitation reason contradicts canonical state: {reason}"
+            ));
+        }
         assert_eq!(item["suggested_test"]["recommended_file"], "not_applicable");
         assert!(item["suggested_test"]["assertion_guidance"].is_null());
         assert!(item["receipt_command"].is_null());
@@ -3063,6 +3085,53 @@ mod tests {
                 .as_str()
                 .is_some_and(|prompt| prompt.contains("missing_discriminator_evidence"))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn review_comment_reason_state_precedes_optional_discriminator() -> Result<(), String> {
+        let seams = [classified(10)];
+        let selected = selection(&seams);
+        let entry = selected
+            .top_seams
+            .first()
+            .ok_or_else(|| "expected selected reason fixture".to_string())?;
+        for state in [
+            "static_limitation",
+            "already_observed",
+            "internal_only",
+            "unknown",
+        ] {
+            for missing in [None, Some("amount == discount_threshold")] {
+                let reason = reason_for(entry, state, missing);
+                let expected = format!(
+                    "Static evidence state is {state}; no repair test is offered by this card. Inspect the producer-owned evidence and policy state."
+                );
+                if reason != expected {
+                    return Err(format!(
+                        "non-actionable state {state} changed: expected {expected}, got {reason}"
+                    ));
+                }
+            }
+        }
+        let missing = reason_for(entry, "actionable", Some("amount == discount_threshold"));
+        if missing
+            != "Static evidence names missing discriminator `amount == discount_threshold` for this seam."
+        {
+            return Err(format!(
+                "actionable discriminator reason changed: {missing}"
+            ));
+        }
+        let fallback = reason_for(entry, "actionable", None);
+        let expected_fallback = format!(
+            "Static evidence class is {}; a focused test can strengthen the named seam.",
+            entry.seam.class.as_str()
+        );
+        if fallback != expected_fallback {
+            return Err(format!(
+                "actionable fallback reason changed: expected {expected_fallback}, got {fallback}"
+            ));
+        }
         Ok(())
     }
 
