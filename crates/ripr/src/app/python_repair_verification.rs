@@ -854,11 +854,13 @@ fn map_execution_state(
 /// identity is the current binary/config/input).
 fn write_after_verification_snapshot(root: &Path) -> Result<(String, String), String> {
     let config = crate::config::load_for_root(root)?;
-    let (classified, limit_info) =
-        crate::analysis::inventory_classified_seams_at_with_config(root, &config)?;
-    let ts_guidance = crate::output::render::detect_ts_full_repo_guidance_pub(root, &classified);
+    let report = crate::analysis::inventory_classified_seams_report_at_with_config(root, &config)?;
+    let ts_guidance =
+        crate::output::render::detect_ts_full_repo_guidance_pub(root, &report.classified);
     let python_guidance =
-        crate::output::render::detect_python_repo_exposure_guidance_pub(root, &classified);
+        crate::output::render::detect_python_repo_exposure_guidance_pub(root, &report.classified);
+    let generated_skip =
+        crate::output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
     let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
         root.to_path_buf(),
         "ready".to_string(),
@@ -875,7 +877,7 @@ fn write_after_verification_snapshot(root: &Path) -> Result<(String, String), St
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let temporary = path.with_extension(format!("json.tmp-{}-{nonce}", std::process::id()));
-    let run_status = if limit_info.is_some() {
+    let run_status = if report.limit_info.is_some() {
         "seam_limit_applied".to_string()
     } else {
         "complete".to_string()
@@ -885,10 +887,11 @@ fn write_after_verification_snapshot(root: &Path) -> Result<(String, String), St
             .map_err(|error| format!("create {} failed: {error}", temporary.display()))?;
         let mut writer = std::io::BufWriter::new(file);
         crate::output::repo_exposure::write_repo_exposure_json_with_context(
-            &classified,
-            limit_info.as_ref(),
+            &report.classified,
+            report.limit_info.as_ref(),
             ts_guidance.as_ref(),
             python_guidance.as_ref(),
+            generated_skip.as_ref(),
             &context,
             &mut writer,
         )

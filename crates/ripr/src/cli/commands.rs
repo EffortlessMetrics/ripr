@@ -3907,6 +3907,7 @@ mod tests {
                 limit_info.as_ref(),
                 None,
                 None,
+                None,
                 &context,
             )?;
         let repo_exposure = dir.join("repo-exposure.json");

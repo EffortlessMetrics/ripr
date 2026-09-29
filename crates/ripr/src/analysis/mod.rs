@@ -6,6 +6,7 @@ pub(crate) mod committed_source;
 mod diff;
 mod extract;
 mod facts;
+mod generated_rust_corpus;
 pub(crate) mod harness_projection;
 mod language;
 pub(crate) mod new_test_target;
@@ -67,10 +68,11 @@ pub(crate) use seam_classification::SeamGripClassCounts;
 #[cfg(test)]
 pub(crate) use seam_classification::classify_seam;
 pub(crate) use seam_inventory::{
-    DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, DiffScopeEvidenceStages, ScopedClassifiedSeamInventory,
-    SeamLimitInfo, SeamLimitSource, TargetedTestInventoryError, apply_pilot_seam_budget,
-    inventory_changed_test_classified_seams_at_with_config_node,
-    inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
+    ClassifiedSeamsReport, DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, DiffScopeEvidenceStages,
+    ScopedClassifiedSeamInventory, SeamLimitInfo, SeamLimitSource, TargetedTestInventoryError,
+    apply_pilot_seam_budget, inventory_changed_test_classified_seams_at_with_config_node,
+    inventory_classified_seams_at_with_config, inventory_classified_seams_report_at_with_config,
+    inventory_compact_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_staged_at_with_config, inventory_seams_at_with_config,
     workspace_cache_key_at_with_config,

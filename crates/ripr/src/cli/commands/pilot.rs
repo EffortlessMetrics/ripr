@@ -35,6 +35,7 @@ fn write_pilot_repo_exposure_json(
     config: &RiprConfig,
     classified: &[analysis::ClassifiedSeam],
     limit_info: Option<&analysis::SeamLimitInfo>,
+    generated_skip: Option<&output::repo_exposure::GeneratedRustSkip>,
     pilot_budget_truncated: bool,
 ) -> Result<(), String> {
     let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(&input.root, classified);
@@ -44,11 +45,12 @@ fn write_pilot_repo_exposure_json(
     if pilot_budget_truncated {
         return write_pilot_file(
             path,
-            output::repo_exposure::render_repo_exposure_json(
+            output::repo_exposure::render_repo_exposure_json_with_generated_skip(
                 classified,
                 limit_info,
                 ts_guidance.as_ref(),
                 python_guidance.as_ref(),
+                generated_skip,
             ),
         );
     }
@@ -70,6 +72,7 @@ fn write_pilot_repo_exposure_json(
             limit_info,
             ts_guidance.as_ref(),
             python_guidance.as_ref(),
+            generated_skip,
             &context,
             &mut writer,
         ) {
@@ -111,7 +114,7 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     let mut analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, {
         let root = analysis_root.clone();
         let cfg = analysis_config.clone();
-        move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
+        move || analysis::inventory_classified_seams_report_at_with_config(&root, &cfg)
     })?;
 
     // Auto-retry at a higher budget when the default timeout fires and the
@@ -129,14 +132,13 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         analysis_result = run_pilot_analysis_with_timeout(PILOT_RETRY_TIMEOUT_MS, {
             let root = analysis_root.clone();
             let cfg = analysis_config.clone();
-            move || analysis::inventory_classified_seams_at_with_config(&root, &cfg)
+            move || analysis::inventory_classified_seams_report_at_with_config(&root, &cfg)
         })?;
         // Update timeout_ms so the retry hint (if it times out again) uses the
         // retry budget, not the original default.
         // (context struct reads options.timeout_ms for the hint)
     }
-    let PilotAnalysisResult::Complete((mut classified, inventory_limit_info)) = analysis_result
-    else {
+    let PilotAnalysisResult::Complete(report) = analysis_result else {
         let context = output::pilot::PilotSummaryContext {
             root: &input.root,
             mode: &input.mode,
@@ -164,6 +166,10 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     // classified slice for the two pilot artifacts so they stay under a
     // manageable size.  `limit_info` carries whichever cap fired (pilot
     // budget wins when both fire; inventory limit is the outer bound).
+    let mut classified = report.classified;
+    let inventory_limit_info = report.limit_info;
+    let generated_skip =
+        output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
     let pilot_budget_info = analysis::apply_pilot_seam_budget(&mut classified);
     let pilot_budget_truncated = pilot_budget_info.is_some();
     let limit_info = pilot_budget_info.or(inventory_limit_info);
@@ -206,15 +212,17 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         &config,
         &classified,
         limit_info.as_ref(),
+        generated_skip.as_ref(),
         pilot_budget_truncated,
     )?;
     write_pilot_file(
         &artifacts.repo_exposure_md,
-        output::repo_exposure::render_repo_exposure_md(
+        output::repo_exposure::render_repo_exposure_md_with_generated_skip(
             &classified,
             limit_info.as_ref(),
             ts_guidance.as_ref(),
             python_guidance.as_ref(),
+            generated_skip.as_ref(),
         ),
     )?;
     write_pilot_file(
@@ -307,12 +315,7 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
 }
 
 enum PilotAnalysisResult {
-    Complete(
-        (
-            Vec<analysis::ClassifiedSeam>,
-            Option<analysis::SeamLimitInfo>,
-        ),
-    ),
+    Complete(analysis::ClassifiedSeamsReport),
     TimedOut,
 }
 
@@ -321,14 +324,7 @@ fn run_pilot_analysis_with_timeout<F>(
     runner: F,
 ) -> Result<PilotAnalysisResult, String>
 where
-    F: FnOnce() -> Result<
-            (
-                Vec<analysis::ClassifiedSeam>,
-                Option<analysis::SeamLimitInfo>,
-            ),
-            String,
-        > + Send
-        + 'static,
+    F: FnOnce() -> Result<analysis::ClassifiedSeamsReport, String> + Send + 'static,
 {
     let cancellation_token = crate::analysis::cancellation::AnalysisCancellationToken::new();
     let worker_token = cancellation_token.clone();

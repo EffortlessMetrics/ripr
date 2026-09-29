@@ -76,10 +76,13 @@ pub(crate) fn render_check_with_config(
             Ok(repo_seams::render_repo_seams_md(&seams))
         }
         OutputFormat::RepoExposureJson => {
-            let (classified, limit_info) =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &classified);
-            let python_guidance = detect_python_repo_exposure_guidance(&output.root, &classified);
+            let report =
+                analysis::inventory_classified_seams_report_at_with_config(&output.root, config)?;
+            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &report.classified);
+            let python_guidance =
+                detect_python_repo_exposure_guidance(&output.root, &report.classified);
+            let generated_skip =
+                repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
             let artifact_context =
                 crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
                     output.root.clone(),
@@ -88,10 +91,11 @@ pub(crate) fn render_check_with_config(
                     config,
                 )?;
             repo_exposure::render_repo_exposure_json_with_context(
-                &classified,
-                limit_info.as_ref(),
+                &report.classified,
+                report.limit_info.as_ref(),
                 ts_guidance.as_ref(),
                 python_guidance.as_ref(),
+                generated_skip.as_ref(),
                 &artifact_context,
             )
         }
@@ -106,15 +110,19 @@ pub(crate) fn render_check_with_config(
             ))
         }
         OutputFormat::RepoExposureMd => {
-            let (classified, limit_info) =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &classified);
-            let python_guidance = detect_python_repo_exposure_guidance(&output.root, &classified);
-            Ok(repo_exposure::render_repo_exposure_md(
-                &classified,
-                limit_info.as_ref(),
+            let report =
+                analysis::inventory_classified_seams_report_at_with_config(&output.root, config)?;
+            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &report.classified);
+            let python_guidance =
+                detect_python_repo_exposure_guidance(&output.root, &report.classified);
+            let generated_skip =
+                repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
+            Ok(repo_exposure::render_repo_exposure_md_with_generated_skip(
+                &report.classified,
+                report.limit_info.as_ref(),
                 ts_guidance.as_ref(),
                 python_guidance.as_ref(),
+                generated_skip.as_ref(),
             ))
         }
         OutputFormat::RepoSarif => {

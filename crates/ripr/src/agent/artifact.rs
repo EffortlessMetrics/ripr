@@ -50,8 +50,8 @@ impl RepoExposureArtifactContext {
     /// equivalent checkouts under different roots agree; see
     /// `git_tracked_lockfiles`), the repo-exposure
     /// producer-consumed configuration boundary
-    /// (`crate::config::repo_exposure_config_identity_hash` — the three
-    /// oracle-strength fields only), and the analyzer version.
+    /// (`crate::config::repo_exposure_config_identity_hash` — oracle
+    /// policy, production-like/harness opt-ins, and generated-file patterns), and the analyzer version.
     /// The concrete checkout root is deliberately absent: it is emitted as
     /// `repository.root` and validated with exact canonical-path equality.
     pub(crate) fn for_repo_exposure(
@@ -2571,7 +2571,69 @@ mod tests {
         Ok(())
     }
 
-    /// (#2823 test 5) A rerun at the same root and same revision is
+    /// #4788: generated-file patterns now change the seam population, so they
+    /// are consumed config. A before/after pair that differs only in those
+    /// patterns must not pass comparability.
+    #[test]
+    fn repo_exposure_input_identity_tracks_generated_file_patterns() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let config = crate::config::RiprConfig::default();
+            let baseline = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            let moved = crate::config::tests_only_parse(
+                "[languages.rust]\ngenerated_file_patterns = [\"src/ffi.rs\"]\n",
+            )?;
+            if crate::config::check_artifact_config_identity_hash(&moved)
+                == crate::config::check_artifact_config_identity_hash(&config)
+            {
+                return Err(
+                    "generated_file_patterns fixture must move the diff-check config hash"
+                        .to_string(),
+                );
+            }
+            if crate::config::repo_exposure_config_identity_hash(&moved)
+                == crate::config::repo_exposure_config_identity_hash(&config)
+            {
+                return Err(
+                    "generated_file_patterns is consumed by seam inventory and must move the repo-exposure config identity"
+                        .to_string(),
+                );
+            }
+            let moved_context = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &moved,
+            )?;
+            if moved_context.input_identity == baseline.input_identity {
+                return Err(
+                    "generated_file_patterns must move the repo-exposure input identity"
+                        .to_string(),
+                );
+            }
+            let mut before = comparable_artifact();
+            before.input_identity = baseline.input_identity.clone();
+            let mut after = before.clone();
+            after.input_identity = moved_context.input_identity.clone();
+            match validate_comparable_pair(&before, &after) {
+                Err(error) if error.contains("analysis input identities differ") => Ok(()),
+                other => Err(format!(
+                    "pattern-changed pair must be incomparable, got {other:?}"
+                )),
+            }
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
     /// byte-stable in both identities.
     #[test]
     fn repo_exposure_identity_is_byte_stable_across_equivalent_reruns() -> Result<(), String> {

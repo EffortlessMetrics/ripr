@@ -1260,11 +1260,12 @@ fn write_agent_analysis_outcome(root: &Path) -> Result<(), String> {
 
 fn write_agent_repo_exposure_snapshot(root: &Path, path: &Path) -> Result<(), String> {
     let config = load_for_root(root)?;
-    let (classified, limit_info) =
-        analysis::inventory_classified_seams_at_with_config(root, &config)?;
-    let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(root, &classified);
+    let report = analysis::inventory_classified_seams_report_at_with_config(root, &config)?;
+    let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(root, &report.classified);
     let python_guidance =
-        output::render::detect_python_repo_exposure_guidance_pub(root, &classified);
+        output::render::detect_python_repo_exposure_guidance_pub(root, &report.classified);
+    let generated_skip =
+        output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
     let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
         root.to_path_buf(),
         "ready".to_string(),
@@ -1287,10 +1288,11 @@ fn write_agent_repo_exposure_snapshot(root: &Path, path: &Path) -> Result<(), St
             .map_err(|err| format!("create {} failed: {err}", temporary_path.display()))?;
         let mut writer = BufWriter::new(file);
         output::repo_exposure::write_repo_exposure_json_with_context(
-            &classified,
-            limit_info.as_ref(),
+            &report.classified,
+            report.limit_info.as_ref(),
             ts_guidance.as_ref(),
             python_guidance.as_ref(),
+            generated_skip.as_ref(),
             &context,
             &mut writer,
         )?;

@@ -53,6 +53,21 @@ top-level `fixtures/` tree so repo-scoped public signals describe the published
 `ripr` package, not its harness. Passing a fixture workspace itself as `--root`
 still analyzes that fixture normally.
 
+Generated Rust that `ripr check` already skips is also outside the seam
+surface. Inventory applies the same `is_generated_rust_file_with_patterns`
+predicate (`bindings.rs`, `schema.rs`, `generated.rs`, `*.gen.rs`,
+`*_generated.rs`, `generated_*`, `gen/`, `generated/`, `out/`, plus
+`[languages.rust] generated_file_patterns`). Those files do not emit seams,
+do not supply test-grip evidence, and are excluded from the corpus fingerprint
+so an edit there does not bust the inventory cache. Repo-exposure discloses
+the skip as `generated_rust_source_skipped` without changing `run_status` to a
+truncated scan. Because those patterns change the seam population, they are
+consumed config for the repo-exposure artifact input identity: a before/after
+pair that differs only in `generated_file_patterns` is not comparable.
+Header-generated files that only `ripr check` will skip after
+a later generated-source predicate land remain inventoried until that
+predicate exists on this trunk.
+
 ### Stable Seam ID Rules
 
 Seam IDs must be stable across runs and across input file walk reorderings.

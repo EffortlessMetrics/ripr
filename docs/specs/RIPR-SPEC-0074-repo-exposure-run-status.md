@@ -160,15 +160,25 @@ Bounded run (env-configured cap, `limit_source: "configured"`):
 ```
 
 `run_status` is inserted after `scope` and before `metrics`.
-`limitations[]` appears after `run_status` only when bounded.
+`limitations[]` appears after `run_status` when a named limitation or
+guidance disclosure applies. A seam-limit truncation is the original
+bounded case. Additive guidance and skip entries may appear while
+`run_status` stays `"complete"`: `typescript_diff_first`,
+`python_diff_first`, and `generated_rust_source_skipped`.
 `limit_source` is added by Slice B as an additive field within `0.3`.
+
+Generated Rust that `ripr check` already skips is disclosed as
+`category: "generated_rust_source_skipped"`. That skip is intentional
+scope, not `seam_limit_applied`. Header-generated files that only a
+later generated-source predicate will skip remain inventoried until
+that predicate exists on this trunk.
 
 ### Static-language boundary
 
 `run_status` and `category` values use static vocabulary only:
-`complete`, `seam_limit_applied`, `repo_seam_limit_applied`. The
-forbidden runtime-mutation words (`killed`, `survived`, `untested`,
-`proven`, `adequate`) are not used.
+`complete`, `seam_limit_applied`, `repo_seam_limit_applied`,
+`generated_rust_source_skipped`. The forbidden runtime-mutation words
+(`killed`, `survived`, `untested`, `proven`, `adequate`) are not used.
 
 ### Internal representation
 
@@ -287,6 +297,17 @@ RIPR_REPO_EXPOSURE_SEAM_LIMIT=0 ripr check --root . --format repo-exposure-json
 
 Output contains `"run_status": "complete"` — the default cap is disabled.
 
+**Example 5** — generated Rust skipped, scan otherwise complete:
+
+```
+ripr check --root . --format repo-exposure-json
+# (workspace contains src/bindings.rs plus hand-written production Rust)
+```
+
+Output contains `"run_status": "complete"` and a `limitations[]` entry
+with `"category": "generated_rust_source_skipped"`. The skip is not a
+truncated scan.
+
 ## Test Mapping
 
 **Slice A**:
@@ -310,6 +331,7 @@ Output contains `"run_status": "complete"` — the default cap is disabled.
 - `crates/ripr/src/analysis/seam_cache.rs::tests::capped_cold_then_warm_cache_hit_returns_same_limit_info`
 - `crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_limit_source_configured_when_env_set`
 - `crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied`
+- `crates/ripr/src/output/repo_exposure.rs::tests::json_discloses_generated_rust_skip_without_changing_run_status`
 
 ## Implementation Mapping
 

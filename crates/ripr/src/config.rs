@@ -247,15 +247,15 @@ pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String
 /// The exact `ripr.toml` fields the repo-exposure producer (the seam
 /// inventory in `crates/ripr/src/analysis/seam_inventory.rs`) consumes
 /// semantically. Verified against the producer: the seam walker is Rust-only
-/// and reads only the oracle-strength policy (via
-/// `rust_index::apply_oracle_policy`); it does not read `languages.enabled`,
-/// `rust.generated_file_patterns`, or any typescript/perl field, so those
-/// SPEC-0140 finding-affecting fields must NOT move the repo-exposure input
-/// identity (#2823 — two runs differing only in an unconsumed setting stay
-/// comparable). Closed set: when the producer starts consuming another config
-/// field, add it here in the same PR; do not widen the filter to whole
-/// sections.
-pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 5] = [
+/// and reads the oracle-strength policy (via `rust_index::apply_oracle_policy`),
+/// production-like / harness opt-ins, and `[languages.rust]
+/// generated_file_patterns` (#4788). It does not read `languages.enabled`
+/// or any typescript/perl field, so those SPEC-0140 finding-affecting
+/// fields must NOT move the repo-exposure input identity (#2823 — two runs
+/// differing only in an unconsumed setting stay comparable). Closed set:
+/// when the producer starts consuming another config field, add it here in
+/// the same PR; do not widen the filter to whole sections.
+pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 6] = [
     "oracles.broad_error_strength",
     "oracles.mock_expectation_strength",
     "oracles.snapshot_strength",
@@ -266,6 +266,9 @@ pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 5] = [
     // which functions are executable tests in the repo seam inventory
     // (#3532).
     "analysis.test_harnesses",
+    // Generated-file patterns change which Rust files become seams and
+    // which paths appear in `generated_rust_source_skipped` (#4788).
+    "languages.rust.generated_file_patterns",
 ];
 
 /// Canonical config identity for the repo-exposure artifact input identity

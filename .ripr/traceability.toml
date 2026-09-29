@@ -248,6 +248,16 @@ tests = [
   "crates/ripr/src/analysis/seam_inventory.rs::tests::given_error_path_shape_when_repo_inventory_runs_then_error_variant_seam_is_emitted",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::given_field_construction_shape_when_repo_inventory_runs_then_field_construction_seam_is_emitted",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::seam_inventory_omits_seams_with_no_owner_function",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_generated_rust_conventions_when_repo_inventory_runs_then_those_files_are_not_seams",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_near_miss_rust_names_when_repo_inventory_runs_then_hand_written_files_stay_seams",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_generator_header_only_ffi_when_repo_inventory_runs_then_file_stays_a_seam",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_configured_generated_pattern_when_repo_inventory_runs_then_matching_file_is_not_a_seam",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_only_generated_file_bytes_change_when_cache_key_is_rebuilt_then_identity_is_stable",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_generated_bindings_with_inline_test_when_classified_inventory_runs_then_grip_does_not_credit_them",
+  "crates/ripr/src/analysis/generated_rust_corpus.rs::tests::partition_drops_conventional_generated_rust_and_keeps_near_misses",
+  "crates/ripr/src/analysis/generated_rust_corpus.rs::tests::partition_applies_configured_generated_file_patterns",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_discloses_generated_rust_skip_without_changing_run_status",
+  "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_generated_file_patterns",
   "crates/ripr/src/analysis/rust_index.rs::tests::classifies_field_whole_object_side_effect_and_custom_helper_oracles",
   "crates/ripr/src/analysis/rust_index.rs::tests::parser_adapter_extracts_custom_helper_and_side_effect_oracles",
   "crates/ripr/src/output/repo_seams.rs::tests::json_carries_schema_version_and_repo_scope",
@@ -454,6 +464,9 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/analysis/seams.rs",
+  "crates/ripr/src/analysis/generated_rust_corpus.rs",
+  "crates/ripr/src/config.rs",
+  "crates/ripr/src/agent/artifact.rs",
   "crates/ripr/src/analysis/seam_inventory.rs",
   "crates/ripr/src/analysis/test_grip_evidence.rs",
   "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
@@ -5496,11 +5509,13 @@ tests = [
   "crates/ripr/src/analysis/seam_cache.rs::tests::complete_run_stores_none_limit_info_in_envelope",
   "crates/ripr/src/analysis/seam_cache.rs::tests::capped_cold_then_warm_cache_hit_returns_same_limit_info",
   "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_limit_source_configured_when_env_set",
-  "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied"
+  "crates/ripr/tests/cli_smoke.rs::check_repo_exposure_json_cache_roundtrip_preserves_seam_limit_applied",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_discloses_generated_rust_skip_without_changing_run_status"
 ]
 fixtures = []
 code = [
   "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/analysis/generated_rust_corpus.rs",
   "crates/ripr/src/analysis/seam_inventory.rs",
   "crates/ripr/src/analysis/seam_cache.rs",
   "crates/ripr/src/analysis/mod.rs",
@@ -7454,6 +7469,7 @@ tests = [
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_revision_movement_keeps_input_identity_and_moves_snapshot",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_every_semantic_input",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_ignores_unconsumed_config_fields",
+  "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_generated_file_patterns",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_identity_is_byte_stable_across_equivalent_reruns",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_root_bound_identity_is_not_portable_across_checkout_roots",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_validation_rejects_unsupported_input_identity_version",

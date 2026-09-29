@@ -3054,6 +3054,14 @@ Field contract:
     `ripr check`. This inventory still does not render Python findings, so
     a zero-seam result is not a clean Python result. It does not claim that
     full-repo Python analysis is unmodeled.
+  - `category: "generated_rust_source_skipped"` appears when repo exposure
+    skipped generated Rust that `ripr check` also skips (`bindings.rs`,
+    `schema.rs`, `generated.rs`, `*.gen.rs`, `*_generated.rs`, `generated_*`,
+    `gen/`, `generated/`, `out/`, plus `[languages.rust]
+    generated_file_patterns`). `run_status` remains `"complete"` because the
+    skip is intentional scope, not a truncated scan. It carries
+    `skipped_file_count`, a bounded `skipped_files` listing (up to three
+    paths), optional `skipped_files_omitted`, `repair_route`, and `detail`.
   - `typescript_readiness.source` is
     `"repo_exposure_typescript_readiness.v1"`.
   - `typescript_readiness.authority_boundary` is

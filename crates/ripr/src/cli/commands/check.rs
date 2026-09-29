@@ -599,12 +599,16 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     if matches!(format, OutputFormat::RepoExposureJson) {
-        let (classified, limit_info) =
-            analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+        let report =
+            analysis::inventory_classified_seams_report_at_with_config(&input.root, &config)?;
         let ts_guidance =
-            output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
-        let python_guidance =
-            output::render::detect_python_repo_exposure_guidance_pub(&input.root, &classified);
+            output::render::detect_ts_full_repo_guidance_pub(&input.root, &report.classified);
+        let python_guidance = output::render::detect_python_repo_exposure_guidance_pub(
+            &input.root,
+            &report.classified,
+        );
+        let generated_skip =
+            output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
         let artifact_context =
             crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
                 input.root.clone(),
@@ -615,10 +619,11 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
         output::repo_exposure::write_repo_exposure_json_with_context(
-            &classified,
-            limit_info.as_ref(),
+            &report.classified,
+            report.limit_info.as_ref(),
             ts_guidance.as_ref(),
             python_guidance.as_ref(),
+            generated_skip.as_ref(),
             &artifact_context,
             &mut handle,
         )?;
