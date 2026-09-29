@@ -13963,7 +13963,7 @@ schema bump.
             "kind": "exact_return_value",
             "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
           },
-          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+          "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
         },
         "actionability": {
           "class": "actionable_related_test_extension",

@@ -6,7 +6,8 @@
 //! baselines, or change seam grip classifications.
 
 use crate::agent::loop_commands::{
-    WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_AGENT_VERIFY_ARTIFACT, agent_receipt_command,
+    WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command,
     shell_arg,
 };
 use crate::analysis::ClassifiedSeam;
@@ -55,7 +56,27 @@ const TEST_TARGET_PROVENANCE_REPAIR_ROUTE: &str = "analysis/test-target-resoluti
 pub(crate) const NO_TEST_REACHES_OWNER_CATEGORY: &str = "no_test_reaches_changed_owner";
 
 const MAX_RELATED_TESTS_PER_EVIDENCE_RECORD: usize = 8;
+/// Default verify command: the editor pilot snapshot family, whose producer
+/// is the pilot run the editor flow performs (`ripr pilot` writes
+/// `target/ripr/pilot/repo-exposure.json`). Producers whose documents write
+/// their own snapshots pass their family to
+/// [`evidence_record_with_verify_command`] instead.
 const VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
+
+/// Verify command over the workflow snapshot family the repair-loop documents
+/// themselves produce (#4379). The agent seam packet embeds evidence records
+/// beside a `next` block that writes
+/// [`WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT`] and
+/// [`WORKFLOW_AFTER_SNAPSHOT_ARTIFACT`], so its verify specs must read that
+/// same family: an orchestrator following the typed spec would otherwise
+/// verify against pilot snapshots nothing in the document produces. Built
+/// from the shared constants so the family cannot drift from the `next`
+/// block.
+pub(crate) fn workflow_snapshot_verify_command() -> String {
+    format!(
+        "ripr agent verify --root . --before {WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT} --after {WORKFLOW_AFTER_SNAPSHOT_ARTIFACT} --json"
+    )
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct EvidenceRecord {
@@ -302,11 +323,36 @@ pub(crate) fn evidence_record_for(
     entry: &ClassifiedSeam,
     canonical_gap: Option<&CanonicalGapIdentity>,
 ) -> EvidenceRecord {
+    evidence_record_with_verify_command(entry, canonical_gap, Some(VERIFY_COMMAND))
+}
+
+/// [`evidence_record_for`] with the verify step bound to a specific snapshot
+/// family. A producer whose document writes the snapshots its verify step
+/// reads passes that family (the agent seam packet passes
+/// [`workflow_snapshot_verify_command`], #4379); the default stays the editor
+/// pilot family. A producer whose document advertises no independent verify
+/// route passes [`None`]: every verify projection then stays null even for an
+/// actionable record (the prepared repair packet, whose after phase verifies
+/// against the attempt's retained before snapshot rather than any path the
+/// document itself names, #4379). The command flows into every verify
+/// projection — `recommendation.verify_command`,
+/// `canonical_item.verify_command`, and the parsed
+/// `canonical_item.command_specs.verify` — so the three cannot disagree.
+pub(crate) fn evidence_record_with_verify_command(
+    entry: &ClassifiedSeam,
+    canonical_gap: Option<&CanonicalGapIdentity>,
+    verify_command: Option<&str>,
+) -> EvidenceRecord {
     let missing_records = missing_discriminator_records_for(entry);
     let recommended_test = recommended_test_for(entry);
     let actionability = actionability_for(entry, &missing_records);
-    let recommendation =
-        recommendation_for(entry, &missing_records, &actionability, &recommended_test);
+    let recommendation = recommendation_for(
+        entry,
+        &missing_records,
+        &actionability,
+        &recommended_test,
+        verify_command,
+    );
     let related_tests_total = entry.evidence.related_tests.len();
     let static_limitations = static_limitations_for(entry);
     let raw_findings = raw_findings_for(entry);
@@ -871,6 +917,7 @@ fn recommendation_for(
     missing_records: &[crate::output::agent_seam_packets::MissingRecord],
     actionability: &EvidenceRecordActionability,
     recommended_test: &RecommendedTest,
+    verify_command: Option<&str>,
 ) -> EvidenceRecordRecommendation {
     let actionable = actionability.has_concrete_guidance;
     let static_limited = actionability.class == "static_limitation";
@@ -886,7 +933,13 @@ fn recommendation_for(
     let assertion_shape = actionable
         .then(|| assertion_shape_record(assertion_shape_for_entry(entry)))
         .flatten();
-    let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
+    // Fail-closed: a producer that names no verify route (None) keeps every
+    // verify projection null, and actionability alone never manufactures one.
+    let verify_command = if actionable {
+        verify_command.map(str::to_string)
+    } else {
+        None
+    };
     let nearest_test_to_imitate =
         nearest_strong_test_to_imitate(entry.seam.kind(), &entry.evidence)
             .or_else(|| entry.evidence.related_tests.first())
@@ -2691,6 +2744,101 @@ mod tests {
         );
         assert_eq!(json["calibration"]["agreement"], "no_runtime_data");
         assert_eq!(json["static_limitations"].as_array().map(Vec::len), Some(0));
+    }
+
+    /// The default family is the editor pilot family (pinned above); a
+    /// producer whose document writes its own snapshots replaces the family
+    /// in every verify projection at once — `recommendation.verify_command`,
+    /// `canonical_item.verify_command`, and the parsed
+    /// `command_specs.verify` — so the three cannot disagree (#4379).
+    #[test]
+    fn verify_command_family_flows_into_every_verify_projection() -> Result<(), String> {
+        let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let workflow = workflow_snapshot_verify_command();
+        let json = evidence_record_json_value(&evidence_record_with_verify_command(
+            &entry,
+            None,
+            Some(&workflow),
+        ));
+
+        assert_eq!(
+            json["recommendation"]["verify_command"], workflow,
+            "recommendation must carry the passed family"
+        );
+        assert_eq!(
+            json["canonical_item"]["verify_command"], workflow,
+            "canonical item must carry the passed family"
+        );
+        let spec = &json["canonical_item"]["command_specs"]["verify"];
+        assert_eq!(
+            spec["human_display"], workflow,
+            "command spec must recover from the same display"
+        );
+        let args: Vec<String> = spec["args"]
+            .as_array()
+            .ok_or_else(|| format!("verify spec args must be an array: {spec}"))?
+            .iter()
+            .filter_map(|arg| arg.as_str().map(str::to_string))
+            .collect();
+        for family_path in [
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        ] {
+            if !args.contains(&family_path.to_string()) {
+                return Err(format!(
+                    "verify spec args must read {family_path}: {args:?}"
+                ));
+            }
+        }
+        if args.iter().any(|arg| arg.contains("pilot/")) {
+            return Err(format!(
+                "workflow family must not name pilot paths: {args:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// A seam without concrete guidance keeps its verify projections null in
+    /// every family: binding a snapshot family must not manufacture an
+    /// actionable verify step (fail-closed, #4379).
+    #[test]
+    fn verify_command_family_override_stays_fail_closed_for_static_limitations() {
+        let limited = sample_cross_language_classified(
+            SeamGripClass::WeaklyGripped,
+            vec![external_typescript_related_test()],
+        );
+        let json = evidence_record_json_value(&evidence_record_with_verify_command(
+            &limited,
+            None,
+            Some(&workflow_snapshot_verify_command()),
+        ));
+
+        assert_eq!(json["recommendation"]["verify_command"], Value::Null);
+        assert_eq!(json["canonical_item"]["verify_command"], Value::Null);
+    }
+
+    /// A producer whose document advertises no independent verify route
+    /// (the prepared repair packet: its after phase verifies against the
+    /// attempt's retained before snapshot) passes [`None`]; an actionable
+    /// record must still keep every verify projection null, so following the
+    /// typed spec can never verify against a snapshot family the document
+    /// does not bind to this attempt (fail-closed, #4379).
+    #[test]
+    fn verify_command_none_keeps_every_verify_projection_null_for_actionable_records() {
+        let entry = sample_classified(StageState::Yes, SeamGripClass::WeaklyGripped);
+        let json =
+            evidence_record_json_value(&evidence_record_with_verify_command(&entry, None, None));
+
+        assert_eq!(
+            json["actionability"]["has_concrete_guidance"],
+            Value::Bool(true)
+        );
+        assert_eq!(json["recommendation"]["verify_command"], Value::Null);
+        assert_eq!(json["canonical_item"]["verify_command"], Value::Null);
+        assert_eq!(
+            json["canonical_item"]["command_specs"]["verify"]["human_display"],
+            Value::Null
+        );
     }
 
     #[test]
