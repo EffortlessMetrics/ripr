@@ -1,17 +1,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{command_success_owned, run_owned};
 
 use super::release_server::{
     normalize_product_version, release_server_assets, release_server_target_set,
-    required_release_arg, sha256_file, validate_configured_release_server_targets,
+    required_release_arg, sha256_bytes, sha256_file, validate_configured_release_server_targets,
     validate_release_server_relative_path,
 };
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct FinalServerSubject {
     name: String,
     kind: String,
@@ -194,10 +194,12 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
         ));
     }
 
-    let repository = std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "local".to_string());
-    let workflow_ref = std::env::var("GITHUB_WORKFLOW_REF").unwrap_or_else(|_| "local".to_string());
-    let candidate_sha = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
-    let git_ref = std::env::var("GITHUB_REF").unwrap_or_else(|_| "local".to_string());
+    let repository = required_github_identity("GITHUB_REPOSITORY")?;
+    let workflow_ref = required_github_identity("GITHUB_WORKFLOW_REF")?;
+    let candidate_sha = required_github_identity("GITHUB_SHA")?;
+    let git_ref = required_github_identity("GITHUB_REF")?;
+    let run_id = required_github_identity("GITHUB_RUN_ID")?;
+    let run_attempt = required_github_identity("GITHUB_RUN_ATTEMPT")?;
     let receipt = serde_json::json!({
         "schema_version": "release-server-attestation/1",
         "producer": "xtask release-final-server-attestation-receipt",
@@ -211,8 +213,8 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
             "workflow_ref": workflow_ref,
             "candidate_sha": candidate_sha,
             "git_ref": git_ref,
-            "run_id": std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string()),
-            "run_attempt": std::env::var("GITHUB_RUN_ATTEMPT").unwrap_or_else(|_| "local".to_string()),
+            "run_id": run_id,
+            "run_attempt": run_attempt,
             "attestation_action": "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
         },
         "subjects": attested,
@@ -236,6 +238,13 @@ pub(crate) fn release_final_server_attestation_receipt(args: &[String]) -> Resul
         .map_err(|err| format!("failed to write {}: {err}", path.display()))?;
     eprintln!("wrote {}", path.display());
     Ok(())
+}
+
+fn required_github_identity(name: &str) -> Result<String, String> {
+    std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| format!("required GitHub Actions identity {name} is unavailable"))
 }
 
 fn final_server_subject_paths(dist_dir: &Path, version: &str) -> Result<Vec<PathBuf>, String> {
@@ -405,21 +414,21 @@ pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
     let producer = attestation
         .get("producer_identity")
         .ok_or_else(|| "server attestation receipt has no producer_identity".to_string())?;
-    if let Ok(expected_repository) = std::env::var("GITHUB_REPOSITORY")
-        && producer.get("repository").and_then(serde_json::Value::as_str)
-            != Some(expected_repository.as_str())
+    let expected_repository = required_github_identity("GITHUB_REPOSITORY")?;
+    let expected_sha = required_github_identity("GITHUB_SHA")?;
+    let expected_ref = required_github_identity("GITHUB_REF")?;
+    if producer.get("repository").and_then(serde_json::Value::as_str)
+        != Some(expected_repository.as_str())
     {
         return Err("server attestation receipt repository differs from the upload workflow".to_string());
     }
-    if let Ok(expected_sha) = std::env::var("GITHUB_SHA")
-        && producer.get("candidate_sha").and_then(serde_json::Value::as_str)
-            != Some(expected_sha.as_str())
+    if producer.get("candidate_sha").and_then(serde_json::Value::as_str)
+        != Some(expected_sha.as_str())
     {
         return Err("server attestation receipt candidate SHA differs from the upload workflow".to_string());
     }
-    if let Ok(expected_ref) = std::env::var("GITHUB_REF")
-        && producer.get("git_ref").and_then(serde_json::Value::as_str)
-            != Some(expected_ref.as_str())
+    if producer.get("git_ref").and_then(serde_json::Value::as_str)
+        != Some(expected_ref.as_str())
     {
         return Err("server attestation receipt ref differs from the upload workflow".to_string());
     }
