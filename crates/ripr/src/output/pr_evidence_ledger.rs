@@ -327,7 +327,20 @@ pub(crate) fn build_pr_evidence_ledger_report(
 pub(crate) fn render_pr_evidence_ledger_json(
     report: &PrEvidenceLedgerReport,
 ) -> Result<String, String> {
-    serde_json::to_string_pretty(&json!({
+    serde_json::to_string_pretty(&pr_evidence_ledger_json_value(report))
+        .map_err(|err| format!("failed to render PR evidence ledger JSON: {err}"))
+}
+
+/// Compact one-line JSON for `--out-jsonl`. Same object as `--out`, not pretty-printed.
+pub(crate) fn render_pr_evidence_ledger_jsonl_record(
+    report: &PrEvidenceLedgerReport,
+) -> Result<String, String> {
+    serde_json::to_string(&pr_evidence_ledger_json_value(report))
+        .map_err(|err| format!("failed to render PR evidence ledger JSONL record: {err}"))
+}
+
+fn pr_evidence_ledger_json_value(report: &PrEvidenceLedgerReport) -> Value {
+    json!({
         "schema_version": SCHEMA_VERSION,
         "tool": "ripr",
         "kind": REPORT_KIND,
@@ -346,8 +359,7 @@ pub(crate) fn render_pr_evidence_ledger_json(
         "history": report.history.as_ref().map(history_json),
         "warnings": report.warnings,
         "limits_note": LIMITS_NOTE,
-    }))
-    .map_err(|err| format!("failed to render PR evidence ledger JSON: {err}"))
+    })
 }
 
 pub(crate) fn render_pr_evidence_ledger_markdown(report: &PrEvidenceLedgerReport) -> String {
@@ -1606,7 +1618,7 @@ pub(crate) use crate::output::path::display_path;
 mod tests {
     use super::{
         PrEvidenceLedgerInput, build_pr_evidence_ledger_report, render_pr_evidence_ledger_json,
-        render_pr_evidence_ledger_markdown,
+        render_pr_evidence_ledger_jsonl_record, render_pr_evidence_ledger_markdown,
     };
     use crate::output::first_pr::{REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
     use serde_json::Value;
@@ -1987,6 +1999,49 @@ mod tests {
             render_pr_evidence_ledger_markdown(&report),
             read_file(&expected_md_path)?
         );
+        Ok(())
+    }
+
+    #[test]
+    fn pr_evidence_ledger_jsonl_record_is_compact_full_object() -> Result<(), String> {
+        let report = build_pr_evidence_ledger_report(PrEvidenceLedgerInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:1000".to_string(),
+            pr_number: "123".to_string(),
+            base: "base".to_string(),
+            head: "head".to_string(),
+            labels: Vec::new(),
+            gate_path: None,
+            baseline_delta_path: None,
+            zero_status_path: None,
+            pr_guidance_path: Some("comments.json".to_string()),
+            gap_ledger_path: None,
+            recommendation_calibration_path: None,
+            agent_receipt_path: None,
+            coverage_path: None,
+            history_path: None,
+            gate_json: None,
+            baseline_delta_json: None,
+            zero_status_json: None,
+            pr_guidance_json: Some(Ok(r#"{"comments":[]}"#.to_string())),
+            gap_ledger_json: None,
+            recommendation_calibration_json: None,
+            agent_receipt_json: None,
+            coverage_json: None,
+            history_json: None,
+        });
+        let line = render_pr_evidence_ledger_jsonl_record(&report)?;
+        assert!(
+            !line.contains('\n') && !line.contains('\r'),
+            "jsonl record must be one line: {line}"
+        );
+        let parsed: Value = serde_json::from_str(&line)
+            .map_err(|err| format!("jsonl record must parse as JSON: {err}"))?;
+        assert_eq!(
+            parsed.get("kind").and_then(Value::as_str),
+            Some("pr_evidence_ledger")
+        );
+        assert!(parsed.get("movement").is_some());
         Ok(())
     }
 

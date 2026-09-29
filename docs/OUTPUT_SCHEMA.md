@@ -9687,7 +9687,8 @@ ripr policy history \
   --commit HEAD \
   --pr-number 123 \
   --out target/ripr/reports/policy-history.json \
-  --out-md target/ripr/reports/policy-history.md
+  --out-md target/ripr/reports/policy-history.md \
+  --out-jsonl .ripr/policy-history.jsonl
 ```
 
 The report writes:
@@ -9697,11 +9698,18 @@ target/ripr/reports/policy-history.json
 target/ripr/reports/policy-history.md
 ```
 
-This report is advisory policy trend evidence. It does not append to
-`.ripr/policy-history.jsonl`, execute gates, collect telemetry, mutate config,
-baselines, suppressions, workflows, branch protection, generated CI defaults,
-or source files, promote preview-language evidence, run analysis, generate
-tests, call providers, post comments, or run mutation testing.
+`--out-jsonl PATH` is the opt-in producer. Each run appends one compact JSON
+line matching `example_append_record` (the current snapshot object, not the
+full trend report). Generated CI never passes `--out-jsonl` and never
+auto-commits `.ripr/policy-history.jsonl`. Adopt the file by committing it
+yourself, or keep supplying it from an external store.
+
+This report is advisory policy trend evidence. The default write path does not
+append to `.ripr/policy-history.jsonl`. The command does not execute gates,
+collect telemetry, mutate config, baselines, suppressions, workflows, branch
+protection, generated CI defaults, or source files, promote preview-language
+evidence, run analysis, generate tests, call providers, post comments, or run
+mutation testing.
 
 JSON shape:
 
@@ -9804,7 +9812,7 @@ JSON shape:
       "status": "missing"
     }
   ],
-  "limits_note": "Read-only advisory policy history report. It reads explicit history inputs and never appends, mutates policy, or changes gate authority."
+  "limits_note": "Read-only advisory policy history report. It reads explicit history inputs and does not mutate policy or change gate authority. Default execution and generated CI do not append history; `--out-jsonl` is the opt-in producer."
 }
 ```
 
@@ -10451,7 +10459,8 @@ ripr pr-ledger record \
   --coverage target/ripr/reports/coverage-summary.json \
   --history .ripr/pr-evidence-ledger.jsonl \
   --out target/ripr/reports/pr-evidence-ledger.json \
-  --out-md target/ripr/reports/pr-evidence-ledger.md
+  --out-md target/ripr/reports/pr-evidence-ledger.md \
+  --out-jsonl .ripr/pr-evidence-ledger.jsonl
 ```
 
 The report writes:
@@ -10460,6 +10469,12 @@ The report writes:
 target/ripr/reports/pr-evidence-ledger.json
 target/ripr/reports/pr-evidence-ledger.md
 ```
+
+`--out-jsonl PATH` is the opt-in producer. Each run appends one compact JSON
+line: the same record object as `--out`, without pretty-print newlines.
+Generated CI reads `.ripr/pr-evidence-ledger.jsonl` when that file exists and
+never passes `--out-jsonl` or auto-commits the ledger. Adopt the file by
+committing it yourself, or keep supplying it from an external store.
 
 This report is advisory history. `ripr gate evaluate` remains the pass/fail
 authority for configured gate modes. Generated GitHub CI runs

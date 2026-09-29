@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 /// Render a path with stable slash separators for JSON and Markdown output.
 pub(crate) fn display_path(path: &Path) -> String {
@@ -30,6 +30,26 @@ pub(crate) fn repository_display_path(root: &Path, file: &Path) -> String {
 /// Render path-like text with stable slash separators for JSON and Markdown output.
 pub(crate) fn display_path_text(path: &str) -> String {
     path.replace('\\', "/")
+}
+
+/// Compare output destinations after collapsing `.` / `..` so `--out ./a.json`
+/// and `--out-jsonl a.json` are treated as the same file.
+pub(crate) fn same_output_leaf(left: &Path, right: &Path) -> bool {
+    normalize_output_leaf(left) == normalize_output_leaf(right)
+}
+
+fn normalize_output_leaf(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in Path::new(&display_path(path)).components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let _ = out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Render a path for human CLI display (`ripr init`, `ripr doctor`) with one
@@ -65,7 +85,9 @@ pub(crate) fn human_path_text(text: &str, windows: bool) -> String {
 mod tests {
     use std::path::Path;
 
-    use super::{display_path, display_path_text, human_path_text, repository_display_path};
+    use super::{
+        display_path, display_path_text, human_path_text, repository_display_path, same_output_leaf,
+    };
 
     #[test]
     fn human_path_text_uses_one_separator_and_drops_verbatim_prefix_on_windows() {
@@ -145,5 +167,21 @@ mod tests {
             repository_display_path(Path::new("crates/app"), Path::new("crates/app/src/lib.rs")),
             "crates/app/src/lib.rs"
         );
+    }
+
+    #[test]
+    fn same_output_leaf_collapses_dot_and_parent_components() {
+        assert!(same_output_leaf(
+            Path::new("./policy-history.json"),
+            Path::new("policy-history.json")
+        ));
+        assert!(same_output_leaf(
+            Path::new("reports/../ledger.json"),
+            Path::new("ledger.json")
+        ));
+        assert!(!same_output_leaf(
+            Path::new("ledger.json"),
+            Path::new("ledger.jsonl")
+        ));
     }
 }

@@ -154,12 +154,15 @@ ripr policy history \
   --commit HEAD \
   --pr-number 123 \
   --out target/ripr/reports/policy-history.json \
-  --out-md target/ripr/reports/policy-history.md
+  --out-md target/ripr/reports/policy-history.md \
+  --out-jsonl .ripr/policy-history.jsonl
 ```
 
-The implemented command does not append to `.ripr/policy-history.jsonl`, collect
-telemetry, create dashboards, execute gates, mutate policy files, or promote
-preview evidence.
+The default command and generated workflow do not append to
+`.ripr/policy-history.jsonl`. Pass `--out-jsonl PATH` to append one snapshot
+line (`example_append_record`). Generated CI never passes that flag. The
+command does not collect telemetry, create dashboards, execute gates, mutate
+policy files, or promote preview evidence.
 
 The policy promotion packet is defined by
 [RIPR-SPEC-0042](../specs/RIPR-SPEC-0042-policy-promotion-packets.md). It

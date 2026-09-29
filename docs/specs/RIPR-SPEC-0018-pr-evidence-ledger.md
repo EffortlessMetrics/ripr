@@ -116,7 +116,8 @@ ripr pr-ledger record \
   --coverage target/ripr/reports/coverage-summary.json \
   --history .ripr/pr-evidence-ledger.jsonl \
   --out target/ripr/reports/pr-evidence-ledger.json \
-  --out-md target/ripr/reports/pr-evidence-ledger.md
+  --out-md target/ripr/reports/pr-evidence-ledger.md \
+  --out-jsonl .ripr/pr-evidence-ledger.jsonl
 ```
 
 Required inputs:
@@ -170,8 +171,10 @@ Append-only means:
 - correcting a historical record requires an explicit future repair command or
   a reviewed manual edit.
 
-The first implementation may read history without appending. If appending is
-implemented, it must require an explicit flag and preserve prior records.
+The first implementation may read history without appending. Appending is
+implemented through the explicit `--out-jsonl` flag and preserves prior
+records. Generated CI reads `.ripr/pr-evidence-ledger.jsonl` when present and
+must not pass `--out-jsonl` or auto-commit ledger history.
 
 ## JSON Shape
 

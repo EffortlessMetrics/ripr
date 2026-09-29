@@ -1,0 +1,64 @@
+schema_version = "2.0"
+id = "ripr.slice.history-jsonl-producer.v1"
+generation = 1
+
+source_issue = "issue:4392"
+design_reference = "RIPR-SPEC-0018"
+change_class = "behavior_change"
+
+claim_boundary = """
+Closes the producer gap for `.ripr/pr-evidence-ledger.jsonl` and
+`.ripr/policy-history.jsonl`. `ripr pr-ledger record --out-jsonl` and
+`ripr policy history --out-jsonl` append one compact JSONL record so an
+adopting consumer can reach non-null history/trend fields by following docs.
+Generated GitHub CI still only reads those files when present and never
+passes `--out-jsonl` or auto-commits them. Does not absorb badge commit-back
+(#2017).
+"""
+
+non_goals = [
+  "generated-CI auto-append or auto-commit of history JSONL",
+  "badge commit-back (#2017)",
+  "silent workflow mutation of .ripr history files",
+  "rewriting prior JSONL records",
+  "waiver-aging --out-jsonl (it remains a reader of pr-evidence-ledger JSONL)",
+]
+
+return_conditions = [
+  "Return to root if generated CI starts passing --out-jsonl.",
+  "Return to root if default command paths write JSONL without --out-jsonl.",
+  "Return to root if --out-jsonl rewrites prior records.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:pr-ledger-out-jsonl",
+  "seam:ripr:cli:policy-history-out-jsonl",
+]
+
+shared_seams = [
+  "seam:ripr:output:pr-evidence-ledger",
+  "seam:ripr:output:policy-history",
+  "seam:ripr:cli:generated-github-workflow",
+]
+
+forbidden_seams = [
+  "seam:ripr:ci:badge-commit-back",
+  "seam:ripr:ci:history-jsonl-auto-append",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0018"
+requirement_generation = 1
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0041"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

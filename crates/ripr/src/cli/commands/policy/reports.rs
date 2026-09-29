@@ -2,7 +2,7 @@ use crate::output;
 use std::path::Path;
 
 use super::super::{
-    policy_readiness_generated_at, read_optional_manifest_for_report,
+    maybe_append_jsonl, policy_readiness_generated_at, read_optional_manifest_for_report,
     read_optional_text_for_report, write_text_file,
 };
 use super::parse::{
@@ -217,6 +217,18 @@ pub(crate) fn policy_history(args: &[String]) -> Result<(), String> {
     let rendered_json = output::policy_history::render_policy_history_json(&report)?;
     let rendered_md = output::policy_history::render_policy_history_markdown(&report);
     write_policy_report_files(&options.out, &options.out_md, &rendered_json, &rendered_md)?;
+    if options.out_jsonl.is_some()
+        && !output::policy_history::policy_history_current_is_durable(&report)
+    {
+        return Err(
+            "policy history --out-jsonl refuses to append when current policy operations are unavailable or malformed"
+                .to_string(),
+        );
+    }
+    maybe_append_jsonl(
+        options.out_jsonl.as_deref(),
+        &output::policy_history::render_policy_history_jsonl_record(&report)?,
+    )?;
     println!(
         "Current ceiling: {}",
         output::policy_history::policy_history_current_ceiling(&report)

@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- CLI: `ripr pr-ledger record --out-jsonl` and `ripr policy history --out-jsonl`
+  append one compact JSONL record so adopting consumers can populate history
+  trend fields. Generated CI still only reads those files when present and
+  never passes `--out-jsonl` (#4392).
 - CI: a dispatch-only local-wheelhouse qualification lane records pip and uv
   isolation facts and evaluates a fail-closed aggregate. Missing, skipped,
   zero-subject, or mismatched rows cannot pass. No PyPI credentials or

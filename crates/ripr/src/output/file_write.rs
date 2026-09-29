@@ -1,7 +1,7 @@
 //! Advisory output leaf acquisition. This is not ancestor or hard-link confinement.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 /// Replace `path` with `bytes` so a reader sees the old file or the complete
@@ -23,6 +23,42 @@ pub(crate) fn write_with(
 ) -> io::Result<()> {
     validate_destination(path)?;
     crate::atomic_file::replace_streamed(path, fill)
+}
+
+/// Append one JSONL record. `line` must not contain raw CR or LF; a trailing
+/// newline is always written. If the existing file lacks a terminating newline,
+/// one is inserted first so prior records stay intact.
+pub(crate) fn append_line(path: &Path, line: &str) -> io::Result<()> {
+    if line.contains('\n') || line.contains('\r') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "jsonl record must be a single line",
+        ));
+    }
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    validate_destination(path)?;
+    let mut file = open_append(path)?;
+    let len = file.metadata()?.len();
+    let mut payload = Vec::new();
+    if len > 0 {
+        file.seek(SeekFrom::Start(len - 1))?;
+        let mut last = [0u8; 1];
+        file.read_exact(&mut last)?;
+        // POSIX requires an intervening seek when switching from read to write.
+        file.seek(SeekFrom::End(0))?;
+        if last[0] != b'\n' {
+            payload.push(b'\n');
+        }
+    }
+    payload.extend_from_slice(line.as_bytes());
+    payload.push(b'\n');
+    file.write_all(&payload)?;
+    Ok(())
 }
 
 pub(crate) fn create_exclusive(path: &Path) -> io::Result<File> {
@@ -56,6 +92,20 @@ pub(crate) fn validate_destination(path: &Path) -> io::Result<()> {
 fn open_new(path: &Path) -> io::Result<File> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
+    apply_nofollow_flags(&mut options);
+    open_regular(path, &options)
+}
+
+/// Inspect the last byte before appending a separator, then write. Parent
+/// directories must already exist.
+fn open_append(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).append(true).create(true);
+    apply_nofollow_flags(&mut options);
+    open_regular(path, &options)
+}
+
+fn apply_nofollow_flags(options: &mut OpenOptions) {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
@@ -83,6 +133,9 @@ fn open_new(path: &Path) -> io::Result<File> {
         // OPEN_REPARSE_POINT; deny write/delete sharing while validating/writing.
         options.custom_flags(0x0020_0000).share_mode(0x0000_0001);
     }
+}
+
+fn open_regular(path: &Path, options: &OpenOptions) -> io::Result<File> {
     let file = options.open(path)?;
     if !file.metadata()?.file_type().is_file() {
         return Err(io::Error::new(
@@ -118,7 +171,7 @@ fn is_unwritable_output_dir(err: &io::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::write;
+    use super::{append_line, write};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -266,6 +319,58 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o640);
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn append_line_creates_parent_and_preserves_prior_records() -> Result<(), String> {
+        let dir = fresh_dir("jsonl-ok")?;
+        let path = dir.join("nested").join("ledger.jsonl");
+        append_line(&path, r#"{"n":1}"#).map_err(|err| format!("append 1: {err}"))?;
+        append_line(&path, r#"{"n":2}"#).map_err(|err| format!("append 2: {err}"))?;
+        let text = fs::read_to_string(&path).map_err(|err| format!("read: {err}"))?;
+        assert_eq!(text, "{\"n\":1}\n{\"n\":2}\n");
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn append_line_inserts_separator_when_file_lacks_trailing_newline() -> Result<(), String> {
+        let dir = fresh_dir("jsonl-sep")?;
+        let path = dir.join("ledger.jsonl");
+        fs::write(&path, r#"{"n":1}"#).map_err(|err| format!("seed: {err}"))?;
+        append_line(&path, r#"{"n":2}"#).map_err(|err| format!("append: {err}"))?;
+        let text = fs::read_to_string(&path).map_err(|err| format!("read: {err}"))?;
+        assert_eq!(text, "{\"n\":1}\n{\"n\":2}\n");
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn append_line_rejects_embedded_newlines() -> Result<(), String> {
+        match append_line(Path::new("ledger.jsonl"), "{\"n\":1}\n{\"n\":2}") {
+            Err(err) if err.kind() == std::io::ErrorKind::InvalidInput => Ok(()),
+            Err(err) => Err(format!("expected InvalidInput, got {err}")),
+            Ok(()) => Err("multiline jsonl record must fail".to_string()),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn append_line_refuses_a_symlink_and_keeps_its_target() -> Result<(), String> {
+        let dir = fresh_dir("jsonl-symlink")?;
+        let target = dir.join("target.jsonl");
+        fs::write(&target, "{\"n\":1}\n").map_err(|err| format!("seed: {err}"))?;
+        let link = dir.join("ledger.jsonl");
+        std::os::unix::fs::symlink(&target, &link).map_err(|err| format!("symlink: {err}"))?;
+        if append_line(&link, r#"{"n":2}"#).is_ok() {
+            return Err("a symlinked jsonl destination was appended".to_string());
+        }
+        assert_eq!(
+            fs::read(&target).map_err(|err| format!("read: {err}"))?,
+            b"{\"n\":1}\n"
+        );
         let _ = fs::remove_dir_all(&dir);
         Ok(())
     }

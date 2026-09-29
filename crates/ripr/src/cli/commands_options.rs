@@ -125,6 +125,7 @@ pub(crate) struct PolicyHistoryOptions {
     pub(crate) pr_number: Option<String>,
     pub(crate) out: PathBuf,
     pub(crate) out_md: PathBuf,
+    pub(crate) out_jsonl: Option<PathBuf>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PolicyPromotionOptions {
@@ -176,6 +177,7 @@ pub(crate) struct PrEvidenceLedgerOptions {
     pub(crate) history: Option<PathBuf>,
     pub(crate) out: PathBuf,
     pub(crate) out_md: PathBuf,
+    pub(crate) out_jsonl: Option<PathBuf>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PrCommentsPlanOptions {

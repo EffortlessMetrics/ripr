@@ -1,6 +1,6 @@
 pub(super) const PR_LEDGER_HELP: &str = r#"Record a read-only PR evidence ledger entry over existing reports.
 
-Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--label LABEL]... [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--gap-ledger PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
+Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--label LABEL]... [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--gap-ledger PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH] [--out-jsonl PATH]
 
 Record options:
   --pr-number VALUE                    Pull request number or local identifier.
@@ -18,12 +18,15 @@ Record options:
   --history PATH                       Optional previous PR evidence ledger JSONL history.
   --out PATH                           JSON output path. Defaults to target/ripr/reports/pr-evidence-ledger.json.
   --out-md PATH                        Markdown output path. Defaults to target/ripr/reports/pr-evidence-ledger.md.
+  --out-jsonl PATH                     Optional append-only JSONL producer. Writes one compact record per run. Generated CI does not pass this flag.
 
 The PR evidence ledger is read-only advisory history over existing RIPR
 artifacts. It records PR-local movement, waiver visibility, suppressions,
 repair receipts, and optional coverage/grip frontier signals. It does not run
 analysis, mutate baselines, post comments, edit source, generate tests, call an
 LLM, run mutation testing, change gate policy, or make CI blocking by default.
+The JSON and Markdown reports are always rewritten. History JSONL is written
+only when `--out-jsonl` is explicit; generated workflows never pass that flag.
 "#;
 pub(super) const PR_COMMENTS_HELP: &str = r#"Plan or publish bounded inline PR comments (off / plan / inline).
 

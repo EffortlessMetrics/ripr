@@ -605,6 +605,8 @@ mod tests {
         assert!(PR_LEDGER_HELP.contains("Usage: ripr pr-ledger record"));
         assert!(PR_LEDGER_HELP.contains("pr-evidence-ledger.json"));
         assert!(PR_LEDGER_HELP.contains("read-only advisory history"));
+        assert!(PR_LEDGER_HELP.contains("--out-jsonl"));
+        assert!(POLICY_HELP.contains("--out-jsonl"));
         assert!(PR_COMMENTS_HELP.starts_with("Plan or publish bounded inline PR comments"));
         assert!(PR_COMMENTS_HELP.contains("Usage: ripr pr-comments plan"));
         assert!(PR_COMMENTS_HELP.contains("comment-publish-plan.json"));

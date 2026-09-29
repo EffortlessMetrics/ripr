@@ -282,6 +282,24 @@ fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
     })
 }
 
+fn append_jsonl_record(path: &Path, record: &str) -> Result<(), String> {
+    output::file_write::append_line(path, record).map_err(|err| {
+        format!(
+            "append jsonl {} failed: {err}",
+            output::outcome::display_path(path)
+        )
+    })
+}
+
+fn maybe_append_jsonl(path: Option<&Path>, record: &str) -> Result<(), String> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    append_jsonl_record(path, record)?;
+    println!("Appended {}", path.display());
+    Ok(())
+}
+
 #[path = "commands/baseline.rs"]
 mod baseline;
 pub(super) use baseline::baseline;
@@ -945,6 +963,10 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
     let rendered_md = output::pr_evidence_ledger::render_pr_evidence_ledger_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
+    maybe_append_jsonl(
+        options.out_jsonl.as_deref(),
+        &output::pr_evidence_ledger::render_pr_evidence_ledger_jsonl_record(&report)?,
+    )?;
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", options.out_md.display());
     Ok(())
@@ -2044,6 +2066,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
     let mut history = None;
     let mut out = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_OUT);
     let mut out_md = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_MD_OUT);
+    let mut out_jsonl = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -2158,6 +2181,15 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "pr-ledger record")?;
             }
+            "--out-jsonl" => {
+                i += 1;
+                out_jsonl = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--out-jsonl",
+                    "pr-ledger record",
+                )?);
+            }
             other => return Err(unknown_argument("pr-ledger record", other)),
         }
         i += 1;
@@ -2173,6 +2205,34 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
             "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
                 .to_string(),
         );
+    }
+
+    if let Some(jsonl) = out_jsonl.as_ref() {
+        let mut forbidden = vec![&out, &out_md];
+        for input in [
+            gate.as_ref(),
+            baseline_delta.as_ref(),
+            zero_status.as_ref(),
+            pr_guidance.as_ref(),
+            gap_ledger.as_ref(),
+            recommendation_calibration.as_ref(),
+            agent_receipt.as_ref(),
+            coverage.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            forbidden.push(input);
+        }
+        if forbidden
+            .iter()
+            .any(|path| output::path::same_output_leaf(jsonl, path))
+        {
+            return Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string(),
+            );
+        }
     }
 
     Ok(PrEvidenceLedgerOptions {
@@ -2192,6 +2252,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
         history,
         out,
         out_md,
+        out_jsonl,
     })
 }
 
@@ -5472,6 +5533,7 @@ mod tests {
                 pr_number: Some("123".to_string()),
                 out: PathBuf::from("target/ripr/reports/policy-history.json"),
                 out_md: PathBuf::from("target/ripr/reports/policy-history.md"),
+                out_jsonl: None,
             })
         );
         assert_eq!(
@@ -5488,6 +5550,76 @@ mod tests {
                 "unknown policy history argument \"--bad\". Run `ripr policy history --help`."
                     .to_string()
             )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out-jsonl",
+                ".ripr/policy-history.jsonl",
+            ])),
+            Ok(PolicyHistoryOptions {
+                root: ".".to_string(),
+                current: PathBuf::from("ops.json"),
+                history: None,
+                commit: None,
+                pr_number: None,
+                out: PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_OUT),
+                out_md: PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_MD_OUT),
+                out_jsonl: Some(PathBuf::from(".ripr/policy-history.jsonl")),
+            })
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out",
+                "policy-history.json",
+                "--out-jsonl",
+                "policy-history.json",
+            ])),
+            Err(
+                "policy history --out-jsonl must not be the same path as --out, --out-md, or --current"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out",
+                "./policy-history.json",
+                "--out-jsonl",
+                "policy-history.json",
+            ])),
+            Err(
+                "policy history --out-jsonl must not be the same path as --out, --out-md, or --current"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out-jsonl",
+                "ops.json",
+            ])),
+            Err(
+                "policy history --out-jsonl must not be the same path as --out, --out-md, or --current"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--history",
+                ".ripr/policy-history.jsonl",
+                "--out-jsonl",
+                ".ripr/policy-history.jsonl",
+            ]))
+            .map(|options| options.out_jsonl),
+            Ok(Some(PathBuf::from(".ripr/policy-history.jsonl")))
         );
     }
 
@@ -5879,6 +6011,158 @@ mod tests {
             std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
             history_text
         );
+        assert!(
+            !dir.join("produced.jsonl").exists(),
+            "default policy history must not write JSONL without --out-jsonl"
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_out_jsonl_is_opt_in_and_feeds_non_null_trend() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-history-jsonl");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create history dir: {err}"))?;
+        let current = dir.join("policy-operations.json");
+        let jsonl = dir.join("policy-history.jsonl");
+        let first_out = dir.join("first.json");
+        let first_md = dir.join("first.md");
+        let second_out = dir.join("second.json");
+        let second_md = dir.join("second.md");
+        std::fs::write(
+            &current,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "generated_at": "unix_ms:10",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [],
+              "promotion_blockers": [],
+              "input_artifacts": [
+                {"kind":"baseline_delta","path":"baseline.json","status":"read"},
+                {"kind":"waiver_aging","path":"waiver.json","status":"read"},
+                {"kind":"suppression_health","path":"suppression.json","status":"read"},
+                {"kind":"recommendation_calibration","path":"recommendation.json","status":"omitted"}
+              ],
+              "current": {
+                "new_policy_eligible_count": 1,
+                "waiver_count": 2,
+                "stale_suppression_count": 0,
+                "baseline_still_present": 4,
+                "baseline_resolved": 1
+              }
+            }"#,
+        )
+        .map_err(|err| format!("write current: {err}"))?;
+
+        policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--commit",
+            "HEAD",
+            "--pr-number",
+            "1",
+            "--out",
+            &first_out.display().to_string(),
+            "--out-md",
+            &first_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let first_json =
+            std::fs::read_to_string(&first_out).map_err(|err| format!("read first json: {err}"))?;
+        assert!(
+            first_json.contains("\"history_not_supplied\"")
+                || first_json.contains("\"direction\": \"unknown\""),
+            "first snapshot without history stays unknown: {first_json}"
+        );
+        let produced =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read produced jsonl: {err}"))?;
+        let first_line = produced
+            .lines()
+            .next()
+            .ok_or_else(|| "produced jsonl must have one line".to_string())?;
+        assert!(
+            !first_line.contains("\"kind\""),
+            "policy history jsonl is a snapshot, not the full report: {first_line}"
+        );
+
+        policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--history",
+            &jsonl.display().to_string(),
+            "--commit",
+            "HEAD",
+            "--pr-number",
+            "2",
+            "--out",
+            &second_out.display().to_string(),
+            "--out-md",
+            &second_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let second_json = std::fs::read_to_string(&second_out)
+            .map_err(|err| format!("read second json: {err}"))?;
+        assert!(
+            second_json.contains("\"entries\": 2"),
+            "history from --out-jsonl must populate entries: {second_json}"
+        );
+        assert!(
+            second_json.contains("\"direction\": \"unchanged\""),
+            "supplied history must populate trend, not unknown: {second_json}"
+        );
+        let appended =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read appended jsonl: {err}"))?;
+        let lines: Vec<&str> = appended.lines().filter(|line| !line.is_empty()).collect();
+        assert_eq!(lines.len(), 2, "second --out-jsonl must append: {appended}");
+        assert_eq!(
+            lines[0], first_line,
+            "append must preserve the prior record"
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_out_jsonl_refuses_unavailable_current() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-history-jsonl-refuse");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create history dir: {err}"))?;
+        let current = dir.join("missing-policy-operations.json");
+        let jsonl = dir.join("policy-history.jsonl");
+        let out = dir.join("policy-history.json");
+        let out_md = dir.join("policy-history.md");
+        let error = match policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ])) {
+            Err(error) => error,
+            Ok(()) => return Err("unavailable current must refuse --out-jsonl".to_string()),
+        };
+        assert!(
+            error.contains("refuses to append"),
+            "expected refuse error, got {error}"
+        );
+        assert!(
+            !jsonl.exists(),
+            "unavailable current must not produce a durable JSONL line"
+        );
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
         Ok(())
     }
@@ -6213,6 +6497,7 @@ language = "rust"
                 history: Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")),
                 out: PathBuf::from("target/ripr/reports/pr-evidence-ledger.json"),
                 out_md: PathBuf::from("target/ripr/reports/pr-evidence-ledger.md"),
+                out_jsonl: None,
             })
         );
     }
@@ -6289,6 +6574,98 @@ language = "rust"
                 "unknown pr-ledger record argument \"--bad\". Run `ripr pr-ledger record --help`."
                     .to_string()
             )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out-jsonl",
+                ".ripr/pr-evidence-ledger.jsonl",
+            ]))
+            .map(|options| options.out_jsonl),
+            Ok(Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")))
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out",
+                "ledger.json",
+                "--out-jsonl",
+                "ledger.json",
+            ])),
+            Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out",
+                "./ledger.json",
+                "--out-jsonl",
+                "ledger.json",
+            ])),
+            Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out-jsonl",
+                "gap-ledger.json",
+            ])),
+            Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--history",
+                ".ripr/pr-evidence-ledger.jsonl",
+                "--out-jsonl",
+                ".ripr/pr-evidence-ledger.jsonl",
+            ]))
+            .map(|options| options.out_jsonl),
+            Ok(Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")))
         );
     }
 
@@ -6676,7 +7053,133 @@ language = "rust"
         assert!(md_text.contains("# RIPR PR Evidence Ledger"));
         assert!(md_text.contains("Gate: acknowledgeable / acknowledged"));
         assert!(md_text.contains("Gap decision ledger:"));
+        assert!(
+            !dir.join("produced.jsonl").exists(),
+            "default pr-ledger record must not write JSONL without --out-jsonl"
+        );
 
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pr_evidence_ledger_out_jsonl_is_opt_in_and_feeds_non_null_history() -> Result<(), String> {
+        let dir = unique_command_test_dir("pr-evidence-ledger-jsonl");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create ledger dir: {err}"))?;
+        let out = dir.join("pr-evidence-ledger.json");
+        let out_md = dir.join("pr-evidence-ledger.md");
+        let jsonl = dir.join("pr-evidence-ledger.jsonl");
+        let second_out = dir.join("second.json");
+        let second_md = dir.join("second.md");
+        let gap_ledger = dir.join("gap-decision-ledger.json");
+        let fixture = repo_root().join("fixtures/boundary_gap/expected/pr-evidence-ledger/mixed");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"gap_records":[{"gap_id":"gap:pr:cli","canonical_gap_id":"gap:rust:cli","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/cli.rs","line":7},"repair_route":{"route_kind":"AddBoundaryAssertion","assertion_shape":"assert!(cli())"},"verification_commands":["cargo xtask fixtures boundary_gap"]}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+
+        pr_ledger(&args(&[
+            "record",
+            "--pr-number",
+            "1",
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--gate",
+            &fixture.join("gate-decision.json").display().to_string(),
+            "--baseline-delta",
+            &fixture
+                .join("baseline-debt-delta.json")
+                .display()
+                .to_string(),
+            "--zero-status",
+            &fixture.join("ripr-zero-status.json").display().to_string(),
+            "--pr-guidance",
+            &fixture.join("comments.json").display().to_string(),
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let first_json =
+            std::fs::read_to_string(&out).map_err(|err| format!("read first json: {err}"))?;
+        assert!(
+            first_json.contains("\"history\": null"),
+            "first record without --history stays null: {first_json}"
+        );
+        let produced =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read produced jsonl: {err}"))?;
+        let first_line = produced
+            .lines()
+            .next()
+            .ok_or_else(|| "produced jsonl must have one line".to_string())?;
+        assert!(
+            first_line.contains("\"kind\":\"pr_evidence_ledger\""),
+            "pr-ledger jsonl is the compact record object: {first_line}"
+        );
+
+        pr_ledger(&args(&[
+            "record",
+            "--pr-number",
+            "2",
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--gate",
+            &fixture.join("gate-decision.json").display().to_string(),
+            "--baseline-delta",
+            &fixture
+                .join("baseline-debt-delta.json")
+                .display()
+                .to_string(),
+            "--zero-status",
+            &fixture.join("ripr-zero-status.json").display().to_string(),
+            "--pr-guidance",
+            &fixture.join("comments.json").display().to_string(),
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
+            "--history",
+            &jsonl.display().to_string(),
+            "--out",
+            &second_out.display().to_string(),
+            "--out-md",
+            &second_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let second_json = std::fs::read_to_string(&second_out)
+            .map_err(|err| format!("read second json: {err}"))?;
+        assert!(
+            !second_json.contains("\"history\": null"),
+            "history from --out-jsonl must be non-null: {second_json}"
+        );
+        assert!(
+            second_json.contains("\"records\": 1"),
+            "history must count the appended record: {second_json}"
+        );
+        assert!(
+            second_json.contains("\"trend\": \"improving\"")
+                || second_json.contains("\"trend\": \"regressing\"")
+                || second_json.contains("\"trend\": \"stable\""),
+            "trend must be populated from produced history: {second_json}"
+        );
+        let appended =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read appended jsonl: {err}"))?;
+        let lines: Vec<&str> = appended.lines().filter(|line| !line.is_empty()).collect();
+        assert_eq!(lines.len(), 2, "second --out-jsonl must append: {appended}");
+        assert_eq!(
+            lines[0], first_line,
+            "append must preserve the prior record"
+        );
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
         Ok(())
     }
@@ -8798,6 +9301,7 @@ language = "rust"
         assert!(pr_ledger.contains("--agent-receipt target/ripr/reports/agent-receipt.json"));
         assert!(pr_ledger.contains("--coverage target/ripr/reports/coverage-summary.json"));
         assert!(pr_ledger.contains("--history .ripr/pr-evidence-ledger.jsonl"));
+        assert!(!pr_ledger.contains("--out-jsonl"));
         assert!(pr_ledger.contains("ledger_args+=(--label \"$label\")"));
         assert!(pr_ledger.contains("ripr \"${ledger_args[@]}\""));
 
@@ -8896,6 +9400,7 @@ language = "rust"
         assert!(policy_history.contains("--pr-number \"${{ github.event.number }}\""));
         assert!(policy_history.contains("--out target/ripr/reports/policy-history.json"));
         assert!(policy_history.contains("--out-md target/ripr/reports/policy-history.md"));
+        assert!(!policy_history.contains("--out-jsonl"));
         assert!(policy_history.contains("ripr \"${history_args[@]}\""));
 
         let promotion_packets = workflow_step(&workflow, "Render RIPR policy promotion packets");
