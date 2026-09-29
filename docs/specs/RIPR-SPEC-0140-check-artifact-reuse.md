@@ -137,7 +137,9 @@ The artifact embeds an input identity computed at check time:
   are excluded; fields already recorded elsewhere in the identity
   (`analysis.mode`, `analysis.include_unchanged_tests`,
   `languages.enabled`) are marked as captured, not hashed twice;
-- `analyzer_version` (the writing binary's version) and the envelope
+- `analyzer_version` (the writing binary's build identity: its version plus
+  its commit, or a digest of its sources for a dirty or commit-less build,
+  so another build of the same version is refused) and the envelope
   `schema_version`.
 
 The CLI has no diagnostic-profile surface today (that concept is LSP-only,

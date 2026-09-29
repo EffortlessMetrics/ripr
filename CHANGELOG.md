@@ -1282,6 +1282,17 @@ are scoped or reviewed.
   attempt's result; that file is now a compatibility copy of the latest
   finish, and `ripr agent status` reads the attempt's own receipt first
   (#4636).
+- Cached analysis is no longer shared between different builds of the same
+  version. The file-fact and classified-seam caches under
+  `target/ripr/cache` keyed on the package version alone, so a `0.11.0`
+  binary built from one commit served facts and classifications that a
+  `0.11.0` binary from another commit had written, including across an
+  upgrade from a release candidate to the final release. The key now names
+  the build commit; a build with uncommitted changes or no commit record also
+  names a digest of its crate sources and lockfile. Entries from other builds
+  become misses and are recomputed. A `ripr check` artifact from another
+  build of the same version is refused for reuse, and the `analyzer_version`
+  in a targeted-rerun input fingerprint carries the same build identity.
 
 ### Added
 

@@ -39,8 +39,75 @@ fn main() {
         }
     });
     let (commit, dirty) = identity.unwrap_or_default();
+    // A commit identifies a clean build's code. A dirty or commit-less build
+    // is identified by its sources instead, so persisted analysis caches
+    // never serve one such build's results to another.
+    let source_digest = if commit.is_empty() || dirty {
+        manifest_dir
+            .as_deref()
+            .map(Path::new)
+            .and_then(source_digest)
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
     println!("cargo:rustc-env=RIPR_BUILD_COMMIT={commit}");
     println!("cargo:rustc-env=RIPR_BUILD_COMMIT_DIRTY={dirty}");
+    println!("cargo:rustc-env=RIPR_BUILD_SOURCE_DIGEST={source_digest}");
+}
+
+/// FNV-1a over the crate sources and the nearest workspace manifest and
+/// lockfile: each file's path relative to that workspace root, its length and
+/// its bytes, in sorted path order. `None` when any input cannot be read, so
+/// an unreadable source never yields a digest that another build could share.
+fn source_digest(dir: &Path) -> Option<String> {
+    let root = dir
+        .ancestors()
+        .find(|ancestor| ancestor.join("Cargo.lock").is_file())
+        .unwrap_or(dir);
+    let mut files = Vec::new();
+    for source in CRATE_SOURCES {
+        let path = dir.join(source);
+        println!("cargo:rerun-if-changed={}", path.display());
+        collect_files(&path, &mut files)?;
+    }
+    for input in ["Cargo.toml", "Cargo.lock"] {
+        let path = root.join(input);
+        if path.is_file() {
+            println!("cargo:rerun-if-changed={}", path.display());
+            files.push(path);
+        }
+    }
+    files.sort();
+    files.dedup();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |bytes: &[u8]| {
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+    };
+    for file in &files {
+        let bytes = fs::read(file).ok()?;
+        let relative = file.strip_prefix(root).unwrap_or(file);
+        feed(relative.to_string_lossy().replace('\\', "/").as_bytes());
+        feed(&[0]);
+        feed(&(bytes.len() as u64).to_le_bytes());
+        feed(&bytes);
+    }
+    Some(format!("{hash:016x}"))
+}
+
+fn collect_files(path: &Path, files: &mut Vec<PathBuf>) -> Option<()> {
+    let metadata = fs::metadata(path).ok()?;
+    if metadata.is_file() {
+        files.push(path.to_path_buf());
+    } else if metadata.is_dir() {
+        for entry in fs::read_dir(path).ok()? {
+            collect_files(&entry.ok()?.path(), files)?;
+        }
+    }
+    Some(())
 }
 
 /// Crate sources that decide whether the built binary differs from the

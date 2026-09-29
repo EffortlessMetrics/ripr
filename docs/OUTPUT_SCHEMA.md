@@ -534,7 +534,7 @@ Envelope (`schema_version = "ripr-check-artifact-v1"`):
 {
   "schema_version": "ripr-check-artifact-v1",
   "tool": "ripr",
-  "analyzer_version": "0.10.0",
+  "analyzer_version": "0.11.0+0123456789abcdef0123456789abcdef01234567",
   "identity": {
     "diff_source": { "diff_file": { "path": "/abs/path/to/example.diff" } },
     "diff_bytes_hash": "fnv1a64:0123456789abcdef",
@@ -16495,7 +16495,7 @@ targeted-rerun receipt shape:
     "invalidation_status": "not_available",
     "input_fingerprint": {
       "schema_version": "1.17",
-      "analyzer_version": "0.11.0",
+      "analyzer_version": "0.11.0+0123456789abcdef0123456789abcdef01234567",
       "workspace_root_hash": "…",
       "files_content_hash": "…",
       "cfg_features_hash": "…",
@@ -16577,11 +16577,18 @@ targeted-rerun receipt shape:
 }
 ```
 
+`input_fingerprint.analyzer_version` names the build, not only the package
+version: `<version>+<commit>` for a clean build, with `-dirty+src:<digest>`
+appended for a build with uncommitted source changes, or `<version>+unknown+src:<digest>`
+when no commit is recorded. Two builds of one version therefore report
+`input_changed:analyzer_version` against each other's receipts.
+
 `cache.schema_version` and `cache.input_fingerprint.schema_version` version
 the file-fact cache and its input identity, not this report. They move
 whenever cache identity changes, so a consumer dispatches on the top-level
 `schema_version` and treats the nested values as opaque. Nested
-`analyzer_version` is the producing `ripr` package version and also moves.
+`analyzer_version` is the producing build identity described above and also
+moves.
 
 For a changed-test selector, `selector.kind` is `changed_test`. `changed_test`
 names the repository-relative parsed test file and may append

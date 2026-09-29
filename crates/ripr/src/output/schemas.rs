@@ -515,14 +515,18 @@ mod tests {
                 fingerprint.get("schema_version")
             ));
         }
-        if fingerprint
+        // The fingerprint names the build, not only the package version:
+        // `<version>+<commit>` for a clean build (#4536).
+        let analyzer_version = fingerprint
             .get("analyzer_version")
             .and_then(serde_json::Value::as_str)
-            != Some(env!("CARGO_PKG_VERSION"))
-        {
+            .unwrap_or_default();
+        let commit = analyzer_version
+            .strip_prefix(concat!(env!("CARGO_PKG_VERSION"), "+"))
+            .unwrap_or_default();
+        if commit.len() != 40 || !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(format!(
-                "input_fingerprint.analyzer_version must track CARGO_PKG_VERSION, got {:?}",
-                fingerprint.get("analyzer_version")
+                "input_fingerprint.analyzer_version must be CARGO_PKG_VERSION+<commit>, got {analyzer_version:?}"
             ));
         }
 

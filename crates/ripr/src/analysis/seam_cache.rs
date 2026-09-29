@@ -684,7 +684,7 @@ impl RepoFileFactCacheKey {
     pub(crate) fn new(file_path: &Path, content: &[u8]) -> Self {
         Self {
             schema_version: FILE_FACT_CACHE_SCHEMA_VERSION.to_string(),
-            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            analyzer_version: crate::build_identity::cache_identity().to_string(),
             file_path: file_path.to_path_buf(),
             content_hash: hash_bytes(content),
         }
@@ -833,7 +833,7 @@ impl WorkspaceKeyContext<'_> {
 
         RepoSeamCacheKey {
             schema_version: CACHE_SCHEMA_VERSION.to_string(),
-            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            analyzer_version: crate::build_identity::cache_identity().to_string(),
             workspace_root_hash,
             files_content_hash,
             cfg_features_hash: hash_str(self.cfg_features.unwrap_or("")),
@@ -1653,8 +1653,11 @@ impl RepoFileFactCache {
 
     /// Snapshot paths with valid cached envelopes before a build starts. The
     /// caller uses this set for O(1) miss attribution and deliberately does not
-    /// observe entries created during the same build.
+    /// observe entries created during the same build. Only entries this build
+    /// could have served count: a miss against another build's entry means
+    /// the build changed, not the file's content.
     pub(crate) fn known_file_paths(&self) -> HashSet<PathBuf> {
+        let identity = crate::build_identity::cache_identity();
         let mut paths = HashSet::new();
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return paths;
@@ -1669,7 +1672,7 @@ impl RepoFileFactCache {
             };
             if let Ok(envelope) = codec::decode_file_facts(&bytes)
                 && envelope.file_fact_cache_schema_version == FILE_FACT_CACHE_SCHEMA_VERSION
-                && envelope.analyzer_version == env!("CARGO_PKG_VERSION")
+                && envelope.analyzer_version == identity
                 && envelope.validate_integrity().is_ok()
             {
                 paths.insert(envelope.file_path);
@@ -3462,7 +3465,7 @@ mod tests {
         .to_vec();
         let previous_key = RepoFileFactCacheKey {
             schema_version: "1.2".to_string(),
-            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            analyzer_version: crate::build_identity::cache_identity().to_string(),
             file_path: file.to_path_buf(),
             // Production derives this field via `hash_bytes`, so the seed
             // must too: the only difference from the current key is then
@@ -6878,7 +6881,7 @@ mod generation_transition_tests {
         let content = cfg_test_helper_source().as_bytes().to_vec();
         let previous_key = RepoFileFactCacheKey {
             schema_version: "0.2".to_string(),
-            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            analyzer_version: crate::build_identity::cache_identity().to_string(),
             file_path: file.to_path_buf(),
             content_hash: content_hash_for(&content),
         };
@@ -6951,7 +6954,7 @@ mod generation_transition_tests {
         let cache = RepoSeamFactCache::at_dir(dir.clone());
         let previous_key = RepoSeamCacheKey {
             schema_version: "1.11".to_string(),
-            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            analyzer_version: crate::build_identity::cache_identity().to_string(),
             workspace_root_hash: hash_str("/ws"),
             files_content_hash: hash_str("corpus"),
             cfg_features_hash: hash_str(""),
@@ -7013,7 +7016,7 @@ mod generation_transition_tests {
             .to_vec();
         let previous_key = RepoFileFactCacheKey {
             schema_version: "0.9".to_string(),
-            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            analyzer_version: crate::build_identity::cache_identity().to_string(),
             file_path: file.to_path_buf(),
             // Production derives this field via `hash_bytes`, so the seed
             // must too: the only difference from the current key is then
@@ -7143,6 +7146,115 @@ mod generation_transition_tests {
             "file-fact cache directory must be generation-scoped: {:?}",
             file_facts.dir
         );
+        Ok(())
+    }
+
+    /// Analyzer identities another build of this same package version could
+    /// have written: the bare version (every build before the cache keyed on
+    /// the build) and a clean build of a different commit.
+    fn other_builds_of_this_version() -> [String; 2] {
+        [
+            env!("CARGO_PKG_VERSION").to_string(),
+            format!(
+                "{}+0123456789abcdef0123456789abcdef01234567",
+                env!("CARGO_PKG_VERSION")
+            ),
+        ]
+    }
+
+    #[test]
+    fn file_facts_written_by_another_build_of_this_version_are_a_miss() -> Result<(), String> {
+        let file = Path::new("src/lib.rs");
+        let content = b"pub fn f() -> u32 { 1 }\n".to_vec();
+        let current_key = RepoFileFactCacheKey::new(file, &content);
+        for analyzer_version in other_builds_of_this_version() {
+            let dir = isolated_dir("other-build-facts");
+            super::ignore_remove_dir_all(&dir);
+            let cache = RepoFileFactCache::at_dir(dir.clone());
+            let other_build_key = RepoFileFactCacheKey {
+                analyzer_version: analyzer_version.clone(),
+                ..current_key.clone()
+            };
+            assert_ne!(other_build_key, current_key);
+            let facts = FileFacts {
+                path: file.to_path_buf(),
+                ..FileFacts::default()
+            };
+            cache.store_file_facts(&other_build_key, &facts)?;
+            match cache.load_file_facts(&other_build_key) {
+                CacheLoad::Hit(_) => {}
+                other => {
+                    return Err(format!(
+                        "seed sanity: {analyzer_version} should read its own entry, got {other:?}"
+                    ));
+                }
+            }
+            match cache.load_file_facts(&current_key) {
+                CacheLoad::Miss => {}
+                other => {
+                    return Err(format!(
+                        "file facts from build {analyzer_version} were served to build {}: {other:?}",
+                        crate::build_identity::cache_identity()
+                    ));
+                }
+            }
+            // That miss is a build change, not a content change: another
+            // build's entry must not mark the file as previously cached.
+            assert!(
+                !cache.known_file_paths().contains(file),
+                "an entry from build {analyzer_version} was attributed as this file's earlier content"
+            );
+            cache.store_file_facts(&current_key, &facts)?;
+            assert!(cache.known_file_paths().contains(file));
+            super::ignore_remove_dir_all(&dir);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn classified_seams_written_by_another_build_of_this_version_are_a_miss() -> Result<(), String>
+    {
+        let current_key = WorkspaceKeyContext {
+            workspace_root: Path::new("/ws"),
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: None,
+            suppressions_text: None,
+        }
+        .cache_key(hash_str("corpus"));
+        for analyzer_version in other_builds_of_this_version() {
+            let dir = isolated_dir("other-build-seams");
+            super::ignore_remove_dir_all(&dir);
+            let cache = RepoSeamFactCache::at_dir(dir.clone());
+            let other_build_key = RepoSeamCacheKey {
+                analyzer_version: analyzer_version.clone(),
+                ..current_key.clone()
+            };
+            cache.store_classified_seams_with_limit(
+                &other_build_key,
+                &[],
+                None,
+                CLASSIFIED_SEAM_CACHE_STORE_LIMIT,
+            )?;
+            match cache.load_classified_seams_with_fallback(&other_build_key) {
+                CacheLoad::Hit(_) => {}
+                other => {
+                    return Err(format!(
+                        "seed sanity: {analyzer_version} should read its own entry, got {other:?}"
+                    ));
+                }
+            }
+            match cache.load_classified_seams_with_fallback(&current_key) {
+                CacheLoad::Miss => {}
+                other => {
+                    return Err(format!(
+                        "classified seams from build {analyzer_version} were served to build {}: {other:?}",
+                        crate::build_identity::cache_identity()
+                    ));
+                }
+            }
+            super::ignore_remove_dir_all(&dir);
+        }
         Ok(())
     }
 

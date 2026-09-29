@@ -579,7 +579,10 @@ fn load_fails_closed_on_analyzer_version_mismatch() -> Result<(), String> {
         let text = std::fs::read_to_string(&path).map_err(|err| format!("read: {err}"))?;
         let mut value: serde_json::Value =
             serde_json::from_str(&text).map_err(|err| format!("parse: {err}"))?;
-        value["analyzer_version"] = serde_json::Value::String("0.0.0-test".to_string());
+        // Another build of this same package version: the old version-only
+        // gate accepted it and replayed that build's findings.
+        value["analyzer_version"] =
+            serde_json::Value::String(env!("CARGO_PKG_VERSION").to_string());
         std::fs::write(
             &path,
             serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?,
