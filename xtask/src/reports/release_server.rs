@@ -1766,8 +1766,9 @@ mod final_subject_tests {
 
         fs::write(&sums, format!("{}  {}\n", archive.sha256, archive.name))
             .map_err(|err| err.to_string())?;
-        let missing = validate_sha256sums_subjects(&sums, &subjects)
-            .expect_err("missing manifest row must reject");
+        let Err(missing) = validate_sha256sums_subjects(&sums, &subjects) else {
+            return Err("missing manifest row must reject".to_string());
+        };
         assert!(missing.contains("omits"), "{missing}");
 
         fs::write(
@@ -1782,8 +1783,9 @@ mod final_subject_tests {
             ),
         )
         .map_err(|err| err.to_string())?;
-        let extra = validate_sha256sums_subjects(&sums, &subjects)
-            .expect_err("unexpected checksum subject must reject");
+        let Err(extra) = validate_sha256sums_subjects(&sums, &subjects) else {
+            return Err("unexpected checksum subject must reject".to_string());
+        };
         assert!(extra.contains("unexpected subjects"), "{extra}");
 
         fs::write(
@@ -1797,8 +1799,9 @@ mod final_subject_tests {
             ),
         )
         .map_err(|err| err.to_string())?;
-        let drift = validate_sha256sums_subjects(&sums, &subjects)
-            .expect_err("changed digest must reject");
+        let Err(drift) = validate_sha256sums_subjects(&sums, &subjects) else {
+            return Err("changed digest must reject".to_string());
+        };
         assert!(drift.contains("digest mismatch"), "{drift}");
 
         fs::remove_dir_all(&root).map_err(|err| err.to_string())
@@ -1819,14 +1822,16 @@ mod final_subject_tests {
         validate_final_server_staging_entries(&root, version, &subjects)?;
 
         fs::write(root.join("unexpected.log"), b"no").map_err(|err| err.to_string())?;
-        let extra = validate_final_server_staging_entries(&root, version, &subjects)
-            .expect_err("unexpected staging file must reject");
+        let Err(extra) = validate_final_server_staging_entries(&root, version, &subjects) else {
+            return Err("unexpected staging file must reject".to_string());
+        };
         assert!(extra.contains("unexpected final server staging entry"), "{extra}");
         fs::remove_file(root.join("unexpected.log")).map_err(|err| err.to_string())?;
 
         fs::create_dir(root.join("unexpected-dir")).map_err(|err| err.to_string())?;
-        let non_regular = validate_final_server_staging_entries(&root, version, &subjects)
-            .expect_err("non-regular staging entry must reject");
+        let Err(non_regular) = validate_final_server_staging_entries(&root, version, &subjects) else {
+            return Err("non-regular staging entry must reject".to_string());
+        };
         assert!(non_regular.contains("non-regular final server staging entry"), "{non_regular}");
 
         fs::remove_dir_all(&root).map_err(|err| err.to_string())
