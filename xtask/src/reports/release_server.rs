@@ -336,10 +336,9 @@ pub(crate) fn release_server_public_asset_paths(
     version: &str,
 ) -> Result<Vec<PathBuf>, String> {
     let assets = release_server_assets(dist_dir, version)?;
-    let mut paths = Vec::with_capacity(assets.len() * 2 + 2);
+    let mut paths = Vec::with_capacity(assets.len() + 2);
     for asset in assets {
         paths.push(dist_dir.join(&asset.file_name));
-        paths.push(dist_dir.join(format!("{}.sha256", asset.file_name)));
     }
     paths.push(dist_dir.join(format!("ripr-server-manifest-v{version}.json")));
     paths.push(dist_dir.join("SHA256SUMS"));
