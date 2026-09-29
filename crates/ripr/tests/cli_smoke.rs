@@ -1537,6 +1537,82 @@ fn check_from_a_subcrate_discloses_workspace_root_and_honors_explicit_root() -> 
 }
 
 #[test]
+fn check_from_a_package_source_dir_analyzes_the_crate_root() -> Result<(), String> {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    let root = unique_external_workspace("check-package-subdir")?;
+    std::fs::create_dir_all(&root).map_err(|error| format!("create fixture: {error}"))?;
+    let outcome = check_package_subdir_runs(bin, &root);
+    std::fs::remove_dir_all(&root).map_err(|error| format!("remove fixture: {error}"))?;
+    let (from_root, from_src, expected_root) = outcome?;
+    assert_success(&from_root);
+    assert_success(&from_src);
+
+    let findings = |output: &std::process::Output| -> Result<u64, String> {
+        let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+            .map_err(|error| format!("parse check json: {error}"))?;
+        json.pointer("/summary/findings")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| "summary.findings missing".to_string())
+    };
+    let root_findings = findings(&from_root)?;
+    assert!(
+        root_findings > 0,
+        "fixture must produce a finding from the root"
+    );
+    assert_eq!(
+        findings(&from_src)?,
+        root_findings,
+        "a run from src/ must analyze the crate, not scope the diff away (#4610)"
+    );
+    let stderr = String::from_utf8_lossy(&from_src.stderr);
+    let disclosure = format!(
+        "ripr: resolved workspace root to {} (nearest Cargo.toml)",
+        expected_root.display()
+    );
+    assert!(stderr.contains(&disclosure), "stderr:\n{stderr}");
+    Ok(())
+}
+
+/// Commit the boundary_gap crate, change its boundary, and run
+/// `check --base HEAD~1` once from the crate root and once from `src/`.
+fn check_package_subdir_runs(
+    bin: &str,
+    root: &Path,
+) -> Result<(std::process::Output, std::process::Output, PathBuf), String> {
+    init_producer_fixture_repo(root).map_err(|error| format!("init fixture repo: {error}"))?;
+    let lib = root.join("src/lib.rs");
+    let source = std::fs::read_to_string(&lib).map_err(|error| format!("read lib: {error}"))?;
+    let changed = source.replacen(">= discount_threshold", "> discount_threshold", 1);
+    assert_ne!(changed, source, "fixture boundary must be present");
+    std::fs::write(&lib, changed).map_err(|error| format!("write lib: {error}"))?;
+    let commit = run_command(
+        "git",
+        Some(root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-qam",
+            "change boundary",
+        ],
+    )
+    .map_err(|error| format!("commit change: {error}"))?;
+    assert!(commit.status.success(), "change commit failed: {commit:?}");
+
+    let args = ["check", "--base", "HEAD~1", "--format", "json"];
+    let from_root =
+        run_command(bin, Some(root), &args).map_err(|error| format!("run root check: {error}"))?;
+    let from_src = run_command(bin, Some(&root.join("src")), &args)
+        .map_err(|error| format!("run subdir check: {error}"))?;
+    let expected_root = root
+        .canonicalize()
+        .map_err(|error| format!("canonicalize fixture root: {error}"))?;
+    Ok((from_root, from_src, expected_root))
+}
+
+#[test]
 fn check_from_a_directory_without_a_workspace_does_not_disclose_resolution() -> Result<(), String> {
     let bin = env!("CARGO_BIN_EXE_ripr");
     let root = unique_external_workspace("check-no-workspace")?;

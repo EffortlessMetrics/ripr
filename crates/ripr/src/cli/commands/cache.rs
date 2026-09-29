@@ -96,7 +96,8 @@ fn cache_dir_for_current_dir(
                 current_dir.display()
             )
         })?;
-        super::check::resolve_workspace_root(&current_dir)?.unwrap_or(current_dir)
+        super::check::resolve_project_root(&current_dir)?
+            .map_or(current_dir, |(root, _reason)| root)
     };
     Ok(cache_dir_for_root(&workspace_root, env_value))
 }
