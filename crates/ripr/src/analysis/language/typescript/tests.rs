@@ -7243,6 +7243,68 @@ fn oracle_confidence_low_for_weak_and_smoke() {
 // PR6: Ownership hardening — package-local, import forms, typescript_target_unresolved
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// The per-owner package scope answers every (owner, test) pair exactly as
+/// `same_package_root` does, on first (walking) and repeated (cached)
+/// queries: nested packages, a directory outside any package, absolute and
+/// relative test paths, and an owner with no package root.
+#[test]
+fn owner_package_scope_matches_same_package_root_for_every_pair() -> Result<(), String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let temp = std::env::temp_dir().join(format!("ripr-pkg-scope-{stamp}"));
+    let root = temp.join("repo");
+    for dir in [
+        "packages/a/src",
+        "packages/a/tests/deep",
+        "packages/a/nested/src",
+        "packages/b/test",
+        "scripts",
+    ] {
+        fs::create_dir_all(root.join(dir)).map_err(|error| error.to_string())?;
+    }
+    for manifest in [
+        "packages/a/package.json",
+        "packages/a/nested/package.json",
+        "packages/b/package.json",
+    ] {
+        fs::write(root.join(manifest), "{}").map_err(|error| error.to_string())?;
+    }
+    let files: Vec<PathBuf> = [
+        "packages/a/src/cart.ts",
+        "packages/a/tests/cart.test.ts",
+        "packages/a/tests/deep/cart.test.ts",
+        "packages/a/nested/src/inner.test.ts",
+        "packages/b/test/cart.test.ts",
+        "scripts/cart.test.ts",
+        "top.test.ts",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .chain([root.join("packages/b/test/abs.test.ts")])
+    .collect();
+    let mut compared = 0;
+    for owner in &files {
+        let scope = OwnerPackageScope::new(owner, &root);
+        for round in 0..2 {
+            for test in &files {
+                assert_eq!(
+                    scope.contains(test),
+                    same_package_root(owner, test, &root),
+                    "round {round}: owner {owner:?} / test {test:?}"
+                );
+                compared += 1;
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&temp);
+    assert_eq!(compared, files.len() * files.len() * 2);
+    Ok(())
+}
+
 /// Package-local filter: a test in the SAME package as the owner IS selected.
 #[test]
 fn package_local_filter_selects_same_package_test() {

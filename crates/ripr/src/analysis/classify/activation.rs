@@ -2,6 +2,7 @@ use super::super::rust_index::{FunctionSummary, TestSummary};
 use super::text::{delimited_contents_at, enum_variant_values, exact_error_variant};
 use crate::domain::*;
 
+#[cfg(test)]
 pub(in crate::analysis) fn activation_evidence(
     probe: &Probe,
     owner_fn: Option<&FunctionSummary>,
@@ -11,9 +12,41 @@ pub(in crate::analysis) fn activation_evidence(
     index: &crate::analysis::rust_index::RustIndex,
     workspace_complete: bool,
 ) -> ActivationEvidence {
+    activation_evidence_with_value_facts(
+        probe,
+        owner_fn,
+        related_tests,
+        flow_sinks,
+        helper_chain,
+        index,
+        workspace_complete,
+        None,
+    )
+}
+
+/// `activation_evidence`, reading each related test's owner-independent
+/// value facts through `value_facts` when the classifier supplies its
+/// run-scoped memo.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "activation_evidence's inputs plus the optional run-scoped memo"
+)]
+pub(in crate::analysis) fn activation_evidence_with_value_facts(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+    flow_sinks: &[FlowSinkFact],
+    helper_chain: Option<&super::helper_transfer::HelperChain>,
+    index: &crate::analysis::rust_index::RustIndex,
+    workspace_complete: bool,
+    value_facts: Option<&TestValueFacts>,
+) -> ActivationEvidence {
     let mut observed_values = related_tests
         .iter()
-        .flat_map(|test| value_facts_for_test(test, owner_fn))
+        .flat_map(|test| match value_facts {
+            Some(memo) => memo.facts_for(index, test, owner_fn),
+            None => value_facts_for_test(test, owner_fn),
+        })
         .collect::<Vec<_>>();
     observed_values.extend(observed_discriminator_values(
         probe,
@@ -61,6 +94,88 @@ struct ParameterValue {
     value: String,
     line: usize,
     text: String,
+}
+
+/// `value_facts_for_test` per (related test, owner), computed at most once
+/// for as long as the memo lives.
+///
+/// The facts depend only on the test and the owner, never on the probe, and
+/// every probe in an owner relates to largely the same tests, so a
+/// classification run shares one memo across its probes (it rides the
+/// run-scoped `RelatedTestCandidateIndex`). Entries are keyed by the test's
+/// and owner's slots in the index the memo was first queried with; a test
+/// or owner that is not an element of that index, or a query against
+/// another index, is computed fresh and never cached, so a key can only
+/// ever name the same fact values.
+/// A related test's slot in `RustIndex::tests` and its owner's slot in
+/// `RustIndex::functions` (`None` for an ownerless probe).
+type TestOwnerSlot = (usize, Option<usize>);
+
+#[derive(Clone, Debug, Default)]
+pub(in crate::analysis) struct TestValueFacts {
+    index_identity: std::cell::Cell<Option<(usize, usize)>>,
+    by_slot: std::cell::RefCell<std::collections::BTreeMap<TestOwnerSlot, Vec<ValueFact>>>,
+}
+
+impl TestValueFacts {
+    /// `value_facts_for_test(test, owner_fn)`.
+    pub(in crate::analysis) fn facts_for(
+        &self,
+        index: &crate::analysis::rust_index::RustIndex,
+        test: &TestSummary,
+        owner_fn: Option<&FunctionSummary>,
+    ) -> Vec<ValueFact> {
+        let Some(key) = self.slot_key(index, test, owner_fn) else {
+            return value_facts_for_test(test, owner_fn);
+        };
+        if let Some(facts) = self.by_slot.borrow().get(&key) {
+            return facts.clone();
+        }
+        let facts = value_facts_for_test(test, owner_fn);
+        self.by_slot.borrow_mut().insert(key, facts.clone());
+        facts
+    }
+
+    fn slot_key(
+        &self,
+        index: &crate::analysis::rust_index::RustIndex,
+        test: &TestSummary,
+        owner_fn: Option<&FunctionSummary>,
+    ) -> Option<TestOwnerSlot> {
+        let identity = (
+            index.tests.as_ptr() as usize,
+            index.functions.as_ptr() as usize,
+        );
+        match self.index_identity.get() {
+            None => self.index_identity.set(Some(identity)),
+            Some(bound) if bound != identity => return None,
+            Some(_) => {}
+        }
+        let test_slot = slot_in(&index.tests, test)?;
+        let owner_slot = match owner_fn {
+            Some(owner) => Some(slot_in(&index.functions, owner)?),
+            None => None,
+        };
+        Some((test_slot, owner_slot))
+    }
+}
+
+/// The position of `item` in `items` when `item` is one of its elements
+/// (by address, not by value).
+fn slot_in<T>(items: &[T], item: &T) -> Option<usize> {
+    let size = std::mem::size_of::<T>();
+    if size == 0 {
+        return None;
+    }
+    let offset = (item as *const T as usize).checked_sub(items.as_ptr() as usize)?;
+    if offset % size != 0 {
+        return None;
+    }
+    let slot = offset / size;
+    items
+        .get(slot)
+        .is_some_and(|candidate| std::ptr::eq(candidate, item))
+        .then_some(slot)
 }
 
 fn value_facts_for_test(test: &TestSummary, owner_fn: Option<&FunctionSummary>) -> Vec<ValueFact> {
@@ -2705,6 +2820,89 @@ assert_eq!(input.amount, 100);"#
                 .any(|fact| fact.value == "AuthError::RevokedToken")
         );
         assert!(!facts.iter().any(|fact| fact.value == "AuthError::Ignored"));
+    }
+
+    /// The run-scoped memo answers every (test, owner) query exactly as a
+    /// fresh `value_facts_for_test` does, on the first (computing) query and
+    /// every later (cached) one; owners that differ only in their parameter
+    /// names get different facts, and a test or index the memo is not bound
+    /// to is computed fresh without being cached.
+    #[test]
+    fn test_value_facts_memo_matches_fresh_facts_for_every_test_and_owner() {
+        let call = |line: usize, text: &str| CallFact {
+            line,
+            name: "score".to_string(),
+            text: text.to_string(),
+        };
+        let test = |name: &str, body: &str, calls: Vec<CallFact>| TestSummary {
+            name: name.to_string(),
+            file: PathBuf::from("tests/value.rs"),
+            start_line: 10,
+            end_line: 14,
+            body: body.to_string(),
+            calls,
+            assertions: vec![oracle_fact(
+                "assert_eq!(total, 100);",
+                OracleKind::ExactValue,
+            )],
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let index = crate::analysis::rust_index::RustIndex {
+            tests: vec![
+                test(
+                    "enum_call",
+                    "score(AuthError::RevokedToken);",
+                    vec![call(11, "score(AuthError::RevokedToken);")],
+                ),
+                test(
+                    "literal_call",
+                    "let rows = [(99, 100)];\nscore(7);",
+                    vec![call(12, "score(7);")],
+                ),
+            ],
+            functions: vec![
+                function("pub fn score(error: AuthError) -> u32 {\n    0\n}"),
+                function("pub fn score(code: AuthError) -> u32 {\n    0\n}"),
+            ],
+            ..crate::analysis::rust_index::RustIndex::default()
+        };
+        let memo = TestValueFacts::default();
+        let owners = [None, Some(&index.functions[0]), Some(&index.functions[1])];
+        for round in 0..2 {
+            for test in &index.tests {
+                for owner in owners {
+                    assert_eq!(
+                        memo.facts_for(&index, test, owner),
+                        value_facts_for_test(test, owner),
+                        "round {round}: {} / {:?}",
+                        test.name,
+                        owner.map(|owner| owner.body.as_str())
+                    );
+                }
+            }
+        }
+        assert_ne!(
+            memo.facts_for(&index, &index.tests[1], owners[1]),
+            memo.facts_for(&index, &index.tests[1], owners[2]),
+            "the owner's parameter names are part of the facts"
+        );
+        let cached = memo.by_slot.borrow().len();
+        assert_eq!(cached, index.tests.len() * owners.len());
+
+        let detached = index.tests[0].clone();
+        assert_eq!(
+            memo.facts_for(&index, &detached, owners[1]),
+            value_facts_for_test(&detached, owners[1])
+        );
+        let other_index = index.clone();
+        assert_eq!(
+            memo.facts_for(&other_index, &other_index.tests[0], None),
+            value_facts_for_test(&other_index.tests[0], None)
+        );
+        assert_eq!(memo.by_slot.borrow().len(), cached);
     }
 
     // #4228: a reversed literal (`100 < amount`) and a local boundary

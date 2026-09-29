@@ -1,7 +1,7 @@
 use crate::analysis::classify::{
-    ProbeContext, PropagationWitnessV1, activation_evidence, classify, confidence_score,
-    current_path_witness, infection_evidence, local_flow_sinks, owner_may_be_reached_unseen,
-    package_prefix, propagation_evidence_with_witness, reach_evidence,
+    ProbeContext, PropagationWitnessV1, activation_evidence_with_value_facts, classify,
+    confidence_score, current_path_witness, infection_evidence, local_flow_sinks,
+    owner_may_be_reached_unseen, package_prefix, propagation_evidence_with_witness, reach_evidence,
     reveal_evidence_with_expression,
 };
 use crate::domain::*;
@@ -43,7 +43,7 @@ impl ClassifiedProbeEvidence {
         let flow_sinks = local_flow_sinks(context.probe, context.owner_fn);
         let propagation_witness = current_path_witness(context.probe, &flow_sinks)
             .map(PropagationWitnessDiagnostic::from_witness);
-        let activation = activation_evidence(
+        let activation = activation_evidence_with_value_facts(
             context.probe,
             context.owner_fn,
             &test_summaries,
@@ -51,6 +51,7 @@ impl ClassifiedProbeEvidence {
             context.helper_chain.as_ref(),
             context.index,
             context.workspace_complete,
+            context.test_value_facts,
         );
         let infect = infection_evidence(context.probe, &test_summaries, &activation);
         let valid_witness = propagation_witness

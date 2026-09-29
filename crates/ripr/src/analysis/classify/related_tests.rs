@@ -57,6 +57,8 @@ pub(in crate::analysis) struct RelatedTestCandidateIndex {
     /// Run-scoped reveal memo filled lazily from the same index; valid for
     /// exactly as long as the candidate lists above are.
     file_use_statements: super::FileUseStatements,
+    /// Run-scoped activation memo, keyed by slots of the same index.
+    test_value_facts: super::TestValueFacts,
 }
 
 impl RelatedTestCandidateIndex {
@@ -121,6 +123,12 @@ impl RelatedTestCandidateIndex {
     /// against this index.
     pub(in crate::analysis) fn file_use_statements(&self) -> &super::FileUseStatements {
         &self.file_use_statements
+    }
+
+    /// The run-scoped per-(test, owner) value facts shared by every probe
+    /// classified against this index.
+    pub(in crate::analysis) fn test_value_facts(&self) -> &super::TestValueFacts {
+        &self.test_value_facts
     }
 
     fn candidate_indices(
@@ -660,6 +668,11 @@ fn find_related_tests_with_candidates<'a>(
     // `no_static_path`, while these proximity-only tests keep reach `Weak`
     // for an owner that may be reached unseen (trait method, named caller).
     let mut substring_only_fallback = Vec::new();
+    let owner_name_lc = owner_name.to_ascii_lowercase();
+    let test_name_words: Vec<String> = probe_tokens
+        .iter()
+        .filter_map(|token| test_name_word_token(token, common_words))
+        .collect();
     for test_index in candidate_indices {
         let test = &index.tests[test_index];
         // Compute calls_owner BEFORE the package-prefix guard so a cross-crate
@@ -819,7 +832,6 @@ fn find_related_tests_with_candidates<'a>(
             });
 
         let test_name = test.name.to_ascii_lowercase();
-        let owner_name_lc = owner_name.to_ascii_lowercase();
         let same_test_file = same_test_file(&probe.location.file, &test.file);
         // Keep the broad path-token association available to callers, but do
         // not publish it as file identity.  A short source stem such as
@@ -827,9 +839,9 @@ fn find_related_tests_with_candidates<'a>(
         // `reconfigure.rs`).
         let file_path_token_matches = test_path_names_probe_stem(&test.file, &file_name);
         let owner_name_in_test = !owner_name_lc.is_empty() && test_name.contains(&owner_name_lc);
-        let token_in_test_name = probe_tokens
+        let token_in_test_name = test_name_words
             .iter()
-            .any(|token| test_name_names_probe_token(&test_name, token, common_words));
+            .any(|word| test_name_has_word(&test_name, word));
         let same_file_or_named =
             same_test_file || file_path_token_matches || owner_name_in_test || token_in_test_name;
 
@@ -1411,19 +1423,42 @@ fn normalize_path(path: &Path) -> String {
 /// changed code, and its strong assertion then read as the discriminator
 /// once another test supplied reach, so a mutation no test catches read
 /// `exposed`.
+#[cfg(test)]
 fn test_name_names_probe_token(
     test_name: &str,
     token: &str,
     common_words: &BTreeSet<String>,
 ) -> bool {
+    test_name_word_token(token, common_words)
+        .is_some_and(|word| test_name_has_word(test_name, &word))
+}
+
+/// The lowercased form of `token` that `test_name_names_probe_token` looks
+/// for, or `None` when the token is too short, generic, or common. It
+/// depends only on the probe, so the test loop computes it once per probe.
+fn test_name_word_token(token: &str, common_words: &BTreeSet<String>) -> Option<String> {
     if token.len() < 3 || GENERIC_PROBE_TOKENS.contains(&token) {
-        return false;
+        return None;
     }
     let lowered = token.to_ascii_lowercase();
-    if common_words.contains(&lowered) {
-        return false;
+    (!common_words.contains(&lowered)).then_some(lowered)
+}
+
+/// `format!("_{test_name}_").contains(&format!("_{word}_"))` without the two
+/// allocations per (test, token) pair: some occurrence of `word`, overlapping
+/// ones included, is bounded by `_` or the name's ends on both sides.
+fn test_name_has_word(test_name: &str, word: &str) -> bool {
+    let bytes = test_name.as_bytes();
+    let mut from = 0;
+    while let Some(found) = test_name.get(from..).and_then(|rest| rest.find(word)) {
+        let start = from + found;
+        let end = start + word.len();
+        if (start == 0 || bytes[start - 1] == b'_') && (end == bytes.len() || bytes[end] == b'_') {
+            return true;
+        }
+        from = start + test_name[start..].chars().next().map_or(1, char::len_utf8);
     }
-    format!("_{test_name}_").contains(&format!("_{lowered}_"))
+    false
 }
 
 /// Tokens so widespread across a package's tests that sharing one ties no
@@ -3442,6 +3477,41 @@ fn crate_c_score_test() {
             Path::new("tests/pricing.rs"),
             ""
         ));
+    }
+
+    /// The allocation-free word search agrees with the padded-substring
+    /// rule it replaces on every short name over `_`, ASCII, and multi-byte
+    /// characters, overlapping and repeated occurrences included.
+    #[test]
+    fn test_name_has_word_matches_the_padded_substring_rule() {
+        let alphabet = ["a", "b", "_", "é"];
+        let mut strings = vec![String::new()];
+        let mut level = vec![String::new()];
+        // Six characters reach `ba_a_a` / `a_a`: the only whole-word match
+        // overlaps a rejected one, which a non-overlapping search misses.
+        for _ in 0..6 {
+            level = level
+                .iter()
+                .flat_map(|text| alphabet.iter().map(move |letter| format!("{text}{letter}")))
+                .collect();
+            strings.extend(level.iter().cloned());
+        }
+        let words: Vec<&String> = strings
+            .iter()
+            .filter(|word| (1..=3).contains(&word.chars().count()))
+            .collect();
+        let mut checked = 0usize;
+        for name in &strings {
+            for word in &words {
+                assert_eq!(
+                    super::test_name_has_word(name, word),
+                    format!("_{name}_").contains(&format!("_{word}_")),
+                    "{name:?} / {word:?}"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 300_000, "only {checked} pairs checked");
     }
 
     #[test]

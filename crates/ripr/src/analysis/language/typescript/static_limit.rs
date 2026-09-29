@@ -324,6 +324,7 @@ pub(crate) fn named_limitations_for_unresolved_ownership(
     let mut limitations: Vec<TypeScriptNamedLimitation> = Vec::new();
     let mut saw_target_unresolved = false;
 
+    let package_scope = OwnerPackageScope::new(&owner.file, workspace_root);
     for test in all_tests {
         if saw_target_unresolved {
             break;
@@ -331,7 +332,7 @@ pub(crate) fn named_limitations_for_unresolved_ownership(
         // Only consider tests that are NOT in the same package — cross-package
         // ones are the real producer.  Within-package tests are handled by the
         // normal candidate logic.
-        if same_package_root(&owner.file, &test.file, workspace_root) {
+        if package_scope.contains(&test.file) {
             continue;
         }
         // Check whether this cross-package test actually references the owner

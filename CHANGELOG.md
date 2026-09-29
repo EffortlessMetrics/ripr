@@ -21,6 +21,14 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `ripr check` is faster on large repositories, with byte-identical JSON on
+  12 real commits of tokio, vite, Django and ripr. TypeScript test selection
+  walked the directory tree for `package.json` twice per owner and test;
+  a vite commit went from 6.7 s to 3.2 s. Rust classification no longer
+  reparses the owner's file per probe unless the file could admit the
+  derived tuple slice, and computes each related test's value facts once
+  per owner instead of once per probe; a ripr commit went
+  from 11.1 s to 8.1 s.
 - Security: Rust source discovery skips symlinked `.rs` entries, as the
   Python and TypeScript readers already did. A cloned repository or pull
   request that committed `src/zero.rs -> /dev/zero` made `ripr check` read
