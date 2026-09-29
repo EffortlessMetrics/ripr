@@ -6,11 +6,11 @@ Summary: 4 probe(s), 1 exposed, 1 weak, 0 unrevealed, 1 no path, 1 unknown
 
 Changed file(s) by language: python: 4.
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 4 changed file(s), 4 changed line(s), 4 candidate line(s), 4 probe(s), 4 finding(s).
 
 Start here:
-  State: preview_limited
+  State: preview language, advisory only (preview_limited)
   Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
   File: src/c_discount.py:2
   Language: python

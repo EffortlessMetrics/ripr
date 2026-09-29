@@ -4,9 +4,9 @@ root: fixtures/perl_cpan_alpha/input
 
 Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Analysis outcome: partial_with_limitations (analysis incomplete).
+Analysis outcome: limitations below (analysis incomplete; partial_with_limitations).
   Zero findings is not a clean result because the analyzed scope is incomplete.
-  Limitation: language_adapter_unavailable at language_adapter; affected items: 1; recovery: enable_language — Perl analysis is not available from this ripr binary. It needs both a ripr build with Cargo feature `lang-perl` (`cargo install ripr --features lang-perl`) and a compatible Perl fact exporter (`perl-ripr-facts`), which is not yet published; no released ripr setup analyzes Perl yet, and adding `perl` to ripr.toml [languages] alone does not enable it.
+  Limitation: no analyzer is available for a changed language during language analysis (language_adapter_unavailable at language_adapter); affected items: 1; recovery: enable the language (enable_language) — Perl analysis is not available from this ripr binary. It needs both a ripr build with Cargo feature `lang-perl` (`cargo install ripr --features lang-perl`) and a compatible Perl fact exporter (`perl-ripr-facts`), which is not yet published; no released ripr setup analyzes Perl yet, and adding `perl` to ripr.toml [languages] alone does not enable it.
 
 No diff-derived static exposure probes found.
 

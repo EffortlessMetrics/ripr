@@ -62,3 +62,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_witness_receiver_qualified (6)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless typescript_witness_receiver_qualified --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

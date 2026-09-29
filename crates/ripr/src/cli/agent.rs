@@ -117,6 +117,10 @@ pub(super) struct AgentRepairOptions {
     pub(super) verify_authorization: crate::app::python_repair_verification::VerifyAuthorization,
     /// Request the rollback proof as part of the verify phase (#3570).
     pub(super) verify_rollback: bool,
+    /// Print the phase's JSON document on stdout. Without it stdout carries
+    /// a short human summary and the documents stay in their artifact files,
+    /// the same split `ripr agent status` uses.
+    pub(super) json: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -242,9 +246,11 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
     let mut verify_authorized = false;
     let mut verify_authority: Option<String> = None;
     let mut verify_rollback = false;
+    let mut json = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
+            "--json" => json = true,
             "--root" => {
                 i += 1;
                 root = PathBuf::from(expect_value(args, i, "--root")?);
@@ -497,6 +503,7 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
         edit_authorization,
         verify_authorization,
         verify_rollback,
+        json,
     }))
 }
 
@@ -1102,6 +1109,20 @@ mod tests {
     }
 
     #[test]
+    fn agent_repair_json_flag_selects_the_stdout_document() {
+        let parse = |extra: &[&str]| {
+            let mut values = vec!["repair", "--seam-id", "seam:sample", "--phase", "before"];
+            values.extend_from_slice(extra);
+            match parse_agent_args(&args(&values)) {
+                Ok(AgentCommand::Repair(options)) => Some(options.json),
+                _ => None,
+            }
+        };
+        assert_eq!(parse(&[]), Some(false));
+        assert_eq!(parse(&["--json"]), Some(true));
+    }
+
+    #[test]
     fn agent_repair_parses_before_and_exact_after() {
         assert_eq!(
             parse_agent_args(&args(&[
@@ -1130,6 +1151,7 @@ mod tests {
                         authority: None,
                     },
                 verify_rollback: false,
+                json: false,
             }))
         );
         assert_eq!(
@@ -1159,6 +1181,7 @@ mod tests {
                         authority: None,
                     },
                 verify_rollback: false,
+                json: false,
             }))
         );
     }
@@ -1279,6 +1302,7 @@ mod tests {
                     authority: None,
                 },
                 verify_rollback: false,
+                json: false,
             }))
         );
     }

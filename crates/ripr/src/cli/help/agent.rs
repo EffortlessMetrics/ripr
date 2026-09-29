@@ -204,13 +204,17 @@ tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 "#;
 pub(super) const AGENT_REPAIR_HELP: &str = r#"Run the before/edit/after repair transaction and its verification phase for one named gap.
 
-Usage: ripr agent repair [--root PATH] --seam-id ID --phase before
-       ripr agent repair [--root PATH] (--attempt ID|--seam-id ID) --phase after
-       ripr agent repair [--root PATH] --attempt ID --phase verify
+Usage: ripr agent repair [--root PATH] --seam-id ID --phase before [--json]
+       ripr agent repair [--root PATH] (--attempt ID|--seam-id ID) --phase after [--json]
+       ripr agent repair [--root PATH] --attempt ID --phase verify [--json]
            [--verify-authorized --verify-authority ID] [--verify-rollback]
 
 Options:
   --root PATH          Workspace root. Defaults to current directory.
+  --json               Print the phase's JSON document on stdout (the repair
+                       packet, the after-phase result, or the verification
+                       receipt). Without it stdout is a short summary and the
+                       documents stay in their files under target/ripr/.
   --seam-id ID         Select one visible seam by ID; required for `before` and
                        the compatibility selector for `after`. `ripr pilot
                        --root .` lists seam IDs; `ripr check` finding IDs

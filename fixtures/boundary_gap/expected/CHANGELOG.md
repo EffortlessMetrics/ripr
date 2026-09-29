@@ -601,3 +601,16 @@ Edited by hand; the brief golden is compared by `editor_agent_loop_fixture_outpu
 
 Updated:
 - `expected/editor-agent-loop/agent-brief.json`
+
+## Pending — boundary_gap (8)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

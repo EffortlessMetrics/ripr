@@ -12,3 +12,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — ts_return_comparison_boundary (2)
+
+Reason:
+RIPR-SPEC-0122: plain-word Analysis outcome and State lines (#4777) on a fixture added on main
+
+Command:
+`cargo xtask goldens bless ts_return_comparison_boundary --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

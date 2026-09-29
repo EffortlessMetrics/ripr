@@ -421,3 +421,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_ranking_noise_control (9)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless python_ranking_noise_control --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

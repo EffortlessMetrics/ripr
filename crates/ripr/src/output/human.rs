@@ -193,14 +193,15 @@ fn render_analysis_outcome_disclosure(out: &mut String, output: &CheckOutput) {
     let Some(outcome) = &output.analysis_outcome else {
         return;
     };
-    let kind = outcome.kind.as_str();
     out.push_str(&format!(
-        "Analysis outcome: {kind} ({}).\n",
+        "Analysis outcome: {} ({}; {}).\n",
+        outcome.kind.plain_label(),
         if outcome.kind.is_complete() {
             "analysis complete"
         } else {
             "analysis incomplete"
-        }
+        },
+        outcome.kind.as_str()
     ));
     if outcome.limitations.is_empty() {
         out.push_str(&format!(
@@ -226,20 +227,29 @@ fn render_analysis_outcome_disclosure(out: &mut String, output: &CheckOutput) {
         ));
     }
     for limitation in &outcome.limitations {
+        // Plain words lead; the schema tokens follow in parentheses so the
+        // line still greps against JSON and docs (#4323).
         out.push_str(&format!(
-            "  Limitation: {} at {}",
+            "  Limitation: {} during {} ({} at {})",
+            limitation.kind.plain_label(),
+            limitation.producer_stage.plain_label(),
             limitation.kind.as_str(),
             limitation.producer_stage.as_str()
         ));
         if let Some(path) = &limitation.path {
-            out.push_str(&format!(" ({path})"));
+            out.push_str(&format!("; file: {path}"));
         }
         if let Some(count) = limitation.affected_items {
             out.push_str(&format!("; affected items: {count}"));
         }
+        let recovery = limitation.recovery.kind;
+        let recovery_label = if recovery.plain_label() == recovery.as_str() {
+            recovery.as_str().to_string()
+        } else {
+            format!("{} ({})", recovery.plain_label(), recovery.as_str())
+        };
         out.push_str(&format!(
-            "; recovery: {} — {}.\n",
-            limitation.recovery.kind.as_str(),
+            "; recovery: {recovery_label} — {}.\n",
             // The recovery detail is often a full sentence; the line supplies
             // its own terminal period.
             limitation.recovery.detail.trim_end_matches('.')
@@ -904,7 +914,10 @@ mod tests {
                 partial_scope: None,
             };
             let rendered = render(&output);
-            assert!(rendered.contains("State: preview_limited"), "{rendered}");
+            assert!(
+                rendered.contains("State: preview language, advisory only (preview_limited)"),
+                "{rendered}"
+            );
             assert!(
                 rendered.contains("  File: pricing/__init__.py:11\n"),
                 "{rendered}"
@@ -1019,7 +1032,7 @@ mod tests {
 
         let rendered = render(&bounded_output_with_findings(vec![rust, python]));
 
-        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("State: a test gap to inspect or repair (top_gap)"));
         assert!(rendered.contains("File: src/lib.rs:4"));
         assert!(!rendered.contains("File: src/margin.py:2"));
         assert!(
@@ -1073,7 +1086,7 @@ mod tests {
 
         let rendered = render(&bounded_output_with_findings(findings));
 
-        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains("State: preview language, advisory only (preview_limited)"));
         assert!(
             rendered.contains(
                 "  2 lower-priority finding(s) omitted from default human output (Python preview: 2).\n"
@@ -1271,7 +1284,7 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("Start here:"));
-        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("State: a test gap to inspect or repair (top_gap)"));
         assert!(rendered.contains("599 lower-priority finding(s) omitted"));
         assert!(rendered.contains("--format human-full"));
         assert!(rendered.lines().count() < 150);
@@ -1320,7 +1333,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("State: a test gap to inspect or repair (top_gap)"));
         assert!(rendered.contains("File: src/actionable.rs:9"));
         assert!(rendered.contains("Static exposure: unrevealed (reachable_unrevealed, "));
         assert!(!rendered.contains("File: src/exposed.rs:1"));
@@ -1349,7 +1362,7 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("Start here:"));
-        assert!(rendered.contains("State: missing_scope"));
+        assert!(rendered.contains("State: nothing in scope (missing_scope)"));
         assert!(rendered.contains("provide an analysis scope"));
         assert!(rendered.contains("No diff-derived static exposure probes found."));
     }
@@ -1388,9 +1401,9 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains("State: preview language, advisory only (preview_limited)"));
         assert!(rendered.contains("preview-language evidence is advisory"));
-        assert!(!rendered.contains("State: top_gap"));
+        assert!(!rendered.contains("State: a test gap to inspect or repair (top_gap)"));
     }
 
     // #2273: an `exposed` finding can carry an observation rationale (not a
@@ -1608,7 +1621,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains("State: preview language, advisory only (preview_limited)"));
         let expected = format!(
             "  Safe next action: this TypeScript preview finding's repair packet is not ready ({}); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.\n",
             super::sections::one_line(&why)
@@ -1724,7 +1737,10 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: preview_limited"), "{rendered}");
+        assert!(
+            rendered.contains("State: preview language, advisory only (preview_limited)"),
+            "{rendered}"
+        );
         assert!(rendered.contains(
             "  Safe next action: preview-language evidence is advisory; a related test appears to observe this change, so there is no repair to make; verify independently before relying on it.\n"
         ), "{rendered}");
@@ -1739,7 +1755,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains("State: preview language, advisory only (preview_limited)"));
         // The complete packet names its own action, test file, and verify
         // command instead of a bare "verify independently" with no route.
         assert!(
@@ -1767,7 +1783,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains("State: preview language, advisory only (preview_limited)"));
         assert!(rendered.contains(
             "  Safe next action: preview-language evidence is advisory; the repair packet is blocked by the named static limitation, not by missing fields; resolve the limitation and rerun preview evidence before acting.\n"
         ));
@@ -1789,7 +1805,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: preview_limited"));
+        assert!(rendered.contains("State: preview language, advisory only (preview_limited)"));
         assert!(
             rendered.contains(
                 "  Safe next action: this TypeScript preview finding's repair packet is not ready ("
@@ -1814,7 +1830,10 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: preview_limited"), "{rendered}");
+        assert!(
+            rendered.contains("State: preview language, advisory only (preview_limited)"),
+            "{rendered}"
+        );
         assert!(rendered.contains(
             "  Safe next action: this Python preview finding has no repair card (no Python test reaches this code), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add a test that calls it by hand, then rerun `ripr check`.\n"
         ), "{rendered}");
@@ -1944,7 +1963,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: top_gap"));
+        assert!(rendered.contains("State: a test gap to inspect or repair (top_gap)"));
         assert!(rendered.contains("File: src/stable.rs:10"));
         assert!(!rendered.contains("File: src/preview.ts:1"));
         assert!(
@@ -2098,7 +2117,7 @@ mod tests {
 
         let rendered = render(&output);
 
-        assert!(rendered.contains("State: no_actionable_gap"));
+        assert!(rendered.contains("State: no gap selected for repair (no_actionable_gap)"));
         assert!(rendered.contains("all findings are suppressed by policy"));
         assert!(!rendered.contains("inspect the named static limitation"));
         assert!(!rendered.contains("Next: drill into the top finding:"));

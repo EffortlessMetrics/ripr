@@ -101,7 +101,9 @@ mod tests {
         );
 
         let human = crate::output::human::render(&output);
-        assert!(human.contains("Analysis outcome: unsupported_input (analysis incomplete)."));
+        assert!(human.contains(
+            "Analysis outcome: the input is not supported (analysis incomplete; unsupported_input)."
+        ));
         assert!(!human.contains("Analysis outcome: \"unsupported_input\""));
         assert!(human.contains("analysis incomplete"));
         // The sample output carries findings, so the zero-findings hedge is

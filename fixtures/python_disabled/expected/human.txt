@@ -4,9 +4,9 @@ root: fixtures/python_disabled/input
 
 Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Analysis outcome: partial_with_limitations (analysis incomplete).
+Analysis outcome: limitations below (analysis incomplete; partial_with_limitations).
   Zero findings is not a clean result because the analyzed scope is incomplete.
-  Limitation: language_adapter_unavailable at language_adapter; affected items: 1; recovery: enable_language — Enable the python preview adapter and re-run the analysis.
+  Limitation: no analyzer is available for a changed language during language analysis (language_adapter_unavailable at language_adapter); affected items: 1; recovery: enable the language (enable_language) — Enable the python preview adapter and re-run the analysis.
 
 No diff-derived static exposure probes found.
 

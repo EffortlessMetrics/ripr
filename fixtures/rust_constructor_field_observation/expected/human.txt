@@ -4,11 +4,11 @@ root: fixtures/rust_constructor_field_observation/input
 
 Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 Start here:
-  State: static_limited
+  State: limited by static analysis (static_limited)
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/rust_constructor_field_observation/input/src/lib.rs:15
   Static exposure: unknown (propagation_unknown, note, confidence 0.66)

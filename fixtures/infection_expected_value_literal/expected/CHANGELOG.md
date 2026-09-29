@@ -83,3 +83,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — infection_expected_value_literal (8)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless infection_expected_value_literal --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

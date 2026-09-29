@@ -4,7 +4,7 @@ root: fixtures/error_variant_boxed_wrapper_fail_closed/input
 
 Summary: 4 probe(s), 0 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 4 probe(s), 4 finding(s).
 
 WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:29

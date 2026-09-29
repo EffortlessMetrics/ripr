@@ -25,3 +25,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_adversarial_mocked_barrel (3)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless typescript_adversarial_mocked_barrel --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

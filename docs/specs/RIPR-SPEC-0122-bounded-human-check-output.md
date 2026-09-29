@@ -71,13 +71,20 @@ view:
 Header
 Summary counts
 Start here:
-  State: top_gap | no_actionable_gap | preview_limited | static_limited | missing_scope
+  State: <plain words> (top_gap | no_actionable_gap | preview_limited | static_limited | missing_scope)
   One selected finding or safe next action
 Hidden:                                    (only when N > 0)
   N lower-priority finding(s) omitted from default human output [(language identity)].
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 ```
+
+Human lines lead with plain words and keep the stable id in parentheses, so a
+reader does not need the internal vocabulary and a script can still match the
+id: `State: a test gap to inspect or repair (top_gap)`, `Analysis outcome:
+findings below (analysis complete; complete_with_findings).` and `Static exposure: weak
+(weakly_exposed, warning, confidence 0.92)`. The ids and their meanings are
+unchanged.
 
 The trailing block is state-dependent, because a `Hidden:` heading over a
 literal `0 lower-priority finding(s) omitted` line claims a suppressed

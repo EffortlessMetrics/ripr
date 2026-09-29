@@ -33,6 +33,17 @@ impl HumanTriageState {
             Self::MissingScope => "missing_scope",
         }
     }
+
+    /// The state in words; the stable id follows it in parentheses.
+    fn plain_label(self) -> &'static str {
+        match self {
+            Self::TopGap => "a test gap to inspect or repair",
+            Self::NoActionableGap => "no gap selected for repair",
+            Self::StaticLimited => "limited by static analysis",
+            Self::PreviewLimited => "preview language, advisory only",
+            Self::MissingScope => "nothing in scope",
+        }
+    }
 }
 
 pub(crate) fn select_human_triage<'a>(
@@ -109,7 +120,11 @@ pub(crate) fn render_human_triage(
     navigation: Option<&FindingNavigation>,
 ) {
     out.push_str("Start here:\n");
-    out.push_str(&format!("  State: {}\n", triage.state.as_str()));
+    out.push_str(&format!(
+        "  State: {} ({})\n",
+        triage.state.plain_label(),
+        triage.state.as_str()
+    ));
     match triage.state {
         HumanTriageState::TopGap => out.push_str(
             "  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.\n",

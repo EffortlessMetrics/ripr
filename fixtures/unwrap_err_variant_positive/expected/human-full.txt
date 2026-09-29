@@ -4,7 +4,7 @@ root: fixtures/unwrap_err_variant_positive/input
 
 Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 INFO fixtures/unwrap_err_variant_positive/input/src/lib.rs:8

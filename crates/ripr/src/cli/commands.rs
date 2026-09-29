@@ -35,8 +35,7 @@ mod receipt_command;
 #[path = "commands/swarm/mod.rs"]
 mod swarm_command;
 
-pub(super) use agent::agent;
-pub(super) use agent::run_before_repair_with_identity;
+pub(super) use agent::{agent, before_phase_stdout, run_before_repair_with_identity};
 pub(super) use context::context;
 // Flag-documenting help bodies live beside their parsers so `cli::help`
 // suggestions mine the same text `--help` prints.

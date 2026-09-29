@@ -37,3 +37,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — ts_return_ternary_boundary (4)
+
+Reason:
+RIPR-SPEC-0122: plain-word Analysis outcome and State lines (#4777) on a fixture added on main
+
+Command:
+`cargo xtask goldens bless ts_return_ternary_boundary --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

@@ -6,12 +6,12 @@ Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 2 no path, 1 unknown
 
 Changed file(s) by language: typescript: 3.
 
-Analysis outcome: partial_with_limitations (analysis incomplete).
+Analysis outcome: limitations below (analysis incomplete; partial_with_limitations).
   The 3 finding(s) below cover only the analyzed scope; behavior outside it has no finding.
-  Limitation: language_scope_unsupported at language_adapter (src/deep_over_budget.ts); affected items: 1; recovery: retry — Fix the TypeScript or JavaScript parse error, then re-run the analysis.
+  Limitation: some changed files were not analyzed during language analysis (language_scope_unsupported at language_adapter); file: src/deep_over_budget.ts; affected items: 1; recovery: retry — Fix the TypeScript or JavaScript parse error, then re-run the analysis.
 
 Start here:
-  State: preview_limited
+  State: preview language, advisory only (preview_limited)
   Safe next action: this TypeScript preview finding's repair packet is not ready (no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add a test that calls it by hand, then rerun `ripr check`.
   File: src/deep_under_budget.ts:2
   Language: typescript

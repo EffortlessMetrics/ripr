@@ -397,3 +397,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_unrelated_test_mention (7)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless python_unrelated_test_mention --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

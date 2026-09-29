@@ -40,6 +40,21 @@ impl AnalysisOutcomeKind {
         }
     }
 
+    /// What the outcome means, in words, for the human `check` header. The
+    /// schema value (`as_str`) is printed beside it.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::NoScope => "nothing was in scope",
+            Self::NoChangedLines => "the diff has no changed lines",
+            Self::NoBehavioralCandidates => "no changed line is behavior ripr checks",
+            Self::CompleteNoFindings => "no findings",
+            Self::CompleteWithFindings => "findings below",
+            Self::PartialWithLimitations => "limitations below",
+            Self::UnsupportedInput => "the input is not supported",
+            Self::AnalysisFailed => "the analysis failed",
+        }
+    }
+
     pub(crate) const fn is_complete(self) -> bool {
         matches!(
             self,
@@ -65,6 +80,20 @@ impl AnalysisLimitationKind {
             Self::ProducerFailure => "producer_failure",
         }
     }
+
+    /// Plain words for human output; `as_str` stays the schema token.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::CombinedHunkUnsupported => "a combined (merge) diff hunk is not supported",
+            Self::UnresolvedConflictMarkers => "the diff has unresolved conflict markers",
+            Self::MalformedDiff => "the diff could not be parsed",
+            Self::DiffScopeOversized => "the diff is larger than the configured limit",
+            Self::LanguageAdapterUnavailable => "no analyzer is available for a changed language",
+            Self::LanguageScopeUnsupported => "some changed files were not analyzed",
+            Self::ProducerTimeout => "the analysis ran out of time",
+            Self::ProducerFailure => "part of the analysis failed",
+        }
+    }
 }
 
 impl AnalysisStage {
@@ -76,6 +105,18 @@ impl AnalysisStage {
             Self::ProbeGeneration => "probe_generation",
             Self::FindingClassification => "finding_classification",
             Self::AnalysisPipeline => "analysis_pipeline",
+        }
+    }
+
+    /// Plain words for human output; `as_str` stays the schema token.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::DiffLoad => "reading the diff",
+            Self::DiffParse => "parsing the diff",
+            Self::LanguageAdapter => "language analysis",
+            Self::ProbeGeneration => "probe generation",
+            Self::FindingClassification => "finding classification",
+            Self::AnalysisPipeline => "the analysis pipeline",
         }
     }
 }
@@ -90,6 +131,19 @@ impl AnalysisRecoveryKind {
             Self::IncreaseConfiguredLimit => "increase_configured_limit",
             Self::Retry => "retry",
             Self::InspectFailure => "inspect_failure",
+        }
+    }
+
+    /// Plain words for human output; `as_str` stays the schema token.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::NarrowDiff => "narrow the diff",
+            Self::UseTwoWayDiff => "use a two-way diff",
+            Self::ResolveConflicts => "resolve the conflicts",
+            Self::EnableLanguage => "enable the language",
+            Self::IncreaseConfiguredLimit => "raise the configured limit",
+            Self::Retry => "retry",
+            Self::InspectFailure => "inspect the failure",
         }
     }
 }
@@ -506,6 +560,39 @@ fn validate_outcome(
 mod tests {
     use super::*;
     use std::fmt::{Debug, Display};
+
+    #[test]
+    fn limitation_plain_labels_are_words_not_schema_tokens() {
+        use AnalysisLimitationKind as K;
+        use AnalysisRecoveryKind as R;
+        use AnalysisStage as S;
+        let labels = [
+            K::CombinedHunkUnsupported.plain_label(),
+            K::UnresolvedConflictMarkers.plain_label(),
+            K::MalformedDiff.plain_label(),
+            K::DiffScopeOversized.plain_label(),
+            K::LanguageAdapterUnavailable.plain_label(),
+            K::LanguageScopeUnsupported.plain_label(),
+            K::ProducerTimeout.plain_label(),
+            K::ProducerFailure.plain_label(),
+            S::DiffLoad.plain_label(),
+            S::DiffParse.plain_label(),
+            S::LanguageAdapter.plain_label(),
+            S::ProbeGeneration.plain_label(),
+            S::FindingClassification.plain_label(),
+            S::AnalysisPipeline.plain_label(),
+            R::NarrowDiff.plain_label(),
+            R::UseTwoWayDiff.plain_label(),
+            R::ResolveConflicts.plain_label(),
+            R::EnableLanguage.plain_label(),
+            R::IncreaseConfiguredLimit.plain_label(),
+            R::Retry.plain_label(),
+            R::InspectFailure.plain_label(),
+        ];
+        for label in labels {
+            assert!(!label.is_empty() && !label.contains('_'), "{label}");
+        }
+    }
 
     fn recovery() -> Result<AnalysisRecovery, String> {
         AnalysisRecovery::new(

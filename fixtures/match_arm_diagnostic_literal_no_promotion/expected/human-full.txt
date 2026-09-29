@@ -4,7 +4,7 @@ root: fixtures/match_arm_diagnostic_literal_no_promotion/input
 
 Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 WARNING fixtures/match_arm_diagnostic_literal_no_promotion/input/src/lib.rs:3

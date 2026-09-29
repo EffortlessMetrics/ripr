@@ -725,6 +725,7 @@ fn prepared_packet_continuation_cannot_resume_a_later_attempt_for_the_same_seam(
         &journey.seam_id,
         "--phase",
         "before",
+        "--json",
     ];
     let first = run_ripr(&journey.launch_dir, &before_args)?;
     assert_success(&first, "prepare actual attempt A")?;

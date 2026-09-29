@@ -84,3 +84,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — helper_chain_controls (6)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless helper_chain_controls --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

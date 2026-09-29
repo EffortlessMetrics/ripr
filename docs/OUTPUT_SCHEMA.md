@@ -53,8 +53,8 @@ map is:
 | `ripr agent brief` | `schema_version` | `0.1` |
 | `ripr agent receipt` | `schema_version` | `0.5` |
 | `ripr agent verify` | `schema_version` | `0.3` |
-| `ripr agent repair --phase after` success stdout | `schema_version` | `0.1` |
-| `ripr agent repair --phase after` refusal stdout (`repair_after_refusal`) | `schema_version` | `0.2` |
+| `ripr agent repair --phase after --json` success stdout | `schema_version` | `0.1` |
+| `ripr agent repair --phase after --json` refusal stdout (`repair_after_refusal`) | `schema_version` | `0.2` |
 | `ripr agent status` | `schema_version` | `0.1` |
 | `ripr agent review-summary` | `schema_version` | `0.1` |
 | `ripr receipt write/check` | `schema_version` | `0.1` |
@@ -6944,7 +6944,7 @@ Field contract:
 
 ### Agent repair after-phase stdout
 
-`ripr agent repair --attempt <id> --phase after` holds the verify render until
+`ripr agent repair --attempt <id> --phase after --json` holds the verify render until
 its post-verify tail (edit-cage finish, receipt write, apply record) settles,
 then prints exactly one JSON document on stdout. On success the document is
 its own versioned envelope, not a mutated verify document:

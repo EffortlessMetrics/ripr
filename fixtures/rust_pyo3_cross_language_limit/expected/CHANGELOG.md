@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — rust_pyo3_cross_language_limit (7)
+
+Reason:
+RIPR-SPEC-0122: plain-word Analysis outcome, State and Limitation lines (#4777) on a fixture added on main
+
+Command:
+`cargo xtask goldens bless rust_pyo3_cross_language_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

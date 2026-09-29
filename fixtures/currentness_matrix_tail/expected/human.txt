@@ -4,11 +4,11 @@ root: fixtures/currentness_matrix_tail/input
 
 Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 3 no path, 0 unknown
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 5 changed line(s), 1 candidate line(s), 3 probe(s), 3 finding(s).
 
 Start here:
-  State: no_actionable_gap
+  State: no gap selected for repair (no_actionable_gap)
   Safe next action: all findings are suppressed by policy; review the suppression block before treating this run as actionable.
 
 Hidden:

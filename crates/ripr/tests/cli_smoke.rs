@@ -3131,6 +3131,7 @@ fn agent_packet_unknown_seam_id_names_the_seam_id_source() -> Result<(), Box<dyn
     let repair = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_path,
         "--seam-id",
@@ -4551,6 +4552,7 @@ fn agent_repair_phases_materialize_snapshots_and_verify_json()
     let before = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--seam-id",
@@ -4609,6 +4611,7 @@ fn agent_repair_phases_materialize_snapshots_and_verify_json()
     let after = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--seam-id",
@@ -4691,6 +4694,7 @@ fn agent_repair_phases_materialize_snapshots_and_verify_json()
     let replay = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--seam-id",
@@ -4902,7 +4906,7 @@ fn built_repair_fixture(label: &str) -> Result<PathBuf, Box<dyn std::error::Erro
 
 fn run_repair_phase(root: &Path, selector: &[&str], phase: &str) -> Result<Output, std::io::Error> {
     let root_arg = root.display().to_string();
-    let mut args = vec!["agent", "repair", "--root", root_arg.as_str()];
+    let mut args = vec!["agent", "repair", "--json", "--root", root_arg.as_str()];
     args.extend_from_slice(selector);
     args.extend(["--phase", phase]);
     run_command(env!("CARGO_BIN_EXE_ripr"), None, &args)
@@ -5151,6 +5155,80 @@ fn agent_repair_names_build_ignore_drift_without_redirect_blame()
     Ok(())
 }
 
+/// Without `--json`, each phase prints a short summary whose file paths
+/// resolve against `--root`, so a caller running from another directory can
+/// open them.
+#[test]
+fn agent_repair_default_stdout_is_a_summary_naming_root_resolved_files()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = built_repair_fixture("agent-repair-default-stdout")?;
+    let elsewhere = std::env::temp_dir();
+    let root_arg = root.display().to_string();
+    let bin = env!("CARGO_BIN_EXE_ripr");
+
+    let before = run_command(
+        bin,
+        Some(&elsewhere),
+        &[
+            "agent",
+            "repair",
+            "--root",
+            &root_arg,
+            "--seam-id",
+            BOUNDARY_GAP_SEAM_ID,
+            "--phase",
+            "before",
+        ],
+    )?;
+    assert_success(&before);
+    let stdout = String::from_utf8_lossy(&before.stdout);
+    assert!(!stdout.trim_start().starts_with('{'), "{stdout}");
+    let packet = root.join("target/ripr/workflow/agent-packet.json");
+    assert!(
+        stdout.contains(&packet.display().to_string()),
+        "before summary must name the root-resolved packet:\n{stdout}"
+    );
+    assert!(stdout.contains("Next, after the test edit: "), "{stdout}");
+    let (attempt_id, _) = sole_repair_attempt(&root)?;
+
+    add_boundary_test(&root)?;
+    let after = run_command(
+        bin,
+        Some(&elsewhere),
+        &[
+            "agent",
+            "repair",
+            "--root",
+            &root_arg,
+            "--attempt",
+            &attempt_id,
+            "--phase",
+            "after",
+        ],
+    )?;
+    assert_success(&after);
+    let stdout = String::from_utf8_lossy(&after.stdout);
+    assert!(!stdout.trim_start().starts_with('{'), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "Result for seam `{BOUNDARY_GAP_SEAM_ID}`: weak -> exposed (weakly_gripped -> strongly_gripped, improved)"
+        )),
+        "{stdout}"
+    );
+    for artifact in [
+        "target/ripr/reports/agent-receipt.json",
+        "target/ripr/workflow/agent-verify.json",
+    ] {
+        assert!(
+            stdout.contains(&root.join(artifact).display().to_string()),
+            "after summary must name the root-resolved {artifact}:\n{stdout}"
+        );
+    }
+
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
 #[test]
 fn agent_repair_admits_cargo_build_output_and_unchanged_untracked_lockfile()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -5273,7 +5351,7 @@ fn run_repair_phase_redirected(
     stderr: &Path,
 ) -> Result<Output, std::io::Error> {
     let root_arg = root.display().to_string();
-    let mut args = vec!["agent", "repair", "--root", root_arg.as_str()];
+    let mut args = vec!["agent", "repair", "--json", "--root", root_arg.as_str()];
     args.extend_from_slice(selector);
     args.extend(["--phase", phase]);
     spawn_command(
@@ -11280,7 +11358,7 @@ fn python_check_safe_action(
         .find(|line| line.starts_with("  Safe next action:"))
         .ok_or_else(|| format!("check printed no safe next action:\n{stdout}"))?;
     assert!(
-        stdout.contains("State: preview_limited"),
+        stdout.contains("State: preview language, advisory only (preview_limited)"),
         "expected preview_limited triage:\n{stdout}"
     );
     Ok(line.to_string())
@@ -15397,6 +15475,7 @@ fn repair_route_before(root: &Path) -> Result<String, Box<dyn std::error::Error>
     let before = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--seam-id",
@@ -15644,6 +15723,7 @@ fn agent_status_restarts_a_failed_attempt_and_completes_a_finished_one()
     let after = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--attempt",
@@ -15684,6 +15764,7 @@ fn agent_status_restarts_a_failed_attempt_and_completes_a_finished_one()
     let after = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--attempt",
@@ -15739,6 +15820,7 @@ fn repair_route_after(root: &Path, attempt_id: &str) -> std::process::Output {
     run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--attempt",
@@ -16708,6 +16790,7 @@ fn agent_status_retains_an_earlier_attempt_outcome_after_a_later_finish()
     let second_before = run_ripr(&[
         "agent",
         "repair",
+        "--json",
         "--root",
         &root_arg,
         "--seam-id",

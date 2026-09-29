@@ -29,7 +29,9 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
 - `3`: the command completed by reaching a blocking decision or typed
   refusal; read the report or the stdout JSON document for the answer
   (standalone `ripr agent verify` is the exception: its refusal is named on
-  stderr and stdout stays empty; see below).
+  stderr and stdout stays empty; see below. `ripr agent repair` prints its
+  refusal document only with `--json`; without it stdout stays empty and
+  stderr names the cause).
 - `2`: the invocation or operation failed; retrying differently is
   appropriate.
 
@@ -41,7 +43,8 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
   base ref could not be resolved, or the workspace root could not be
   determined. A diff that is read but does not parse (no file headers or
   hunks) is not an exit-2 error: `ripr check` exits `0` with the typed
-  outcome `unsupported_input (analysis incomplete)`. A run that analyzed only
+  outcome `unsupported_input` (the human header reads
+  `Analysis outcome: the input is not supported (analysis incomplete; unsupported_input).`). A run that analyzed only
   part of its scope also exits `0`, with `partial_with_limitations`: a diff
   over the smaller partial budget (its limitation is also named
   `diff_scope_oversized`), a changed Rust file the parser refused and read
@@ -67,10 +70,11 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
   after` refused with a named cause after selecting its attempt — a diverged
   HEAD, drifted analysis inputs, a no-movement verify refusal, or a replaced
   trust-binding manifest — with the cause named on stderr, the refusal
-  recorded on the attempt, and one JSON document on stdout (the
-  `repair_after_refusal` document naming the cause and recovery when the
+  recorded on the attempt, and, with `--json`, one JSON document on stdout
+  (the `repair_after_refusal` document naming the cause and recovery when the
   refusal came before the verify render, otherwise the bare agent verify
-  document). Operational errors after attempt selection (an unreadable
+  document). Without `--json` stdout stays empty on a refusal and stderr
+  carries the cause and recovery. Operational errors after attempt selection (an unreadable
   retained packet or manifest, a failed artifact write) still exit `2`.
 - **Typed verify refusal**: standalone `ripr agent verify` refused the pair
   for drifted analysis inputs (`analysis input identities differ`) or no
