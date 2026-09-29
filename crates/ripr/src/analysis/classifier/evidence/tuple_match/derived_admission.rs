@@ -8,9 +8,10 @@
 
 use crate::analysis::classify::ProbeContext;
 use crate::analysis::rust_index::find_file_facts;
+use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::{Probe, RelationReason};
 use ra_ap_syntax::ast::{HasArgList, HasAttrs, HasName};
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxNode, ast};
+use ra_ap_syntax::{AstNode, SyntaxNode, ast};
 
 pub(super) fn admits(context: &ProbeContext<'_>) -> bool {
     admits_inner(context).unwrap_or(false)
@@ -491,8 +492,7 @@ fn compact(text: &str) -> String {
 }
 
 fn parsed(source: &str) -> Option<ast::SourceFile> {
-    let parse = SourceFile::parse(source, Edition::CURRENT);
-    parse.errors().is_empty().then(|| parse.tree())
+    parse_clean_source_file(source).map(|parse| parse.tree())
 }
 
 fn named_function(root: &ast::SourceFile, name: &str) -> Option<ast::Fn> {

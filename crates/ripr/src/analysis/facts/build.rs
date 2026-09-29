@@ -310,6 +310,54 @@ mod tests {
     }
 
     #[test]
+    fn over_deep_rust_file_falls_back_with_typed_nesting_reason() -> Result<(), Box<dyn Error>> {
+        let root = temp_dir("index_nesting_budget")?;
+        fs::create_dir_all(root.join("src"))?;
+        write_manifest(&root)?;
+        let deep = format!(
+            "pub fn deep(x: i32) -> i32 {{ {}x{} }}\n",
+            "(".repeat(5_000),
+            ")".repeat(5_000)
+        );
+        fs::write(root.join("src/deep.rs"), deep)?;
+        fs::write(
+            root.join("src/lib.rs"),
+            "pub fn shallow(x: i32) -> i32 { x }\n",
+        )?;
+        let files = vec![PathBuf::from("src/deep.rs"), PathBuf::from("src/lib.rs")];
+
+        // The production index path must not abort; the deep file keeps its
+        // lexical facts and the shallow file stays parser-backed.
+        let index = build_index(&root, &files)?;
+        let deep_facts = index
+            .files
+            .get(Path::new("src/deep.rs"))
+            .ok_or("deep file missing from index")?;
+        assert!(deep_facts.used_lexical_fallback);
+        assert!(index.functions.iter().any(|f| f.name == "deep"));
+        let lib_facts = index
+            .files
+            .get(Path::new("src/lib.rs"))
+            .ok_or("lib file missing from index")?;
+        assert!(!lib_facts.used_lexical_fallback);
+
+        let cold = crate::analysis::rust_index::lexical_fallback_disclosure(&index)
+            .ok_or("missing lexical fallback disclosure")?;
+        assert!(
+            cold.contains("ripr: src/deep.rs: static limit rust_nesting_budget:"),
+            "{cold}"
+        );
+        assert!(!cold.contains("src/lib.rs"), "{cold}");
+        let warm = crate::analysis::rust_index::lexical_fallback_disclosure_at(
+            &root,
+            &crate::analysis::rust_index::lexical_fallback_files(&index),
+        );
+        assert_eq!(warm.as_deref(), Some(cold.as_str()));
+        fs::remove_dir_all(&root)?;
+        Ok(())
+    }
+
+    #[test]
     fn build_index_collects_functions_and_tests_from_workspace_files() -> Result<(), Box<dyn Error>>
     {
         let root = temp_dir("index_functions")?;

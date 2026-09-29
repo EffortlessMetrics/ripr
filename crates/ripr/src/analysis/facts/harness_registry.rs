@@ -84,6 +84,7 @@ use crate::analysis::rust_index::{
     OracleFact, classify_assertion, extract_assertions, extract_call_facts,
     extract_identifier_tokens, extract_literal_facts,
 };
+use crate::analysis::syntax::parse_clean_source_file;
 use crate::analysis::syntax::ra::{
     LineIndex, parser_oracles_for_function, shadow_facts_for_body_text, slice_text,
 };
@@ -91,7 +92,7 @@ use crate::analysis::workspace::{CargoHarnessVerdict, ManifestInventory};
 use crate::config::{TestHarnessAdapter, TestHarnessKind, TestHarnessRegistration};
 use crate::domain::{OracleKind, OracleStrength};
 use ra_ap_syntax::ast::{self, HasName};
-use ra_ap_syntax::{AstNode, Edition, SourceFile, TextSize};
+use ra_ap_syntax::{AstNode, TextSize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -284,8 +285,7 @@ fn apply_libtest_mimic_target(
 ) {
     let target = registration.target.clone();
     demote_harness_target_functions(index, &target);
-    let parse = SourceFile::parse(source, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(source) else {
         limitations.push(HarnessLimitationFact {
             registration_id: registration.registration_id.clone(),
             code: "parse_unavailable".to_string(),
@@ -294,7 +294,7 @@ fn apply_libtest_mimic_target(
             detail: "the registered harness target did not parse; no trial subjects were established (fail closed)".to_string(),
         });
         return;
-    }
+    };
     let line_index = LineIndex::new(source);
     let file_syntax = parse.tree().syntax().clone();
     let trial_bindings = top_level_use_bindings(&file_syntax, "Trial");
@@ -1466,10 +1466,9 @@ fn enclosing_function<'a>(
 /// the body that binds the name. An unparseable body counts as bound
 /// (fail closed).
 fn enclosing_body_binds_name(body_text: &str, name: &str) -> bool {
-    let parse = SourceFile::parse(body_text, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(body_text) else {
         return true;
-    }
+    };
     let tree = parse.tree();
     let syntax = tree.syntax();
     let pattern_binds = syntax
@@ -1515,10 +1514,9 @@ fn node_binding_name(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
 /// balancing. An unparseable body yields no spans: the oracle producers
 /// already fail closed on their own.
 fn dormant_template_parse_spans(text: &str) -> Vec<(usize, usize)> {
-    let parse = SourceFile::parse(text, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(text) else {
         return Vec::new();
-    }
+    };
     parse
         .tree()
         .syntax()
@@ -1615,8 +1613,7 @@ fn apply_registered_attribute(
     limitations: &mut Vec<HarnessLimitationFact>,
 ) {
     let target = registration.target.clone();
-    let parse = SourceFile::parse(source, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(source) else {
         // Fail closed: subject promotion over an unparseable target is
         // unsound, so nothing beyond the typed limitation is established.
         limitations.push(HarnessLimitationFact {
@@ -1627,7 +1624,7 @@ fn apply_registered_attribute(
             detail: "the registered attribute target did not parse; no registered subjects were established (fail closed)".to_string(),
         });
         return;
-    }
+    };
     let use_bindings =
         top_level_use_bindings(parse.tree().syntax(), marker_leaf(&registration.marker));
     let promoted_functions: Vec<(usize, String, TestFact, HarnessSubjectFact)> = {

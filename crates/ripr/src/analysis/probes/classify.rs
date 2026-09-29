@@ -1,8 +1,9 @@
 use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
 use super::super::rust_index::{FileFacts, ProbeShapeFact, RustIndex};
 use super::family::family_for_probe_shape;
+use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::ProbeFamily;
-use ra_ap_syntax::{AstNode, Edition, SourceFile, ast};
+use ra_ap_syntax::{AstNode, ast};
 use std::ops::Range;
 use std::path::Path;
 
@@ -143,10 +144,7 @@ fn unsafe_boundary_syntax_range(
     facts: &FileFacts,
     shape: &ProbeShapeFact,
 ) -> Option<ra_ap_syntax::TextRange> {
-    let parse = SourceFile::parse(&facts.source, Edition::CURRENT);
-    if !parse.errors().is_empty() {
-        return None;
-    }
+    let parse = parse_clean_source_file(&facts.source)?;
     let root = parse.tree();
     for function in root.syntax().descendants().filter_map(ast::Fn::cast) {
         let Some(token) = function.unsafe_token() else {

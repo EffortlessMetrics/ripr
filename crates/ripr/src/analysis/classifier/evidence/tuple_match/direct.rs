@@ -6,9 +6,10 @@
 
 use crate::analysis::classify::{ProbeContext, file_imports_foreign_callee_name};
 use crate::analysis::rust_index::find_file_facts;
+use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::{Confidence, Probe, ProbeFamily, RelationReason, StageEvidence, StageState};
 use ra_ap_syntax::ast::{HasArgList, HasAttrs, HasName};
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxNode, ast};
+use ra_ap_syntax::{AstNode, SyntaxNode, ast};
 use std::path::{Component, Path, PathBuf};
 
 struct ArmWitness {
@@ -221,8 +222,7 @@ fn conventional_package_root(owner_file: &Path) -> Option<PathBuf> {
 }
 
 fn parsed(source: &str) -> Option<ast::SourceFile> {
-    let parse = SourceFile::parse(source, Edition::CURRENT);
-    parse.errors().is_empty().then(|| parse.tree())
+    parse_clean_source_file(source).map(|parse| parse.tree())
 }
 
 /// Only an unambiguous top-level free function is in this initial slice.

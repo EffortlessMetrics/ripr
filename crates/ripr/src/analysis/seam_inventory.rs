@@ -201,7 +201,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
                 trace_latency_phase("cache_load", "hit", cache_started.elapsed());
                 trace_latency_phase("total", "cache_hit", total_started.elapsed());
                 if let Some(disclosure) =
-                    rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+                    rust_index::lexical_fallback_disclosure_at(root, &lexical_fallback_files)
                 {
                     eprintln!("{disclosure}");
                 }
@@ -253,7 +253,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
             trace_latency_phase("cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "cache_hit", total_started.elapsed());
             if let Some(disclosure) =
-                rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+                rust_index::lexical_fallback_disclosure_at(root, &lexical_fallback_files)
             {
                 eprintln!("{disclosure}");
             }
@@ -531,7 +531,7 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
                 trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
                 trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
                 if let Some(disclosure) =
-                    rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+                    rust_index::lexical_fallback_disclosure_at(root, &lexical_fallback_files)
                 {
                     eprintln!("{disclosure}");
                 }
@@ -560,7 +560,7 @@ pub(crate) fn inventory_compact_classified_seams_at_with_config(
             trace_latency_phase("compact_cache_load", "hit", cache_started.elapsed());
             trace_latency_phase("total", "compact_cache_hit", total_started.elapsed());
             if let Some(disclosure) =
-                rust_index::lexical_fallback_disclosure_for_files(&lexical_fallback_files)
+                rust_index::lexical_fallback_disclosure_at(root, &lexical_fallback_files)
             {
                 eprintln!("{disclosure}");
             }

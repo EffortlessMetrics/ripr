@@ -6,9 +6,10 @@
 
 use crate::analysis::classify::{ProbeContext, file_imports_foreign_callee_name};
 use crate::analysis::rust_index::find_file_facts;
+use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::{Confidence, Probe, ProbeFamily, RelationReason, StageEvidence, StageState};
 use ra_ap_syntax::ast::{HasArgList, HasAttrs, HasName};
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxNode, ast};
+use ra_ap_syntax::{AstNode, SyntaxNode, ast};
 use std::path::{Component, Path, PathBuf};
 
 struct DerivedWitness {
@@ -454,8 +455,7 @@ fn arm_source_matches(arm: &ast::MatchArm, claimed: &str) -> Option<bool> {
 }
 
 fn parsed(source: &str) -> Option<ast::SourceFile> {
-    let parse = SourceFile::parse(source, Edition::CURRENT);
-    parse.errors().is_empty().then(|| parse.tree())
+    parse_clean_source_file(source).map(|parse| parse.tree())
 }
 
 fn named_function(root: &ast::SourceFile, name: &str) -> Option<ast::Fn> {

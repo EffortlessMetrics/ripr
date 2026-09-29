@@ -3,8 +3,9 @@
 use super::super::lexical::classify_changed_line;
 use super::{ParserProbeShape, source_line_byte_range};
 use crate::analysis::rust_index::FileFacts;
+use crate::analysis::syntax::parse_clean_source_file;
 use crate::domain::ProbeFamily;
-use ra_ap_syntax::{AstNode, Edition, SourceFile, SyntaxKind, SyntaxNode, ast};
+use ra_ap_syntax::{AstNode, SyntaxKind, SyntaxNode, ast};
 use std::ops::Range;
 
 /// This fallback is used only after ordinary parser-owned expressions have
@@ -32,10 +33,7 @@ pub(super) fn declaration_shape<'a>(
 
     // Reuse the existing parser, not a colon or comment-delimiter heuristic.
     // Real expression shapes take precedence and do not enter this fallback.
-    let parse = SourceFile::parse(&facts.source, Edition::CURRENT);
-    if !parse.errors().is_empty() {
-        return None;
-    }
+    let parse = parse_clean_source_file(&facts.source)?;
     let root = parse.tree();
     let declaration = declaration_line_span(root.syntax(), line_range)?;
     for node in root.syntax().descendants().filter(supported_declaration) {

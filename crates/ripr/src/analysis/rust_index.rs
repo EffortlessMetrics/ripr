@@ -75,8 +75,48 @@ fn escaped_path_display(path: &Path) -> String {
 }
 
 /// Returns a stable disclosure when indexed Rust files used lexical fallback.
+/// A file the Rust nesting budget refused also gets its typed
+/// `rust_nesting_budget` reason, recomputed from the indexed source.
 pub(crate) fn lexical_fallback_disclosure(index: &RustIndex) -> Option<String> {
-    lexical_fallback_disclosure_for_files(&lexical_fallback_files(index))
+    let files = lexical_fallback_files(index);
+    let disclosure = lexical_fallback_disclosure_for_files(&files)?;
+    Some(with_nesting_budget_reasons(
+        disclosure,
+        files.iter().filter_map(|path| {
+            let facts = index.files.values().find(|facts| &facts.path == path)?;
+            Some((
+                path.as_path(),
+                super::syntax::rust_nesting_refusal(&facts.source)?,
+            ))
+        }),
+    ))
+}
+
+/// Same disclosure for a classified-seam cache hit, which stores only the
+/// fallback paths. Each fallback file is re-read under `root` so a warm run
+/// names the same `rust_nesting_budget` reasons as the cold run.
+pub(crate) fn lexical_fallback_disclosure_at(root: &Path, files: &[PathBuf]) -> Option<String> {
+    let disclosure = lexical_fallback_disclosure_for_files(files)?;
+    Some(with_nesting_budget_reasons(
+        disclosure,
+        files.iter().filter_map(|path| {
+            let source = std::fs::read_to_string(root.join(path)).ok()?;
+            Some((
+                path.as_path(),
+                super::syntax::rust_nesting_refusal(&source)?,
+            ))
+        }),
+    ))
+}
+
+fn with_nesting_budget_reasons<'a>(
+    mut disclosure: String,
+    reasons: impl Iterator<Item = (&'a Path, String)>,
+) -> String {
+    for (path, reason) in reasons {
+        disclosure.push_str(&format!("\nripr: {}: {reason}", escaped_path_display(path)));
+    }
+    disclosure
 }
 
 pub(crate) fn compilation_unit_path(index: &RustIndex, file: &Path) -> PathBuf {

@@ -16,7 +16,10 @@ use super::super::facts::ModuleDeclarationFact;
 use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
 use super::super::facts::cfg_predicates;
-use super::{RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
+use super::{
+    RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange, parse_clean_source_file,
+    rust_nesting_refusal,
+};
 use crate::analysis::rust_index::{
     FunctionFact, OracleFact, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH,
     PROBE_SHAPE_FIELD_CONSTRUCTION, PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE,
@@ -47,10 +50,9 @@ pub(crate) fn rust_include_directives(
     text: &str,
     max_directives: usize,
 ) -> Result<Vec<RustIncludeDirective>, String> {
-    let parse = SourceFile::parse(text, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(text) else {
         return Err("rust_include_parent_parse_unavailable".to_string());
-    }
+    };
     let line_index = LineIndex::new(text);
     let mut directives = Vec::new();
     for macro_call in parse
@@ -112,10 +114,7 @@ pub(crate) fn parser_oracles_for_function(
     function_text: &str,
     function_start_line: usize,
 ) -> Option<Vec<OracleFact>> {
-    let parse = SourceFile::parse(function_text, Edition::CURRENT);
-    if !parse.errors().is_empty() {
-        return None;
-    }
+    let parse = parse_clean_source_file(function_text)?;
     let function = parse
         .tree()
         .syntax()
@@ -188,6 +187,9 @@ impl RustSyntaxAdapter for RaRustSyntaxAdapter {
 }
 
 pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, String> {
+    if let Some(reason) = rust_nesting_refusal(text) {
+        return Err(reason);
+    }
     let parse = SourceFile::parse(text, Edition::CURRENT);
     let errors = parse.errors();
     if !errors.is_empty() {
@@ -464,10 +466,9 @@ pub(crate) fn shadow_facts_for_body_text(body: &str) -> (Vec<String>, Vec<LetBin
     // on its own line after the body, so the opening line — and every
     // body-relative offset — is unchanged.
     let wrapped = format!("fn __ripr_shadow_facts__() {{ {body}\n}}");
-    let parse = SourceFile::parse(&wrapped, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(&wrapped) else {
         return (Vec::new(), Vec::new());
-    }
+    };
     let Some(function) = parse.tree().syntax().descendants().find_map(ast::Fn::cast) else {
         return (Vec::new(), Vec::new());
     };
