@@ -1765,7 +1765,22 @@ pub(in crate::analysis) fn contains_as_whole_word(text: &str, token: &str) -> bo
 fn finalize_related_tests(mut related: Vec<RelatedTest>) -> Vec<RelatedTest> {
     related.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
     related.dedup_by(|a, b| a.name == b.name && a.oracle == b.oracle);
+    // Renderers present the first entry as the primary related test, so the
+    // strongest relation leads. The sort is stable: name and line order holds
+    // within one confidence tier, and the dedup above is unchanged.
+    related.sort_by_key(|test| std::cmp::Reverse(related_test_rank(test)));
     related
+}
+
+/// Sort rank of an emitted related test: higher relation confidence ranks
+/// first; an unknown relation origin ranks with `Opaque`.
+fn related_test_rank(test: &RelatedTest) -> u8 {
+    match test.relation_confidence {
+        Some(RelationConfidence::High) => 3,
+        Some(RelationConfidence::Medium) => 2,
+        Some(RelationConfidence::Low) => 1,
+        Some(RelationConfidence::Opaque) | None => 0,
+    }
 }
 
 fn build_observe_evidence(matched_any: bool) -> StageEvidence {
@@ -2124,6 +2139,57 @@ fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) 
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    fn related(name: &str, line: usize, reason: Option<RelationReason>) -> RelatedTest {
+        RelatedTest {
+            name: name.to_string(),
+            file: PathBuf::from("tests/lib.rs"),
+            line,
+            oracle: Some(format!("assert_eq!({name}, 1);")),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: reason,
+            relation_confidence: reason.map(RelationReason::confidence),
+        }
+    }
+
+    /// Renderers show the first related test as the primary one, so the
+    /// finalized order must lead with the strongest relation rather than
+    /// the alphabetically first name.
+    #[test]
+    fn finalized_related_tests_lead_with_the_strongest_relation() {
+        let finalized = finalize_related_tests(vec![
+            related(
+                "a_same_file_neighbor",
+                3,
+                Some(RelationReason::SameTestFile),
+            ),
+            related("b_unknown_origin", 5, None),
+            related(
+                "c_direct_owner_call",
+                9,
+                Some(RelationReason::DirectOwnerCall),
+            ),
+            related(
+                "c_direct_owner_call",
+                9,
+                Some(RelationReason::DirectOwnerCall),
+            ),
+            related(
+                "d_direct_owner_call",
+                1,
+                Some(RelationReason::DirectOwnerCall),
+            ),
+        ]);
+        let names: Vec<&str> = finalized.iter().map(|test| test.name.as_str()).collect();
+        let ranks: Vec<u8> = finalized.iter().map(related_test_rank).collect();
+        let mut descending = ranks.clone();
+        descending.sort_by(|a, b| b.cmp(a));
+        assert_eq!(ranks, descending, "ranks must not increase: {names:?}");
+        assert_eq!(names.first(), Some(&"c_direct_owner_call"));
+        assert_eq!(names.last(), Some(&"b_unknown_origin"));
+        assert_eq!(names.len(), 4, "duplicate entries still dedup: {names:?}");
+    }
 
     #[test]
     fn strongest_oracle_cannot_borrow_weaker_assertion_confirmation() -> Result<(), String> {

@@ -71,3 +71,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — tail_comparison_boundary (7)
+
+Reason:
+RIPR-SPEC-0021: emitted related tests keep relation-confidence order so the primary Related test is the strongest relation
+
+Command:
+`cargo xtask goldens bless tail_comparison_boundary --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

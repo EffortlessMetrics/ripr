@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — proximity_name_oracle_not_credited (4)
+
+Reason:
+RIPR-SPEC-0021: emitted related tests keep relation-confidence order so the direct caller leads over name-only relations
+
+Command:
+`cargo xtask goldens bless proximity_name_oracle_not_credited --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -54,6 +54,11 @@ are scoped or reviewed.
   Python and TypeScript readers already did. A cloned repository or pull
   request that committed `src/zero.rs -> /dev/zero` made `ripr check` read
   until it ran out of memory (#4751).
+- Rust findings now list the related tests that call the changed owner before
+  tests matched only by a weak name token, as RIPR-SPEC-0021 already required.
+  On `tokio-rs/bytes` the "Related tests appear to reach" line quoted
+  `bytes_mut_unsplit_empty_self` ahead of the test that pins `try_get_int`'s
+  return value.
 - Security: ripr's git calls pass `-c core.fsmonitor=false`, so a
   repository's own `core.fsmonitor` program (reachable from an extracted
   archive or a planted nested repository) does not run on `git status`

@@ -15,10 +15,10 @@ Start here:
   Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: items >= 10
   Missing discriminator: items == 10
-  Related test: tests/orders.rs:4 big_order_ships_free
+  Related test: tests/orders.rs:9 small_order_pays_shipping
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence:
-    - reach yes: Related tests appear to reach ships_free: big_order_ships_free, five_items_earn_a_gift, small_order_pays_shipping
+    - reach yes: Related tests appear to reach ships_free: small_order_pays_shipping, big_order_ships_free, five_items_earn_a_gift
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
     - 16 more evidence line(s) hidden
 

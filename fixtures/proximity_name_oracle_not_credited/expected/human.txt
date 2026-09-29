@@ -15,10 +15,10 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(ParseError::MalformedSource)
   Missing discriminator: ParseError::MalformedSource
-  Related test: tests/variants.rs:4 malformedsource_variant_is_distinct
+  Related test: tests/parse.rs:4 rejects_at_sign
   Next step: Assert the exact error variant or payload instead of only is_err().
   Evidence:
-    - reach yes: Related tests appear to reach try_parse: malformedsource_variant_is_distinct, rejects_at_sign, try_parse_variant_is_distinct
+    - reach yes: Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 9 more evidence line(s) hidden
 

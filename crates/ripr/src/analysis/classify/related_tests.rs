@@ -7,7 +7,7 @@ use crate::analysis::extract::{
 };
 use crate::analysis::seam_cache::PathDependencySection;
 use crate::analysis::workspace::{PathDependencyAdjacency, PathDependencyGraphStatus};
-use crate::domain::{Probe, RelationReason};
+use crate::domain::{Probe, RelationConfidence, RelationReason};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -914,9 +914,33 @@ fn find_related_tests_with_candidates<'a>(
         related = substring_only_fallback;
     }
 
-    related.sort_by(|(a, _), (b, _)| a.name.cmp(&b.name).then_with(|| a.file.cmp(&b.file)));
-    related.dedup_by(|(a, _), (b, _)| a.name == b.name && a.file == b.file);
+    // Tests that call the owner come first: consumers quote the leading
+    // entries ("Related tests appear to reach ...", the human "Related test"
+    // line), and a name-sorted list let a `weak_token_substring` neighbour
+    // (`bytes_mut_unsplit_empty_self` for bytes' `try_get_int`) stand in
+    // front of the `direct_owner_call` test that pins the returned value.
+    // Within one confidence tier the order stays name, then file.
+    related.sort_by(|(a, a_reason), (b, b_reason)| {
+        relation_rank(*b_reason)
+            .cmp(&relation_rank(*a_reason))
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.file.cmp(&b.file))
+    });
+    // A test related through two reasons is no longer adjacent to itself
+    // once confidence leads the sort; keep its first (strongest) entry.
+    let mut seen = BTreeSet::new();
+    related.retain(|(test, _)| seen.insert((test.name.clone(), test.file.clone())));
     related
+}
+
+/// Sort rank of a relation: higher confidence ranks first.
+fn relation_rank(reason: RelationReason) -> u8 {
+    match reason.confidence() {
+        RelationConfidence::High => 3,
+        RelationConfidence::Medium => 2,
+        RelationConfidence::Low => 1,
+        RelationConfidence::Opaque => 0,
+    }
 }
 
 /// #2972: whether one captured, callable path-dependency declaration lets
