@@ -5436,6 +5436,35 @@ fn classify_probe_shape_reads_a_returned_ternary_as_its_condition_boundary() {
 }
 
 #[test]
+fn classify_probe_shape_reads_a_returned_comparison_as_its_boundary() {
+    // `expect(isLarge(500)).toBe(true)` holds before and after `>=` -> `>`.
+    let line = "    return total > 100;";
+    assert_eq!(
+        classify_probe_shape(line),
+        (ProbeFamily::Predicate, DeltaKind::Control)
+    );
+    assert_eq!(
+        typescript_boundary_discriminator(line).as_deref(),
+        Some("total == 100")
+    );
+    // Equality, computed operands, arrows and compound conditions stay
+    // return values.
+    for line in [
+        "    return total === 100;",
+        "    return items.length() > 0;",
+        "    return total + 1 > limit;",
+        "    return (x) => x > 1;",
+        "    return total > 100 && ready;",
+    ] {
+        assert_eq!(
+            classify_probe_shape(line),
+            (ProbeFamily::ReturnValue, DeltaKind::Value),
+            "{line}"
+        );
+    }
+}
+
+#[test]
 fn classify_probe_shape_recognises_bare_return() {
     let (family, delta) = classify_probe_shape("    return;");
     assert_eq!(family, ProbeFamily::ReturnValue);

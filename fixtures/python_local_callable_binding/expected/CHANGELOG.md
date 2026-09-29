@@ -252,3 +252,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_local_callable_binding (8)
+
+Reason:
+RIPR-SPEC-0027/0028: a returned relational comparison is a predicate probe on its boundary, not a return_value probe
+
+Command:
+`cargo xtask goldens bless python_local_callable_binding --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -1595,6 +1595,34 @@
       ]
     },
     {
+      "id": "ts_return_comparison_boundary_one_side_input",
+      "language": "typescript",
+      "tier": "pure",
+      "source_fixture": "fixtures/ts_return_comparison_boundary",
+      "vector": "returned_comparison_operator_change_credited_by_one_side_exact_value",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "py_return_comparison_boundary_one_side_input",
+      "language": "python",
+      "tier": "pure",
+      "source_fixture": "fixtures/python_return_comparison_boundary",
+      "vector": "returned_comparison_operator_change_credited_by_one_side_exact_value",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_not_promote" },
+        { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "ts_domock_relation_gate",
       "language": "typescript",
       "tier": "pure",

@@ -4445,8 +4445,10 @@ mod tests {
         // named-constant thresholds adds two more direct-aligned boundary cards
         // (`python_named_constant_boundary_repair_gap` and the
         // `DISCOUNT_THRESHOLD` boundary in
-        // `python_same_stem_sibling_owner_not_related`).
-        if (direct, no_strong, orthogonal) != (5, 28, 11) {
+        // `python_same_stem_sibling_owner_not_related`). A returned relational
+        // comparison read as a predicate adds one more direct-aligned boundary
+        // card (`python_return_comparison_boundary`).
+        if (direct, no_strong, orthogonal) != (6, 28, 11) {
             return Err(format!(
                 "corpus inventory drift: direct={direct}, unknown={no_strong}, orthogonal={orthogonal}"
             ));

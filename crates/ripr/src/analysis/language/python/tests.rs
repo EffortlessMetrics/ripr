@@ -471,6 +471,56 @@ fn classify_probe_shape_recognizes_python_predicate_shapes() {
 }
 
 #[test]
+fn classify_probe_shape_reads_a_returned_comparison_as_its_boundary() -> Result<(), String> {
+    // `is_large(500) == True` holds before and after `>=` -> `>`; only the
+    // boundary input separates them, so the line is a predicate.
+    for line in [
+        "    return total > 100",
+        "    return attempt_number >= self.max_attempt_number",
+    ] {
+        assert_eq!(
+            classify_probe_shape(line),
+            (ProbeFamily::Predicate, DeltaKind::Control),
+            "{line}"
+        );
+    }
+    // Equality, computed operands and chained comparisons stay return values.
+    for line in [
+        "    return total == 100",
+        "    return len(items) > 0",
+        "    return total + 1 > limit",
+        "    return low < total < high",
+        "    return total > 100 and ready",
+    ] {
+        assert_eq!(
+            classify_probe_shape(line),
+            (ProbeFamily::ReturnValue, DeltaKind::Value),
+            "{line}"
+        );
+    }
+    // The one-side exact oracle does not credit it: the finding names the
+    // boundary input.
+    let finding = classify_change(
+        Path::new("src/pricing.py"),
+        2,
+        "    return total > 100",
+        &extract_owners(
+            Path::new("src/pricing.py"),
+            "def is_large(total):\n    return total > 100\n",
+        ),
+        &extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import is_large\n\n\
+                 def test_large():\n    assert is_large(500) == True\n",
+        ),
+    )
+    .ok_or_else(|| "returned comparison should classify".to_string())?;
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+    assert_eq!(missing_discriminator_values(&finding), vec!["total == 100"]);
+    Ok(())
+}
+
+#[test]
 fn classify_probe_shape_recognizes_python_return_and_error_shapes() {
     let (family, delta) = classify_probe_shape("    return amount - 10");
     assert_eq!(family, ProbeFamily::ReturnValue);
@@ -3111,10 +3161,12 @@ fn classify_change_emits_first_python_repair_class_discriminators() -> Result<()
     let return_finding = classify_change(
         Path::new("src/priority.py"),
         2,
-        "    return amount >= 100",
+        // A returned comparison is a predicate boundary; a computed return
+        // keeps this case on the return-value repair class.
+        "    return amount + 100",
         &extract_owners(
             Path::new("src/priority.py"),
-            "def is_priority(amount):\n    return amount >= 100\n",
+            "def is_priority(amount):\n    return amount + 100\n",
         ),
         &extract_tests(
             Path::new("tests/test_priority.py"),

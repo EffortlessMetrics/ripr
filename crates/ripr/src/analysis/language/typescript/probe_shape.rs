@@ -61,11 +61,11 @@ pub(crate) fn classify_probe_shape_detail(line_text: &str) -> TypeScriptProbeSha
     if is_object_literal_return_line(leading) {
         return TypeScriptProbeShape::new(ProbeFamily::FieldConstruction, DeltaKind::Value);
     }
-    // `return cond ? a : b` is a predicate boundary first: a changed
-    // condition is witnessed only at its boundary input, so crediting any
-    // exact return-value oracle would read a `>=` -> `>` change as exposed.
-    // Python classifies its conditional expression the same way.
-    if return_ternary_condition(leading).is_some() {
+    // `return cond ? a : b` and `return a > b` are predicate boundaries
+    // first: a changed condition is witnessed only at its boundary input, so
+    // crediting any exact return-value oracle would read a `>=` -> `>` change
+    // as exposed. Python classifies both shapes the same way.
+    if return_predicate_condition(leading).is_some() {
         return TypeScriptProbeShape::new(ProbeFamily::Predicate, DeltaKind::Control);
     }
     if leading.starts_with("return ") || leading == "return;" || leading.starts_with("return;") {
@@ -308,7 +308,7 @@ pub(crate) fn typescript_boundary_discriminator_with_shape(
 ) -> Option<(String, bool)> {
     // Only the condition of `return cond ? a : b` is the boundary; a
     // comparison inside an arm is not what selects the branch.
-    let expression = return_ternary_condition(line_text.trim())
+    let expression = return_predicate_condition(line_text.trim())
         .map(str::to_string)
         .unwrap_or_else(|| strip_typescript_control_prefix(line_text));
     // The nullish flag comes from the quote-aware normalization, not a raw
@@ -334,6 +334,33 @@ pub(crate) fn typescript_boundary_discriminator_with_shape(
         }
     }
     None
+}
+
+/// The boundary condition of a returned predicate: the condition of a
+/// returned ternary, or a returned relational comparison of two simple
+/// operands (`return total > 100;`).
+fn return_predicate_condition(leading: &str) -> Option<&str> {
+    return_ternary_condition(leading).or_else(|| return_relational_comparison(leading))
+}
+
+/// The expression of `return <a> <op> <b>;` when it is exactly one
+/// relational comparison (`<`, `<=`, `>`, `>=`) and each side is a whole
+/// simple operand. Equality stays a return value: an equality flip inverts
+/// the result for every input, so any exact oracle can observe it.
+fn return_relational_comparison(leading: &str) -> Option<&str> {
+    let expression = leading
+        .strip_prefix("return ")?
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+    let (start, len) = ["<=", ">=", "<", ">"]
+        .into_iter()
+        .find_map(|operator| expression.find(operator).map(|idx| (idx, operator.len())))?;
+    let left = expression.get(..start)?.trim();
+    let right = expression.get(start + len..)?.trim();
+    (is_simple_typescript_discriminator_operand(left)
+        && is_simple_typescript_discriminator_operand(right))
+    .then_some(expression)
 }
 
 /// The condition of a `return <condition> ? <a> : <b>` line, when the

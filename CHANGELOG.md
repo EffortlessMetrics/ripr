@@ -118,6 +118,12 @@ are scoped or reviewed.
   returned value, so any exact assertion such as
   `expect(discount(500)).toBe(450)` made a `>=` to `>` change read `exposed`
   with "no repair to make", although 500 takes the discount either way.
+- Python and TypeScript: a returned relational comparison such as
+  `return total > 100` is now a predicate boundary on `total == 100`, as the
+  `if` form and the Rust tail expression already were. A `>=` to `>` change
+  read `exposed` with "no repair to make" when the only test asserted
+  `is_large(500) == True`, which holds either way. Equality returns, computed
+  operands and compound conditions stay return values.
 - Rust findings now list the related tests that call the changed owner before
   tests matched only by a weak name token, as RIPR-SPEC-0021 already required.
   On `tokio-rs/bytes` the "Related tests appear to reach" line quoted

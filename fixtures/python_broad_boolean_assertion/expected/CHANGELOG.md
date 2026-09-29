@@ -444,3 +444,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_broad_boolean_assertion (9)
+
+Reason:
+RIPR-SPEC-0027/0028: a returned relational comparison is a predicate probe on its boundary, not a return_value probe
+
+Command:
+`cargo xtask goldens bless python_broad_boolean_assertion --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

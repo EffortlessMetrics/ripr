@@ -17,18 +17,18 @@ Start here:
   Language status: preview
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
-  Canonical gap: gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100
+  Canonical gap: gap:python:src/priority.py:is_priority:predicate_boundary:predicate:amount>=100
   Changed behavior: return amount >= 100
-  Missing discriminator: Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value.
+  Missing discriminator: Related Python test reaches `is_priority` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   Related test: tests/test_priority.py:4 test_priority_amount
   Suggested test file: tests/test_priority.py
   Suggested test: test_priority_amount
   Test node: tests/test_priority.py::test_priority_amount
   Verify command: python -m pytest tests/test_priority.py::test_priority_amount (high)
-  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `is_priority`
-    - infection yes: Changed Python return expression can alter the owner return value: `return amount >= 100`
+    - infection yes: Changed Python expression can alter preview-classified predicate behavior: `return amount >= 100`
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:

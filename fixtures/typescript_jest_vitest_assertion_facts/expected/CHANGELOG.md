@@ -457,3 +457,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_jest_vitest_assertion_facts (9)
+
+Reason:
+RIPR-SPEC-0027/0028: a returned relational comparison is a predicate probe on its boundary, not a return_value probe
+
+Command:
+`cargo xtask goldens bless typescript_jest_vitest_assertion_facts --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

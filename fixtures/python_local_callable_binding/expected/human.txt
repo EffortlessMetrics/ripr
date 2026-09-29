@@ -17,17 +17,17 @@ Start here:
   Language status: preview
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
-  Canonical gap: gap:python:src/stop.py:stop_after_attempt.__call__:return_value:return_value:attempt_number>=self.max_attempt_number
+  Canonical gap: gap:python:src/stop.py:stop_after_attempt.__call__:predicate_boundary:predicate:attempt_number>=self.max_attempt_number
   Changed behavior: return attempt_number >= self.max_attempt_number
-  Missing discriminator: Related Python test reaches `__call__` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the returned value.
+  Missing discriminator: Related Python test reaches `__call__` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   Related test: tests/test_stop.py:7 test_stop_after_attempt
   Suggested test file: tests/test_stop.py
   Suggested test: test_stop_after_attempt
   Verify command: python -m unittest tests.test_stop.StopTest.test_stop_after_attempt (high)
-  Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `attempt_number == self.max_attempt_number`.
   Evidence:
     - reach yes: 1 related Python test(s) found for owner `__call__`
-    - infection yes: Changed Python return expression can alter the owner return value: `return attempt_number >= self.max_attempt_number`
+    - infection yes: Changed Python expression can alter preview-classified predicate behavior: `return attempt_number >= self.max_attempt_number`
     - 5 more evidence line(s) hidden
 
 Next: drill into the top finding:

@@ -668,7 +668,7 @@ fn python_closing_quote_offset(body: &str, quote: char) -> Option<usize> {
 
 fn strip_python_control_prefix(line_text: &str) -> String {
     let mut text = line_text.trim().trim_end_matches(':').trim().to_string();
-    for prefix in ["if ", "elif ", "while ", "case "] {
+    for prefix in ["if ", "elif ", "while ", "case ", "return "] {
         if let Some(stripped) = text.strip_prefix(prefix) {
             text = stripped.trim().to_string();
             break;

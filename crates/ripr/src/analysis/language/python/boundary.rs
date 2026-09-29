@@ -281,6 +281,9 @@ fn list_or_unresolved(mut values: Vec<String>) -> String {
 /// (`if`/`elif`/`while`) and trailing `:` stripped, or the condition between
 /// ` if ` and ` else ` of a conditional expression.
 fn predicate_condition(line_text: &str) -> String {
+    if let Some(condition) = python_return_comparison(line_text) {
+        return condition.to_string();
+    }
     let text = line_text.trim().trim_end_matches(':').trim();
     for prefix in ["if ", "elif ", "while "] {
         if let Some(stripped) = text.strip_prefix(prefix) {
@@ -293,6 +296,22 @@ fn predicate_condition(line_text: &str) -> String {
         return condition.trim().to_string();
     }
     text.to_string()
+}
+
+/// The comparison of a `return <a> <op> <b>` line whose returned expression
+/// is exactly one relational comparison between simple operands. The
+/// returned bool changes only at the boundary, so the line is a predicate:
+/// an exact oracle on an input far from `a == b` (`is_large(500) == True`)
+/// returns the same value before and after a `>=` -> `>` change.
+pub(super) fn python_return_comparison(line_text: &str) -> Option<&str> {
+    let expression = line_text.trim().strip_prefix("return ")?.trim();
+    let [(start, len)] = relational_operators(expression)[..] else {
+        return None;
+    };
+    let (left, right) = simple_comparison_operands(expression, start, len)?;
+    let whole_sides =
+        expression.get(..start)?.trim() == left && expression.get(start + len..)?.trim() == right;
+    whole_sides.then_some(expression)
 }
 
 /// Byte offset and length of every relational comparison operator outside
