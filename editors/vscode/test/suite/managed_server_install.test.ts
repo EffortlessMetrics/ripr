@@ -50,17 +50,32 @@ suite('Managed Server Installation', () => {
       resolveArchive: async () => ({
         ...(await admitted.resolveArchive()),
         admittedManifestSha256: digest,
-        selectedManifestUrl
+        selectedManifestUrl,
+        manifestSelection: 'fallback_exact_after_preferred_absent',
+        preferredManifestObservation: 'direct_not_found',
+        fallbackManifestObservation: 'accepted'
       })
     };
     const installed = await installManagedServer(request, withStamp);
     assert.strictEqual(installed.receipt.manifestSha256, digest);
     assert.strictEqual(installed.receipt.selectedManifestUrl, selectedManifestUrl);
+    assert.strictEqual(installed.receipt.manifestSelection, 'fallback_exact_after_preferred_absent');
+    assert.strictEqual(installed.receipt.preferredManifestObservation, 'direct_not_found');
+    assert.strictEqual(installed.receipt.fallbackManifestObservation, 'accepted');
 
     const cached = await readManagedServerInstallation(request);
     assert.notStrictEqual(cached, undefined);
     assert.strictEqual(cached?.receipt.manifestSha256, digest);
     assert.strictEqual(cached?.receipt.selectedManifestUrl, selectedManifestUrl);
+    assert.strictEqual(cached?.receipt.manifestSelection, 'fallback_exact_after_preferred_absent');
+    assert.strictEqual(cached?.receipt.preferredManifestObservation, 'direct_not_found');
+    assert.strictEqual(cached?.receipt.fallbackManifestObservation, 'accepted');
+
+    const combined = combineActiveManagedServerIdentity({ binaryVersion: 'ripr active' }, installed);
+    assert.strictEqual(combined.selectedManifestUrl, selectedManifestUrl);
+    assert.strictEqual(combined.manifestSelection, 'fallback_exact_after_preferred_absent');
+    assert.strictEqual(combined.preferredManifestObservation, 'direct_not_found');
+    assert.strictEqual(combined.fallbackManifestObservation, 'accepted');
   });
 
   test('bound requests reject unstamped and mismatched receipts', async () => {
