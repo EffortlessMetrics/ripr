@@ -55,6 +55,11 @@ concurrency:
 #     touching path handling, fixtures, or process/IO code.
 #   - workflow_dispatch: manual run; `repeat_nested_alias` adds three isolated
 #     native repetitions for #4377 only when requested.
+#   - every subscribed `pull_request` action (`opened`, `synchronize`,
+#     `reopened`, `labeled`; `unlabeled` stays omitted per #4380) and the
+#     schedule/dispatch triggers above also run the small always-on advisory
+#     subset job below (`windows-advisory-subset`, #4938); the full suite
+#     keeps its label/schedule/dispatch selection unchanged.
 #
 # The suite runs **twice** on purpose, because one sample cannot separate a
 # reproducible failure from a load-dependent flake.
@@ -252,4 +257,133 @@ jobs:
             target/nested-alias-isolated-verdict.md
             target/nested-alias-negative-verdict.md
             target/nested-alias-negative.status
+          if-no-files-found: ignore
+
+  # Always-on advisory subset (#4938).
+  #
+  # The full suite above never runs on ordinary PR traffic: of the 200 runs in
+  # the 2026-09-29 to 2026-09-30 window, 194 were skipped by the label gate
+  # (199 non-scheduled runs; the only executed schedule run was the daily), so
+  # #4337 (Windows-host-only clippy in cfg(windows) test code), #4918
+  # (cache-unusable warning silent on native Windows), and #4921 (gap_artifacts
+  # tests failing on a POSIX-only test root) were each caught only because
+  # someone ran the suite or clippy natively on Windows. This job runs on every
+  # subscribed `pull_request` action (`opened`, `synchronize`, `reopened`,
+  # `labeled` -- no labels required; `unlabeled` stays omitted per #4380) and
+  # covers exactly that family:
+  #
+  #   - lsp::gap_artifacts: the #4921 class;
+  #   - the #4918 cache-warning smoke, which runs the real `ripr` binary with
+  #     RIPR_CACHE_DIR at a regular file and asserts the once-per-build
+  #     warning. The #4920 unit pins are errno-independent by design, so this
+  #     end-to-end test is the member that is actually Windows-visible;
+  #   - clippy on Windows: the #4337 class (cfg(windows) items are compiled out
+  #     of the required Linux clippy lane).
+  #
+  # Same advisory contract as the rest of the lane: test and lint outcomes
+  # never fail this job -- they become PASS/FAIL verdicts in the step summary,
+  # the job log, and target/windows-subset-verdict.md; missing evidence (a
+  # command that never wrote its status file or its log, a failed log
+  # capture, or a cargo run that exited 0 without executing a single test)
+  # does fail it. Steady state is ~5 minutes with a warm cache; the
+  # timeout ceiling is higher because the first run on a fresh dependency
+  # graph legitimately exceeds that budget and a stuck runner must still be
+  # bounded. `windows-ci`/`full-ci` remain unchanged: they opt into the full
+  # suite above and are not needed here. Not promoting this job to required
+  # leaves native-Windows verification of new product behavior an author and
+  # audit responsibility (docs/CI.md, Advisory Windows Lane).
+  windows-advisory-subset:
+    name: windows-advisory-subset
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@1.95
+
+      # Distinct cache key on purpose: this job and the full suite build
+      # different target subsets, and GitHub cache keys are immutable, so one
+      # shared key would let whichever job saves first on `main` starve the
+      # other of its artifacts.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-windows-advisory-subset-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Run lsp::gap_artifacts subset (advisory, #4921)
+        shell: bash
+        run: |
+          mkdir -p target; set +e; cargo test -p ripr --lib lsp::gap_artifacts 2>&1 | tee target/subset-gap-artifacts.log; pipe_status=("${PIPESTATUS[@]}"); printf '%s\n' "${pipe_status[0]}" > target/subset-gap-artifacts.status; if [ "${pipe_status[1]}" != "0" ]; then echo "subset evidence capture failed: tee exited ${pipe_status[1]} writing target/subset-gap-artifacts.log" >&2; exit 1; fi; exit 0
+
+      - name: Run cache-warning smoke subset (advisory, #4918)
+        shell: bash
+        run: |
+          mkdir -p target; set +e; cargo test -p ripr --test cli_smoke unusable_cache_directory_is_reported_once_per_build 2>&1 | tee target/subset-cache-warning.log; pipe_status=("${PIPESTATUS[@]}"); printf '%s\n' "${pipe_status[0]}" > target/subset-cache-warning.status; if [ "${pipe_status[1]}" != "0" ]; then echo "subset evidence capture failed: tee exited ${pipe_status[1]} writing target/subset-cache-warning.log" >&2; exit 1; fi; exit 0
+
+      - name: Run clippy subset (advisory, #4337)
+        shell: bash
+        run: |
+          mkdir -p target; set +e; cargo clippy -p ripr --all-targets -- -D warnings 2>&1 | tee target/subset-clippy.log; pipe_status=("${PIPESTATUS[@]}"); printf '%s\n' "${pipe_status[0]}" > target/subset-clippy.status; if [ "${pipe_status[1]}" != "0" ]; then echo "subset evidence capture failed: tee exited ${pipe_status[1]} writing target/subset-clippy.log" >&2; exit 1; fi; exit 0
+
+      # Verdicts go to the job log, the step summary, and
+      # target/windows-subset-verdict.md -- the same three copies the full
+      # suite above keeps -- because none of them is gated, so a reader who
+      # can see the run must be able to see the verdict. This step never
+      # fails on a FAIL verdict; the next step owns the non-advisory evidence
+      # contract.
+      - name: Summarize subset verdicts
+        shell: bash
+        run: |
+          {
+            printf '## Windows advisory subset (#4938)\n\n'
+            printf 'Advisory only: not a required check and does not gate merges. Test/lint verdicts:\n\n'
+            for label in subset-gap-artifacts subset-cache-warning subset-clippy; do
+              status_file="target/${label}.status"
+              if [ ! -f "$status_file" ]; then
+                echo "- ${label}: not_run (no status file)"
+              elif [ "$(cat "$status_file")" = "0" ]; then
+                echo "- ${label}: PASS"
+              else
+                echo "- ${label}: FAIL (exit $(cat "$status_file"))"
+              fi
+            done
+          } | tee target/windows-subset-verdict.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Evidence generation is not advisory (lane contract above): a command
+      # that never wrote its status file or its log fails the job instead of
+      # passing silently, and so does a cargo run that exited 0 without
+      # executing a single test (a zero-match name filter is silent green,
+      # #4938). The explicit `exit 1` matters: a loop whose body is a bare
+      # `test` would otherwise report only the last label's status.
+      - name: Fail on missing or empty subset evidence
+        shell: bash
+        run: |
+          for label in subset-gap-artifacts subset-cache-warning subset-clippy; do
+            test -f "target/${label}.status" || exit 1
+            test -f "target/${label}.log" || exit 1
+          done
+          for label in subset-gap-artifacts subset-cache-warning; do
+            if [ "$(cat "target/${label}.status")" = "0" ]; then
+              executed="$(awk '/^test result:/{for (i = 1; i <= NF; i++) if ($i == "passed;" || $i == "failed;" || $i == "measured;") executed += $(i - 1)} END {print executed + 0}' "target/${label}.log")"
+              if [ "$executed" -eq 0 ]; then
+                echo "${label}: cargo exited 0 but no test executed; the name filter no longer matches any test" >&2
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Upload subset evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-windows-advisory-subset
+          path: |
+            target/subset-gap-artifacts.log
+            target/subset-gap-artifacts.status
+            target/subset-cache-warning.log
+            target/subset-cache-warning.status
+            target/subset-clippy.log
+            target/subset-clippy.status
+            target/windows-subset-verdict.md
           if-no-files-found: ignore
