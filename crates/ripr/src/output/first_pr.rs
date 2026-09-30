@@ -143,6 +143,13 @@ use preflight::{FirstPrPreflight, first_pr_preflight};
 #[cfg(test)]
 use rendering::markdown_code_or_text;
 use rendering::{render_start_here_markdown, start_here_cli_summary};
+/// Test-only path to first-pr's own start-here renderer, so another
+/// surface's tests can pin pairing parity against the real producer
+/// (#4950) instead of restating its expected lines.
+#[cfg(test)]
+pub(crate) fn first_pr_start_here_markdown(packet: &Value) -> String {
+    render_start_here_markdown(packet)
+}
 #[cfg(test)]
 use validation::validate_selected_state;
 use validation::validate_start_here_packet;

@@ -184,10 +184,7 @@ fn render_start_here_missing(out: &mut String, start_here_value: Option<&Value>)
         "- missing artifact: {}\n",
         value_code(start_here_value, &["selected", "artifact", "path"])
     ));
-    out.push_str(&format!(
-        "- next command: {}\n",
-        value_code(start_here_value, &["selected", "regeneration_command"])
-    ));
+    push_next_command_pair(out, start_here_value, &["selected", "regeneration_command"]);
 }
 
 fn render_start_here_no_action(out: &mut String, start_here_value: Option<&Value>) {
@@ -203,10 +200,51 @@ fn render_start_here_blocked(out: &mut String, start_here_value: Option<&Value>)
         "- blocked reason: {}\n",
         value_code(start_here_value, &["selected", "message"])
     ));
+    push_next_command_pair(out, start_here_value, &["selected", "next_command"]);
+}
+
+/// Present one Start Here next command for both shells (#4950).
+///
+/// The bash bullet stays authoritative and byte-identical; the shared
+/// [`powershell_form`] classification then renders the same outcome
+/// first-pr's pairing prints for these packet fields (#2628): the guarded
+/// BOM-free UTF-8 write twin when PowerShell needs a different form, the
+/// runs-unchanged note when it does not, and the explicit unavailable
+/// disclosure for a compound command instead of an invalid or invented
+/// translation. A missing or empty field keeps its `not_available` line and
+/// gains no shell outcome.
+fn push_next_command_pair(out: &mut String, start_here_value: Option<&Value>, path: &[&str]) {
     out.push_str(&format!(
         "- next command: {}\n",
-        value_code(start_here_value, &["selected", "next_command"])
+        value_code(start_here_value, path)
     ));
+    let Some(command) = start_here_value
+        .and_then(|value| value_at_path(Some(value), path))
+        .and_then(Value::as_str)
+        .filter(|command| !command.trim().is_empty())
+    else {
+        return;
+    };
+    match powershell_form(command) {
+        PowershellForm::Translated(line) => {
+            out.push_str(&format!(
+                "- next command (PowerShell): {}\n",
+                code_span(&line)
+            ));
+        }
+        PowershellForm::SameAsBash => {
+            out.push_str(
+                "- next command runs unchanged in Bash and PowerShell; cmd.exe is not supported.\n",
+            );
+        }
+        PowershellForm::Unavailable => {
+            out.push_str(&format!(
+                "- {}: {}\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+                code_span(command)
+            ));
+        }
+    }
 }
 
 fn render_start_here_limits(out: &mut String, start_here_value: Option<&Value>) {
@@ -676,6 +714,182 @@ mod tests {
             return Err(format!(
                 "without a start, verify and receipt run after the test edit:\n{without}"
             ));
+        }
+        Ok(())
+    }
+
+    /// The redirect command from #4950's reproduction: a `>` redirect whose
+    /// bash form writes UTF-16 under Windows PowerShell 5.1, so the twin is
+    /// the guarded BOM-free UTF-8 write.
+    const REDIRECT_COMMAND: &str = "ripr check --root . --mode instant --format repo-exposure-json > target/ripr/reports/repo-exposure.json";
+
+    fn missing_artifact_start_here(command: &str) -> Value {
+        serde_json::json!({
+            "selected": {
+                "state": "missing_artifact",
+                "artifact": {"path": "target/ripr/reports/repo-exposure.json"},
+                "regeneration_command": command
+            }
+        })
+    }
+
+    fn blocked_start_here(command: &str) -> Value {
+        serde_json::json!({
+            "selected": {
+                "state": "blocked_artifact",
+                "message": "first-run packet is blocked by unavailable evidence",
+                "next_command": command
+            }
+        })
+    }
+
+    fn assert_redirect_pair(out: &str) -> Result<(), String> {
+        let bash = out
+            .find(&format!("- next command: `{REDIRECT_COMMAND}`\n"))
+            .ok_or_else(|| format!("bash next command drifted:\n{out}"))?;
+        let twin = out
+            .find("- next command (PowerShell): `")
+            .ok_or_else(|| format!("powershell twin missing:\n{out}"))?;
+        if !out.contains("WriteAllText") {
+            return Err(format!("twin must be the guarded UTF-8 write:\n{out}"));
+        }
+        if bash > twin {
+            return Err(format!("bash form must come before the twin:\n{out}"));
+        }
+        Ok(())
+    }
+
+    /// #4950: the missing-artifact Start Here next command pairs its bash
+    /// form with the shared PowerShell translation, like first-pr's pairing
+    /// of the same `regeneration_command` field.
+    #[test]
+    fn start_here_missing_next_command_pairs_redirect_with_powershell_twin() -> Result<(), String> {
+        let mut out = String::new();
+        render_start_here_missing(
+            &mut out,
+            Some(&missing_artifact_start_here(REDIRECT_COMMAND)),
+        );
+        assert_redirect_pair(&out)
+    }
+
+    /// #4950: the blocked Start Here next command pairs the same way for the
+    /// same `next_command` field first-pr pairs.
+    #[test]
+    fn start_here_blocked_next_command_pairs_redirect_with_powershell_twin() -> Result<(), String> {
+        let mut out = String::new();
+        render_start_here_blocked(&mut out, Some(&blocked_start_here(REDIRECT_COMMAND)));
+        assert_redirect_pair(&out)
+    }
+
+    /// #4950: for the same packet, pr-summary's Start Here carries exactly
+    /// the PowerShell pairing first-pr renders for the same JSON fields —
+    /// counted, so the surfaces cannot drift apart silently in either
+    /// direction.
+    #[test]
+    fn start_here_next_command_powershell_count_matches_first_pr_pairing() -> Result<(), String> {
+        for packet in [
+            missing_artifact_start_here(REDIRECT_COMMAND),
+            blocked_start_here(REDIRECT_COMMAND),
+        ] {
+            let mut summary = String::new();
+            match packet.pointer("/selected/state").and_then(Value::as_str) {
+                Some("missing_artifact") => {
+                    render_start_here_missing(&mut summary, Some(&packet));
+                }
+                _ => render_start_here_blocked(&mut summary, Some(&packet)),
+            }
+            let first_pr = crate::output::first_pr::first_pr_start_here_markdown(&packet);
+            let count = |text: &str| text.matches("(PowerShell)").count();
+            if count(&summary) != count(&first_pr) {
+                return Err(format!(
+                    "PowerShell pairing count must match first-pr for the same packet:\n\
+                     pr-summary:\n{summary}\nfirst-pr:\n{first_pr}"
+                ));
+            }
+            if count(&summary) != 1 {
+                return Err(format!(
+                    "a redirect command pairs exactly one PowerShell twin:\n\
+                     pr-summary:\n{summary}\nfirst-pr:\n{first_pr}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// #4950 negative control: a command PowerShell runs unchanged gains no
+    /// twin — the bash bytes stay the only command form — and the
+    /// runs-unchanged note is the only added line.
+    #[test]
+    fn start_here_plain_next_command_gains_no_powershell_twin() -> Result<(), String> {
+        let bash = "ripr check --root . --mode instant --format repo-exposure-json";
+        let mut out = String::new();
+        render_start_here_missing(&mut out, Some(&missing_artifact_start_here(bash)));
+        if !out.contains(&format!("- next command: `{bash}`\n")) {
+            return Err(format!("bash next command drifted:\n{out}"));
+        }
+        if out.contains("- next command (PowerShell)") {
+            return Err(format!(
+                "an unchanged command must not gain a PowerShell twin:\n{out}"
+            ));
+        }
+        if !out.contains(
+            "- next command runs unchanged in Bash and PowerShell; cmd.exe is not supported.\n",
+        ) {
+            return Err(format!("unchanged note missing:\n{out}"));
+        }
+        Ok(())
+    }
+
+    /// #4950 negative control: a compound command under-emits to the shared
+    /// availability disclosure instead of an invalid or invented translation.
+    #[test]
+    fn start_here_compound_next_command_discloses_unavailable_form() -> Result<(), String> {
+        let bash =
+            "ripr check --root . --json > check.json && ripr reports gap-ledger --out ledger.json";
+        let mut out = String::new();
+        render_start_here_blocked(&mut out, Some(&blocked_start_here(bash)));
+        if !out.contains(&format!("- next command: `{bash}`\n")) {
+            return Err(format!("bash next command drifted:\n{out}"));
+        }
+        let disclosure = format!(
+            "- {}: `{bash}`\n",
+            crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+        );
+        if !out.contains(&disclosure) {
+            return Err(format!("compound disclosure missing:\n{out}"));
+        }
+        if out.contains("- next command (PowerShell)") {
+            return Err(format!(
+                "a compound command must not gain a PowerShell twin:\n{out}"
+            ));
+        }
+        Ok(())
+    }
+
+    /// #4950 negative control: a missing or empty command keeps its existing
+    /// `not_available` line and gains no shell outcome at all.
+    #[test]
+    fn start_here_absent_next_command_keeps_not_available_without_powershell() -> Result<(), String>
+    {
+        for render in [
+            render_start_here_missing as fn(&mut String, Option<&Value>),
+            render_start_here_blocked,
+        ] {
+            let mut out = String::new();
+            render(
+                &mut out,
+                Some(&serde_json::json!({
+                    "selected": {"state": "missing_artifact"}
+                })),
+            );
+            if !out.contains("- next command: `not_available`\n") {
+                return Err(format!("absent field must keep its state line:\n{out}"));
+            }
+            if out.contains("PowerShell") {
+                return Err(format!(
+                    "absent command must gain no PowerShell lines:\n{out}"
+                ));
+            }
         }
         Ok(())
     }
