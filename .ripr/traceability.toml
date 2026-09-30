@@ -10109,3 +10109,40 @@ metrics = [
   "command_metadata_entries",
   "command_metadata_violations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0188"
+name = "windows trailing-component root disclosure"
+spec = "docs/specs/RIPR-SPEC-0188-windows-trailing-component-root-disclosure.md"
+tests = [
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_rebound_root_is_accepted_and_disclosed",
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_root_resolving_to_an_existing_file_names_the_condition",
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_unaddressable_root_names_the_normalized_name",
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_metadata_not_found_failure_names_the_normalized_name",
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_interior_rebound_root_is_accepted_and_disclosed",
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_interior_root_resolving_to_a_file_names_the_condition",
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_interior_root_missing_leaf_names_the_stripped_component",
+  "crates/ripr/src/cli/commands_context.rs::tests::windows_interior_and_final_stripped_names_both_components",
+  "crates/ripr/src/cli/commands_context.rs::tests::stripped_component_detection_matches_final_and_interior_components",
+  "crates/ripr/src/cli/commands_context.rs::tests::normalized_path_names_the_written_spelling",
+  "crates/ripr/src/cli/commands_context.rs::tests::plain_directory_root_is_accepted",
+  "crates/ripr/src/cli/commands_context.rs::tests::plain_missing_root_keeps_the_generic_refusal",
+  "crates/ripr/src/cli/commands_context.rs::tests::plain_existing_file_keeps_the_generic_refusal",
+  "crates/ripr/src/cli/commands_context.rs::tests::plain_interior_layout_keeps_the_generic_behavior",
+  "crates/ripr/src/cli/commands_context.rs::tests::stripped_component_detection_rejects_plain_names_and_directory_references",
+]
+code = [
+  "crates/ripr/src/cli/commands_context.rs",
+  "crates/ripr/src/cli/commands/check.rs",
+  "crates/ripr/src/cli/commands/agent.rs",
+  "crates/ripr/src/cli/rerun.rs",
+  "crates/ripr/src/cli/commands/swarm/ingest.rs",
+  "crates/ripr/src/cli/commands/swarm/queue.rs",
+  "crates/ripr/src/cli/commands/swarm/queue_live.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0188-windows-trailing-component-root-disclosure.md",
+]
+metrics = [
+  "windows_root_disclosure_shapes",
+]
