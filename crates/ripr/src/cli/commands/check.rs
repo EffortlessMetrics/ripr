@@ -500,20 +500,22 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // requested artifact. --worktree runs record the base-to-worktree diff
     // source, which is re-resolvable at reuse time.
     if let Some(path) = write_artifact.as_ref() {
-        // #4951: Windows strips trailing dots and spaces from the final path
-        // component, so `--write-artifact artifact.` would silently write
-        // `artifact` while the completion output and the suggested `explain
-        // --from` / `context --from` follow-ups keep naming `artifact.`. The
-        // literal name cannot be created through the std filesystem API this
-        // artifact writer uses (even a `\\?\` verbatim path is rejected), so
-        // writing under the exact requested name is unachievable and the
-        // substitution must not be silent: refuse, naming the name the
-        // platform would actually write. Elsewhere the name is literal and
-        // writable, so nothing is refused.
-        if let Some(typed) = crate::cli::commands_context::windows_stripped_component(path) {
-            let stripped = typed.trim_end_matches(['.', ' ']);
+        // #4951/#4958: Windows strips trailing dots and spaces from EVERY
+        // path component, not only the final one. `--write-artifact artifact.`
+        // would silently write `artifact` (and the literal final name cannot
+        // be created through the std filesystem API this artifact writer
+        // uses — even a `\\?\` verbatim path is rejected), and an interior
+        // `--write-artifact a./b.json` would write `a/b.json` — while the
+        // completion output and the suggested `explain --from` / `context
+        // --from` follow-ups keep naming the typed spelling. The literal
+        // path is not addressable as typed through this writer, so the
+        // substitution must not be silent: refuse, naming the normalized
+        // path the platform would actually write. Elsewhere the names are
+        // literal and writable, so nothing is refused.
+        if !crate::cli::commands_context::windows_stripped_components(path).is_empty() {
+            let written = crate::cli::commands_context::windows_normalized_path(path);
             return Err(format!(
-                "--write-artifact {} would be written as {stripped:?} on this platform \
+                "--write-artifact {} would be written as {written:?} on this platform \
                  (Windows strips trailing dots and spaces), so the on-disk artifact and the \
                  suggested follow-up commands would name different files; \
                  pass a name without trailing dots or spaces",
@@ -1705,9 +1707,10 @@ mod tests {
     }
 }
 
-// #4951: on Windows the final path component's trailing dots and spaces are
-// stripped, so a trailing-dot artifact name cannot land on disk as typed and
-// must be refused with the name the platform would actually write.
+// #4951/#4958: on Windows trailing dots and spaces are stripped from every
+// path component, so an artifact name carrying one — final or interior —
+// cannot land on disk as typed and must be refused with the normalized path
+// the platform would actually write.
 #[cfg(all(test, windows))]
 mod write_artifact_stripped_name_tests {
     use super::super::super::commands::check;
@@ -1754,6 +1757,51 @@ mod write_artifact_stripped_name_tests {
         assert!(
             !root.join("artifact.").exists(),
             "artifact. must not be written"
+        );
+        Ok(())
+    }
+
+    // #4958: an interior stripped component is refused too, naming the
+    // normalized path the platform would actually write.
+    #[test]
+    fn interior_stripped_artifact_component_is_refused_with_the_written_path() -> Result<(), String>
+    {
+        let root = std::env::temp_dir().join(format!("ripr-4958-artifact-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let _guard = Guard(root.clone());
+        let error = check(&[
+            "--root".to_string(),
+            root.display().to_string(),
+            "--write-artifact".to_string(),
+            "a./b.json".to_string(),
+        ])
+        .err()
+        .unwrap_or_default();
+        assert!(
+            error.contains("--write-artifact a./b.json would be written as"),
+            "{error}"
+        );
+        // The normalized written path is named (path Debug escapes the
+        // separator), and the refusal keeps the landed repair hint.
+        assert!(error.contains(r"a\\b.json"), "{error}");
+        assert!(
+            error.contains("Windows strips trailing dots and spaces"),
+            "{error}"
+        );
+        assert!(
+            error.contains("pass a name without trailing dots or spaces"),
+            "{error}"
+        );
+        // The refusal precedes analysis, so nothing was written under either
+        // interior spelling.
+        assert!(
+            !root.join("a").exists(),
+            "normalized directory must not be written"
+        );
+        assert!(
+            !root.join("a.").exists(),
+            "typed directory must not be written"
         );
         Ok(())
     }

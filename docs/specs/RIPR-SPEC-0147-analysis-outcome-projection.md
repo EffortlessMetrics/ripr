@@ -28,7 +28,12 @@ Malformed non-empty diff input is a typed `malformed_diff` limitation at the
 diff-parse stage and produces `unsupported_input`; it is never represented as
 complete zero scope. Disabled preview-language files and configured generated
 source skips are typed limitations as well, while a producer-declared partial
-fact packet remains advisory rather than complete. A truncated producer stream
+fact packet remains advisory rather than complete. An EOL-only whole-file
+rewrite is a churn-shape typed limitation (`eol_only_churn`, diff-parse
+stage) that may ride on a complete outcome — the changed scope was fully
+analyzed, so it never makes the analysis incomplete — and a line-one BOM-only
+rewrite is excluded from that pairing so it is not disclosed as churn (#4952,
+#4959). A truncated producer stream
 (#4375) is the same malformed-input contract: a file section that parses a
 textual header but closes without a validated hunk body is typed
 `malformed_diff` at the diff-parse stage and produces `unsupported_input`,

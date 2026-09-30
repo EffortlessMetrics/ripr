@@ -23,6 +23,7 @@ use crate::config::OraclePolicy;
 use crate::domain::Finding;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 /// Whether a language id corresponds to a preview adapter.
 ///
@@ -615,6 +616,8 @@ fn run_pipeline_for_diff_text(
     let renamed_file_count = parsed_diff.renamed_file_count;
     let pure_rename_file_count = parsed_diff.pure_rename_file_count;
     let pure_rename_paths = parsed_diff.pure_rename_paths;
+    // #4959: raw line-1 BOM evidence, for the eol-only churn discrimination.
+    let raw_line1_bom_paths = parsed_diff.raw_line1_bom_paths;
     // Truncated-stream evidence (#4375): file sections that parsed a textual
     // header but closed without a validated hunk body.
     let truncated_file_sections = parsed_diff.truncated_file_sections;
@@ -984,7 +987,7 @@ fn run_pipeline_for_diff_text(
     // route the kind to partial_with_limitations by itself.
     let eol_only_churn_files = analysis_changed_files
         .iter()
-        .filter(|file| file_is_eol_only_churn(file))
+        .filter(|file| file_is_eol_only_churn(file, &raw_line1_bom_paths))
         .map(|file| file.path.to_string_lossy().replace('\\', "/"))
         .collect::<Vec<_>>();
     if !eol_only_churn_files.is_empty() {
@@ -1476,8 +1479,17 @@ where
 /// One unequal or misaligned pair means real content changed somewhere in
 /// the file, so a missed disclosure is honest and a false one impossible
 /// by construction.
-fn file_is_eol_only_churn(file: &diff::ChangedFile) -> bool {
-    !file.added_lines.is_empty()
+/// #4959: a file whose raw line-1 diff text carried a UTF-8 BOM is excluded
+/// outright. The parser strips that BOM from both sides before storage
+/// (`source_line_text`), so a BOM-only rewrite pairs equal below and would
+/// otherwise disclose `eol_only_churn` for what is an encoding-marker
+/// change, with a recovery hint that cannot remove it. The parser can
+/// distinguish the two — it recorded the raw BOM — so the pairing excludes
+/// the file rather than widening the claim to "encoding marker or line
+/// endings"; keeping the disclosure off is an honest miss.
+fn file_is_eol_only_churn(file: &diff::ChangedFile, raw_line1_bom_paths: &[PathBuf]) -> bool {
+    !raw_line1_bom_paths.contains(&file.path)
+        && !file.added_lines.is_empty()
         && file.added_lines.len() == file.removed_lines.len()
         && file
             .added_lines
@@ -2001,7 +2013,74 @@ mod tests {
             assert_eq!(added.text, removed.text, "{added:?} vs {removed:?}");
             assert_eq!(added.line, removed.line, "{added:?} vs {removed:?}");
         }
-        assert!(file_is_eol_only_churn(file));
+        assert!(file_is_eol_only_churn(file, &parsed.raw_line1_bom_paths));
+        Ok(())
+    }
+
+    #[test]
+    fn bom_only_rewrite_is_excluded_from_the_eol_pairing() -> Result<(), String> {
+        // #4959: the parser strips a line-1 UTF-8 BOM from both sides before
+        // storage, so a BOM-only rewrite parses to an elementwise-equal pair
+        // — exactly the shape file_is_eol_only_churn reads. The parser saw
+        // the raw BOM, so the recorded path must keep the pairing off: the
+        // delta is an encoding marker, not line endings.
+        let bom_removed = concat!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+            "--- a/src/lib.rs\n",
+            "+++ b/src/lib.rs\n",
+            "@@ -1,1 +1,1 @@\n",
+            "-\u{feff}pub fn f(x: i32) -> bool { x > 1 }\n",
+            "+pub fn f(x: i32) -> bool { x > 1 }\n",
+        );
+        let bom_added = concat!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+            "--- a/src/lib.rs\n",
+            "+++ b/src/lib.rs\n",
+            "@@ -1,1 +1,1 @@\n",
+            "-pub fn f(x: i32) -> bool { x > 1 }\n",
+            "+\u{feff}pub fn f(x: i32) -> bool { x > 1 }\n",
+        );
+        for (label, text) in [("bom removed", bom_removed), ("bom added", bom_added)] {
+            let parsed = diff::parse_unified_diff_bounded_with_metadata(text)?;
+            assert_eq!(parsed.changed_files.len(), 1, "{label}");
+            let file = &parsed.changed_files[0];
+            // Enabling property: the stored pair IS equal elementwise, so
+            // only the recorded raw BOM can keep the disclosure honest.
+            assert_eq!(file.added_lines.len(), 1, "{label}");
+            assert_eq!(
+                file.added_lines[0].text, file.removed_lines[0].text,
+                "{label}"
+            );
+            assert_eq!(
+                file.added_lines[0].line, file.removed_lines[0].line,
+                "{label}"
+            );
+            assert!(
+                parsed.raw_line1_bom_paths.contains(&file.path),
+                "{label}: raw BOM not recorded"
+            );
+            assert!(
+                !file_is_eol_only_churn(file, &parsed.raw_line1_bom_paths),
+                "{label}"
+            );
+        }
+        // Control: the same rewrite without a BOM on either side is genuine
+        // EOL-only-shaped pairing and stays eligible (a text-identical pair
+        // here would disclose; this diff shape is the pairing's input).
+        let plain = concat!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+            "--- a/src/lib.rs\n",
+            "+++ b/src/lib.rs\n",
+            "@@ -1,1 +1,1 @@\n",
+            "-pub fn f(x: i32) -> bool { x > 1 }\n",
+            "+pub fn f(x: i32) -> bool { x > 1 }\n",
+        );
+        let parsed = diff::parse_unified_diff_bounded_with_metadata(plain)?;
+        assert!(parsed.raw_line1_bom_paths.is_empty());
+        assert!(file_is_eol_only_churn(
+            &parsed.changed_files[0],
+            &parsed.raw_line1_bom_paths
+        ));
         Ok(())
     }
 
@@ -2052,6 +2131,42 @@ mod tests {
             SAMPLE_RUST_DIFF,
         )?;
         let outcome = result.analysis_outcome.ok_or("outcome must be projected")?;
+        assert!(
+            !outcome
+                .limitations
+                .iter()
+                .any(|limitation| limitation.kind == AnalysisLimitationKind::EolOnlyChurn),
+            "{outcome:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bom_only_rewrite_does_not_disclose_eol_churn() -> Result<(), String> {
+        // #4959 negative control: a diff whose only delta is a leading UTF-8
+        // BOM parses to an elementwise-equal pair (the parser strips the BOM
+        // from both sides), but the parser records the raw BOM, so the run
+        // must keep the line-endings churn disclosure — and its
+        // normalize-line-endings recovery hint — off entirely.
+        let bom_only = concat!(
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+            "--- a/src/lib.rs\n",
+            "+++ b/src/lib.rs\n",
+            "@@ -1,1 +1,1 @@\n",
+            "-\u{feff}pub fn f(x: i32) -> bool { x > 1 }\n",
+            "+pub fn f(x: i32) -> bool { x > 1 }\n",
+        );
+        let root = temp_root("outcome-bom-only")?;
+        let result = run_pipeline_for_diff_text(
+            &sample_rust_diff_options(root),
+            &OraclePolicy::default(),
+            &[LanguageId::Rust],
+            &[],
+            bom_only,
+        )?;
+        let outcome = result.analysis_outcome.ok_or("outcome must be projected")?;
+        assert!(outcome.kind.is_complete(), "{outcome:?}");
+        assert_eq!(outcome.counts.changed_file_count, 1);
         assert!(
             !outcome
                 .limitations

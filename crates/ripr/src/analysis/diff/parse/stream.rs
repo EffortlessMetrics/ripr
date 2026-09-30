@@ -114,6 +114,7 @@ fn parse_lines<'a, E>(
         pure_rename_file_count: state.pure_rename_file_count(),
         pure_rename_paths: state.pure_rename_paths(),
         truncated_file_sections: state.truncated_file_sections(),
+        raw_line1_bom_paths: state.raw_line1_bom_paths(),
         limitations: state.limitations(),
     })
 }

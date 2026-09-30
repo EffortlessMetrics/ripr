@@ -71,6 +71,12 @@ pub(crate) struct ParsedDiff {
     /// producer stream ended mid-diff for at least one file, even when
     /// other sections parsed completely.
     pub(crate) truncated_file_sections: usize,
+    /// #4959: paths whose raw line-1 diff text carried a UTF-8 byte-order
+    /// mark on either side. `source_line_text` strips that mark before
+    /// storing either text, so a BOM-only rewrite pairs equal afterwards;
+    /// the eol-only churn discrimination consults this record instead of
+    /// misclaiming a line-endings-only change.
+    pub(crate) raw_line1_bom_paths: Vec<PathBuf>,
     /// Typed record of diff regions this parser deliberately refused to read as
     /// ordinary source (#2828). An empty vector means the parser read the whole
     /// input; it never means "no such region existed but we said nothing".
@@ -88,10 +94,13 @@ struct HunkHeader {
 /// encoding metadata, not source, so it is dropped the way compilers and
 /// the Rust index drop it; otherwise the changed text of an item on line 1
 /// never matches its parsed owner.
-fn source_line_text(line: usize, text: &str) -> String {
+/// Returns whether a line-1 BOM was dropped (#4959): the eol-only churn
+/// discrimination must know the raw delta carried an encoding marker, which
+/// the stripped texts alone cannot express once both sides are stored.
+fn source_line_text(line: usize, text: &str) -> (String, bool) {
     match text.strip_prefix('\u{feff}') {
-        Some(rest) if line == 1 => rest.to_string(),
-        _ => text.to_string(),
+        Some(rest) if line == 1 => (rest.to_string(), true),
+        _ => (text.to_string(), false),
     }
 }
 
@@ -231,6 +240,9 @@ mod parser_state {
         /// unprefixed malformed line is not body evidence (#4375).
         current_section_has_body: bool,
         malformed_hunks: BTreeMap<Option<PathBuf>, u64>,
+        /// #4959: paths whose raw line-1 diff text carried a UTF-8 BOM on
+        /// either side; see `ParsedDiff::raw_line1_bom_paths`.
+        raw_line1_bom_paths: Vec<PathBuf>,
     }
 
     impl ParserState {
@@ -270,6 +282,11 @@ mod parser_state {
 
         pub(super) fn pure_rename_paths(&self) -> Vec<PathBuf> {
             self.pure_rename_paths.clone()
+        }
+
+        /// Paths whose raw line-1 diff text carried a UTF-8 BOM (#4959).
+        pub(super) fn raw_line1_bom_paths(&self) -> Vec<PathBuf> {
+            self.raw_line1_bom_paths.clone()
         }
 
         /// File sections that parsed a textual header but closed without a
@@ -860,10 +877,14 @@ mod parser_state {
                     self.close_hunk();
                     return;
                 };
+                let (text, raw_line1_bom) = source_line_text(self.new_line, text);
+                if raw_line1_bom && !self.raw_line1_bom_paths.contains(&path) {
+                    self.raw_line1_bom_paths.push(path.clone());
+                }
                 file.added_lines.push(ChangedLine {
                     line: self.new_line,
                     new_side_line: self.new_line,
-                    text: source_line_text(self.new_line, text),
+                    text,
                 });
                 self.new_line = next;
             } else if let Some(text) = raw.strip_prefix('-') {
@@ -877,10 +898,14 @@ mod parser_state {
                 // Callers that build a SourceLocation pointing into the NEW file
                 // MUST use `new_side_line`; using `line` (the old-side counter)
                 // would target the wrong position in the new file.
+                let (text, raw_line1_bom) = source_line_text(self.old_line, text);
+                if raw_line1_bom && !self.raw_line1_bom_paths.contains(&path) {
+                    self.raw_line1_bom_paths.push(path.clone());
+                }
                 file.removed_lines.push(ChangedLine {
                     line: self.old_line,
                     new_side_line: self.new_line,
-                    text: source_line_text(self.old_line, text),
+                    text,
                 });
                 self.old_line = next;
             } else if raw.starts_with(' ') || raw.is_empty() {
@@ -1679,6 +1704,34 @@ deleted file mode 100644
                 (2, "\u{feff}// kept".to_string()),
             ]
         );
+    }
+
+    // #4959: the parser records which paths had a UTF-8 BOM on raw line-1
+    // diff text, on either side — the stripped stored texts cannot express
+    // it, and the eol-only churn discrimination needs it.
+    #[test]
+    fn line_one_bom_presence_is_recorded_per_path() {
+        let header = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n";
+        let lib = PathBuf::from("src/lib.rs");
+        // BOM on the removed side only.
+        let removed = parse_unified_diff_with_metadata(&format!(
+            "{header}-\u{feff}pub fn f() -> u8 {{ 1 }}\n+pub fn f() -> u8 {{ 1 }}\n"
+        ));
+        assert_eq!(removed.raw_line1_bom_paths, vec![lib.clone()]);
+        // BOM on the added side only.
+        let added = parse_unified_diff_with_metadata(&format!(
+            "{header}-pub fn f() -> u8 {{ 1 }}\n+\u{feff}pub fn f() -> u8 {{ 1 }}\n"
+        ));
+        assert_eq!(added.raw_line1_bom_paths, vec![lib.clone()]);
+        // A BOM on line 2 is source-positioned, not a file marker: the
+        // parser keeps it in the stored text and records nothing.
+        let second_line = parse_unified_diff_with_metadata(
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,2 +1,2 @@\n-pub fn f() -> u8 { 1 }\n-\u{feff}// kept\n+pub fn f() -> u8 { 1 }\n+\u{feff}// kept\n",
+        );
+        assert!(second_line.raw_line1_bom_paths.is_empty());
+        // No BOM anywhere records nothing.
+        let plain = parse_unified_diff_with_metadata(&format!("{header}-a\n+b\n"));
+        assert!(plain.raw_line1_bom_paths.is_empty());
     }
 
     #[test]
