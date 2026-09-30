@@ -248,6 +248,8 @@ def authorize_release(identity, publisher_sha):
         require(type(repository.get("id")) is int and repository["id"] > 0, "missing repository identity")
     require(commit.get("sha") == identity["source_sha"] and commit.get("tree", {}).get("sha") == identity["source_tree"], "source commit/tree mismatch")
     jobs = github_api(f"actions/runs/{identity['run_id']}/attempts/{identity['run_attempt']}/jobs?per_page=100")
+    require(isinstance(jobs, dict) and isinstance(jobs.get("jobs"), list) and
+            all(isinstance(job, dict) for job in jobs["jobs"]), "missing qualification jobs list")
     names = {*NATIVE_JOBS, "package", "publisher-controls", *(f"consumer ({node}, {npm})" for node, npm in CLIENTS)}
     require(jobs.get("total_count") == len(jobs.get("jobs", [])) == len(names), "missing qualification jobs")
     require({job.get("name") for job in jobs["jobs"]} == names, "qualification job set mismatch")
@@ -260,6 +262,8 @@ def authorize_release(identity, publisher_sha):
 
 
 def select_artifacts(listing, wanted, run_info):
+    require(isinstance(listing, dict) and isinstance(listing.get("artifacts"), list) and
+            all(isinstance(artifact, dict) for artifact in listing["artifacts"]), "missing qualification artifacts list")
     require(type(listing.get("total_count")) is int and listing["total_count"] == len(listing.get("artifacts", [])) <= 100, "incomplete artifact list")
     artifacts = []
     for name in wanted:
@@ -294,7 +298,9 @@ def prepare_native_input(source, run_id, attempt):
         require(isinstance(value, dict) and value.get("full_name") == REPOSITORY and
                 type(value.get("id")) is int and value["id"] > 0, "foreign native preparation repository")
     jobs = github_api(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
-    require(jobs.get("total_count") == len(jobs.get("jobs", [])) <= 100, "incomplete native preparation job list")
+    require(isinstance(jobs, dict) and isinstance(jobs.get("jobs"), list) and
+            all(isinstance(job, dict) for job in jobs["jobs"]), "missing native preparation jobs list")
+    require(type(jobs.get("total_count")) is int and jobs["total_count"] == len(jobs["jobs"]) <= 100, "incomplete native preparation job list")
     native_jobs = [job for job in jobs["jobs"] if job.get("name") in NATIVE_JOBS]
     require(len(native_jobs) == len(NATIVE_JOBS) and {job["name"] for job in native_jobs} == NATIVE_JOBS and
             all(job.get("status") == "completed" and job.get("conclusion") == "success" for job in native_jobs), "native build and pip/uv consumers must execute successfully")

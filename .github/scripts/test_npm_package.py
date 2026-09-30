@@ -105,7 +105,8 @@ class NpmNativeEvidenceTests(unittest.TestCase):
         row = dict(artifact, expired=False, workflow_run=dict(id=123, head_sha=source["sha"], repository_id=88, head_repository_id=88))
         listing = {"total_count": 1, "artifacts": [row]}
         for control in ("valid", "stale-attempt", "wrong-source", "foreign-repo", "missing-pip",
-                        "skipped-uv", "duplicate-build", "wrong-zip", "wrong-size"):
+                        "skipped-uv", "duplicate-build", "wrong-zip", "wrong-size",
+                        "missing-jobs", "null-jobs", "invalid-job", "missing-artifacts", "null-artifacts", "invalid-artifact"):
             run = copy.deepcopy(run_info); jobs = copy.deepcopy(authority.jobs); selected = copy.deepcopy(listing)
             archive = data
             if control == "stale-attempt": run["run_attempt"] = 1
@@ -119,6 +120,12 @@ class NpmNativeEvidenceTests(unittest.TestCase):
             if control == "duplicate-build":
                 jobs["jobs"].append(next(j for j in jobs["jobs"] if "build and inspect" in j["name"]))
                 jobs["total_count"] += 1
+            if control == "missing-jobs": jobs = {"total_count": 0}
+            if control == "null-jobs": jobs = {"total_count": 0, "jobs": None}
+            if control == "invalid-job": jobs = {"total_count": 1, "jobs": [None]}
+            if control == "missing-artifacts": selected = {"total_count": 0}
+            if control == "null-artifacts": selected = {"total_count": 0, "artifacts": None}
+            if control == "invalid-artifact": selected = {"total_count": 1, "artifacts": [None]}
             if control == "wrong-zip": archive = data[:-1] + bytes([data[-1] ^ 1])
             if control == "wrong-size": selected["artifacts"][0]["size_in_bytes"] += 1
             with self.subTest(control=control), mock.patch.object(PACKAGE, "github_api", side_effect=[run, jobs, selected, archive]):
