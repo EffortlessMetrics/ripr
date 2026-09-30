@@ -152,12 +152,15 @@ prove adequacy, or grant gate or merge authority.
 "#;
 pub(super) const AGENT_RECEIPT_HELP: &str = r#"Write a provenance receipt with bounded next-action guidance for one change.
 
-Usage: ripr agent receipt [--root PATH] --verify-json PATH --seam-id ID --json [--test NAME] [--command CMD] [--out PATH]
+Usage: ripr agent receipt [--root PATH] --verify-json PATH --seam-id ID [--attempt ID] --json [--test NAME] [--command CMD] [--out PATH]
 
 Options:
   --root PATH         Workspace root. Defaults to current directory.
   --verify-json PATH  JSON emitted by `ripr agent verify`.
   --seam-id ID        Select one seam from the verify JSON.
+  --attempt ID        Bind the receipt to one repair attempt by id. Without
+                      it the seam must have exactly one repair attempt; the
+                      refusal names the ids found.
   --json              Required until a human receipt surface exists.
   --test NAME         Optional focused test added or changed by the agent.
   --command CMD       Optional verification command that was run. Repeatable.
@@ -166,7 +169,9 @@ Options:
 The receipt command narrows a saved agent verify artifact to one seam and adds
 handoff metadata for review. The verify JSON path and the before/after snapshot
 paths named inside it must resolve under `--root`; receipt provenance hashes
-those three artifacts without rerunning analysis. It remains advisory and
+those three artifacts without rerunning analysis. With `--attempt`, the receipt
+binds against that attempt's retained packet instead of the repository-global
+compatibility packet a later attempt replaces. It remains advisory and
 static; it does not run analysis, mutation testing, generate tests, edit files,
 change cache behavior, or touch LSP/MCP surfaces.
 "#;

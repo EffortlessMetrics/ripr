@@ -41,10 +41,16 @@ pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input
 pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
 
 /// The versioned envelope consumed by the producer-owned agent verification
-/// route and emitted by the agent seam packet renderer. `0.5` adds the
-/// optional envelope-level `repair_attempt` continuation block carried by the
-/// `ripr agent repair --phase before --json` success stdout (#4329); every
-/// other projection keeps the `0.4` shape and only the version string moves.
+/// route and emitted by the agent seam packet renderer.
+///
+/// `0.5` adds the seam packet's edit-cage fields (`allowed_edit_surface`,
+/// `forbidden_files`, `must_not_change`, #4330): the packet now states the
+/// cage its repair will enforce, derived from the same recommended target the
+/// cage authority consumes, so the disclosure cannot drift from enforcement.
+/// `0.5` also adds the optional envelope-level `repair_attempt` continuation
+/// block carried by the `ripr agent repair --phase before --json` success
+/// stdout (#4329); every other projection keeps the `0.4` shape and only the
+/// version string moves.
 pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.5";
 pub(crate) use crate::analysis::repair_route::repair_route_readiness;
 pub(crate) use check::check_with_progress;

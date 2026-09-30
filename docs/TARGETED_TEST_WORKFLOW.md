@@ -57,10 +57,21 @@ remaining public CLI path for this loop. `ripr outcome` owns the before/after
 receipt, and `ripr calibrate cargo-mutants` owns the advisory runtime
 calibration import.
 
-Use a local scratch directory for before/after snapshots:
+Use a local scratch directory for before/after snapshots. The loop's snapshot
+commands redirect into this directory, and every shell opens the redirect
+before `ripr` runs, so create it first — in the shell that will run the
+snapshots (a fresh workspace has no `target/` yet):
 
 ```bash
 mkdir -p target/ripr/workflow
+```
+
+```cmd
+mkdir target\ripr\workflow
+```
+
+```powershell
+New-Item -ItemType Directory -Force -Path target/ripr/workflow | Out-Null
 ```
 
 ## 0. Generate a Pilot Packet

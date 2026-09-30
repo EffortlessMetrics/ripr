@@ -1338,6 +1338,20 @@ pub(crate) enum EditCageVerdictStatus {
     Incomparable,
 }
 
+impl EditCageVerdictStatus {
+    /// The serialized spelling of the verdict status, for refusals that must
+    /// use the same vocabulary the manifest and cage records serialize
+    /// (#4332). One owner beside the enum so the serde rename and this label
+    /// cannot drift.
+    pub(crate) fn as_label(self) -> &'static str {
+        match self {
+            EditCageVerdictStatus::Compliant => "compliant",
+            EditCageVerdictStatus::Violated => "violated",
+            EditCageVerdictStatus::Incomparable => "incomparable",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum EditCageViolationKind {

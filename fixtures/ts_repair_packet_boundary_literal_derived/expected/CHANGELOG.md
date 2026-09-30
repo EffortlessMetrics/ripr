@@ -53,6 +53,7 @@ Updated:
 ## Pending — ts_repair_packet_boundary_literal_derived (5)
 
 Reason:
+RIPR-SPEC-0005: agent seam packet schema 0.4 to 0.5 (#4330) — packets state the edit cage (allowed_edit_surface, forbidden_files, must_not_change) and next.before_snapshot_command drops the POSIX-only mkdir prefix
 RIPR-SPEC-0005: agent seam packet schema_version 0.4 to 0.5 (#4329); version-string-only flip - the additive repair_attempt continuation rides only the repair-before --json success stdout, never this check.json projection
 
 Command:

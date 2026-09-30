@@ -336,7 +336,14 @@ Explicit per-seam CLI `packet.next` instructions bind commands and artifact
 writes to the selected repository root. Standalone packets include the static outcome
 producer before verify and receipt. Prepared repair packets instead advertise
 the durable after-phase continuation and leave incompatible manual steps null;
-the existing edit cage and authorization checks remain authoritative. The
+the existing edit cage and authorization checks remain authoritative. Each
+seam packet states the edit cage its repair will enforce — `allowed_edit_surface`
+derived from the same recommended target the cage authority consumes,
+`forbidden_files` (the production file whose behavior changed), and
+`must_not_change` with the explicit terminality warning — so the disclosure
+cannot drift from enforcement (#4330). The `next` snapshot recipes are single
+plain commands without a POSIX-only directory prefix; the loop's `ripr`
+commands create their own artifact directories. The
 prepared command pins the published exact attempt selector; a finished attempt
 cannot resume a later attempt for the same seam. Explicit seam-based continuation
 still refuses ambiguous awaiting attempts. Portable bulk packets retain their local

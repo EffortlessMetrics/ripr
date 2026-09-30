@@ -151,6 +151,32 @@ pub(crate) struct RepairAttemptAfter {
     pub(crate) verdict: EditCageVerdict,
 }
 
+/// Resolves the retained packet an attempt-bound receipt must bind against.
+/// The public `agent receipt --attempt <id>` route reads this attempt's
+/// retained packet — the same authority the after phase consumes — instead
+/// of the repository-global compatibility packet, which a later attempt for
+/// any seam silently replaces (#4332).
+pub(crate) fn retained_attempt_packet_path(
+    root: &Path,
+    seam_id: &str,
+    attempt_id: &str,
+) -> Result<PathBuf, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("canonicalize repair attempt root failed: {error}"))?;
+    let attempt_id = RepairAttemptId::parse(attempt_id.to_string())?;
+    let (_, manifest) = load_repair_attempt_by_id(&root, &attempt_id)?;
+    if manifest.seam_id != seam_id {
+        return Err(format!(
+            "repair attempt {} belongs to seam `{}`, not `{seam_id}`",
+            attempt_id.as_str(),
+            manifest.seam_id
+        ));
+    }
+    let packet = find_manifest_artifact(&manifest, "agent_packet")?;
+    Ok(root.join(&packet.path))
+}
+
 /// The only attempt state that may authorize a receipt. This is deliberately
 /// derived from the durable manifest and its immutable before artifacts rather
 /// than from the workflow filenames, which are compatibility outputs.
@@ -160,6 +186,9 @@ pub(crate) fn receipt_binding(
     packet_path: &Path,
     attempt_id: Option<&str>,
 ) -> Result<serde_json::Value, String> {
+    // Refusals name the root the caller typed, not the canonicalized verbatim
+    // path canonicalize() hands back below (#4332).
+    let root_display = display_path(root);
     let root = root
         .canonicalize()
         .map_err(|error| format!("canonicalize repair attempt root failed: {error}"))?;
@@ -204,9 +233,31 @@ pub(crate) fn receipt_binding(
             }
         }
         if matches.len() != 1 {
+            // #4332: the message names the working next action in both
+            // directions. Found zero: there is nothing to pick, so it names
+            // the start command. Found many: it names the ids so the agent
+            // can select one with the receipt's own `--attempt` flag instead
+            // of rerunning to discover them.
+            let restart = format!(
+                "ripr agent repair --root {} --seam-id {} --phase before",
+                shell_arg(&root_display),
+                shell_arg(seam_id)
+            );
+            let ids = matches
+                .iter()
+                .map(|(_, manifest)| manifest.repair_attempt_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let detail = if matches.is_empty() {
+                format!("no repair attempt exists for seam `{seam_id}`; start one with `{restart}`")
+            } else {
+                format!(
+                    "found {}: {ids}; pass --attempt <id> to select the attempt the receipt binds to exactly",
+                    matches.len()
+                )
+            };
             return Err(format!(
-                "receipt requires exactly one repair attempt for seam `{seam_id}`, found {}",
-                matches.len()
+                "receipt requires exactly one repair attempt for seam `{seam_id}`: {detail}"
             ));
         }
         matches.pop().ok_or_else(|| "missing attempt".to_string())?
@@ -219,12 +270,22 @@ pub(crate) fn receipt_binding(
         || !after.current
         || after.verdict.status != crate::edit_cage::EditCageVerdictStatus::Compliant
     {
+        // #4332: the refusal uses the vocabulary the serialized manifest and
+        // the cage verdict use (`ready_to_finish`, `compliant`), not Debug
+        // spellings the agent just read differently, and glosses `current`
+        // because a bare `current false` does not say what moved.
+        let current_gloss = if after.current {
+            String::new()
+        } else {
+            " (repository HEAD moved since the after phase recorded its verdict; `ripr agent status` reads which head)".to_string()
+        };
         return Err(format!(
-            "repair attempt {} is not receipt-ready: state {:?}, current {}, verdict {:?}",
+            "repair attempt {} is not receipt-ready: state `{}`, current {}{}, verdict `{}`",
             manifest.repair_attempt_id.as_str(),
-            manifest.state,
+            repair_attempt_state_label(&manifest.state),
             after.current,
-            after.verdict.status
+            current_gloss,
+            after.verdict.status.as_label(),
         ));
     }
     // The receipt names the after head the finish recorded. That head is the
@@ -1351,7 +1412,9 @@ pub(crate) fn resolve_awaiting_repair_attempt(
             let attempt_id = RepairAttemptId::parse(attempt_id.to_string())?;
             load_repair_attempt_by_id(&root, &attempt_id)?
         }
-        (None, Some(seam_id)) => select_awaiting_repair_attempt_by_seam(&root, seam_id)?,
+        (None, Some(seam_id)) => {
+            select_awaiting_repair_attempt_by_seam(&root, &display_path(root_argument), seam_id)?
+        }
         (Some(_), Some(_)) => {
             return Err(
                 "repair after selection accepts either attempt ID or seam ID, not both".to_string(),
@@ -1757,7 +1820,7 @@ fn after_phase_not_awaiting_error(root_display: &str, manifest: &RepairAttemptMa
         });
     match manifest.state {
         RepairAttemptState::ReadyToFinish => format!(
-            "repair attempt {attempt_id} (seam `{seam_id}`) already finished: its after phase ran at HEAD {after_head} and the edit cage admitted the edit (state `ready_to_finish`), so there is no after phase left to run. Its retained receipt stays under `{REPAIR_ATTEMPT_DIRECTORY}/{attempt_id}/`; `{receipt}` is only a compatibility projection of the latest finish. Next: `{status}` reads the attempt's outcome; if the receipt leaves the gap open, start a new attempt with `{restart}`",
+            "repair attempt {attempt_id} (seam `{seam_id}`) already finished: its after phase ran at HEAD {after_head} and the edit cage admitted the edit (state `ready_to_finish`), so there is no after phase left to run. Its retained receipt stays under `{REPAIR_ATTEMPT_DIRECTORY}/{attempt_id}/`; `{receipt}` is only a compatibility projection of the latest finish — the workflow keeps one receipt file, and a later attempt's after phase replaces it, so verify the file's `repair_attempt.attempt_id` names this attempt before relying on it. Next: `{status}` reads the attempt's outcome; if the receipt leaves the gap open, start a new attempt with `{restart}`",
             receipt = crate::agent::loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT,
         ),
         RepairAttemptState::Stale
@@ -1830,6 +1893,7 @@ fn is_analysis_input_path(path: &str) -> bool {
 
 fn select_awaiting_repair_attempt_by_seam(
     root: &Path,
+    root_display: &str,
     seam_id: &str,
 ) -> Result<(PathBuf, RepairAttemptManifest), String> {
     if seam_id.trim().is_empty() {
@@ -1837,10 +1901,27 @@ fn select_awaiting_repair_attempt_by_seam(
     }
     let manifests_root = root.join(REPAIR_ATTEMPT_DIRECTORY);
     let mut matches = Vec::new();
-    for entry in std::fs::read_dir(&manifests_root)
-        .map_err(|error| format!("read {} failed: {error}", manifests_root.display()))?
-    {
-        let entry = entry.map_err(|error| format!("read repair attempt entry failed: {error}"))?;
+    // A fresh workspace has no attempts directory at all: that is zero
+    // matches, not an operational error (#4332), so the refusal still names
+    // the start command.
+    let entries: Vec<std::fs::DirEntry> = match std::fs::read_dir(&manifests_root) {
+        Ok(entries) => {
+            // A failed directory entry is an operational error, not a silent
+            // skip: a partial listing must never masquerade as a complete one
+            // and misselect the sole awaiting attempt or advise a false
+            // found-zero start (review finding on #4332).
+            let mut collected = Vec::new();
+            for entry in entries {
+                collected.push(entry.map_err(|error| {
+                    format!("read {} failed: {error}", manifests_root.display())
+                })?);
+            }
+            collected
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => return Err(format!("read {} failed: {error}", manifests_root.display())),
+    };
+    for entry in entries {
         let path = entry.path().join(REPAIR_ATTEMPT_MANIFEST);
         if !path.is_file() {
             continue;
@@ -1851,9 +1932,31 @@ fn select_awaiting_repair_attempt_by_seam(
         }
     }
     if matches.len() != 1 {
+        // #4332: found zero has no id to pass — the working action is the
+        // start command; found many names the ids so the agent can pick one
+        // with `--attempt` without rerunning to discover them.
+        let restart = format!(
+            "ripr agent repair --root {} --seam-id {} --phase before",
+            shell_arg(root_display),
+            shell_arg(seam_id)
+        );
+        let ids = matches
+            .iter()
+            .map(|(_, manifest)| manifest.repair_attempt_id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let detail = if matches.is_empty() {
+            format!(
+                "no awaiting repair attempt exists for seam `{seam_id}`; start one with `{restart}`"
+            )
+        } else {
+            format!(
+                "found {}: {ids}; pass --attempt <id> to select the prepared work exactly",
+                matches.len()
+            )
+        };
         return Err(format!(
-            "expected exactly one awaiting repair attempt for seam `{seam_id}`, found {}; pass --attempt <id> to select the prepared work exactly",
-            matches.len()
+            "expected exactly one awaiting repair attempt for seam `{seam_id}`: {detail}"
         ));
     }
     matches.pop().ok_or_else(|| "missing attempt".to_string())

@@ -5603,8 +5603,13 @@ fn agent_repair_names_output_redirected_into_the_checkout() -> Result<(), Box<dy
                 manifest["after"]["verdict"]["status"], "violated",
                 "{manifest}"
             );
+            // #4330 packets state `forbidden_files` explicitly (the production
+            // anchor), and the cage classifies an edit to that file against
+            // the stated rule — ForbiddenPath, not the generic
+            // OutsideAllowedSurface this assertion carried before the packet
+            // carried the forbidden list.
             assert!(
-                stderr.contains("ripr:   src/lib.rs (OutsideAllowedSurface)"),
+                stderr.contains("ripr:   src/lib.rs (ForbiddenPath)"),
                 "{stderr}"
             );
             assert!(
@@ -5940,6 +5945,12 @@ fn agent_repair_before_refuses_a_seam_without_a_test_file_before_writing_anythin
             "seam `{seam_id}` has no test file ripr can route a repair to, so no repair attempt was started."
         )),
         "the refusal must say why in plain words:\n{stderr}"
+    );
+    // #4332: the refusal states the observable packet field, not only the
+    // producer-jargon cause, so an agent can check the packet itself.
+    assert!(
+        stderr.contains("recommended_test.file: \"not_applicable\""),
+        "the refusal must name the observable packet field:\n{stderr}"
     );
     assert!(
         !stderr.contains("before phase complete"),
@@ -6287,6 +6298,288 @@ fn agent_packet_rejects_configured_off_seam() -> Result<(), Box<dyn std::error::
             .join("fixtures/boundary_gap/expected/llm-work-loop/configured-off/stderr.txt"),
     )?;
     assert!(stderr.contains(expected.trim()));
+    // #4332: the policy-omitted refusal names the listing route instead of
+    // dead-ending.
+    assert!(
+        stderr.contains("Run `ripr pilot"),
+        "the policy-omitted refusal must name the listing command:\n{stderr}"
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+/// #4332: the seam-selection refusal states the working next action in both
+/// directions. Found zero has no id to pass — it names the start command.
+/// Found many names the ids, so an agent can pick one with `--attempt`
+/// without rerunning to discover them.
+#[test]
+fn agent_repair_seam_selection_names_start_command_and_found_ids()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unbuilt_repair_fixture("agent-repair-selection-guidance")?;
+
+    // Found zero: the dead-end advice used to be "pass --attempt <id>",
+    // which cannot exist yet.
+    let after = run_repair_phase(&root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "after")?;
+    assert_failure(&after);
+    let stderr = String::from_utf8_lossy(&after.stderr);
+    let expected_start = format!(
+        "no awaiting repair attempt exists for seam `{BOUNDARY_GAP_SEAM_ID}`; start one with `ripr agent repair --root {} --seam-id {BOUNDARY_GAP_SEAM_ID} --phase before`",
+        // The refusal renders the root through the same display rule as the
+        // sibling messages (stable separators).
+        root.display().to_string().replace('\\', "/")
+    );
+    assert!(
+        stderr.contains(&expected_start),
+        "found-zero must name the start command:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("pass --attempt"),
+        "found-zero must not advise an id that cannot exist:\n{stderr}"
+    );
+
+    // Two awaiting attempts for one seam: the refusal names both ids.
+    let before_a = run_repair_phase(&root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+    assert_success(&before_a);
+    let before_b = run_repair_phase(&root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+    assert_success(&before_b);
+    let mut attempts = std::fs::read_dir(root.join("target/ripr/repair-attempts"))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .map(|path| {
+            Ok(path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_string)
+                .ok_or("attempt directory name is not UTF-8")?)
+        })
+        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+    attempts.sort();
+    assert_eq!(attempts.len(), 2, "precondition: two prepared attempts");
+
+    let after = run_repair_phase(&root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "after")?;
+    assert_failure(&after);
+    let stderr = String::from_utf8_lossy(&after.stderr);
+    assert!(
+        stderr.contains("expected exactly one awaiting repair attempt for seam")
+            && stderr.contains("found 2"),
+        "the ambiguity refusal must fire:\n{stderr}"
+    );
+    for attempt in &attempts {
+        assert!(
+            stderr.contains(attempt.as_str()),
+            "found-many must name the id {attempt}:\n{stderr}"
+        );
+    }
+    assert!(
+        stderr.contains("pass --attempt <id> to select the prepared work exactly"),
+        "found-many must name the selection flag:\n{stderr}"
+    );
+
+    // The named ids are directly actionable: attempt A finishes through its
+    // own exact selector.
+    let attempt_a = &attempts[0];
+    add_boundary_test(&root)?;
+    simulate_first_cargo_test(&root)?;
+    let finish = run_repair_phase(&root, &["--attempt", attempt_a], "after")?;
+    assert_success(&finish);
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+/// The exact scenario from #4332: a failed attempt A and a fresh attempt B
+/// for the same seam. The bare receipt command refuses by naming both ids;
+/// `agent receipt --attempt <id>` selects exactly one and binds against that
+/// attempt's retained packet; a receipt-ready refusal uses the serialized
+/// vocabulary the manifest and verdict carry, not Debug spellings.
+#[test]
+fn agent_receipt_attempt_flag_selects_one_attempt_and_refusals_name_ids()
+-> Result<(), Box<dyn std::error::Error>> {
+    fn receipt_with_attempt(
+        root: &Path,
+        attempt: Option<&str>,
+        verify_json: &str,
+    ) -> Result<Output, std::io::Error> {
+        let root_arg = root.display().to_string();
+        let mut args = vec![
+            "agent",
+            "receipt",
+            "--root",
+            root_arg.as_str(),
+            "--verify-json",
+            verify_json,
+            "--seam-id",
+            BOUNDARY_GAP_SEAM_ID,
+            "--json",
+        ];
+        if let Some(attempt) = attempt {
+            args.extend(["--attempt", attempt]);
+        }
+        run_command(env!("CARGO_BIN_EXE_ripr"), Some(root), &args)
+    }
+
+    let root = unbuilt_repair_fixture("agent-receipt-attempt-selection")?;
+
+    // Attempt A: prepared, then failed by a committed production-only edit.
+    // The gap stays open (no test was added), so a fresh attempt for the same
+    // seam can still be prepared — the exact ambiguity scenario.
+    let before_a = run_repair_phase(&root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+    assert_success(&before_a);
+    let (attempt_a, _) = sole_repair_attempt(&root)?;
+    let mut production = std::fs::read_to_string(root.join("src/lib.rs"))?;
+    production.push_str("// committed out-of-cage edit\n");
+    std::fs::write(root.join("src/lib.rs"), production)?;
+    commit_repair_fixture(&root, &["-qam", "production edit outside the cage"])?;
+    let after_a = run_repair_phase(&root, &["--attempt", &attempt_a], "after")?;
+    assert_failure(&after_a);
+    let (_, manifest_a) = sole_repair_attempt(&root)?;
+    assert_eq!(manifest_a["state"], "failed", "{manifest_a}");
+    // The refused after phase still published its verify document; keep it
+    // for the receipt reruns below.
+    std::fs::rename(
+        root.join("target/ripr/workflow/agent-verify.json"),
+        root.join("target/ripr/workflow/agent-verify-a.json"),
+    )?;
+
+    // With exactly one attempt for the seam — the failed one — the bare
+    // receipt refuses, and the refusal uses the serialized vocabulary the
+    // manifest and verdict carry: `failed`/`violated`, not Debug spellings.
+    let not_ready = receipt_with_attempt(&root, None, "target/ripr/workflow/agent-verify-a.json")?;
+    assert_failure(&not_ready);
+    let stderr = String::from_utf8_lossy(&not_ready.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "repair attempt {attempt_a} is not receipt-ready: state `failed`, current true, verdict `violated`"
+        )),
+        "the receipt-ready refusal must use the serialized vocabulary:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("state Failed") && !stderr.contains("verdict Violated"),
+        "the refusal must not leak Debug spellings:\n{stderr}"
+    );
+
+    // Attempt B: fresh, prepared after A's committed edit, finished cleanly.
+    let before_b = run_repair_phase(&root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+    assert_success(&before_b);
+    let mut attempts = std::fs::read_dir(root.join("target/ripr/repair-attempts"))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .map(|path| {
+            Ok(path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_string)
+                .ok_or("attempt directory name is not UTF-8")?)
+        })
+        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+    attempts.sort();
+    assert_eq!(attempts.len(), 2, "precondition: two attempts");
+    let attempt_b = attempts
+        .iter()
+        .find(|id| id.as_str() != attempt_a)
+        .ok_or("second attempt id not found")?
+        .clone();
+    let (_, manifest_b) = {
+        let path = root
+            .join("target/ripr/repair-attempts")
+            .join(&attempt_b)
+            .join("attempt.json");
+        let manifest: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+        (attempt_b.clone(), manifest)
+    };
+    assert_eq!(manifest_b["state"], "awaiting_edit", "{manifest_b}");
+    add_boundary_test(&root)?;
+    simulate_first_cargo_test(&root)?;
+    let after_b = run_repair_phase(&root, &["--attempt", &attempt_b], "after")?;
+    assert_success(&after_b);
+
+    // The bare receipt command is permanently ambiguous here; the refusal
+    // names both ids instead of leaving the agent guessing.
+    let ambiguous = receipt_with_attempt(&root, None, "target/ripr/workflow/agent-verify.json")?;
+    assert_failure(&ambiguous);
+    let stderr = String::from_utf8_lossy(&ambiguous.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "receipt requires exactly one repair attempt for seam `{BOUNDARY_GAP_SEAM_ID}`"
+        )),
+        "the ambiguity refusal must fire:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(&attempt_a) && stderr.contains(&attempt_b),
+        "the refusal must name both ids:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("pass --attempt <id>"),
+        "the refusal must name the selection flag:\n{stderr}"
+    );
+
+    // Found zero on the receipt scan: no attempt exists for this seam at
+    // all, so the advice names the start command instead of an id. The
+    // packet-level cage check runs first, so the compat packet must name the
+    // probed seam.
+    std::fs::write(
+        root.join("target/ripr/workflow/agent-packet.json"),
+        r#"{"schema_version":"0.5","packets":[{"seam_id":"no-attempts-seam","recommended_test":{"file":"tests/pricing.rs","name":"some_test"}}]}"#,
+    )?;
+    let found_zero = run_ripr(&[
+        "agent",
+        "receipt",
+        "--root",
+        &root.display().to_string(),
+        "--verify-json",
+        "target/ripr/workflow/agent-verify.json",
+        "--seam-id",
+        "no-attempts-seam",
+        "--json",
+    ]);
+    assert_failure(&found_zero);
+    let stderr = String::from_utf8_lossy(&found_zero.stderr);
+    let expected_zero = format!(
+        "no repair attempt exists for seam `no-attempts-seam`; start one with `ripr agent repair --root {} --seam-id no-attempts-seam --phase before`",
+        // The refusal names the root the caller typed (stable separators).
+        root.display().to_string().replace('\\', "/")
+    );
+    assert!(
+        stderr.contains(&expected_zero),
+        "receipt found-zero must name the start command:\n{stderr}"
+    );
+
+    // A mismatched seam/attempt pair refuses with the ownership diagnostic.
+    let mismatched = run_ripr(&[
+        "agent",
+        "receipt",
+        "--root",
+        &root.display().to_string(),
+        "--verify-json",
+        "target/ripr/workflow/agent-verify.json",
+        "--seam-id",
+        "some-other-seam",
+        "--attempt",
+        &attempt_a,
+        "--json",
+    ]);
+    assert_failure(&mismatched);
+    let stderr = String::from_utf8_lossy(&mismatched.stderr);
+    assert!(
+        stderr.contains(&format!("repair attempt {attempt_a} belongs to seam")),
+        "a mismatched pair must refuse with ownership:\n{stderr}"
+    );
+
+    // The flag selects the finished attempt and binds to its retained packet.
+    let selected = receipt_with_attempt(
+        &root,
+        Some(&attempt_b),
+        "target/ripr/workflow/agent-verify.json",
+    )?;
+    assert_success(&selected);
+    let receipt: serde_json::Value = serde_json::from_slice(&selected.stdout)?;
+    assert_eq!(receipt["status"], "advisory", "{receipt}");
+    assert_eq!(
+        receipt["repair_attempt"]["attempt_id"],
+        attempt_b.as_str(),
+        "{receipt}"
+    );
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

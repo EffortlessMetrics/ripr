@@ -15,13 +15,15 @@
 //!
 //! The packet schema is **0.5**, intentionally distinct from the
 //! repo-exposure report's 0.1, because the packet is a separate
-//! contract aimed at coding agents rather than reviewers. `0.5`
-//! adds the optional envelope-level `repair_attempt` continuation block
-//! carried by the `ripr agent repair --phase before` success stdout
-//! (#4329); every other projection keeps the `0.4` shape.
+//! contract aimed at coding agents rather than reviewers. `0.5` states the
+//! edit cage on each seam packet (`allowed_edit_surface`, `forbidden_files`,
+//! `must_not_change`, #4330) and drops the POSIX-only `mkdir -p` prefix from
+//! `next.before_snapshot_command`; `0.5` also adds the optional
+//! envelope-level `repair_attempt` continuation block carried by the
+//! `ripr agent repair --phase before` success stdout (#4329), while every
+//! other projection keeps the `0.4` shape.
 
 use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
-use crate::agent::loop_commands::anchored_redirect_target;
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
     WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
@@ -84,10 +86,16 @@ const REPAIR_LOOP_ROOT: &str = ".";
 /// default `ripr agent status` and `first-useful-action` already publish.
 const REPAIR_LOOP_MODE: &str = "draft";
 
-/// Create the two destinations used by the first redirected snapshot and the
-/// later receipt. This stays local to the packet renderer because xtask
-/// includes `loop_commands.rs` independently without this output module.
-const WORKFLOW_PREPARE_COMMAND: &str = "mkdir -p target/ripr/workflow target/ripr/reports";
+/// The production-code statement carried in the packet's `must_not_change`
+/// field (#4330): the repair edits only the focused test surface.
+pub(crate) const EDIT_CAGE_PRODUCTION_STATEMENT: &str =
+    "Do not edit production code; only the files in allowed_edit_surface may change.";
+
+/// The terminality warning carried in the packet's `must_not_change` field
+/// and the before-phase TTY narration (#4330): violating the unstated cage
+/// used to be the only way an agent learned it existed.
+pub(crate) const EDIT_CAGE_TERMINALITY_WARNING: &str =
+    "editing any file outside allowed_edit_surface fails the repair attempt terminally";
 
 /// Honesty label carried next to `suggested_test_command`. The recommended
 /// test does not exist yet, so the `cargo test` filter selects nothing until
@@ -356,6 +364,12 @@ struct RepairLoopCommands {
 /// Render the loop commands only when the envelope actually asks for a
 /// targeted test. An envelope of `inspect_static_limitation` packets has no
 /// repair to verify, so it keeps its current shape.
+///
+/// The before snapshot is a single plain command with one redirect (#4330):
+/// the POSIX-only `mkdir -p &&` prefix is gone. The loop's `ripr` commands
+/// create their own artifact directories (`agent start --out`,
+/// `agent repair --phase before`, `agent receipt --out`), and the manual
+/// loop docs teach the directory setup as its own step.
 fn repair_loop_commands(
     actionable: &[&ClassifiedSeam],
     selected_root: Option<&str>,
@@ -364,15 +378,6 @@ fn repair_loop_commands(
         .iter()
         .find(|entry| task_for(entry) == TASK_WRITE_TARGETED_TEST)?;
     let root = selected_root.unwrap_or(REPAIR_LOOP_ROOT);
-    let prepare = selected_root
-        .map(|root| {
-            format!(
-                "mkdir -p {} {}",
-                shell_arg(&anchored_redirect_target(root, "target/ripr/workflow")),
-                shell_arg(&anchored_redirect_target(root, "target/ripr/reports")),
-            )
-        })
-        .unwrap_or_else(|| WORKFLOW_PREPARE_COMMAND.to_string());
     let receipt = (actionable.len() == 1).then(|| {
         agent_receipt_command(
             root,
@@ -382,9 +387,10 @@ fn repair_loop_commands(
         )
     });
     Some(RepairLoopCommands {
-        before_snapshot: format!(
-            "{prepare} && {}",
-            check_repo_exposure_command(root, REPAIR_LOOP_MODE, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,)
+        before_snapshot: check_repo_exposure_command(
+            root,
+            REPAIR_LOOP_MODE,
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
         ),
         after_snapshot: check_repo_exposure_command(
             root,
@@ -2102,7 +2108,17 @@ fn task_for(entry: &ClassifiedSeam) -> &'static str {
     // Only reached through the packet queue pre-filter
     // (`repair_packet_queue_visible`); under that filter the authority's
     // fail-closed flip reduces to producer route readiness.
-    if is_safe_for_repair_packet(entry) {
+    //
+    // The recommended target must also be a test surface (#4330 cage
+    // contract): a producer-owned inline-module proposal names a production
+    // file, and advertising it as `allowed_edit_surface` alongside the
+    // must-not-change production statement would promise an edit surface the
+    // cage's own policy text forbids. Those seams render as inspection
+    // packets, matching the evidence-record and pilot-command gating of the
+    // same check.
+    if is_safe_for_repair_packet(entry)
+        && crate::analysis::is_test_surface_path(&recommended_test_for(entry).file)
+    {
         TASK_WRITE_TARGETED_TEST
     } else {
         "inspect_static_limitation"
@@ -2165,6 +2181,63 @@ fn push_packet_json(
         json_escape(recommended.reason.as_str())
     ));
     out.push_str("},\n");
+
+    // The edit cage this packet's repair will enforce, stated where the work
+    // is planned (#4330). `edit_cage_policy_from_packet` consumes the
+    // `allowed_edit_surface` field first and falls back to
+    // `recommended_test.file`, so both fields are derived from the same
+    // `recommended` binding here: the packet cannot promise a different edit
+    // surface than the attempt later enforces terminally.
+    let actionable = task_for(entry) == TASK_WRITE_TARGETED_TEST;
+    let allowed_edit_surface: Vec<&str> = if actionable && recommended.file != "not_applicable" {
+        vec![recommended.file.as_str()]
+    } else {
+        Vec::new()
+    };
+    out.push_str("      \"allowed_edit_surface\": [");
+    for (idx, path) in allowed_edit_surface.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!("\"{}\"", json_escape(path)));
+    }
+    out.push_str("],\n");
+    // The production file whose behavior changed stays untouched: the repair
+    // edits only the focused test surface. Mirrors the gap packets'
+    // `forbidden_files` derivation (the anchor file, dropped when it is the
+    // allowed target itself).
+    let production_file = display_path(seam.file());
+    let forbidden_files: Vec<&str> = if allowed_edit_surface
+        .first()
+        .is_some_and(|allowed| *allowed == production_file)
+    {
+        Vec::new()
+    } else {
+        vec![production_file.as_str()]
+    };
+    out.push_str("      \"forbidden_files\": [");
+    for (idx, path) in forbidden_files.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!("\"{}\"", json_escape(path)));
+    }
+    out.push_str("],\n");
+    out.push_str("      \"must_not_change\": [");
+    out.push_str(&format!(
+        "\"{}\"",
+        json_escape(EDIT_CAGE_PRODUCTION_STATEMENT)
+    ));
+    if !allowed_edit_surface.is_empty() {
+        out.push_str(&format!(
+            ", \"{}\"",
+            json_escape(&format!(
+                "{EDIT_CAGE_TERMINALITY_WARNING} (allowed: {})",
+                allowed_edit_surface.join(", ")
+            ))
+        ));
+    }
+    out.push_str("],\n");
 
     // The `cargo test` filter for the test this packet asks for. Only
     // actionable packets name a test at all, and the named test does not
@@ -3261,6 +3334,7 @@ fn predicate_boundary_assertion_hint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::loop_commands::anchored_redirect_target;
     use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
     use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationReason, TestGripEvidence};
     use crate::analysis_outcome::{
@@ -6324,6 +6398,133 @@ mod tests {
         Ok(())
     }
 
+    /// #4330: an actionable seam packet states the edit cage its repair will
+    /// enforce. The `allowed_edit_surface` field is the exact source the cage
+    /// authority consumes (`edit_cage_policy_from_packet` prefers it over
+    /// `recommended_test.file`), so it must equal the recommended test file —
+    /// a hand-maintained copy would let the packet promise a different edit
+    /// surface than the attempt enforces.
+    #[test]
+    fn actionable_packet_states_the_edit_cage_it_will_enforce() -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
+        let value = parsed_envelope(&json)?;
+        let packet = &value["packets"][0];
+        let recommended_file = packet["recommended_test"]["file"]
+            .as_str()
+            .ok_or_else(|| format!("packet has no recommended test file: {json}"))?;
+        assert_eq!(
+            packet["allowed_edit_surface"],
+            serde_json::json!([recommended_file]),
+            "allowed_edit_surface must be derived from the recommended test file: {json}"
+        );
+        // The production file whose behavior changed is named as forbidden,
+        // mirroring the gap packets' derivation.
+        assert_eq!(
+            packet["forbidden_files"],
+            serde_json::json!(["src/pricing.rs"]),
+            "forbidden_files must name the production file: {json}"
+        );
+        let must_not_change: Vec<String> = packet["must_not_change"]
+            .as_array()
+            .ok_or_else(|| format!("packet has no must_not_change: {json}"))?
+            .iter()
+            .map(|entry| {
+                entry
+                    .as_str()
+                    .ok_or_else(|| format!("non-string must_not_change entry: {json}"))
+                    .map(str::to_string)
+            })
+            .collect::<Result<_, String>>()?;
+        assert!(
+            must_not_change
+                .iter()
+                .any(|entry| entry == EDIT_CAGE_PRODUCTION_STATEMENT),
+            "must_not_change must carry the production-code statement: {must_not_change:?}"
+        );
+        assert!(
+            must_not_change
+                .iter()
+                .any(|entry| entry.starts_with(EDIT_CAGE_TERMINALITY_WARNING)),
+            "must_not_change must carry the terminality warning: {must_not_change:?}"
+        );
+        Ok(())
+    }
+
+    /// #4330: an inspection packet allows no edits at all — an empty surface
+    /// is honest, and the cage authority fails closed on it before any
+    /// attempt could start.
+    #[test]
+    fn inspection_packet_carries_an_empty_edit_surface() -> Result<(), String> {
+        let mut entry = weakly_gripped_classified();
+        entry.class = SeamGripClass::Opaque;
+        let json = render_agent_seam_packets_json(&[entry], None);
+        let value = parsed_envelope(&json)?;
+        let packet = &value["packets"][0];
+        if packet["task"] != "inspect_static_limitation" {
+            return Err(format!("expected an inspection packet: {json}"));
+        }
+        assert_eq!(
+            packet["allowed_edit_surface"],
+            serde_json::json!([]),
+            "inspection packet must allow no edits: {json}"
+        );
+        Ok(())
+    }
+
+    /// A producer-owned inline-module proposal names a production file. It
+    /// must never ride an actionable packet: advertising it as
+    /// `allowed_edit_surface` alongside the must-not-change production
+    /// statement would promise an edit surface the cage's own policy forbids,
+    /// so the seam renders as inspection-only with an empty surface.
+    #[test]
+    fn inline_module_proposal_packet_is_inspection_only_without_an_edit_surface()
+    -> Result<(), String> {
+        use crate::analysis::repair_route::{
+            NewTestKind, NewTestProposalProvenance, NewTestTargetAdmission, NewTestTargetProposal,
+        };
+        let mut entry = classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, Vec::new());
+        entry.evidence.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount >= discount_threshold".to_string(),
+            reason: "no observed activation values for boundary predicate".to_string(),
+            flow_sink: None,
+        }];
+        entry.evidence.new_test_target = Some(NewTestTargetAdmission {
+            proposal: Some(NewTestTargetProposal {
+                kind: NewTestKind::InlineUnit,
+                file: PathBuf::from("src/pricing.rs"),
+                owner: "pricing::discounted_total".to_string(),
+                provenance: NewTestProposalProvenance::ProducerOwned,
+            }),
+            region: None,
+            blocker: None,
+        });
+        // Pin both preconditions so the demotion below is attributable to the
+        // non-test recommended target, not to route readiness.
+        assert!(
+            is_safe_for_repair_packet(&entry),
+            "fixture must be route-ready so only the surface check demotes it"
+        );
+        assert_eq!(
+            recommended_test_for(&entry).file.replace('\\', "/"),
+            "src/pricing.rs",
+            "fixture must recommend the production-file inline module"
+        );
+        let json = render_agent_seam_packets_json(&[entry], None);
+        let value = parsed_envelope(&json)?;
+        let packet = &value["packets"][0];
+        if packet["task"] != "inspect_static_limitation" {
+            return Err(format!(
+                "a production-file inline proposal must not advertise an actionable edit surface: {json}"
+            ));
+        }
+        assert_eq!(
+            packet["allowed_edit_surface"],
+            serde_json::json!([]),
+            "the inspection packet must allow no edits: {json}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn prepared_packet_continuation_preserves_required_python_authorization() -> Result<(), String>
     {
@@ -6430,13 +6631,22 @@ mod tests {
         let value = parsed_envelope(&json)?;
         let next = &value["next"];
         // Every command is the shared loop-command template, not a
-        // hand-written duplicate of it.
+        // hand-written duplicate of it. #4330: the before snapshot is the
+        // plain template command — no POSIX-only prepare prefix.
         assert_eq!(
             next["before_snapshot_command"],
-            serde_json::Value::String(format!(
-                "{WORKFLOW_PREPARE_COMMAND} && {}",
-                check_repo_exposure_command(".", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT)
+            serde_json::Value::String(check_repo_exposure_command(
+                ".",
+                "draft",
+                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT
             ))
+        );
+        assert!(
+            !next["before_snapshot_command"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("mkdir"),
+            "before snapshot command must not embed a POSIX-only prepare prefix"
         );
         assert_eq!(
             next["after_snapshot_command"],

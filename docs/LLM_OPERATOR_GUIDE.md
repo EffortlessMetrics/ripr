@@ -134,17 +134,32 @@ command and a warning that lists the choices. It never picks the newest attempt.
 The full selection order is in RIPR-SPEC-0011 (amendment #3906).
 
 The numbered steps below are the manual path. If no before snapshot exists yet,
-create one:
+create one. First create the workflow directory in the shell that runs the
+snapshots — the redirect fails in a fresh workspace because every shell opens
+the redirect before `ripr` runs:
 
 ```bash
 mkdir -p target/ripr/workflow
+```
+
+```cmd
+mkdir target\ripr\workflow
+```
+
+```powershell
+New-Item -ItemType Directory -Force -Path target/ripr/workflow | Out-Null
+```
+
+Then capture the before snapshot:
+
+```bash
 ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json
 ```
 
-If you already ran `ripr pilot`, you can reuse its snapshot:
+If you already ran `ripr pilot`, you can reuse its snapshot (after creating
+the workflow directory as above):
 
 ```bash
-mkdir -p target/ripr/workflow
 cp target/ripr/pilot/repo-exposure.json target/ripr/workflow/before.repo-exposure.json
 cp target/ripr/pilot/agent-seam-packets.json target/ripr/workflow/agent-seam-packets.json
 ```

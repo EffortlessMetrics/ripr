@@ -18,6 +18,9 @@
       "current_grip": "weakly_gripped",
       "headline_eligible": true,
       "recommended_test": {"name": "discounted_total_boundary_discriminator", "file": "tests/pricing.rs", "reason": "place the new targeted test next to the producer-owned related test"},
+      "allowed_edit_surface": ["tests/pricing.rs"],
+      "forbidden_files": ["src/lib.rs"],
+      "must_not_change": ["Do not edit production code; only the files in allowed_edit_surface may change.", "editing any file outside allowed_edit_surface fails the repair attempt terminally (allowed: tests/pricing.rs)"],
       "suggested_test_command": "cargo test discounted_total_boundary_discriminator",
       "suggested_test_command_status": "runnable_after_the_suggested_test_exists",
       "nearest_strong_test_to_imitate": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 4, "oracle_kind": "exact_value", "oracle_strength": "strong", "relation_reason": "direct_owner_call", "relation_confidence": "high", "reason": "nearest strong related test by ranked evidence"},
@@ -52,7 +55,7 @@
     }
   ],
   "next": {
-    "before_snapshot_command": "mkdir -p <cwd>/fixtures/boundary_gap/input/target/ripr/workflow <cwd>/fixtures/boundary_gap/input/target/ripr/reports && ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/before.repo-exposure.json",
+    "before_snapshot_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/before.repo-exposure.json",
     "after_snapshot_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format repo-exposure-json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/after.repo-exposure.json",
     "verify_after_edit": "ripr agent verify --root <cwd>/fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/agent-verify.json",
     "analysis_outcome_command": "ripr check --root <cwd>/fixtures/boundary_gap/input --mode draft --format json > <cwd>/fixtures/boundary_gap/input/target/ripr/workflow/analysis-outcome.json",

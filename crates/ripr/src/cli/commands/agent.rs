@@ -312,7 +312,12 @@ fn render_agent_packet_with_context(
 
     let policy = AgentBriefPolicy::from_config(&config);
     if let Some(reason) = policy.omission_reason_for_class(entry.class) {
-        return Err(format!("agent packet seam_id {seam_id} {reason}"));
+        // #4332: a policy-omitted seam is a dead end without the listing
+        // route; name it like the not-found refusals do.
+        return Err(format!(
+            "agent packet seam_id {seam_id} {reason}. {}",
+            unknown_seam_id_hint(&options.root, seam_id)
+        ));
     }
 
     Ok(output::agent_seam_packets::render_agent_seam_packet_json_with_context(entry, context))
@@ -413,6 +418,19 @@ fn run_agent_verify_execute(options: AgentVerifyExecuteOptions) -> Result<(), Co
 }
 
 fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
+    // #4332: an explicit `--attempt` binds against that attempt's retained
+    // packet — the same authority the after phase consumes — instead of the
+    // repository-global compatibility packet a later attempt replaces. The
+    // seam id still travels with it, so a mismatched pair refuses with the
+    // ownership diagnostic instead of silently selecting.
+    if let Some(attempt_id) = options.attempt_id.clone() {
+        let packet_path = app::repair_attempt::retained_attempt_packet_path(
+            &options.root,
+            &options.seam_id,
+            &attempt_id,
+        )?;
+        return run_agent_receipt_for_attempt(options, Some(&attempt_id), Some(&packet_path));
+    }
     run_agent_receipt_for_attempt(options, None, None)
 }
 
@@ -1051,6 +1069,7 @@ fn run_agent_repair_phase(
                         root: root.clone(),
                         verify_json: verify_json.clone(),
                         seam_id: attempt.seam_id.clone(),
+                        attempt_id: None,
                         test_changed,
                         commands_run: Vec::new(),
                         json: true,
@@ -1560,11 +1579,13 @@ fn repair_after_input_drift_lines(
 
 /// A before phase refused because the seam's repair packet cannot bound a
 /// test-only edit. Names the seam and the reason in plain words, says that
-/// nothing was started, and points at the surfaces that only offer a repair
-/// start for seams that pass this check.
+/// nothing was started, states the observable packet field (#4332 — the
+/// producer-jargon cause alone leaves the agent guessing what to look at),
+/// and points at the surfaces that only offer a repair start for seams that
+/// pass this check.
 fn before_phase_refusal(seam_id: &str, error: &str) -> String {
     format!(
-        "seam `{seam_id}` has no test file ripr can route a repair to, so no repair attempt was started. Pick a seam whose `ripr pilot` output or review card shows a repair start. Cause: {error}"
+        "seam `{seam_id}` has no test file ripr can route a repair to, so no repair attempt was started. In the seam's repair packet the observable state is `recommended_test.file: \"not_applicable\"` (no repair target exists). Pick a seam whose `ripr pilot` output or review card shows a repair start. Cause: {error}"
     )
 }
 
@@ -1660,6 +1681,13 @@ fn before_phase_summary(packet: &str, packet_path: &str) -> Option<String> {
             "  edit one test file: {test_file}; leave production code unchanged"
         )),
     }
+    // #4330: state the terminality, not just the preference. The cage kills
+    // the attempt when any other file changes, so the narration that names
+    // the one test file must also name what violating it costs.
+    lines.push(format!(
+        "  {}",
+        crate::output::agent_seam_packets::EDIT_CAGE_TERMINALITY_WARNING
+    ));
     if let Some(assertion) = text("/suggested_assertions/0") {
         lines.push(format!("  assertion shape: {assertion}"));
     }

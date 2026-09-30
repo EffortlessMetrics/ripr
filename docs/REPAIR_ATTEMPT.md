@@ -228,7 +228,7 @@ By default the after phase's stdout is a short summary: the movement line (for e
 
 ### Rerunning the receipt
 
-`ripr agent receipt` can be rerun after the after phase, with or without `--out target/ripr/reports/agent-receipt.json`, and `ripr agent status` can be run in between. Each rerun recomputes the edit-cage delta and requires it, and the verdict it yields, to equal what the after phase bound. The receipt the after phase wrote, and any other file a later `ripr` command writes under `target/ripr`, appears only after that binding. A change is left out of the recomputation only when all three of these hold:
+`ripr agent receipt` can be rerun after the after phase, with or without `--out target/ripr/reports/agent-receipt.json`, and `ripr agent status` can be run in between. When several attempts exist for one seam, pass the attempt's id with `--attempt <id>` (#4332): the receipt then binds against that attempt's retained packet instead of the repository-global compatibility packet a later attempt replaces. Without the flag the seam must have exactly one repair attempt across all states; the refusal names the working next action — no attempt means the `--phase before` start command, several attempts name the ids so `--attempt <id>` can pick one. Each rerun recomputes the edit-cage delta and requires it, and the verdict it yields, to equal what the after phase bound. The receipt the after phase wrote, and any other file a later `ripr` command writes under `target/ripr`, appears only after that binding. A change is left out of the recomputation only when all three of these hold:
 
 - its path matches an expected operational write;
 - the path is not the selected target, an authored edit surface, or a forbidden path;
@@ -251,7 +251,7 @@ Repair attempts fail closed:
 - malformed or unknown attempt IDs are rejected;
 - missing, moved, modified, or digest-mismatched retained artifacts are rejected;
 - a cross-attempt packet is rejected;
-- ambiguous seam-selected after phases are rejected with an instruction to pass `--attempt`;
+- ambiguous seam-selected after phases are rejected with an instruction to pass `--attempt`; several matches name the ids, and zero matches name the `--phase before` start command instead of advising an id that cannot exist (#4332);
 - stale `HEAD`, incomparable evidence, and edit-cage violations do not produce a receipt-ready state;
 - tracked differences from the prepared head outside the trusted edit surface block receipt admission, committed or not, and so do untracked paths the attempt wrote outside it; an untracked file that already existed at the before phase and is byte-identical afterwards was not written by the attempt and does not block admission;
 - only a receipt whose `status` is `advisory` recommends including it in review. For an `incomplete` or `invalid` receipt, the receipt's own `summary.next_action.recommended_action` and `summary.next_recommendation` state the status and reason, say the receipt is not review evidence, and name the recovery; the after phase prints that same field as its `next:` line.
