@@ -265,17 +265,23 @@ jobs:
           # Raised from the 2000 default as the PR #3592 decision artifact, then
           # to 3500 for #3532 (3,060-line capability diff), then to 4500 for
           # #3674 (#3555 PR C, 4,321-line review-hardened capability diff),
-          # then to 5500, 6500 and finally 7500 for #3709/#3569 (the guarded-match
+          # then to 5500, 6500 and 7500 for #3709/#3569 (the guarded-match
           # oracle + driver-binding diff reached ~7,300 changed Rust lines
-          # across six adversarial bot-review rounds of falsifier pins;
+          # across six adversarial bot-review rounds of falsifier pins),
+          # and to 10000 for #4390/#4968 (the eval_sweep_report.rs
+          # decomposition is one atomic 9,016-changed-Rust-line move across
+          # six files; the issue forbids splitting it further and the moved
+          # lines are behavior-preserving, measured locally: full
+          # diff-scoped analysis completes in ~73s with
+          # analysis_complete=true, far under the 3,600s producer ceiling;
           # further growth splits per docs/CONFIGURATION.md);
           # the variable is documented in docs/CONFIGURATION.md.
-          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "7500"
+          RIPR_MAX_DIFF_CHANGED_RUST_LINES: "10000"
           # Match the raised max limit: the partial-budget clamp bounds against
           # the effective limit, so without this a PR above the default passes
           # the hard guard but still lands in gate-ineligible
           # limited_partial_scope.
-          RIPR_PARTIAL_DIFF_LINE_BUDGET: "7500"
+          RIPR_PARTIAL_DIFF_LINE_BUDGET: "10000"
           # Large analyzer PRs need more than the 120s default for the
           # evidence producer's ripr check subprocess; #3709's 5,104-line
           # diff measured ~3,100s locally and exceeded 1,800s on CI, so
