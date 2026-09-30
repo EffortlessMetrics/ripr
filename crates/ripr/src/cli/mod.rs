@@ -14,6 +14,7 @@ mod parse;
 mod progress;
 mod rerun;
 mod suggest;
+mod workflow_catalog;
 
 pub(crate) use parse::expect_value;
 pub(crate) use suggest::unknown_argument;

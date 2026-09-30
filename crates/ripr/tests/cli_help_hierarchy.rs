@@ -102,6 +102,86 @@ fn normalized(doc: &str) -> String {
 }
 
 #[test]
+fn workflow_help_lists_the_five_governed_identities() -> Result<(), String> {
+    let stdout = rendered_help(&["help", "workflow"])?;
+    for id in [
+        "inspect-change",
+        "guided-adoption",
+        "repair-gap",
+        "compose-pr-evidence",
+        "adopt-ci",
+    ] {
+        assert_contains("`ripr help workflow`", &stdout, id)?;
+    }
+    assert_contains(
+        "`ripr help workflow`",
+        &stdout,
+        "Run `ripr help workflow <name>` for one workflow's steps",
+    )?;
+    // The listing is guidance only: it must not silently execute anything.
+    assert_contains(
+        "`ripr help workflow`",
+        &stdout,
+        "Nothing on this screen runs a command",
+    )
+}
+
+#[test]
+fn workflow_help_renders_one_workflow_with_bounded_sections() -> Result<(), String> {
+    let stdout = rendered_help(&["help", "workflow", "repair-gap"])?;
+    for section in [
+        "Workflow: repair-gap",
+        "Purpose:",
+        "Applies when:",
+        "Commands (ordered):",
+        "Result families:",
+        "Artifacts:",
+        "Recovery:",
+        "Stop conditions:",
+        "Limitations:",
+    ] {
+        assert_contains("`ripr help workflow repair-gap`", &stdout, section)?;
+    }
+    // Aliases resolve on the render path.
+    assert_contains(
+        "`ripr help workflow repair-gap`",
+        &rendered_help(&["help", "workflow", "adoption"])?,
+        "Workflow: guided-adoption",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn unknown_workflow_fails_with_a_family_distinct_from_unknown_command() -> Result<(), String> {
+    let output = run_ripr(&["help", "workflow", "repar-gap"])?;
+    if output.status.success() {
+        return Err(format!(
+            "unknown workflow exited 0\nstdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        ));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.contains("unknown workflow") {
+        return Err(format!(
+            "unknown workflow error missing its family marker:\n{stderr}"
+        ));
+    }
+    if stderr.contains("unknown command") {
+        return Err(format!(
+            "unknown workflow error leaked the unknown-command family:\n{stderr}"
+        ));
+    }
+    // Suggestions, when present, must come from workflow identities only and
+    // must not suggest a command spelling for a workflow typo.
+    if stderr.contains("repair-loop") || stderr.contains("ripr agent") {
+        return Err(format!(
+            "unknown workflow error suggested command machinery instead of a workflow:\n{stderr}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn default_help_keeps_the_task_roles_distinct() -> Result<(), String> {
     for args in [["--help"].as_slice(), ["help"].as_slice()] {
         let stdout = normalized(&rendered_help(args)?);

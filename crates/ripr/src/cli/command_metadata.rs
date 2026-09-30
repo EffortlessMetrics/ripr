@@ -24,22 +24,26 @@
 //! - canonical task labels: `docs/COMMAND_HIERARCHY.md` and the default help
 //!   task map (one vocabulary, checked here in both directions);
 //! - workflow memberships: a closed tag set in [`WORKFLOW_TAGS`], promoted to
-//!   a typed workflow catalog by #4824 and never re-derived from prose.
+//!   the typed workflow catalog by #4824
+//!   ([`crate::cli::workflow_catalog`]) and never re-derived from prose.
 //!
-//! Out of scope for this slice: a `help workflow` route and workflow state
-//! (#4824), a `help --json` schema (#4825), and any command behavior change.
-//! The seam for both follow-ups is [`metadata()`] plus [`catalog()`]: a
-//! complete typed command description with no human-text scraping.
+//! Out of scope for this slice: a `help --json` schema (#4825) and any command
+//! behavior change. The seam for the JSON child is [`metadata()`] plus
+//! [`catalog()`]: a complete typed command description with no human-text
+//! scraping. The #4824 workflow catalog is the first production consumer of
+//! this table; its validators cross-check workflow summaries against these
+//! rows so a command-side change contradicting a workflow fails visibly.
 //!
-//! The whole module is the C2 query surface: this slice adds no production
-//! consumer, so non-test builds would report the table and its accessors as
-//! dead. The allow is scoped to `not(test)` and names the seam; remove it
-//! when #4824 or #4825 consumes the surface.
+//! The whole module is the C2 query surface. The #4824 workflow catalog is
+//! the first production consumer; fields that only the human-projection and
+//! hierarchy-doc checks read stay test-consumed until the #4825 JSON child
+//! lands, so the residual dead-code allow is scoped to `not(test)` and names
+//! that seam.
 #![cfg_attr(
     not(test),
     allow(
         dead_code,
-        reason = "RIPR-SPEC-0187 query surface: unit tests consume it in this slice; #4824/#4825 consume metadata() + catalog() next"
+        reason = "RIPR-SPEC-0187/0188 query surface: workflow_catalog consumes the table in production; the #4825 JSON child consumes the remaining accessors"
     )
 )]
 

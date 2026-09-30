@@ -1254,6 +1254,63 @@ fn version_is_exact_and_precedes_help_or_output_flags() {
 }
 
 #[test]
+fn workflow_help_is_bounded_and_repo_byte_identical() -> Result<(), String> {
+    let root = unique_temp_workspace("workflow-help");
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::create_dir_all(&root)?;
+        // A git repo so the runs resolve a real workspace; the snapshot then
+        // covers every byte the workflow-help route could touch (#4824).
+        run_git(&root, &["init"])?;
+        let before = snapshot_tree(&root)?;
+        let root_text = root.to_string_lossy().to_string();
+        for args in [
+            &["help", "workflow"][..],
+            &["help", "workflow", "repair-gap"][..],
+            &["help", "workflow", "guided-adoption"][..],
+        ] {
+            let output = run_command(env!("CARGO_BIN_EXE_ripr"), Some(&root), args)?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if !output.status.success() {
+                return Err(format!(
+                    "ripr {args:?} failed in the isolated repo: status={:?}, stdout={stdout:?}, stderr={stderr:?}",
+                    output.status.code()
+                )
+                .into());
+            }
+            if stdout.len() > 20_000 {
+                return Err(format!(
+                    "ripr {args:?} render escaped its bound: {} bytes",
+                    stdout.len()
+                )
+                .into());
+            }
+            if stdout.contains(&root_text) || stderr.contains(&root_text) {
+                return Err(format!("ripr {args:?} render leaked the host workspace path").into());
+            }
+        }
+        let after = snapshot_tree(&root)?;
+        if after != before {
+            return Err(format!(
+                "workflow help changed the isolated repo:\n{}",
+                snapshot_diff(&before, &after)
+            )
+            .into());
+        }
+        Ok(())
+    })();
+    let cleanup = std::fs::remove_dir_all(&root);
+    match (result, cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) => Err(error.to_string()),
+        (Ok(()), Err(error)) => Err(format!("cleanup failed: {error}")),
+        (Err(error), Err(cleanup_error)) => Err(format!(
+            "workflow help contract failed: {error}; cleanup failed: {cleanup_error}"
+        )),
+    }
+}
+
+#[test]
 fn isolated_installed_binary_version_contract_is_side_effect_free() -> Result<(), String> {
     let root = unique_temp_workspace("version-installed");
     // Coverage runtimes own only this external directory; the product prefix

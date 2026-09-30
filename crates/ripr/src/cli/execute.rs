@@ -11,6 +11,9 @@ pub(super) fn execute(command: CliCommand) -> Result<(), CommandError> {
             help::print_help_all();
             Ok(())
         }
+        CliCommand::HelpWorkflow(name) => {
+            help::print_workflow(name.as_deref()).map_err(CommandError::from)
+        }
         CliCommand::Version => {
             println!("{}", crate::build_identity::version_line());
             Ok(())

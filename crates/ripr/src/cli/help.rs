@@ -186,6 +186,19 @@ pub(super) fn print_help_all() {
     println!("{HELP_ALL}");
 }
 
+/// `ripr help workflow [name]`: bounded, non-executing workflow guidance
+/// (RIPR-SPEC-0189). The render is pure static text from the typed workflow
+/// catalog; it performs no repository discovery, analysis, compilation, test,
+/// child-process, network, mutation, or product-artifact work.
+pub(super) fn print_workflow(name: Option<&str>) -> Result<(), String> {
+    let rendered = match name {
+        Some(name) => crate::cli::workflow_catalog::render_workflow(name)?,
+        None => crate::cli::workflow_catalog::render_workflow_listing(),
+    };
+    println!("{rendered}");
+    Ok(())
+}
+
 pub(super) fn print_check_help() {
     println!("{CHECK_HELP}");
 }

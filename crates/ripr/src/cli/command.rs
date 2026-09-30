@@ -3,6 +3,10 @@ pub(super) enum CliCommand {
     Help,
     /// `ripr help --all`: the exhaustive command reference.
     HelpAll,
+    /// `ripr help workflow [name]`: bounded, non-executing workflow
+    /// guidance (RIPR-SPEC-0189 / #4824). `None` lists the workflow
+    /// identities; `Some(name)` renders one workflow.
+    HelpWorkflow(Option<String>),
     Version,
     Init(Vec<String>),
     Config(Vec<String>),
@@ -68,6 +72,12 @@ impl CliCommand {
                 if wants_all(&command_args) {
                     return Ok(Self::HelpAll);
                 }
+                // `ripr help workflow [name]` is the bounded workflow-discovery
+                // route (RIPR-SPEC-0189): it intercepts before the
+                // command-local rewrite because `workflow` is not a command.
+                if command_args.first().is_some_and(|arg| arg == "workflow") {
+                    return help_workflow_command(&command_args[1..]);
+                }
                 let (target, rest) = match command_args.split_first() {
                     Some((target, rest)) => (target.clone(), rest.to_vec()),
                     None => return Ok(Self::Help),
@@ -96,6 +106,19 @@ impl CliCommand {
 /// modifier on *bare* help, so it has to be in the position bare help occupies.
 fn wants_all(args: &[String]) -> bool {
     args.first().is_some_and(|arg| arg == "--all")
+}
+
+/// `ripr help workflow [name]`: no flags are accepted on this route, the name
+/// is optional, and a flag-shaped name is a usage error rather than an
+/// unknown-workflow lookup so the two failure families stay distinct.
+fn help_workflow_command(args: &[String]) -> Result<CliCommand, String> {
+    match args {
+        [] => Ok(CliCommand::HelpWorkflow(None)),
+        [name] if !name.starts_with('-') => Ok(CliCommand::HelpWorkflow(Some(name.clone()))),
+        _ => Err(
+            "usage: ripr help workflow [<workflow-name>] (this route accepts no flags)".to_string(),
+        ),
+    }
 }
 
 /// Arguments for `ripr help <command> [words...] [flags...]` (#4378).
@@ -489,5 +512,38 @@ mod tests {
             CliCommand::from_parts(Some("help"), args(&["chekc"])),
             Err("unknown command \"chekc\". Did you mean `check`? Run `ripr --help`.".to_string())
         );
+    }
+
+    /// `ripr help workflow [name]` parses to the bounded workflow-discovery
+    /// route: no name lists the identities, one bare name renders one
+    /// workflow, and any flag shape or extra argument is a usage error, not
+    /// an unknown-workflow lookup (#4824).
+    #[test]
+    fn help_workflow_parses_the_bounded_discovery_route() {
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["workflow"])),
+            Ok(CliCommand::HelpWorkflow(None))
+        );
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["workflow", "repair-gap"])),
+            Ok(CliCommand::HelpWorkflow(Some("repair-gap".to_string())))
+        );
+        // An alias resolves at render time, so the parser keeps the spelling.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["workflow", "adoption"])),
+            Ok(CliCommand::HelpWorkflow(Some("adoption".to_string())))
+        );
+        // Flag-shaped names and extra arguments are usage errors, keeping the
+        // failure family distinct from the unknown-workflow family.
+        let usage = "usage: ripr help workflow [<workflow-name>] (this route accepts no flags)";
+        for bad in [
+            args(&["workflow", "--json"]),
+            args(&["workflow", "repair-gap", "extra"]),
+        ] {
+            assert_eq!(
+                CliCommand::from_parts(Some("help"), bad),
+                Err(usage.to_string())
+            );
+        }
     }
 }

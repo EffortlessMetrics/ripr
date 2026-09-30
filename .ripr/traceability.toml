@@ -10115,6 +10115,7 @@ metrics = [
   "command_metadata_violations",
 ]
 
+
 [[behavior]]
 id = "RIPR-SPEC-0188"
 name = "windows trailing-component root disclosure"
@@ -10150,4 +10151,50 @@ outputs = [
 ]
 metrics = [
   "windows_root_disclosure_shapes",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0189"
+name = "typed workflow catalog and bounded help workflow discovery"
+spec = "docs/specs/RIPR-SPEC-0189-workflow-catalog-help-workflow.md"
+tests = [
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::production_workflow_catalog_is_consistent",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::initial_denominator_is_present",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::listing_render_is_sorted_bounded_and_host_independent",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::single_workflow_render_is_deterministic",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::aliases_resolve_to_the_canonical_workflow",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::unknown_workflow_suggests_only_workflow_identities",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::repair_gap_law_holds",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::missing_required_command_row_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::duplicate_required_role_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::cyclic_workflow_edge_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::removing_a_workflow_edge_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::removing_one_result_family_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::alias_collision_with_a_later_workflow_id_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::non_public_step_classification_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::advanced_alternative_must_be_advanced_class",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::step_cost_contradicting_command_metadata_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::step_artifact_claim_not_in_command_metadata_is_rejected",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::tag_promotion_requires_command_members",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::repair_workflow_must_start_at_agent_repair",
+  "crates/ripr/src/cli/workflow_catalog.rs::tests::workflow_accessor_exposes_the_governed_table",
+  "crates/ripr/src/cli/command.rs::tests::help_workflow_parses_the_bounded_discovery_route",
+  "crates/ripr/tests/cli_help_hierarchy.rs::workflow_help_lists_the_five_governed_identities",
+  "crates/ripr/tests/cli_help_hierarchy.rs::workflow_help_renders_one_workflow_with_bounded_sections",
+  "crates/ripr/tests/cli_help_hierarchy.rs::unknown_workflow_fails_with_a_family_distinct_from_unknown_command",
+  "crates/ripr/tests/cli_smoke.rs::workflow_help_is_bounded_and_repo_byte_identical",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/cli/workflow_catalog.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0189-workflow-catalog-help-workflow.md",
+]
+metrics = [
+  "workflow_catalog_entries",
+  "workflow_catalog_violations",
 ]
