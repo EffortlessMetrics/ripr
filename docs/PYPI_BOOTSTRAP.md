@@ -51,3 +51,18 @@ If the version already exists, inspect its public filename and digest; never
 overwrite it or use a blanket skip-existing option to ignore a conflict.
 Retain a failed or partial state and use a newly authorized version for changed
 bytes. Reverting this PR before upload changes no registry state.
+
+## Advancing to the stable product version
+
+Use `cargo xtask bump-version 0.11.0` to advance the native workspace and editor
+development metadata together. A producer-version change also requires a narrow
+refresh of the `unchanged-after-attempt` before/after snapshots through
+`normalize_unchanged_repo_exposure_producer_fixture`, followed by fresh
+`ripr agent verify` and `ripr agent receipt` dependent bindings. Preserve the
+version, input identity and content commitments; do not hide their drift or
+blanket-rebless unrelated evidence. Rerun the focused corpus test.
+
+The initial publisher deliberately admits prereleases only. A subsequent stable
+PyPI release must explicitly extend that admission contract, obtain stable
+publication authority, and build/qualify fresh exact stable bytes. An alpha wheel
+must never be renamed into a stable release.

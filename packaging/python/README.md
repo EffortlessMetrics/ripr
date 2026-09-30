@@ -4,9 +4,9 @@
 The **PyPI distribution name is `ripr-rs`**, while the installed executable and
 product name remain `ripr`.
 
-> **Qualification status:** this package adapter is under no-publish rehearsal.
-> A local wheel does not mean that a public PyPI release exists.
-> Use published installation commands only after a release has been independently verified from PyPI.
+> **Release status:** alpha prerelease for Linux x86-64 with glibc 2.34 or newer.
+> This is preparation for the stable 0.11 release. Verify the published wheel's
+> filename and SHA-256 on PyPI before relying on its provenance.
 
 ## Initial platform scope
 
