@@ -529,6 +529,20 @@ mod tests {
     }
 
     #[test]
+    fn check_help_names_the_latency_trace_env_and_mode_cost_class() {
+        // #4946(d): every repo-exposure env var a check user can set is
+        // documented on the same "Environment variables:" surface; this one
+        // was the last omission.
+        assert!(CHECK_HELP.contains("RIPR_REPO_EXPOSURE_LATENCY_TRACE"));
+        assert!(CHECK_HELP.contains("emits diagnostic phase/cache"));
+        assert!(CHECK_HELP.contains("Presence enables tracing"));
+        // #4946(c): the --mode entry orients on the cost class, not only the
+        // index scope, so a caller can predict the wall-clock difference.
+        assert!(CHECK_HELP.contains("Cost class: whole-workspace modes"));
+        assert!(CHECK_HELP.contains("order of magnitude longer"));
+    }
+
+    #[test]
     fn gate_family_help_states_file_backed_output_discipline() {
         assert!(GATE_HELP.contains("stdout contains human `Wrote ...` status lines"));
         assert!(BASELINE_HELP.contains("ripr baseline create --from PATH"));

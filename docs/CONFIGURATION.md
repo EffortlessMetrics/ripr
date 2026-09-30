@@ -181,6 +181,8 @@ Runs the static exposure analysis and renders findings.
 | `--perl-facts PATH` | _(unset)_ | Use this explicit Perl facts packet as the analysis input for Perl files. |
 | `--git-timeout SECS` | `300` | Cooperative deadline in seconds for each git invocation in the diff-load path. `0` disables it. Also settable via `RIPR_GIT_TIMEOUT`. |
 
+Cancelling a `ripr check` run (for example with Ctrl-C) is clean for the files ripr writes itself: outputs and cache entries are written atomically, so an interrupted run leaves no partial report file and no corrupt cache, and the next run simply recomputes and recovers. A file the shell redirects stdout into (for example `ripr check --format repo-exposure-json > report.json`) is owned by the shell, not ripr: an interruption can truncate it, and re-running rewrites it.
+
 ### Environment Variables
 
 Environment variables are process-local tuning knobs. They do not change

@@ -136,7 +136,11 @@ Options:
                            diff touches; the default), fast (same as draft for
                            now), deep and ready (whole workspace, slowest).
                            Modes never change what an exposure class means.
-                           See docs/CONFIGURATION.md "Analysis modes".
+                           Cost class: whole-workspace modes (deep, ready) can
+                           take roughly an order of magnitude longer than the
+                           diff-scoped modes (instant, draft, fast) on large
+                           workspaces. See docs/CONFIGURATION.md "Analysis
+                           modes".
   --format FORMAT          Output format. Defaults to human. Groups:
                              Analysis (diff-scoped):
                                human, human-full, json, github, sarif
@@ -247,6 +251,11 @@ Environment variables:
                                     error names git_invocation_timeout. 0 disables
                                     the deadline. Invalid values fail closed.
                                     Default: 300 (5 minutes).
+  RIPR_REPO_EXPOSURE_LATENCY_TRACE  When present, emits diagnostic phase/cache
+                                    trace lines for repo-exposure analysis.
+                                    Presence enables tracing even if the value
+                                    is empty or 0; it does not change the
+                                    analysis verdict.
   RIPR_ALLOW_REPO_PERL_EXECUTABLE   Set to 1 to let [perl].executable from
                                     ripr.toml run as the Perl facts exporter.
                                     Unset, ripr ignores it and runs the
