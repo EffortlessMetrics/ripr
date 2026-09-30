@@ -10074,3 +10074,38 @@ outputs = [
 metrics = [
   "same_test_boundary_oracle_pairing",
 ]
+[[behavior]]
+id = "RIPR-SPEC-0187"
+name = "rich command metadata projected into human help and inventories"
+spec = "docs/specs/RIPR-SPEC-0187-command-metadata-human-projection.md"
+tests = [
+  "crates/ripr/src/cli/command_metadata.rs::tests::production_table_is_complete_and_consistent",
+  "crates/ripr/src/cli/command_metadata.rs::tests::every_public_catalog_row_is_described",
+  "crates/ripr/src/cli/command_metadata.rs::tests::readonly_row_declaring_a_product_write_is_rejected",
+  "crates/ripr/src/cli/command_metadata.rs::tests::write_claim_without_an_output_role_is_rejected",
+  "crates/ripr/src/cli/command_metadata.rs::tests::state_change_without_a_state_target_is_rejected",
+  "crates/ripr/src/cli/command_metadata.rs::tests::mutation_claim_is_rejected_everywhere",
+  "crates/ripr/src/cli/command_metadata.rs::tests::projection_cost_with_analysis_work_is_rejected",
+  "crates/ripr/src/cli/command_metadata.rs::tests::test_run_without_its_compile_is_rejected",
+  "crates/ripr/src/cli/command_metadata.rs::tests::next_route_outside_the_catalog_is_rejected",
+  "crates/ripr/src/cli/command_metadata.rs::tests::runtime_mutation_claim_token_in_summary_is_rejected",
+  "crates/ripr/src/cli/command_metadata.rs::tests::human_surfaces_agree_with_the_typed_tables",
+  "crates/ripr/src/cli/command_metadata.rs::tests::duplicated_help_all_listing_line_is_reported",
+  "crates/ripr/src/cli/command_metadata.rs::tests::hierarchy_doc_commands_resolve_to_catalog_rows",
+  "crates/ripr/src/cli/command_metadata.rs::tests::pinned_task_rows_match_the_hierarchy_doc_labels",
+  "crates/ripr/tests/cli_help_hierarchy.rs::exhaustive_help_marks_non_public_rows_visibly",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/cli/command_metadata.rs",
+  "crates/ripr/src/cli/help/overview.rs",
+  "crates/ripr/src/cli/help.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0187-command-metadata-human-projection.md",
+  "docs/COMMAND_HIERARCHY.md",
+]
+metrics = [
+  "command_metadata_entries",
+  "command_metadata_violations",
+]

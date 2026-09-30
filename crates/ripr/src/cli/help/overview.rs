@@ -98,14 +98,14 @@ Editor & Agent:
   ripr agent repair --root . --seam-id ID --phase before
   ripr agent repair --root . (--attempt ID | --seam-id ID) --phase after
   ripr agent repair --root . --attempt ID --phase verify --verify-authorized --verify-authority ID
-  ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
-  ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
-  ripr agent packet --root . (--seam-id ID | --gap-ledger PATH --gap-id ID) --json
-  ripr agent verify --root . --before before.json --after after.json --json
-  ripr agent verify-execute --root . --packet packet.json --result-json result.json --authorize --json
-  ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json
+  ripr agent start --root . --seam-id ID [--out target/ripr/workflow]   [advanced]
+  ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json   [advanced]
+  ripr agent packet --root . (--seam-id ID | --gap-ledger PATH --gap-id ID) --json   [advanced]
+  ripr agent verify --root . --before before.json --after after.json --json   [advanced]
+  ripr agent verify-execute --root . --packet packet.json --result-json result.json --authorize --json   [advanced]
+  ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json   [advanced]
   ripr agent status --root . [--json]
-  ripr agent review-summary --root . [--json]
+  ripr agent review-summary --root . [--json]   [advanced]
   ripr swarm queue [--root .] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--language python] [--top 10]
   ripr swarm ingest [--root .] --result target/ripr/workflow/agent-result.json
   ripr plus (--repo-exposure-summary target/ripr/reports/repo-exposure-summary.json|--gap-ledger target/ripr/reports/gap-decision-ledger.json) [--check]
@@ -113,7 +113,7 @@ Editor & Agent:
 PR & Review:
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr first-pr [--root .] [--base REV] [--head HEAD] [--gap-ledger target/ripr/reports/gap-decision-ledger.json] [--out-dir target/ripr/reports] [--check]
-  ripr start-here [same options as first-pr]
+  ripr start-here [same options as first-pr]   [compatibility]
   ripr first-action [--root .] (--pr-guidance target/ripr/review/comments.json|--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json|--gap-ledger target/ripr/reports/gap-decision-ledger.json|--ledger target/ripr/reports/pr-evidence-ledger.json) [--out target/ripr/reports/first-useful-action.json]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
   ripr pr-summary [--check] [--baseline <before.json>]

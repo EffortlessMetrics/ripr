@@ -338,6 +338,13 @@ pub(super) fn print_rerun_help() {
     println!("{RERUN_HELP}");
 }
 
+/// Test-only access to the two rendered human discovery surfaces, for the
+/// projection-agreement checks in `command_metadata` (issue #4823).
+#[cfg(test)]
+pub(crate) fn discovery_surfaces() -> (&'static str, &'static str) {
+    (overview::HELP, overview::HELP_ALL)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
