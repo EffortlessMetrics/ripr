@@ -335,14 +335,15 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
         for field, value in (("event", "pull_request"), ("head_branch", "feature"),
                              ("head_sha", "e" * 40), ("run_attempt", 1),
                              ("conclusion", "failure"), ("status", "in_progress"),
-                             ("path", "other.yml"), ("head_repository", {"full_name": "fork/ripr", "id": 88})):
+                             ("path", "other.yml"), ("repository", None), ("head_repository", None),
+                             ("head_repository", {"full_name": "fork/ripr", "id": 88})):
             changes.append(("run", dict(self.run, **{field: value})))
         for index in range(4):
             jobs = copy.deepcopy(self.jobs); jobs["jobs"][index]["conclusion"] = "skipped"
             changes.append(("jobs", jobs))
         for field, value in (("name", "npm-prepared-123-1"), ("expired", True),
                              ("id", "400"), ("digest", None), ("size_in_bytes", 40_000_001),
-                             ("workflow_run", {"id": 123, "head_sha": "e" * 40})):
+                             ("workflow_run", None), ("workflow_run", {"id": 123, "head_sha": "e" * 40})):
             artifacts = copy.deepcopy(self.artifacts); artifacts["artifacts"][0][field] = value
             changes.append(("artifacts", artifacts))
         changes.extend([("artifacts", {"total_count": 101, "artifacts": []}),
@@ -445,12 +446,14 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
         policies = dict(total_count=1, branch_policies=[dict(name="main", type="branch")])
         result = PACKAGE.validate_stage_environment(environment, policies)
         self.assertFalse(result["admin_bypass_api_verified"])
-        for field, value in (("prevent_self_review", True), ("reviewers", []),
+        for field, value in (("prevent_self_review", True), ("reviewers", []), ("reviewers", None),
+                             ("reviewers", [dict(type="User", reviewer=None)]),
+                             ("reviewers", [dict(type="User", reviewer=dict(id=15812269, login=None))]),
                              ("reviewers", [dict(type="User", reviewer=dict(id=1, login="other"))])):
             changed = copy.deepcopy(environment); changed["protection_rules"][0][field] = value
             with self.subTest(field=field), self.assertRaises(ValueError):
                 PACKAGE.validate_stage_environment(changed, policies)
-        for field, value in (("name", "pypi"), ("id", None), ("protection_rules", []),
+        for field, value in (("name", "pypi"), ("id", None), ("protection_rules", []), ("protection_rules", None),
                              ("deployment_branch_policy", None), ("can_admins_bypass", True)):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 PACKAGE.validate_stage_environment(dict(environment, **{field: value}), policies)

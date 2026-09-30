@@ -198,8 +198,10 @@ def authorize_release(identity, publisher_sha):
     for key, value in expected.items():
         require(type(run_info.get(key)) is type(value) and run_info[key] == value, f"qualification run {key} mismatch")
     for key in ("repository", "head_repository"):
-        require(run_info.get(key, {}).get("full_name") == REPOSITORY, "foreign qualification repository")
-        require(type(run_info[key].get("id")) is int and run_info[key]["id"] > 0, "missing repository identity")
+        repository = run_info.get(key)
+        require(isinstance(repository, dict), f"missing qualification {key} object")
+        require(repository.get("full_name") == REPOSITORY, "foreign qualification repository")
+        require(type(repository.get("id")) is int and repository["id"] > 0, "missing repository identity")
     require(commit.get("sha") == identity["source_sha"] and commit.get("tree", {}).get("sha") == identity["source_tree"], "source commit/tree mismatch")
     jobs = github_api(f"actions/runs/{identity['run_id']}/attempts/{identity['run_attempt']}/jobs?per_page=100")
     names = {"package", "publisher-controls", *(f"consumer ({node}, {npm})" for node, npm in CLIENTS)}
@@ -220,7 +222,8 @@ def authorize_release(identity, publisher_sha):
         require(type(artifact.get("id")) is int and artifact["id"] > 0, "invalid artifact ID")
         require(type(artifact.get("size_in_bytes")) is int and 0 < artifact["size_in_bytes"] <= 40_000_000, "invalid artifact size")
         require(isinstance(artifact.get("digest"), str) and re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["digest"]), "missing artifact digest")
-        binding = artifact.get("workflow_run", {})
+        binding = artifact.get("workflow_run")
+        require(isinstance(binding, dict), "missing artifact workflow_run object")
         require(binding.get("id") == int(identity["run_id"]) and binding.get("head_sha") == identity["source_sha"], "artifact source/run mismatch")
         require(binding.get("repository_id") == run_info["repository"]["id"] and binding.get("head_repository_id") == run_info["head_repository"]["id"], "artifact repository mismatch")
         artifacts.append({key: artifact[key] for key in ("id", "name", "digest", "size_in_bytes")})
@@ -339,13 +342,17 @@ def validate_stage_environment(environment, policies):
             "npm environment must allow only one deployment branch")
     policy = policies["branch_policies"][0]
     require(policy.get("name") == "main" and policy.get("type") == "branch", "npm environment must allow main branch only, no tags")
-    gates = [rule for rule in environment.get("protection_rules", []) if rule.get("type") == "required_reviewers"]
+    rules = environment.get("protection_rules")
+    require(isinstance(rules, list) and all(isinstance(rule, dict) for rule in rules), "missing environment protection rules")
+    gates = [rule for rule in rules if rule.get("type") == "required_reviewers"]
     require(len(gates) == 1 and gates[0].get("prevent_self_review") is False,
             "npm environment requires a reviewer gate usable by the sole maintainer")
-    reviewers = gates[0].get("reviewers", [])
-    require(len(reviewers) == 1 and reviewers[0].get("type") == "User" and
-            reviewers[0].get("reviewer", {}).get("id") == 15812269 and
-            reviewers[0].get("reviewer", {}).get("login", "").lower() == "effortlesssteven",
+    reviewers = gates[0].get("reviewers")
+    require(isinstance(reviewers, list) and len(reviewers) == 1 and isinstance(reviewers[0], dict) and
+            reviewers[0].get("type") == "User", "missing environment reviewer object")
+    reviewer = reviewers[0].get("reviewer")
+    require(isinstance(reviewer, dict) and reviewer.get("id") == 15812269 and
+            isinstance(reviewer.get("login"), str) and reviewer["login"].lower() == "effortlesssteven",
             "npm environment reviewer does not match the release maintainer")
     # GitHub's documented GET schema may omit this setting. Its absence is not
     # evidence of disabled bypass; the operator must verify the UI prerequisite.

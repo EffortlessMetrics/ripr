@@ -116,6 +116,14 @@ jobs:
         with:
           ref: ${{ env.CANDIDATE_SHA }}
           persist-credentials: false
+      - name: Validate workflow syntax and expression contexts
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
+          printf '%s\n' "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" > "$RUNNER_TEMP/actionlint.sha256"
+          sha256sum --check "$RUNNER_TEMP/actionlint.sha256"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.19.0'

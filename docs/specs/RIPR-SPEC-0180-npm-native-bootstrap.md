@@ -63,7 +63,8 @@ functions used by `.github/scripts/npm_package.py`, including invalid wheel
 and tar cases. `.github/scripts/npm_consumer.py` measures four installed routes
 on the exact tarball. `npm-package-qualification.yml` requires both selected
 Node/npm rows and a separately executed real npm CLI loopback transport control
-on attempt-bound artifacts. Release admission tests challenge wrong source/run,
+on attempt-bound artifacts. The latter job also runs pinned actionlint to reject
+invalid workflow syntax or expression contexts. Release admission tests challenge wrong source/run,
 attempt, artifact, native pin, route denominators, environment, public version
 and staging-result identities. Tests exercise the retained admission entrypoint
 and actual workflow shell guards. `docs/NPM_BOOTSTRAP.md` defines first

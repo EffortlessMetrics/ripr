@@ -61,7 +61,10 @@ partial retries cannot consume a previous attempt's package. Both rows, the
 staging-client transport job and the whole run must pass. The transport job uses
 npm 11.15.0 against a loopback mock registry, checks exact submitted tar bytes
 and lifecycle suppression, and has no npm credentials or OIDC permission. It
-does not test live staging, OIDC exchange or Sigstore. PR runs are rehearsal
+does not test live staging, OIDC exchange or Sigstore. The same job runs pinned,
+SHA-256-verified actionlint 1.7.12 for workflow syntax and expression-context
+validation; repository workflow-budget checks alone do not establish that.
+PR runs are rehearsal
 only. Final publication consumes a
 successful source-main manual qualification and exact hashes, never a rebuild.
 

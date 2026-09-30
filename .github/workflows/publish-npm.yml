@@ -120,9 +120,6 @@ jobs:
     outputs:
       result_artifact_id: ${{ steps.result.outputs.artifact-id }}
     env:
-      NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npm-stage.npmrc
-      NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/npm-stage-global.npmrc
-      NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-stage-cache
       NPM_CONFIG_UPDATE_NOTIFIER: 'false'
       NODE_AUTH_TOKEN: ''
       NPM_TOKEN: ''
@@ -133,6 +130,10 @@ jobs:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Use empty npm configuration and exact staging tooling
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npm-stage.npmrc
+          NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/npm-stage-global.npmrc
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-stage-cache
         run: |
           set -euo pipefail
           : > "$NPM_CONFIG_USERCONFIG"
@@ -157,6 +158,9 @@ jobs:
       - name: Stage exact bytes through the stage-only trusted publisher
         env:
           FILENAME: ${{ needs.admission.outputs.filename }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npm-stage.npmrc
+          NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/npm-stage-global.npmrc
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-stage-cache
         run: npm stage publish "dist/$FILENAME" --ignore-scripts --registry=https://registry.npmjs.org --access=public --tag=next --fetch-retries=0 --provenance --json > stage-result.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         id: result
