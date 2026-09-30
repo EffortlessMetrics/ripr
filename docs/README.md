@@ -26,4 +26,5 @@
 - [Source-of-truth doctrine](source-of-truth/README.md) — control-plane for proposals, specs, ADRs, plans, goals, policy ledgers, proof, and closeouts
 - [Spec/proposal system](SPEC_PROPOSAL_SYSTEM.md) — companion guide to the repo tracking model
 
+- [Source-owned npm bootstrap](NPM_BOOTSTRAP.md): exact native Linux tarball qualification and independently authorized publication.
 - [Source-owned PyPI bootstrap](PYPI_BOOTSTRAP.md): exact Linux wheel qualification and separately authorized first prerelease.

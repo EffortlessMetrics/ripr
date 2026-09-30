@@ -22284,6 +22284,17 @@ pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'stat
         );
     }
 
+    if matches!(
+        path,
+        ".github/scripts/npm_package.py"
+            | ".github/scripts/npm_consumer.py"
+            | ".github/scripts/test_npm_package.py"
+    ) {
+        return Some(
+            "Source-owned npm qualification uses runner standard-library ZIP/tar metadata inspection and isolated npm consumers; no Python runs during npm installation or native use.",
+        );
+    }
+
     if path.starts_with("editors/vscode/") && path.ends_with(".ts") {
         return Some(
             "VS Code extension source and tests must run in the VS Code Extension Host TypeScript API.",

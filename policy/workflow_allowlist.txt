@@ -31,3 +31,4 @@
 .github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.
 .github/workflows/windows-packaged-qualification.yml|50|On-demand exact-candidate Windows package and VSIX rehearsal must retain identity checks, isolated CLI/editor journeys, and Actions-only receipts in one workflow.
 .github/workflows/python-wheel-qualification.yml|217|Source-only Linux wheel build, auditwheel compliance, exact-subject metadata and installed pip/uv journey proof; read-only with five-day evidence.
+.github/workflows/npm-package-qualification.yml|1|Read-only exact-native npm package preparation and two checkout-free client proof rows; all archive and consumer logic lives in separately tested bounded standard-library controllers.
