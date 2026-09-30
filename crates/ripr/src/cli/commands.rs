@@ -126,7 +126,14 @@ pub(super) use gate::gate;
 mod init;
 pub(super) use init::init;
 #[cfg(test)]
-use init::{generated_github_actions_workflow, parse_init_options};
+use init::parse_init_options;
+
+// The generated `ripr init --ci github` workflow template lives beside the
+// init command; its tests here pin rendered placeholders against it.
+#[path = "commands/init_workflow.rs"]
+mod init_workflow;
+#[cfg(test)]
+use init_workflow::generated_github_actions_workflow;
 
 #[path = "commands/pilot.rs"]
 mod pilot;
