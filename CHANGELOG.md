@@ -42,6 +42,10 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Perl preview findings with an unavailable test runner now disclose that
+  limitation and ask for runner verification instead of saying no test change
+  is needed solely because static evidence aligns with the changed sink
+  ([#4146](https://github.com/EffortlessMetrics/ripr-swarm/issues/4146)).
 - Repo-seam `FieldConstruction` evidence now emits a compatible missing
   `field_value` fact when a parser-backed direct owner-result binding is
   observed only by a weak field oracle, and only after activation is already

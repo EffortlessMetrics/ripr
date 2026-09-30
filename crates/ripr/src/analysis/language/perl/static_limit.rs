@@ -24,6 +24,9 @@ pub(super) struct Projection {
     /// without masking the evidence they carry (#3583).
     pub(super) blocks_class: bool,
     pub(super) kind: Option<StaticLimitKind>,
+    /// Applicable producer fact that the Perl test runner is unavailable.
+    /// This is operational, so it does not assign a semantic static limit.
+    pub(super) missing_test_runner: bool,
 }
 
 pub(super) fn for_change(
@@ -52,6 +55,7 @@ pub(super) fn for_change(
         }
 
         projection.blocks = true;
+        projection.missing_test_runner |= boundary.kind == BoundaryKind::MissingTestRunner;
         // A missing runner cannot invalidate an otherwise established static
         // sink observation. Keep every other boundary conservative, and OR
         // rather than assign so a later runner boundary cannot clear a cap.
@@ -75,6 +79,8 @@ pub(super) fn for_change(
         if !applies {
             continue;
         }
+
+        projection.missing_test_runner |= limitation.kind == "missing_test_runner";
 
         // Operational limitations remain fail-closed even though they do not
         // earn a semantic shared taxonomy label.

@@ -4,9 +4,13 @@
 //! isolate runner availability from semantic evidence without modifying the
 //! byte-pinned migration corpus or claiming ingestion/runner execution proof.
 
-use super::super::{Confidence, DynamicBoundaryFact, PacketStatus, packet_to_findings};
+use super::super::{
+    Confidence, DynamicBoundaryFact, LimitationFact, PacketStatus, packet_to_findings,
+};
 use super::*;
-use crate::domain::{ExposureClass, Finding, LanguageStatus};
+use crate::app::{CheckOutput, Mode};
+use crate::domain::{ExposureClass, Finding, LanguageStatus, Summary};
+use std::path::PathBuf;
 
 const REAL_PRODUCER_PACKET: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -74,11 +78,27 @@ fn perl_static_limit_missing_runner_keeps_observation() -> Result<(), String> {
     assert!(projected.blocks);
     assert!(!projected.blocks_class);
     assert_eq!(projected.kind, None);
+    assert!(projected.missing_test_runner);
 
     let observed = finding(&packet)?;
     assert_eq!(observed.class, ExposureClass::Exposed);
     assert_eq!(observed.language_status, Some(LanguageStatus::Preview));
     assert!(observed.canonical_gap.is_none());
+    assert!(
+        observed
+            .recommended_next_step
+            .as_deref()
+            .is_some_and(|step| {
+                step.contains("Make the related Perl test runner available")
+                    && !step.contains("No test change needed")
+            })
+    );
+    assert!(
+        observed
+            .evidence
+            .iter()
+            .any(|line| line.starts_with("perl_missing_test_runner:"))
+    );
     assert!(
         observed
             .evidence
@@ -92,6 +112,41 @@ fn perl_static_limit_missing_runner_keeps_observation() -> Result<(), String> {
             .any(|evidence| evidence.starts_with("perl_suggested_"))
     );
     assert!(packet.verify_commands.is_empty());
+    let human = crate::output::human::render_finding(&observed);
+    assert!(human.contains("Make the related Perl test runner available"));
+    assert!(!human.contains("No test change needed"));
+
+    let output = CheckOutput {
+        schema_version: "0.2".to_string(),
+        harness_projections: Vec::new(),
+        tool: "ripr".to_string(),
+        mode: Mode::Draft,
+        root: PathBuf::from("."),
+        base: None,
+        analysis_outcome: None,
+        summary: Summary::default(),
+        findings: vec![observed],
+        preview_language_advisories: Vec::new(),
+        language_runs: Vec::new(),
+        no_scope_provided: false,
+        unanalyzed_working_tree: false,
+        suppression: None,
+        partial_scope: None,
+    };
+    let json: serde_json::Value = serde_json::from_str(&crate::output::json::render(&output))
+        .map_err(|error| format!("parse rendered Perl finding: {error}"))?;
+    let step = json["findings"][0]["recommended_next_step"]
+        .as_str()
+        .ok_or_else(|| "rendered Perl finding lacks a next step".to_string())?;
+    assert!(step.contains("Make the related Perl test runner available"));
+    assert!(!step.contains("No test change needed"));
+    let evidence = json["findings"][0]["evidence"]
+        .as_array()
+        .ok_or_else(|| "rendered Perl finding lacks evidence".to_string())?;
+    assert!(evidence.iter().any(|line| {
+        line.as_str()
+            .is_some_and(|text| text.starts_with("perl_missing_test_runner:"))
+    }));
     Ok(())
 }
 
@@ -118,6 +173,10 @@ fn perl_static_limit_missing_runner_does_not_invent_observation() -> Result<(), 
     assert!(projection(&packet)?.blocks);
     let after = finding(&packet)?;
     assert_eq!(after.class, ExposureClass::WeaklyExposed);
+    assert!(after.recommended_next_step.as_deref().is_some_and(|step| {
+        step.contains("Make the related Perl test runner available")
+            && !step.contains("No test change needed")
+    }));
     assert!(after.canonical_gap.is_none());
     assert!(!after.evidence.iter().any(|evidence| {
         evidence.starts_with("perl_suggested_")
@@ -199,6 +258,12 @@ fn perl_static_limit_missing_runner_respects_scope() -> Result<(), String> {
     let mut other = packet.clone();
     other.dynamic_boundaries.push(unrelated);
     assert_eq!(projection(&other)?, Projection::default());
+    assert!(
+        !finding(&other)?
+            .evidence
+            .iter()
+            .any(|line| line.starts_with("perl_missing_test_runner:"))
+    );
 
     let test = packet
         .tests
@@ -213,6 +278,75 @@ fn perl_static_limit_missing_runner_respects_scope() -> Result<(), String> {
     let projected = projection(&related)?;
     assert!(projected.blocks);
     assert!(!projected.blocks_class);
+    assert!(projected.missing_test_runner);
     assert_eq!(finding(&related)?.class, ExposureClass::Exposed);
+    Ok(())
+}
+
+#[test]
+fn perl_missing_runner_limitation_discloses_unverified_observation() -> Result<(), String> {
+    let mut packet = isolated_packet()?;
+    assert_eq!(finding(&packet)?.class, ExposureClass::Exposed);
+    assert!(!projection(&packet)?.missing_test_runner);
+    let baseline = finding(&packet)?;
+    assert!(
+        baseline
+            .recommended_next_step
+            .as_deref()
+            .is_some_and(|step| step.starts_with("No test change needed"))
+    );
+
+    // A limitation scoped to unrelated evidence must not affect this finding.
+    let limitation = LimitationFact {
+        limitation_id: "limitation:test-runner".to_string(),
+        kind: "missing_test_runner".to_string(),
+        message: "test runner is missing".to_string(),
+        evidence_refs: vec!["unrelated:missing-runner-control".to_string()],
+    };
+    let mut unrelated = packet.clone();
+    unrelated.limitations.push(limitation.clone());
+    assert_eq!(projection(&unrelated)?, Projection::default());
+    let unrelated_finding = finding(&unrelated)?;
+    assert_eq!(unrelated_finding.class, ExposureClass::Exposed);
+    assert!(
+        unrelated_finding
+            .recommended_next_step
+            .as_deref()
+            .is_some_and(|step| step.starts_with("No test change needed"))
+    );
+    assert!(
+        !unrelated_finding
+            .evidence
+            .iter()
+            .any(|line| line.starts_with("perl_missing_test_runner:"))
+    );
+
+    // An empty evidence scope is producer-global, and must disclose the runner.
+    let mut limitation = limitation;
+    limitation.evidence_refs.clear();
+    packet.limitations.push(limitation);
+
+    let projected = projection(&packet)?;
+    assert!(projected.blocks);
+    assert!(!projected.blocks_class);
+    assert!(projected.missing_test_runner);
+    let observed = finding(&packet)?;
+    assert_eq!(observed.class, ExposureClass::Exposed);
+    assert_eq!(observed.static_limit_kind, None);
+    assert!(
+        observed
+            .recommended_next_step
+            .as_deref()
+            .is_some_and(|step| {
+                step.contains("Make the related Perl test runner available")
+                    && !step.contains("No test change needed")
+            })
+    );
+    assert!(
+        observed
+            .evidence
+            .iter()
+            .any(|line| line.starts_with("perl_missing_test_runner:"))
+    );
     Ok(())
 }

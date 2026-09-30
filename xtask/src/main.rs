@@ -13123,25 +13123,20 @@ fn check_workspace_shape() -> Result<(), String> {
 }
 
 fn check_architecture() -> Result<(), String> {
-    let rules = read_pipe_records("policy/architecture.txt", 3)?;
+    let records = read_pipe_records("policy/architecture.txt", 3)?;
     let files = tracked_files()?;
-    let mut violations = Vec::new();
-    for rule in rules {
-        let glob = &rule[0];
-        let forbidden = &rule[1];
-        let reason = &rule[2];
-        for file in &files {
-            if !glob_matches(glob, file) {
-                continue;
-            }
-            let text = read_text_lossy(Path::new(file))?;
-            if text.contains(forbidden) {
-                violations.push(format!(
-                    "{file} contains forbidden architecture pattern `{forbidden}`\n  reason: {reason}"
-                ));
-            }
+    let rule_globs = records
+        .iter()
+        .filter(|record| !record[0].starts_with('!'))
+        .map(|record| record[0].as_str())
+        .collect::<Vec<_>>();
+    let mut file_texts = Vec::new();
+    for file in &files {
+        if rule_globs.iter().any(|glob| glob_matches(glob, file)) {
+            file_texts.push((file.clone(), read_text_lossy(Path::new(file))?));
         }
     }
+    let mut violations = architecture_rule_violations(&records, &file_texts);
 
     for file in files
         .iter()
@@ -13188,10 +13183,230 @@ fn check_architecture() -> Result<(), String> {
                 "Update policy/architecture.txt only when the architecture rule itself changes.",
             ],
             rerun_command: "cargo xtask check-architecture",
-            exception_template: Some("glob|forbidden_pattern|reason"),
+            exception_template: Some(
+                "glob|forbidden_pattern|reason\n!path|forbidden_pattern|reason (scoped exception: a literal tracked-file path, never a glob; suppresses only the exact pattern in exactly that path; an exception that matches no current violation fails the gate as stale)",
+            ),
         },
         &violations,
     )
+}
+
+/// Applies `policy/architecture.txt` records to the tracked file texts.
+/// Plain records are deny rules (`glob|forbidden_pattern|reason`). A record
+/// whose first field is prefixed `!` is a scoped exception
+/// (`!path|forbidden_pattern|reason`): it suppresses a deny-rule violation
+/// only when BOTH the literal file path and the exact forbidden pattern
+/// match. Exception paths are literal tracked-file paths, never globs, so
+/// one entry can never waive a rule for other files or other patterns
+/// (#4146). An exception that suppresses nothing is itself a violation,
+/// mirroring the count-policy stale/orphan convention (#2413): exception
+/// budget that matches nothing is invisible slack, so the entry must be
+/// removed or the denied usage restored.
+fn architecture_rule_violations(
+    records: &[Vec<String>],
+    file_texts: &[(String, String)],
+) -> Vec<String> {
+    let mut rules = Vec::new();
+    let mut exceptions = Vec::new();
+    for record in records {
+        match record[0].strip_prefix('!') {
+            Some(glob) => exceptions.push((glob.to_string(), record[1].clone(), record[2].clone())),
+            None => rules.push((record[0].clone(), record[1].clone(), record[2].clone())),
+        }
+    }
+
+    let mut suppressed = vec![false; exceptions.len()];
+    let mut violations = Vec::new();
+    for (glob, forbidden, reason) in &rules {
+        for (path, text) in file_texts {
+            if !glob_matches(glob, path) || !text.contains(forbidden) {
+                continue;
+            }
+            let exception_index =
+                exceptions
+                    .iter()
+                    .position(|(exception_path, exception_pattern, _)| {
+                        exception_pattern == forbidden && exception_path == path
+                    });
+            match exception_index {
+                Some(index) => suppressed[index] = true,
+                None => violations.push(format!(
+                    "{path} contains forbidden architecture pattern `{forbidden}`\n  reason: {reason}"
+                )),
+            }
+        }
+    }
+
+    for ((exception_path, exception_pattern, _), suppressed) in exceptions.iter().zip(&suppressed) {
+        if !suppressed {
+            violations.push(format!(
+                "!{exception_path} exception for `{exception_pattern}` is stale: it matches no current architecture violation; remove the entry or restore the denied usage"
+            ));
+        }
+    }
+    violations
+}
+
+#[cfg(test)]
+mod architecture_rule_tests {
+    use super::architecture_rule_violations;
+
+    fn record(line: &str) -> Vec<String> {
+        line.split('|').map(str::trim).map(str::to_string).collect()
+    }
+
+    const BROAD_RULE: &str =
+        "crates/ripr/src/analysis/**|crate::output|analysis must not render user output";
+    const RUNNER_TESTS_PATH: &str =
+        "crates/ripr/src/analysis/language/perl/static_limit/runner_tests.rs";
+    const EXCEPTION: &str = concat!(
+        "!crates/ripr/src/analysis/language/perl/static_limit/runner_tests.rs|crate::output|",
+        "#4146: cfg(test) assertions verify the missing-runner guidance IS rendered - ",
+        "the rendered output is the discriminator under test; production rendering paths remain denied by the broad rule"
+    );
+
+    #[test]
+    fn scoped_exception_suppresses_exact_path_and_pattern() {
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "let human = crate::output::human::render_finding(&observed);".to_string(),
+            )],
+        );
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    #[test]
+    fn exception_does_not_suppress_other_patterns_in_same_file() {
+        let violations = architecture_rule_violations(
+            &[
+                record(BROAD_RULE),
+                record(
+                    "crates/ripr/src/analysis/**|serde_json|analysis must not know JSON rendering",
+                ),
+                record(EXCEPTION),
+            ],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "serde_json::from_str(&text);".to_string(),
+            )],
+        );
+        // The serde_json violation survives, and because the exception
+        // suppressed nothing it is also reported stale.
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("forbidden architecture pattern `serde_json`"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
+
+    #[test]
+    fn exception_does_not_suppress_other_files() {
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                "crates/ripr/src/analysis/workspace/classify.rs".to_string(),
+                "use crate::output::human;".to_string(),
+            )],
+        );
+        // The other file's violation survives; the exception is also stale.
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains(
+                    "crates/ripr/src/analysis/workspace/classify.rs contains forbidden architecture pattern `crate::output`"
+                ))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
+
+    #[test]
+    fn stale_exception_is_reported() {
+        // Pattern no longer present anywhere: the exception matches nothing.
+        let stale = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "let human = render_locally(&observed);".to_string(),
+            )],
+        );
+        assert_eq!(stale.len(), 1);
+        assert!(stale[0].contains("is stale: it matches no current architecture violation"));
+
+        // File removed: the exception matches nothing either. The unrelated
+        // file's own violation survives, and the stale exception is reported.
+        let orphaned = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                "crates/ripr/src/analysis/other.rs".to_string(),
+                "crate::output".to_string(),
+            )],
+        );
+        assert_eq!(
+            orphaned.len(),
+            2,
+            "unrelated file violation plus stale exception expected: {orphaned:?}"
+        );
+        assert!(
+            orphaned
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
+
+    #[test]
+    fn plain_rules_still_deny_without_exceptions() {
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE)],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "crate::output::json::render(&output)".to_string(),
+            )],
+        );
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains(RUNNER_TESTS_PATH));
+    }
+
+    #[test]
+    fn wildcard_exception_suppresses_nothing_and_is_stale() {
+        // Exception paths are literal, never globs: a wildcarded exception
+        // cannot act as a blanket waiver for every matching file.
+        let wildcard = record("!crates/ripr/src/analysis/**|crate::output|temporary waiver");
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE), wildcard],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "crate::output::human::render_finding(&observed);".to_string(),
+            )],
+        );
+        assert_eq!(
+            violations.len(),
+            2,
+            "wildcard exception must neither suppress nor be silently ignored: {violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains(RUNNER_TESTS_PATH))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
 }
 
 /// #3534: Rust source-role authority. Producer modules derive source role
