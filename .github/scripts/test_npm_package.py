@@ -93,6 +93,7 @@ class NpmPackageTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, missing + " executable not found in PATH"):
                         CONSUMER.main()
 
+    @unittest.skipUnless(os.name == "posix", "Linux-native consumer uses POSIX executable links")
     def test_reinstall_rejects_noop_uninstall_and_noop_install(self):
         data = b"expected native payload"
         for control in ("noop-uninstall", "dangling-bin", "noop-install", "stale-unscoped", "wrong-bin-owner", "fresh-install"):
