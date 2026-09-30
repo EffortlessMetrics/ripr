@@ -27,6 +27,19 @@ consumer jobs, must pass. The attempt-specific artifact retains the exact wheel
 and `qualification.json` for five days. PR qualification is rehearsal; publication
 admission consumes a successful main-branch manual qualification run.
 
+Retries must use **Re-run all jobs**, never **Re-run failed jobs**. Both consumers
+require the build's attempt number to equal the current run attempt before
+artifact download. A partial retry fails with explicit recovery guidance;
+a full retry builds a new attempt-bound wheel and reruns both consumers.
+No previous-attempt wheel is silently reused or admitted.
+
+Manual qualification accepts only `refs/heads/main`, not a tag named `main`.
+The trusted publisher independently verifies that the selected source is the
+current `refs/heads/main` commit at admission through the GitHub API and matches
+the publisher dispatch snapshot. If main advances before admission, qualify the
+new main source and dispatch publication from that source again. Later environment
+approval still uploads only the immutable admitted bytes.
+
 The repository's own `ripr.toml` enables Python preview alongside Rust and
 TypeScript so the new admission controller receives analysis in the required
 Rust job's PR-evidence and review-guidance gates. This does not change the

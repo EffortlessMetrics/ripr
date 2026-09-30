@@ -54,14 +54,30 @@ def validate_run(run, commit, identity):
     return attempt
 
 
+def validate_source_ref(ref, identity, publisher_sha):
+    """Bind source to independent branch authority, not a short run ref name.
+
+    A tag named main can share head_branch='main'. Only the API's exact branch
+    ref establishes current main; the publisher snapshot must match it too.
+    """
+    validate_identity(identity)
+    require(ref.get("ref") == "refs/heads/main", "source authority is not refs/heads/main")
+    require(ref.get("object", {}).get("type") == "commit", "main ref is not a commit")
+    require(ref.get("object", {}).get("sha") == identity["source_sha"],
+            "source is not current main; fully requalify current main")
+    require(publisher_sha == identity["source_sha"],
+            "publisher snapshot differs from qualified source; dispatch again from current main")
+
+
 def api(endpoint):
     # Endpoints are constructed only after strict identity validation. gh reads
     # the token from GH_TOKEN; no token is printed or added to command arguments.
     return json.loads(subprocess.check_output(["gh", "api", f"repos/{REPOSITORY}/{endpoint}"], text=True))
 
 
-def authorize(identity):
+def authorize(identity, publisher_sha):
     validate_identity(identity)
+    validate_source_ref(api("git/ref/heads/main"), identity, publisher_sha)
     run = api(f"actions/runs/{identity['run_id']}")
     commit = api(f"git/commits/{identity['source_sha']}")
     attempt = validate_run(run, commit, identity)
@@ -128,7 +144,7 @@ def main():
     identity = {key: os.environ[key.upper()] for key in
                 ("run_id", "source_sha", "source_tree", "version", "wheel_sha256")}
     if args.operation == "authorize":
-        artifact_id, attempt = authorize(identity)
+        artifact_id, attempt = authorize(identity, os.environ["GITHUB_SHA"])
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write(f"artifact_id={artifact_id}\nattempt={attempt}\n")
     else:

@@ -2,6 +2,9 @@
 import copy
 import hashlib
 import json
+import os
+import subprocess
+import textwrap
 from pathlib import Path
 import tempfile
 import unittest
@@ -21,6 +24,7 @@ class AdmissionTests(unittest.TestCase):
                         repository={"full_name": admission.REPOSITORY},
                         head_repository={"full_name": admission.REPOSITORY})
         self.commit = {"sha": "a" * 40, "tree": {"sha": "b" * 40}}
+        self.main_ref = {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "a" * 40}}
 
     def test_admits_exact_successful_source_run(self):
         self.assertEqual(admission.validate_run(self.run, self.commit, self.identity), 2)
@@ -36,6 +40,34 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             admission.validate_run(self.run, {"sha": "a" * 40, "tree": {"sha": "e" * 40}}, self.identity)
 
+    def test_only_current_main_and_matching_publisher_snapshot(self):
+        admission.validate_source_ref(self.main_ref, self.identity, "a" * 40)
+        invalid_refs = [
+            {"ref": "refs/tags/main", "object": {"type": "commit", "sha": "a" * 40}},
+            {"ref": "refs/heads/main-old", "object": {"type": "commit", "sha": "a" * 40}},
+            {"ref": "refs/heads/main", "object": {"type": "tag", "sha": "a" * 40}},
+            {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "d" * 40}},
+            {"ref": "refs/heads/main"}, {},
+        ]
+        for ref in invalid_refs:
+            with self.subTest(ref=ref), self.assertRaises(ValueError):
+                admission.validate_source_ref(ref, self.identity, "a" * 40)
+        for publisher_sha in ["d" * 40, "", None]:
+            with self.subTest(publisher_sha=publisher_sha), self.assertRaises(ValueError):
+                admission.validate_source_ref(self.main_ref, self.identity, publisher_sha)
+
+    def test_short_main_tag_cannot_admit_a_non_main_commit(self):
+        # All old run/commit gates pass for this tag-like run. Independent API
+        # branch identity must reject it before fetching the artifact list.
+        source_run = dict(self.run, head_sha="d" * 40)
+        source_commit = {"sha": "d" * 40, "tree": {"sha": "b" * 40}}
+        request = dict(self.identity, source_sha="d" * 40)
+        self.assertEqual(admission.validate_run(source_run, source_commit, request), 2)
+        with patch.object(admission, "api", return_value=self.main_ref) as api:
+            with self.assertRaises(ValueError):
+                admission.authorize(request, "d" * 40)
+            api.assert_called_once_with("git/ref/heads/main")
+
     def test_only_canonical_prereleases(self):
         for version in ["0.11.0", "v0.11.0rc1", "0.11.0rc1+local", "0.11.0rc1\nx=y", "../evil", "00.11.0rc1"]:
             with self.subTest(version=version), self.assertRaises(ValueError):
@@ -47,8 +79,8 @@ class AdmissionTests(unittest.TestCase):
         artifact = dict(id=456, name="pypi-qualified-wheel-123-2", expired=False,
                         workflow_run={"id": 123, "head_sha": "a" * 40})
         result = dict(total_count=1, artifacts=[artifact])
-        with patch.object(admission, "api", side_effect=[self.run, self.commit, result]):
-            self.assertEqual(admission.authorize(self.identity), (456, 2))
+        with patch.object(admission, "api", side_effect=[self.main_ref, self.run, self.commit, result]):
+            self.assertEqual(admission.authorize(self.identity, "a" * 40), (456, 2))
         bad_results = [dict(total_count=0, artifacts=[]),
                        dict(total_count=101, artifacts=[artifact]),
                        dict(total_count=2, artifacts=[artifact, artifact])]
@@ -58,8 +90,31 @@ class AdmissionTests(unittest.TestCase):
             bad_results.append(dict(total_count=1, artifacts=[dict(artifact, **{field: value})]))
         for result in bad_results:
             with self.subTest(result=result), self.assertRaises(ValueError):
-                with patch.object(admission, "api", side_effect=[self.run, self.commit, result]):
-                    admission.authorize(self.identity)
+                with patch.object(admission, "api", side_effect=[self.main_ref, self.run, self.commit, result]):
+                    admission.authorize(self.identity, "a" * 40)
+
+    def test_actual_consumer_rerun_guard_and_attempt_wiring(self):
+        workflow = (Path(__file__).resolve().parents[1] / "workflows" /
+                    "python-wheel-qualification.yml").read_text()
+        # Exercise the checked-in shell, rather than a second implementation of
+        # its intended behavior. Match only this named step's literal run block.
+        step = workflow.split("      - name: Require full qualification rerun\n", 1)[1].split("      - ", 1)[0]
+        self.assertIn("qualification_attempt: ${{ github.run_attempt }}", workflow)
+        self.assertIn("BUILT_ATTEMPT: ${{ needs.build-wheel.outputs.qualification_attempt }}", step)
+        self.assertIn("CURRENT_ATTEMPT: ${{ github.run_attempt }}", step)
+        self.assertIn("name: pypi-qualified-wheel-${{ github.run_id }}-${{ github.run_attempt }}", workflow)
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        self.assertTrue(script.strip(), "guard must have executable statements")
+        for built, current, allowed in [("1", "1", True), ("2", "2", True),
+                                        ("1", "2", False), ("", "2", False),
+                                        ("2", "", False), ("", "", False)]:
+            with self.subTest(built=built, current=current):
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", script],
+                                        env=dict(os.environ, BUILT_ATTEMPT=built, CURRENT_ATTEMPT=current),
+                                        capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode == 0, allowed, result.stdout + result.stderr)
+                if not allowed:
+                    self.assertIn("Re-run all jobs", result.stdout + result.stderr)
 
     def fixture(self, root):
         wheelhouse = root / "wheelhouse"

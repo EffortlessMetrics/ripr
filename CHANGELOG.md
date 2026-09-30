@@ -9,6 +9,16 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Prepare the first `ripr-rs` PyPI prerelease (`0.11.0a1`, native
+  `0.11.0-alpha.1`) as a native CLI wheel for Linux x86-64 with glibc 2.34 or
+  newer. Qualification checks audited wheel contents and isolated pip/uv
+  installation, Python preview use, and removal; other platforms are not
+  included in this initial scope.
+- Add source-owned qualification and explicitly requested publication of the
+  exact admitted wheel, binding its source, successful run, version and digest.
+  Publication uses the registered PyPI trusted publisher without rebuilding;
+  qualification alone does not publish a release.
+
 ## 0.11.0 - Swarm promotion and fail-closed output hardening
 
 Release date: staged (unreleased).
