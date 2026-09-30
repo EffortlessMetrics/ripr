@@ -554,7 +554,7 @@ jobs:
             echo "WHEEL_PATH=${wheel}"
           } >> "${GITHUB_ENV}"
 
-      - name: Run configured Python preview, fresh-shell follow-up, and disable control
+      - name: Run no-config Python preview, fresh-shell follow-up, and disable control
         shell: bash
         run: |
           set -euo pipefail
@@ -573,19 +573,6 @@ jobs:
           exit 98
           SH
           chmod +x "${fixture}/.venv/bin/python"
-
-          # Source currently requires explicit opt-in to the Python preview.
-          # Exercise the no-config limitation before enabling the adapter.
-          env -i HOME="${HOME}" PATH="${CONSUMER_PATH}" \
-            ripr check --root "${fixture}" --diff "${fixture}/diff.patch" \
-              --mode fast --json > "${disabled_json}"
-          jq -e '.summary.probes == 0 and .analysis_outcome.analysis_complete == false
-            and any(.preview_languages[]?; .language == "python" and .enabled == false)' \
-            "${disabled_json}" >/dev/null
-          cat > "${fixture}/ripr.toml" <<'EOF'
-          [languages]
-          enabled = ["rust", "python"]
-          EOF
 
           env -i \
             HOME="${HOME}" \

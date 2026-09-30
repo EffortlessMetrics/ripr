@@ -44,19 +44,6 @@ python -m pip install --no-index --find-links ./wheelhouse ripr-rs
 ripr --version
 ```
 
-## Python preview activation
-
-This source candidate requires explicit opt-in for Python analysis. In your
-project's `ripr.toml`, add:
-
-```toml
-[languages]
-enabled = ["rust", "python"]
-```
-
-Without this setting, Python findings are unavailable and the CLI reports the
-preview limitation. Packaging does not enable the adapter automatically.
-
 ## Package contract
 
 - The wheel contains the native `ripr` executable; it does not compile Rust on

@@ -19,7 +19,7 @@ The wheel metadata, licenses, file inventory, RECORD hashes, executable
 permissions and payload digest are inspected. Independent missing-executable
 and stale-RECORD controls must fail. Separate pip and uv jobs install the exact
 wheel without Rust or a source checkout, reject a planted PATH replacement,
-check the truthful no-config limitation, explicitly enable and run useful Python preview analysis and a fresh-shell explanation, exercise
+run useful no-config Python preview analysis and a fresh-shell explanation, exercise
 explicit disablement, reinstall, and uninstall without removing the project.
 
 A build artifact alone is not qualification. The complete run, including both
