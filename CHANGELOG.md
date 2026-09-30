@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Add manual, existing-package npm staging from exact source-main qualification
+  artifacts. Read-only admission checks native bytes, all four qualification
+  artifacts and installed-use denominators before an isolated stage-only OIDC
+  job. A real npm CLI loopback test checks unchanged tar transport; live trust,
+  staging, maintainer approval and public readback remain separate operations.
+
 - Prepare a single native `@effortlessmetrics/ripr` npm alpha for Linux x86-64/glibc 2.34+,
   preserving the exact published PyPI executable with separate product and
   packaging provenance. Qualification covers local/global/npm exec/npx installs

@@ -650,7 +650,7 @@ kind = "npm_package_admission"
 owner = "release"
 surface = "ci"
 classification = "tooling"
-reason = "Standard-library ZIP, RECORD and tar admission preserves exact published native bytes while npm creates its own tarball format."
+reason = "Standard-library ZIP, RECORD, tar and read-only GitHub evidence admission preserves exact native bytes before a separate stage-only OIDC job; no artifact code executes in admission."
 covered_by = ["python3 -m unittest discover -s .github/scripts -p test_npm_package.py"]
 
 [[allow]]
@@ -668,7 +668,7 @@ kind = "npm_package_admission_test"
 owner = "release"
 surface = "ci"
 classification = "test"
-reason = "Dependency-free negative controls exercise the real native and tarball admission functions."
+reason = "Dependency-free source/run/archive/consumer/stage-result controls and loopback npm transport tests exercise the actual admission and qualified tar bytes without registry credentials."
 covered_by = ["python3 -m unittest discover -s .github/scripts -p test_npm_package.py"]
 
 [[allow]]
