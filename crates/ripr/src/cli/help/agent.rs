@@ -254,9 +254,13 @@ compatibility route and fails closed when multiple awaiting attempts share a
 seam.
 
 The before phase writes the pre-edit repo-exposure snapshot and repair packet.
-The after phase writes the post-edit snapshot, persists static verification
-JSON, and emits a receipt. RIPR owns the evidence plumbing; the human or
-external agent owns the test edit.
+Without `--json`, stdout is a short summary ending with the exact next
+command. With `--json`, it prints one JSON document: the packet envelope with
+an additive `repair_attempt` block (attempt id, manifest path, packet path,
+and the exact `--phase after` command), so a driver that captures only stdout
+can complete the loop. The after phase writes the post-edit snapshot, persists
+static verification JSON, and emits a receipt. RIPR owns the evidence
+plumbing; the human or external agent owns the test edit.
 
 With the Python repair-trust flags, the before phase verifies the selection
 row by digest (manifest digest, row selection digest, current HEAD, exact

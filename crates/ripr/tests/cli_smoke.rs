@@ -3088,7 +3088,7 @@ fn agent_packet_expands_one_brief_seam_by_id() -> Result<(), Box<dyn std::error:
     assert_success(&packet);
 
     let packet_stdout = String::from_utf8_lossy(&packet.stdout);
-    assert!(packet_stdout.contains(r#""schema_version": "0.4""#));
+    assert!(packet_stdout.contains(r#""schema_version": "0.5""#));
     assert!(packet_stdout.contains(r#""analysis_outcome_status": "not_applicable""#));
     assert!(packet_stdout.contains(r#""packets_total": 1"#));
     assert!(packet_stdout.contains(&format!(r#""seam_id": "{seam_id}""#)));
@@ -4563,15 +4563,46 @@ fn agent_repair_phases_materialize_snapshots_and_verify_json()
         "before",
     ]);
     assert_success(&before);
-    // The before phase's stdout is the packet JSON alone, and its narration
-    // names a test-only edit without re-sending the user to take the before
-    // snapshot this phase already wrote.
+    // The before phase's stdout is one JSON document: the packet envelope
+    // carrying the additive `repair_attempt` continuation (#4329), and its
+    // narration names a test-only edit without re-sending the user to take
+    // the before snapshot this phase already wrote.
     let before_stdout: serde_json::Value = serde_json::from_slice(&before.stdout)?;
     assert_eq!(before_stdout["packets"][0]["seam_id"], "67fc764ba37d77bd");
     let before_stdout_text = String::from_utf8_lossy(&before.stdout);
     assert!(
         !before_stdout_text.contains("ripr: ") && !before_stdout_text.contains("Next:"),
         "before phase narration belongs on stderr, not in the packet JSON:\n{before_stdout_text}"
+    );
+    // A driver that captures only stdout can complete before → edit → after
+    // without stderr: the document names the attempt, its manifest, the
+    // packet path, and the exact resume command (#4329).
+    assert_eq!(before_stdout["schema_version"], "0.5");
+    let continuation = &before_stdout["repair_attempt"];
+    let attempt_id = continuation["attempt_id"]
+        .as_str()
+        .ok_or("before-phase stdout is missing repair_attempt.attempt_id")?
+        .to_string();
+    let next_command = continuation["next_command"]
+        .as_str()
+        .ok_or("before-phase stdout is missing repair_attempt.next_command")?
+        .to_string();
+    assert!(
+        next_command.contains(&format!("--attempt {attempt_id}"))
+            && next_command.contains("--phase after"),
+        "next command must resume this attempt:\n{next_command}"
+    );
+    assert!(
+        continuation["manifest_path"]
+            .as_str()
+            .is_some_and(|path| path.contains("attempt.json")),
+        "continuation must name the attempt manifest: {continuation}"
+    );
+    assert!(
+        continuation["packet_path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("target/ripr/workflow/agent-packet.json")),
+        "continuation must name the packet path: {continuation}"
     );
     let before_stderr = String::from_utf8_lossy(&before.stderr);
     assert!(
@@ -4610,17 +4641,19 @@ fn agent_repair_phases_materialize_snapshots_and_verify_json()
         "use boundary_gap_fixture::discounted_total;\n\n#[test]\nfn below_threshold_has_no_discount() {\n    assert_eq!(discounted_total(50, 100), 50);\n}\n\n#[test]\nfn far_above_threshold_discounts() {\n    assert_eq!(discounted_total(10_000, 100), 9_990);\n}\n\n#[test]\nfn at_threshold_discounts() {\n    assert_eq!(discounted_total(100, 100), 90);\n}\n",
     )?;
 
-    let after = run_ripr(&[
-        "agent",
-        "repair",
-        "--json",
-        "--root",
-        &root_arg,
-        "--seam-id",
-        "67fc764ba37d77bd",
-        "--phase",
-        "after",
-    ]);
+    // Drive the after phase from the stdout document alone (#4329): run the
+    // printed command's arguments, not a hand-written equivalent, so a drift
+    // between what the continuation names and what the loop needs is the
+    // bug. This driver adds --json because the assertions below read the
+    // after phase's result document from stdout; the seam-selected after
+    // phase stays covered by the replay and receipt checks below.
+    let mut next_args: Vec<&str> = next_command
+        .strip_prefix("ripr ")
+        .ok_or_else(|| format!("next command is not a ripr command: {next_command}"))?
+        .split_whitespace()
+        .collect();
+    next_args.push("--json");
+    let after = run_ripr(&next_args);
     assert_success(&after);
     let after_stderr = String::from_utf8_lossy(&after.stderr);
     assert!(
@@ -5368,18 +5401,20 @@ fn run_repair_phase_redirected(
 
 /// #4216 row 4: the natural `--phase before > packet.json 2> before.err`
 /// shape inside the checkout. The shell creates both files before ripr
-/// starts, and ripr keeps writing stderr after the baseline is captured, so
-/// the cage cannot tell that file from an authored edit and the attempt stays
-/// `Violated`. The before phase must say so up front, and the refusal must
-/// name the redirect file with how to avoid it. Redirecting under
-/// target/ripr/, as the guidance says, keeps the attempt compliant, and a
-/// real out-of-surface source edit made alongside that redirect is still
-/// refused without the redirect hint.
+/// starts, and the before phase writes its stdout document (the packet
+/// envelope with the `repair_attempt` continuation, #4329) and keeps writing
+/// stderr after the baseline is captured, so the cage cannot tell either
+/// file from an authored edit and the attempt stays `Violated`. The before
+/// phase must say so up front, and the refusal must name the redirect files
+/// with how to avoid them. Redirecting under target/ripr/, as the guidance
+/// says, keeps the attempt compliant, and a real out-of-surface source edit
+/// made alongside that redirect is still refused without the redirect hint.
 #[test]
 fn agent_repair_names_output_redirected_into_the_checkout() -> Result<(), Box<dyn std::error::Error>>
 {
     const GUIDANCE: &str = "keep this command's output out of the checkout";
-    const HINT: &str = "not tracked by Git when the before phase ran. If it is a file you redirected ripr output into";
+    const UNTRACKED_HINT: &str = "not tracked by Git when the before phase ran.";
+    const REDIRECT_HINT: &str = "a file you redirected ripr output into";
 
     // Natural shape: redirect files in the repository root.
     let root = built_repair_fixture("agent-repair-redirect-in-repo")?;
@@ -5414,8 +5449,10 @@ fn agent_repair_names_output_redirected_into_the_checkout() -> Result<(), Box<dy
     let stderr = String::from_utf8_lossy(&after.stderr);
     assert!(stderr.contains("ripr:   before.err ("), "{stderr}");
     assert!(
-        stderr.contains(&format!("`before.err` was {HINT}")),
-        "the refusal must name the redirect file and how to avoid it:\n{stderr}"
+        stderr.contains(&format!(
+            "`before.err`, `packet.json` were {UNTRACKED_HINT} If one is {REDIRECT_HINT}"
+        )),
+        "the refusal must name the redirect files and how to avoid it:\n{stderr}"
     );
     std::fs::remove_dir_all(root)?;
 
@@ -5453,7 +5490,7 @@ fn agent_repair_names_output_redirected_into_the_checkout() -> Result<(), Box<dy
                 "{stderr}"
             );
             assert!(
-                !stderr.contains(HINT),
+                !stderr.contains(UNTRACKED_HINT),
                 "a tracked source edit is not a redirect file:\n{stderr}"
             );
         } else {

@@ -139,7 +139,7 @@
         "owner": "discountedTotal",
         "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:17445ecf --verify-command 'jest tests/pricing.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-17445ecf.json",
         "repair_kind": "AddBoundaryAssertion",
-        "schema_version": "0.4",
+        "schema_version": "0.5",
         "source": "typescript_preview_projection",
         "target_test": "tests/pricing.test.ts::discounts far above threshold",
         "verify_command": "jest tests/pricing.test.ts"

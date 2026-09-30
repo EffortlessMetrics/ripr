@@ -764,7 +764,24 @@ fn prepared_packet_continuation_cannot_resume_a_later_attempt_for_the_same_seam(
         .and_then(|artifact| artifact.get("path"))
         .and_then(Value::as_str)
         .ok_or_else(|| "A manifest omitted retained packet authority".to_owned())?;
-    if read_json(&selected.join(retained_packet))? != packet_a {
+    // With `--json` the stdout document is the sealed packet plus the
+    // additive `repair_attempt` continuation (#4329): the retained packet
+    // file keeps the renderer's bytes, so equality holds after removing
+    // that one envelope member, and the continuation must name this
+    // attempt's own manifest facts.
+    let mut packet_body = packet_a.clone();
+    let packet_object = packet_body
+        .as_object_mut()
+        .ok_or_else(|| "A stdout packet is not a JSON object".to_owned())?;
+    let continuation = packet_object
+        .remove("repair_attempt")
+        .ok_or_else(|| "A stdout packet omitted the repair_attempt continuation".to_owned())?;
+    if continuation.get("attempt_id").and_then(Value::as_str) != Some(id_a)
+        || continuation.get("next_command").and_then(Value::as_str) != Some(next_a)
+    {
+        return Err("A continuation does not name A's own attempt facts".to_owned());
+    }
+    if read_json(&selected.join(retained_packet))? != packet_body {
         return Err("printed A packet differs from sealed A packet".to_owned());
     }
     let second = run_ripr(&journey.launch_dir, &before_args)?;

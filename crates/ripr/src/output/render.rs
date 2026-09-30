@@ -599,7 +599,7 @@ mod tests {
             &RiprConfig::default(),
         )?;
 
-        assert!(rendered.contains("\"schema_version\": \"0.4\""));
+        assert!(rendered.contains("\"schema_version\": \"0.5\""));
         assert!(rendered.contains("\"packets\""));
 
         remove_temp_root(&output.root)?;

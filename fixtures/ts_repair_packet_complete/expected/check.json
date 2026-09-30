@@ -129,7 +129,7 @@
         "owner": "applyDiscount",
         "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command 'jest tests/discount.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json",
         "repair_kind": "AddBoundaryAssertion",
-        "schema_version": "0.4",
+        "schema_version": "0.5",
         "source": "typescript_preview_projection",
         "target_test": "tests/discount.test.ts::applyDiscount applies discount when amount meets threshold",
         "verify_command": "jest tests/discount.test.ts"

@@ -437,7 +437,7 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_ungripped_seam_when_packet_is_rendered_then_task_is_write_targeted_test",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_strongly_gripped_seam_when_packets_are_requested_then_no_actionable_packet_is_emitted",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_related_tests_when_packet_is_rendered_then_oracle_kind_and_strength_are_present",
-  "crates/ripr/src/output/agent_seam_packets.rs::tests::schema_version_is_pinned_to_zero_four",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::schema_version_is_pinned_to_the_current_constant",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::actionable_packet_carries_a_suggested_test_command_marked_not_yet_runnable",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::single_actionable_envelope_carries_the_whole_loop_including_a_seam_receipt",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::mixed_actionable_and_limitation_envelope_leaves_the_seam_receipt_null",

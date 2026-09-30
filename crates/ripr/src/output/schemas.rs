@@ -58,7 +58,7 @@ pub(crate) const AGENT_ARTIFACT_SCHEMAS: &[AgentArtifactSchema] = &[
         "agent_seam_packet",
         crate::app::AGENT_SEAM_PACKET_SCHEMA_VERSION,
         "app / output::agent_seam_packets",
-        "0.4: packet preserves typed analysis outcomes (#2897).",
+        "0.5: packet gains the optional envelope-level repair_attempt continuation block carried by the repair-before --json success stdout (#4329); every other projection keeps the 0.4 shape and only the version string moves.",
     ),
     (
         "targeted_test_outcome",
@@ -135,7 +135,7 @@ mod tests {
             ("agent_brief", "0.1", "output::agent_brief"),
             (
                 "agent_seam_packet",
-                "0.4",
+                "0.5",
                 "app / output::agent_seam_packets",
             ),
             ("targeted_test_outcome", "0.1", "output::outcome"),

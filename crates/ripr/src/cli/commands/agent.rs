@@ -830,19 +830,13 @@ fn run_agent_repair_phase(
             let packet_path = root.join("target/ripr/workflow/agent-packet.json");
             write_text_file(&packet_path, &packet)?;
             eprintln!("ripr: wrote {}", packet_path.display());
-            // `--json` prints the packet document here, as before. Without it,
-            // stdout is a short summary printed only after the attempt is
-            // published (`cli::persist_before_repair_attempt`): agents capture
-            // stdout as often as people read it, and ~13 KB of JSON nobody
-            // asked for buried the one step that matters (F15-7), while a
-            // "Repair prepared" line ahead of a refused publication would
-            // point at an attempt that does not exist.
-            if json {
-                print!("{packet}");
-            }
-            // "Complete" and the next step are printed once the attempt is
-            // published (`cli::persist_before_repair_attempt`), so a refusal
-            // there is never preceded by a completion line.
+            // Nothing prints on stdout here. The before-phase success stdout —
+            // with `--json` the packet document carrying the additive
+            // `repair_attempt` continuation (#4329), without it the short
+            // summary — prints once, only after the attempt exists
+            // (`cli::persist_before_repair_attempt`), the same ordering rule
+            // as the stderr narration: a refusal there is never preceded by a
+            // completion line or a success document.
             Ok(())
         }
         AgentRepairPhase::After => {
@@ -1574,16 +1568,28 @@ fn before_phase_refusal(seam_id: &str, error: &str) -> String {
     )
 }
 
-/// What the before phase prints on stdout: the packet JSON with `--json`,
-/// otherwise a short summary. A packet the summary cannot read falls back to
-/// a line naming the packet file, so nothing is hidden.
-pub(in crate::cli) fn before_phase_stdout(packet: &str, packet_path: &str, json: bool) -> String {
+/// What the before phase prints on stdout once its attempt is published: with
+/// `--json`, the packet envelope augmented with the additive `repair_attempt`
+/// continuation (#4329) so a driver that captures only stdout can complete
+/// the loop; without it, a short summary. A packet the summary cannot read
+/// falls back to a line naming the packet file, so nothing is hidden.
+pub(in crate::cli) fn before_phase_stdout(
+    packet: &str,
+    packet_path: &str,
+    json: bool,
+    continuation: &output::agent_seam_packets::BeforePhaseAttemptContinuation,
+) -> Result<String, String> {
     if json {
-        return packet.to_string();
+        return output::agent_seam_packets::render_before_phase_attempt_stdout(
+            packet,
+            continuation,
+        );
     }
-    before_phase_summary(packet, packet_path).unwrap_or_else(|| {
-        format!("Repair packet (JSON): {packet_path}; add --json to print it here\n")
-    })
+    Ok(
+        before_phase_summary(packet, packet_path).unwrap_or_else(|| {
+            format!("Repair packet (JSON): {packet_path}; add --json to print it here\n")
+        }),
+    )
 }
 
 /// Stdout of an after phase without `--json`: the movement line the receipt
@@ -2311,9 +2317,10 @@ mod repair_summary_tests {
 #[cfg(test)]
 mod before_phase_stdout_tests {
     use super::before_phase_stdout;
+    use crate::output::agent_seam_packets::BeforePhaseAttemptContinuation;
 
     const PACKET: &str = r#"{
-  "schema_version": "0.1",
+  "schema_version": "0.5",
   "packets": [
     {
       "seam_id": "0d196886bad1b124",
@@ -2333,13 +2340,62 @@ mod before_phase_stdout_tests {
   ]
 }"#;
 
-    /// `--json` gets the packet JSON byte for byte, so agents and scripts
-    /// that parse stdout keep their contract by asking for it.
+    fn continuation() -> BeforePhaseAttemptContinuation {
+        BeforePhaseAttemptContinuation {
+            attempt_id: "repair-attempt-0123456789abcdef01234567".to_string(),
+            manifest_path:
+                "target/ripr/repair-attempts/repair-attempt-0123456789abcdef01234567/attempt.json"
+                    .to_string(),
+            next_command:
+                "ripr agent repair --root . --attempt repair-attempt-0123456789abcdef01234567 --phase after"
+                    .to_string(),
+            packet_path: "target/ripr/workflow/agent-packet.json".to_string(),
+        }
+    }
+
+    /// `--json` keeps every packet field and adds the additive
+    /// `repair_attempt` continuation (#4329): a driver that parses stdout
+    /// once can run the after phase without reading stderr.
     #[test]
-    fn json_stdout_is_the_packet_json_unchanged() {
+    fn json_stdout_is_the_packet_document_with_the_attempt_continuation() -> Result<(), String> {
+        let document = before_phase_stdout(
+            PACKET,
+            "target/ripr/workflow/agent-packet.json",
+            true,
+            &continuation(),
+        )?;
+        let value: serde_json::Value = serde_json::from_str(&document)
+            .map_err(|error| format!("stdout document must parse: {error}"))?;
+        assert_eq!(value["schema_version"], "0.5");
+        assert_eq!(value["packets"][0]["seam_id"], "0d196886bad1b124");
         assert_eq!(
-            before_phase_stdout(PACKET, "target/ripr/workflow/agent-packet.json", true),
-            PACKET
+            value["repair_attempt"]["attempt_id"],
+            "repair-attempt-0123456789abcdef01234567"
+        );
+        assert_eq!(
+            value["repair_attempt"]["next_command"],
+            "ripr agent repair --root . --attempt repair-attempt-0123456789abcdef01234567 --phase after"
+        );
+        assert_eq!(
+            value["repair_attempt"]["manifest_path"],
+            "target/ripr/repair-attempts/repair-attempt-0123456789abcdef01234567/attempt.json"
+        );
+        assert_eq!(
+            value["repair_attempt"]["packet_path"],
+            "target/ripr/workflow/agent-packet.json"
+        );
+        Ok(())
+    }
+
+    /// An envelope that is not the current packet contract fails closed:
+    /// the publisher must never print a mislabeled stdout document.
+    #[test]
+    fn wrong_schema_version_fails_closed() {
+        let packet = PACKET.replace("0.5", "0.4");
+        assert!(
+            before_phase_stdout(&packet, "p", true, &continuation())
+                .err()
+                .is_some_and(|error| error.contains("schema version"))
         );
     }
 
@@ -2347,8 +2403,13 @@ mod before_phase_stdout_tests {
     /// summary naming the seam, the one test file to edit, and where the
     /// full packet is, instead of ~13 KB of JSON.
     #[test]
-    fn default_stdout_is_a_short_summary_of_the_same_packet() {
-        let summary = before_phase_stdout(PACKET, "target/ripr/workflow/agent-packet.json", false);
+    fn default_stdout_is_a_short_summary_of_the_same_packet() -> Result<(), String> {
+        let summary = before_phase_stdout(
+            PACKET,
+            "target/ripr/workflow/agent-packet.json",
+            false,
+            &continuation(),
+        )?;
         assert!(!summary.contains('{'), "{summary}");
         assert!(summary.lines().count() <= 8, "{summary}");
         for expected in [
@@ -2364,17 +2425,19 @@ mod before_phase_stdout_tests {
                 "missing `{expected}` in:\n{summary}"
             );
         }
+        Ok(())
     }
 
     /// A packet the summary cannot read (no test file) still names where the
     /// packet is and how to print it, rather than an empty stdout.
     #[test]
-    fn unreadable_packet_points_at_the_packet_file() {
+    fn unreadable_packet_points_at_the_packet_file() -> Result<(), String> {
         let packet = r#"{"packets":[{"seam_id":"x"}]}"#;
         assert_eq!(
-            before_phase_stdout(packet, "p", false),
+            before_phase_stdout(packet, "p", false, &continuation())?,
             "Repair packet (JSON): p; add --json to print it here\n"
         );
+        Ok(())
     }
 
     #[test]

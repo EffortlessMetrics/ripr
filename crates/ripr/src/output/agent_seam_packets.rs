@@ -13,9 +13,12 @@
 //! `StronglyGripped`, `Intentional`, and `Suppressed` produce no
 //! packet — there is nothing for the agent to do.
 //!
-//! The packet schema is **0.4**, intentionally distinct from the
+//! The packet schema is **0.5**, intentionally distinct from the
 //! repo-exposure report's 0.1, because the packet is a separate
-//! contract aimed at coding agents rather than reviewers.
+//! contract aimed at coding agents rather than reviewers. `0.5`
+//! adds the optional envelope-level `repair_attempt` continuation block
+//! carried by the `ripr agent repair --phase before` success stdout
+//! (#4329); every other projection keeps the `0.4` shape.
 
 use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
 use crate::agent::loop_commands::anchored_redirect_target;
@@ -457,6 +460,65 @@ pub(crate) fn render_agent_seam_packet_json_with_context(
         false,
         context,
     )
+}
+
+/// The repair-attempt continuation carried by the `ripr agent repair
+/// --phase before` success stdout (#4329). A driver that captures only
+/// stdout gets the attempt identity, the retained manifest, and the exact
+/// `--phase after` command — the same facts the stderr narration names —
+/// so the before → edit → after loop closes without reading stderr.
+pub(crate) struct BeforePhaseAttemptContinuation {
+    pub(crate) attempt_id: String,
+    pub(crate) manifest_path: String,
+    pub(crate) next_command: String,
+    pub(crate) packet_path: String,
+}
+
+/// Augment one rendered agent-packet envelope with the additive
+/// `repair_attempt` continuation block for the before-phase success stdout.
+/// This is the shared envelope renderer's own augmentation — the input is
+/// the exact bytes the renderer produced (and the packet file retains), and
+/// the output inserts one envelope-level member without re-rendering any
+/// packet content — so the stdout document cannot drift from the retained
+/// packet's shape. Nested object keys render in map order, one of the
+/// deterministic orders `docs/OUTPUT_SCHEMA.md` § "JSON object key ordering"
+/// already allows; the packet contract is keyed, not ordered.
+pub(crate) fn render_before_phase_attempt_stdout(
+    packet_document: &str,
+    continuation: &BeforePhaseAttemptContinuation,
+) -> Result<String, String> {
+    let mut value: serde_json::Value = serde_json::from_str(packet_document)
+        .map_err(|error| format!("decode rendered agent packet envelope failed: {error}"))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "rendered agent packet envelope is not a JSON object".to_string())?;
+    if object
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str)
+        != Some(AGENT_SEAM_PACKET_SCHEMA_VERSION)
+    {
+        return Err(format!(
+            "rendered agent packet envelope does not carry the current agent-packet schema version {AGENT_SEAM_PACKET_SCHEMA_VERSION}"
+        ));
+    }
+    if object.contains_key("repair_attempt") {
+        return Err(
+            "rendered agent packet envelope already carries a repair_attempt block".to_string(),
+        );
+    }
+    object.insert(
+        "repair_attempt".to_string(),
+        json!({
+            "attempt_id": continuation.attempt_id,
+            "manifest_path": continuation.manifest_path,
+            "next_command": continuation.next_command,
+            "packet_path": continuation.packet_path,
+        }),
+    );
+    let mut rendered = serde_json::to_string_pretty(&value)
+        .map_err(|error| format!("render before-phase attempt stdout failed: {error}"))?;
+    rendered.push('\n');
+    Ok(rendered)
 }
 
 /// Render one explicit GapRecord as an agent packet. This is the same
@@ -6196,11 +6258,13 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_is_pinned_to_zero_four() {
+    fn schema_version_is_pinned_to_the_current_constant() {
         let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         assert!(
-            json.contains("\"schema_version\": \"0.4\""),
-            "expected schema_version 0.4: {json}"
+            json.contains(&format!(
+                "\"schema_version\": \"{AGENT_SEAM_PACKET_SCHEMA_VERSION}\""
+            )),
+            "expected schema_version {AGENT_SEAM_PACKET_SCHEMA_VERSION}: {json}"
         );
     }
 
@@ -6580,7 +6644,7 @@ mod tests {
         let json = render_agent_seam_packets_json(&[], None);
         assert!(json.contains("\"packets_total\": 0"));
         assert!(json.contains("\"packets\": []"));
-        assert!(json.contains("\"schema_version\": \"0.4\""));
+        assert!(json.contains("\"schema_version\": \"0.5\""));
     }
 
     #[test]

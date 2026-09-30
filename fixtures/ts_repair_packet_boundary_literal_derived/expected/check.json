@@ -129,7 +129,7 @@
         "owner": "shipping",
         "receipt_command": "ripr receipt write --gap gap:typescript:typescript_preview:04ac84fc --verify-command 'jest tests/shipping.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-04ac84fc.json",
         "repair_kind": "AddBoundaryAssertion",
-        "schema_version": "0.4",
+        "schema_version": "0.5",
         "source": "typescript_preview_projection",
         "target_test": "tests/shipping.test.ts::small order pays shipping",
         "verify_command": "jest tests/shipping.test.ts"
