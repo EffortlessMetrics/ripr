@@ -27,6 +27,13 @@ consumer jobs, must pass. The attempt-specific artifact retains the exact wheel
 and `qualification.json` for five days. PR qualification is rehearsal; publication
 admission consumes a successful main-branch manual qualification run.
 
+The repository's own `ripr.toml` enables Python preview alongside Rust and
+TypeScript so the new admission controller receives analysis in the required
+Rust job's PR-evidence and review-guidance gates. This does not change the
+installed CLI's language defaults or promote Python beyond preview. The
+mixed-language producer test verifies real Python findings and rejects the
+previous Python-disabled configuration.
+
 ## Publication
 
 The source `publish-pypi.yml` workflow admits existing artifacts without

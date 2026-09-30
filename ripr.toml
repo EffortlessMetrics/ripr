@@ -1,2 +1,2 @@
 [languages]
-enabled = ["rust", "typescript"]
+enabled = ["rust", "typescript", "python"]
