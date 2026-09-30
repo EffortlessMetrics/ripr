@@ -155,6 +155,21 @@ jobs:
           tarball="dist/$FILENAME"
           test -f "$tarball" && test ! -L "$tarball"
           test "$(sha256sum "$tarball" | cut -d ' ' -f 1)" = "$TARBALL_SHA256"
+      - name: Recheck public version after environment approval
+        run: |
+          set -euo pipefail
+          status="$(curl --disable --fail --silent --show-error --max-time 30 --max-filesize 5000000 --header 'Cache-Control: no-cache' --header 'Accept: application/json' --output registry-state.json --write-out '%{http_code}' 'https://registry.npmjs.org/@effortlessmetrics%2fripr')"
+          test "$status" = 200
+          python3 - <<'PY'
+          import json, os
+          with open("registry-state.json", "rb") as stream: data = stream.read(5_000_001)
+          if len(data) > 5_000_000: raise SystemExit("registry metadata exceeds admission bound")
+          metadata = json.loads(data)
+          if not isinstance(metadata, dict) or metadata.get("name") != "@effortlessmetrics/ripr": raise SystemExit("selected npm package no longer exists")
+          versions = metadata.get("versions")
+          if not isinstance(versions, dict) or not any(version != "0.0.0-stage" for version in versions): raise SystemExit("genuine existing npm package required")
+          if os.environ["VERSION"] in versions: raise SystemExit("selected version is already public; restaging is forbidden")
+          PY
       - name: Stage exact bytes through the stage-only trusted publisher
         env:
           FILENAME: ${{ needs.admission.outputs.filename }}

@@ -492,6 +492,43 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                 result = subprocess.run(["bash", "-euo", "pipefail", "-c", guard], cwd=root, env=environment, capture_output=True, check=False)
                 self.assertEqual(result.returncode == 0, control == "valid")
 
+    @unittest.skipUnless(os.name == "posix", "GitHub-hosted stage job uses bash")
+    def test_actual_prewrite_guard_rereads_version_after_approval_delay(self):
+        workflow = (PACKAGE.ROOT / ".github/workflows/publish-npm.yml").read_text()
+        step = workflow.split("      - name: Recheck public version after environment approval\n", 1)[1].split("      - ", 1)[0]
+        self.assertLess(workflow.index("      - name: Recheck public version after environment approval"),
+                        workflow.index("      - name: Stage exact bytes through the stage-only trusted publisher"))
+        self.assertNotIn("        if:", step)
+        self.assertNotIn("continue-on-error", step)
+        guard = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); tools = root / "tools"; tools.mkdir()
+            curl = tools / "curl"
+            curl.write_text('#!/bin/sh\ncp "$REGISTRY_FIXTURE" registry-state.json\nprintf called > curl-called\nprintf "%s" "$REGISTRY_STATUS"\n')
+            curl.chmod(0o755)
+            fixture = root / "registry-fixture.json"
+            public = {"name": PACKAGE.PACKAGE_NAME, "versions": {"0.11.0-alpha.1": {}}}
+            appeared = copy.deepcopy(public); appeared["versions"]["0.11.0-alpha.2"] = {}
+            for label, body, status, allowed in (
+                ("absent before approval", public, "200", True),
+                ("published during approval", appeared, "200", False),
+                ("wrong package", dict(public, name="other"), "200", False),
+                ("missing versions", {"name": PACKAGE.PACKAGE_NAME}, "200", False),
+                ("placeholder only", dict(public, versions={"0.0.0-stage": {}}), "200", False),
+                ("unreadable registry", public, "503", False),
+            ):
+                fixture.write_bytes(PACKAGE.canonical(body))
+                marker = root / "curl-called"
+                if marker.exists(): marker.unlink()
+                environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
+                                   REGISTRY_FIXTURE=str(fixture), REGISTRY_STATUS=status,
+                                   VERSION="0.11.0-alpha.2")
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", guard], cwd=root,
+                                        env=environment, capture_output=True, check=False)
+                with self.subTest(label=label):
+                    self.assertTrue(marker.exists(), "prewrite guard must perform a fresh registry read")
+                    self.assertEqual(result.returncode == 0, allowed, result.stderr)
+
     def test_real_admission_keeps_only_exact_bytes_and_never_runs_artifact_code(self):
         pin, wheel_files = wheel_fixture()
         wheel = zip_bytes(wheel_files); pin["wheel_sha256"] = PACKAGE.digest(wheel)

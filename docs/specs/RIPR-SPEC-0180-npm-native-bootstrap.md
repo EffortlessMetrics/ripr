@@ -49,6 +49,11 @@ the selected maintainer reviewer. The isolated OIDC job receives one admitted
 tarball, rechecks its digest, and invokes pinned npm stage publish with scripts
 disabled and fixed public/next metadata. It performs no checkout, package
 execution, build, direct publication, stage approval or settings mutation.
+After environment approval and immediately before the stage request, trusted
+inline code repeats the anonymous existing-package/version-absence check. A
+public version that appeared during the wait fails before the attempted write.
+The final short read/write race is owned by the registry's immutable version
+constraint; the preflight does not claim atomicity.
 
 The returned stage ID and identity are inspected in a separate read-only job.
 A staging response does not establish staged-byte readback, external provenance

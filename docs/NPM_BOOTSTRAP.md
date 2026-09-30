@@ -147,6 +147,13 @@ ignored lifecycle scripts and provenance enabled. It never calls `npm publish`,
 `npm stage approve`, registry administration or a build command. No npm token
 fallback is configured.
 
+Immediately before the stage command, trusted inline code repeats the anonymous
+registry read after environment approval. It rejects missing/wrong package
+metadata, placeholder-only state, failed reads and an already-public selected
+version. A version that appeared during the approval wait cannot reuse the
+earlier absence decision. This is a point-in-time preflight, not an atomic lock;
+the registry's immutable-version constraint owns the final read/write race.
+
 A separate read-only job validates the returned stage ID, identity and
 integrity. Its receipt says `staging_response_received`; independent staged-byte
 inspection, maintainer approval and public delivery are explicitly false.
