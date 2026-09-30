@@ -1,7 +1,8 @@
 # ripr
 
 `ripr` finds static mutation-exposure gaps before expensive mutation testing.
-The npm package and installed command are both named **ripr**.
+The npm package is **@effortlessmetrics/ripr**; the installed command remains
+**ripr**.
 
 ## Linux x86-64 alpha
 
@@ -12,7 +13,7 @@ check the minimum glibc version. Older glibc loaders reject this executable.
 Do not override platform checks with `--force`.
 
 ```console
-npm install --global ripr@0.11.0-alpha.1
+npm install --global @effortlessmetrics/ripr@0.11.0-alpha.1
 ripr --version
 ripr check
 ```
@@ -20,13 +21,13 @@ ripr check
 For a one-shot invocation, keep the package and command explicit:
 
 ```console
-npx --yes --package=ripr@0.11.0-alpha.1 ripr check
+npx --yes --package=@effortlessmetrics/ripr@0.11.0-alpha.1 ripr check
 ```
 
 Project-local installation also works:
 
 ```console
-npm install --save-dev ripr@0.11.0-alpha.1
+npm install --save-dev @effortlessmetrics/ripr@0.11.0-alpha.1
 npm exec -- ripr check
 ```
 

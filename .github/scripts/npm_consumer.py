@@ -15,6 +15,8 @@ import subprocess
 import tarfile
 import tempfile
 
+PACKAGE_NAME = "@effortlessmetrics/ripr"
+
 
 def require(condition, message):
     if not condition:
@@ -51,11 +53,13 @@ def useful_journey(prefix, project, env, output, route):
 def reinstall_global(npm_command, prefix, tarball, cwd, env, payload_digest):
     """Require package removal, then verify fresh installed native bytes."""
     binary = prefix / "bin/ripr"
-    package = prefix / "lib/node_modules/ripr"
-    command([*npm_command, "uninstall", "--global", "--prefix", prefix, "--ignore-scripts", "ripr"], cwd, env)
+    package = prefix / "lib/node_modules" / PACKAGE_NAME
+    command([*npm_command, "uninstall", "--global", "--prefix", prefix, "--ignore-scripts", PACKAGE_NAME], cwd, env)
     require(not os.path.lexists(binary) and not os.path.lexists(package), "uninstall did not remove global package and bin link")
     command([*npm_command, "install", "--global", "--prefix", prefix, "--ignore-scripts", "--offline", "--no-audit", "--no-fund", tarball], cwd, env)
-    require(binary.is_file() and package.is_dir(), "reinstall did not restore global package and executable")
+    native = package / "bin/ripr"
+    require(binary.is_file() and native.is_file(), "reinstall did not restore global package and executable")
+    require(binary.resolve() == native, "reinstall bin link targets wrong package")
     require(sha(binary) == payload_digest, "reinstall native bytes mismatch")
 
 
@@ -68,6 +72,7 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     receipt = json.loads((artifact / "package-receipt.json").read_text())
+    require(receipt.get("package_name") == PACKAGE_NAME, "receipt package name mismatch")
     pin = receipt["provenance"]["product_source"]
     tarball = artifact / "tarballs" / receipt["tarball"]["filename"]
     require(sha(tarball) == receipt["tarball"]["sha256"], "tarball transfer digest mismatch")
@@ -109,7 +114,7 @@ def main():
         local = root / "local"; local.mkdir()
         (local / "package.json").write_text('{"name":"ripr-clean-consumer","version":"0.0.0","private":true}')
         command([*npm_command, "install", "--ignore-scripts", "--offline", "--no-audit", "--no-fund", tarball], local, env)
-        local_binary = local / "node_modules/ripr/bin/ripr"
+        local_binary = local / "node_modules" / PACKAGE_NAME / "bin/ripr"
         require(sha(local_binary) == pin["payload_sha256"], "local native bytes mismatch")
         require((local / "node_modules/.bin/ripr").resolve() == local_binary, "npm did not link native executable directly")
         local_prefix = [local / "node_modules/.bin/ripr"]
@@ -119,13 +124,14 @@ def main():
         command([*npm_command, "install", "--global", "--prefix", global_root, "--ignore-scripts", "--offline", "--no-audit", "--no-fund", tarball], root, env)
         global_binary = global_root / "bin/ripr"
         require(sha(global_binary) == pin["payload_sha256"], "global native bytes mismatch")
+        require(global_binary.resolve() == global_root / "lib/node_modules" / PACKAGE_NAME / "bin/ripr", "global bin link targets wrong package")
         global_env = {**env, "PATH": str(global_root / "bin") + os.pathsep + env["PATH"]}
         proof["routes"].append(useful_journey(["ripr"], project, global_env, output, "global"))
         npx_prefix = [*npm_command, "exec", "--yes", "--ignore-scripts", "--offline", "--package=" + str(tarball), "--", "ripr"]
         proof["routes"].append(useful_journey(npx_prefix, project, env, output, "npm-exec"))
         actual_npx = ["npx", "--yes", "--ignore-scripts", "--offline", "--package=" + str(tarball), "ripr"]
         proof["routes"].append(useful_journey(actual_npx, project, env, output, "npx"))
-        npx_files = list((root / "cache/_npx").glob("*/node_modules/ripr/bin/ripr"))
+        npx_files = list((root / "cache/_npx").glob(f"*/node_modules/{PACKAGE_NAME}/bin/ripr"))
         require(len(npx_files) == 1 and sha(npx_files[0]) == pin["payload_sha256"], "npm exec payload identity missing")
         # Exchange frames sequentially: pipelining exit can correctly terminate
         # the server before asynchronous request responses are written.
@@ -205,8 +211,8 @@ def main():
         require(command([global_binary, "--version"], root, env).stdout.strip() == "ripr " + receipt["version"], "reinstalled native version mismatch")
         (project / "ripr.toml").unlink()
         proof["reinstall_journey"] = useful_journey([global_binary], project, env, output, "fresh-reinstall")
-        command([*npm_command, "uninstall", "--global", "--prefix", global_root, "--ignore-scripts", "ripr"], root, env)
-        require(not os.path.lexists(global_binary) and not os.path.lexists(global_root / "lib/node_modules/ripr") and (project / "src/pricing.py").is_file(), "uninstall contract failed")
+        command([*npm_command, "uninstall", "--global", "--prefix", global_root, "--ignore-scripts", PACKAGE_NAME], root, env)
+        require(not os.path.lexists(global_binary) and not os.path.lexists(global_root / "lib/node_modules" / PACKAGE_NAME) and (project / "src/pricing.py").is_file(), "uninstall contract failed")
         proof["negative_controls"].append("verified removal and fresh reinstall restore bytes and useful behavior; final uninstall preserves project")
         require(len(proof["routes"]) == 4, "route denominator incomplete")
         proof.update({"schema_version": 1, "state": "passed", "selected_routes": 4, "executed_routes": 4, "failed_routes": 0})

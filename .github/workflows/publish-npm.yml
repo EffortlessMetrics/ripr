@@ -33,7 +33,7 @@ jobs:
           {
             echo "## npm trusted-publisher contract"
             echo
-            echo "- Package: \`ripr\`"
+            echo "- Package: \`@effortlessmetrics/ripr\`"
             echo "- Initial target: native Linux x64/glibc 2.34+ in one package"
             echo "- GitHub owner: \`EffortlessMetrics\`"
             echo "- Repository: \`ripr\`"

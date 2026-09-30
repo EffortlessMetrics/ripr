@@ -1,12 +1,18 @@
 # Source-owned npm Linux bootstrap
 
-The first npm prerelease is a **single native `ripr` package for Linux x86-64,
+The first npm prerelease is a **single native `@effortlessmetrics/ripr` package for Linux x86-64,
 glibc 2.34+**, using npm 10+. It installs `bin/ripr` directly and contains no
 JavaScript launcher, optional dependencies, lifecycle scripts or runtime
 Python dependency. This is an explicit bounded exception to the multi-package
 family originally planned in #1784, not completion of that family or its
 five-platform support matrix. Swarm launcher #4716 and native payload work
 remain separate; this source packaging slice does not promote swarm features.
+
+The installed command remains `ripr`. npm rejected the attempted unscoped
+`ripr` name on 2026-09-30 under its similarity rule; no unscoped version was
+published. The scoped identity is a newly qualified package, not a renamed
+upload of the earlier tarball. Any later unscoped name request is separate and
+does not change the identity of existing scoped versions.
 
 ## Native versus packaging source
 
@@ -83,7 +89,8 @@ staged package and maintainer 2FA approval.
 
 ## Future multi-platform transition
 
-A later immutable version can keep package/command `ripr` while replacing the
+A later immutable version can keep package `@effortlessmetrics/ripr` and command
+`ripr` while replacing the
 single-platform bin with a verified launcher plus exact-version platform
 payload packages. Qualify and publish every selected payload before that
 launcher. Remove the Linux-only root restrictions only when each added target

@@ -9,10 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Prepare a single native `ripr` npm alpha for Linux x86-64/glibc 2.34+,
+- Prepare a single native `@effortlessmetrics/ripr` npm alpha for Linux x86-64/glibc 2.34+,
   preserving the exact published PyPI executable with separate product and
   packaging provenance. Qualification covers local/global/npm exec/npx installs
   without lifecycle scripts; this does not itself publish npm or add platforms.
+  Use the scoped package after npm's unscoped-name rejection, retaining the
+  installed `ripr` command and verifying scoped package paths during reinstall.
 
 - Prepare the first `ripr-rs` PyPI prerelease (`0.11.0a1`, native
   `0.11.0-alpha.1`) as a native CLI wheel for Linux x86-64 with glibc 2.34 or

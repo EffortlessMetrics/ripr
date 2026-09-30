@@ -61,6 +61,22 @@ def zip_bytes(files, link=None, no_exec=False):
 
 
 class NpmPackageTests(unittest.TestCase):
+    def test_consumer_rejects_missing_unscoped_and_foreign_package_identity(self):
+        for name in (None, "ripr", "@other/ripr"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                artifact = root / "artifact"
+                (artifact / "tarballs").mkdir(parents=True)
+                (artifact / "fixture").mkdir()
+                data = b"valid transfer digest before consumer execution"
+                (artifact / "tarballs/input.tgz").write_bytes(data)
+                receipt = {"package_name": name, "version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1", "payload_sha256": PACKAGE.digest(data)}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
+                (artifact / "package-receipt.json").write_bytes(PACKAGE.canonical(receipt))
+                args = SimpleNamespace(artifact=artifact, output=root / "output")
+                with mock.patch.object(CONSUMER.argparse.ArgumentParser, "parse_args", return_value=args), mock.patch.object(CONSUMER, "command", side_effect=AssertionError("wrong package reached execution")):
+                    with self.assertRaisesRegex(ValueError, "receipt package name mismatch"):
+                        CONSUMER.main()
+
     def test_missing_node_or_npm_has_actionable_error(self):
         for missing in ("node", "npm", "npx"):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
@@ -69,7 +85,7 @@ class NpmPackageTests(unittest.TestCase):
                 (artifact / "tarballs").mkdir(parents=True)
                 data = b"input identity is checked before tool discovery"
                 (artifact / "tarballs/input.tgz").write_bytes(data)
-                receipt = {"version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1"}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
+                receipt = {"package_name": "@effortlessmetrics/ripr", "version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1"}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
                 (artifact / "package-receipt.json").write_bytes(PACKAGE.canonical(receipt))
                 args = SimpleNamespace(artifact=artifact, output=root / "output")
                 real_which = CONSUMER.shutil.which
@@ -77,22 +93,28 @@ class NpmPackageTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, missing + " executable not found in PATH"):
                         CONSUMER.main()
 
+    @unittest.skipUnless(os.name == "posix", "Linux-native consumer uses POSIX executable links")
     def test_reinstall_rejects_noop_uninstall_and_noop_install(self):
         data = b"expected native payload"
-        for control in ("noop-uninstall", "dangling-bin", "noop-install", "fresh-install"):
+        for control in ("noop-uninstall", "dangling-bin", "noop-install", "stale-unscoped", "wrong-bin-owner", "fresh-install"):
             with self.subTest(control=control), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 prefix = root / "global"
-                package = prefix / "lib/node_modules/ripr"
+                package = prefix / "lib/node_modules/@effortlessmetrics/ripr"
                 binary = prefix / "bin/ripr"
+                unscoped = prefix / "lib/node_modules/ripr/bin/ripr"
+                unscoped.parent.mkdir(parents=True)
+                unscoped.write_bytes(data)
                 def install():
-                    package.mkdir(parents=True)
+                    (package / "bin").mkdir(parents=True)
+                    (package / "bin/ripr").write_bytes(data)
                     binary.parent.mkdir(parents=True, exist_ok=True)
-                    binary.write_bytes(data)
+                    binary.symlink_to(package / "bin/ripr")
                 install()
                 observed = []
                 def operation(args, cwd, env):
                     if "uninstall" in args:
+                        self.assertEqual(args[-1], "@effortlessmetrics/ripr")
                         observed.append("uninstall")
                         if control != "noop-uninstall":
                             binary.unlink()
@@ -103,14 +125,24 @@ class NpmPackageTests(unittest.TestCase):
                         observed.append("install")
                         if control == "fresh-install":
                             install()
+                        elif control == "stale-unscoped":
+                            package.mkdir(parents=True)
+                            binary.symlink_to(unscoped)
+                        elif control == "wrong-bin-owner":
+                            install()
+                            binary.unlink()
+                            binary.symlink_to(unscoped)
                     return subprocess.CompletedProcess(args, 0, "", "")
                 with mock.patch.object(CONSUMER, "command", side_effect=operation):
                     if control == "fresh-install":
                         CONSUMER.reinstall_global(["npm"], prefix, root / "input.tgz", root, {}, PACKAGE.digest(data))
                         self.assertEqual(observed, ["uninstall", "install"])
                         self.assertEqual(PACKAGE.digest(binary.read_bytes()), PACKAGE.digest(data))
+                        self.assertEqual(unscoped.read_bytes(), data)
                     else:
                         message = "uninstall did not remove" if control in ("noop-uninstall", "dangling-bin") else "reinstall did not restore"
+                        if control == "wrong-bin-owner":
+                            message = "reinstall bin link targets wrong package"
                         with self.assertRaisesRegex(ValueError, message):
                             CONSUMER.reinstall_global(["npm"], prefix, root / "input.tgz", root, {}, PACKAGE.digest(data))
                         self.assertEqual(observed, ["uninstall"] if control in ("noop-uninstall", "dangling-bin") else ["uninstall", "install"])
@@ -124,7 +156,7 @@ class NpmPackageTests(unittest.TestCase):
             (artifact / "fixture").mkdir()
             data = b"fixture input"
             (artifact / "tarballs/input.tgz").write_bytes(data)
-            receipt = {"version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1", "payload_sha256": PACKAGE.digest(data)}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
+            receipt = {"package_name": "@effortlessmetrics/ripr", "version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1", "payload_sha256": PACKAGE.digest(data)}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
             (artifact / "package-receipt.json").write_bytes(PACKAGE.canonical(receipt))
             tools = root / "tools"; tools.mkdir()
             (tools / "node").write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo v24.19.0; else echo 11.9.0; fi\n')
@@ -141,13 +173,14 @@ class NpmPackageTests(unittest.TestCase):
         pin = PACKAGE.source_pin()
         value = PACKAGE.manifest(pin)
         self.assertEqual(value["version"], pin["native_version"])
+        self.assertEqual(value["name"], "@effortlessmetrics/ripr")
         self.assertNotIn("scripts", value)
         self.assertEqual(value["bin"], {"ripr": "bin/ripr"})
 
     def test_rejects_manifest_identity_platform_lifecycle_and_dependency_drift(self):
         pin = PACKAGE.source_pin()
         for key, value in {
-            "name": "ripr-rs", "version": "0.11.0", "bin": {"ripr": "download.js"},
+            "name": "ripr", "version": "0.11.0", "bin": {"ripr": "download.js"},
             "os": ["darwin"], "cpu": ["arm64"], "libc": ["musl"],
             "publishConfig": {"access": "public", "tag": "latest"},
             "scripts": {"postinstall": "false"}, "dependencies": {}, "optionalDependencies": {},

@@ -11,8 +11,9 @@ adding npm as a distribution channel.
 
 ## Behavior
 
-The `ripr` npm alpha contains the exact pinned Linux x86-64 ELF from the
-published `ripr-rs` wheel. It exposes `bin/ripr` directly, declares Linux/x64/
+The `@effortlessmetrics/ripr` npm alpha contains the exact pinned Linux x86-64 ELF from the
+published `ripr-rs` wheel. The command remains `ripr`. It exposes `bin/ripr`
+directly, declares Linux/x64/
 glibc metadata, and documents glibc 2.34+ and npm 10+. It has no lifecycle
 scripts, package dependencies, source compilation or install/runtime download.
 
