@@ -456,3 +456,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — python_metaprogramming_limit (9)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless python_metaprogramming_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

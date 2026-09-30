@@ -336,3 +336,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — multi_hunk_removed_line_wrong_target (11)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless multi_hunk_removed_line_wrong_target --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

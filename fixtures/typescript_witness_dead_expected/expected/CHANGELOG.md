@@ -97,3 +97,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — typescript_witness_dead_expected (9)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless typescript_witness_dead_expected --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

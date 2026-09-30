@@ -347,3 +347,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — python_same_line_duplicate_collapse (9)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless python_same_line_duplicate_collapse --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

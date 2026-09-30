@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/assertion_shaped_oracle_cfg_test/input
 
-Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 0 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 0 of 0 finding(s) shown
 
 Analysis outcome: no changed line is behavior ripr checks (analysis complete; no_behavioral_candidates).
   Counts: 1 changed file(s), 2 changed line(s), 0 candidate line(s), 0 probe(s), 0 finding(s).

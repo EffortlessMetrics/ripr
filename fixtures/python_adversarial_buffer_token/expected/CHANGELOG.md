@@ -345,3 +345,28 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+## Pending — python_adversarial_buffer_token (11)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless python_adversarial_buffer_token --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — python_adversarial_buffer_token (14)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless python_adversarial_buffer_token --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

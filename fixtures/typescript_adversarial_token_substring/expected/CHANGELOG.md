@@ -271,3 +271,28 @@ Command:
 
 Updated:
 - `expected/human.txt`
+## Pending — typescript_adversarial_token_substring (10)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless typescript_adversarial_token_substring --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — typescript_adversarial_token_substring (12)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless typescript_adversarial_token_substring --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

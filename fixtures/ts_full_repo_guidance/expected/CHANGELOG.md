@@ -70,3 +70,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — ts_full_repo_guidance (6)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless ts_full_repo_guidance --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -59,3 +59,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — assurance_vocabulary (4)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless assurance_vocabulary --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

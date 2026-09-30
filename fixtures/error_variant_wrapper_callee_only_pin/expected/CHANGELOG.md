@@ -107,3 +107,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — error_variant_wrapper_callee_only_pin (10)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless error_variant_wrapper_callee_only_pin --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

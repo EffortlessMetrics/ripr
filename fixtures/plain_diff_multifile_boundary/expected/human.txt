@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/plain_diff_multifile_boundary/input
 
-Summary: 4 probe(s), 0 exposed, 0 weak, 0 unrevealed, 4 no path, 0 unknown
+Summary: 4 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 4 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 4 of 4 finding(s) shown
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 2 changed file(s), 4 changed line(s), 2 candidate line(s), 4 probe(s), 4 finding(s).

@@ -95,3 +95,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — enum_variant_declaration_not_call (9)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless enum_variant_declaration_not_call --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

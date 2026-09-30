@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/error_variant_wrapper_wrong_receiver_pin/input
 
-Summary: 2 probe(s), 0 exposed, 1 weak, 1 unrevealed, 0 no path, 0 unknown
+Summary: 2 probe(s), 0 exposed, 1 weakly_exposed, 1 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) shown
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).

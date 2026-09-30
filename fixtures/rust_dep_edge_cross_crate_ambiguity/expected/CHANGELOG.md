@@ -114,3 +114,28 @@ Command:
 
 Updated:
 - `expected/human.txt`
+## Pending — rust_dep_edge_cross_crate_ambiguity (7)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless rust_dep_edge_cross_crate_ambiguity --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_dep_edge_cross_crate_ambiguity (9)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless rust_dep_edge_cross_crate_ambiguity --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

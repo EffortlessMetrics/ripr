@@ -321,3 +321,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — boundary_gap_nested_tests (8)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless boundary_gap_nested_tests --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -137,3 +137,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — perl_cpan_alpha (7)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless perl_cpan_alpha --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

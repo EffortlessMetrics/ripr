@@ -310,3 +310,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — typescript_reexport_two_hop_limit (11)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless typescript_reexport_two_hop_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

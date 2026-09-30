@@ -70,3 +70,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — proximity_name_oracle_not_credited (7)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless proximity_name_oracle_not_credited --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

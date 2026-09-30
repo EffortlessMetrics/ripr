@@ -60,3 +60,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_literal_guarded (6)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_literal_guarded --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

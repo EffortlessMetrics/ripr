@@ -127,3 +127,28 @@ Command:
 
 Updated:
 - `expected/human.txt`
+## Pending — constant_declaration_probe_reconciliation (9)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless constant_declaration_probe_reconciliation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — constant_declaration_probe_reconciliation (11)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless constant_declaration_probe_reconciliation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

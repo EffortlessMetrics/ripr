@@ -154,3 +154,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — binding_value_family_matrix (7)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless binding_value_family_matrix --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

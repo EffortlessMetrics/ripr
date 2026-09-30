@@ -184,16 +184,32 @@ fn render_header_summary(output: &CheckOutput) -> String {
         output.mode.as_str(),
         output.root.display()
     ));
+    // #4322: the only per-run denominator line a human sees must match the
+    // finding vocabulary. All seven classes render with their canonical
+    // `ExposureClass::as_str()` tokens (no `weak`/`unrevealed` abbreviations,
+    // no summed unknown bucket — the unknown split is exactly what tells the
+    // reader which discriminator machinery is missing), and the shown/total
+    // denominator discloses suppression: per-class buckets count unsuppressed
+    // findings only, while `summary.findings` stays the total.
+    let suppressed = output
+        .suppression
+        .as_ref()
+        .map_or(0, |suppression| suppression.suppressed.len());
+    let shown = output.summary.findings.saturating_sub(suppressed);
     out.push_str(&format!(
-        "Summary: {} probe(s), {} exposed, {} weak, {} unrevealed, {} no path, {} unknown\n\n",
+        "Summary: {} probe(s), {} exposed, {} weakly_exposed, {} reachable_unrevealed, \
+         {} no_static_path, {} infection_unknown, {} propagation_unknown, {} static_unknown; \
+         {} of {} finding(s) shown\n\n",
         output.summary.probes,
         output.summary.exposed,
         output.summary.weakly_exposed,
         output.summary.reachable_unrevealed,
         output.summary.no_static_path,
-        output.summary.static_unknown
-            + output.summary.infection_unknown
-            + output.summary.propagation_unknown
+        output.summary.infection_unknown,
+        output.summary.propagation_unknown,
+        output.summary.static_unknown,
+        shown,
+        output.summary.findings,
     ));
     render_language_file_breakdown(&mut out, output);
     out
@@ -760,11 +776,166 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("mode: draft"));
+        // #4322: canonical class tokens, unknown classes kept separate, and a
+        // shown/total denominator.
         assert!(rendered.contains(
-            "Summary: 8 probe(s), 1 exposed, 2 weak, 1 unrevealed, 1 no path, 3 unknown"
+            "Summary: 8 probe(s), 1 exposed, 2 weakly_exposed, 1 reachable_unrevealed, 1 no_static_path, 1 infection_unknown, 1 propagation_unknown, 1 static_unknown; 0 of 0 finding(s) shown"
         ));
         assert!(rendered.contains("No diff-derived static exposure probes found."));
         assert!(!rendered.contains("Next:"));
+    }
+
+    /// #4322: the three unknown classes answer *which* discriminator
+    /// machinery is missing, so the header must keep them separate instead of
+    /// summing them into one bucket.
+    #[test]
+    fn summary_header_keeps_the_unknown_classes_separate() {
+        let output = CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 9,
+                findings: 9,
+                infection_unknown: 3,
+                propagation_unknown: 5,
+                static_unknown: 1,
+                ..Summary::default()
+            },
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains(
+                "3 infection_unknown, 5 propagation_unknown, 1 static_unknown; 9 of 9 finding(s) shown"
+            ),
+            "unknown classes must render separately; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains(" unknown\n"),
+            "the summed unknown bucket must not return; got:\n{rendered}"
+        );
+    }
+
+    /// #4322: per-class buckets count unsuppressed findings only, so the
+    /// header's shown/total denominator must disclose the suppressed
+    /// remainder instead of letting a reader sum mismatching counts.
+    #[test]
+    fn summary_header_shown_total_denominator_reflects_suppression() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let mut kept = sample_finding();
+        kept.id = "kept-finding".to_string();
+        let mut suppressed = sample_finding();
+        suppressed.id = "suppressed-finding".to_string();
+        let output = CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![kept, suppressed],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: Some(CheckSuppressionOutcome {
+                policy_path: "policy/ripr-suppressions.toml".to_string(),
+                suppressed: vec![SuppressedCheckFinding {
+                    finding_id: "suppressed-finding".to_string(),
+                    selector: "src/**".to_string(),
+                }],
+                warnings: Vec::new(),
+            }),
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(
+            rendered.contains("; 1 of 2 finding(s) shown"),
+            "the denominator must disclose the suppressed remainder; got:\n{rendered}"
+        );
+    }
+
+    /// #4322: the header tokens are the canonical `ExposureClass` wire
+    /// tokens, so grepping the header against finding lines (or the spec
+    /// vocabulary) succeeds. The distinctive per-class counts pin both token
+    /// and position; adding a class without extending the header fails here.
+    #[test]
+    fn summary_header_names_every_class_with_its_canonical_token() {
+        let output = CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 7,
+                findings: 7,
+                exposed: 1,
+                weakly_exposed: 2,
+                reachable_unrevealed: 3,
+                no_static_path: 4,
+                infection_unknown: 5,
+                propagation_unknown: 6,
+                static_unknown: 7,
+                ..Summary::default()
+            },
+            findings: vec![],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains(
+            "Summary: 7 probe(s), 1 exposed, 2 weakly_exposed, 3 reachable_unrevealed, \
+             4 no_static_path, 5 infection_unknown, 6 propagation_unknown, 7 static_unknown; \
+             7 of 7 finding(s) shown"
+        ));
+        // Token-to-taxonomy binding: every canonical token appears in the
+        // header, so a renamed or added class cannot silently diverge.
+        for class in [
+            ExposureClass::Exposed,
+            ExposureClass::WeaklyExposed,
+            ExposureClass::ReachableUnrevealed,
+            ExposureClass::NoStaticPath,
+            ExposureClass::InfectionUnknown,
+            ExposureClass::PropagationUnknown,
+            ExposureClass::StaticUnknown,
+        ] {
+            assert!(
+                rendered.contains(class.as_str()),
+                "header must carry the canonical token {}; got:\n{rendered}",
+                class.as_str()
+            );
+        }
     }
 
     fn partial_outcome_output(findings: Vec<Finding>) -> Result<CheckOutput, String> {

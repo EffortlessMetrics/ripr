@@ -106,3 +106,15 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — rust_pyo3_cross_language_limit (10)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless rust_pyo3_cross_language_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

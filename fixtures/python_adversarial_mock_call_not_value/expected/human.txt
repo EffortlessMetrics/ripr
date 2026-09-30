@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_adversarial_mock_call_not_value/input
 
-Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) shown
 
 Changed file(s) by language: python: 1.
 

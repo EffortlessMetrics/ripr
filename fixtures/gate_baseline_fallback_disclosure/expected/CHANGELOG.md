@@ -82,3 +82,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — gate_baseline_fallback_disclosure (4)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless gate_baseline_fallback_disclosure --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -82,3 +82,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — guarded_result_match_positive (8)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless guarded_result_match_positive --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

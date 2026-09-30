@@ -143,3 +143,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — assertion_shaped_oracle_cfg_test (4)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless assertion_shaped_oracle_cfg_test --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
