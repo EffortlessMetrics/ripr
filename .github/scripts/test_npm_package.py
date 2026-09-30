@@ -722,6 +722,17 @@ class NpmStageCliTests(unittest.TestCase):
         self.assertEqual(PACKAGE.digest(tar.read_bytes()), receipt["tarball"]["sha256"])
         npm = shutil.which("npm"); self.assertIsNotNone(npm)
         self.assertEqual(subprocess.check_output([npm, "--version"], text=True).strip(), "11.15.0")
+        workflow = (PACKAGE.ROOT / ".github/workflows/publish-npm.yml").read_text()
+        commands = [line.strip().removeprefix("run: ") for line in workflow.splitlines()
+                    if line.strip().startswith("run: npm stage publish ")]
+        self.assertEqual(len(commands), 1)
+        command = commands[0]
+        # Exercise the actual workflow's shell invocation. Only the registry and
+        # live attestation request differ in this credential-free loopback test.
+        for flag in ("--registry=https://registry.npmjs.org", "--provenance", "--ignore-scripts"):
+            self.assertEqual(command.count(flag), 1)
+        command = command.replace("--registry=https://registry.npmjs.org", '--registry="$TEST_REGISTRY"')
+        command = command.replace(" --provenance", "")
         requests = []
         class Registry(http.server.BaseHTTPRequestHandler):
             def log_message(self, *_args): pass
@@ -743,7 +754,10 @@ class NpmStageCliTests(unittest.TestCase):
                 config.write_text(f"//127.0.0.1:{server.server_port}/:_authToken=local-fixture-only\n")
                 environment = {"PATH": os.environ["PATH"], "HOME": str(root), "NPM_CONFIG_USERCONFIG": str(config),
                                "NPM_CONFIG_GLOBALCONFIG": str(root / "empty-global"),
-                               "NPM_CONFIG_CACHE": str(root / "cache"), "NPM_CONFIG_UPDATE_NOTIFIER": "false"}
+                               "NPM_CONFIG_CACHE": str(root / "cache"), "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+                               "TEST_REGISTRY": registry, "GIT_CONFIG_COUNT": "1",
+                               "GIT_CONFIG_KEY_0": "protocol.allow", "GIT_CONFIG_VALUE_0": "never"}
+                (root / "dist").mkdir()
                 scripted = root / "scripted.tgz"
                 with tarfile.open(scripted, "w:gz") as archive:
                     package = dict(name=PACKAGE.PACKAGE_NAME, version=receipt["version"],
@@ -751,11 +765,12 @@ class NpmStageCliTests(unittest.TestCase):
                     data = PACKAGE.canonical(package); entry = tarfile.TarInfo("package/package.json"); entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
                 for source in (tar, scripted):
-                    result = subprocess.run([npm, "stage", "publish", str(source), "--registry=" + registry,
-                                             "--ignore-scripts", "--tag=next", "--access=public", "--fetch-retries=0", "--json"],
+                    shutil.copyfile(source, root / "dist" / source.name)
+                    environment["FILENAME"] = source.name
+                    result = subprocess.run(["bash", "-c", command],
                                             cwd=root, env=environment, capture_output=True, text=True, timeout=60, check=False)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    output = json.loads(result.stdout)[PACKAGE.PACKAGE_NAME]
+                    output = json.loads((root / "stage-result.json").read_text())[PACKAGE.PACKAGE_NAME]
                     self.assertEqual(output["stageId"], "01234567-89ab-4cde-8fab-0123456789ab")
                     self.assertEqual(output["integrity"], "sha512-" + base64.b64encode(hashlib.sha512(source.read_bytes()).digest()).decode())
                     path, posted = requests[-1]
