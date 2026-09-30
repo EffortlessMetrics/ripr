@@ -319,9 +319,11 @@ bound receipt is produced end to end.
 
 The lower-level commands stay available as the explicit-control fallback
 (they are the plumbing the repair transaction drives, and they remain useful
-for debugging):
+for debugging). A complete receipt also reads the analysis outcome beside the
+verify artifact, so write it first:
 
 ```bash
+cargo run -p ripr -- check --root . --mode ready --format json > target/ripr/workflow/analysis-outcome.json
 cargo run -p ripr -- agent verify \
   --root . \
   --before target/ripr/workflow/before.repo-exposure.json \

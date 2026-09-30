@@ -24,10 +24,30 @@ pub(super) fn validate_agent_receipt_verify_path(
         root.join(path)
     };
     let candidate = candidate.canonicalize().map_err(|err| {
-        format!(
+        // #4307: name the producer, not just the missing file. The hint is
+        // built by the shared loop-command builder so it cannot drift from
+        // the workflow verify shape, and its redirect lands exactly where
+        // this receipt looked for its verify artifact (#3872 anchoring).
+        // The producer is only real for the workflow artifact the dispatch
+        // loop owns: a custom verify path's producing snapshot pair is
+        // unknowable at the receipt, and naming the workflow pair for it
+        // would steer the caller at a comparison they never asked for.
+        let failure = format!(
             "canonicalize agent receipt --verify-json {} failed: {err}",
             path.display()
-        )
+        );
+        let is_workflow_artifact =
+            candidate == root.join(crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT);
+        if !is_workflow_artifact {
+            return failure;
+        }
+        let producer = crate::agent::loop_commands::agent_verify_command(
+            &crate::output::outcome::display_path(&root),
+            crate::agent::loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            crate::agent::loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            Some(path.to_string_lossy().as_ref()),
+        );
+        format!("{failure}; produce it with: {producer}")
     })?;
 
     if !candidate.starts_with(&root) {
@@ -538,6 +558,67 @@ mod tests {
         assert!(
             err.contains("must stay under root"),
             "unexpected error: {err}"
+        );
+        Ok(())
+    }
+
+    /// #4307: a receipt whose verify artifact is missing must name its
+    /// producer, and the named producer's redirect must land exactly where
+    /// this receipt looked, so following the hint writes the looked-for file.
+    #[test]
+    fn missing_receipt_verify_error_names_the_producing_command() -> Result<(), String> {
+        let dir = ScratchDir::new("receipt-verify-missing");
+        let verify_input = crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT;
+        let Err(err) = validate_agent_receipt_verify_path(&dir.path, Path::new(verify_input))
+        else {
+            return Err("a missing verify artifact must fail the receipt".to_string());
+        };
+        assert!(
+            err.contains(&format!(
+                "canonicalize agent receipt --verify-json {verify_input} failed"
+            )),
+            "error must name the missing receipt input: {err}"
+        );
+        let Some(producer) = err.split("produce it with: ").nth(1) else {
+            return Err("error must name the producing command".to_string());
+        };
+        assert!(
+            producer.contains("--before target/ripr/workflow/before.repo-exposure.json")
+                && producer.contains("--after target/ripr/workflow/after.repo-exposure.json"),
+            "producer must verify the workflow loop snapshots: {producer}"
+        );
+        let Some((route, redirect)) = producer.split_once(" > ") else {
+            return Err("producer must persist its output".to_string());
+        };
+        let redirect = redirect.trim_matches('\'').replace('\\', "/");
+        assert!(
+            route.starts_with("ripr agent verify ") && redirect.ends_with(verify_input),
+            "producer redirect {redirect} must land on the receipt input {verify_input}"
+        );
+        Ok(())
+    }
+
+    /// #4307 boundary: the producer hint is only real for the workflow
+    /// artifact the dispatch loop owns. A custom verify path's producing
+    /// snapshot pair is unknowable at the receipt, and naming the workflow
+    /// pair for it would steer the caller at a comparison they never asked
+    /// for (review thread on this PR).
+    #[test]
+    fn missing_custom_receipt_verify_error_names_no_unrelated_producer() -> Result<(), String> {
+        let dir = ScratchDir::new("receipt-verify-custom-missing");
+        let Err(err) =
+            validate_agent_receipt_verify_path(&dir.path, Path::new("comparisons/verify.json"))
+        else {
+            return Err("a missing custom verify artifact must fail the receipt".to_string());
+        };
+        assert!(
+            err.contains("canonicalize agent receipt --verify-json comparisons/verify.json failed"),
+            "error must name the missing receipt input: {err}"
+        );
+        assert!(
+            !err.contains("produce it with:")
+                && !err.contains("target/ripr/workflow/before.repo-exposure.json"),
+            "a custom path must not inherit the workflow producer hint: {err}"
         );
         Ok(())
     }

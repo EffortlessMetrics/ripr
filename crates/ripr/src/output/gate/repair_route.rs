@@ -655,6 +655,59 @@ mod tests {
         )
     }
 
+    /// #4307 (written non-claim fork): a gap record carrying the canonical
+    /// evidence-record pair must keep that pair verbatim through the gate
+    /// gap-record route — the advisory Direct pilot-snapshot verify and the
+    /// receipt that reads the workflow loop's verify artifact. The route must
+    /// not gain a redirect: record-backed packets are verify-execute's
+    /// producer-owned input, and its authority executes Direct leaf verify
+    /// routes only.
+    #[test]
+    fn gap_record_carry_keeps_the_direct_verify_and_the_receipt_input() -> Result<(), String> {
+        let verify = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
+        let receipt = crate::agent::loop_commands::agent_receipt_command(
+            ".",
+            crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "seam-pricing-threshold",
+            Some(crate::agent::loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        );
+        let record = GapRecord {
+            verification_commands: vec![verify.to_string()],
+            receipt_command: Some(receipt),
+            ..GapRecord::default()
+        };
+        let candidate = crate::output::gate::candidate_from_gap_record(&record);
+        let route = build_gate_repair_route(&candidate);
+        let rendered = crate::output::gate::presentation::repair_route_json(&route);
+
+        let carried_verify = rendered
+            .get("verify_command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "gap-record route must carry the record verify command".to_string())?;
+        let carried_receipt = rendered
+            .get("receipt_command")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "gap-record route must carry the record receipt command".to_string())?;
+
+        require(
+            carried_verify == verify,
+            "gate gap-record route must carry the record verify display verbatim",
+        )?;
+        require(
+            !carried_verify.contains('>'),
+            "the carried verify display must stay Direct (no redirect): {carried_verify}",
+        )?;
+        let verify_json_at = carried_receipt
+            .split("--verify-json ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .ok_or_else(|| "carried receipt must name its verify-json input".to_string())?;
+        require(
+            verify_json_at == crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "carried receipt must read the workflow verify artifact",
+        )
+    }
+
     #[test]
     fn incomplete_route_is_advisory_only_and_renders_named_limitation() -> Result<(), String> {
         let item = current_review_item()?;

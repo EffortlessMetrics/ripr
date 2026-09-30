@@ -3819,6 +3819,67 @@ mod tests {
         Ok(())
     }
 
+    /// #4307 (written non-claim fork): the repo-exposure → gap-record bridge
+    /// must carry the record's canonical verify and receipt identity verbatim
+    /// — the advisory Direct pilot-snapshot verify and the receipt reading the
+    /// workflow loop's verify artifact — so the gate carry pinned by
+    /// `gap_record_carry_keeps_the_direct_verify_and_the_receipt_input` cannot
+    /// be reentered from the bridge side (a redirect, a snapshot-family swap,
+    /// or a dropped receipt input). The ends alone are pinned at the record
+    /// owner and the gate; this pins the seam between them.
+    #[test]
+    fn repo_exposure_seam_carries_the_record_verify_and_receipt_identity() -> Result<(), String> {
+        let verify = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json";
+        let receipt = crate::agent::loop_commands::agent_receipt_command(
+            ".",
+            crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "seam-pricing-threshold",
+            Some(crate::agent::loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        );
+        let mut seam =
+            make_repo_exposure_seam("actionable", "add_focused_test", "predicate_boundary");
+        seam["evidence_record"]["canonical_item"]["verify_command"] =
+            Value::String(verify.to_string());
+        seam["evidence_record"]["canonical_item"]["receipt_command"] =
+            Value::String(receipt.clone());
+        let payload = serde_json::json!({"seams": [seam]});
+        let records = gap_records_from_repo_exposure_json(&payload.to_string())
+            .map_err(|error| format!("bridge parse failed: {error}"))?;
+        let record = records
+            .first()
+            .ok_or_else(|| "seam with canonical commands did not produce a record".to_string())?;
+
+        assert_eq!(
+            record.verification_commands,
+            vec![verify.to_string()],
+            "bridge must carry the record verify identity verbatim"
+        );
+        assert!(
+            !record.verification_commands[0].contains('>'),
+            "bridged verify must stay Direct (no redirect): {}",
+            record.verification_commands[0]
+        );
+        let carried_receipt = record
+            .receipt_command
+            .as_deref()
+            .ok_or_else(|| "bridge must carry the record receipt command".to_string())?;
+        assert_eq!(
+            carried_receipt, receipt,
+            "bridge must carry the record receipt identity verbatim"
+        );
+        let verify_json_at = carried_receipt
+            .split("--verify-json ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .ok_or_else(|| "carried receipt must name its verify-json input".to_string())?;
+        assert_eq!(
+            verify_json_at,
+            crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            "bridged receipt must keep reading the workflow verify artifact"
+        );
+        Ok(())
+    }
+
     #[test]
     fn repo_exposure_json_error_paths() -> Result<(), String> {
         // invalid JSON
