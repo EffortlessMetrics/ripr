@@ -4,7 +4,7 @@ use crate::cli::help;
 use crate::cli::parse::{
     base_with_diff_conflict_error, disclose_attached_terminal_stdin_read, expect_value, parse_mode,
 };
-use crate::cli::suggest::unknown_argument;
+use crate::cli::suggest::{unknown_argument, unknown_value};
 #[cfg(test)]
 use crate::config::CONFIG_FILE_NAME;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
@@ -1219,10 +1219,11 @@ fn parse_calibrate_cargo_mutants_options(args: &[String]) -> Result<CalibrateOpt
 }
 
 fn parse_calibrate_format(value: &str) -> Result<CalibrateFormat, String> {
+    const ACCEPTED: &[&str] = &["md", "markdown", "text", "json"];
     match value {
         "md" | "markdown" | "text" => Ok(CalibrateFormat::Markdown),
         "json" => Ok(CalibrateFormat::Json),
-        _ => Err(format!("unknown calibrate format {value:?}")),
+        _ => Err(unknown_value("calibrate format", value, ACCEPTED)),
     }
 }
 
@@ -2695,10 +2696,11 @@ fn non_empty_string_arg(
 }
 
 fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
+    const ACCEPTED: &[&str] = &["md", "markdown", "text", "json"];
     match value {
         "md" | "markdown" | "text" => Ok(OutcomeFormat::Markdown),
         "json" => Ok(OutcomeFormat::Json),
-        _ => Err(format!("unknown outcome format {value:?}")),
+        _ => Err(unknown_value("outcome format", value, ACCEPTED)),
     }
 }
 

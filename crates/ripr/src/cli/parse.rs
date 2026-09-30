@@ -315,7 +315,16 @@ mod tests {
         assert_eq!(
             parse_format("xml"),
             Err(
-                "unknown format \"xml\"; see `ripr check --help` for the accepted formats"
+                "unknown format \"xml\". Accepted: human, text, human-full, text-full, json, github, sarif, badge-json, badge-shields, badge-plus-json, badge-plus-shields, repo-badge-json, repo-badge-shields, repo-badge-plus-json, repo-badge-plus-shields, repo-seams-json, repo-seams-md, repo-exposure-json, repo-exposure-summary-json, repo-exposure-md, repo-sarif, agent-seam-packets-json."
+                    .to_string()
+            )
+        );
+        // The accepted list comes with a near-miss suggestion (#4318): a
+        // dropped letter resolves to the format the user meant.
+        assert_eq!(
+            parse_format("jsn"),
+            Err(
+                "unknown format \"jsn\". Did you mean `json`? Accepted: human, text, human-full, text-full, json, github, sarif, badge-json, badge-shields, badge-plus-json, badge-plus-shields, repo-badge-json, repo-badge-shields, repo-badge-plus-json, repo-badge-plus-shields, repo-seams-json, repo-seams-md, repo-exposure-json, repo-exposure-summary-json, repo-exposure-md, repo-sarif, agent-seam-packets-json."
                     .to_string()
             )
         );

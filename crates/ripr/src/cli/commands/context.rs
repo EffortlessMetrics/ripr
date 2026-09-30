@@ -80,9 +80,13 @@ pub(in crate::cli) fn context(args: &[String]) -> Result<(), String> {
             }
             "--max-related-tests" => {
                 i += 1;
-                max_tests = expect_value(args, i, "--max-related-tests")?
-                    .parse::<usize>()
-                    .map_err(|err| format!("invalid --max-related-tests: {err}"))?;
+                // #4318 review: a cap is a render knob, and zero is valid —
+                // the packet renders zero related tests, matching the config
+                // surface. Only the count-style flags are positive-only.
+                max_tests = crate::cli::commands_numeric::parse_non_negative_usize(
+                    expect_value(args, i, "--max-related-tests")?,
+                    "--max-related-tests",
+                )?;
                 explicit_max_tests = true;
             }
             "--json" => input.format = OutputFormat::Json,
@@ -150,7 +154,37 @@ mod tests {
             "many",
         ]));
         assert!(
-            matches!(result, Err(message) if message.starts_with("invalid --max-related-tests:"))
+            matches!(result, Err(message) if message.starts_with("--max-related-tests requires a non-negative integer"))
+        );
+    }
+
+    /// #4318 review: zero is a valid render cap (the packet renders zero
+    /// related tests, matching `reports.max_related_tests = 0`), so it must
+    /// pass parsing and fail later — here on the missing root — never with
+    /// the numeric-shape message.
+    #[test]
+    fn context_accepts_zero_max_related_tests_at_parse_time() {
+        let result = context(&args(&[
+            "--root",
+            "missing-ripr-root-for-context",
+            "--at",
+            "probe:file.rs:1:predicate",
+            "--max-related-tests",
+            "0",
+        ]));
+        assert!(
+            matches!(
+                &result,
+                Err(message) if !message.contains("requires a non-negative integer")
+            ),
+            "zero is a valid cap and must not fail numeric parsing: {result:?}"
+        );
+        assert!(
+            matches!(
+                &result,
+                Err(message) if message.contains("missing-ripr-root-for-context")
+            ),
+            "the accepted zero cap must reach the root-dependent failure: {result:?}"
         );
     }
 

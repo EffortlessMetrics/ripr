@@ -20,6 +20,16 @@ use crate::cli::help;
 /// help pointer names. Every `ripr` command path accepts `--help` directly, so
 /// the pointer is uniform.
 pub(crate) fn unknown_argument(command: &str, arg: &str) -> String {
+    // `--version` is a process-level identity query scoped to the top level
+    // (`parse.rs`); a subcommand that does not implement its own version
+    // contract rejects it. Naming the spelling that works (#4318) beats
+    // pointing only at the command's help, and no flag suggestion competes:
+    // the user asked for the version, not a similar flag.
+    if matches!(arg, "--version" | "-V") && !implements_local_version(command) {
+        return format!(
+            "unknown {command} argument {arg:?}. `ripr --version` reports the binary version. Run `ripr {command} --help`."
+        );
+    }
     match closest_flag(command, arg) {
         Some(suggestion) => format!(
             "unknown {command} argument {arg:?}. Did you mean `{suggestion}`? Run `ripr {command} --help`."
@@ -28,8 +38,19 @@ pub(crate) fn unknown_argument(command: &str, arg: &str) -> String {
     }
 }
 
-#[cfg(test)]
-fn unknown_value(label: &str, value: &str, accepted: &[&str]) -> String {
+/// Commands whose `--version` is a command-local contract, so the top-level
+/// hint would be wrong. `ripr lsp --version` reports the sidecar server's
+/// own version and is accepted by that command's parser.
+fn implements_local_version(command: &str) -> bool {
+    command == "lsp"
+}
+
+/// Build the error for an unrecognized enum-style *value* (`--format yaml`).
+///
+/// Enumerates the accepted values and, when one is close enough, proposes it
+/// as a near-miss suggestion, so the same mistake names the fix on every
+/// command instead of only where a parser happens to inline the list.
+pub(in crate::cli) fn unknown_value(label: &str, value: &str, accepted: &[&str]) -> String {
     match closest(value, accepted.iter().copied()) {
         Some(suggestion) => format!(
             "unknown {label} {value:?}. Did you mean `{suggestion}`? Accepted: {}.",
@@ -318,6 +339,30 @@ mod tests {
             message,
             "unknown check argument \"--totally-unrelated-flag\". Run `ripr check --help`."
         );
+    }
+
+    /// #4318: version is a top-level query, so a subcommand rejecting it must
+    /// name the spelling that works instead of only pointing at the
+    /// subcommand's help.
+    #[test]
+    fn a_rejected_version_argument_points_at_the_top_level_version() {
+        for arg in ["--version", "-V"] {
+            let message = unknown_argument("check", arg);
+            assert_eq!(
+                message,
+                format!(
+                    "unknown check argument {arg:?}. `ripr --version` reports the binary version. Run `ripr check --help`."
+                )
+            );
+        }
+    }
+
+    /// A command with a command-local version contract (`ripr lsp --version`)
+    /// must not be sent to the top level.
+    #[test]
+    fn lsp_keeps_its_own_version_contract() {
+        let message = unknown_argument("lsp", "--version");
+        assert!(!message.contains("`ripr --version`"), "{message}");
     }
 
     /// A wrong suggestion is worse than none. `--wat` shares only the `--`

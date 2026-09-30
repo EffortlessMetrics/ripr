@@ -210,7 +210,7 @@ mod tests {
         );
         assert_eq!(
             parse_options(&args(&["--top", "0"])),
-            Err("invalid swarm queue --top: expected a positive integer".to_string())
+            Err("swarm queue --top requires a positive integer; got \"0\"".to_string())
         );
     }
 

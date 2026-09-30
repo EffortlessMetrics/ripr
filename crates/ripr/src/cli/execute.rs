@@ -97,7 +97,7 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Check(args(&["--format", "xml"]))),
             Err(CommandError::Failure(
-                "unknown format \"xml\"; see `ripr check --help` for the accepted formats"
+                "unknown format \"xml\". Accepted: human, text, human-full, text-full, json, github, sarif, badge-json, badge-shields, badge-plus-json, badge-plus-shields, repo-badge-json, repo-badge-shields, repo-badge-plus-json, repo-badge-plus-shields, repo-seams-json, repo-seams-md, repo-exposure-json, repo-exposure-summary-json, repo-exposure-md, repo-sarif, agent-seam-packets-json."
                     .to_string()
             ))
         );
@@ -129,13 +129,13 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Pilot(args(&["--max-seams", "0"]))),
             Err(CommandError::Failure(
-                "invalid --max-seams: expected a positive integer".to_string()
+                "--max-seams requires a positive integer; got \"0\"".to_string()
             ))
         );
         assert_eq!(
             execute(CliCommand::Outcome(args(&["--format", "xml"]))),
             Err(CommandError::Failure(
-                "unknown outcome format \"xml\"".to_string()
+                "unknown outcome format \"xml\". Accepted: md, markdown, text, json.".to_string()
             ))
         );
         assert_eq!(
@@ -224,7 +224,7 @@ mod tests {
                 "xml"
             ]))),
             Err(CommandError::Failure(
-                "unknown calibrate format \"xml\"".to_string()
+                "unknown calibrate format \"xml\". Accepted: md, markdown, text, json.".to_string()
             ))
         );
         assert_eq!(
@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Swarm(args(&["queue", "--top", "0"]))),
             Err(CommandError::Failure(
-                "invalid swarm queue --top: expected a positive integer".to_string()
+                "swarm queue --top requires a positive integer; got \"0\"".to_string()
             ))
         );
         assert_eq!(

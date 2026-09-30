@@ -203,6 +203,18 @@ impl OutputFormat {
             .unwrap_or("unknown")
     }
 
+    /// Every CLI name this build accepts for `--format`, in declaration
+    /// order.
+    ///
+    /// Derived from [`FORMAT_SPECS`] so an error message can enumerate the
+    /// accepted set without a second list that could drift from the parser.
+    pub(crate) fn accepted_cli_names() -> Vec<&'static str> {
+        FORMAT_SPECS
+            .iter()
+            .flat_map(|spec| spec.cli_names.iter().copied())
+            .collect()
+    }
+
     /// Returns `true` when the format targets full-repo scope rather than
     /// diff scope.
     ///
