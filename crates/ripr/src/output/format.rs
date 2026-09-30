@@ -81,107 +81,161 @@ struct OutputFormatSpec {
     format: OutputFormat,
     cli_names: &'static [&'static str],
     is_repo_seam_inventory: bool,
+    /// `true` for the seven full-repo audit-path formats (the help's
+    /// "Repo-scope (full-repo analysis)" group plus
+    /// `agent-seam-packets-json`): every invocation walks and classifies the
+    /// whole Rust corpus, so the CLI discloses the expected cost class at
+    /// invocation time (#4945). Repo badge formats render disk reports plus
+    /// the compact seam summary and stay outside this class.
+    is_full_repo_analysis: bool,
+    /// `true` only when warm reruns of the format's walk can hit a
+    /// seam-facts cache: the classified and compact-classified inventory
+    /// paths (`seam_inventory.rs` `RepoSeamFactCache::at` /
+    /// `::at_compact_classified`). The raw `repo-seams-*` walks rebuild the
+    /// corpus index on every invocation and read no cache, so their
+    /// disclosure must not promise cache-backed warm reruns (#4945 review).
+    is_seam_fact_cache_backed: bool,
 }
 
 const FORMAT_SPECS: &[OutputFormatSpec] = &[
     OutputFormatSpec {
         format: OutputFormat::Human,
         cli_names: &["human", "text"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::HumanFull,
         cli_names: &["human-full", "text-full"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::Json,
         cli_names: &["json"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::Github,
         cli_names: &["github"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::Sarif,
         cli_names: &["sarif"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::BadgeJson,
         cli_names: &["badge-json"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::BadgeShields,
         cli_names: &["badge-shields"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::BadgePlusJson,
         cli_names: &["badge-plus-json"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::BadgePlusShields,
         cli_names: &["badge-plus-shields"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: false,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoBadgeJson,
         cli_names: &["repo-badge-json"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoBadgeShields,
         cli_names: &["repo-badge-shields"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoBadgePlusJson,
         cli_names: &["repo-badge-plus-json"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoBadgePlusShields,
         cli_names: &["repo-badge-plus-shields"],
+        is_full_repo_analysis: false,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoSeamsJson,
         cli_names: &["repo-seams-json"],
+        is_full_repo_analysis: true,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoSeamsMd,
         cli_names: &["repo-seams-md"],
+        is_full_repo_analysis: true,
+        is_seam_fact_cache_backed: false,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoExposureJson,
         cli_names: &["repo-exposure-json"],
+        is_full_repo_analysis: true,
+        is_seam_fact_cache_backed: true,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoExposureSummaryJson,
         cli_names: &["repo-exposure-summary-json"],
+        is_full_repo_analysis: true,
+        is_seam_fact_cache_backed: true,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoExposureMd,
         cli_names: &["repo-exposure-md"],
+        is_full_repo_analysis: true,
+        is_seam_fact_cache_backed: true,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::RepoSarif,
         cli_names: &["repo-sarif"],
+        is_full_repo_analysis: true,
+        is_seam_fact_cache_backed: true,
         is_repo_seam_inventory: true,
     },
     OutputFormatSpec {
         format: OutputFormat::AgentSeamPacketsJson,
         cli_names: &["agent-seam-packets-json"],
+        is_full_repo_analysis: true,
+        is_seam_fact_cache_backed: true,
         is_repo_seam_inventory: true,
     },
 ];
@@ -239,6 +293,57 @@ impl OutputFormat {
             .find(|spec| spec.format == *self)
             .is_some_and(|spec| spec.is_repo_seam_inventory)
     }
+
+    /// Returns `true` when the format runs the full-repo seam analysis walk:
+    /// the help's "Repo-scope (full-repo analysis)" group plus
+    /// `agent-seam-packets-json`. Every such invocation walks and classifies
+    /// the whole analyzable Rust corpus, so these are the audit-path surfaces
+    /// the CLI must disclose invocation-time cost for (#4945). Repo badge
+    /// formats render disk reports plus the compact seam summary and stay
+    /// outside this class.
+    pub(crate) fn is_full_repo_analysis(&self) -> bool {
+        FORMAT_SPECS
+            .iter()
+            .find(|spec| spec.format == *self)
+            .is_some_and(|spec| spec.is_full_repo_analysis)
+    }
+
+    /// Returns `true` only when warm reruns of the format's walk can hit a
+    /// seam-facts cache: the classified and compact-classified inventory
+    /// paths. The raw `repo-seams-*` walks rebuild the corpus index on every
+    /// invocation and read no cache, so only this group may claim faster
+    /// warm reruns (#4945 review).
+    pub(crate) fn is_seam_fact_cache_backed(&self) -> bool {
+        FORMAT_SPECS
+            .iter()
+            .find(|spec| spec.format == *self)
+            .is_some_and(|spec| spec.is_seam_fact_cache_backed)
+    }
+
+    /// Invocation-time stderr disclosure naming the expected cost class for
+    /// full-repo audit-path formats (#4945). One line, emitted before the run
+    /// begins; honest to the measured magnitude (release notes: a cold
+    /// `repo-exposure-json` run took about 76 minutes on 4 vCPUs, a warm run
+    /// with the classified cache 42 seconds), without promising a wall clock.
+    /// The warm-rerun clause is honest per format: only the
+    /// cache-backed classified/compact-classified walks claim seam-facts
+    /// cache reuse; the raw `repo-seams-*` walks disclose that every run
+    /// pays the full walk (#4945 review).
+    pub(crate) fn repo_audit_path_disclosure(&self) -> Option<String> {
+        if !self.is_full_repo_analysis() {
+            return None;
+        }
+        let warm_rerun_clause = if self.is_seam_fact_cache_backed() {
+            "warm reruns reuse the seam-facts cache and are much faster."
+        } else {
+            "raw seam inventory does not read the seam-facts cache, so every run pays the full walk."
+        };
+        Some(format!(
+            "ripr: {} is the full-repo audit path: a cold run analyzes every seam in the \
+             workspace and can take minutes on large repositories; {warm_rerun_clause}",
+            self.primary_cli_name()
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -285,6 +390,133 @@ mod tests {
                 spec.format
             );
         }
+    }
+
+    /// #4945: the invocation-time audit-path cost disclosure covers exactly
+    /// the seven full-repo analysis formats — the help's "Repo-scope
+    /// (full-repo analysis)" group plus `agent-seam-packets-json` — and no
+    /// diff-scoped, badge, or gap-ledger surface claims minutes it does not
+    /// charge. The warm-rerun clause is honest per format: only the
+    /// cache-backed classified/compact-classified walks claim seam-facts
+    /// cache reuse; the raw `repo-seams-*` walks disclose that every run
+    /// pays the full walk (#4945 review).
+    #[test]
+    fn repo_format_audit_path_disclosure_covers_exactly_the_full_repo_analysis_group()
+    -> Result<(), String> {
+        for spec in FORMAT_SPECS {
+            let disclosure = spec.format.repo_audit_path_disclosure();
+            assert_eq!(
+                spec.format.is_full_repo_analysis(),
+                spec.is_full_repo_analysis,
+                "full-repo-analysis predicate should match metadata for {:?}",
+                spec.format
+            );
+            assert_eq!(
+                spec.format.is_seam_fact_cache_backed(),
+                spec.is_seam_fact_cache_backed,
+                "cache-backed predicate should match metadata for {:?}",
+                spec.format
+            );
+            if spec.is_full_repo_analysis {
+                let disclosure = disclosure
+                    .ok_or_else(|| format!("missing disclosure for {:?}", spec.format))?;
+                assert!(
+                    disclosure.contains("full-repo audit path"),
+                    "disclosure must name the audit path: {disclosure}"
+                );
+                assert!(
+                    disclosure.contains("minutes"),
+                    "disclosure must name the cold-run cost class: {disclosure}"
+                );
+                assert!(
+                    disclosure.contains(spec.format.primary_cli_name()),
+                    "disclosure must name the format: {disclosure}"
+                );
+                if spec.is_seam_fact_cache_backed {
+                    assert!(
+                        disclosure.contains("warm reruns reuse the seam-facts cache"),
+                        "cache-backed format must claim warm cache reruns: {disclosure}"
+                    );
+                    assert!(
+                        !disclosure.contains("every run pays the full walk"),
+                        "cache-backed format must not claim an uncached walk: {disclosure}"
+                    );
+                } else {
+                    assert!(
+                        disclosure.contains("every run pays the full walk"),
+                        "raw seam format must disclose the uncached walk: {disclosure}"
+                    );
+                    assert!(
+                        !disclosure.contains("warm reruns reuse"),
+                        "raw seam format must not claim cache-backed warm reruns: {disclosure}"
+                    );
+                }
+            } else {
+                assert!(
+                    disclosure.is_none(),
+                    "non-audit format {:?} must not claim audit-path cost: {disclosure:?}",
+                    spec.format
+                );
+                assert!(
+                    !spec.is_seam_fact_cache_backed,
+                    "non-audit format {:?} must not claim cache-backed warm reruns",
+                    spec.format
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_format_audit_path_group_is_the_seven_measured_formats() {
+        let expected: Vec<&str> = vec![
+            "repo-seams-json",
+            "repo-seams-md",
+            "repo-exposure-json",
+            "repo-exposure-summary-json",
+            "repo-exposure-md",
+            "repo-sarif",
+            "agent-seam-packets-json",
+        ];
+        let mut observed: Vec<&str> = FORMAT_SPECS
+            .iter()
+            .filter(|spec| spec.is_full_repo_analysis)
+            .map(|spec| spec.format.primary_cli_name())
+            .collect();
+        observed.sort_unstable();
+        let mut sorted_expected = expected.clone();
+        sorted_expected.sort_unstable();
+        assert_eq!(
+            observed, sorted_expected,
+            "the audit-path disclosure group must be exactly the seven measured formats"
+        );
+    }
+
+    /// #4945 review: only the classified/compact-classified audit walks read
+    /// a seam-facts cache. The raw `repo-seams-*` walks rebuild the corpus
+    /// index every run (`inventory_seams_at_with_config` never touches
+    /// `RepoSeamFactCache`), so exactly these five may claim warm reruns.
+    #[test]
+    fn repo_format_audit_path_cache_backed_group_is_exactly_the_classified_walks() {
+        let expected: Vec<&str> = vec![
+            "repo-exposure-json",
+            "repo-exposure-summary-json",
+            "repo-exposure-md",
+            "repo-sarif",
+            "agent-seam-packets-json",
+        ];
+        let mut observed: Vec<&str> = FORMAT_SPECS
+            .iter()
+            .filter(|spec| spec.is_seam_fact_cache_backed)
+            .map(|spec| spec.format.primary_cli_name())
+            .collect();
+        observed.sort_unstable();
+        let mut sorted_expected = expected.clone();
+        sorted_expected.sort_unstable();
+        assert_eq!(
+            observed, sorted_expected,
+            "the warm-rerun cache claim must cover exactly the classified walks"
+        );
     }
 
     #[test]

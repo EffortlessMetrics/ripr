@@ -74,7 +74,7 @@ pub(crate) trait AnalysisProgressSink {
     fn emit(&self, event: AnalysisProgressEvent);
 }
 
-pub(super) struct ProgressRun<'a> {
+pub(crate) struct ProgressRun<'a> {
     sink: Option<&'a dyn AnalysisProgressSink>,
     scope: AnalysisProgressScope,
     started: Instant,
@@ -82,7 +82,7 @@ pub(super) struct ProgressRun<'a> {
 }
 
 impl<'a> ProgressRun<'a> {
-    pub(super) fn new(
+    pub(crate) fn new(
         sink: Option<&'a dyn AnalysisProgressSink>,
         scope: AnalysisProgressScope,
     ) -> Self {
@@ -94,14 +94,14 @@ impl<'a> ProgressRun<'a> {
         }
     }
 
-    pub(super) fn emit(&mut self, stage: AnalysisProgressStage) {
+    pub(crate) fn emit(&mut self, stage: AnalysisProgressStage) {
         if self.terminal {
             return;
         }
         self.emit_now(stage);
     }
 
-    pub(super) fn complete(&mut self) {
+    pub(crate) fn complete(&mut self) {
         self.finish(AnalysisProgressStage::Completed);
     }
 
@@ -138,6 +138,38 @@ impl Drop for ProgressRun<'_> {
 
 fn elapsed_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// Bracket one full-repo inventory walk and its artifact assembly with
+/// repo-scope progress boundaries (#4945).
+///
+/// The repo-scoped formats drive the seam walkers from the render layer, so
+/// this is the repo-scope analog of [`crate::app::check_with_progress`]: the same closed
+/// stage vocabulary at the same [`AnalysisProgressScope::Repo`] scope, emitted
+/// around the walk the caller owns. `LoadingInput` opens the run at the
+/// diff-path's entry boundary and is followed immediately by `Analyzing`:
+/// the inventory closures own corpus discovery and the walk/classification
+/// compute together, and no separate discovery/compute boundary exists
+/// without re-plumbing the inventory signatures, so `Analyzing` is the one
+/// honest coarse stage for the whole walk (heartbeats report under it).
+/// `BuildingOutput` covers the assembly callback and `Completed` the producer
+/// boundary. The CLI projection holds `Completed` until the command has
+/// committed stdout. An early return through either closure drops the run,
+/// which fail-closes as `failed` (or `cancelled`) exactly like the
+/// diff-scoped path.
+pub(crate) fn repo_inventory_with_progress<T, R>(
+    sink: Option<&dyn AnalysisProgressSink>,
+    inventory: impl FnOnce() -> Result<T, String>,
+    assemble: impl FnOnce(T) -> Result<R, String>,
+) -> Result<R, String> {
+    let mut run = ProgressRun::new(sink, AnalysisProgressScope::Repo);
+    run.emit(AnalysisProgressStage::LoadingInput);
+    run.emit(AnalysisProgressStage::Analyzing);
+    let value = inventory()?;
+    run.emit(AnalysisProgressStage::BuildingOutput);
+    let assembled = assemble(value)?;
+    run.complete();
+    Ok(assembled)
 }
 
 #[cfg(test)]
@@ -578,5 +610,81 @@ mod tests {
             "optional sink must not be required for analysis"
         );
         Ok(())
+    }
+
+    #[test]
+    fn repo_inventory_with_progress_reports_the_diff_stage_shape_at_repo_scope()
+    -> Result<(), String> {
+        let recorder = ProgressRecorder::new();
+        let assembled =
+            repo_inventory_with_progress(Some(&recorder), || Ok(41usize), |value| Ok(value + 1))?;
+        assert_eq!(assembled, 42);
+        let events = recorder.events();
+        assert_eq!(
+            stages(&events),
+            [
+                AnalysisProgressStage::LoadingInput,
+                AnalysisProgressStage::Analyzing,
+                AnalysisProgressStage::BuildingOutput,
+                AnalysisProgressStage::Completed,
+            ],
+            "repo inventory must reuse the diff-scoped stage shape"
+        );
+        assert_honest_events(&events, AnalysisProgressScope::Repo, "private-root-text");
+        Ok(())
+    }
+
+    #[test]
+    fn repo_inventory_progress_fail_closes_without_completed_on_either_closure_error() {
+        for (name, expected, failing) in [
+            (
+                "inventory",
+                vec![
+                    AnalysisProgressStage::LoadingInput,
+                    AnalysisProgressStage::Analyzing,
+                    AnalysisProgressStage::Failed,
+                ],
+                true,
+            ),
+            (
+                "assembly",
+                vec![
+                    AnalysisProgressStage::LoadingInput,
+                    AnalysisProgressStage::Analyzing,
+                    AnalysisProgressStage::BuildingOutput,
+                    AnalysisProgressStage::Failed,
+                ],
+                false,
+            ),
+        ] {
+            let recorder = ProgressRecorder::new();
+            let result: Result<(), String> = repo_inventory_with_progress(
+                Some(&recorder),
+                || {
+                    if failing {
+                        Err("inventory failed".to_string())
+                    } else {
+                        Ok(())
+                    }
+                },
+                |_| Err("assembly failed".to_string()),
+            );
+            let expected_error = if failing {
+                "inventory failed"
+            } else {
+                "assembly failed"
+            };
+            assert_eq!(
+                result,
+                Err(expected_error.to_string()),
+                "{name} closure error must propagate verbatim"
+            );
+            let events = recorder.events();
+            assert_eq!(stages(&events), expected, "{name} must fail-close");
+            assert!(
+                !stages(&events).contains(&AnalysisProgressStage::Completed),
+                "{name} failure must never project completed"
+            );
+        }
     }
 }

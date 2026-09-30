@@ -70,6 +70,7 @@ pub(crate) use explain::{
 pub(crate) use navigation::{FindingNavigation, finding_navigation};
 pub(crate) use progress::{
     AnalysisProgressEvent, AnalysisProgressScope, AnalysisProgressSink, AnalysisProgressStage,
+    repo_inventory_with_progress,
 };
 
 use crate::analysis::{AnalysisMode, PreviewLanguageAdvisory};
@@ -285,13 +286,18 @@ pub(crate) fn render_check_with_config(
     output::render::render_check_with_config(output, format, config)
 }
 
-pub(crate) fn render_check_with_config_and_navigation(
+/// Renders with navigation while reporting repo-scope progress boundaries to
+/// `progress` for the full-repo audit-path formats (#4945).
+pub(crate) fn render_check_with_config_and_navigation_and_progress(
     output: &CheckOutput,
     format: &OutputFormat,
     config: &RiprConfig,
     navigation: Option<&FindingNavigation>,
+    progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
-    output::render::render_check_with_config_and_navigation(output, format, config, navigation)
+    output::render::render_check_with_config_and_navigation_and_progress(
+        output, format, config, navigation, progress,
+    )
 }
 
 #[cfg(test)]

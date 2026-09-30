@@ -11,6 +11,18 @@ are scoped or reviewed.
 
 ### Added
 
+- CLI: the seven full-repo audit-path formats (`repo-seams-json`,
+  `repo-seams-md`, `repo-exposure-json`, `repo-exposure-summary-json`,
+  `repo-exposure-md`, `repo-sarif`, `agent-seam-packets-json`) are no longer
+  fully silent. Every invocation prints one stderr line naming the expected
+  cost class before the run begins, and the walk now projects the same
+  `ripr progress:` producer stages as the diff path (`loading_input`,
+  `analyzing`, `building_output`, `completed [repo]`, throttled heartbeats,
+  fail-closed `failed`/`cancelled`). The warm-rerun clause is honest per
+  format: the classified/compact-classified formats disclose seam-facts
+  cache reuse on warm reruns, while the raw `repo-seams-*` formats disclose
+  that every run pays the full walk. Stdout is unchanged; the disclosure
+  line survives `--quiet` while the progress stream does not (#4945).
 - CLI: one typed public command catalog now owns RIPR command paths, aliases,
   and public/compatibility/advanced/internal classification, with parser and
   typo-suggestion two-way parity. Human help, workflow discovery, and

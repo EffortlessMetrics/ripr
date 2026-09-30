@@ -4,7 +4,9 @@ use super::{
 };
 use crate::analysis;
 use crate::app::causal_projection::CausalDeltaArtifact;
-use crate::app::{CheckOutput, FindingNavigation};
+use crate::app::{
+    AnalysisProgressSink, CheckOutput, FindingNavigation, repo_inventory_with_progress,
+};
 use crate::config::RiprConfig;
 use crate::output::repo_exposure::TsFullRepoGuidance;
 use std::collections::BTreeMap;
@@ -26,6 +28,20 @@ pub(crate) fn render_check_with_config(
     output: &CheckOutput,
     format: &OutputFormat,
     config: &RiprConfig,
+) -> Result<String, String> {
+    render_check_with_config_and_progress(output, format, config, None)
+}
+
+/// Renders a previously computed [`CheckOutput`] in the requested format,
+/// reporting repo-scope progress boundaries to `progress` while the
+/// full-repo audit-path formats run their seam walks (#4945). Diff-scoped
+/// and badge arms ignore the sink; `None` reproduces the silent library
+/// rendering.
+pub(crate) fn render_check_with_config_and_progress(
+    output: &CheckOutput,
+    format: &OutputFormat,
+    config: &RiprConfig,
+    progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
     match format {
         OutputFormat::Human => Ok(human::render_bounded_with_config(output, config)),
@@ -67,91 +83,103 @@ pub(crate) fn render_check_with_config(
             maybe_attach_repo_plus_projection(&mut summary, output, format);
             Ok(badge::render_shields_json(&summary))
         }
-        OutputFormat::RepoSeamsJson => {
-            let seams = analysis::inventory_seams_at_with_config(&output.root, config)?;
-            Ok(repo_seams::render_repo_seams_json(&seams))
-        }
-        OutputFormat::RepoSeamsMd => {
-            let seams = analysis::inventory_seams_at_with_config(&output.root, config)?;
-            Ok(repo_seams::render_repo_seams_md(&seams))
-        }
-        OutputFormat::RepoExposureJson => {
-            let report =
-                analysis::inventory_classified_seams_report_at_with_config(&output.root, config)?;
-            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &report.classified);
-            let python_guidance =
-                detect_python_repo_exposure_guidance(&output.root, &report.classified);
-            let generated_skip =
-                repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
-            let artifact_context =
-                crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
-                    output.root.clone(),
-                    output.mode.as_str().to_string(),
-                    output.base.clone(),
-                    config,
-                )?;
-            repo_exposure::render_repo_exposure_json_with_context(
-                &report.classified,
-                report.limit_info.as_ref(),
-                ts_guidance.as_ref(),
-                python_guidance.as_ref(),
-                generated_skip.as_ref(),
-                &artifact_context,
-            )
-        }
-        OutputFormat::RepoExposureSummaryJson => {
-            let classified =
-                analysis::inventory_compact_classified_seams_at_with_config(&output.root, config)?;
-            Ok(repo_exposure::render_repo_exposure_summary_json(
-                &classified,
-                &output.root,
-                output.base.as_deref(),
-                output.mode.as_str(),
-            ))
-        }
-        OutputFormat::RepoExposureMd => {
-            let report =
-                analysis::inventory_classified_seams_report_at_with_config(&output.root, config)?;
-            let ts_guidance = detect_ts_full_repo_guidance(&output.root, &report.classified);
-            let python_guidance =
-                detect_python_repo_exposure_guidance(&output.root, &report.classified);
-            let generated_skip =
-                repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
-            Ok(repo_exposure::render_repo_exposure_md_with_generated_skip(
-                &report.classified,
-                report.limit_info.as_ref(),
-                ts_guidance.as_ref(),
-                python_guidance.as_ref(),
-                generated_skip.as_ref(),
-            ))
-        }
-        OutputFormat::RepoSarif => {
-            let (classified, limit_info) =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(sarif::render_repo_seams_sarif(
-                &classified,
-                limit_info.as_ref(),
-                config,
-            ))
-        }
-        OutputFormat::AgentSeamPacketsJson => {
-            let (classified, _) =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            let (causal_projection, causal_projection_warning) =
-                CausalDeltaArtifact::load_optional(&output.root);
-            if let Some(warning) = causal_projection_warning {
-                eprintln!("ripr agent packets: {warning}");
-            }
-            Ok(
-                agent_seam_packets::render_agent_seam_packets_json_with_causal_and_outcome(
+        OutputFormat::RepoSeamsJson => repo_inventory_with_progress(
+            progress,
+            || analysis::inventory_seams_at_with_config(&output.root, config),
+            |seams| Ok(repo_seams::render_repo_seams_json(&seams)),
+        ),
+        OutputFormat::RepoSeamsMd => repo_inventory_with_progress(
+            progress,
+            || analysis::inventory_seams_at_with_config(&output.root, config),
+            |seams| Ok(repo_seams::render_repo_seams_md(&seams)),
+        ),
+        OutputFormat::RepoExposureJson => repo_inventory_with_progress(
+            progress,
+            || analysis::inventory_classified_seams_report_at_with_config(&output.root, config),
+            |report| {
+                let ts_guidance = detect_ts_full_repo_guidance(&output.root, &report.classified);
+                let python_guidance =
+                    detect_python_repo_exposure_guidance(&output.root, &report.classified);
+                let generated_skip =
+                    repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
+                let artifact_context =
+                    crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+                        output.root.clone(),
+                        output.mode.as_str().to_string(),
+                        output.base.clone(),
+                        config,
+                    )?;
+                repo_exposure::render_repo_exposure_json_with_context(
+                    &report.classified,
+                    report.limit_info.as_ref(),
+                    ts_guidance.as_ref(),
+                    python_guidance.as_ref(),
+                    generated_skip.as_ref(),
+                    &artifact_context,
+                )
+            },
+        ),
+        OutputFormat::RepoExposureSummaryJson => repo_inventory_with_progress(
+            progress,
+            || analysis::inventory_compact_classified_seams_at_with_config(&output.root, config),
+            |classified| {
+                Ok(repo_exposure::render_repo_exposure_summary_json(
                     &classified,
-                    None,
-                    causal_projection.as_ref(),
-                    output.analysis_outcome.as_ref(),
-                    output.base.is_some(),
-                ),
-            )
-        }
+                    &output.root,
+                    output.base.as_deref(),
+                    output.mode.as_str(),
+                ))
+            },
+        ),
+        OutputFormat::RepoExposureMd => repo_inventory_with_progress(
+            progress,
+            || analysis::inventory_classified_seams_report_at_with_config(&output.root, config),
+            |report| {
+                let ts_guidance = detect_ts_full_repo_guidance(&output.root, &report.classified);
+                let python_guidance =
+                    detect_python_repo_exposure_guidance(&output.root, &report.classified);
+                let generated_skip =
+                    repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
+                Ok(repo_exposure::render_repo_exposure_md_with_generated_skip(
+                    &report.classified,
+                    report.limit_info.as_ref(),
+                    ts_guidance.as_ref(),
+                    python_guidance.as_ref(),
+                    generated_skip.as_ref(),
+                ))
+            },
+        ),
+        OutputFormat::RepoSarif => repo_inventory_with_progress(
+            progress,
+            || analysis::inventory_classified_seams_at_with_config(&output.root, config),
+            |(classified, limit_info)| {
+                Ok(sarif::render_repo_seams_sarif(
+                    &classified,
+                    limit_info.as_ref(),
+                    config,
+                ))
+            },
+        ),
+        OutputFormat::AgentSeamPacketsJson => repo_inventory_with_progress(
+            progress,
+            || analysis::inventory_classified_seams_at_with_config(&output.root, config),
+            |(classified, _)| {
+                let (causal_projection, causal_projection_warning) =
+                    CausalDeltaArtifact::load_optional(&output.root);
+                if let Some(warning) = causal_projection_warning {
+                    eprintln!("ripr agent packets: {warning}");
+                }
+                Ok(
+                    agent_seam_packets::render_agent_seam_packets_json_with_causal_and_outcome(
+                        &classified,
+                        None,
+                        causal_projection.as_ref(),
+                        output.analysis_outcome.as_ref(),
+                        output.base.is_some(),
+                    ),
+                )
+            },
+        ),
     }
 }
 
@@ -167,11 +195,14 @@ fn stamp_check_json(rendered: String, root: &std::path::Path) -> String {
     }
 }
 
-pub(crate) fn render_check_with_config_and_navigation(
+/// Navigation-aware rendering that also reports repo-scope progress
+/// boundaries to `progress` (#4945).
+pub(crate) fn render_check_with_config_and_navigation_and_progress(
     output: &CheckOutput,
     format: &OutputFormat,
     config: &RiprConfig,
     navigation: Option<&FindingNavigation>,
+    progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
     match format {
         OutputFormat::Human => Ok(human::render_bounded_with_config_and_navigation(
@@ -180,7 +211,7 @@ pub(crate) fn render_check_with_config_and_navigation(
         OutputFormat::HumanFull => Ok(human::render_full_with_config_and_navigation(
             output, config, navigation,
         )),
-        _ => render_check_with_config(output, format, config),
+        _ => render_check_with_config_and_progress(output, format, config, progress),
     }
 }
 

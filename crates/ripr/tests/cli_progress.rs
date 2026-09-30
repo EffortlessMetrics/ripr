@@ -1,6 +1,6 @@
 //! Built-binary stdout/stderr discriminator for CLI analysis progress (#4810).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 fn ripr() -> Command {
@@ -313,5 +313,160 @@ fn check_unwritable_artifact_projects_failed_not_completed() -> Result<(), Strin
         !stderr.contains("ripr progress: completed"),
         "post-analysis artifact failure must not project completed: {stderr}"
     );
+    Ok(())
+}
+
+// --- #4945: repo-scoped audit-path formats disclose progress and cost ---
+
+/// Small single-crate fixture workspace for repo-format runs. Repo formats
+/// analyze the live tree and may write the seam-facts cache under the root,
+/// so these tests never point the binary at this repository or at a fixture
+/// inside the checkout.
+fn repo_fixture_root(tag: &str) -> Result<PathBuf, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("ripr-cli-progress-{tag}-{stamp}"));
+    std::fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            "[package]\nname=\"ripr-cli-progress-{tag}\"\nversion=\"0.1.0\"\nedition=\"2024\"\n"
+        ),
+    )
+    .map_err(|error| format!("write Cargo.toml: {error}"))?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|error| format!("write src/lib.rs: {error}"))?;
+    Ok(root)
+}
+
+fn ignore_remove_dir_all(path: &Path) {
+    let _ = std::fs::remove_dir_all(path);
+}
+
+fn run_repo_format(root: &Path, format: &str, extra: &[&str]) -> Result<Output, String> {
+    let root_arg = root.display().to_string();
+    let mut args = vec!["check", "--root", root_arg.as_str(), "--format", format];
+    args.extend_from_slice(extra);
+    ripr()
+        .args(&args)
+        .output()
+        .map_err(|error| format!("run ripr check --format {format}: {error}"))
+}
+
+#[test]
+fn repo_format_audit_path_progress_reaches_stderr_and_stdout_stays_clean() -> Result<(), String> {
+    let root = repo_fixture_root("seams")?;
+    let output = run_repo_format(&root, "repo-seams-json", &[])?;
+    assert!(
+        output.status.success(),
+        "repo-seams-json must succeed on the fixture: {}",
+        stderr_text(&output)
+    );
+    let stderr = stderr_text(&output);
+    // #4945: invocation-time cost disclosure naming the audit-path class.
+    assert!(
+        stderr.contains("full-repo audit path"),
+        "missing audit-path cost disclosure: {stderr}"
+    );
+    assert!(
+        stderr.contains("repo-seams-json"),
+        "disclosure must name the invoked format: {stderr}"
+    );
+    // The repo walk now projects the same producer stages as the diff path.
+    assert!(
+        stderr.contains("ripr progress: analyzing [repo]"),
+        "missing repo-scope analyzing stage: {stderr}"
+    );
+    assert!(
+        stderr.contains("ripr progress: completed [repo]"),
+        "missing repo-scope completed stage: {stderr}"
+    );
+    assert!(
+        !stderr.contains("[diff]"),
+        "repo run must not project the diff scope: {stderr}"
+    );
+    // Stdout cleanliness pin: the artifact is the ONLY stdout content.
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("stdout is not pure JSON: {error}"))?;
+    assert_eq!(parsed["scope"], "repo");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("ripr progress:"),
+        "progress leaked onto stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("audit path"),
+        "disclosure leaked onto stdout: {stdout}"
+    );
+    ignore_remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn repo_format_quiet_keeps_stdout_byte_identical_and_drops_progress_stages() -> Result<(), String> {
+    let root = repo_fixture_root("seams-quiet")?;
+    let loud = run_repo_format(&root, "repo-seams-json", &[])?;
+    let quiet = run_repo_format(&root, "repo-seams-json", &["--quiet"])?;
+    assert!(loud.status.success(), "{}", stderr_text(&loud));
+    assert!(quiet.status.success(), "{}", stderr_text(&quiet));
+    // Byte-shape pin: the disclosure/progress work must not move stdout.
+    assert_eq!(
+        loud.stdout, quiet.stdout,
+        "--quiet must not change machine stdout"
+    );
+    let quiet_err = stderr_text(&quiet);
+    assert!(
+        !quiet_err.contains("ripr progress:"),
+        "--quiet must suppress progress stages: {quiet_err}"
+    );
+    // The cost disclosure is an invocation-time advisory like the repo-scope
+    // --base/--diff warning, not part of the progress stream, so --quiet
+    // keeps it.
+    assert!(
+        quiet_err.contains("full-repo audit path"),
+        "--quiet must keep the cost disclosure: {quiet_err}"
+    );
+    assert!(
+        stderr_text(&loud).contains("ripr progress: analyzing [repo]"),
+        "loud control must project repo stages"
+    );
+    ignore_remove_dir_all(&root);
+    Ok(())
+}
+
+#[test]
+fn repo_format_disclosure_is_absent_outside_the_audit_path_group() -> Result<(), String> {
+    let root = repo_fixture_root("controls")?;
+    // Diff-scoped machine format: no audit-path claim. The scope is an
+    // explicit --diff so the run completes regardless of git availability;
+    // either way the disclosure must never fire for this format.
+    let diff = root.join("control.diff");
+    std::fs::write(
+        &diff,
+        "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n+pub fn over_threshold(amount: i32, threshold: i32, margin: i32) -> bool {\n",
+    )
+    .map_err(|error| format!("write control diff: {error}"))?;
+    let diff_arg = diff.display().to_string();
+    let diff_json = run_repo_format(&root, "json", &["--diff", diff_arg.as_str()])?;
+    assert!(
+        !stderr_text(&diff_json).contains("audit path"),
+        "diff-scoped json must not claim audit-path cost: {}",
+        stderr_text(&diff_json)
+    );
+    // Repo badge surface: repo-scoped, but renders the compact summary, not
+    // the audit walk, so it must not claim minutes it does not charge.
+    let badge = run_repo_format(&root, "repo-badge-json", &[])?;
+    assert!(badge.status.success(), "{}", stderr_text(&badge));
+    let badge_err = stderr_text(&badge);
+    assert!(
+        !badge_err.contains("audit path"),
+        "repo-badge-json must not claim audit-path cost: {badge_err}"
+    );
+    ignore_remove_dir_all(&root);
     Ok(())
 }

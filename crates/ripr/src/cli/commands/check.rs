@@ -603,35 +603,74 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         )?)?;
         return Ok(());
     }
+    // #4945: the sink is wired BEFORE every repo-format path so the
+    // longest-running surfaces project the same producer stages the
+    // diff-scoped path promises (`ripr progress: <stage> [<scope>]`,
+    // throttled heartbeats included). Both the audit-path disclosure and the
+    // stage lines are stderr-only and cannot change machine stdout.
+    let progress = (!quiet).then(|| {
+        crate::cli::progress::CliProgressSink::for_stderr(
+            std::io::stderr().is_terminal(),
+            crate::cli::progress::ProgressPolicy::STANDARD,
+        )
+    });
+    let progress_sink = progress
+        .as_ref()
+        .map(|sink| sink as &dyn crate::app::AnalysisProgressSink);
+    // #4945: invocation-time cost disclosure for the full-repo audit-path
+    // formats. One line, before the run begins, naming the expected cost
+    // class (cold full-corpus walk; the warm-rerun clause is honest per
+    // format — see `repo_audit_path_disclosure`) — like the repo-scope
+    // --base/--diff warning above, this is an advisory notice, so it is not
+    // part of the --quiet-suppressed progress stream.
+    if let Some(disclosure) = format.repo_audit_path_disclosure() {
+        eprintln!("{disclosure}");
+    }
     if matches!(format, OutputFormat::RepoExposureJson) {
-        let report =
-            analysis::inventory_classified_seams_report_at_with_config(&input.root, &config)?;
-        let ts_guidance =
-            output::render::detect_ts_full_repo_guidance_pub(&input.root, &report.classified);
-        let python_guidance = output::render::detect_python_repo_exposure_guidance_pub(
-            &input.root,
-            &report.classified,
-        );
-        let generated_skip =
-            output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
-        let artifact_context =
-            crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
-                input.root.clone(),
-                input.mode.as_str().to_string(),
-                input.base.clone(),
-                &config,
-            )?;
-        let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
-        output::repo_exposure::write_repo_exposure_json_with_context(
-            &report.classified,
-            report.limit_info.as_ref(),
-            ts_guidance.as_ref(),
-            python_guidance.as_ref(),
-            generated_skip.as_ref(),
-            &artifact_context,
-            &mut handle,
+        // #4945: this early return renders straight from the inventory, so it
+        // brackets the walk itself with repo-scope stage boundaries instead of
+        // relying on `check_with_progress` (which this path never reaches).
+        app::repo_inventory_with_progress(
+            progress_sink,
+            || analysis::inventory_classified_seams_report_at_with_config(&input.root, &config),
+            |report| {
+                let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(
+                    &input.root,
+                    &report.classified,
+                );
+                let python_guidance = output::render::detect_python_repo_exposure_guidance_pub(
+                    &input.root,
+                    &report.classified,
+                );
+                let generated_skip =
+                    output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
+                let artifact_context =
+                    crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+                        input.root.clone(),
+                        input.mode.as_str().to_string(),
+                        input.base.clone(),
+                        &config,
+                    )?;
+                let stdout = std::io::stdout();
+                let mut handle = stdout.lock();
+                output::repo_exposure::write_repo_exposure_json_with_context(
+                    &report.classified,
+                    report.limit_info.as_ref(),
+                    ts_guidance.as_ref(),
+                    python_guidance.as_ref(),
+                    generated_skip.as_ref(),
+                    &artifact_context,
+                    &mut handle,
+                )?;
+                Ok(())
+            },
         )?;
+        // Producer `completed` was held until the streaming stdout write
+        // finished; a failed write already dropped the sink, which projected
+        // `failed` instead.
+        if let Some(sink) = &progress {
+            sink.commit_success();
+        }
         return Ok(());
     }
     // Capture diff_file before input is moved into the analysis call; the
@@ -648,15 +687,6 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     if !format.is_repo_scope() && !format.is_repo_seam_inventory() {
         disclose_attached_terminal_stdin_read(input.diff_file.as_deref());
     }
-    let progress = (!quiet).then(|| {
-        crate::cli::progress::CliProgressSink::for_stderr(
-            std::io::stderr().is_terminal(),
-            crate::cli::progress::ProgressPolicy::STANDARD,
-        )
-    });
-    let progress_sink = progress
-        .as_ref()
-        .map(|sink| sink as &dyn crate::app::AnalysisProgressSink);
     let progress_scope = if format.is_repo_scope() {
         app::AnalysisProgressScope::Repo
     } else if worktree_explicitly_provided {
@@ -768,11 +798,15 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
             explicit.mode,
         ))
     };
-    write_stdout_chunked(&app::render_check_with_config_and_navigation(
+    // #4945: repo seam-driven formats run their walks inside the render arms,
+    // so the sink threads through rendering to bracket those walks with
+    // repo-scope stage boundaries; diff-scoped arms ignore it.
+    write_stdout_chunked(&app::render_check_with_config_and_navigation_and_progress(
         &output,
         &format,
         &config,
         navigation.as_ref(),
+        progress_sink,
     )?)?;
     if let Some(sink) = &progress {
         sink.commit_success();
