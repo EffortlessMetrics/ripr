@@ -71,6 +71,18 @@ Updated:
 ## Pending — ts_predicate_boundary_overcredit (6)
 
 Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless ts_predicate_boundary_overcredit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+## Pending — ts_predicate_boundary_overcredit (6)
+
+Reason:
 RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
 
 Command:

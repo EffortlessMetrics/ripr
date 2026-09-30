@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 16 changed line(s), 8 candidate line(s), 16 probe(s), 16 finding(s).
 
 INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+  id: probe:src_lib.rs:error_path:5c979117
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -40,6 +41,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117
 
 INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:45
+  id: probe:src_lib.rs:return_value:f573bd5d
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -72,6 +74,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d
 
 INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+  id: probe:src_lib.rs:error_path:5c979117.2
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -104,6 +107,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117.2
 
 INFO fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:48
+  id: probe:src_lib.rs:return_value:f573bd5d.2
 
 Changed
   before: return Err(ParseSummaryError::ParserInit);
@@ -136,6 +140,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d.2
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:56
+  id: probe:src_lib.rs:error_path:edac60ec
 
 Changed
   before: try_parse_summary(raw).map_err(|error| error.to_string().into())
@@ -195,6 +200,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:edac60ec
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:56
+  id: probe:src_lib.rs:return_value:b87fa5c0
 
 Changed
   before: try_parse_summary(raw).map_err(|error| error.to_string().into())
@@ -253,6 +259,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:b87fa5c0
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:67
+  id: probe:src_lib.rs:error_path:51fc5156
 
 Changed
   before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
@@ -306,6 +313,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:51fc5156
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:67
+  id: probe:src_lib.rs:return_value:588b0f56
 
 Changed
   before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
@@ -359,6 +367,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:588b0f56
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:81
+  id: probe:src_lib.rs:error_path:ad27ed37
 
 Changed
   before: try_render_summary(raw).map_err(|error| error.to_string().into())
@@ -412,6 +421,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:ad27ed37
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:81
+  id: probe:src_lib.rs:return_value:1224f837
 
 Changed
   before: try_render_summary(raw).map_err(|error| error.to_string().into())
@@ -465,6 +475,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:1224f837
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:95
+  id: probe:src_lib.rs:error_path:e47d26a4
 
 Changed
   before: try_length_summary(raw).map_err(|error| error.to_string().into())
@@ -507,6 +518,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:e47d26a4
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:95
+  id: probe:src_lib.rs:return_value:b7c26672
 
 Changed
   before: try_length_summary(raw).map_err(|error| error.to_string().into())
@@ -549,6 +561,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:b7c26672
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:109
+  id: probe:src_lib.rs:error_path:53c169fe
 
 Changed
   before: try_glyph_summary(raw).map_err(Into::into)
@@ -602,6 +615,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:53c169fe
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:109
+  id: probe:src_lib.rs:return_value:262ac815
 
 Changed
   before: try_glyph_summary(raw).map_err(Into::into)
@@ -655,6 +669,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:262ac815
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:123
+  id: probe:src_lib.rs:error_path:c82815a4
 
 Changed
   before: try_theme_summary(raw).map_err(|error| error.to_string().into())
@@ -701,6 +716,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:c82815a4
 
 WARNING fixtures/error_variant_boxed_wrapper_downcast_witness/input/src/lib.rs:123
+  id: probe:src_lib.rs:return_value:4ccb1836
 
 Changed
   before: try_theme_summary(raw).map_err(|error| error.to_string().into())

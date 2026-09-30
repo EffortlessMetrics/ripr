@@ -294,3 +294,16 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — typescript_t_wrong_receiver_no_oracle (10)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless typescript_t_wrong_receiver_no_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

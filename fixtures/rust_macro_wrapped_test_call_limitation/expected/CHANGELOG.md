@@ -267,3 +267,16 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — rust_macro_wrapped_test_call_limitation (8)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless rust_macro_wrapped_test_call_limitation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

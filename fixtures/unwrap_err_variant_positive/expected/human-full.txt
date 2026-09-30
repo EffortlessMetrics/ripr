@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 INFO fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+  id: probe:src_lib.rs:error_path:6b37a3bc
 
 Changed
   before: return Err(CalcError::TooLarge);
@@ -36,6 +37,7 @@ Drill in:
   ripr context --root fixtures/unwrap_err_variant_positive/input --diff fixtures/unwrap_err_variant_positive/diff.patch --mode fast --at probe:src_lib.rs:error_path:6b37a3bc
 
 INFO fixtures/unwrap_err_variant_positive/input/src/lib.rs:8
+  id: probe:src_lib.rs:return_value:832c68b7
 
 Changed
   before: return Err(CalcError::TooLarge);

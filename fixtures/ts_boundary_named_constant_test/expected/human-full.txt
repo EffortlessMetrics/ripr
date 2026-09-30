@@ -10,6 +10,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
 INFO src/pricing.ts:4
+  id: probe:src_pricing.ts:typescript_preview:129143e0
 
 Changed
   after:      if (total >= DISCOUNT_THRESHOLD) {
@@ -77,6 +78,7 @@ Drill in:
   ripr context --root fixtures/ts_boundary_named_constant_test/input --diff fixtures/ts_boundary_named_constant_test/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:129143e0
 
 INFO src/pricing.ts:11
+  id: probe:src_pricing.ts:typescript_preview:1c8a3e62
 
 Changed
   after:      if (items >= 5) {

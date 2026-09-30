@@ -1,4 +1,4 @@
-use crate::app::{CheckOutput, FindingNavigation};
+use crate::app::{CheckOutput, FindingDrillIn, FindingNavigation};
 use crate::config::RiprConfig;
 use crate::domain::Finding;
 use std::collections::BTreeSet;
@@ -24,8 +24,8 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
 }
 
 pub(crate) fn render_bounded_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
-    let navigation = FindingNavigation::legacy();
-    render_bounded_with_config_and_navigation(output, config, Some(&navigation))
+    let drill_in = FindingDrillIn::Commands(FindingNavigation::legacy());
+    render_bounded_with_config_and_navigation(output, config, Some(&drill_in))
 }
 
 /// #4012: the no-scope note must describe what was actually analyzed. When
@@ -50,7 +50,7 @@ fn render_no_scope_note(output: &CheckOutput) -> String {
 pub(crate) fn render_bounded_with_config_and_navigation(
     output: &CheckOutput,
     config: &RiprConfig,
-    navigation: Option<&FindingNavigation>,
+    drill_in: Option<&FindingDrillIn>,
 ) -> String {
     let mut out = render_header_summary(output);
     render_analysis_outcome_disclosure(&mut out, output);
@@ -61,7 +61,7 @@ pub(crate) fn render_bounded_with_config_and_navigation(
         out.push_str("No diff-derived static exposure probes found.\n");
         if output.no_scope_provided {
             let triage = triage::select_human_triage(output, config);
-            triage::render_human_triage(&mut out, &triage, output, config, navigation);
+            triage::render_human_triage(&mut out, &triage, output, config, drill_in);
         }
         if output.no_scope_provided && !output.unanalyzed_working_tree {
             out.push_str(&render_no_scope_note(output));
@@ -75,7 +75,7 @@ pub(crate) fn render_bounded_with_config_and_navigation(
     }
 
     let triage = triage::select_human_triage(output, config);
-    triage::render_human_triage(&mut out, &triage, output, config, navigation);
+    triage::render_human_triage(&mut out, &triage, output, config, drill_in);
     render_all_no_path_disclosure(&mut out, output);
     if output.unanalyzed_working_tree {
         out.push_str(UNANALYZED_WORKING_TREE_NOTE);
@@ -94,14 +94,15 @@ pub(crate) fn render_full_with_config(output: &CheckOutput, config: &RiprConfig)
     render_full_with_config_and_navigation(output, config, None)
 }
 
-/// Full human form. With `navigation`, every rendered finding carries its own
-/// `ripr explain` / `ripr context` drill-in pair, so rerunning with
+/// Full human form. With `drill_in`, every rendered finding carries its own
+/// `ripr explain` / `ripr context` drill-in pair (or, for a `--worktree` run
+/// without an artifact, the one-line replay route), so rerunning with
 /// `--format human-full` as the digest suggests never loses the commands the
-/// digest printed (#4379).
+/// digest printed (#4379, #4321).
 pub(crate) fn render_full_with_config_and_navigation(
     output: &CheckOutput,
     config: &RiprConfig,
-    navigation: Option<&FindingNavigation>,
+    drill_in: Option<&FindingDrillIn>,
 ) -> String {
     let mut out = render_header_summary(output);
 
@@ -140,16 +141,28 @@ pub(crate) fn render_full_with_config_and_navigation(
                 .map(|entry| entry.finding_id.as_str())
         })
         .collect();
+    let mut findings_rendered = 0usize;
     for finding in &output.findings {
         if suppressed_ids.contains(finding.id.as_str()) {
             continue;
         }
+        findings_rendered += 1;
         out.push_str(&render_finding_with_config(finding, config));
-        if let Some(navigation) = navigation {
+        if let Some(FindingDrillIn::Commands(navigation)) = drill_in {
             out.push_str("Drill in:\n");
             out.push_str(&format!("  {}\n", navigation.explain_command(&finding.id)));
             out.push_str(&format!("  {}\n", navigation.context_command(&finding.id)));
         }
+        out.push('\n');
+    }
+    // #4321: a `--worktree` run without `--write-artifact` has no artifact for
+    // drill-in commands to replay; say so and name the route instead of
+    // dropping the block silently. The note only points at ids it actually
+    // printed — an all-suppressed run states the route without the pointer.
+    if let Some(FindingDrillIn::WorktreeReplayNeedsArtifact) = drill_in {
+        out.push_str(&FindingDrillIn::worktree_replay_note_full(
+            findings_rendered > 0,
+        ));
         out.push('\n');
     }
     render_all_no_path_disclosure(&mut out, output);
@@ -2301,11 +2314,12 @@ mod tests {
 
         // #4379: the digest sends readers to human-full, so human-full must
         // carry every finding's drill-in pair, not lose them.
-        let navigation = crate::app::FindingNavigation::legacy();
+        let drill_in =
+            crate::app::FindingDrillIn::Commands(crate::app::FindingNavigation::legacy());
         let navigated = super::render_full_with_config_and_navigation(
             &output,
             &crate::config::RiprConfig::default(),
-            Some(&navigation),
+            Some(&drill_in),
         );
         for id in ["first", "second"] {
             assert!(
@@ -2315,6 +2329,217 @@ mod tests {
                 "human-full must carry the drill-in pair for {id}: {navigated}"
             );
         }
+    }
+
+    /// #4321: the exhaustive surface prints each finding's id once, so the
+    /// digest's `--format human-full` route ends at a nameable finding — the
+    /// same token `ripr explain`, `ripr context`, and the JSON `id` carry.
+    #[test]
+    fn human_full_prints_each_finding_id_exactly_once() {
+        let mut first = sample_finding();
+        first.id = "probe:src_lib.rs:predicate:c80557eb".to_string();
+        first.probe.location.line = 7;
+        let mut second = sample_finding();
+        second.id = "probe:src_lib.rs:error_path:9af31c02".to_string();
+        second.probe.location.line = 8;
+        let output = CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                weakly_exposed: 2,
+                ..Summary::default()
+            },
+            findings: vec![first, second],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+
+        let rendered =
+            super::render_full_with_config(&output, &crate::config::RiprConfig::default());
+
+        for id in [
+            "probe:src_lib.rs:predicate:c80557eb",
+            "probe:src_lib.rs:error_path:9af31c02",
+        ] {
+            assert_eq!(
+                rendered.matches(&format!("  id: {id}\n")).count(),
+                1,
+                "each full-form finding block prints its id exactly once; got:\n{rendered}"
+            );
+        }
+    }
+
+    /// #4321: a `--worktree` run without `--write-artifact` has no artifact
+    /// for drill-in commands to replay, so the digest states the artifact
+    /// route and names the selected finding instead of dropping the block.
+    #[test]
+    fn worktree_digest_names_the_artifact_replay_route() {
+        let finding = sample_finding();
+        let finding_id = finding.id.clone();
+        let output = CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                weakly_exposed: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+
+        let drill_in = crate::app::FindingDrillIn::WorktreeReplayNeedsArtifact;
+        let rendered = super::render_bounded_with_config_and_navigation(
+            &output,
+            &crate::config::RiprConfig::default(),
+            Some(&drill_in),
+        );
+
+        assert!(
+            rendered.contains(&format!(
+                "Next: this worktree run has no artifact to replay — rerun with --write-artifact, then `ripr explain --from <artifact> {finding_id}` drills into the top finding"
+            )),
+            "the digest must state the replay route and name the finding; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("Next: drill into the top finding:"),
+            "commands replaying a different analysis must not print; got:\n{rendered}"
+        );
+    }
+
+    /// #4321: the full form for the same run carries the replay route once
+    /// instead of per-finding command blocks.
+    #[test]
+    fn worktree_human_full_names_the_artifact_replay_route_once() {
+        let mut first = sample_finding();
+        first.id = "first".to_string();
+        first.probe.location.line = 7;
+        let mut second = sample_finding();
+        second.id = "second".to_string();
+        second.probe.location.line = 8;
+        let output = CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 2,
+                findings: 2,
+                weakly_exposed: 2,
+                ..Summary::default()
+            },
+            findings: vec![first, second],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+
+        let drill_in = crate::app::FindingDrillIn::WorktreeReplayNeedsArtifact;
+        let rendered = super::render_full_with_config_and_navigation(
+            &output,
+            &crate::config::RiprConfig::default(),
+            Some(&drill_in),
+        );
+
+        assert!(
+            rendered.contains("Finding ids print above."),
+            "the full form must state the replay route; got:\n{rendered}"
+        );
+        assert_eq!(
+            rendered.matches("--write-artifact").count(),
+            1,
+            "the replay route prints once, not per finding; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("Drill in:"),
+            "commands replaying a different analysis must not print; got:\n{rendered}"
+        );
+    }
+
+    /// #4924 review: the full-form replay route must not point at ids it did
+    /// not print — when policy suppresses every finding, no `id:` line exists
+    /// above the note, so the route prints without the id pointer.
+    #[test]
+    fn worktree_full_omits_the_id_pointer_when_every_finding_is_suppressed() {
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let finding = sample_finding();
+        let finding_id = finding.id.clone();
+        let output = CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary {
+                probes: 1,
+                findings: 1,
+                ..Summary::default()
+            },
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: Some(CheckSuppressionOutcome {
+                policy_path: "policy/ripr-suppressions.toml".to_string(),
+                suppressed: vec![SuppressedCheckFinding {
+                    finding_id,
+                    selector: "src/**".to_string(),
+                }],
+                warnings: Vec::new(),
+            }),
+            analysis_outcome: None,
+            partial_scope: None,
+        };
+
+        let drill_in = crate::app::FindingDrillIn::WorktreeReplayNeedsArtifact;
+        let rendered = super::render_full_with_config_and_navigation(
+            &output,
+            &crate::config::RiprConfig::default(),
+            Some(&drill_in),
+        );
+
+        assert!(
+            rendered.contains("Next: this worktree run has no artifact to replay"),
+            "the replay route must still print under full suppression; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("Finding ids print above."),
+            "the note must not claim ids it did not print; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("  id: "),
+            "a fully suppressed run prints no finding blocks; got:\n{rendered}"
+        );
     }
 
     #[test]

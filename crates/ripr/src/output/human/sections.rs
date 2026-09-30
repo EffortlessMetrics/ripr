@@ -285,6 +285,11 @@ pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig)
         display_path(&finding.probe.location.file),
         finding.probe.location.line
     ));
+    // #4321: name the finding this block carries, so a reader routed here by
+    // the digest's `--format human-full` pointer can run `ripr explain` /
+    // `ripr context` and cross-reference the JSON `id` without counting
+    // identical-looking headers.
+    out.push_str(&format!("  id: {}\n", finding.id));
 
     // #2752: these three printed at full source width, so a long changed
     // expression (a chained iterator, a jq pipeline, a heredoc) rendered 400+

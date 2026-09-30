@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 WARNING fixtures/guarded_result_match_fail_closed/input/src/lib.rs:62
+  id: probe:src_lib.rs:error_path:09b3885a
 
 Changed
   before: Ok(build_response(id, method)?)
@@ -51,6 +52,7 @@ Drill in:
   ripr context --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:error_path:09b3885a
 
 WARNING fixtures/guarded_result_match_fail_closed/input/src/lib.rs:62
+  id: probe:src_lib.rs:return_value:4a5bf6b6
 
 Changed
   before: Ok(build_response(id, method)?)

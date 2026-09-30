@@ -10,6 +10,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
 
 INFO src/guards.ts:2
+  id: probe:src_guards.ts:typescript_preview:7098c2ff
 
 Changed
   after:      if (order?.role === "admin") {
@@ -77,6 +78,7 @@ Drill in:
   ripr context --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast --at probe:src_guards.ts:typescript_preview:7098c2ff
 
 INFO src/guards.ts:9
+  id: probe:src_guards.ts:typescript_preview:0d3ee5b2
 
 Changed
   after:      if (name ?? "temp") {
@@ -144,6 +146,7 @@ Drill in:
   ripr context --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast --at probe:src_guards.ts:typescript_preview:0d3ee5b2
 
 INFO src/guards.ts:15
+  id: probe:src_guards.ts:typescript_preview:31d04e16
 
 Changed
   after:      yield total >= 50;

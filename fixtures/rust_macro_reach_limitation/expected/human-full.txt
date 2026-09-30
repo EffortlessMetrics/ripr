@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 WARNING fixtures/rust_macro_reach_limitation/input/src/internal.rs:2
+  id: probe:src_internal.rs:predicate:114f2322
 
 Changed
   before: if a > b {
@@ -57,6 +58,7 @@ Drill in:
   ripr context --root fixtures/rust_macro_reach_limitation/input --diff fixtures/rust_macro_reach_limitation/diff.patch --mode fast --at probe:src_internal.rs:predicate:114f2322
 
 WARNING fixtures/rust_macro_reach_limitation/input/src/internal.rs:2
+  id: probe:src_internal.rs:predicate:10b08bc9
 
 Changed
   before: if a > b {

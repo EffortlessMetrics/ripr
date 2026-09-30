@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 WARNING fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs:14
+  id: probe:src_lib.rs:error_path:463e8297
 
 Changed
   before: try_parse_summary(raw).map_err(Into::into)
@@ -52,6 +53,7 @@ Drill in:
   ripr context --root fixtures/wrapper_seam_callee_call_attribution/input --diff fixtures/wrapper_seam_callee_call_attribution/diff.patch --mode fast --at probe:src_lib.rs:error_path:463e8297
 
 WARNING fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs:14
+  id: probe:src_lib.rs:return_value:7ef92e0f
 
 Changed
   before: try_parse_summary(raw).map_err(Into::into)

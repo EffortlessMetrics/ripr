@@ -10,6 +10,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 INFO src/score.ts:2
+  id: probe:src_score.ts:typescript_preview:af44236d
 
 Changed
   after:      return total - penalty + 0;

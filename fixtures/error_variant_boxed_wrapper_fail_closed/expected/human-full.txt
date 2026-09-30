@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 4 probe(s), 4 finding(s).
 
 WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:29
+  id: probe:src_lib.rs:error_path:51fc5156
 
 Changed
   before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
@@ -61,6 +62,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_fail_closed/input --diff fixtures/error_variant_boxed_wrapper_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:error_path:51fc5156
 
 WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:29
+  id: probe:src_lib.rs:return_value:588b0f56
 
 Changed
   before: try_checksum_summary(payload).map_err(|error| error.to_string().into())
@@ -114,6 +116,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_fail_closed/input --diff fixtures/error_variant_boxed_wrapper_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:return_value:588b0f56
 
 WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:43
+  id: probe:src_lib.rs:error_path:ad27ed37
 
 Changed
   before: try_render_summary(raw).map_err(|error| error.to_string().into())
@@ -167,6 +170,7 @@ Drill in:
   ripr context --root fixtures/error_variant_boxed_wrapper_fail_closed/input --diff fixtures/error_variant_boxed_wrapper_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:error_path:ad27ed37
 
 WARNING fixtures/error_variant_boxed_wrapper_fail_closed/input/src/lib.rs:43
+  id: probe:src_lib.rs:return_value:1224f837
 
 Changed
   before: try_render_summary(raw).map_err(|error| error.to_string().into())

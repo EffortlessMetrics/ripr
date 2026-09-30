@@ -841,10 +841,14 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     if !committed_history_diff {
         output.unanalyzed_working_tree = false;
     }
-    let navigation = if worktree_explicitly_provided && write_artifact.is_none() {
-        None
+    // #4321: a `--worktree` run without `--write-artifact` has no artifact
+    // for drill-in commands to replay (a committed-history replay would
+    // analyze a different diff), so the human surfaces say so and name
+    // `--write-artifact` instead of dropping the block silently.
+    let drill_in = if worktree_explicitly_provided && write_artifact.is_none() {
+        app::FindingDrillIn::WorktreeReplayNeedsArtifact
     } else {
-        Some(app::finding_navigation(
+        app::FindingDrillIn::Commands(app::finding_navigation(
             &limited_check_input,
             write_artifact.as_deref(),
             explicit.mode,
@@ -857,7 +861,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         &output,
         &format,
         &config,
-        navigation.as_ref(),
+        Some(&drill_in),
         progress_sink,
     )?)?;
     if let Some(sink) = &progress {

@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 INFO fixtures/rust_dep_edge_cross_crate_positive/input/crates/a/src/lib.rs:4
+  id: probe:crates_a_src_lib.rs:return_value:94e6eef7
 
 Changed
   before: points * points

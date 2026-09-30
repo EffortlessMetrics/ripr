@@ -318,3 +318,16 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — python_adversarial_default_value_overridden (11)
+
+Reason:
+RIPR-SPEC-0122: #4321 additive per-finding id lines in human-full (drill-in identifiers)
+
+Command:
+`cargo xtask goldens bless python_adversarial_default_value_overridden --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

@@ -10,6 +10,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 9 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
 WARNING src/pricing.ts:6
+  id: probe:src_pricing.ts:typescript_preview:fff3ea84
 
 Changed
   after:  export const DEFAULT_FEE_RULE: FeeRule = { bps: 300, cap: 50 };
@@ -81,6 +82,7 @@ Drill in:
   ripr context --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:fff3ea84
 
 WARNING src/pricing.ts:14
+  id: probe:src_pricing.ts:typescript_preview:bd772dc8
 
 Changed
   after:    if (amount >= threshold) {

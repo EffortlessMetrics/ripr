@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 WARNING fixtures/match_arm_tuple_derived_return_before_assertion/input/src/lib.rs:27
+  id: probe:src_lib.rs:match_arm:802442a0
 
 Changed
   before: (true, false) => "request_identity_v1",
@@ -48,6 +49,7 @@ Drill in:
   ripr context --root fixtures/match_arm_tuple_derived_return_before_assertion/input --diff fixtures/match_arm_tuple_derived_return_before_assertion/diff.patch --mode fast --at probe:src_lib.rs:match_arm:802442a0
 
 WARNING fixtures/match_arm_tuple_derived_return_before_assertion/input/src/lib.rs:27
+  id: probe:src_lib.rs:match_arm:210aa0af
 
 Changed
   before: (true, false) => "request_identity_v1",

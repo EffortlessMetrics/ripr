@@ -8,6 +8,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 NOTE fixtures/rust_constructor_field_observation/input/src/lib.rs:15
+  id: probe:src_lib.rs:return_value:f04ff7e2
 
 Changed
   before: storage: Storage::Local,
