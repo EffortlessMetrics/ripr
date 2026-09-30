@@ -9281,6 +9281,8 @@ name = "bounded native npm bootstrap"
 spec = "docs/specs/RIPR-SPEC-0180-npm-native-bootstrap.md"
 tests = [
   ".github/scripts/test_npm_package.py::NpmPackageTests",
+  ".github/scripts/test_npm_package.py::NpmReleaseAdmissionTests",
+  ".github/scripts/test_npm_package.py::NpmStageCliTests",
   ".github/scripts/npm_consumer.py::main",
   "xtask/src/policy/file_policy.rs::tests::npm_qualification_retention_is_exactly_scoped",
 ]
@@ -9288,6 +9290,7 @@ fixtures = ["fixtures/python/basic"]
 code = [
   ".github/scripts/npm_package.py",
   ".github/workflows/npm-package-qualification.yml",
+  ".github/workflows/publish-npm.yml",
   "packaging/npm/native-source.json",
   "packaging/npm/package.template.json",
 ]
@@ -9295,4 +9298,4 @@ outputs = [
   "docs/NPM_BOOTSTRAP.md",
   "packaging/npm/README.md",
 ]
-metrics = ["selected_routes", "executed_routes", "failed_routes", "payload_sha256", "tarball_sha256"]
+metrics = ["selected_routes", "executed_routes", "failed_routes", "payload_sha256", "tarball_sha256", "stage_eligible", "selected_requests", "observed_requests"]

@@ -1,49 +1,197 @@
-name: npm publisher contract
+name: Stage qualified ripr npm prerelease
 
-# Trusted-publisher identity planned after the genuine npm bootstrap:
-#
-#   owner:       EffortlessMetrics
-#   repository:  ripr
-#   workflow:    publish-npm.yml
-#   environment: npm
-#
-# This bootstrap workflow intentionally cannot publish or stage packages. It has
-# no OIDC permission, package build, npm setup or registry write. Complete
-# #1781, qualify the exact tarball set, and obtain explicit release authorization
-# under #1784 before enabling any external write.
-
+# Existing-package-only, stage-only tuple:
+# EffortlessMetrics / ripr / publish-npm.yml / environment npm.
+# The npm trust grant and environment protection are separate operator setup.
+# Default admission does not request an OIDC token or write to npm.
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect qualification, or explicitly stage the exact tarball for later maintainer approval
+        type: choice
+        options: [admit_only, stage]
+        default: admit_only
+        required: true
+      qualification_run_id:
+        description: Successful source-main npm qualification run ID
+        type: string
+        required: true
+      qualification_run_attempt:
+        description: Exact successful whole-run attempt number
+        type: string
+        required: true
+      source_sha:
+        description: Exact current-main source SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      source_tree:
+        description: Exact qualified source tree SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      version:
+        description: Exact native/npm prerelease, for example 0.11.0-alpha.2
+        type: string
+        required: true
+      tarball_sha256:
+        description: Qualified tarball SHA-256 (64 lowercase hex characters)
+        type: string
+        required: true
+      confirmation:
+        description: For stage only, type stage @effortlessmetrics/ripr VERSION next SHA256 with the exact values
+        type: string
+        required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+env:
+  RUN_ID: ${{ inputs.qualification_run_id }}
+  RUN_ATTEMPT: ${{ inputs.qualification_run_attempt }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
+  SOURCE_TREE: ${{ inputs.source_tree }}
+  VERSION: ${{ inputs.version }}
+  TARBALL_SHA256: ${{ inputs.tarball_sha256 }}
+
 jobs:
-  publisher-contract:
-    name: Record npm publisher tuple (no publish)
+  admission:
+    name: Admit exact source-main bytes without npm credentials
     if: ${{ github.repository == 'EffortlessMetrics/ripr' && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact_id: ${{ steps.transfer.outputs.artifact-id }}
+      stage_eligible: ${{ steps.admit.outputs.stage_eligible }}
+      filename: ${{ steps.admit.outputs.filename }}
+      integrity: ${{ steps.admit.outputs.integrity }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require exact explicit staging confirmation
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$OPERATION" != stage || test "$CONFIRMATION" = "stage @effortlessmetrics/ripr $VERSION next $TARBALL_SHA256"
+      - name: Test the trusted admission controller
+        run: python3 -m unittest discover -s .github/scripts -p test_npm_package.py
+      - name: Admit run, archives, native pin and both installed consumer proofs
+        id: admit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
+        run: python3 .github/scripts/npm_package.py admitted --admit-release --operation "$OPERATION"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        id: transfer
+        with:
+          name: npm-admitted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: admitted/tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-admission-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: admitted/release-admission.json
+          if-no-files-found: error
+          retention-days: 5
+
+  stage:
+    name: Stage the admitted tarball (no checkout or package execution)
+    needs: admission
+    if: >-
+      github.repository == 'EffortlessMetrics/ripr' && github.ref == 'refs/heads/main' &&
+      inputs.operation == 'stage' && needs.admission.outputs.stage_eligible == 'true' &&
+      inputs.confirmation == format('stage @effortlessmetrics/ripr {0} next {1}', inputs.version, inputs.tarball_sha256)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     environment:
       name: npm
+      url: https://www.npmjs.com/package/@effortlessmetrics/ripr
+    permissions:
+      id-token: write
+    outputs:
+      result_artifact_id: ${{ steps.result.outputs.artifact-id }}
+    env:
+      NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npm-stage.npmrc
+      NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/npm-stage-global.npmrc
+      NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-stage-cache
+      NPM_CONFIG_UPDATE_NOTIFIER: 'false'
+      NODE_AUTH_TOKEN: ''
+      NPM_TOKEN: ''
+      NPM_ID_TOKEN: ''
     steps:
-      - name: Record trusted-publisher contract
-        shell: bash
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Use empty npm configuration and exact staging tooling
         run: |
           set -euo pipefail
-          {
-            echo "## npm trusted-publisher contract"
-            echo
-            echo "- Package: \`@effortlessmetrics/ripr\`"
-            echo "- Initial target: native Linux x64/glibc 2.34+ in one package"
-            echo "- GitHub owner: \`EffortlessMetrics\`"
-            echo "- Repository: \`ripr\`"
-            echo "- Workflow: \`publish-npm.yml\`"
-            echo "- Environment: \`npm\`"
-            echo "- Staging enabled: **no**"
-            echo "- Direct publication enabled: **no**"
-            echo
-            echo "This workflow deliberately has no \`id-token: write\` permission,"
-            echo "Node/npm setup, package retrieval, \`npm stage publish\`, or"
-            echo "\`npm publish\` step. Complete #1781 and obtain exact-artifact"
-            echo "authorization under #1784 before enabling registry writes."
-          } >> "$GITHUB_STEP_SUMMARY"
+          : > "$NPM_CONFIG_USERCONFIG"
+          : > "$NPM_CONFIG_GLOBALCONFIG"
+          npm install --global --ignore-scripts --registry=https://registry.npmjs.org npm@11.15.0
+          test "$(node --version)" = v24.19.0
+          test "$(npm --version)" = 11.15.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.admission.outputs.artifact_id }}
+          path: dist
+          merge-multiple: true
+      - name: Recheck the only staged file after transfer
+        env:
+          FILENAME: ${{ needs.admission.outputs.filename }}
+        run: |
+          set -euo pipefail
+          test "$(find dist -mindepth 1 | wc -l)" -eq 1
+          tarball="dist/$FILENAME"
+          test -f "$tarball" && test ! -L "$tarball"
+          test "$(sha256sum "$tarball" | cut -d ' ' -f 1)" = "$TARBALL_SHA256"
+      - name: Stage exact bytes through the stage-only trusted publisher
+        env:
+          FILENAME: ${{ needs.admission.outputs.filename }}
+        run: npm stage publish "dist/$FILENAME" --ignore-scripts --registry=https://registry.npmjs.org --access=public --tag=next --fetch-retries=0 --provenance --json > stage-result.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        id: result
+        if: ${{ always() }}
+        with:
+          name: npm-stage-response-${{ github.run_id }}-${{ github.run_attempt }}
+          path: stage-result.json
+          if-no-files-found: warn
+          retention-days: 5
+
+  record:
+    name: Validate the staging response without OIDC access
+    needs: [admission, stage]
+    if: ${{ needs.stage.result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.stage.outputs.result_artifact_id }}
+          path: response
+          merge-multiple: true
+      - name: Record stage ID and exact identity without claiming publication
+        env:
+          EXPECTED_INTEGRITY: ${{ needs.admission.outputs.integrity }}
+        run: python3 .github/scripts/npm_package.py staging-receipt.json --inspect-staging-response response/stage-result.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-staging-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: staging-receipt.json
+          if-no-files-found: error
+          retention-days: 5

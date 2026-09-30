@@ -2,14 +2,19 @@
 import base64
 import copy
 import csv
+import hashlib
 import importlib.util
 import io
+import json
+import http.server
 import os
 import shutil
 import subprocess
 from pathlib import Path
 import tarfile
 import tempfile
+import threading
+import textwrap
 import unittest
 from unittest import mock
 from types import SimpleNamespace
@@ -184,6 +189,7 @@ class NpmPackageTests(unittest.TestCase):
             "os": ["darwin"], "cpu": ["arm64"], "libc": ["musl"],
             "publishConfig": {"access": "public", "tag": "latest"},
             "scripts": {"postinstall": "false"}, "dependencies": {}, "optionalDependencies": {},
+            "bundleDependencies": [], "tag": "latest",
             "repository": {"url": "https://example.invalid"}, "files": ["*"],
         }.items():
             with self.subTest(key=key):
@@ -282,6 +288,339 @@ class NpmPackageTests(unittest.TestCase):
                         self.assertEqual(PACKAGE.validate_tarball(path, pin, provenance)["files"], sorted(PACKAGE.FILES))
                     else:
                         with self.assertRaises(ValueError): PACKAGE.validate_tarball(path, pin, provenance)
+
+
+class NpmReleaseAdmissionTests(unittest.TestCase):
+    def setUp(self):
+        self.identity = dict(run_id="123", run_attempt="2", source_sha="a" * 40,
+                             source_tree="b" * 40, version="0.11.0-alpha.1", tarball_sha256="c" * 64)
+        self.ref = {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "a" * 40}}
+        self.run = dict(id=123, run_attempt=2, workflow_id=99, event="workflow_dispatch",
+                        head_branch="main", head_sha="a" * 40, status="completed", conclusion="success",
+                        path=".github/workflows/npm-package-qualification.yml",
+                        repository={"full_name": "EffortlessMetrics/ripr", "id": 88},
+                        head_repository={"full_name": "EffortlessMetrics/ripr", "id": 88})
+        self.commit = {"sha": "a" * 40, "tree": {"sha": "b" * 40}}
+        self.workflow = {"id": 99, "path": self.run["path"]}
+        self.jobs = {"total_count": 4, "jobs": [dict(name=name, status="completed", conclusion="success")
+                     for name in ("package", "consumer (20.20.1, 10.8.2)",
+                                  "consumer (24.19.0, 11.9.0)", "publisher-controls")]}
+        self.artifacts = {"total_count": 4, "artifacts": [
+            dict(id=index + 400, name=name, expired=False, digest="sha256:" + "d" * 64,
+                 size_in_bytes=100, workflow_run={"id": 123, "head_sha": "a" * 40,
+                                                 "repository_id": 88, "head_repository_id": 88})
+            for index, name in enumerate(("npm-prepared-123-2", "npm-consumer-20.20.1-123-2",
+                                          "npm-consumer-24.19.0-123-2", "npm-publisher-controls-123-2"))]}
+
+    def authorize(self, **overrides):
+        values = dict(ref=self.ref, run=self.run, commit=self.commit, workflow=self.workflow,
+                      jobs=self.jobs, artifacts=self.artifacts)
+        values.update(overrides)
+        replies = [values[key] for key in ("ref", "run", "commit", "workflow", "jobs", "artifacts")]
+        with mock.patch.object(PACKAGE, "github_api", side_effect=replies):
+            return PACKAGE.authorize_release(self.identity, "a" * 40)
+
+    def test_exact_main_run_and_all_attempt_bound_artifacts_are_admitted(self):
+        result = self.authorize()
+        self.assertEqual(result["identity"], self.identity)
+        self.assertEqual([a["id"] for a in result["artifacts"]], [400, 401, 402, 403])
+
+    def test_wrong_run_ref_attempt_job_and_artifact_authorities_fail(self):
+        changes = [
+            ("ref", {"ref": "refs/tags/main", "object": self.ref["object"]}),
+            ("ref", {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "e" * 40}}),
+            ("commit", {"sha": "a" * 40, "tree": {"sha": "e" * 40}}),
+            ("workflow", {"id": 100, "path": self.run["path"]}),
+        ]
+        for field, value in (("event", "pull_request"), ("head_branch", "feature"),
+                             ("head_sha", "e" * 40), ("run_attempt", 1),
+                             ("conclusion", "failure"), ("status", "in_progress"),
+                             ("path", "other.yml"), ("head_repository", {"full_name": "fork/ripr", "id": 88})):
+            changes.append(("run", dict(self.run, **{field: value})))
+        for index in range(4):
+            jobs = copy.deepcopy(self.jobs); jobs["jobs"][index]["conclusion"] = "skipped"
+            changes.append(("jobs", jobs))
+        for field, value in (("name", "npm-prepared-123-1"), ("expired", True),
+                             ("id", "400"), ("digest", None), ("size_in_bytes", 40_000_001),
+                             ("workflow_run", {"id": 123, "head_sha": "e" * 40})):
+            artifacts = copy.deepcopy(self.artifacts); artifacts["artifacts"][0][field] = value
+            changes.append(("artifacts", artifacts))
+        changes.extend([("artifacts", {"total_count": 101, "artifacts": []}),
+                        ("artifacts", {"total_count": 0, "artifacts": []})])
+        for field, value in changes:
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                self.authorize(**{field: value})
+
+    def test_identity_rejects_shell_paths_stable_versions_and_missing_attempt(self):
+        for field, value in (("run_id", "../1"), ("run_attempt", "0"), ("source_sha", "main"),
+                             ("source_tree", "a\nx=y"), ("version", "0.11.0"),
+                             ("version", "00.11.0-alpha.1"), ("tarball_sha256", "bad")):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                PACKAGE.validate_release_identity(dict(self.identity, **{field: value}))
+
+    def test_zip_digest_traversal_links_duplicates_and_unbounded_entries_fail(self):
+        data = zip_bytes({"consumer.json": b"{}"})
+        self.assertEqual(PACKAGE.read_qualification_zip(data, "sha256:" + PACKAGE.digest(data)), {"consumer.json": b"{}"})
+        with self.assertRaisesRegex(ValueError, "digest"):
+            PACKAGE.read_qualification_zip(data, "sha256:" + "0" * 64)
+        for name, linked in (("../outside", False), ("/absolute", False), ("a\\b", False),
+                             ("a/./b", False), ("consumer.json", True)):
+            data = zip_bytes({name: b"{}"}, link=name if linked else None)
+            with self.subTest(name=name, linked=linked), self.assertRaises(ValueError):
+                PACKAGE.read_qualification_zip(data, "sha256:" + PACKAGE.digest(data))
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("same", b"one")
+            with self.assertWarns(UserWarning): archive.writestr("same", b"two")
+        for data in (output.getvalue(), zip_bytes({str(i): b"x" for i in range(51)}),
+                     zip_bytes({"oversized": b"x" * 30_000_001})):
+            with self.assertRaises(ValueError):
+                PACKAGE.read_qualification_zip(data, "sha256:" + PACKAGE.digest(data))
+
+    def proof(self):
+        rows = [dict(route=route, probes=1, findings=1, follow_up_finding="probe:fixture")
+                for route in ("local", "global", "npm-exec", "npx")]
+        proof = dict(schema_version=1, state="passed", node="v20.20.1", npm="10.8.2", npx="10.8.2",
+                     selected_routes=4, executed_routes=4, failed_routes=0,
+                     tarball_sha256="c" * 64, payload_sha256="e" * 64, routes=rows,
+                     reinstall_journey=dict(rows[0], route="fresh-reinstall"),
+                     negative_controls=list(PACKAGE.CONSUMER_CONTROLS))
+        files = {"consumer.json": PACKAGE.canonical(proof), "lsp-stderr.txt": b""}
+        for row in rows + [proof["reinstall_journey"]]:
+            files[row["route"] + "-check.json"] = PACKAGE.canonical({"summary": {"probes": 1, "findings": 1}, "findings": [{"id": "probe:fixture"}]})
+            files[row["route"] + "-explain.txt"] = b"Useful explanation of the selected finding"
+        return proof, files
+
+    def test_consumer_receipts_require_executed_distinct_routes_and_retained_journeys(self):
+        proof, files = self.proof()
+        PACKAGE.validate_consumer_proof(files, "20.20.1", "10.8.2", "c" * 64, "e" * 64)
+        for field, value in (("selected_routes", 0), ("executed_routes", 3), ("failed_routes", 1),
+                             ("state", "prepared"), ("npm", "11.9.0"), ("npx", "wrong"),
+                             ("tarball_sha256", "f" * 64), ("payload_sha256", "f" * 64),
+                             ("routes", [proof["routes"][0]] * 4), ("reinstall_journey", {}),
+                             ("negative_controls", [])):
+            changed = dict(files, **{"consumer.json": PACKAGE.canonical(dict(proof, **{field: value}))})
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                PACKAGE.validate_consumer_proof(changed, "20.20.1", "10.8.2", "c" * 64, "e" * 64)
+        for name in ("npx-check.json", "fresh-reinstall-explain.txt"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                PACKAGE.validate_consumer_proof(dict(files, **{name: b""}), "20.20.1", "10.8.2", "c" * 64, "e" * 64)
+
+    def test_existing_public_version_is_not_stage_eligible(self):
+        public = {"name": "@effortlessmetrics/ripr", "versions": {"0.11.0-alpha.1": {"name": "@effortlessmetrics/ripr", "version": "0.11.0-alpha.1"}}}
+        self.assertFalse(PACKAGE.stage_eligibility(public, self.identity["version"]))
+        self.assertTrue(PACKAGE.stage_eligibility(public, "0.11.0-alpha.2"))
+        for metadata in ({}, {"name": "ripr", "versions": {}},
+                         {"name": "@effortlessmetrics/ripr", "versions": {}},
+                         {"name": "@effortlessmetrics/ripr", "versions": {"0.0.0-stage": {}}}):
+            with self.subTest(metadata=metadata), self.assertRaises(ValueError):
+                PACKAGE.stage_eligibility(metadata, self.identity["version"])
+
+    def test_staging_response_rejects_wrong_identity_digest_and_missing_stage_id(self):
+        entry = dict(name=PACKAGE.PACKAGE_NAME, version=self.identity["version"],
+                     id=PACKAGE.PACKAGE_NAME + "@" + self.identity["version"], integrity="sha512:fixture",
+                     filename="effortlessmetrics-ripr-0.11.0-alpha.1.tgz", entryCount=7,
+                     stageId="01234567-89ab-4cde-8fab-0123456789ab")
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "response.json"
+            for key in (None, "name", "version", "id", "integrity", "filename", "entryCount", "stageId"):
+                changed = dict(entry)
+                if key: changed[key] = "wrong"
+                path.write_bytes(PACKAGE.canonical({PACKAGE.PACKAGE_NAME: changed}))
+                with self.subTest(key=key):
+                    if key:
+                        with self.assertRaises(ValueError): PACKAGE.inspect_staging_response(path, self.identity, "sha512:fixture")
+                    else:
+                        receipt = PACKAGE.inspect_staging_response(path, self.identity, "sha512:fixture")
+                        self.assertEqual(receipt["state"], "staging_response_received")
+                        self.assertFalse(receipt["staged_bytes_independently_verified"])
+                        self.assertFalse(receipt["maintainer_approval_performed"])
+                        self.assertFalse(receipt["public_delivery_verified"])
+
+    def test_environment_requires_existing_main_branch_and_exact_reviewer(self):
+        environment = dict(name="npm", id=17,
+                           deployment_branch_policy=dict(protected_branches=False, custom_branch_policies=True),
+                           protection_rules=[dict(type="required_reviewers", prevent_self_review=False,
+                                                  reviewers=[dict(type="User", reviewer=dict(id=15812269, login="EffortlessSteven"))])])
+        policies = dict(total_count=1, branch_policies=[dict(name="main", type="branch")])
+        result = PACKAGE.validate_stage_environment(environment, policies)
+        self.assertFalse(result["admin_bypass_api_verified"])
+        for field, value in (("prevent_self_review", True), ("reviewers", []),
+                             ("reviewers", [dict(type="User", reviewer=dict(id=1, login="other"))])):
+            changed = copy.deepcopy(environment); changed["protection_rules"][0][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                PACKAGE.validate_stage_environment(changed, policies)
+        for field, value in (("name", "pypi"), ("id", None), ("protection_rules", []),
+                             ("deployment_branch_policy", None), ("can_admins_bypass", True)):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                PACKAGE.validate_stage_environment(dict(environment, **{field: value}), policies)
+        for invalid in (dict(total_count=0, branch_policies=[]),
+                        dict(total_count=2, branch_policies=policies["branch_policies"] * 2),
+                        dict(total_count=1, branch_policies=[dict(name="main", type="tag")]),
+                        dict(total_count=1, branch_policies=[dict(name="*", type="branch")])):
+            with self.subTest(policies=invalid), self.assertRaises(ValueError):
+                PACKAGE.validate_stage_environment(environment, invalid)
+
+    @unittest.skipUnless(os.name == "posix", "GitHub-hosted stage job uses bash")
+    def test_actual_staging_confirmation_and_transferred_file_guards(self):
+        workflow = (PACKAGE.ROOT / ".github/workflows/publish-npm.yml").read_text()
+        step = workflow.split("      - name: Require exact explicit staging confirmation\n", 1)[1].split("      - ", 1)[0]
+        guard = step.split("        run: ", 1)[1].strip()
+        confirmation = "stage @effortlessmetrics/ripr 0.11.0-alpha.1 next " + "c" * 64
+        for operation, text, allowed in (("admit_only", "", True), ("stage", "", False),
+                                         ("stage", confirmation, True),
+                                         ("stage", confirmation.replace("next", "latest"), False),
+                                         ("stage", confirmation.replace("alpha.1", "alpha.2"), False)):
+            result = subprocess.run(["bash", "-euo", "pipefail", "-c", guard],
+                                    env=dict(os.environ, OPERATION=operation, CONFIRMATION=text,
+                                             VERSION="0.11.0-alpha.1", TARBALL_SHA256="c" * 64), capture_output=True, check=False)
+            self.assertEqual(result.returncode == 0, allowed)
+        step = workflow.split("      - name: Recheck the only staged file after transfer\n", 1)[1].split("      - ", 1)[0]
+        guard = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); (root / "dist").mkdir()
+            tar = root / "dist/input.tgz"; tar.write_bytes(b"qualified fixture")
+            environment = dict(os.environ, FILENAME="input.tgz", TARBALL_SHA256=PACKAGE.digest(tar.read_bytes()))
+            for control in ("valid", "changed", "extra", "symlink"):
+                if control == "changed": tar.write_bytes(b"different")
+                if control == "extra": tar.write_bytes(b"qualified fixture"); (root / "dist/extra").write_bytes(b"extra")
+                if control == "symlink":
+                    (root / "dist/extra").unlink(); tar.rename(root / "target"); tar.symlink_to(root / "target")
+                result = subprocess.run(["bash", "-euo", "pipefail", "-c", guard], cwd=root, env=environment, capture_output=True, check=False)
+                self.assertEqual(result.returncode == 0, control == "valid")
+
+    def test_real_admission_keeps_only_exact_bytes_and_never_runs_artifact_code(self):
+        pin, wheel_files = wheel_fixture()
+        wheel = zip_bytes(wheel_files); pin["wheel_sha256"] = PACKAGE.digest(wheel)
+        native = PACKAGE.inspect_wheel(wheel, pin)
+        provenance = dict(schema_version=1, product_source=pin,
+                          packaging_source={"sha": "a" * 40, "tree": "b" * 40},
+                          sbom_sha256=PACKAGE.digest(native["sbom.cyclonedx.json"]),
+                          native_build_repeated=False, automatic_npm_oidc_provenance=False)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); filename = "effortlessmetrics-ripr-0.11.0-alpha.1.tgz"
+            tar = root / filename
+            native.update({"package.json": PACKAGE.canonical(PACKAGE.manifest(pin)),
+                           "provenance.json": PACKAGE.canonical(provenance),
+                           "README.md": (PACKAGE.ROOT / "packaging/npm/README.md").read_bytes()})
+            with tarfile.open(tar, "w:gz") as archive:
+                for name, data in native.items():
+                    entry = tarfile.TarInfo("package/" + name); entry.size = len(data)
+                    entry.mode = 0o755 if name == "bin/ripr" else 0o644
+                    archive.addfile(entry, io.BytesIO(data))
+            self.identity["tarball_sha256"] = PACKAGE.digest(tar.read_bytes())
+            tar_receipt = PACKAGE.validate_tarball(tar, pin, provenance)
+            receipt = dict(schema_version=1, package_name=PACKAGE.PACKAGE_NAME, version=pin["native_version"],
+                           provenance=provenance, tarball=tar_receipt, qualification_run_id="123",
+                           qualification_run_attempt="2", qualification_state="prepared_only", publication_attempted=False)
+            prepared = {"tarballs/" + filename: tar.read_bytes(), "package-receipt.json": PACKAGE.canonical(receipt),
+                        "npm-pack.json": b"[]", "npm_consumer.py": Path(CONSUMER.__file__).read_bytes()}
+            prepared.update({"fixture/" + p.relative_to(PACKAGE.ROOT / "fixtures/python/basic").as_posix(): p.read_bytes()
+                             for p in (PACKAGE.ROOT / "fixtures/python/basic").rglob("*") if p.is_file()})
+            bundles = [prepared]
+            for node, npm in PACKAGE.CLIENTS:
+                proof, files = self.proof()
+                proof.update(node="v" + node, npm=npm, npx=npm, tarball_sha256=tar_receipt["sha256"], payload_sha256=pin["payload_sha256"])
+                files["consumer.json"] = PACKAGE.canonical(proof); bundles.append(files)
+            stage_proof = dict(schema_version=1, state="passed_local_transport_only", npm="11.15.0",
+                               package=PACKAGE.PACKAGE_NAME, version=pin["native_version"],
+                               tarball_sha256=tar_receipt["sha256"], integrity=tar_receipt["integrity"],
+                               selected_requests=2, observed_requests=2, lifecycle_marker_created=False,
+                               oidc_exercised=False, external_registry_write_attempted=False)
+            bundles.append({"stage-cli-proof.json": PACKAGE.canonical(stage_proof)})
+            for index, control in enumerate(("valid", "receipt-source", "foreign-pin", "empty-proof", "wrong-tar", "existing-version", "wrong-transport", "changed-authority")):
+                with self.subTest(control=control):
+                    selected = copy.deepcopy(bundles)
+                    if control == "receipt-source":
+                        value = copy.deepcopy(receipt); value["provenance"]["packaging_source"]["sha"] = "e" * 40
+                        selected[0]["package-receipt.json"] = PACKAGE.canonical(value)
+                    if control == "foreign-pin":
+                        value = copy.deepcopy(receipt); value["provenance"]["product_source"]["product_source_sha"] = "e" * 40
+                        selected[0]["package-receipt.json"] = PACKAGE.canonical(value)
+                    if control == "empty-proof": selected[1]["npx-explain.txt"] = b""
+                    if control == "wrong-tar": selected[0]["tarballs/" + filename] += b"wrong"
+                    if control == "wrong-transport": selected[3]["stage-cli-proof.json"] = PACKAGE.canonical(dict(stage_proof, observed_requests=0))
+                    archives = [zip_bytes(files) for files in selected]
+                    authority = {"identity": self.identity, "artifacts": [dict(id=i + 400, name="fixture", digest="sha256:" + PACKAGE.digest(data), size_in_bytes=len(data)) for i, data in enumerate(archives)]}
+                    after = {} if control == "changed-authority" else authority
+                    public = {"name": PACKAGE.PACKAGE_NAME, "versions": {"0.1.0": {}}}
+                    if control == "existing-version": public["versions"][pin["native_version"]] = {}
+                    destination = root / str(index)
+                    env = dict(name="npm", id=17, deployment_branch_policy=dict(protected_branches=False, custom_branch_policies=True), protection_rules=[dict(type="required_reviewers", prevent_self_review=False, reviewers=[dict(type="User", reviewer=dict(id=15812269, login="EffortlessSteven"))])])
+                    branches = dict(total_count=1, branch_policies=[dict(name="main", type="branch")])
+                    with mock.patch.object(PACKAGE, "authorize_release", side_effect=[authority, after]), mock.patch.object(PACKAGE, "github_api", side_effect=[*archives, env, branches]), mock.patch.object(PACKAGE, "source_pin", return_value=pin), mock.patch.object(PACKAGE, "download_wheel", return_value=wheel), mock.patch.object(PACKAGE, "public_package", return_value=public), mock.patch.object(PACKAGE, "run", side_effect=AssertionError("admission must not execute packages")):
+                        if control == "valid":
+                            with mock.patch("builtins.print"):
+                                result = PACKAGE.admit_release(destination, self.identity, "a" * 40, "stage")
+                            self.assertTrue(result["stage_eligible"])
+                            self.assertEqual((destination / "tarballs" / filename).read_bytes(), tar.read_bytes())
+                            self.assertEqual(sorted(p.name for p in destination.iterdir()), ["release-admission.json", "tarballs"])
+                        else:
+                            with self.assertRaises(ValueError):
+                                PACKAGE.admit_release(destination, self.identity, "a" * 40, "stage")
+                            self.assertFalse(destination.exists())
+
+
+@unittest.skipUnless(os.environ.get("RIPR_NPM_STAGE_ARTIFACT"), "real CLI transport is a separate read-only qualification job")
+class NpmStageCliTests(unittest.TestCase):
+    def test_stage_cli_preserves_qualified_tar_and_disables_lifecycle(self):
+        artifact = Path(os.environ["RIPR_NPM_STAGE_ARTIFACT"])
+        receipt = json.loads((artifact / "package-receipt.json").read_text())
+        tar = (artifact / "tarballs" / receipt["tarball"]["filename"]).resolve()
+        self.assertEqual(PACKAGE.digest(tar.read_bytes()), receipt["tarball"]["sha256"])
+        npm = shutil.which("npm"); self.assertIsNotNone(npm)
+        self.assertEqual(subprocess.check_output([npm, "--version"], text=True).strip(), "11.15.0")
+        requests = []
+        class Registry(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_args): pass
+            def do_GET(self):
+                data = PACKAGE.canonical({"name": PACKAGE.PACKAGE_NAME, "versions": {"0.1.0": {"version": "0.1.0"}}})
+                self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(data)
+            def do_POST(self):
+                requests.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                self.send_response(201); self.send_header("Content-Type", "application/json"); self.end_headers()
+                self.wfile.write(b'{"stageId":"01234567-89ab-4cde-8fab-0123456789ab"}')
+        server = http.server.HTTPServer(("127.0.0.1", 0), Registry)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary); registry = f"http://127.0.0.1:{server.server_port}/"
+                config = root / "npmrc"
+                # This inert fixture value is accepted only by the loopback mock,
+                # never by npm or another external service.
+                config.write_text(f"//127.0.0.1:{server.server_port}/:_authToken=local-fixture-only\n")
+                environment = {"PATH": os.environ["PATH"], "HOME": str(root), "NPM_CONFIG_USERCONFIG": str(config),
+                               "NPM_CONFIG_GLOBALCONFIG": str(root / "empty-global"),
+                               "NPM_CONFIG_CACHE": str(root / "cache"), "NPM_CONFIG_UPDATE_NOTIFIER": "false"}
+                scripted = root / "scripted.tgz"
+                with tarfile.open(scripted, "w:gz") as archive:
+                    package = dict(name=PACKAGE.PACKAGE_NAME, version=receipt["version"],
+                                   scripts={event: "node -e \"require('fs').writeFileSync('lifecycle-marker','unexpected')\"" for event in ("prepublishOnly", "prepack", "prepare", "postpack", "publish", "postpublish")})
+                    data = PACKAGE.canonical(package); entry = tarfile.TarInfo("package/package.json"); entry.size = len(data)
+                    archive.addfile(entry, io.BytesIO(data))
+                for source in (tar, scripted):
+                    result = subprocess.run([npm, "stage", "publish", str(source), "--registry=" + registry,
+                                             "--ignore-scripts", "--tag=next", "--access=public", "--fetch-retries=0", "--json"],
+                                            cwd=root, env=environment, capture_output=True, text=True, timeout=60, check=False)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    output = json.loads(result.stdout)[PACKAGE.PACKAGE_NAME]
+                    self.assertEqual(output["stageId"], "01234567-89ab-4cde-8fab-0123456789ab")
+                    self.assertEqual(output["integrity"], "sha512-" + base64.b64encode(hashlib.sha512(source.read_bytes()).digest()).decode())
+                    path, posted = requests[-1]
+                    self.assertEqual(path, "/-/stage/package/@effortlessmetrics%2fripr")
+                    self.assertEqual(posted["dist-tags"], {"next": receipt["version"]}); self.assertEqual(posted["access"], "public")
+                    submitted = [base64.b64decode(value["data"]) for name, value in posted["_attachments"].items() if name.endswith(".tgz")]
+                    self.assertEqual(submitted, [source.read_bytes()])
+                self.assertEqual(len(requests), 2); self.assertFalse((root / "lifecycle-marker").exists())
+                proof = dict(schema_version=1, state="passed_local_transport_only", npm="11.15.0",
+                             package=PACKAGE.PACKAGE_NAME, version=receipt["version"],
+                             tarball_sha256=receipt["tarball"]["sha256"], integrity=receipt["tarball"]["integrity"],
+                             selected_requests=2, observed_requests=len(requests), lifecycle_marker_created=False,
+                             oidc_exercised=False, external_registry_write_attempted=False)
+                output = Path(os.environ["RIPR_NPM_STAGE_PROOF"]); output.mkdir(parents=True, exist_ok=False)
+                (output / "stage-cli-proof.json").write_bytes(PACKAGE.canonical(proof))
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
 
 
 if __name__ == "__main__":

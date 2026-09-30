@@ -16,7 +16,7 @@
 .github/workflows/future-clippy.yml|1|Advisory future-Clippy lane keeps each run block to one shell command.
 .github/workflows/pr-plan.yml|1|Advisory PR Plan workflow keeps each run block to one shell command (mkdir/git, ls, printf).
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
-.github/workflows/publish-npm.yml|18|Manual npm publisher-contract workflow records the reviewed source tuple without build, OIDC, staging, or publication capability.
+.github/workflows/publish-npm.yml|6|Manual existing-package prerelease admission verifies source/run/archives and installed proof before a separate stage-only OIDC job; no checkout or package execution in that job.
 .github/workflows/publish-pypi.yml|9|Source-owned prerelease publisher admits exact successful main-run wheel bytes, then isolates explicitly requested OIDC upload from build and source execution.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
 .github/workflows/routed-rust.yml|44|Source routed Rust workflow proves pull requests on GitHub-hosted runners only; the normalized verdict is decided by the typed ci-routed-rust-result command rather than in shell, so the run blocks only gather inputs.
@@ -31,4 +31,4 @@
 .github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.
 .github/workflows/windows-packaged-qualification.yml|50|On-demand exact-candidate Windows package and VSIX rehearsal must retain identity checks, isolated CLI/editor journeys, and Actions-only receipts in one workflow.
 .github/workflows/python-wheel-qualification.yml|217|Source-only Linux wheel build, auditwheel compliance, exact-subject metadata and installed pip/uv journey proof; read-only with five-day evidence.
-.github/workflows/npm-package-qualification.yml|1|Read-only exact-native npm package preparation and two checkout-free client proof rows; all archive and consumer logic lives in separately tested bounded standard-library controllers.
+.github/workflows/npm-package-qualification.yml|1|Read-only npm preparation, two checkout-free clients and real staging CLI transport against a loopback fixture; no external registry write or OIDC permission.

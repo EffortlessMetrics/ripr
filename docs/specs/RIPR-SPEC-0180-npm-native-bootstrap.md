@@ -34,22 +34,53 @@ HTTP(S) proxies point at closed loopback; this is not OS-level network isolation
 controls retain nonzero failures, unsupported-platform metadata rejection and
 honest incomplete output when the Python preview is disabled.
 
+Source-owned staging is a separate manual operation. Read-only admission binds
+the exact current main SHA/tree, latest complete manual qualification attempt,
+four executed jobs and four immutable artifact ZIP digests. It reuses the
+native/wheel/tar authority above and requires both retained installed-use rows,
+all four distinct routes, fresh reinstall, and real npm staging-client transport
+of those bytes against a loopback mock registry. No artifact code runs during
+admission.
+
+Admission-only cannot request OIDC or write to npm. Explicit staging requires
+the exact version/digest confirmation, an existing non-placeholder package,
+an absent public version, and an existing main-only GitHub npm environment with
+the selected maintainer reviewer. The isolated OIDC job receives one admitted
+tarball, rechecks its digest, and invokes pinned npm stage publish with scripts
+disabled and fixed public/next metadata. It performs no checkout, package
+execution, build, direct publication, stage approval or settings mutation.
+
+The returned stage ID and identity are inspected in a separate read-only job.
+A staging response does not establish staged-byte readback, external provenance
+verification, maintainer 2FA approval, or public delivery. Missing or uncertain
+stage results require operator reconciliation before retry. Existing published
+versions are never repacked, restaged or overwritten to test this path.
+
 ## Required Evidence
 
 `.github/scripts/test_npm_package.py` exercises the same byte-admission
 functions used by `.github/scripts/npm_package.py`, including invalid wheel
 and tar cases. `.github/scripts/npm_consumer.py` measures four installed routes
 on the exact tarball. `npm-package-qualification.yml` requires both selected
-Node/npm rows on attempt-bound artifacts. `docs/NPM_BOOTSTRAP.md` defines first
-publication, immutable-byte readback, source separation and future migration.
+Node/npm rows and a separately executed real npm CLI loopback transport control
+on attempt-bound artifacts. Release admission tests challenge wrong source/run,
+attempt, artifact, native pin, route denominators, environment, public version
+and staging-result identities. Tests exercise the retained admission entrypoint
+and actual workflow shell guards. `docs/NPM_BOOTSTRAP.md` defines first
+publication, immutable-byte readback, source separation, stage-only setup and
+future migration.
 
 ## Non-Goals
 
-No automatic registry write, account/security mutation, stable version,
+No automatic public release, account/security mutation, stable version,
 multiplatform promotion, generic JavaScript API or full swarm integration.
 This contract does not claim completion of the originally planned scoped npm
 family or trusted-publisher setup. npm cannot enforce the glibc minor version;
 older loaders may refuse execution. Forced platform installation is excluded.
+The loopback test does not establish OIDC, live staging, Sigstore, environment
+enforcement, or 2FA promotion. GitHub main is checked at admission, not after
+an arbitrary later environment-approval delay. Environment admin-bypass state
+requires operator UI verification when GitHub's GET response omits it.
 
 ## Validation
 
@@ -72,6 +103,13 @@ cargo xtask check-spec-numbering
 - Four installed routes each produce a real Python-preview finding and
   successfully explain its identifier; zero selected subjects is not a pass.
 - Contradictory OS, CPU or libc metadata is rejected by the selected npm clients.
+- A PR qualifier, stale attempt, failed/skipped job, altered archive or empty
+  installed-use row cannot reach the credentialed stage job.
+- Admission-only can inspect already-public alpha bytes but returns
+  stage_eligible false; explicit staging rejects that immutable version.
+- A successful loopback stage sends exactly the qualified tar, no lifecycle
+  marker appears, and the receipt retains two selected/observed requests.
+- Wrong/missing stage IDs or returned integrity fail without claiming release.
 
 ## Test Mapping
 
@@ -85,6 +123,8 @@ cargo xtask check-spec-numbering
 - `packaging/npm/native-source.json`: native product-source authority and hashes.
 - `packaging/npm/package.template.json`: single-platform CLI package contract.
 - `.github/workflows/npm-package-qualification.yml`: exact-head, attempt-bound proof.
+- `.github/workflows/publish-npm.yml`: default read-only admission and isolated
+  explicitly requested stage-only OIDC, followed by a read-only response record.
 
 ## Metrics
 
@@ -92,3 +132,5 @@ Retain four selected/executed routes for each of two selected client rows,
 nonzero probes/findings, native/tar digests and named negative controls.
 A missing/failed/not-run row never counts as qualified. A prepared artifact
 and a publicly downloaded package remain different states.
+Retain stage_eligible, selected_requests and observed_requests. A local transport
+pass, admitted artifact, staging response and public delivery are distinct.
