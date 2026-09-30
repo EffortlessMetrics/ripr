@@ -21,6 +21,7 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_NAME = "@effortlessmetrics/ripr"
 FILES = {"package.json", "README.md", "LICENSE-MIT", "LICENSE-APACHE", "bin/ripr", "provenance.json", "sbom.cyclonedx.json"}
 
 
@@ -67,7 +68,7 @@ def manifest(pin, root=ROOT):
 
 
 def validate_manifest(value, pin):
-    require(value.get("name") == "ripr", "wrong npm name")
+    require(value.get("name") == PACKAGE_NAME, "wrong npm name")
     require(value.get("version") == pin["native_version"], "wrong npm version")
     require(value.get("bin") == {"ripr": "bin/ripr"}, "wrong npm executable")
     require(value.get("os") == ["linux"] and value.get("cpu") == ["x64"] and value.get("libc") == ["glibc"], "wrong npm platform")
@@ -170,10 +171,11 @@ def prepare(destination, wheel=None):
     output = destination / "tarballs"
     output.mkdir()
     packed = json.loads(run(["npm", "pack", "--ignore-scripts", "--json", "--pack-destination", str(output.resolve())], package))
-    require(len(packed) == 1 and packed[0]["filename"] == f"ripr-{pin['native_version']}.tgz", "unexpected npm pack result")
+    expected_filename = f"{PACKAGE_NAME.removeprefix('@').replace('/', '-')}-{pin['native_version']}.tgz"
+    require(len(packed) == 1 and packed[0]["filename"] == expected_filename, "unexpected npm pack result")
     require({row["path"] for row in packed[0]["files"]} == FILES, "npm pack inventory differs")
     result = validate_tarball(output / packed[0]["filename"], pin, provenance)
-    receipt = {"schema_version": 1, "version": pin["native_version"], "package_name": "ripr", "provenance": provenance, "tarball": result,
+    receipt = {"schema_version": 1, "version": pin["native_version"], "package_name": PACKAGE_NAME, "provenance": provenance, "tarball": result,
                "qualification_run_id": os.environ.get("GITHUB_RUN_ID"), "qualification_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
                "qualification_state": "prepared_only", "publication_attempted": False}
     (destination / "package-receipt.json").write_bytes(canonical(receipt))

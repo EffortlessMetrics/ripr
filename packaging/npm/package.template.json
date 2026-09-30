@@ -1,5 +1,5 @@
 {
-  "name": "ripr",
+  "name": "@effortlessmetrics/ripr",
   "description": "Native ripr static mutation-exposure analyzer (Linux x64 alpha).",
   "license": "MIT OR Apache-2.0",
   "author": "Effortless Metrics",
