@@ -4,16 +4,18 @@
 The npm package is **@effortlessmetrics/ripr**; the installed command remains
 **ripr**.
 
-## Linux x86-64 alpha
+## Linux x86-64 prerelease
 
-This initial npm prerelease contains one native executable for **Linux x86-64
+This npm prerelease contains one native executable for **Linux x86-64
 with glibc 2.34 or newer**. macOS, Windows, ARM64 and musl/Alpine are not included.
 Use npm 10 or newer. npm checks OS, architecture and libc family; it cannot
 check the minimum glibc version. Older glibc loaders reject this executable.
 Do not override platform checks with `--force`.
 
+Install this exact candidate version when it is available from your registry:
+
 ```console
-npm install --global @effortlessmetrics/ripr@0.11.0-alpha.1
+npm install --global @effortlessmetrics/ripr@0.11.0-alpha.2
 ripr --version
 ripr check
 ```
@@ -21,13 +23,13 @@ ripr check
 For a one-shot invocation, keep the package and command explicit:
 
 ```console
-npx --yes --package=@effortlessmetrics/ripr@0.11.0-alpha.1 ripr check
+npx --yes --package=@effortlessmetrics/ripr@0.11.0-alpha.2 ripr check
 ```
 
 Project-local installation also works:
 
 ```console
-npm install --save-dev @effortlessmetrics/ripr@0.11.0-alpha.1
+npm install --save-dev @effortlessmetrics/ripr@0.11.0-alpha.2
 npm exec -- ripr check
 ```
 
@@ -40,14 +42,15 @@ not for native execution. Avoid overwriting an unrelated `ripr` command.
 
 ## Exact native provenance
 
-This package retains the exact audited native bytes from `ripr-rs 0.11.0a1` on
-PyPI, built from source commit `b1955d098cb628925801976bf1642dbf9329e07e`.
-`provenance.json` distinguishes that product source from the later npm packaging
-source. The PyPI wheel is an authenticated build-time input, not a runtime
-Python dependency. The package includes its original licenses and native SBOM.
-Manual first publication does not imply automatic npm OIDC provenance.
+This package retains the exact audited native bytes from a fresh source build
+qualified through both Python and npm consumers in the same workflow run.
+`provenance.json` records the source commit/tree, native/wheel digests, toolchain
+and immutable qualification artifact. The wheel is a build-time container;
+installation and execution do not require Python or a public PyPI package.
+The package includes its original licenses and native SBOM. Registry OIDC
+provenance, when present, is separate from the prepared tar's provenance record.
 
-The first alpha is a bounded single-platform bootstrap. A future version may
+This prerelease has a bounded single-platform scope. A future version may
 use platform-specific optional dependencies and a launcher to add platforms.
 It will not modify this immutable version. No other platform, alternate npm
 client or stable release is claimed here.

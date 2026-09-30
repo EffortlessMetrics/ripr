@@ -16,26 +16,36 @@ does not change the identity of existing scoped versions.
 
 ## Native versus packaging source
 
-`packaging/npm/native-source.json` pins the genuine published PyPI wheel by its
-public URL, filename and SHA-256, plus its native executable SHA-256, source
-commit/tree, lockfile and successful qualification run. That exact audited ELF
-is extracted unchanged. The npm package's version derives from this native pin
-and must agree with the Cargo workspace version. Version drift fails closed;
-advancing to stable requires a freshly qualified stable native input.
+The original alpha.1 public-wheel pin is retained as the historical record
+`packaging/npm/bootstrap-alpha1-native-source.json`. Later candidates never
+change that record or relabel its native bytes.
 
-The package records **product source** and **packaging source** independently
-in `provenance.json`. It never claims its executable was rebuilt from the later
-npm packaging commit. It retains both original licenses and the native SBOM.
-Manual bootstrap has no automatic npm OIDC provenance claim.
+Current qualification derives the native version from the Cargo workspace.
+The existing read-only Python wheel workflow builds that exact source/version
+and checks its pip and uv installed journeys, then npm consumes its audited
+wheel in the **same run and attempt**. No public PyPI version is required.
+The derived native pin binds source SHA/tree, Cargo.lock, selected features,
+Rust toolchain, wheel/native hashes and the immutable native artifact ID and
+ZIP digest. Product and packaging source are both the qualified candidate;
+`provenance.json` preserves those identities explicitly. The package retains
+original licenses and the native SBOM. Staging cannot rebuild or relabel them.
 
 ## Read-only qualification
 
-`npm-package-qualification.yml` checks out the exact candidate, validates the
-pinned wheel's hash, metadata, RECORD, inventory, ELF architecture, payload hash
-and notices, then lets pinned npm create the tarball. The actual tarball is
-inspected for exact files, bytes, executable mode, version, platform metadata,
-public access and `next` tag. Negative unit controls reject missing/mutated
-payloads, metadata drift, stale RECORD, traversal, links and provenance drift.
+`npm-package-qualification.yml` calls the existing
+`python-wheel-qualification.yml` from the same source commit. Its entire native
+build/pip/uv dependency must succeed before npm packaging begins. A separate
+three-file native artifact contains the wheel, `qualification.json` and
+`wheel-receipt.json`; the larger Python tooling/negative-control bundle stays
+with its existing consumers. Caller-aware concurrency keeps the independent
+Python and npm runs from cancelling one another.
+
+The npm controller independently validates the native artifact's run/attempt,
+source, version, lockfile, features and toolchain, then verifies wheel hash,
+metadata, RECORD, inventory, ELF architecture, payload hash and notices. Pinned
+npm creates the tarball; inspection checks exact files, bytes, executable mode,
+version, platform metadata, public access and `next` tag. Missing or stale
+native inputs fail closed; there is no public-wheel or PATH fallback.
 
 Separate checkout-free Node 20/npm 10 and Node 24/npm 11 jobs install the same
 artifact with lifecycle scripts disabled. They verify project-local, global,
@@ -57,15 +67,17 @@ The package deliberately omits any guarantee for older npm, `--force`, pnpm,
 Yarn, Bun, macOS, Windows, ARM64 or Alpine/musl.
 
 Artifacts are bound to run attempt. Re-run all jobs if any row needs retry;
-partial retries cannot consume a previous attempt's package. Both rows, the
+partial retries cannot consume a previous attempt's package. The native build and pip/uv jobs, both npm rows, the
 staging-client transport job and the whole run must pass. The transport job uses
 npm 11.15.0 against a loopback mock registry, checks exact submitted tar bytes
 and lifecycle suppression, and has no npm credentials or OIDC permission. It
 does not test live staging, OIDC exchange or Sigstore. The same job runs pinned,
 SHA-256-verified actionlint 1.7.12 for workflow syntax and expression-context
 validation; repository workflow-budget checks alone do not establish that.
-PR runs are rehearsal
-only. Final publication consumes a
+Python consumer authority is the exact successful native pip/uv job set; npm
+consumer authority also parses retained nonempty output receipts. Reusable npm
+runs cannot authorize PyPI publication: that publisher still requires its own
+standalone manual-main Python workflow identity. PR runs are rehearsal only. Final publication consumes a
 successful source-main manual qualification and exact hashes, never a rebuild.
 
 ## Bootstrap authorization and recovery
@@ -109,9 +121,11 @@ no npm credentials or OIDC permission. It independently verifies:
 
 - the full `refs/heads/main` authority, publisher snapshot and qualified source;
 - a successful manual-main run of the exact npm qualification workflow, all
-  four completed jobs, and four unique unexpired attempt-bound artifacts;
+  seven completed jobs (native build, pip, uv and four npm jobs), and five
+  selected unique unexpired attempt-bound artifacts;
 - every downloaded ZIP's API digest/size and bounded regular-file inventory;
-- the committed native pin, original public wheel, exact native/SBOM/notices,
+- a native pin rederived from the same-run wheel artifact and trusted current
+  source contract, exact native/SBOM/notices,
   source harness and fixture, tar manifest and provenance;
 - both named Node/npm/npx client rows, four distinct executed routes each,
   retained nonempty analysis/explanation, fresh reinstall and negative controls;

@@ -9281,6 +9281,7 @@ name = "bounded native npm bootstrap"
 spec = "docs/specs/RIPR-SPEC-0180-npm-native-bootstrap.md"
 tests = [
   ".github/scripts/test_npm_package.py::NpmPackageTests",
+  ".github/scripts/test_npm_package.py::NpmNativeEvidenceTests",
   ".github/scripts/test_npm_package.py::NpmReleaseAdmissionTests",
   ".github/scripts/test_npm_package.py::NpmStageCliTests",
   ".github/scripts/npm_consumer.py::main",
@@ -9291,7 +9292,8 @@ code = [
   ".github/scripts/npm_package.py",
   ".github/workflows/npm-package-qualification.yml",
   ".github/workflows/publish-npm.yml",
-  "packaging/npm/native-source.json",
+  "packaging/npm/bootstrap-alpha1-native-source.json",
+  ".github/workflows/python-wheel-qualification.yml",
   "packaging/npm/package.template.json",
 ]
 outputs = [

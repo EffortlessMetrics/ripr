@@ -86,3 +86,12 @@ The initial publisher deliberately admits prereleases only. A subsequent stable
 PyPI release must explicitly extend that admission contract, obtain stable
 publication authority, and build/qualify fresh exact stable bytes. An alpha wheel
 must never be renamed into a stable release.
+
+## Reuse by npm qualification
+
+The Python qualifier also exposes a read-only reusable workflow for npm's
+same-source native input. The caller gets build/pip/uv proof and a bounded
+wheel evidence artifact; it receives no registry credentials or OIDC access.
+The PyPI publisher continues to require a standalone manual-main run of
+`python-wheel-qualification.yml`. An npm caller run is not PyPI publication
+authority, even when it contains the same qualified wheel bytes.

@@ -29,13 +29,14 @@ CONSUMER_SPEC.loader.exec_module(CONSUMER)
 
 
 def wheel_fixture():
-    pin = PACKAGE.source_pin()
+    pin = PACKAGE.source_contract()
     prefix = f"ripr_rs-{pin['python_version']}"
     info = prefix + ".dist-info"
     binary = bytearray(64)
     binary[:6] = b"\x7fELF\x02\x01"
     binary[18:20] = (62).to_bytes(2, "little")
     pin["payload_sha256"] = PACKAGE.digest(binary)
+    pin["wheel_sha256"] = "0" * 64
     files = {
         f"{prefix}.data/scripts/ripr": bytes(binary),
         f"{info}/METADATA": f"Name: ripr-rs\nVersion: {pin['python_version']}\n".encode(),
@@ -63,6 +64,101 @@ def zip_bytes(files, link=None, no_exec=False):
                 entry.external_attr = 0o120755 << 16
             archive.writestr(entry, data)
     return out.getvalue()
+
+
+def native_evidence_fixture():
+    pin, members = wheel_fixture()
+    wheel = zip_bytes(members)
+    pin["wheel_sha256"] = PACKAGE.digest(wheel)
+    source = {"sha": "a" * 40, "tree": "b" * 40}
+    filename = pin["wheel_filename"]
+    qualification = dict(schema_version=1, source_sha=source["sha"], source_tree=source["tree"],
+                         version=pin["python_version"], native_version=pin["native_version"],
+                         wheel_filename=filename, wheel_sha256=pin["wheel_sha256"],
+                         repository=PACKAGE.REPOSITORY, run_id=123, run_attempt=2,
+                         target=pin["target"], platform_tag="py3-none-manylinux_2_34_x86_64")
+    receipt = dict(schema_version=2, channel="pypi-source-wheelhouse", source_repository=PACKAGE.REPOSITORY,
+                   producer_run_id="123", producer_run_attempt="2", publication_attempted=False,
+                   candidate_sha=source["sha"], candidate_tree=source["tree"],
+                   cargo_lock_sha256=PACKAGE.digest((PACKAGE.ROOT / "Cargo.lock").read_bytes()),
+                   native_version=pin["native_version"], python_version=pin["python_version"],
+                   distribution="ripr-rs", executable="ripr", rust_target=pin["target"],
+                   compatibility_state="auditwheel_manylinux_2_34", native_execution="ubuntu-22.04-x64",
+                   scope="linux-x64-glibc-only", features=["lang-python", "lang-rust", "lang-typescript"],
+                   wheel=dict(filename=filename, sha256=pin["wheel_sha256"], tag=qualification["platform_tag"],
+                              installed_payload_sha256=pin["payload_sha256"]),
+                   toolchain=dict(rustc="rustc 1.95.0 (fixture)\nhost: x86_64-unknown-linux-gnu\n"))
+    files = {"qualification.json": PACKAGE.canonical(qualification),
+             "wheel-receipt.json": PACKAGE.canonical(receipt), "wheelhouse/" + filename: wheel}
+    archive = zip_bytes(files)
+    artifact = dict(id=404, name="npm-native-wheel-123-2", digest="sha256:" + PACKAGE.digest(archive), size_in_bytes=len(archive))
+    return source, files, artifact
+
+
+class NpmNativeEvidenceTests(unittest.TestCase):
+    def test_native_preparation_requires_same_run_completed_python_consumers_and_exact_zip(self):
+        source, files, artifact = native_evidence_fixture()
+        data = zip_bytes(files)
+        authority = NpmReleaseAdmissionTests()
+        authority.setUp()
+        run_info = dict(authority.run, event="pull_request", head_branch="rehearsal", status="in_progress", conclusion=None)
+        row = dict(artifact, expired=False, workflow_run=dict(id=123, head_sha=source["sha"], repository_id=88, head_repository_id=88))
+        listing = {"total_count": 1, "artifacts": [row]}
+        for control in ("valid", "stale-attempt", "wrong-source", "foreign-repo", "missing-pip",
+                        "skipped-uv", "duplicate-build", "wrong-zip", "wrong-size"):
+            run = copy.deepcopy(run_info); jobs = copy.deepcopy(authority.jobs); selected = copy.deepcopy(listing)
+            archive = data
+            if control == "stale-attempt": run["run_attempt"] = 1
+            if control == "wrong-source": run["head_sha"] = "e" * 40
+            if control == "foreign-repo": run["head_repository"]["full_name"] = "foreign/ripr"
+            if control == "missing-pip":
+                jobs["jobs"] = [j for j in jobs["jobs"] if "clean pip" not in j["name"]]
+                jobs["total_count"] -= 1
+            if control == "skipped-uv":
+                next(j for j in jobs["jobs"] if "clean uv" in j["name"])["conclusion"] = "skipped"
+            if control == "duplicate-build":
+                jobs["jobs"].append(next(j for j in jobs["jobs"] if "build and inspect" in j["name"]))
+                jobs["total_count"] += 1
+            if control == "wrong-zip": archive = data[:-1] + bytes([data[-1] ^ 1])
+            if control == "wrong-size": selected["artifacts"][0]["size_in_bytes"] += 1
+            with self.subTest(control=control), mock.patch.object(PACKAGE, "github_api", side_effect=[run, jobs, selected, archive]):
+                if control == "valid":
+                    pin, native = PACKAGE.prepare_native_input(source, "123", "2")
+                    self.assertEqual(pin["native_artifact"], artifact)
+                    self.assertEqual(PACKAGE.digest(native["bin/ripr"]), pin["payload_sha256"])
+                else:
+                    with self.assertRaises(ValueError):
+                        PACKAGE.prepare_native_input(source, "123", "2")
+
+    def test_fresh_same_source_wheel_derives_native_pin_without_publication(self):
+        source, files, artifact = native_evidence_fixture()
+        pin, native = PACKAGE.inspect_native_evidence(files, source, "123", "2", artifact)
+        self.assertEqual(pin["origin"], "same-run-qualified-wheel")
+        self.assertEqual(pin["product_source_sha"], source["sha"])
+        self.assertEqual(pin["native_artifact"], artifact)
+        self.assertNotIn("wheel_url", pin)
+        self.assertEqual(PACKAGE.digest(native["bin/ripr"]), pin["payload_sha256"])
+
+    def test_native_receipt_source_attempt_version_toolchain_and_inventory_mismatches_fail(self):
+        source, files, artifact = native_evidence_fixture()
+        cases = []
+        for name, changes in {
+            "qualification.json": {"source_sha": "e" * 40, "source_tree": "e" * 40, "run_id": 999,
+                                   "run_attempt": 1, "version": "0.11.0a99", "native_version": "0.11.0-alpha.99",
+                                   "wheel_sha256": "e" * 64, "target": "aarch64-unknown-linux-gnu"},
+            "wheel-receipt.json": {"candidate_sha": "e" * 40, "producer_run_attempt": "1",
+                                   "cargo_lock_sha256": "e" * 64, "publication_attempted": True,
+                                   "features": ["lang-rust"], "toolchain": {"rustc": "rustc 1.94.0 (wrong)"}},
+        }.items():
+            for key, value in changes.items():
+                changed = dict(files)
+                changed[name] = PACKAGE.canonical(dict(json.loads(files[name]), **{key: value}))
+                cases.append((name + ":" + key, changed))
+        cases.extend([("missing-receipt", {k: v for k, v in files.items() if k != "qualification.json"}),
+                      ("extra-file", dict(files, extra=b"not admitted"))])
+        for label, changed in cases:
+            with self.subTest(label=label), self.assertRaises(ValueError):
+                PACKAGE.inspect_native_evidence(changed, source, "123", "2", artifact)
 
 
 class NpmPackageTests(unittest.TestCase):
@@ -175,7 +271,7 @@ class NpmPackageTests(unittest.TestCase):
                     CONSUMER.main()
 
     def test_manifest_is_single_native_prerelease(self):
-        pin = PACKAGE.source_pin()
+        pin = PACKAGE.source_contract()
         value = PACKAGE.manifest(pin)
         self.assertEqual(value["version"], pin["native_version"])
         self.assertEqual(value["name"], "@effortlessmetrics/ripr")
@@ -183,7 +279,7 @@ class NpmPackageTests(unittest.TestCase):
         self.assertEqual(value["bin"], {"ripr": "bin/ripr"})
 
     def test_rejects_manifest_identity_platform_lifecycle_and_dependency_drift(self):
-        pin = PACKAGE.source_pin()
+        pin = PACKAGE.source_contract()
         for key, value in {
             "name": "ripr", "version": "0.11.0", "bin": {"ripr": "download.js"},
             "os": ["darwin"], "cpu": ["arm64"], "libc": ["musl"],
@@ -293,7 +389,7 @@ class NpmPackageTests(unittest.TestCase):
 class NpmReleaseAdmissionTests(unittest.TestCase):
     def setUp(self):
         self.identity = dict(run_id="123", run_attempt="2", source_sha="a" * 40,
-                             source_tree="b" * 40, version="0.11.0-alpha.1", tarball_sha256="c" * 64)
+                             source_tree="b" * 40, version=PACKAGE.source_contract()["native_version"], tarball_sha256="c" * 64)
         self.ref = {"ref": "refs/heads/main", "object": {"type": "commit", "sha": "a" * 40}}
         self.run = dict(id=123, run_attempt=2, workflow_id=99, event="workflow_dispatch",
                         head_branch="main", head_sha="a" * 40, status="completed", conclusion="success",
@@ -302,15 +398,15 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                         head_repository={"full_name": "EffortlessMetrics/ripr", "id": 88})
         self.commit = {"sha": "a" * 40, "tree": {"sha": "b" * 40}}
         self.workflow = {"id": 99, "path": self.run["path"]}
-        self.jobs = {"total_count": 4, "jobs": [dict(name=name, status="completed", conclusion="success")
+        self.jobs = {"total_count": 7, "jobs": [dict(name=name, status="completed", conclusion="success")
                      for name in ("package", "consumer (20.20.1, 10.8.2)",
-                                  "consumer (24.19.0, 11.9.0)", "publisher-controls")]}
-        self.artifacts = {"total_count": 4, "artifacts": [
+                                  "consumer (24.19.0, 11.9.0)", "publisher-controls", *sorted(PACKAGE.NATIVE_JOBS))]}
+        self.artifacts = {"total_count": 5, "artifacts": [
             dict(id=index + 400, name=name, expired=False, digest="sha256:" + "d" * 64,
                  size_in_bytes=100, workflow_run={"id": 123, "head_sha": "a" * 40,
                                                  "repository_id": 88, "head_repository_id": 88})
             for index, name in enumerate(("npm-prepared-123-2", "npm-consumer-20.20.1-123-2",
-                                          "npm-consumer-24.19.0-123-2", "npm-publisher-controls-123-2"))]}
+                                          "npm-consumer-24.19.0-123-2", "npm-publisher-controls-123-2", "npm-native-wheel-123-2"))]}
 
     def authorize(self, **overrides):
         values = dict(ref=self.ref, run=self.run, commit=self.commit, workflow=self.workflow,
@@ -323,7 +419,16 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
     def test_exact_main_run_and_all_attempt_bound_artifacts_are_admitted(self):
         result = self.authorize()
         self.assertEqual(result["identity"], self.identity)
-        self.assertEqual([a["id"] for a in result["artifacts"]], [400, 401, 402, 403])
+        self.assertEqual([a["id"] for a in result["artifacts"]], [400, 401, 402, 403, 404])
+
+    def test_old_four_job_or_reused_artifact_identity_cannot_authorize_fresh_native_release(self):
+        old_jobs = dict(total_count=4, jobs=self.jobs["jobs"][:4])
+        with self.assertRaises(ValueError):
+            self.authorize(jobs=old_jobs)
+        artifacts = copy.deepcopy(self.artifacts)
+        artifacts["artifacts"][-1]["id"] = artifacts["artifacts"][0]["id"]
+        with self.assertRaisesRegex(ValueError, "duplicate artifact ID"):
+            self.authorize(artifacts=artifacts)
 
     def test_wrong_run_ref_attempt_job_and_artifact_authorities_fail(self):
         changes = [
@@ -338,7 +443,7 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                              ("path", "other.yml"), ("repository", None), ("head_repository", None),
                              ("head_repository", {"full_name": "fork/ripr", "id": 88})):
             changes.append(("run", dict(self.run, **{field: value})))
-        for index in range(4):
+        for index in range(7):
             jobs = copy.deepcopy(self.jobs); jobs["jobs"][index]["conclusion"] = "skipped"
             changes.append(("jobs", jobs))
         for field, value in (("name", "npm-prepared-123-1"), ("expired", True),
@@ -408,9 +513,9 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                 PACKAGE.validate_consumer_proof(dict(files, **{name: b""}), "20.20.1", "10.8.2", "c" * 64, "e" * 64)
 
     def test_existing_public_version_is_not_stage_eligible(self):
-        public = {"name": "@effortlessmetrics/ripr", "versions": {"0.11.0-alpha.1": {"name": "@effortlessmetrics/ripr", "version": "0.11.0-alpha.1"}}}
+        public = {"name": "@effortlessmetrics/ripr", "versions": {self.identity["version"]: {"name": "@effortlessmetrics/ripr", "version": self.identity["version"]}}}
         self.assertFalse(PACKAGE.stage_eligibility(public, self.identity["version"]))
-        self.assertTrue(PACKAGE.stage_eligibility(public, "0.11.0-alpha.2"))
+        self.assertTrue(PACKAGE.stage_eligibility(public, "0.11.0-alpha.99"))
         for metadata in ({}, {"name": "ripr", "versions": {}},
                          {"name": "@effortlessmetrics/ripr", "versions": {}},
                          {"name": "@effortlessmetrics/ripr", "versions": {"0.0.0-stage": {}}}):
@@ -420,7 +525,7 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
     def test_staging_response_rejects_wrong_identity_digest_and_missing_stage_id(self):
         entry = dict(name=PACKAGE.PACKAGE_NAME, version=self.identity["version"],
                      id=PACKAGE.PACKAGE_NAME + "@" + self.identity["version"], integrity="sha512:fixture",
-                     filename="effortlessmetrics-ripr-0.11.0-alpha.1.tgz", entryCount=7,
+                     filename=f"effortlessmetrics-ripr-{self.identity['version']}.tgz", entryCount=7,
                      stageId="01234567-89ab-4cde-8fab-0123456789ab")
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "response.json"
@@ -530,15 +635,14 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                     self.assertEqual(result.returncode == 0, allowed, result.stderr)
 
     def test_real_admission_keeps_only_exact_bytes_and_never_runs_artifact_code(self):
-        pin, wheel_files = wheel_fixture()
-        wheel = zip_bytes(wheel_files); pin["wheel_sha256"] = PACKAGE.digest(wheel)
-        native = PACKAGE.inspect_wheel(wheel, pin)
+        source, native_files, native_artifact = native_evidence_fixture()
+        pin, native = PACKAGE.inspect_native_evidence(native_files, source, "123", "2", native_artifact)
         provenance = dict(schema_version=1, product_source=pin,
                           packaging_source={"sha": "a" * 40, "tree": "b" * 40},
                           sbom_sha256=PACKAGE.digest(native["sbom.cyclonedx.json"]),
                           native_build_repeated=False, automatic_npm_oidc_provenance=False)
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary); filename = "effortlessmetrics-ripr-0.11.0-alpha.1.tgz"
+            root = Path(temporary); filename = f"effortlessmetrics-ripr-{pin['native_version']}.tgz"
             tar = root / filename
             native.update({"package.json": PACKAGE.canonical(PACKAGE.manifest(pin)),
                            "provenance.json": PACKAGE.canonical(provenance),
@@ -568,6 +672,7 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                                selected_requests=2, observed_requests=2, lifecycle_marker_created=False,
                                oidc_exercised=False, external_registry_write_attempted=False)
             bundles.append({"stage-cli-proof.json": PACKAGE.canonical(stage_proof)})
+            bundles.append(native_files)
             for index, control in enumerate(("valid", "receipt-source", "foreign-pin", "empty-proof", "wrong-tar", "existing-version", "wrong-transport", "changed-authority")):
                 with self.subTest(control=control):
                     selected = copy.deepcopy(bundles)
@@ -581,14 +686,14 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
                     if control == "wrong-tar": selected[0]["tarballs/" + filename] += b"wrong"
                     if control == "wrong-transport": selected[3]["stage-cli-proof.json"] = PACKAGE.canonical(dict(stage_proof, observed_requests=0))
                     archives = [zip_bytes(files) for files in selected]
-                    authority = {"identity": self.identity, "artifacts": [dict(id=i + 400, name="fixture", digest="sha256:" + PACKAGE.digest(data), size_in_bytes=len(data)) for i, data in enumerate(archives)]}
+                    authority = {"identity": self.identity, "artifacts": [dict(id=i + 400, name="npm-native-wheel-123-2" if i == 4 else "fixture", digest="sha256:" + PACKAGE.digest(data), size_in_bytes=len(data)) for i, data in enumerate(archives)]}
                     after = {} if control == "changed-authority" else authority
                     public = {"name": PACKAGE.PACKAGE_NAME, "versions": {"0.1.0": {}}}
                     if control == "existing-version": public["versions"][pin["native_version"]] = {}
                     destination = root / str(index)
                     env = dict(name="npm", id=17, deployment_branch_policy=dict(protected_branches=False, custom_branch_policies=True), protection_rules=[dict(type="required_reviewers", prevent_self_review=False, reviewers=[dict(type="User", reviewer=dict(id=15812269, login="EffortlessSteven"))])])
                     branches = dict(total_count=1, branch_policies=[dict(name="main", type="branch")])
-                    with mock.patch.object(PACKAGE, "authorize_release", side_effect=[authority, after]), mock.patch.object(PACKAGE, "github_api", side_effect=[*archives, env, branches]), mock.patch.object(PACKAGE, "source_pin", return_value=pin), mock.patch.object(PACKAGE, "download_wheel", return_value=wheel), mock.patch.object(PACKAGE, "public_package", return_value=public), mock.patch.object(PACKAGE, "run", side_effect=AssertionError("admission must not execute packages")):
+                    with mock.patch.object(PACKAGE, "authorize_release", side_effect=[authority, after]), mock.patch.object(PACKAGE, "github_api", side_effect=[*archives, env, branches]), mock.patch.object(PACKAGE, "public_package", return_value=public), mock.patch.object(PACKAGE, "run", side_effect=AssertionError("admission must not execute packages")):
                         if control == "valid":
                             with mock.patch("builtins.print"):
                                 result = PACKAGE.admit_release(destination, self.identity, "a" * 40, "stage")

@@ -1,6 +1,7 @@
 name: Qualify source ripr-rs Python wheel (read-only)
 
 on:
+  workflow_call:
   workflow_dispatch:
   pull_request:
     paths:
@@ -26,7 +27,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: python-wheel-qualification-${{ github.event.pull_request.number || github.ref }}
+  group: python-wheel-qualification-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -369,6 +370,7 @@ jobs:
               "compatibility_state": "auditwheel_manylinux_2_34",
               "native_execution": "ubuntu-22.04-x64",
               "scope": "linux-x64-glibc-only",
+              "features": ["lang-python", "lang-rust", "lang-typescript"],
               "wheel": {
                   "filename": wheel.name,
                   "sha256": digest_bytes(wheel.read_bytes()),
@@ -449,6 +451,17 @@ jobs:
         with:
           name: pypi-qualified-wheel-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/ripr/python-wheel-evidence/
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Retain bounded native input for npm qualification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-native-wheel-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/ripr/python-wheel-evidence/qualification.json
+            target/ripr/python-wheel-evidence/wheel-receipt.json
+            target/ripr/python-wheel-evidence/wheelhouse/
           if-no-files-found: error
           retention-days: 5
 
