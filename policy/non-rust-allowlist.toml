@@ -598,3 +598,48 @@ surface = "config"
 classification = "config"
 reason = "cargo-allow spec-system conformance fixtures for legacy TOML dialect validation (#1761/#1836)"
 covered_by = ["cargo xtask check-spec-format", "cargo xtask check-doc-index"]
+
+[[allow]]
+glob = "packaging/python/pyproject.toml"
+kind = "python_package_manifest"
+owner = "release"
+surface = "config"
+classification = "config"
+reason = "Source-owned wheel-only CLI adapter, ported from swarm #4711 for bounded PyPI bootstrap."
+covered_by = ["cargo xtask check-file-policy"]
+
+[[allow]]
+glob = "packaging/python/README.md"
+kind = "documentation"
+owner = "release"
+surface = "docs"
+classification = "docs"
+reason = "PyPI package-page description with explicit target and prerelease limits."
+covered_by = ["cargo xtask check-file-policy"]
+
+[[allow]]
+glob = "packaging/python/LICENSE-*"
+kind = "license"
+owner = "release"
+surface = "repo"
+classification = "metadata"
+reason = "Exact MIT and Apache license notices embedded in the native wheel."
+covered_by = ["cargo xtask check-file-policy"]
+
+[[allow]]
+glob = ".github/scripts/pypi_admission.py"
+kind = "python_release_admission"
+owner = "release"
+surface = "ci"
+classification = "tooling"
+reason = "Bounded standard-library Python wheel/ZIP admission before OIDC; executes no artifact code."
+covered_by = ["python3 -m unittest discover -s .github/scripts -p test_pypi_admission.py"]
+
+[[allow]]
+glob = ".github/scripts/test_pypi_admission.py"
+kind = "python_release_admission_test"
+owner = "release"
+surface = "ci"
+classification = "test"
+reason = "Dependency-free negative controls for source/run/artifact/metadata admission."
+covered_by = ["python3 -m unittest discover -s .github/scripts -p test_pypi_admission.py"]
