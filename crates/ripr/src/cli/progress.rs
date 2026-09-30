@@ -22,9 +22,15 @@ pub(crate) struct ProgressPolicy {
     /// First heartbeat is eligible only after the current stage has been
     /// active this long.
     pub first_heartbeat: Duration,
-    /// Minimum spacing between heartbeats.
+    /// Minimum spacing between heartbeats. This wall-time throttle is the
+    /// only bound STANDARD places on a long-running stage, so liveness
+    /// spans multi-minute walks while line growth stays one line per
+    /// `heartbeat_every` of stage activity (#4957).
     pub heartbeat_every: Duration,
-    /// Hard ceiling so a blocked stage cannot grow logs without bound.
+    /// Count ceiling for embedders that need one. STANDARD disables the
+    /// count ceiling (`u32::MAX`) and relies on `heartbeat_every` alone:
+    /// a fixed count stopped the heartbeat a third of the way into a
+    /// minutes-long repo walk and left the rest of the run silent.
     pub max_heartbeats: u32,
 }
 
@@ -32,8 +38,8 @@ impl ProgressPolicy {
     pub(crate) const STANDARD: Self = Self {
         min_visible: Duration::from_millis(250),
         first_heartbeat: Duration::from_secs(2),
-        heartbeat_every: Duration::from_secs(2),
-        max_heartbeats: 16,
+        heartbeat_every: Duration::from_secs(8),
+        max_heartbeats: u32::MAX,
     };
 }
 
@@ -142,6 +148,11 @@ pub(crate) fn progress_line_is_safe(line: &str) -> bool {
     })
 }
 
+/// Wall-clock source for the projection. Production passes [`Instant::now`];
+/// tests inject a fake clock so multi-minute heartbeat cadence can be
+/// discriminated without real sleeps.
+type NowFn = Arc<dyn Fn() -> Instant + Send + Sync>;
+
 struct Projection {
     writer: Box<dyn Write + Send>,
     tty: bool,
@@ -158,6 +169,7 @@ struct Projection {
     tty_width: usize,
     hold_success: bool,
     pending_success: Option<AnalysisProgressEvent>,
+    now: NowFn,
 }
 
 struct SinkInner {
@@ -197,7 +209,16 @@ impl CliProgressSink {
         tty: bool,
         policy: ProgressPolicy,
     ) -> Self {
-        let now = Instant::now();
+        Self::with_writer_and_clock(writer, tty, policy, Arc::new(Instant::now))
+    }
+
+    fn with_writer_and_clock(
+        writer: Box<dyn Write + Send>,
+        tty: bool,
+        policy: ProgressPolicy,
+        now: NowFn,
+    ) -> Self {
+        let started = now();
         Self {
             inner: Arc::new(SinkInner {
                 state: Mutex::new(Projection {
@@ -208,14 +229,15 @@ impl CliProgressSink {
                     current_scope: None,
                     terminal: false,
                     visible: !tty,
-                    started: now,
-                    stage_started: now,
+                    started,
+                    stage_started: started,
                     last_heartbeat: None,
                     heartbeat_count: 0,
                     in_place: false,
                     tty_width: 0,
                     hold_success: false,
                     pending_success: None,
+                    now,
                 }),
                 stop: Arc::new(AtomicBool::new(false)),
                 heartbeat: Mutex::new(None),
@@ -261,7 +283,7 @@ impl CliProgressSink {
         if projection.terminal {
             return;
         }
-        let now = Instant::now();
+        let now = (projection.now)();
         if projection.current_stage.is_none() {
             projection.started = now;
         }
@@ -294,7 +316,8 @@ impl CliProgressSink {
         projection.terminal = true;
         let too_short = projection.tty
             && stage_is_success_terminal(event.stage)
-            && Instant::now().duration_since(projection.started) < projection.policy.min_visible;
+            && (projection.now)().duration_since(projection.started)
+                < projection.policy.min_visible;
         if too_short {
             Self::finish_in_place(projection);
             return;
@@ -335,7 +358,7 @@ impl CliProgressSink {
         if stage_is_terminal(stage) {
             return;
         }
-        let now = Instant::now();
+        let now = (projection.now)();
         if !projection.visible {
             if now.duration_since(projection.started) < projection.policy.min_visible {
                 return;
@@ -421,6 +444,32 @@ impl Drop for CliProgressSink {
 mod tests {
     use super::*;
     use std::sync::Mutex as StdMutex;
+    use std::sync::atomic::AtomicU64;
+
+    /// Milliseconds of fake time elapsed since construction. The produced
+    /// `NowFn` lets a test drive `heartbeat_tick` through minutes of stage
+    /// activity deterministically.
+    #[derive(Clone)]
+    struct FakeClock(Arc<AtomicU64>);
+
+    impl FakeClock {
+        fn start() -> (Self, NowFn) {
+            let offset = Arc::new(AtomicU64::new(0));
+            let base = Instant::now();
+            let driven = Arc::clone(&offset);
+            let now: NowFn =
+                Arc::new(move || base + Duration::from_millis(driven.load(Ordering::Relaxed)));
+            (Self(offset), now)
+        }
+
+        fn advance_millis(&self, millis: u64) {
+            self.0.fetch_add(millis, Ordering::Relaxed);
+        }
+
+        fn millis(&self) -> u64 {
+            self.0.load(Ordering::Relaxed)
+        }
+    }
 
     #[derive(Clone)]
     struct Buffer(Arc<StdMutex<Vec<u8>>>);
@@ -773,6 +822,79 @@ mod tests {
         assert!(heartbeats <= 4, "heartbeat ceiling exceeded: {heartbeats}");
         assert!(!during.contains('%'));
         assert!(!during.contains('\u{1b}'));
+    }
+
+    #[test]
+    fn standard_heartbeat_spans_long_repo_walks_without_a_ten_second_gap() {
+        // #4957: the STANDARD policy is time-throttled, not count-capped. A
+        // repo stage held open far past the old 16-heartbeat stop (~32s) must
+        // keep emitting, and no 10s window of stage time may stay silent.
+        let buffer = Buffer::new();
+        let (clock, now) = FakeClock::start();
+        let sink = CliProgressSink::with_writer_and_clock(
+            Box::new(buffer.clone()),
+            false,
+            ProgressPolicy::STANDARD,
+            now,
+        );
+        sink.emit(AnalysisProgressEvent {
+            stage: AnalysisProgressStage::Analyzing,
+            scope: AnalysisProgressScope::Repo,
+            completed_units: None,
+            total_units: None,
+            elapsed_ms: 0,
+        });
+        // Take over the tick loop so emission times are exactly the fake
+        // instants this test drives.
+        sink.stop_heartbeat();
+        let heartbeat_count = |buffer: &Buffer| buffer.text().matches("still active after").count();
+        let mut emitted_at_ms: Vec<u64> = Vec::new();
+        let mut previous = heartbeat_count(&buffer);
+        // Ten minutes of a cold full-repo walk, ticked once per fake second.
+        for _ in 0..600 {
+            clock.advance_millis(1_000);
+            CliProgressSink::heartbeat_tick(&sink.inner);
+            let current = heartbeat_count(&buffer);
+            if current > previous {
+                emitted_at_ms.push(clock.millis());
+                previous = current;
+            }
+        }
+        // Liveness continues far past where the old count cap went silent.
+        assert!(
+            emitted_at_ms.len() > 16,
+            "heartbeat must outlive the old 16-line cap: {} lines in 10m",
+            emitted_at_ms.len()
+        );
+        // First heartbeat keeps the pinned 2s first_heartbeat contract.
+        assert_eq!(
+            emitted_at_ms.first(),
+            Some(&2_000),
+            "first heartbeat must land at first_heartbeat: {emitted_at_ms:?}"
+        );
+        // No silence gap between consecutive heartbeats (or before the first)
+        // may exceed 10 seconds of stage time.
+        let mut last = 0u64;
+        let mut worst_gap_ms = 0u64;
+        for at in &emitted_at_ms {
+            worst_gap_ms = worst_gap_ms.max(at - last);
+            last = *at;
+        }
+        assert!(
+            worst_gap_ms <= 10_000,
+            "silence gap exceeded 10s of stage time: {worst_gap_ms}ms"
+        );
+        // The elapsed class keeps advancing on the long walk.
+        let text = buffer.text();
+        assert!(
+            text.contains("still active after 5m"),
+            "heartbeat class must advance on a minutes-long walk: {text}"
+        );
+        for line in text.lines() {
+            assert!(progress_line_is_safe(line), "unsafe progress line: {line}");
+        }
+        sink.emit(event(AnalysisProgressStage::Completed));
+        drop(sink);
     }
 
     #[test]

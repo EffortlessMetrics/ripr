@@ -15,6 +15,7 @@ Linked plan:
 Linked issues:
 
 - #4810 — CLI stderr stages and bounded heartbeats (this slice)
+- #4957 — time-based heartbeat cadence so long walks never go silent
 - #2608 — parent shared progress contract (not closed here)
 - #4829 — live producer-owned progress events (PR A; this slice consumes that
   contract and does not replace it)
@@ -56,8 +57,12 @@ second stage vocabulary.
    progress line, and stays silent below a 250ms minimum-duration threshold.
    A TTY stage that remains active past that threshold becomes visible even
    if the producer event arrived during the silence window.
-4. Heartbeats repeat only the current producer stage, start after 2s, repeat
-   every 2s, and stop after 16 lines for that run.
+4. Heartbeats repeat only the current producer stage, start after 2s, and are
+   time-throttled to at most one line every 8 seconds of stage activity for as
+   long as the stage stays active (#4957). There is no per-run count ceiling on
+   the STANDARD policy, so a minutes-long repo walk never goes silent; line
+   growth stays one line per `heartbeat_every` of stage time, and policies
+   that need a hard count stop can still set one.
 5. JSON, SARIF, GitHub annotations, and other machine stdout formats remain
    byte-identical whether progress is emitted or `--quiet` is set. Machine
    formats do not implicitly disable stderr progress.
@@ -81,8 +86,9 @@ second stage vocabulary.
 - A missing diff projects `failed` and never `completed`.
 - `ripr check --help` documents stderr, `--quiet`, unknown totals, and the
   no-speed-claim boundary, and does not emit progress.
-- Unit tests reject path-like, percent, and ETA progress lines; cap
-  heartbeats; isolate a broken writer; and show that omitting the producer
+- Unit tests reject path-like, percent, and ETA progress lines; throttle
+  heartbeats and show no 10s window of a minutes-long stage stays silent;
+  isolate a broken writer; and show that omitting the producer
   sink leaves the observer empty.
 
 ## Non-Goals
@@ -106,7 +112,10 @@ second stage vocabulary.
 4. `--diff` pointing at a missing file exits non-zero, projects
    `ripr progress: failed [diff]`, and never `completed`.
 5. A TTY run that finishes under 250ms emits no stage spray.
-6. A blocked analyzing stage emits at most 16 heartbeat lines.
+6. A blocked analyzing stage keeps emitting heartbeats at most one per 8
+   seconds of stage time; no 10s window of a minutes-long stage is silent.
+   The STANDARD policy places no per-run count ceiling, so the former
+   16-line cap is gone (#4957).
 
 ## Test Mapping
 
@@ -125,6 +134,7 @@ second stage vocabulary.
 - `crates/ripr/src/cli/progress.rs::tests::projection_tokens_cover_the_closed_producer_vocabulary`
 - `crates/ripr/src/cli/progress.rs::tests::rendering_failure_is_isolated`
 - `crates/ripr/src/cli/progress.rs::tests::heartbeat_is_throttled_and_bounded`
+- `crates/ripr/src/cli/progress.rs::tests::standard_heartbeat_spans_long_repo_walks_without_a_ten_second_gap`
 - `crates/ripr/src/cli/progress.rs::tests::tty_suppressed_stage_becomes_visible_once_min_visible_elapses`
 - `crates/ripr/src/cli/progress.rs::tests::tty_overwrite_clears_a_longer_previous_line`
 - `crates/ripr/src/cli/progress.rs::tests::tty_overwrite_pads_to_the_longest_prior_line`

@@ -61,6 +61,14 @@ are scoped or reviewed.
 
 ### Fixed
 
+- CLI: `ripr progress:` heartbeats no longer stop partway through a long
+  stage. The standard policy capped the stream at 16 heartbeat lines, so a
+  minutes-long repo audit walk went silent roughly half a minute in while
+  still running. The wall-time throttle is now the only bound: at most one
+  heartbeat per 8 seconds of stage activity (previously one per 2s) for as
+  long as the stage stays active, so worst-case silence is ~8s and
+  non-TTY output grows one line per 8s of stage time. Custom policies keep
+  their hard count ceiling (#4957).
 - CLI argument errors now name the fix on every command. `ripr context`
   no-finding errors carry `ripr explain`'s remediation suffix on both the
   fresh and `--from` paths; `ripr check --format`, `ripr outcome`, and
