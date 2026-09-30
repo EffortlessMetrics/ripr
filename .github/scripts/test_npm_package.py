@@ -4,6 +4,9 @@ import copy
 import csv
 import importlib.util
 import io
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import tarfile
 import tempfile
@@ -59,7 +62,7 @@ def zip_bytes(files, link=None, no_exec=False):
 
 class NpmPackageTests(unittest.TestCase):
     def test_missing_node_or_npm_has_actionable_error(self):
-        for missing in ("node", "npm"):
+        for missing in ("node", "npm", "npx"):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 artifact = root / "artifact"
@@ -69,9 +72,70 @@ class NpmPackageTests(unittest.TestCase):
                 receipt = {"version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1"}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
                 (artifact / "package-receipt.json").write_bytes(PACKAGE.canonical(receipt))
                 args = SimpleNamespace(artifact=artifact, output=root / "output")
-                with mock.patch.object(CONSUMER.argparse.ArgumentParser, "parse_args", return_value=args), mock.patch.object(CONSUMER.shutil, "which", side_effect=lambda name: None if name == missing else str(root / name)):
+                real_which = CONSUMER.shutil.which
+                with mock.patch.object(CONSUMER.argparse.ArgumentParser, "parse_args", return_value=args), mock.patch.object(CONSUMER.shutil, "which", side_effect=lambda name, **kwargs: None if name == missing else real_which(name, **kwargs)), mock.patch.object(CONSUMER, "command", side_effect=AssertionError("tool discovery did not fail before execution")):
                     with self.assertRaisesRegex(ValueError, missing + " executable not found in PATH"):
                         CONSUMER.main()
+
+    def test_reinstall_rejects_noop_uninstall_and_noop_install(self):
+        data = b"expected native payload"
+        for control in ("noop-uninstall", "dangling-bin", "noop-install", "fresh-install"):
+            with self.subTest(control=control), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                prefix = root / "global"
+                package = prefix / "lib/node_modules/ripr"
+                binary = prefix / "bin/ripr"
+                def install():
+                    package.mkdir(parents=True)
+                    binary.parent.mkdir(parents=True, exist_ok=True)
+                    binary.write_bytes(data)
+                install()
+                observed = []
+                def operation(args, cwd, env):
+                    if "uninstall" in args:
+                        observed.append("uninstall")
+                        if control != "noop-uninstall":
+                            binary.unlink()
+                            shutil.rmtree(package)
+                            if control == "dangling-bin":
+                                binary.symlink_to(root / "absent-native")
+                    else:
+                        observed.append("install")
+                        if control == "fresh-install":
+                            install()
+                    return subprocess.CompletedProcess(args, 0, "", "")
+                with mock.patch.object(CONSUMER, "command", side_effect=operation):
+                    if control == "fresh-install":
+                        CONSUMER.reinstall_global(["npm"], prefix, root / "input.tgz", root, {}, PACKAGE.digest(data))
+                        self.assertEqual(observed, ["uninstall", "install"])
+                        self.assertEqual(PACKAGE.digest(binary.read_bytes()), PACKAGE.digest(data))
+                    else:
+                        message = "uninstall did not remove" if control in ("noop-uninstall", "dangling-bin") else "reinstall did not restore"
+                        with self.assertRaisesRegex(ValueError, message):
+                            CONSUMER.reinstall_global(["npm"], prefix, root / "input.tgz", root, {}, PACKAGE.digest(data))
+                        self.assertEqual(observed, ["uninstall"] if control in ("noop-uninstall", "dangling-bin") else ["uninstall", "install"])
+
+    @unittest.skipUnless(os.name == "posix", "Linux-native consumer uses POSIX executable links")
+    def test_public_npx_broken_wrapper_is_executed_and_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifact = root / "artifact"
+            (artifact / "tarballs").mkdir(parents=True)
+            (artifact / "fixture").mkdir()
+            data = b"fixture input"
+            (artifact / "tarballs/input.tgz").write_bytes(data)
+            receipt = {"version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1", "payload_sha256": PACKAGE.digest(data)}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
+            (artifact / "package-receipt.json").write_bytes(PACKAGE.canonical(receipt))
+            tools = root / "tools"; tools.mkdir()
+            (tools / "node").write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo v24.19.0; else echo 11.9.0; fi\n')
+            (tools / "npm").write_text('#!/bin/sh\necho 11.9.0\n')
+            (tools / "npx").write_text('#!/bin/sh\necho broken-public-npx >&2\nexit 93\n')
+            for tool in tools.iterdir():
+                tool.chmod(0o755)
+            args = SimpleNamespace(artifact=artifact, output=root / "output")
+            with mock.patch.object(CONSUMER.argparse.ArgumentParser, "parse_args", return_value=args), mock.patch.dict(os.environ, {"PATH": str(tools)}):
+                with self.assertRaisesRegex(ValueError, r"command failed \(93\).*npx"):
+                    CONSUMER.main()
 
     def test_manifest_is_single_native_prerelease(self):
         pin = PACKAGE.source_pin()

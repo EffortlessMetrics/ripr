@@ -24,7 +24,10 @@ notices, or tarball identity/mode/provenance drift.
 
 Native execution and qualification retain explicit denominators. Each selected
 client must independently install the actual tarball project-locally, globally,
-through npm exec and npx, then produce nonempty findings and a follow-up action.
+through npm exec and the actual public npx executable, then produce nonempty
+findings and a follow-up action. A missing or broken npx wrapper fails
+qualification. Reinstallation requires observed package/bin-link absence before
+a fresh install restores the pinned bytes, version and useful behavior.
 Consumer execution has no Rust or source checkout. npm operates offline and
 HTTP(S) proxies point at closed loopback; this is not OS-level network isolation. Negative
 controls retain nonzero failures, unsupported-platform metadata rejection and

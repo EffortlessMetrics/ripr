@@ -38,7 +38,11 @@ analysis and a real follow-up explanation. Rust and source checkouts are absent 
 and HTTP(S) proxy variables point to a closed loopback port. This is a client
 network control, not an operating-system network sandbox. The proof also checks planted PATH
 and project Python, nonzero exit, clean LSP stdin/stdout, explicit preview
-disablement, contradictory platform metadata, reinstall and uninstall.
+disablement, contradictory platform metadata, reinstall and uninstall. The npx
+route invokes the public executable and rejects a missing/broken wrapper; npm
+and npx versions must agree. Reinstallation must first remove both the global
+package and bin link, then restore the exact bytes, version and useful behavior.
+No-op uninstall or reinstall operations cannot satisfy that control.
 
 The two client rows are a client matrix, not two operating-system claims.
 The observed native host remains Ubuntu 22.04. npm's `libc` metadata identifies

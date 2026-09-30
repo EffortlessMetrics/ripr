@@ -48,6 +48,17 @@ def useful_journey(prefix, project, env, output, route):
     return {"route": route, "probes": report["summary"]["probes"], "findings": report["summary"]["findings"], "follow_up_finding": finding}
 
 
+def reinstall_global(npm_command, prefix, tarball, cwd, env, payload_digest):
+    """Require package removal, then verify fresh installed native bytes."""
+    binary = prefix / "bin/ripr"
+    package = prefix / "lib/node_modules/ripr"
+    command([*npm_command, "uninstall", "--global", "--prefix", prefix, "--ignore-scripts", "ripr"], cwd, env)
+    require(not os.path.lexists(binary) and not os.path.lexists(package), "uninstall did not remove global package and bin link")
+    command([*npm_command, "install", "--global", "--prefix", prefix, "--ignore-scripts", "--offline", "--no-audit", "--no-fund", tarball], cwd, env)
+    require(binary.is_file() and package.is_dir(), "reinstall did not restore global package and executable")
+    require(sha(binary) == payload_digest, "reinstall native bytes mismatch")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifact", type=Path)
@@ -67,12 +78,17 @@ def main():
     npm_path = shutil.which("npm")
     require(npm_path is not None, "npm executable not found in PATH")
     npm = Path(npm_path).resolve()
+    npx_path = shutil.which("npx")
+    require(npx_path is not None, "npx executable not found in PATH")
+    npx = Path(npx_path).absolute()
     with tempfile.TemporaryDirectory(prefix="ripr-npm-consumer-") as temporary:
         root = Path(temporary)
         tools = root / "tools"; tools.mkdir()
         for name in ("node", "git", "sh"):
             source = shutil.which(name)
             if source: (tools / name).symlink_to(Path(source).resolve())
+        # Preserve the public wrapper/link, including its executable bit and shebang.
+        (tools / "npx").symlink_to(npx)
         planted = root / "planted"; planted.mkdir()
         marker = root / "wrong-ripr"
         (planted / "ripr").write_text(f'#!/bin/sh\nprintf wrong > "{marker}"\nexit 97\n')
@@ -87,8 +103,9 @@ def main():
         project_marker = root / "project-python-executed"
         project_python.write_text(f'#!/bin/sh\nprintf wrong > "{project_marker}"\nexit 98\n'); project_python.chmod(0o755)
         npm_command = [node, npm]
-        proof = {"node": command([node, "--version"], root, env).stdout.strip(), "npm": command([*npm_command, "--version"], root, env).stdout.strip(), "tarball_sha256": sha(tarball), "payload_sha256": pin["payload_sha256"], "routes": [], "negative_controls": []}
+        proof = {"node": command([node, "--version"], root, env).stdout.strip(), "npm": command([*npm_command, "--version"], root, env).stdout.strip(), "npx": command(["npx", "--version"], root, env).stdout.strip(), "tarball_sha256": sha(tarball), "payload_sha256": pin["payload_sha256"], "routes": [], "negative_controls": []}
         require(int(proof["npm"].split(".")[0]) >= 10, "unsupported npm client")
+        require(proof["npx"] == proof["npm"], "npm/npx client version mismatch")
         local = root / "local"; local.mkdir()
         (local / "package.json").write_text('{"name":"ripr-clean-consumer","version":"0.0.0","private":true}')
         command([*npm_command, "install", "--ignore-scripts", "--offline", "--no-audit", "--no-fund", tarball], local, env)
@@ -106,9 +123,7 @@ def main():
         proof["routes"].append(useful_journey(["ripr"], project, global_env, output, "global"))
         npx_prefix = [*npm_command, "exec", "--yes", "--ignore-scripts", "--offline", "--package=" + str(tarball), "--", "ripr"]
         proof["routes"].append(useful_journey(npx_prefix, project, env, output, "npm-exec"))
-        npx_cli = npm.with_name("npx-cli.js")
-        require(npx_cli.is_file(), "npx CLI is unavailable")
-        actual_npx = [node, npx_cli, "--yes", "--ignore-scripts", "--offline", "--package=" + str(tarball), "ripr"]
+        actual_npx = ["npx", "--yes", "--ignore-scripts", "--offline", "--package=" + str(tarball), "ripr"]
         proof["routes"].append(useful_journey(actual_npx, project, env, output, "npx"))
         npx_files = list((root / "cache/_npx").glob("*/node_modules/ripr/bin/ripr"))
         require(len(npx_files) == 1 and sha(npx_files[0]) == pin["payload_sha256"], "npm exec payload identity missing")
@@ -186,11 +201,13 @@ def main():
             attempt = command([*npm_command, "install", "--ignore-scripts", "--offline", "--no-audit", "--no-fund", stage / packed[0]["filename"]], foreign, env, success=False)
             require(attempt.returncode != 0 and "EBADPLATFORM" in attempt.stderr, "wrong platform was accepted: " + key)
             proof["negative_controls"].append("npm rejects contradictory " + key + " metadata")
-        command([*npm_command, "install", "--global", "--prefix", global_root, "--ignore-scripts", "--offline", "--no-audit", "--no-fund", tarball], root, env)
-        require(sha(global_binary) == pin["payload_sha256"], "reinstall native bytes mismatch")
+        reinstall_global(npm_command, global_root, tarball, root, env, pin["payload_sha256"])
+        require(command([global_binary, "--version"], root, env).stdout.strip() == "ripr " + receipt["version"], "reinstalled native version mismatch")
+        (project / "ripr.toml").unlink()
+        proof["reinstall_journey"] = useful_journey([global_binary], project, env, output, "fresh-reinstall")
         command([*npm_command, "uninstall", "--global", "--prefix", global_root, "--ignore-scripts", "ripr"], root, env)
-        require(not global_binary.exists() and (project / "src/pricing.py").is_file(), "uninstall contract failed")
-        proof["negative_controls"].append("reinstall preserves bytes; uninstall preserves project")
+        require(not os.path.lexists(global_binary) and not os.path.lexists(global_root / "lib/node_modules/ripr") and (project / "src/pricing.py").is_file(), "uninstall contract failed")
+        proof["negative_controls"].append("verified removal and fresh reinstall restore bytes and useful behavior; final uninstall preserves project")
         require(len(proof["routes"]) == 4, "route denominator incomplete")
         proof.update({"schema_version": 1, "state": "passed", "selected_routes": 4, "executed_routes": 4, "failed_routes": 0})
         (output / "consumer.json").write_text(json.dumps(proof, indent=2) + "\n")
