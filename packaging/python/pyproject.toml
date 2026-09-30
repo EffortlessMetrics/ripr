@@ -34,4 +34,3 @@ manifest-path = "../../crates/ripr/Cargo.toml"
 locked = true
 strip = true
 features = ["lang-python", "lang-rust", "lang-typescript"]
-

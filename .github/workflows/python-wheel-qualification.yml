@@ -694,4 +694,3 @@ jobs:
             "${PLANTED_DIR}/ripr"
           test -f "${PROJECT_FIXTURE}/src/pricing.py"
           test ! -e "${PLANTED_MARKER}"
-
