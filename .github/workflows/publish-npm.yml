@@ -1,6 +1,6 @@
 name: npm publisher contract
 
-# Trusted-publisher identity planned for the future npm package family:
+# Trusted-publisher identity planned after the genuine npm bootstrap:
 #
 #   owner:       EffortlessMetrics
 #   repository:  ripr
@@ -33,8 +33,8 @@ jobs:
           {
             echo "## npm trusted-publisher contract"
             echo
-            echo "- Launcher: \`@effortlessmetrics/ripr\`"
-            echo "- Native packages: five target-specific packages from ripr-swarm#4488"
+            echo "- Package: \`ripr\`"
+            echo "- Initial target: native Linux x64/glibc 2.34+ in one package"
             echo "- GitHub owner: \`EffortlessMetrics\`"
             echo "- Repository: \`ripr\`"
             echo "- Workflow: \`publish-npm.yml\`"

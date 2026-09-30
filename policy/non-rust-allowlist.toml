@@ -643,3 +643,39 @@ surface = "ci"
 classification = "test"
 reason = "Dependency-free negative controls for source/run/artifact/metadata admission."
 covered_by = ["python3 -m unittest discover -s .github/scripts -p test_pypi_admission.py"]
+
+[[allow]]
+glob = ".github/scripts/npm_package.py"
+kind = "npm_package_admission"
+owner = "release"
+surface = "ci"
+classification = "tooling"
+reason = "Standard-library ZIP, RECORD and tar admission preserves exact published native bytes while npm creates its own tarball format."
+covered_by = ["python3 -m unittest discover -s .github/scripts -p test_npm_package.py"]
+
+[[allow]]
+glob = ".github/scripts/npm_consumer.py"
+kind = "npm_installed_consumer"
+owner = "release"
+surface = "ci"
+classification = "test"
+reason = "Checkout-free npm, npx, global and local installed-native journeys use only the runner standard library."
+covered_by = ["python3 .github/scripts/npm_consumer.py target/ripr/npm-qualified target/ripr/npm-consumer"]
+
+[[allow]]
+glob = ".github/scripts/test_npm_package.py"
+kind = "npm_package_admission_test"
+owner = "release"
+surface = "ci"
+classification = "test"
+reason = "Dependency-free negative controls exercise the real native and tarball admission functions."
+covered_by = ["python3 -m unittest discover -s .github/scripts -p test_npm_package.py"]
+
+[[allow]]
+glob = "packaging/npm/*.json"
+kind = "npm_bootstrap_metadata"
+owner = "release"
+surface = "config"
+classification = "config"
+reason = "Bounded native-only npm template and exact published wheel pin; version is derived from the qualified native source."
+covered_by = ["python3 -m unittest discover -s .github/scripts -p test_npm_package.py"]

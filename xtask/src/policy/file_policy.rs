@@ -151,6 +151,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn npm_qualification_retention_is_exactly_scoped() {
+        for path in [
+            ".github/scripts/npm_package.py",
+            ".github/scripts/npm_consumer.py",
+            ".github/scripts/test_npm_package.py",
+        ] {
+            assert!(crate::non_rust_programming_retention_reason(path).is_some());
+        }
+        for path in [".github/scripts/npm_other.py", "scripts/npm_package.py"] {
+            assert!(crate::non_rust_programming_retention_reason(path).is_none());
+        }
+    }
+
     use std::time::Duration;
 
     use super::map_test_covered_by_enumeration_output;
