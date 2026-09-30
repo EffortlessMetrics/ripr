@@ -9,6 +9,10 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Fix npm staging's tarball argument to use an explicit local `./dist/` path.
+  The real CLI transport test now runs the workflow's shell command from the
+  same relative directory layout and refuses Git transports during rehearsal.
+
 - Prepare native/npm `0.11.0-alpha.2` with fresh same-source wheel, pip/uv and
   npm qualification. Reuse the native builder, bind all seven executed jobs
   and the exact native artifact, and preserve independent PyPI publication
