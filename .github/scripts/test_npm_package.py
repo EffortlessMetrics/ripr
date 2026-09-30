@@ -4,16 +4,20 @@ import copy
 import csv
 import importlib.util
 import io
-import json
 from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
+from types import SimpleNamespace
 import zipfile
 
 SPEC = importlib.util.spec_from_file_location("npm_package", Path(__file__).with_name("npm_package.py"))
 PACKAGE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PACKAGE)
+CONSUMER_SPEC = importlib.util.spec_from_file_location("npm_consumer", Path(__file__).with_name("npm_consumer.py"))
+CONSUMER = importlib.util.module_from_spec(CONSUMER_SPEC)
+CONSUMER_SPEC.loader.exec_module(CONSUMER)
 
 
 def wheel_fixture():
@@ -54,6 +58,21 @@ def zip_bytes(files, link=None, no_exec=False):
 
 
 class NpmPackageTests(unittest.TestCase):
+    def test_missing_node_or_npm_has_actionable_error(self):
+        for missing in ("node", "npm"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                artifact = root / "artifact"
+                (artifact / "tarballs").mkdir(parents=True)
+                data = b"input identity is checked before tool discovery"
+                (artifact / "tarballs/input.tgz").write_bytes(data)
+                receipt = {"version": "0.11.0-alpha.1", "provenance": {"product_source": {"native_version": "0.11.0-alpha.1"}}, "tarball": {"filename": "input.tgz", "sha256": PACKAGE.digest(data)}}
+                (artifact / "package-receipt.json").write_bytes(PACKAGE.canonical(receipt))
+                args = SimpleNamespace(artifact=artifact, output=root / "output")
+                with mock.patch.object(CONSUMER.argparse.ArgumentParser, "parse_args", return_value=args), mock.patch.object(CONSUMER.shutil, "which", side_effect=lambda name: None if name == missing else str(root / name)):
+                    with self.assertRaisesRegex(ValueError, missing + " executable not found in PATH"):
+                        CONSUMER.main()
+
     def test_manifest_is_single_native_prerelease(self):
         pin = PACKAGE.source_pin()
         value = PACKAGE.manifest(pin)

@@ -61,8 +61,12 @@ def main():
     tarball = artifact / "tarballs" / receipt["tarball"]["filename"]
     require(sha(tarball) == receipt["tarball"]["sha256"], "tarball transfer digest mismatch")
     require(pin["native_version"] == receipt["version"], "receipt version mismatch")
-    node = Path(shutil.which("node")).resolve()
-    npm = Path(shutil.which("npm")).resolve()
+    node_path = shutil.which("node")
+    require(node_path is not None, "node executable not found in PATH")
+    node = Path(node_path).resolve()
+    npm_path = shutil.which("npm")
+    require(npm_path is not None, "npm executable not found in PATH")
+    npm = Path(npm_path).resolve()
     with tempfile.TemporaryDirectory(prefix="ripr-npm-consumer-") as temporary:
         root = Path(temporary)
         tools = root / "tools"; tools.mkdir()
