@@ -19,10 +19,10 @@ Start here:
   Why unknown: the analysis could not determine a static exposure state
   Changed behavior: return max(0, self._balance)
   Analyzer limit: Static limit `decorator_indirection`: owner `Account.balance` is decorated with `property`; syntax-first preview evidence does not resolve decorator-modified call behavior.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: 0 related Python test(s) found for owner `balance`
     - infection unknown: Static limit `decorator_indirection` prevents a safe Python infection claim.
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_changed_sink_non_delta_operand/input --diff fixtures/python_adversarial_changed_sink_non_delta_operand/diff.patch --mode fast probe:src_account.py:python_preview:c7d70a2d

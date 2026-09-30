@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/controls.rs:4 map_or_else_boundary_stays_unresolved
   Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator not established
     - reach yes: Related tests appear to reach via_map_or_else: map_or_else_boundary_stays_unresolved
     - infection unknown: Related tests use opaque fixtures; activation/infection is unknown
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/binding_value_fail_closed/input --diff fixtures/binding_value_fail_closed/diff.patch --mode fast probe:src_lib.rs:predicate:d9aa811b

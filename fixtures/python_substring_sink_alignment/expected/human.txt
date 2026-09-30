@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_pack.py::test_pack_returns_buffered_output
   Verify command: python -m pytest tests/test_pack.py::test_pack_returns_buffered_output (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `buffer == limit`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `pack`
     - infection yes: Changed Python predicate can alter branch selection: `if len(buffer) <= limit:`
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_substring_sink_alignment/input --diff fixtures/python_substring_sink_alignment/diff.patch --mode fast probe:src_pack.py:python_preview:cfc61771

@@ -21,10 +21,10 @@ Start here:
   Missing discriminator: Only heuristic TypeScript test links were found for `formatCurrency`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/formatter.test.ts:7 formatCurrency behavior formats positive amounts
   Next step: TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.
-  Evidence:
+  Evidence: reach weak · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach weak: 1 related test(s) found for owner `formatCurrency`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_heuristic_relation/input --diff fixtures/ts_heuristic_relation/diff.patch --mode fast probe:src_formatter.ts:typescript_preview:bf26bc95

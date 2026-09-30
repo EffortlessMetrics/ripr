@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: no test references the changed owner; add a test that
     calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair
     packet is emitted.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: 0 related test(s) found for owner `deepUnderBudget`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 8 more evidence line(s) hidden
+    - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_parse_depth_budget/input --diff fixtures/ts_parse_depth_budget/diff.patch --mode fast probe:src_deep_under_budget.ts:typescript_preview:85293064

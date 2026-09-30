@@ -20,10 +20,10 @@ Start here:
   Discriminator (observed, advisory): Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant…
   Related test: tests/pricing.test.ts:7 alias import observes threshold
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator yes
     - reach yes: 2 related test(s) found for owner `applyDiscount`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_related_test_matching/input --diff fixtures/typescript_related_test_matching/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:bd772dc8

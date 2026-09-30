@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_session.py::test_session_refresh
   Verify command: python -m pytest tests/test_session.py::test_session_refresh (high)
   Next step: Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `self.status == "active"`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `refresh`
     - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "active"`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_attribute_sink_other_receiver/input --diff fixtures/python_adversarial_attribute_sink_other_receiver/diff.patch --mode fast probe:src_session.py:python_preview:a8af27c6

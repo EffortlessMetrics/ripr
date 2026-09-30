@@ -21,10 +21,10 @@ Start here:
   Changed behavior: return amount + 2
   Missing discriminator: Only heuristic Python test links were found for `calculate_fee`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.
   Related test: tests/test_checkout.py:4 test_checkout_total
-  Evidence:
+  Evidence: reach weak · infection yes · propagation yes · observation weak · discriminator weak
     - reach weak: 1 heuristic Python test link(s) found for owner `calculate_fee`; relation is uncertain
     - infection yes: Changed Python return expression can alter the owner return value: `return amount + 2`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_fixture_name_relation/input --diff fixtures/python_fixture_name_relation/diff.patch --mode fast probe:src_pricing.py:python_preview:af67021e

@@ -14,10 +14,10 @@ Start here:
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: points + SCORE_BONUS
   Related test: crates/c/tests/it.rs:5 dependent_test_asserts_owner_score_value
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach score: dependent_test_asserts_owner_score_value
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_dep_edge_cross_crate_positive/input --diff fixtures/rust_dep_edge_cross_crate_positive/diff.patch --mode fast probe:crates_a_src_lib.rs:return_value:94e6eef7

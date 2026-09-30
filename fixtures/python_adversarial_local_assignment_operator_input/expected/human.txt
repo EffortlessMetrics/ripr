@@ -25,10 +25,10 @@ Start here:
   Suggested test: test_base_unchanged
   Test node: tests/test_calc.py::test_base_unchanged
   Verify command: python -m pytest tests/test_calc.py::test_base_unchanged (high)
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `compute`
     - infection yes: Changed Python expression can alter preview-classified predicate behavior: `total = base - bonus`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_local_assignment_operator_input/input --diff fixtures/python_adversarial_local_assignment_operator_input/diff.patch --mode fast probe:src_calc.py:python_preview:3ddbe784

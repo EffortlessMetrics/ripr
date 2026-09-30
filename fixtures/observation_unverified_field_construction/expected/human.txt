@@ -17,10 +17,10 @@ Start here:
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/item_tests.rs:4 config_exists
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator weak
     - reach yes: Related tests appear to reach default_config: config_exists
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/observation_unverified_field_construction/input --diff fixtures/observation_unverified_field_construction/diff.patch --mode fast probe:src_lib.rs:return_value:8ed284d1

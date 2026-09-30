@@ -19,10 +19,10 @@ Start here:
     dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a
     test that exercises it and asserts the result first; deep mode and real mutation testing need a
     reaching test to say more.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: No static test path found for the changed owner
     - infection unknown: Changed syntax is not mapped to a high-confidence probe family
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/constant_declaration_probe_reconciliation/input --diff fixtures/constant_declaration_probe_reconciliation/diff.patch --mode fast probe:src_lib.rs:static_unknown:c48715e6

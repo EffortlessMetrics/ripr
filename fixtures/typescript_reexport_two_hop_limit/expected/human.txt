@@ -20,10 +20,10 @@ Start here:
   Discriminator (observed, advisory): Related test reaches `isRawNetworkError` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant…
   Related test: test/util.test.ts:7 isRawNetworkError via two-hop chain
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator yes
     - reach yes: 1 related test(s) found for owner `isRawNetworkError`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_reexport_two_hop_limit/input --diff fixtures/typescript_reexport_two_hop_limit/diff.patch --mode fast probe:src_util.ts:typescript_preview:5a933676

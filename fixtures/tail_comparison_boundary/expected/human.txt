@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: items == 10
   Related test: tests/orders.rs:9 small_order_pays_shipping
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach ships_free: small_order_pays_shipping, big_order_ships_free, five_items_earn_a_gift
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 16 more evidence line(s) hidden
+    - 16 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/tail_comparison_boundary/input --diff fixtures/tail_comparison_boundary/diff.patch --mode fast probe:src_lib.rs:predicate:ca3e18b4

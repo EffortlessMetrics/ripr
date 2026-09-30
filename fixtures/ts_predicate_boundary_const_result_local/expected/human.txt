@@ -20,10 +20,10 @@ Start here:
   Discriminator (observed, advisory): Related test reaches `applyDiscount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant…
   Related test: tests/pricing.test.ts:3 applyDiscount at the boundary via a local binding
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator yes
     - reach yes: 1 related test(s) found for owner `applyDiscount`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_predicate_boundary_const_result_local/input --diff fixtures/ts_predicate_boundary_const_result_local/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:e23661f5

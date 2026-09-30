@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the
     concrete dispatch key or add analyzer support for explicit dispatch-map resolution before
     issuing a repair packet.; no actionable repair packet is emitted.
-  Evidence:
+  Evidence: reach weak · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach weak: 1 related test(s) found for owner `dispatch`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_static_limit_taxonomy/input --diff fixtures/typescript_static_limit_taxonomy/diff.patch --mode fast probe:src_dispatch.ts:typescript_preview:dd0f8848

@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_promotions.py::test_trial_extension_long_smoke
   Verify command: python -m pytest tests/test_promotions.py::test_trial_extension_long_smoke (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `days == minimum_days`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `trial_extension`
     - infection yes: Changed Python predicate can alter branch selection: `if days >= minimum_days:`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_no_config_repair_gap/input --diff fixtures/python_no_config_repair_gap/diff.patch --mode fast probe:src_promotions.py:python_preview:32b0094f

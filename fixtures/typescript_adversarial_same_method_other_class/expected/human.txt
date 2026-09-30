@@ -22,10 +22,10 @@ Start here:
   Next step: TypeScript preview advisory: method receiver relation is missing context; use a direct
     `new ClassName(...)` receiver observer when safe, and keep factories, dependency injection,
     mocked modules, prototype aliases, and dynamic property access advisory.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: 0 related test(s) found for owner `validate`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_adversarial_same_method_other_class/input --diff fixtures/typescript_adversarial_same_method_other_class/diff.patch --mode fast probe:src_auth.ts:typescript_preview:1091eef0

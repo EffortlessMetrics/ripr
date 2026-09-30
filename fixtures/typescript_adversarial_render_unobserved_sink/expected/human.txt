@@ -22,10 +22,10 @@ Start here:
   Next step: TypeScript preview advisory: no test references the changed owner; add a test that
     calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair
     packet is emitted.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: 0 related test(s) found for owner `formatBadge`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_adversarial_render_unobserved_sink/input --diff fixtures/typescript_adversarial_render_unobserved_sink/diff.patch --mode fast probe:src_badge.tsx:typescript_preview:6ebbadf9

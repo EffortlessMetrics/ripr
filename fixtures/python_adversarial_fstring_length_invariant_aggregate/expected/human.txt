@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_status.py::test_len
   Verify command: python -m pytest tests/test_status.py::test_len (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `status_label`
     - infection yes: Changed Python return expression can alter the owner return value: `return f"NO:{code}"`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_fstring_length_invariant_aggregate/input --diff fixtures/python_adversarial_fstring_length_invariant_aggregate/diff.patch --mode fast probe:src_status.py:python_preview:f3e3e6b2

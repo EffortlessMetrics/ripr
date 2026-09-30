@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: static limit `mocked_module`; Repair route: add mock-shape
     support or validate the real substitution under test before issuing a repair packet.; no
     actionable repair packet is emitted.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach yes: 1 related test(s) found for owner `processData`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_cross_language_bridge_limit/input --diff fixtures/ts_cross_language_bridge_limit/diff.patch --mode fast probe:src_bridge.ts:typescript_preview:d73aaece

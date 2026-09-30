@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: No strong discriminator was detected
   Related test: tests/pricing.rs:4 boundary_matches_expected
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach discounted_total: boundary_matches_expected
     - infection yes: Detected related test input at the changed boundary
-    - 9 more evidence line(s) hidden
+    - 9 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/assertion_form_parity_assert_msg/input --diff fixtures/assertion_form_parity_assert_msg/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb

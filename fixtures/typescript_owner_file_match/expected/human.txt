@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `value == 10`; no actionable repair packet is emitted until verify, receipt, and
     edit-boundary fields are available.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach yes: 1 related test(s) found for owner `betaScore`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_owner_file_match/input --diff fixtures/typescript_owner_file_match/diff.patch --mode fast probe:src_b.ts:typescript_preview:9c971b25

@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_policy.py::test_discount_policy_apply
   Verify command: python -m pytest tests/test_policy.py::test_discount_policy_apply (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == threshold`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `apply`
     - infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_method_owner/input --diff fixtures/python_method_owner/diff.patch --mode fast probe:src_policy.py:python_preview:26786dfe

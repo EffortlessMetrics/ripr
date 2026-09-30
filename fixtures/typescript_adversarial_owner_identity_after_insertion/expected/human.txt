@@ -22,10 +22,10 @@ Start here:
   Next step: TypeScript preview advisory: module initializer observer is missing context; add a
     direct `expect(IMPORTED_CONST).toBe(...)` or `expect(namespace.EXPORT).toEqual(...)` observer
     when safe, and keep helper-derived or dynamic initialization evidence advisory.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
     - reach no: 0 related test(s) found for owner `DEFAULT_FEE_RULE`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 8 more evidence line(s) hidden
+    - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_adversarial_owner_identity_after_insertion/input --diff fixtures/typescript_adversarial_owner_identity_after_insertion/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:fff3ea84

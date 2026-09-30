@@ -25,10 +25,10 @@ Start here:
   Suggested test: test_discount_far_above_threshold
   Test node: tests/test_pricing.py::test_discount_far_above_threshold
   Verify command: python -m pytest tests/test_pricing.py::test_discount_far_above_threshold (high)
-  Evidence:
+  Evidence: reach yes · infection weak · propagation weak · observation yes · discriminator weak
     - reach yes: 2 related Python test(s) found for owner `discounted_total`
     - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.
-    - 8 more evidence line(s) hidden
+    - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_rebound_constant_boundary_limit/input --diff fixtures/python_rebound_constant_boundary_limit/diff.patch --mode fast probe:src_pricing.py:python_preview:e56dfcdf

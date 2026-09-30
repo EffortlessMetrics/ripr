@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: ParseError::MalformedSource
   Related test: tests/parse.rs:4 rejects_at_sign
   Next step: Assert the exact error variant or payload instead of only is_err().
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach try_parse: rejects_at_sign, try_parse_variant_is_distinct, malformedsource_variant_is_distinct
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 9 more evidence line(s) hidden
+    - 9 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/proximity_name_oracle_not_credited/input --diff fixtures/proximity_name_oracle_not_credited/diff.patch --mode fast probe:src_lib.rs:error_path:e01f0ca9

@@ -21,10 +21,10 @@ Start here:
   Changed behavior: return amount - 2
   Missing discriminator: Only heuristic Python test links were found for `reconcile_total`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.
   Related test: tests/test_reconcile.py:4 test_reconcile_fixture_contract
-  Evidence:
+  Evidence: reach weak · infection yes · propagation yes · observation weak · discriminator weak
     - reach weak: 1 heuristic Python test link(s) found for owner `reconcile_total`; relation is uncertain
     - infection yes: Changed Python return expression can alter the owner return value: `return amount - 2`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_same_stem_test/input --diff fixtures/python_same_stem_test/diff.patch --mode fast probe:src_reconcile.py:python_preview:5cd72db4

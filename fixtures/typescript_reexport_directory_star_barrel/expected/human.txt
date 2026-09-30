@@ -20,10 +20,10 @@ Start here:
   Discriminator (observed, advisory): Related test reaches `withoutBase` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   Related test: test/base.test.ts:7 withoutBase strips the base prefix
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator yes
     - reach yes: 2 related test(s) found for owner `withoutBase`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_reexport_directory_star_barrel/input --diff fixtures/typescript_reexport_directory_star_barrel/diff.patch --mode fast probe:src_utils.ts:typescript_preview:a6254543

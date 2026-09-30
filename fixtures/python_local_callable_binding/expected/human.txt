@@ -25,10 +25,10 @@ Start here:
   Suggested test: test_stop_after_attempt
   Verify command: python -m unittest tests.test_stop.StopTest.test_stop_after_attempt (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `attempt_number == self.max_attempt_number`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `__call__`
     - infection yes: Changed Python expression can alter preview-classified predicate behavior: `return attempt_number >= self.max_attempt_number`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_local_callable_binding/input --diff fixtures/python_local_callable_binding/diff.patch --mode fast probe:src_stop.py:python_preview:87705a2c

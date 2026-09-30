@@ -16,10 +16,10 @@ Start here:
   Changed behavior: Config { timeout_secs: 30, retries: 1, }
   Missing discriminator: No detected assertion observes the changed value, error, field, or effect
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation no · discriminator no
     - reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/decimal_field_observer_non_member_access/input --diff fixtures/decimal_field_observer_non_member_access/diff.patch --mode fast probe:src_lib.rs:return_value:4b922ba9

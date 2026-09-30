@@ -20,10 +20,10 @@ Start here:
   Changed behavior: if amount >= threshold:
   Analyzer limit: Static limit `unresolved_pytest_fixture`: a related pytest test depends on fixture-sourced values; syntax-first preview evidence cannot prove whether the fixture supplies the…
   Related test: tests/test_pricing.py:11 test_apply_discount_fixture_case
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: 1 related Python test(s) found for owner `apply_discount`
     - infection unknown: Static limit `unresolved_pytest_fixture` prevents a safe Python infection claim.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_unresolved_fixture_limit/input --diff fixtures/python_unresolved_fixture_limit/diff.patch --mode fast probe:src_pricing.py:python_preview:ca00849b

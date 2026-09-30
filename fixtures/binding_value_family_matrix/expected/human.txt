@@ -17,10 +17,10 @@ Start here:
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/matrix.rs:14 starts_with_boundary_is_observed
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator weak
     - reach yes: Related tests appear to reach gate: starts_with_boundary_is_observed
     - infection yes: Detected related test input at the changed boundary
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/binding_value_family_matrix/input --diff fixtures/binding_value_family_matrix/diff.patch --mode fast probe:src_lib.rs:predicate:a54b7c0f

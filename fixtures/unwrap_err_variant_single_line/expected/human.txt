@@ -15,10 +15,10 @@ Start here:
   Why weak: a related test reaches this change, but the path from it to what the test checks is only partly traced
   Changed behavior: return Err(ParseError::TooLong(name.len()))
   Related test: tests/errors.rs:4 too_long_name_rejected_with_exact_variant
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation yes · discriminator not established
     - reach yes: Related tests appear to reach validate: too_long_name_rejected_with_exact_variant
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 10 more evidence line(s) hidden
+    - 10 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/unwrap_err_variant_single_line/input --diff fixtures/unwrap_err_variant_single_line/diff.patch --mode fast probe:src_lib.rs:error_path:e4b7f445

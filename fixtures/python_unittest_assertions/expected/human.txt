@@ -21,10 +21,10 @@ Start here:
   Discriminator (observed, advisory): Related Python test reaches `risk_score` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_risk.py:7 test_high_risk_score
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation yes · discriminator yes
     - reach yes: 1 related Python test(s) found for owner `risk_score`
     - infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_unittest_assertions/input --diff fixtures/python_unittest_assertions/diff.patch --mode fast probe:src_risk.py:python_preview:6835190f

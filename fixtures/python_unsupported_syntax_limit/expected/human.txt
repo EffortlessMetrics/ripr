@@ -20,10 +20,10 @@ Start here:
   Changed behavior: return lambda value: value + 2
   Analyzer limit: Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet.
   Related test: tests/test_mapper.py:4 test_make_mapper_adds_two
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: 1 related Python test(s) found for owner `make_mapper`
     - infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_unsupported_syntax_limit/input --diff fixtures/python_unsupported_syntax_limit/diff.patch --mode fast probe:src_mapper.py:python_preview:ebfdf92c

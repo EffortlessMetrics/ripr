@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: No detected boundary input for the changed predicate
   Related test: tests/pricing.rs:17 shipping_boundary
   Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation yes · observation yes · discriminator not established
     - reach yes: Related tests appear to reach shipping: shipping_boundary
     - infection unknown: Predicate compares against constant FREE_SHIPPING; ripr cannot see its value statically or match it to a related test input (a same-file integer const, a…
-    - 10 more evidence line(s) hidden
+    - 10 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/boundary_named_constant/input --diff fixtures/boundary_named_constant/diff.patch --mode fast probe:src_lib.rs:predicate:70700926

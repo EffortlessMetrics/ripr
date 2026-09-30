@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: CalcError::Negative
   Related test: tests/errors.rs:6 negative_input_returns_some_error
   Next step: Assert the exact error variant or payload instead of only is_err().
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach compute: negative_input_returns_some_error
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/unwrap_err_generic_is_err/input --diff fixtures/unwrap_err_generic_is_err/diff.patch --mode fast probe:src_lib.rs:error_path:6b37a3bc

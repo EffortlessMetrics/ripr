@@ -20,10 +20,10 @@ Start here:
   Changed behavior: return getattr(client, method_name)()
   Analyzer limit: Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called…
   Related test: tests/test_dispatch.py:4 test_call_named_dispatches_total
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: 1 related Python test(s) found for owner `call_named`
     - infection unknown: Static limit `dynamic_dispatch` prevents a safe Python infection claim.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_dynamic_dispatch_limit/input --diff fixtures/python_dynamic_dispatch_limit/diff.patch --mode fast probe:src_dispatch.py:python_preview:8ff6dd4a

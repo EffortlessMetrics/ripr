@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: a == b
   Related test: tests/it.rs:8 test_inner_with_custom_assertion_macro
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation no · discriminator no
     - reach yes: Related tests appear to reach inner: test_inner_with_custom_assertion_macro
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_macro_wrapped_assertion_limitation/input --diff fixtures/rust_macro_wrapped_assertion_limitation/diff.patch --mode fast probe:src_internal.rs:predicate:114f2322

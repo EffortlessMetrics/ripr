@@ -14,10 +14,10 @@ Start here:
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: if final_state == "text" {
   Related test: tests/classify.rs:4 plain_word_is_word
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach classify: plain_word_is_word, trailing_space_is_blank
     - infection yes: Detected related test input at the changed boundary
-    - 11 more evidence line(s) hidden
+    - 11 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/scanner_positive/input --diff fixtures/scanner_positive/diff.patch --mode fast probe:src_lib.rs:predicate:93752988

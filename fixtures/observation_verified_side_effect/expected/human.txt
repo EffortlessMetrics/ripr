@@ -14,10 +14,10 @@ Start here:
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: notifier.send(order_id)
   Related test: tests/process_tests.rs:4 process_order_sends_exact_order_id
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach process_order: process_order_sends_exact_order_id
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/observation_verified_side_effect/input --diff fixtures/observation_verified_side_effect/diff.patch --mode fast probe:src_lib.rs:call_deletion:934aa430

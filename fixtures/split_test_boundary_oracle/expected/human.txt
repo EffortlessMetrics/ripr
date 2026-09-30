@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: Discriminator unconfirmed: boundary input and discriminating oracle come from different tests (same_test_pairing_missing); no test both feeds a boundary input to the owner and…
   Related test: tests/split.rs:4 boundary
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach gate: boundary, far
     - infection yes: Detected related test input at the changed boundary
-    - 11 more evidence line(s) hidden
+    - 11 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/split_test_boundary_oracle/input --diff fixtures/split_test_boundary_oracle/diff.patch --mode fast probe:src_lib.rs:predicate:fa1d51d0

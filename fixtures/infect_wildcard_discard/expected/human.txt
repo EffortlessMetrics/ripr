@@ -17,10 +17,10 @@ Start here:
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/process_tests.rs:4 process_returns_amount_unchanged
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator weak
     - reach yes: Related tests appear to reach process: process_returns_amount_unchanged
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/infect_wildcard_discard/input --diff fixtures/infect_wildcard_discard/diff.patch --mode fast probe:src_lib.rs:return_value:d0b06139

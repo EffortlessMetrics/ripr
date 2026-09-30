@@ -14,10 +14,10 @@ Start here:
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: return Err(AuthError::RevokedToken);
   Related test: tests/errors.rs:4 empty_token_rejects_with_revoked_token
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast probe:src_lib.rs:error_path:99b06ce7

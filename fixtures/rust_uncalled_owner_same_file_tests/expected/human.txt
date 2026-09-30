@@ -20,10 +20,10 @@ Start here:
     test may already exercise it through macros, helper-call chains, or integration tests that
     ripr's static model does not yet trace. If none does, add a co-located test that reaches and
     observes the changed behavior so a discriminator exists.
-  Evidence:
+  Evidence: reach no · infection no · propagation yes · observation no · discriminator no
     - reach no: No test is seen calling untested_rounding; tests share only its file or a name token: discount_applies_at_100, discount_small_unchanged
     - infection no: No test reaches the changed owner, so no test can activate this change
-    - 9 more evidence line(s) hidden
+    - 9 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_uncalled_owner_same_file_tests/input --diff fixtures/rust_uncalled_owner_same_file_tests/diff.patch --mode fast probe:src_lib.rs:return_value:672a64b9

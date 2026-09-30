@@ -18,10 +18,10 @@ Start here:
   Next step: This owner is exposed across a language boundary (FFI or binding); whether an
     external-language test observes the change is not statically known — verify the external oracle
     rather than adding a same-language test.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation yes · observation no · discriminator no
     - reach no: No static test path found for the changed owner
     - infection unknown: No tests were found, so activation/infection cannot be estimated
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_pyo3_cross_language_limit/input --diff fixtures/rust_pyo3_cross_language_limit/diff.patch --mode fast probe:src_lib.rs:predicate:f89fd108

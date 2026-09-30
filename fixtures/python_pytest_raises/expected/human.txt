@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_quantity.py::test_rejects_zero_quantity
   Verify command: python -m pytest tests/test_quantity.py::test_rejects_zero_quantity (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `value == 0`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `normalize_quantity`
     - infection yes: Changed Python predicate can alter branch selection: `if value <= 0:`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_pytest_raises/input --diff fixtures/python_pytest_raises/diff.patch --mode fast probe:src_quantity.py:python_preview:9c7db092

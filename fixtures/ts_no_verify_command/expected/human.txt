@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `a == 0`; no actionable repair packet is emitted until verify, receipt, and
     edit-boundary fields are available.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach yes: 1 related test(s) found for owner `multiply`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_no_verify_command/input --diff fixtures/ts_no_verify_command/diff.patch --mode fast probe:src_calculator.ts:typescript_preview:45007a54

@@ -22,10 +22,10 @@ Start here:
   Related test: tests/shipping.test.ts:3 small order pays shipping
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `amount == 5000`; the repair packet is complete and delegatable (advisory).
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach yes: 1 related test(s) found for owner `shipping`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_repair_packet_boundary_literal_derived/input --diff fixtures/ts_repair_packet_boundary_literal_derived/diff.patch --mode fast probe:src_shipping.ts:typescript_preview:04ac84fc

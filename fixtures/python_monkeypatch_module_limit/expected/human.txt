@@ -20,10 +20,10 @@ Start here:
   Changed behavior: return remote_total_with_tax()
   Analyzer limit: Static limit `mocked_module`: a related Python test uses patch/mock/monkeypatch module syntax; the preview adapter does not resolve runtime substitution semantics.
   Related test: tests/test_service.py:4 test_fetch_total_monkeypatches_remote_total
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: 1 related Python test(s) found for owner `fetch_total`
     - infection unknown: Static limit `mocked_module` prevents a safe Python infection claim.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_monkeypatch_module_limit/input --diff fixtures/python_monkeypatch_module_limit/diff.patch --mode fast probe:src_service.py:python_preview:94fc2856

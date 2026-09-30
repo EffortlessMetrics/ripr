@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_commands.py::test_main_smoke
   Verify command: python -m pytest tests/test_commands.py::test_main_smoke (high)
   Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `output contains "shipment queued"`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `main`
     - infection yes: Changed Python call or output effect can alter observable side effects: `print("shipment queued")`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_argparse_output_repair_gap/input --diff fixtures/python_argparse_output_repair_gap/diff.patch --mode fast probe:src_commands.py:python_preview:b3ad6932

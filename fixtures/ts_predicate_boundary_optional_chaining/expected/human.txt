@@ -20,10 +20,10 @@ Start here:
   Discriminator (observed, advisory): Related test reaches `userIsAdmin` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   Related test: tests/guards.test.ts:3 admin role behind optional chaining
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator yes
     - reach yes: 1 related test(s) found for owner `userIsAdmin`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_predicate_boundary_optional_chaining/input --diff fixtures/ts_predicate_boundary_optional_chaining/diff.patch --mode fast probe:src_guards.ts:typescript_preview:7098c2ff

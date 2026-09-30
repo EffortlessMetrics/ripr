@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_routes.py::test_first
   Verify command: python -m pytest tests/test_routes.py::test_first (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `route_order`
     - infection yes: Changed Python return expression can alter the owner return value: `return ["index", "browse", "detail"]`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_list_element_sibling_index/input --diff fixtures/python_adversarial_list_element_sibling_index/diff.patch --mode fast probe:src_routes.py:python_preview:fa537c61

@@ -17,10 +17,10 @@ Start here:
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/report_tests.rs:4 report_does_not_panic
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation unknown · observation no · discriminator no
     - reach yes: Related tests appear to reach report: report_does_not_panic
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/propagate_stdout_macro/input --diff fixtures/propagate_stdout_macro/diff.patch --mode fast probe:src_lib.rs:call_deletion:75eda2b6

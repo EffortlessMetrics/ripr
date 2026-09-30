@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_parseint.py::test_parse_ok
   Verify command: python -m pytest tests/test_parseint.py::test_parse_ok (high)
   Next step: Python preview: strengthen the existing related test with an exception assertion for missing discriminator `raises KeyError matching "empty"`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `parse`
     - infection yes: Changed Python error path can alter raised exception/control behavior: `raise KeyError("empty")`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_error_path_untaken_branch/input --diff fixtures/python_adversarial_error_path_untaken_branch/diff.patch --mode fast probe:src_parseint.py:python_preview:0f645328

@@ -21,10 +21,10 @@ Start here:
   Discriminator (observed, advisory): Related Python test reaches `mark_paid` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_invoice.py:4 test_mark_paid_sets_status
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation yes · discriminator yes
     - reach yes: 1 related Python test(s) found for owner `mark_paid`
     - infection yes: Changed Python field or attribute construction can alter object state: `self.status = "paid"`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_field_assignment_shape/input --diff fixtures/python_field_assignment_shape/diff.patch --mode fast probe:src_invoice.py:python_preview:5473c8e6

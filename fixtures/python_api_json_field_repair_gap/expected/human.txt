@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_checkout.py::test_expired_coupon_response_smoke
   Verify command: python -m pytest tests/test_checkout.py::test_expired_coupon_response_smoke (high)
   Next step: Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `response.json()["detail"] == "coupon expired"`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `checkout`
     - infection yes: Changed Python field or attribute construction can alter object state: `return {"detail": "coupon expired"}`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_api_json_field_repair_gap/input --diff fixtures/python_api_json_field_repair_gap/diff.patch --mode fast probe:app_checkout.py:python_preview:c1a8e812

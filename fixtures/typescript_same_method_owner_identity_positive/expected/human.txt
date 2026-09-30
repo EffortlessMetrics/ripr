@@ -20,10 +20,10 @@ Start here:
   Discriminator (observed, advisory): Related test reaches `validate` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant discriminator.
   Related test: tests/auth.test.ts:3 validates a trimmed token
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator yes
     - reach yes: 1 related test(s) found for owner `validate`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_same_method_owner_identity_positive/input --diff fixtures/typescript_same_method_owner_identity_positive/diff.patch --mode fast probe:src_auth.ts:typescript_preview:1091eef0

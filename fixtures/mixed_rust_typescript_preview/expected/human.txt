@@ -19,10 +19,10 @@ Start here:
   Missing discriminator: amount == discount_threshold
   Related test: tests/pricing.rs:4 below_threshold_has_no_discount
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 12 more evidence line(s) hidden
+    - 12 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/mixed_rust_typescript_preview/input --diff fixtures/mixed_rust_typescript_preview/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb

@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_callbacks.py::test_recording_callback_starts_idle
   Verify command: python -m pytest tests/test_callbacks.py::test_recording_callback_starts_idle (high)
   Next step: Python preview: strengthen the existing related test with an output/log/call-effect assertion for missing discriminator `call includes "receipt.sent"`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `recording_callback`
     - infection yes: Changed Python call or output effect can alter observable side effects: `callback = MagicMock(name="receipt.sent")`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_mock_interaction_shape/input --diff fixtures/python_mock_interaction_shape/diff.patch --mode fast probe:src_callbacks.py:python_preview:d5d2a2c6

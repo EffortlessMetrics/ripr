@@ -16,10 +16,10 @@ Start here:
   Changed behavior: Ok(build_response(expected_id, trimmed.trim())?)
   Related test: tests/protocol.rs:4 validates_ready_response
   Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation yes · discriminator not established
     - reach yes: Related tests appear to reach expect_response: validates_ready_response
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 13 more evidence line(s) hidden
+    - 13 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/guarded_result_match_owner_observation/input --diff fixtures/guarded_result_match_owner_observation/diff.patch --mode fast probe:src_lib.rs:return_value:6daabbf3

@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: No strong discriminator was detected
   Related test: tests/ledger_tests.rs:4 apply_returns_ok_on_success
   Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation yes · discriminator weak
     - reach yes: Related tests appear to reach apply: apply_returns_ok_on_success
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/propagate_value_returned/input --diff fixtures/propagate_value_returned/diff.patch --mode fast probe:src_lib.rs:return_value:1b722e32

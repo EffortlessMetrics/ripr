@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: c == ' '
   Related test: tests/classify.rs:4 leading_space_classifies_other
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation unknown · observation yes · discriminator missing
     - reach yes: Related tests appear to reach is_word_start: leading_space_classifies_other, letter_classifies_word
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 9 more evidence line(s) hidden
+    - 9 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/helper_chain_one_hop/input --diff fixtures/helper_chain_one_hop/diff.patch --mode fast probe:src_lib.rs:predicate:ac178c7f

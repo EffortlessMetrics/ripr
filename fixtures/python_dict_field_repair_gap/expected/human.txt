@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_invoice.py::test_invoice_payload_smoke
   Verify command: python -m pytest tests/test_invoice.py::test_invoice_payload_smoke (high)
   Next step: Python preview: strengthen the existing related test with a field/object assertion for missing discriminator `status == "paid"`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `invoice_payload`
     - infection yes: Changed Python field or attribute construction can alter object state: `return {"status": "paid", "id": invoice_id}`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_dict_field_repair_gap/input --diff fixtures/python_dict_field_repair_gap/diff.patch --mode fast probe:src_invoice.py:python_preview:5718c46e

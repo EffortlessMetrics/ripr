@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: No strong discriminator was detected
   Related test: tests/store_tests.rs:4 store_result_runs_without_panic
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach store_result: store_result_runs_without_panic
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/observation_unverified_call_deletion/input --diff fixtures/observation_unverified_call_deletion/diff.patch --mode fast probe:src_lib.rs:call_deletion:c13d820a

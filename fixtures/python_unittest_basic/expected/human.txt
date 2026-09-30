@@ -25,10 +25,10 @@ Start here:
   Suggested test: test_risk_score_high
   Verify command: python -m unittest tests.test_risk.RiskScoreTests.test_risk_score_high (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `risk_score`
     - infection yes: Changed Python predicate can alter branch selection: `if amount >= 100:`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_unittest_basic/input --diff fixtures/python_unittest_basic/diff.patch --mode fast probe:src_risk.py:python_preview:6835190f

@@ -21,10 +21,10 @@ Start here:
   Discriminator (observed, advisory): Related Python test reaches `final_price` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_price.py:4 test_final_price_discount
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: 1 related Python test(s) found for owner `final_price`
     - infection yes: Changed Python return expression can alter the owner return value: `return amount - 12`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_return_value_shape/input --diff fixtures/python_return_value_shape/diff.patch --mode fast probe:src_price.py:python_preview:a2282a33

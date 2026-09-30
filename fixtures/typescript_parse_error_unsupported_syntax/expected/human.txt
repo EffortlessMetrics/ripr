@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: static limit `unsupported_syntax`; Repair route: fix or
     isolate the unsupported syntax before relying on repair guidance; no actionable repair packet is
     emitted.
-  Evidence:
+  Evidence: reach unknown · infection unknown · propagation unknown · observation unknown · discriminator unknown
     - reach unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token
     - infection unknown: TypeScript preview parser could not build syntax facts for `src/broken.ts`: 1 parser error(s): Unexpected token
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_parse_error_unsupported_syntax/input --diff fixtures/typescript_parse_error_unsupported_syntax/diff.patch --mode fast probe:src_broken.ts:typescript_preview_unsupported_syntax:7027d4b0

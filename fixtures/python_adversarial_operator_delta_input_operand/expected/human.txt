@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_counter.py::test_next
   Verify command: python -m pytest tests/test_counter.py::test_next (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `next_value`
     - infection yes: Changed Python return expression can alter the owner return value: `return count - 1`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_operator_delta_input_operand/input --diff fixtures/python_adversarial_operator_delta_input_operand/diff.patch --mode fast probe:src_counter.py:python_preview:a702e9d2

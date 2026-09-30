@@ -20,10 +20,10 @@ Start here:
   Changed behavior: return importlib.import_module(module_name).handle(payload, strict=True)
   Analyzer limit: Static limit `missing_import_graph`: the changed line uses dynamic import syntax such as `importlib.import_module(...)` or `__import__(...)`; the Python preview adapter does not…
   Related test: tests/test_plugin_loader.py:4 test_run_plugin_returns_payload_status
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: 1 related Python test(s) found for owner `run_plugin`
     - infection unknown: Static limit `missing_import_graph` prevents a safe Python infection claim.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_dynamic_import_limit/input --diff fixtures/python_dynamic_import_limit/diff.patch --mode fast probe:src_plugin_loader.py:python_preview:f81f0948

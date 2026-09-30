@@ -20,10 +20,10 @@ Start here:
   Canonical gap: gap:python:src/pricing.py:apply_discount:return_value:return_value:amount-10
   Changed behavior: return amount - 10
   Missing discriminator: No Python test references `apply_discount(`; add a pytest or unittest test that calls the changed owner.
-  Evidence:
+  Evidence: reach no · infection yes · propagation yes · observation no · discriminator no
     - reach no: 0 related Python test(s) found for owner `apply_discount`
     - infection yes: Changed Python return expression can alter the owner return value: `return amount - 10`
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_unrelated_test_mention/input --diff fixtures/python_unrelated_test_mention/diff.patch --mode fast probe:src_pricing.py:python_preview:5511809e

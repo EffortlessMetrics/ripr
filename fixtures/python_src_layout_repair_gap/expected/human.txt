@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_pricing.py::test_loyalty_discount_high_value_smoke
   Verify command: python -m pytest tests/test_pricing.py::test_loyalty_discount_high_value_smoke (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `subtotal == loyalty_threshold`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `loyalty_discount`
     - infection yes: Changed Python predicate can alter branch selection: `if subtotal >= loyalty_threshold:`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_src_layout_repair_gap/input --diff fixtures/python_src_layout_repair_gap/diff.patch --mode fast probe:src_shop_service_pricing.py:python_preview:627099f2

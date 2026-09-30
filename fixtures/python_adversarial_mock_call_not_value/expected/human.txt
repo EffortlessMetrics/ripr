@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_notifier.py::test_send_alert_calls_post
   Verify command: python -m pytest tests/test_notifier.py::test_send_alert_calls_post (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `send_alert`
     - infection yes: Changed Python return expression can alter the owner return value: `return client.post("/alerts", {"level": level, "priority": "critical"})`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_adversarial_mock_call_not_value/input --diff fixtures/python_adversarial_mock_call_not_value/diff.patch --mode fast probe:src_notifier.py:python_preview:3c36f1be

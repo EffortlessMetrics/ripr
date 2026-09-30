@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is
     emitted until verify, receipt, and edit-boundary fields are available.
-  Evidence:
+  Evidence: reach weak · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach weak: 1 related test(s) found for owner `roundCents`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_return_value_shape/input --diff fixtures/typescript_return_value_shape/diff.patch --mode fast probe:src_rounding.ts:typescript_preview:271f21f8

@@ -17,10 +17,10 @@ Start here:
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/split.rs:9 absent_delimiter_boundary_returns_head
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator not established
     - reach yes: Related tests appear to reach split_after: absent_delimiter_boundary_returns_head, present_delimiter_returns_prefix
     - infection yes: Detected related test input at the changed boundary
-    - 13 more evidence line(s) hidden
+    - 13 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/binding_predicate_equality_boundary/input --diff fixtures/binding_predicate_equality_boundary/diff.patch --mode fast probe:src_lib.rs:predicate:5290fd4d

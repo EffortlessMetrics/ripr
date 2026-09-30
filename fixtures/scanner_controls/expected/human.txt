@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: final_state == "text"
   Related test: tests/classify.rs:12 bound_long_trailing_space_is_blank
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach classify_bound: bound_long_trailing_space_is_blank, bound_long_word_is_word
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 10 more evidence line(s) hidden
+    - 10 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/scanner_controls/input --diff fixtures/scanner_controls/diff.patch --mode fast probe:src_lib.rs:predicate:f4ed635d

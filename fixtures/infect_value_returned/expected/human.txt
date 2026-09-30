@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: No strong discriminator was detected
   Related test: tests/score_tests.rs:4 score_uses_multiplier
   Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach score: score_uses_multiplier
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 8 more evidence line(s) hidden
+    - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast probe:src_lib.rs:return_value:d146b764

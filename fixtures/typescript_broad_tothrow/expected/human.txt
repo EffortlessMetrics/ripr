@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: add a test that exercises the changed behavior with an
     exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is
     emitted until the target shape is explicit.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach yes: 1 related test(s) found for owner `parseUser`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_broad_tothrow/input --diff fixtures/typescript_broad_tothrow/diff.patch --mode fast probe:src_parser.ts:typescript_preview:c440ffa1

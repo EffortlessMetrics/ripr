@@ -20,10 +20,10 @@ Start here:
     establish that this boxed wrapper conversion carries the callee's error variant, so an existing
     exact downcast witness is not statically creditable. Verify via real mutation testing or deeper
     conversion modeling.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach parse_summary: try_parse_summary_pins_malformed_source
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 8 more evidence line(s) hidden
+    - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/error_variant_wrapper_callee_only_pin/input --diff fixtures/error_variant_wrapper_callee_only_pin/diff.patch --mode fast probe:src_lib.rs:error_path:edac60ec

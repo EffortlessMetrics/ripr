@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_discounts.py::test_bulk_discount_large_order
   Verify command: python -m pytest tests/test_discounts.py::test_bulk_discount_large_order (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `quantity == 100`.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation weak · observation yes · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `bulk_discount`
     - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_src_layout_package_import/input --diff fixtures/python_src_layout_package_import/diff.patch --mode fast probe:src_pricing_discounts.py:python_preview:230c5b86

@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: code == 299
   Related test: tests/rendering.rs:4 renders_error_status_snapshot
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach render_status: renders_error_status_snapshot
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/snapshot_oracle/input --diff fixtures/snapshot_oracle/diff.patch --mode fast probe:src_lib.rs:predicate:7f019e84

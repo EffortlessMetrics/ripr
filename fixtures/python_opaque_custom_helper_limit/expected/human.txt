@@ -20,10 +20,10 @@ Start here:
   Changed behavior: if amount >= threshold:
   Analyzer limit: Static limit `opaque_custom_assertion_helper`: a related Python test uses a custom assertion helper such as `assert_*(...)`; the preview adapter cannot inspect the helper body or…
   Related test: tests/test_pricing.py:8 test_apply_discount_custom_helper
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: 1 related Python test(s) found for owner `apply_discount`
     - infection unknown: Static limit `opaque_custom_assertion_helper` prevents a safe Python infection claim.
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_opaque_custom_helper_limit/input --diff fixtures/python_opaque_custom_helper_limit/diff.patch --mode fast probe:src_pricing.py:python_preview:ca00849b

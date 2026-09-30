@@ -17,10 +17,10 @@ Start here:
   Analyzer limit: No strong discriminator was detected
   Related test: tests/classify.rs:4 leading_space_classifies_other
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: Related tests appear to reach first_char: leading_space_classifies_other
     - infection unknown: Changed syntax is not mapped to a high-confidence probe family
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/helper_chain_multi_hop/input --diff fixtures/helper_chain_multi_hop/diff.patch --mode fast probe:src_lib.rs:static_unknown:ea96a27d

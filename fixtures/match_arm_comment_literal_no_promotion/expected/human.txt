@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: No strong discriminator was detected
   Related test: tests/route.rs:4 only_the_unchanged_sibling_is_observed
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach route: only_the_unchanged_sibling_is_observed
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/match_arm_comment_literal_no_promotion/input --diff fixtures/match_arm_comment_literal_no_promotion/diff.patch --mode fast probe:src_lib.rs:match_arm:b5edb276

@@ -23,10 +23,10 @@ Start here:
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `DISCOUNT_THRESHOLD == amount`; the repair packet is complete and delegatable
     (advisory).
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach yes: 2 related test(s) found for owner `discountedTotal`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/ts_repair_packet_boundary_constant_first/input --diff fixtures/ts_repair_packet_boundary_constant_first/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:f12d3569

@@ -21,10 +21,10 @@ Start here:
   Discriminator (observed, advisory): Related Python test reaches `apply_discount` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator.
   Related test: tests/test_discount.py:4 test_apply_discount_boundary
   Next step: Python preview: changed behavior is observed under a strong oracle; verify the assertion targets the changed behavior.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation yes · discriminator yes
     - reach yes: 1 related Python test(s) found for owner `apply_discount`
     - infection yes: Changed Python predicate can alter branch selection: `if amount >= threshold:`
-    - 8 more evidence line(s) hidden
+    - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_strong_oracle/input --diff fixtures/python_strong_oracle/diff.patch --mode fast probe:src_discount.py:python_preview:d1182145

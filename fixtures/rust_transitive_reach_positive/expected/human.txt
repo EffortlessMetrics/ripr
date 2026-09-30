@@ -19,10 +19,10 @@ Start here:
     test may already exercise it through macros, helper-call chains, or integration tests that
     ripr's static model does not yet trace. If none does, add a co-located test that reaches and
     observes the changed behavior so a discriminator exists.
-  Evidence:
+  Evidence: reach no · infection unknown · propagation yes · observation no · discriminator no
     - reach no: No static test path found for the changed owner
     - infection unknown: No statically reachable test path was found, so activation/infection cannot be estimated
-    - 4 more evidence line(s) hidden
+    - 4 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/rust_transitive_reach_positive/input --diff fixtures/rust_transitive_reach_positive/diff.patch --mode fast probe:src_internal.rs:predicate:114f2322

@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: final_label == "other"
   Related test: tests/classify.rs:4 cycle_label_is_blank
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach classify_cycle: cycle_label_is_blank
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/recursive_controls/input --diff fixtures/recursive_controls/diff.patch --mode fast probe:src_lib.rs:predicate:326a2e10

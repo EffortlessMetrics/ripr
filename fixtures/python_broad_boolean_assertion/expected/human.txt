@@ -26,10 +26,10 @@ Start here:
   Test node: tests/test_priority.py::test_priority_amount
   Verify command: python -m pytest tests/test_priority.py::test_priority_amount (high)
   Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == 100`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation weak · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `is_priority`
     - infection yes: Changed Python expression can alter preview-classified predicate behavior: `return amount >= 100`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_broad_boolean_assertion/input --diff fixtures/python_broad_boolean_assertion/diff.patch --mode fast probe:src_priority.py:python_preview:5c6fb782

@@ -15,10 +15,10 @@ Start here:
   Changed behavior: return Err(ParseError::InvalidData)
   Discriminator (observed, advisory): ParseError::InvalidData
   Related test: tests/messages.rs:12 rejects_short_payload_with_variant_pattern
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 13 more evidence line(s) hidden
+    - 13 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/guarded_result_match_positive/input --diff fixtures/guarded_result_match_positive/diff.patch --mode fast probe:src_lib.rs:error_path:94d13aee

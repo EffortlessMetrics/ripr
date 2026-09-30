@@ -21,10 +21,10 @@ Start here:
   Changed behavior: BASE_DISCOUNT = 12
   Missing discriminator: Only heuristic Python test links were found for `<module>`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion.
   Related test: tests/test_constants.py:4 test_base_discount
-  Evidence:
+  Evidence: reach weak · infection yes · propagation weak · observation weak · discriminator weak
     - reach weak: 1 heuristic Python test link(s) found for owner `<module>`; relation is uncertain
     - infection yes: Changed Python expression can alter preview-classified predicate behavior: `BASE_DISCOUNT = 12`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_no_projectable_owner/input --diff fixtures/python_no_projectable_owner/diff.patch --mode fast probe:src_constants.py:python_preview:c16b4583

@@ -14,10 +14,10 @@ Start here:
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: Status::Idle => 0,
   Related test: tests/classify.rs:4 idle_arm_returns_zero
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach classify: idle_arm_returns_zero
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/match_arm_observer/input --diff fixtures/match_arm_observer/diff.patch --mode fast probe:src_lib.rs:match_arm:43b1f2c8

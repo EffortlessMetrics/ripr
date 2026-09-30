@@ -17,10 +17,10 @@ Start here:
   Missing discriminator: CalcError::TooLarge
   Related test: tests/errors.rs:5 negative_input_rejects_with_negative_error
   Next step: Add a test input that reaches the changed error path and assert the exact error variant it returns.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach compute: negative_input_rejects_with_negative_error
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/unwrap_err_sibling_variant/input --diff fixtures/unwrap_err_sibling_variant/diff.patch --mode fast probe:src_lib.rs:return_value:e88897cd

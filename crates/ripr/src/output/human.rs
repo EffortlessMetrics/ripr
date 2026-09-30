@@ -2866,6 +2866,83 @@ mod tests {
         );
     }
 
+    /// #4324: evidence ordering is pipeline-ordered, so a positional 2-line
+    /// window hid propagation/observation/discriminator behind a bare count.
+    /// The digest names all five stage states compactly — every stage always
+    /// has a line, so no stage is ever silently dropped — and keeps the
+    /// 2-line detail window with an honest remainder disclosure that names
+    /// the recovery format.
+    #[test]
+    fn digest_names_all_five_stage_states_and_keeps_the_remainder_disclosure() {
+        let finding = sample_finding();
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains(
+                "  Evidence: reach yes · infection weak · propagation unknown · observation yes · discriminator no\n"
+            ),
+            "digest must name all five stage states; got:\n{digest}"
+        );
+        // sample_finding carries flow-sink, related-test and observed-value
+        // lines beyond the five stage lines, so the window cannot show
+        // everything and the remainder disclosure must fire.
+        assert!(
+            digest.contains("more detail line(s) in --format human-full"),
+            "digest must keep an honest remainder disclosure; got:\n{digest}"
+        );
+        assert!(
+            digest.lines().all(|line| line.chars().count() <= 180),
+            "the compact stage line stays within the display budget; got:\n{digest}"
+        );
+    }
+
+    /// #4324 review: the `discriminate` stage grades the strongest related
+    /// oracle, so a non-`exposed` finding can carry a `yes` grade while the
+    /// digest simultaneously names the missing discriminating input. The
+    /// compact token keeps the full evidence line's semantic and must not
+    /// read `discriminator yes` in that case.
+    #[test]
+    fn digest_compact_discriminator_token_mirrors_the_full_evidence_line() {
+        let mut finding = sample_finding();
+        finding.ripr.reveal.discriminate =
+            stage(StageState::Yes, Confidence::High, "strong oracle grade");
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount == discount_threshold".to_string(),
+            reason: "no related test call uses the boundary value".to_string(),
+            flow_sink: None,
+        }];
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains(
+                "  Evidence: reach yes · infection weak · propagation unknown · observation yes · discriminator missing\n"
+            ),
+            "a yes oracle grade on a non-exposed finding must not read as a present discriminator; got:\n{digest}"
+        );
+        assert!(
+            !digest.contains("discriminator yes"),
+            "the compact line must not contradict the missing-discriminator wording; got:\n{digest}"
+        );
+
+        finding.activation.missing_discriminators = Vec::new();
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+        assert!(
+            digest.contains("· discriminator not established\n"),
+            "without a named missing discriminator the token keeps the full line's wording; got:\n{digest}"
+        );
+    }
+
     // RIPR-SPEC-0115: a transitive-reach witness line in `evidence` (recognized
     // by the shared prefix) renders as a concrete "Where to look" pointer.
     #[test]

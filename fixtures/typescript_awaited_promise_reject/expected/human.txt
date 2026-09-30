@@ -24,10 +24,10 @@ Start here:
     discriminator `rejects Error matching "missing id"`; add an exact payload to `toThrow` (string,
     object, or class reference) and no actionable repair packet is emitted until verify, receipt,
     and edit-boundary fields are available.
-  Evidence:
+  Evidence: reach weak · infection unknown · propagation unknown · observation weak · discriminator weak
     - reach weak: 1 related test(s) found for owner `loadProfile`
     - infection unknown: TypeScript preview adapter does not yet model infection.
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/typescript_awaited_promise_reject/input --diff fixtures/typescript_awaited_promise_reject/diff.patch --mode fast probe:src_profile.ts:typescript_preview:9da98202

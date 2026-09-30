@@ -25,10 +25,10 @@ Start here:
   Suggested test: test_warn_coupon_output_message
   Verify command: python -m unittest tests.test_notifications.NotificationTests.test_warn_coupon_output_message (high)
   Next step: Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == "coupon expired"`.
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation weak · discriminator weak
     - reach yes: 1 related Python test(s) found for owner `warn_coupon`
     - infection yes: Changed Python return expression can alter the owner return value: `return "coupon expired"`
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/python_unittest_oracle_shapes/input --diff fixtures/python_unittest_oracle_shapes/diff.patch --mode fast probe:src_notifications.py:python_preview:469534bc
