@@ -1647,15 +1647,16 @@ fn top_issue_from_guidance(
             (Some(item), &["changed_expression"]),
             (Some(item), &["evidence", "changed_behavior"]),
         ]),
-        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)])
-            .or_else(|| {
+        current_evidence_strength: current_evidence_strength_from_sources(&[Some(item)]).or_else(
+            || {
                 string_from_sources(&[
                     (Some(item), &["classification"]),
                     (Some(item), &["class"]),
                     (Some(item), &["static_class"]),
                 ])
                 .map(normalize_class)
-            }),
+            },
+        ),
         missing_discriminator: string_path(item, &["missing_discriminator"]),
         no_action_reason: None,
         focused_proof_intent: string_from_sources(&[
@@ -1667,9 +1668,14 @@ fn top_issue_from_guidance(
         suggested_test: string_path(item, &["suggested_test", "assertion_shape"]),
         repair_command: repair_command.clone(),
         verify_command: seam_id.as_ref().map(|_| {
-            format!(
-                "ripr agent verify --root {} --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
-                input.root
+            // Shared builder, no per-surface verify text (ADR-0019). The
+            // redirect writes the artifact the card's receipt reads via
+            // `--verify-json` (#4307), matching the review-card surface.
+            crate::agent::loop_commands::agent_verify_command(
+                &input.root,
+                crate::agent::loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+                crate::agent::loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                Some(crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
             )
         }),
         receipt_command: None,
@@ -2519,12 +2525,22 @@ mod tests {
                 );
             }
 
+            // #3872/#4307: the guidance-route verify command anchors its
+            // redirect at the resolved --root, so the machine prefix projects
+            // to `<cwd>/` before comparing AND before re-blessing — a pinned
+            // fixture must never carry a real machine directory (placeholder
+            // rule: loop_commands).
+            let rendered_json = crate::testing::cwd_placeholder::project_cwd_text(
+                &render_pr_review_front_panel_json(&report)?,
+            );
             assert_eq!(
-                render_pr_review_front_panel_json(&report)?,
+                rendered_json.trim_end(),
                 read_file(&expected_json_path)?.trim_end(),
                 "{case_id} JSON fixture drifted"
             );
-            let markdown = render_pr_review_front_panel_markdown(&report);
+            let markdown = crate::testing::cwd_placeholder::project_cwd_text(
+                &render_pr_review_front_panel_markdown(&report),
+            );
             // #3742 class (e): only the explicit RIPR_UPDATE_FIXTURES=1
             // opt-in rewrites the Markdown pin; JSON stays asserted.
             if crate::testing::rebless::fixture_rebless_enabled() {
