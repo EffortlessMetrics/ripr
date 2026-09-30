@@ -138,6 +138,19 @@ fn validate_test_covered_by_with(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pypi_admission_retention_is_exactly_scoped() {
+        for path in [
+            ".github/scripts/pypi_admission.py",
+            ".github/scripts/test_pypi_admission.py",
+        ] {
+            assert!(crate::non_rust_programming_retention_reason(path).is_some());
+        }
+        for path in [".github/scripts/unrelated.py", "scripts/pypi_admission.py"] {
+            assert!(crate::non_rust_programming_retention_reason(path).is_none());
+        }
+    }
+
     use std::time::Duration;
 
     use super::map_test_covered_by_enumeration_output;

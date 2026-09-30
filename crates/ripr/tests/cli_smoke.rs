@@ -705,11 +705,20 @@ fn assert_repo_exposure_rejects_mutation(
     std::fs::create_dir_all(&root)?;
     let before = root.join("before.repo-exposure.json");
     let after = root.join("after.repo-exposure.json");
-    std::fs::write(&before, serde_json::to_string_pretty(snapshot)?)?;
-    let mut mutated = snapshot.clone();
-    mutate(&mut mutated);
-    std::fs::write(&after, serde_json::to_string_pretty(&mutated)?)?;
-    let output = run_ripr_in_workspace(&[
+    // The portable golden's historical head may be absent in a shallow
+    // checkout. Bind only the temporary control to the real checkout head,
+    // then preserve the exact committed bytes (including the final newline).
+    let mut current = snapshot.clone();
+    let head = concrete_fixture_repository_head(&workspace_root())?;
+    current["artifact"]["repository"]["head"] = serde_json::json!(head);
+    let input_identity = json_pointer_str(&current, "/artifact/analysis/input_identity")?;
+    current["artifact"]["snapshot_identity"] =
+        serde_json::json!(format!("snapshot:{input_identity};revision:{head}"));
+    let committed =
+        recommit_repo_exposure_json(format!("{}\n", serde_json::to_string_pretty(&current)?));
+    std::fs::write(&before, &committed)?;
+    std::fs::write(&after, &committed)?;
+    let args = [
         "agent",
         "verify",
         "--root",
@@ -719,11 +728,26 @@ fn assert_repo_exposure_rejects_mutation(
         "--after",
         after.to_str().ok_or("after path should be utf-8")?,
         "--json",
-    ])?;
+    ];
+    let control = run_ripr_in_workspace(&args)?;
+    assert_success(&control);
+    let control: serde_json::Value = serde_json::from_slice(&control.stdout)?;
+    assert_eq!(
+        control.pointer("/summary/unchanged"),
+        Some(&serde_json::json!(1))
+    );
+
+    let mut mutated: serde_json::Value = serde_json::from_str(&committed)?;
+    mutate(&mut mutated);
+    std::fs::write(
+        &after,
+        format!("{}\n", serde_json::to_string_pretty(&mutated)?),
+    )?;
+    let output = run_ripr_in_workspace(&args)?;
     assert_failure(&output);
     let stderr = String::from_utf8(output.stderr)?;
     assert!(
-        stderr.contains(expected_error),
+        stderr.contains(&format!("agent verify after artifact {expected_error}")),
         "unexpected rejection: {stderr}"
     );
     std::fs::remove_dir_all(root)?;
@@ -3419,6 +3443,28 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
                     snapshot["artifact"]["content_sha256"] = serde_json::json!(
                         "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
                     );
+                },
+                "content commitment mismatch",
+            )?;
+            assert_repo_exposure_rejects_mutation(
+                &before,
+                |snapshot| {
+                    snapshot["artifact"]["producer"]["version"] =
+                        serde_json::json!("0.0.0-tampered");
+                },
+                "content commitment mismatch",
+            )?;
+            assert_repo_exposure_rejects_mutation(
+                &before,
+                |snapshot| {
+                    let input_identity = "input:v3:fnv1a64:0000000000000000";
+                    let Some(head) = snapshot["artifact"]["repository"]["head"].as_str() else {
+                        return;
+                    };
+                    snapshot["artifact"]["snapshot_identity"] =
+                        serde_json::json!(format!("snapshot:{input_identity};revision:{head}"));
+                    snapshot["artifact"]["analysis"]["input_identity"] =
+                        serde_json::json!(input_identity);
                 },
                 "content commitment mismatch",
             )?;
