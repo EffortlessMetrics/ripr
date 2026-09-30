@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: try_parse_summary(raw).map_err(Into::into)
   Missing discriminator: Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
-  Related test: tests/errors.rs:4 try_parse_summary_with_foreign_pin
+  Related test (1 of 4): tests/errors.rs:4 try_parse_summary_with_foreign_pin
   Next step: Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically
     establish that this boxed wrapper conversion carries the callee's error variant, so an existing
     exact downcast witness is not statically creditable. Verify via real mutation testing or deeper
@@ -31,5 +31,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/error_variant_wrapper_foreign_pin/input/src/lib.rs:39 (reachable_unrevealed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

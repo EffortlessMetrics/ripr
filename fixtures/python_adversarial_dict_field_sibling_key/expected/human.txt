@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/conf.py:build_config:field_value:field_construction:return_host_localhost_port_9090
   Changed behavior: return {"host": "localhost", "port": 9090}
-  Missing discriminator: A strong Python oracle reaches `build_config`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated.…
+  Missing discriminator (1 of 2): A strong Python oracle reaches `build_config`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated.…
   Related test: tests/test_conf.py:4 test_host
   Suggested test file: tests/test_conf.py
   Suggested test: test_host

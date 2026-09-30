@@ -14,7 +14,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.92)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: Err(PricingError::Other)
-  Missing discriminator: PricingError::Other
+  Missing discriminator (1 of 2): PricingError::Other
   Related test: tests/pricing.rs:4 rejects_boundary
   Next step: Strengthen the related assertion so it discriminates the changed behavior.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
@@ -28,5 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/rust_missing_discriminator_evidence/input/src/lib.rs:9 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

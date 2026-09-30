@@ -13,7 +13,7 @@ Start here:
   File: fixtures/match_arm_positive/input/src/lib.rs:11
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: if final_label == "beta" {
-  Related test: tests/classify.rs:9 text_label_is_blank
+  Related test (1 of 2): tests/classify.rs:9 text_label_is_blank
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach classify: text_label_is_blank, word_label_is_word
     - infection yes: Detected related test input at the changed boundary

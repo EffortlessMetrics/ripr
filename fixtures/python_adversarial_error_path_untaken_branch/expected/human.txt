@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/parseint.py:parse:exception_path:error_path:keyerror_empty
   Changed behavior: raise KeyError("empty")
-  Missing discriminator: A strong Python oracle reaches `parse`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an…
+  Missing discriminator (1 of 2): A strong Python oracle reaches `parse`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an…
   Related test: tests/test_parseint.py:4 test_parse_ok
   Suggested test file: tests/test_parseint.py
   Suggested test: test_parse_ok

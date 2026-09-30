@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Math.round(amount * 100) / 100;
-  Missing discriminator: Only heuristic TypeScript test links were found for `roundCents`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Missing discriminator (1 of 2): Only heuristic TypeScript test links were found for `roundCents`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/rounding.test.ts:6 rounds two decimals
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `return value == Math.round(amount * 100) / 100`; no actionable repair packet is

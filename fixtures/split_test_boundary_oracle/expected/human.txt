@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: input >= 10
   Missing discriminator: Discriminator unconfirmed: boundary input and discriminating oracle come from different tests (same_test_pairing_missing); no test both feeds a boundary input to the owner and…
-  Related test: tests/split.rs:4 boundary
+  Related test (1 of 2): tests/split.rs:4 boundary
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach gate: boundary, far
@@ -28,5 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/split_test_boundary_oracle/input/src/lib.rs:2 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

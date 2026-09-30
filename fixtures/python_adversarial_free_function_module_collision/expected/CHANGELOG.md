@@ -192,7 +192,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (2)
+## Pending — python_adversarial_free_function_module_collision (1)
 
 Reason:
 RIPR-SPEC-0108: bind discriminator narration to final verdict (#3670)
@@ -205,7 +205,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (3)
+## Pending — python_adversarial_free_function_module_collision (2)
 
 Reason:
 RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
@@ -218,7 +218,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (4)
+## Pending — python_adversarial_free_function_module_collision (3)
 
 Reason:
 RIPR-SPEC-0082/RIPR-SPEC-0122 wording owner change (PR #3978): Why lines re-derived from reach/observe stage state, preview notes use language display names with singular file counts, recovery detail lines end with exactly one period; mechanical re-render of unchanged fixture evidence
@@ -231,7 +231,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (5)
+## Pending — python_adversarial_free_function_module_collision (4)
 
 Reason:
 RIPR-SPEC-0122: #4216 row 1, the Python preview_limited safe next action names why no ripr command routes the finding instead of asking for repair-packet fields the operator cannot complete
@@ -244,7 +244,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (6)
+## Pending — python_adversarial_free_function_module_collision (5)
 
 Reason:
 RIPR-SPEC-0028 (#4216 row 6): Python missing discriminator no longer restates the changed return expression; non-literal return names <expected value>
@@ -257,7 +257,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (7)
+## Pending — python_adversarial_free_function_module_collision (6)
 
 Reason:
 RIPR-SPEC-0122: human-full carries per-finding drill-in commands (#4379); digest why-line names the incomplete stage; unreached static_unknown asks for a test first
@@ -270,7 +270,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (8)
+## Pending — python_adversarial_free_function_module_collision (7)
 
 Reason:
 RIPR-SPEC-0122: omit zero-count languages, keep the empty-result caveat to empty runs, cut digest lines at word boundaries
@@ -283,7 +283,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (9)
+## Pending — python_adversarial_free_function_module_collision (8)
 
 Reason:
 RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
@@ -297,10 +297,23 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_free_function_module_collision (10)
+## Pending — python_adversarial_free_function_module_collision (9)
 
 Reason:
 RIPR-SPEC-0046 RIPR-SPEC-0047: check JSON now carries a top-level source_subject stamp with the analysis-time content digests of the files a derived gap ledger names (#4544); no finding, classification, or human output changed.
+
+Command:
+`cargo xtask goldens bless python_adversarial_free_function_module_collision --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — python_adversarial_free_function_module_collision (10)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
 
 Command:
 `cargo xtask goldens bless python_adversarial_free_function_module_collision --reason "..."`

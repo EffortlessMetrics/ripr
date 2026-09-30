@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/handler.py:validate:return_value:return_value:payload.strip==ok
   Changed behavior: return payload.strip() == "ok"
-  Missing discriminator: A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add…
+  Missing discriminator (1 of 2): A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add…
   Related test: tests/test_checker.py:4 test_checker_validate
   Suggested test file: tests/test_checker.py
   Suggested test: test_checker_validate

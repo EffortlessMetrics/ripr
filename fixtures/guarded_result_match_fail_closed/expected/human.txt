@@ -15,12 +15,12 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: Ok(build_response(id.trim(), method)?)
   Missing discriminator: No exact error variant discriminator was detected
-  Related test: tests/protocol.rs:43 message_only_error_predicate_never_pins
+  Related test (1 of 3): tests/protocol.rs:43 message_only_error_predicate_never_pins
   Next step: Assert the exact error variant or payload instead of only is_err().
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 15 more detail line(s) in --format human-full
+    - 16 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast probe:src_lib.rs:error_path:09b3885a
@@ -28,5 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/guarded_result_match_fail_closed/input/src/lib.rs:62 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

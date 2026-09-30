@@ -228,7 +228,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — ts_cross_language_bridge_limit (2)
+## Pending — ts_cross_language_bridge_limit (1)
 
 Reason:
 RIPR-SPEC-0027: predicate boundary witness; no strong assertion observes an owner call at the changed comparison boundary, so the predicate downgrades from exposed to weakly_exposed
@@ -241,7 +241,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — ts_cross_language_bridge_limit (3)
+## Pending — ts_cross_language_bridge_limit (2)
 
 Reason:
 RIPR-SPEC-0082/RIPR-SPEC-0122 wording owner change (PR #3978): Why lines re-derived from reach/observe stage state, preview notes use language display names with singular file counts, recovery detail lines end with exactly one period; mechanical re-render of unchanged fixture evidence
@@ -253,7 +253,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — ts_cross_language_bridge_limit (4)
+## Pending — ts_cross_language_bridge_limit (3)
 
 Reason:
 RIPR-SPEC-0122: omit zero-count languages, keep the empty-result caveat to empty runs, cut digest lines at word boundaries
@@ -265,7 +265,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — ts_cross_language_bridge_limit (5)
+## Pending — ts_cross_language_bridge_limit (4)
 
 Reason:
 RIPR-SPEC-0046 RIPR-SPEC-0047: check JSON now carries a top-level source_subject stamp with the analysis-time content digests of the files a derived gap ledger names (#4544); no finding, classification, or human output changed.
@@ -279,10 +279,22 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — ts_cross_language_bridge_limit (6)
+## Pending — ts_cross_language_bridge_limit (5)
 
 Reason:
 RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless ts_cross_language_bridge_limit --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_cross_language_bridge_limit (6)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
 
 Command:
 `cargo xtask goldens bless ts_cross_language_bridge_limit --reason "..."`

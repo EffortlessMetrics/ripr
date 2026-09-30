@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/callbacks.py:recording_callback:call_or_output_effect:side_effect:callback=magicmock_name=receipt.sent
   Changed behavior: callback = MagicMock(name="receipt.sent")
-  Missing discriminator: Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call…
+  Missing discriminator (1 of 2): Related Python test reaches `recording_callback` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call…
   Related test: tests/test_callbacks.py:4 test_recording_callback_starts_idle
   Suggested test file: tests/test_callbacks.py
   Suggested test: test_recording_callback_starts_idle

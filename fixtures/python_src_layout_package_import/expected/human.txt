@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pricing/discounts.py:bulk_discount:predicate_boundary:predicate:quantity>100
   Changed behavior: if quantity > 100:
-  Missing discriminator: A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test…
+  Missing discriminator (1 of 2): A strong Python oracle reaches `bulk_discount`, but static evidence does not place a related test input at the changed predicate boundary `quantity == 100`. No strong related test…
   Related test: tests/test_discounts.py:4 test_bulk_discount_large_order
   Suggested test file: tests/test_discounts.py
   Suggested test: test_bulk_discount_large_order
@@ -37,6 +37,7 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output (Python preview: 1).
+    - src/pricing/legacy.py:2 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

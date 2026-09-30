@@ -1012,6 +1012,187 @@ mod tests {
         assert!(!rendered.contains("More:"));
     }
 
+    /// #4320: the `Hidden:` block must name what it hides by
+    /// `file:line (class)` so a reader can confirm a file they care about was
+    /// covered without a rerun.
+    #[test]
+    fn hidden_block_lists_omitted_findings_by_file_line_and_class() {
+        let findings = (0..3)
+            .map(|index| {
+                let mut finding = sample_finding();
+                finding.id = format!("finding-{index}");
+                finding.probe.location = SourceLocation::new(format!("src/f{index}.rs"), 1, 1);
+                finding
+            })
+            .collect::<Vec<_>>();
+
+        let rendered = render(&bounded_output_with_findings(findings));
+
+        assert!(
+            rendered.contains("    - src/f1.rs:1 (weakly_exposed)\n"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("    - src/f2.rs:1 (weakly_exposed)\n"),
+            "{rendered}"
+        );
+    }
+
+    /// #4320: when the #3281 candidate filter hides every finding, the run is
+    /// all base-side evidence — the honest framing names that (with the
+    /// human-full rerun pointer), not a lower-priority framing, and the
+    /// suppressed-by-policy claim must not fire when nothing was suppressed.
+    #[test]
+    fn hidden_block_all_base_side_run_names_base_side_evidence() {
+        let findings = (0..2)
+            .map(|index| {
+                let mut finding = sample_finding();
+                finding.id = format!("base-finding-{index}");
+                finding.probe.location = SourceLocation::new(format!("src/base_{index}.rs"), 1, 1);
+                finding.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+                finding
+            })
+            .collect::<Vec<_>>();
+
+        let rendered = render(&bounded_output_with_findings(findings));
+
+        assert!(rendered.contains("(no_actionable_gap)"), "{rendered}");
+        assert!(
+            rendered.contains(
+                "  Safe next action: all findings are base-side evidence, not candidate edit targets; rerun with --format human-full to inspect the full evidence before treating this run as actionable.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("suppressed by policy"), "{rendered}");
+        assert!(rendered.contains("\nHidden:\n"), "{rendered}");
+        assert!(
+            rendered.contains(
+                "  All 2 finding(s) are base-side evidence, not candidate edit targets — rerun with --format human-full for the full evidence.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("    - src/base_0.rs:1 (weakly_exposed)\n"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("    - src/base_1.rs:1 (weakly_exposed)\n"),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("lower-priority finding(s) omitted"),
+            "the all-base-side case must not use the lower-priority framing:\n{rendered}"
+        );
+    }
+
+    /// #4320 review: `unresolved_subject` is the explicit unknown (#3281), not
+    /// base-side evidence. A run where nothing is resolved must not call the
+    /// findings base-side — the wording preserves the unknown-currentness
+    /// distinction on both the Hidden line and the safe action.
+    #[test]
+    fn hidden_block_unresolved_subject_run_names_the_unknown_not_base_side() {
+        let findings = (0..2)
+            .map(|index| {
+                let mut finding = sample_finding();
+                finding.id = format!("unresolved-finding-{index}");
+                finding.probe.location =
+                    SourceLocation::new(format!("src/unresolved_{index}.rs"), 1, 1);
+                finding.source_currentness = crate::domain::SourceCurrentness::UnresolvedSubject;
+                finding
+            })
+            .collect::<Vec<_>>();
+
+        let rendered = render(&bounded_output_with_findings(findings));
+
+        assert!(rendered.contains("(no_actionable_gap)"), "{rendered}");
+        assert!(
+            !rendered.contains("base-side evidence"),
+            "unknown currentness must not read as base-side:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "  All 2 finding(s) have unresolved subject currentness — not established base-side or candidate edit targets; rerun with --format human-full for the full evidence.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "  Safe next action: no finding is resolved to the candidate (subject currentness unresolved); rerun with --format human-full to inspect the full evidence before treating this run as actionable.\n"
+            ),
+            "{rendered}"
+        );
+    }
+
+    /// #4320 review: a mixed no-selection run names both dispositions with
+    /// their counts instead of collapsing them into one claim.
+    #[test]
+    fn hidden_block_mixed_currentness_run_names_base_side_and_unresolved_counts() {
+        let mut base = sample_finding();
+        base.id = "mixed-base".to_string();
+        base.probe.location = SourceLocation::new("src/mixed_base.rs".to_string(), 1, 1);
+        base.source_currentness = crate::domain::SourceCurrentness::MovedOrRenamed;
+        let mut unresolved = sample_finding();
+        unresolved.id = "mixed-unresolved".to_string();
+        unresolved.probe.location =
+            SourceLocation::new("src/mixed_unresolved.rs".to_string(), 1, 1);
+        unresolved.source_currentness = crate::domain::SourceCurrentness::UnresolvedSubject;
+
+        let rendered = render(&bounded_output_with_findings(vec![base, unresolved]));
+
+        assert!(
+            rendered.contains(
+                "  None of the 2 finding(s) is a candidate edit target (1 base-side, 1 unresolved currentness) — rerun with --format human-full for the full evidence.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "  Safe next action: no finding is a candidate edit target (1 base-side, 1 unresolved currentness); rerun with --format human-full to inspect the full evidence before treating this run as actionable.\n"
+            ),
+            "{rendered}"
+        );
+    }
+
+    /// #4320: the `Hidden:` list is itself a bounded window — beyond the
+    /// `HIDDEN_FINDINGS_LISTED` cap it discloses the remainder instead of
+    /// printing every identity, keeping the default surface bounded.
+    #[test]
+    fn hidden_block_list_discloses_remainder_beyond_its_window() {
+        let findings = (0..26)
+            .map(|index| {
+                let mut finding = sample_finding();
+                finding.id = format!("finding-{index}");
+                finding.probe.location = SourceLocation::new("src/f.rs", index + 1, 1);
+                finding
+            })
+            .collect::<Vec<_>>();
+
+        let rendered = render(&bounded_output_with_findings(findings));
+
+        assert!(
+            rendered.contains("25 lower-priority finding(s) omitted"),
+            "{rendered}"
+        );
+        assert_eq!(
+            rendered
+                .lines()
+                .filter(|line| line.starts_with("    - src/f.rs:"))
+                .count(),
+            20,
+            "the list window stays bounded:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "    - … and 5 more omitted finding(s); every identity is in --format json.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.lines().count() < 150,
+            "the default surface stays bounded with many findings"
+        );
+    }
+
     /// #4395(b): mixed-repo remainder must name the omitted preview-language
     /// identity. Ranking still selects the Rust gap; the Hidden line is how
     /// a reader learns the omitted finding was Python preview.
@@ -1475,7 +1656,8 @@ mod tests {
 {digest}"));
         }
         // A real missing discriminator keeps the discriminator label even
-        // on the unknown classes.
+        // on the unknown classes. #4320: the digest discloses the window —
+        // the full Weakness section here carries two entries.
         finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
             value: "end == start".to_string(),
             reason: "no related test call uses end equal to start".to_string(),
@@ -1486,7 +1668,9 @@ mod tests {
             &finding,
             &crate::config::RiprConfig::default(),
         );
-        if !digest.contains("  Missing discriminator: No strong discriminator was detected") {
+        if !digest
+            .contains("  Missing discriminator (1 of 2): No strong discriminator was detected")
+        {
             return Err(format!(
                 "a finding with a real missing discriminator keeps its label:
 {digest}"
@@ -1513,7 +1697,7 @@ mod tests {
             );
 
             assert!(
-                digest.contains("  Missing discriminator: missing strong oracle"),
+                digest.contains("  Missing discriminator (1 of 2): missing strong oracle"),
                 "expected missing-discriminator label for {:?}; got:\n{digest}",
                 finding.class
             );
@@ -1543,8 +1727,8 @@ mod tests {
         );
 
         assert!(
-            digest.contains("  Missing discriminator: AuthError::RevokedToken\n"),
-            "digest must print the value alone; got:\n{digest}"
+            digest.contains("  Missing discriminator (1 of 2): AuthError::RevokedToken\n"),
+            "digest must print the value alone and disclose the window; got:\n{digest}"
         );
         assert!(
             !digest.contains("Missing discriminator: Missing discriminator"),
@@ -1566,7 +1750,9 @@ mod tests {
         );
 
         assert!(
-            digest.contains("  Missing discriminator: No strong discriminator was detected\n"),
+            digest.contains(
+                "  Missing discriminator (1 of 2): No strong discriminator was detected\n"
+            ),
             "prose entries must render unchanged; got:\n{digest}"
         );
     }
@@ -2390,6 +2576,168 @@ mod tests {
         ));
         assert!(rendered.contains("Next step\n"));
         assert!(rendered.contains("Add assertion for disabled path result."));
+    }
+
+    /// #4320: the 5-related-test window must disclose the total — the number
+    /// of reaching tests is core exposure evidence, and an unmarked cap reads
+    /// as the whole evidence.
+    #[test]
+    fn evidence_window_discloses_related_tests_cap() {
+        let mut finding = sample_finding();
+        for index in 1..9 {
+            finding.related_tests.push(RelatedTest {
+                name: format!("test_extra_{index}"),
+                file: PathBuf::from("tests/sample.rs"),
+                line: 100 + index,
+                oracle: None,
+                oracle_kind: OracleKind::SmokeOnly,
+                oracle_strength: OracleStrength::Weak,
+                relation_reason: None,
+                relation_confidence: None,
+            });
+        }
+        assert_eq!(finding.related_tests.len(), 9);
+
+        let rendered = render_finding(&finding);
+
+        assert_eq!(
+            rendered.matches("related test tests/sample.rs:").count(),
+            5,
+            "only the windowed related tests render:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("related tests (showing 5 of 9; more in --format json)"),
+            "expected the related-tests window disclosure; got:\n{rendered}"
+        );
+    }
+
+    /// #4320: the 8-observed-value window must disclose the total — observed
+    /// values are the raw material for writing the missing-discriminator test,
+    /// and an unmarked cap can hide the one boundary value the reader needs.
+    #[test]
+    fn evidence_window_discloses_observed_values_cap() {
+        let mut finding = sample_finding();
+        // sample_finding already carries one observed value; 13 more make 14.
+        for index in 0..13 {
+            finding.activation.observed_values.push(ValueFact {
+                line: 200 + index,
+                text: format!("sample({index})"),
+                value: format!("arg{index} = {index}"),
+                context: ValueContext::FunctionArgument,
+            });
+        }
+        assert_eq!(finding.activation.observed_values.len(), 14);
+
+        let rendered = render_finding(&finding);
+
+        assert_eq!(
+            rendered
+                .matches("observed function argument value ")
+                .count(),
+            8,
+            "only the windowed observed values render:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("observed values (showing 8 of 14; full list in --format json)"),
+            "expected the observed-values window disclosure; got:\n{rendered}"
+        );
+    }
+
+    /// #4320 review: beyond JSON's own ranked 32-value cap, both formats are
+    /// windows — the human pointer must name JSON's cap instead of promising
+    /// a full list no surface carries.
+    #[test]
+    fn evidence_window_observed_values_pointer_names_json_cap_beyond_it() {
+        let mut finding = sample_finding();
+        // sample_finding already carries one observed value; 41 more make 42
+        // (over the 8-value human window and the 32-value ranked JSON cap).
+        for index in 0..41 {
+            finding.activation.observed_values.push(ValueFact {
+                line: 300 + index,
+                text: format!("sample({index})"),
+                value: format!("arg{index} = {index}"),
+                context: ValueContext::AssertionArgument,
+            });
+        }
+        assert_eq!(finding.activation.observed_values.len(), 42);
+
+        let rendered = render_finding(&finding);
+
+        assert!(
+            rendered.contains("observed values (showing 8 of 42; --format json keeps a ranked 32)"),
+            "the pointer must disclose JSON's ranked cap; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("full list in --format json"),
+            "no surface carries the full list at this size:\n{rendered}"
+        );
+    }
+
+    /// #4320: the digest shows only the first related test; the line must
+    /// carry the total so the reader knows how much reaching-test evidence
+    /// exists. A single related test keeps the unmarked form.
+    #[test]
+    fn digest_related_test_line_carries_the_total() {
+        let mut finding = sample_finding();
+        finding.related_tests.push(RelatedTest {
+            name: "test_second_observer".to_string(),
+            file: PathBuf::from("tests/other.rs"),
+            line: 9,
+            oracle: None,
+            oracle_kind: OracleKind::SmokeOnly,
+            oracle_strength: OracleStrength::Weak,
+            relation_reason: None,
+            relation_confidence: None,
+        });
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains("  Related test (1 of 2): tests/sample.rs:22 test_handles_disabled\n"),
+            "expected the digest related-test total; got:\n{digest}"
+        );
+
+        let single = sample_finding();
+        let digest = super::sections::render_finding_digest_with_config(
+            &single,
+            &crate::config::RiprConfig::default(),
+        );
+        assert!(
+            digest.contains("  Related test: tests/sample.rs:22 test_handles_disabled\n"),
+            "a single related test keeps the unmarked form; got:\n{digest}"
+        );
+        assert!(!digest.contains("Related test (1 of"), "{digest}");
+    }
+
+    /// #4320: the digest missing-discriminator line discloses its window into
+    /// the full Weakness set (acceptance wording: `Missing discriminator (1 of 3)`).
+    #[test]
+    fn digest_missing_discriminator_discloses_one_of_n_window() {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.missing = vec![
+            format!("{MISSING_DISCRIMINATOR_VALUE_PREFIX}amount >= threshold"),
+            "no strong oracle observes the boundary".to_string(),
+            "no related test constructs the boundary input".to_string(),
+        ];
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount >= threshold".to_string(),
+            reason: "no related test call uses an amount at the threshold".to_string(),
+            flow_sink: None,
+        }];
+
+        let digest = super::sections::render_finding_digest_with_config(
+            &finding,
+            &crate::config::RiprConfig::default(),
+        );
+
+        assert!(
+            digest.contains("  Missing discriminator (1 of 3): amount >= threshold\n"),
+            "expected the 1-of-3 window disclosure; got:\n{digest}"
+        );
     }
 
     /// #2752: the `Changed` block rendered `before`/`after`/`expr` at full source

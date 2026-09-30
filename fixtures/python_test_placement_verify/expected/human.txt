@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pricing.py:calculate_discount:predicate_boundary:predicate:amount>=threshold
   Changed behavior: if amount >= threshold:
-  Missing discriminator: Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
+  Missing discriminator (1 of 2): Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   Related test: tests/test_pricing.py:4 test_calculate_discount_smoke
   Suggested test file: tests/test_pricing.py
   Suggested test: test_calculate_discount_smoke
@@ -37,6 +37,7 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output (Python preview: 1).
+    - src/validation.py:3 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

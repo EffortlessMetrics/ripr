@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/auth.py:TokenValidator.validate:return_value:return_value:token.strip_in_self._valid
   Changed behavior: return token.strip() in self._valid
-  Missing discriminator: A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add…
+  Missing discriminator (1 of 2): A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add…
   Related test: tests/test_billing.py:5 test_billing_validate
   Suggested test file: tests/test_billing.py
   Suggested test: test_billing_validate

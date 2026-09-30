@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (user.length >= 3) {
-  Missing discriminator: Related test reaches `login` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a…
+  Missing discriminator (1 of 2): Related test reaches `login` but the strongest extracted oracle is `relational_check`; upgrade by adding an exact-value (`toBe` / `toEqual` / `toStrictEqual`) assertion or a…
   Related test: tests/auth.test.ts:3 login returns a long session token
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `user.length == 3`; no actionable repair packet is emitted until verify, receipt,

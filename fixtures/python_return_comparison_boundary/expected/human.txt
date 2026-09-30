@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pricing.py:is_large:predicate_boundary:predicate:total>100
   Changed behavior: return total > 100
-  Missing discriminator: A strong Python oracle reaches `is_large`, but static evidence does not place a related test input at the changed predicate boundary `total == 100`. No strong related test call…
+  Missing discriminator (1 of 2): A strong Python oracle reaches `is_large`, but static evidence does not place a related test input at the changed predicate boundary `total == 100`. No strong related test call…
   Related test: tests/test_pricing.py:4 test_large_order
   Suggested test file: tests/test_pricing.py
   Suggested test: test_large_order

@@ -74,3 +74,16 @@ Command:
 
 Updated:
 - `expected/human.txt`
+
+## Pending — guarded_result_match_fail_closed (7)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - post-merge re-bless of the #4320 caps disclosure on the merged tree (origin/main digest Evidence line)
+
+Command:
+`cargo xtask goldens bless guarded_result_match_fail_closed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

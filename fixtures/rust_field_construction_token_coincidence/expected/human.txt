@@ -15,7 +15,7 @@ Start here:
   Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: retries,
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
-  Related test: tests/item_tests.rs:4 config_timeout_and_fallback_retries
+  Related test (1 of 2): tests/item_tests.rs:4 config_timeout_and_fallback_retries
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator not established
     - reach yes: Related tests appear to reach default_config: config_timeout_and_fallback_retries
@@ -28,5 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/rust_field_construction_token_coincidence/input/src/lib.rs:9 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

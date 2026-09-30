@@ -33,6 +33,7 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output (TypeScript preview: 1).
+    - src/pricing.ts:14 (no_static_path)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

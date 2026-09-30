@@ -14,7 +14,7 @@ Start here:
   Static exposure: unrevealed (reachable_unrevealed, warning, confidence 0.79)
   Why unrevealed: a related test reaches this change, but no assertion observes the changed behavior
   Changed behavior: Config { timeout_secs: 30, retries: 1, }
-  Missing discriminator: No detected assertion observes the changed value, error, field, or effect
+  Missing discriminator (1 of 3): No detected assertion observes the changed value, error, field, or effect
   Next step: Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.
   Evidence: reach yes · infection yes · propagation yes · observation no · discriminator no
     - reach yes: Related tests appear to reach default_config: decimal_observation_does_not_name_retries
@@ -27,5 +27,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/decimal_field_observer_non_member_access/input/src/lib.rs:7 (reachable_unrevealed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

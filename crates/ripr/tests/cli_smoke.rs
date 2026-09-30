@@ -1488,7 +1488,9 @@ fn check_human_output_reports_sample_findings() {
     assert!(stdout.contains("Start here:"));
     assert!(stdout.contains("Static exposure: weak (weakly_exposed, "));
     assert!(stdout.contains("Evidence:"));
-    assert!(stdout.contains("Missing discriminator:"));
+    // #4320: the digest missing-discriminator line discloses its one-of-N
+    // window, so the pin carries the parenthesized window opening.
+    assert!(stdout.contains("Missing discriminator ("));
     assert!(stdout.contains("Next step:"));
     assert!(stdout.contains("lower-priority finding(s) omitted"));
     assert!(stdout.contains("--format human-full"));

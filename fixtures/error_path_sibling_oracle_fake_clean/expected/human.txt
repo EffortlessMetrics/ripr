@@ -14,7 +14,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.92)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return Err(ParseError::TooLong);
-  Missing discriminator: ParseError::TooLong
+  Missing discriminator (1 of 2): ParseError::TooLong
   Related test: tests/validation.rs:8 valid_input_returns_valid
   Next step: Assert the exact error variant or payload instead of only is_err().
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
@@ -28,5 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/error_path_sibling_oracle_fake_clean/input/src/lib.rs:10 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:app/checkout.py:checkout:field_value:field_construction:response.status_code=422
   Changed behavior: response.status_code = 422
-  Missing discriminator: Related Python test reaches `checkout` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.
+  Missing discriminator (1 of 2): Related Python test reaches `checkout` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.
   Related test: tests/test_checkout.py:4 test_expired_coupon_response_smoke
   Suggested test file: tests/test_checkout.py
   Suggested test: test_expired_coupon_response_smoke

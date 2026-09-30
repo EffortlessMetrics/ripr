@@ -32,6 +32,15 @@ Next: drill into the top finding:
 
 Hidden:
   9 lower-priority finding(s) omitted from default human output (TypeScript preview: 7, JavaScript preview: 2).
+    - src/ambiguous.ts:5 (weakly_exposed)
+    - src/errors.ts:3 (weakly_exposed)
+    - src/notify.js:2 (weakly_exposed)
+    - src/pricing.ts:2 (weakly_exposed)
+    - src/pricing.ts:3 (weakly_exposed)
+    - src/profile.ts:4 (weakly_exposed)
+    - src/profile.ts:5 (weakly_exposed)
+    - src/view.jsx:2 (weakly_exposed)
+    - src/widget.tsx:4 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

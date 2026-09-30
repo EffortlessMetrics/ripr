@@ -105,7 +105,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — ts_repair_packet_boundary_constant_first (8)
+## Pending — ts_repair_packet_boundary_constant_first (9)
 
 Reason:
 RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy; stop reasons carry a gloss; boxed-wrapper limitation text has no whitespace runs (#4323)
@@ -118,11 +118,11 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — ts_repair_packet_boundary_constant_first (9)
+## Pending — ts_repair_packet_boundary_constant_first (10)
 
 Reason:
 RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy (#4323, main merge)
-## Pending — ts_repair_packet_boundary_constant_first (9)
+## Pending — ts_repair_packet_boundary_constant_first (11)
 
 Reason:
 RIPR-SPEC-0046 RIPR-SPEC-0047: check JSON now carries a top-level source_subject stamp with the analysis-time content digests of the files a derived gap ledger names (#4544); no finding, classification, or human output changed.
@@ -136,7 +136,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — ts_repair_packet_boundary_constant_first (10)
+## Pending — ts_repair_packet_boundary_constant_first (12)
 
 Reason:
 RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
@@ -149,7 +149,20 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — ts_repair_packet_boundary_constant_first (11)
+## Pending — ts_repair_packet_boundary_constant_first (13)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_first --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — ts_repair_packet_boundary_constant_first (14)
 
 Reason:
 #4324 / RIPR-SPEC-0122: the bounded digest names all five stage states on one compact Evidence line (reach, infection, propagation, observation, discriminator) instead of letting the positional 2-line detail window hide the decisive stages behind a bare count; the detail window keeps its two lines and the remainder line now reads `N more detail line(s) in --format human-full`. JSON output is unchanged.

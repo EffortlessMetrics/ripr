@@ -19,8 +19,8 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pricing.py:discounted_total:predicate_boundary:predicate:amount>=discount_threshold
   Changed behavior: if amount >= DISCOUNT_THRESHOLD:
-  Missing discriminator: A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary `amount == DISCOUNT_THRESHOLD`. No…
-  Related test: tests/test_pricing.py:8 test_discount_far_above_threshold
+  Missing discriminator (1 of 2): A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary `amount == DISCOUNT_THRESHOLD`. No…
+  Related test (1 of 2): tests/test_pricing.py:8 test_discount_far_above_threshold
   Suggested test file: tests/test_pricing.py
   Suggested test: test_discount_far_above_threshold
   Test node: tests/test_pricing.py::test_discount_far_above_threshold

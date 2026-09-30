@@ -14,7 +14,7 @@ Start here:
   Static exposure: no path (no_static_path, warning, confidence 0.35)
   Why no path: no related test was found that reaches this change
   Changed behavior: if x >= 0 {
-  Missing discriminator: No detected boundary input for the changed predicate
+  Missing discriminator (1 of 4): No detected boundary input for the changed predicate
   Next step: ripr found no static test path to this change — this is not a coverage assessment. A
     test may already exercise it through macros, helper-call chains, or integration tests that
     ripr's static model does not yet trace. If none does, add a co-located test that reaches and
@@ -30,6 +30,9 @@ Next: drill into the top finding:
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.
+    - fixtures/plain_diff_multifile_boundary/input/src/a.rs:6 (no_static_path)
+    - fixtures/plain_diff_multifile_boundary/input/src/b.rs:6 (no_static_path)
+    - fixtures/plain_diff_multifile_boundary/input/src/b.rs:6 (no_static_path)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

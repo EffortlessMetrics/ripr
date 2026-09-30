@@ -31,5 +31,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs:14 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

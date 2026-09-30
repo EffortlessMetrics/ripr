@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (total >= 100) {
-  Missing discriminator: Related tests reach `applyDiscount` with a strong oracle, but no strong assertion observes a `applyDiscount(...)` call at the changed predicate boundary `total == 100`; inputs on…
+  Missing discriminator (1 of 2): Related tests reach `applyDiscount` with a strong oracle, but no strong assertion observes a `applyDiscount(...)` call at the changed predicate boundary `total == 100`; inputs on…
   Related test: tests/pricing.test.ts:3 applyDiscount discounts above the threshold
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `total == 100`; no actionable repair packet is emitted until verify, receipt, and

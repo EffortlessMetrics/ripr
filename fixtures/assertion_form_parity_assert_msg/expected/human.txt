@@ -28,5 +28,7 @@ Next: drill into the top finding:
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output.
+    - fixtures/assertion_form_parity_assert_msg/input/src/lib.rs:3 (static_unknown)
+    - fixtures/assertion_form_parity_assert_msg/input/src/lib.rs:5 (static_unknown)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

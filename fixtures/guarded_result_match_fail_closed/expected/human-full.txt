@@ -39,6 +39,7 @@ Evidence
   - observed assertion argument value "42" at line 28
   - observed function argument value "42" at line 36
   - observed assertion argument value "42" at line 37
+  - observed values (showing 8 of 14; full list in --format json)
 
 Weakness
   - No exact error variant discriminator was detected
@@ -75,6 +76,7 @@ Evidence
   - related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses strong exact value oracle: assert_eq!(response.id, "42");
   - related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses strong exact value oracle: assert_eq!(response.id, "42")
   - related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses strong exact value oracle: assert_eq!(response.id, "42")
+  - related tests (showing 5 of 7; more in --format json)
   - observed function argument value "42" at line 5
   - observed function argument value "42|workspace/refresh" at line 5
   - observed assertion argument value "42" at line 6
@@ -83,6 +85,7 @@ Evidence
   - observed assertion argument value "42" at line 28
   - observed function argument value "42" at line 36
   - observed assertion argument value "42" at line 37
+  - observed values (showing 8 of 14; full list in --format json)
 
 Weakness
   - No strong discriminator was detected

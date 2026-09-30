@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/factory.py:PriceRule.from_config:return_value:return_value:cls_config[discount]+1
   Changed behavior: return cls(config["discount"] + 1)
-  Missing discriminator: Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value.
+  Missing discriminator (1 of 2): Related Python test reaches `from_config` but the strongest extracted oracle is `relational_check`; add or strengthen a focused assertion for the returned value.
   Related test: tests/test_factory.py:4 test_price_rule_from_config
   Suggested test file: tests/test_factory.py
   Suggested test: test_price_rule_from_config

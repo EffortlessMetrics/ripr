@@ -91,11 +91,30 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         let missing = missing
             .strip_prefix(MISSING_DISCRIMINATOR_VALUE_PREFIX)
             .unwrap_or(missing);
+        // #4320: the digest renders one entry while the exhaustive form's
+        // Weakness section may carry several; disclose the window the same way
+        // the evidence window below does, so the reader knows more
+        // missing-discriminator evidence exists in `--format human-full`.
+        let total_weakness_entries = weakness_lines(finding).len();
+        let label = if label == "Missing discriminator" && total_weakness_entries > 1 {
+            format!("Missing discriminator (1 of {total_weakness_entries})")
+        } else {
+            label.to_string()
+        };
         out.push_str(&format!("  {label}: {}\n", one_line(missing)));
     }
     if let Some(test) = finding.related_tests.first() {
+        // #4320: the digest shows only the first related test; carry the total
+        // so the reader knows how much reaching-test evidence exists (the
+        // evidence window in the full form discloses the same bound).
+        let related_tests_total = finding.related_tests.len();
+        let label = if related_tests_total > 1 {
+            format!("Related test (1 of {related_tests_total})")
+        } else {
+            "Related test".to_string()
+        };
         out.push_str(&format!(
-            "  Related test: {}:{} {}\n",
+            "  {label}: {}:{} {}\n",
             display_path(&test.file),
             test.line,
             test.name

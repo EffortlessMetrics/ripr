@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return total - penalty + 0;
-  Missing discriminator: Related test reaches `score` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair…
+  Missing discriminator (1 of 2): Related test reaches `score` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair…
   Related test: tests/score.test.ts:3 scores a truthy result
   Next step: TypeScript preview advisory: replace or augment the smoke-only assertion with an
     exact-value assertion for missing discriminator `return value == total - penalty + 0`; no

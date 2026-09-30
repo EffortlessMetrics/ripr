@@ -13,7 +13,7 @@ Start here:
   File: fixtures/scanner_positive/input/src/lib.rs:16
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: if final_state == "text" {
-  Related test: tests/classify.rs:4 plain_word_is_word
+  Related test (1 of 2): tests/classify.rs:4 plain_word_is_word
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach classify: plain_word_is_word, trailing_space_is_blank
     - infection yes: Detected related test input at the changed boundary

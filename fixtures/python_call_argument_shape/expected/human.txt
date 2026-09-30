@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/notify.py:send_receipt:call_or_output_effect:side_effect:notifier_receipt.sent_order_id
   Changed behavior: notifier("receipt.sent", order_id)
-  Missing discriminator: Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
+  Missing discriminator (1 of 2): Related Python test reaches `send_receipt` but the strongest extracted oracle is `mock_expectation`; add or strengthen a focused assertion for the changed output/log/call effect.
   Related test: tests/test_notify.py:6 test_send_receipt_notifies_callback
   Suggested test file: tests/test_notify.py
   Suggested test: test_send_receipt_notifies_callback

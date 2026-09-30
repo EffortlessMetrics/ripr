@@ -25,5 +25,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/weak_error_oracle_assert_matches/input/src/lib.rs:7 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

@@ -18,8 +18,8 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if (amount >= threshold) {
-  Missing discriminator: Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
-  Related test: tests/discount.test.ts:5 at threshold discounts
+  Missing discriminator (1 of 2): Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Related test (1 of 2): tests/discount.test.ts:5 at threshold discounts
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `amount == threshold`; no actionable repair packet is emitted until verify,
     receipt, and edit-boundary fields are available.

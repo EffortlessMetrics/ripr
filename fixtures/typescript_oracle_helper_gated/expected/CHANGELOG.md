@@ -156,7 +156,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — typescript_oracle_helper_gated (2)
+## Pending — typescript_oracle_helper_gated (1)
 
 Reason:
 RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
@@ -168,7 +168,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — typescript_oracle_helper_gated (3)
+## Pending — typescript_oracle_helper_gated (2)
 
 Reason:
 RIPR-SPEC-0082/RIPR-SPEC-0122 wording owner change (PR #3978): Why lines re-derived from reach/observe stage state, preview notes use language display names with singular file counts, recovery detail lines end with exactly one period; mechanical re-render of unchanged fixture evidence
@@ -180,7 +180,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — typescript_oracle_helper_gated (4)
+## Pending — typescript_oracle_helper_gated (3)
 
 Reason:
 RIPR-SPEC-0122 (#4216): TS/JS preview safe next action is terminal for a closed repair packet (quotes the validator's why_not_actionable) and says no repair for an exposed finding
@@ -192,7 +192,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — typescript_oracle_helper_gated (5)
+## Pending — typescript_oracle_helper_gated (4)
 
 Reason:
 RIPR-SPEC-0122 (#4216 review): closed-packet TS/JS safe action bounds the quoted reason, drops the causal 'so', and asks unknown-class findings for a manual check
@@ -204,7 +204,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — typescript_oracle_helper_gated (6)
+## Pending — typescript_oracle_helper_gated (5)
 
 Reason:
 RIPR-SPEC-0122: omit zero-count languages, keep the empty-result caveat to empty runs, cut digest lines at word boundaries
@@ -217,7 +217,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — typescript_oracle_helper_gated (7)
+## Pending — typescript_oracle_helper_gated (6)
 
 Reason:
 RIPR-SPEC-0046 RIPR-SPEC-0047: check JSON now carries a top-level source_subject stamp with the analysis-time content digests of the files a derived gap ledger names (#4544); no finding, classification, or human output changed.
@@ -231,10 +231,22 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — typescript_oracle_helper_gated (8)
+## Pending — typescript_oracle_helper_gated (7)
 
 Reason:
 RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless typescript_oracle_helper_gated --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — typescript_oracle_helper_gated (8)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
 
 Command:
 `cargo xtask goldens bless typescript_oracle_helper_gated --reason "..."`

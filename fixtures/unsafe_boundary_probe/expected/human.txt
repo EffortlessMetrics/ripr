@@ -14,7 +14,7 @@ Start here:
   Static exposure: no path (no_static_path, warning, confidence 0.48)
   Why no path: no related test was found that reaches this change
   Changed behavior: let mut total: u8 = 1;
-  Missing discriminator: let mut total: u8 = 1;
+  Missing discriminator (1 of 4): let mut total: u8 = 1;
   Next step: ripr found no static test path to this change — this is not a coverage assessment. A
     test may already exercise it through macros, helper-call chains, or integration tests that
     ripr's static model does not yet trace. If none does, add a co-located test that reaches and
@@ -30,6 +30,8 @@ Next: drill into the top finding:
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output.
+    - fixtures/unsafe_boundary_probe/input/src/lib.rs:5 (no_static_path)
+    - fixtures/unsafe_boundary_probe/input/src/lib.rs:16 (no_static_path)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

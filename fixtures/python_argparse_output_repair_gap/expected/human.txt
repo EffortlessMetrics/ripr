@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/commands.py:main:call_or_output_effect:side_effect:print_shipment_queued
   Changed behavior: print("shipment queued")
-  Missing discriminator: Related Python test reaches `main` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed output/log/call effect.
+  Missing discriminator (1 of 2): Related Python test reaches `main` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed output/log/call effect.
   Related test: tests/test_commands.py:4 test_main_smoke
   Suggested test file: tests/test_commands.py
   Suggested test: test_main_smoke

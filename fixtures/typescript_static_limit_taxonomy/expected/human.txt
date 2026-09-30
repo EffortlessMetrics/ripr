@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: actions[key]();
-  Missing discriminator: Only heuristic TypeScript test links were found for `dispatch`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Missing discriminator (1 of 2): Only heuristic TypeScript test links were found for `dispatch`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/dispatch.test.ts:1 dispatch smoke
   Next step: TypeScript preview advisory: static limit `dynamic_dispatch`; Repair route: inspect the
     concrete dispatch key or add analyzer support for explicit dispatch-map resolution before
@@ -34,6 +34,9 @@ Next: drill into the top finding:
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output (TypeScript preview: 1, JavaScript preview: 2).
+    - src/decorated.tsx:7 (no_static_path)
+    - src/label.jsx:3 (weakly_exposed)
+    - src/proxy.js:2 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

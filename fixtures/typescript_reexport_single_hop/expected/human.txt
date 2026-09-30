@@ -18,7 +18,7 @@ Start here:
   Static exposure: exposed (info, confidence 0.60)
   Changed behavior: return false;
   Discriminator (observed, advisory): Related test reaches `isRawNetworkError` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value or exact-error-variant…
-  Related test: test/util.test.ts:3 isRawNetworkError returns true for network fetch errors
+  Related test (1 of 2): test/util.test.ts:3 isRawNetworkError returns true for network fetch errors
   Next step: TypeScript preview advisory: changed behavior is observed under a strong oracle; verify the assertion targets the changed boundary value.
   Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator yes
     - reach yes: 2 related test(s) found for owner `isRawNetworkError`

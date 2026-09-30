@@ -28,5 +28,8 @@ Next: drill into the top finding:
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.
+    - fixtures/match_arm_controls/input/src/lib.rs:30 (weakly_exposed)
+    - fixtures/match_arm_controls/input/src/lib.rs:46 (weakly_exposed)
+    - fixtures/match_arm_controls/input/src/lib.rs:62 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

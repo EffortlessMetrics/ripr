@@ -349,6 +349,16 @@ suggested write cannot fail on the same missing base.
 - `crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_suggests_rooted_out_dir`
 - `crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_recovers_without_a_resolvable_base`
 - `crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base`
+- `crates/ripr/src/output/human.rs::tests::evidence_window_discloses_related_tests_cap`
+- `crates/ripr/src/output/human.rs::tests::evidence_window_discloses_observed_values_cap`
+- `crates/ripr/src/output/human.rs::tests::evidence_window_observed_values_pointer_names_json_cap_beyond_it`
+- `crates/ripr/src/output/human.rs::tests::digest_related_test_line_carries_the_total`
+- `crates/ripr/src/output/human.rs::tests::digest_missing_discriminator_discloses_one_of_n_window`
+- `crates/ripr/src/output/human.rs::tests::hidden_block_lists_omitted_findings_by_file_line_and_class`
+- `crates/ripr/src/output/human.rs::tests::hidden_block_all_base_side_run_names_base_side_evidence`
+- `crates/ripr/src/output/human.rs::tests::hidden_block_unresolved_subject_run_names_the_unknown_not_base_side`
+- `crates/ripr/src/output/human.rs::tests::hidden_block_mixed_currentness_run_names_base_side_and_unresolved_counts`
+- `crates/ripr/src/output/human.rs::tests::hidden_block_list_discloses_remainder_beyond_its_window`
 - `cargo xtask goldens check`
 
 ## Implementation Mapping

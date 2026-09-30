@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: if final_state == "text" {
   Missing discriminator: final_state == "text"
-  Related test: tests/classify.rs:12 bound_long_trailing_space_is_blank
+  Related test (1 of 2): tests/classify.rs:12 bound_long_trailing_space_is_blank
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach classify_bound: bound_long_trailing_space_is_blank, bound_long_word_is_word
@@ -28,5 +28,8 @@ Next: drill into the top finding:
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.
+    - fixtures/scanner_controls/input/src/lib.rs:38 (weakly_exposed)
+    - fixtures/scanner_controls/input/src/lib.rs:64 (weakly_exposed)
+    - fixtures/scanner_controls/input/src/lib.rs:87 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

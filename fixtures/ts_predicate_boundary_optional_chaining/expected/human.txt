@@ -31,6 +31,8 @@ Next: drill into the top finding:
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output (TypeScript preview: 2).
+    - src/guards.ts:9 (exposed)
+    - src/guards.ts:15 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

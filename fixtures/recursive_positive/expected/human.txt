@@ -13,7 +13,7 @@ Start here:
   File: fixtures/recursive_positive/input/src/lib.rs:11
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: if final_label == "beta" {
-  Related test: tests/classify.rs:9 other_label_is_word
+  Related test (1 of 2): tests/classify.rs:9 other_label_is_word
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach classify: other_label_is_word, word_label_is_blank
     - infection yes: Detected related test input at the changed boundary

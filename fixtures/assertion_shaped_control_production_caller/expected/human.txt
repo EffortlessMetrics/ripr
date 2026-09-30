@@ -14,7 +14,7 @@ Start here:
   Static exposure: unknown (propagation_unknown, note, confidence 0.66)
   Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: let clamped = if value >= 0 { value } else { 0 };
-  Missing discriminator: let clamped = if value == 0
+  Missing discriminator (1 of 3): let clamped = if value == 0
   Related test: tests/scores.rs:4 validate_score_accepts_in_range_values
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence: reach yes · infection weak · propagation unknown · observation yes · discriminator weak

@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return count + 1;
-  Missing discriminator: Only heuristic TypeScript test links were found for `normalizeCount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
+  Missing discriminator (1 of 2): Only heuristic TypeScript test links were found for `normalizeCount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.
   Related test: tests/observed.test.ts:1 normalizeCount exact value
   Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
     discriminator `return value == count + 1`; no actionable repair packet is emitted until verify,
@@ -34,6 +34,8 @@ Next: drill into the top finding:
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output (TypeScript preview: 2).
+    - src/context.ts:2 (no_static_path)
+    - src/pricing.ts:2 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

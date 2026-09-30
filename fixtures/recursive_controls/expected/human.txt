@@ -28,5 +28,8 @@ Next: drill into the top finding:
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.
+    - fixtures/recursive_controls/input/src/lib.rs:31 (weakly_exposed)
+    - fixtures/recursive_controls/input/src/lib.rs:51 (weakly_exposed)
+    - fixtures/recursive_controls/input/src/lib.rs:71 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

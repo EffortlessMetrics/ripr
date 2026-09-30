@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/invoice.py:invoice_payload:field_value:field_construction:return_status_paid_id_invoice_id
   Changed behavior: return {"status": "paid", "id": invoice_id}
-  Missing discriminator: Related Python test reaches `invoice_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.
+  Missing discriminator (1 of 2): Related Python test reaches `invoice_payload` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed field or object value.
   Related test: tests/test_invoice.py:4 test_invoice_payload_smoke
   Suggested test file: tests/test_invoice.py
   Suggested test: test_invoice_payload_smoke

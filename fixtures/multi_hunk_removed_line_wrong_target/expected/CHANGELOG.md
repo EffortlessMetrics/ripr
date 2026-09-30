@@ -216,7 +216,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (2)
+## Pending — multi_hunk_removed_line_wrong_target (1)
 
 Reason:
 RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
@@ -228,7 +228,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (3)
+## Pending — multi_hunk_removed_line_wrong_target (2)
 
 Reason:
 RIPR-SPEC-0082/RIPR-SPEC-0122 wording owner change (PR #3978): Why lines re-derived from reach/observe stage state, preview notes use language display names with singular file counts, recovery detail lines end with exactly one period; mechanical re-render of unchanged fixture evidence
@@ -240,7 +240,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (4)
+## Pending — multi_hunk_removed_line_wrong_target (3)
 
 Reason:
 RIPR-SPEC-0001: a changed line inside a function no test reaches is no_static_path whatever its probe shape; static_unknown escalate-to-mutation advice no longer stands in for a missing test
@@ -253,7 +253,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (5)
+## Pending — multi_hunk_removed_line_wrong_target (4)
 
 Reason:
 RIPR-SPEC-0122: omit zero-count languages, keep the empty-result caveat to empty runs, cut digest lines at word boundaries
@@ -265,7 +265,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (6)
+## Pending — multi_hunk_removed_line_wrong_target (5)
 
 Reason:
 RIPR-SPEC-0122: unreached static_unknown next step hedges macro and integration reach
@@ -277,7 +277,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (7)
+## Pending — multi_hunk_removed_line_wrong_target (6)
 
 Reason:
 RIPR-SPEC-0094: re-bless after merging main (#4425 observed-value caps); unreached-owner findings read no_static_path and new-function signature lines are not probed (#4428)
@@ -289,7 +289,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (8)
+## Pending — multi_hunk_removed_line_wrong_target (7)
 
 Reason:
 RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy; stop reasons carry a gloss; boxed-wrapper limitation text has no whitespace runs (#4323)
@@ -302,10 +302,22 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 
-## Pending — multi_hunk_removed_line_wrong_target (9)
+## Pending — multi_hunk_removed_line_wrong_target (8)
 
 Reason:
 RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless multi_hunk_removed_line_wrong_target --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — multi_hunk_removed_line_wrong_target (9)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
 
 Command:
 `cargo xtask goldens bless multi_hunk_removed_line_wrong_target --reason "..."`

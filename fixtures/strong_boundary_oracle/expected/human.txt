@@ -13,11 +13,11 @@ Start here:
   File: fixtures/strong_boundary_oracle/input/src/lib.rs:2
   Static exposure: exposed (info, confidence 1.00)
   Changed behavior: amount >= discount_threshold
-  Related test: tests/pricing.rs:4 below_threshold_has_no_discount
+  Related test (1 of 3): tests/pricing.rs:4 below_threshold_has_no_discount
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, equality_threshold_discounts, far_above_threshold_discounts
     - infection yes: Detected related test input at the changed boundary
-    - 15 more detail line(s) in --format human-full
+    - 16 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/strong_boundary_oracle/input --diff fixtures/strong_boundary_oracle/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb

@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return this.items.length + 1;
-  Missing discriminator: Related test reaches `total` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair…
+  Missing discriminator (1 of 2): Related test reaches `total` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repair…
   Related test: tests/owners.test.ts:7 cart total smoke
   Next step: TypeScript preview advisory: replace or augment the smoke-only assertion with an
     exact-value assertion for missing discriminator `return value == this.items.length + 1`; no
@@ -35,6 +35,9 @@ Next: drill into the top finding:
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output (TypeScript preview: 3).
+    - src/owners.ts:2 (exposed)
+    - src/owners.ts:11 (weakly_exposed)
+    - src/owners.ts:15 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

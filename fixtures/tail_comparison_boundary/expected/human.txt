@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: items >= 10
   Missing discriminator: items == 10
-  Related test: tests/orders.rs:9 small_order_pays_shipping
+  Related test (1 of 4): tests/orders.rs:9 small_order_pays_shipping
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator missing
     - reach yes: Related tests appear to reach ships_free: small_order_pays_shipping, big_order_ships_free, five_items_earn_a_gift
@@ -28,5 +28,8 @@ Next: drill into the top finding:
 
 Hidden:
   3 lower-priority finding(s) omitted from default human output.
+    - fixtures/tail_comparison_boundary/input/src/lib.rs:3 (weakly_exposed)
+    - fixtures/tail_comparison_boundary/input/src/lib.rs:17 (exposed)
+    - fixtures/tail_comparison_boundary/input/src/lib.rs:17 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

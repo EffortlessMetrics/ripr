@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/shop_service/pricing.py:loyalty_discount:predicate_boundary:predicate:subtotal>=loyalty_threshold
   Changed behavior: if subtotal >= loyalty_threshold:
-  Missing discriminator: Related Python test reaches `loyalty_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
+  Missing discriminator (1 of 2): Related Python test reaches `loyalty_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   Related test: tests/test_pricing.py:4 test_loyalty_discount_high_value_smoke
   Suggested test file: tests/test_pricing.py
   Suggested test: test_loyalty_discount_high_value_smoke

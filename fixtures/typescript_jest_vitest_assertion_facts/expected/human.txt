@@ -18,7 +18,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.40)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: return `summary:${status.trim()}`;
-  Missing discriminator: Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before…
+  Missing discriminator (1 of 2): Related test reaches `renderSummary` with snapshot evidence; keep the snapshot as weak preview evidence and add an exact-value assertion for the changed discriminator before…
   Related test: tests/signals.test.ts:25 renders summary snapshot
   Next step: TypeScript preview advisory: add an exact-value assertion alongside the snapshot for
     missing discriminator `return value == `summary:${status.trim()}``; no actionable repair packet
@@ -34,6 +34,11 @@ Next: drill into the top finding:
 
 Hidden:
   5 lower-priority finding(s) omitted from default human output (TypeScript preview: 5).
+    - src/signals.ts:2 (exposed)
+    - src/signals.ts:13 (weakly_exposed)
+    - src/signals.ts:17 (weakly_exposed)
+    - src/signals.ts:21 (weakly_exposed)
+    - src/signals.ts:25 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 

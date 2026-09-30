@@ -14,7 +14,7 @@ Start here:
   Static exposure: unknown (propagation_unknown, note, confidence 0.66)
   Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: capacity > threshold
-  Missing discriminator: capacity == threshold
+  Missing discriminator (1 of 2): capacity == threshold
   Related test: src/lib.rs:10 above_threshold_gets_reduced
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence: reach yes · infection weak · propagation unknown · observation yes · discriminator missing

@@ -14,7 +14,7 @@ Start here:
   Static exposure: unknown (propagation_unknown, note, confidence 0.66)
   Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: decisions.iter().filter(|d| d.decision == "blocking").count() == 0
-  Missing discriminator: decisions.iter().filter(|d| d.decision == "blocking").count() == 0
+  Missing discriminator (1 of 2): decisions.iter().filter(|d| d.decision == "blocking").count() == 0
   Related test: src/lib.rs:25 single_blocking_decision_reports_its_reason
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
   Evidence: reach yes · infection weak · propagation unknown · observation yes · discriminator missing

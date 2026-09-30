@@ -14,8 +14,8 @@ Start here:
   Static exposure: unknown (infection_unknown, warning, confidence 0.66)
   Why unknown: the change reaches a sink but infection could not be determined statically
   Changed behavior: amount >= FREE_SHIPPING
-  Missing discriminator: No detected boundary input for the changed predicate
-  Related test: tests/pricing.rs:17 shipping_boundary
+  Missing discriminator (1 of 2): No detected boundary input for the changed predicate
+  Related test (1 of 2): tests/pricing.rs:17 shipping_boundary
   Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
   Evidence: reach yes · infection unknown · propagation yes · observation yes · discriminator not established
     - reach yes: Related tests appear to reach shipping: shipping_boundary
@@ -28,5 +28,7 @@ Next: drill into the top finding:
 
 Hidden:
   2 lower-priority finding(s) omitted from default human output.
+    - fixtures/boundary_named_constant/input/src/lib.rs:12 (exposed)
+    - fixtures/boundary_named_constant/input/src/lib.rs:21 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

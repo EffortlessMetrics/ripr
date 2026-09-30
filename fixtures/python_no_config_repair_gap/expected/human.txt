@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/promotions.py:trial_extension:predicate_boundary:predicate:days>=minimum_days
   Changed behavior: if days >= minimum_days:
-  Missing discriminator: Related Python test reaches `trial_extension` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
+  Missing discriminator (1 of 2): Related Python test reaches `trial_extension` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary.
   Related test: tests/test_promotions.py:4 test_trial_extension_long_smoke
   Suggested test file: tests/test_promotions.py
   Suggested test: test_trial_extension_long_smoke

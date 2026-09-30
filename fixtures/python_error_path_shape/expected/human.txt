@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required
   Changed behavior: raise ValueError("positive required")
-  Missing discriminator: Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the exact exception type/message.
+  Missing discriminator (1 of 2): Related Python test reaches `require_positive` but the strongest extracted oracle is `broad_error`; add or strengthen a focused assertion for the exact exception type/message.
   Related test: tests/test_validation.py:6 test_rejects_zero_value
   Suggested test file: tests/test_validation.py
   Suggested test: test_rejects_zero_value

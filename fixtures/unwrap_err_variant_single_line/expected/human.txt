@@ -26,5 +26,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/unwrap_err_variant_single_line/input/src/lib.rs:12 (weakly_exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

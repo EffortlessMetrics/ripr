@@ -19,7 +19,7 @@ Start here:
   Why weak: a related test reaches this change but does not observe the exact changed value
   Canonical gap: gap:python:src/pack.py:pack:predicate_boundary:predicate:len_buffer<=limit
   Changed behavior: if len(buffer) <= limit:
-  Missing discriminator: A strong Python oracle reaches `pack`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an…
+  Missing discriminator (1 of 2): A strong Python oracle reaches `pack`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an…
   Related test: tests/test_pack.py:4 test_pack_returns_buffered_output
   Suggested test file: tests/test_pack.py
   Suggested test: test_pack_returns_buffered_output

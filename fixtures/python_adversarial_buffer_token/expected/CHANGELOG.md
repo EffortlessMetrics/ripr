@@ -178,7 +178,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_buffer_token (2)
+## Pending — python_adversarial_buffer_token (1)
 
 Reason:
 RIPR-SPEC-0108: bind discriminator narration to final verdict (#3670)
@@ -191,7 +191,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_buffer_token (3)
+## Pending — python_adversarial_buffer_token (2)
 
 Reason:
 RIPR-SPEC-0028: predicate boundary activation rule populates observed_values with literal owner-call arguments from strong related tests; classification unchanged
@@ -204,7 +204,7 @@ Updated:
 - `expected/human.txt`
 - `expected/human-full.txt`
 
-## Pending — python_adversarial_buffer_token (4)
+## Pending — python_adversarial_buffer_token (3)
 
 Reason:
 RIPR-SPEC-0084: CheckInput default base is now None (was origin/main); --diff fixture envelopes honestly omit the inapplicable top-level base and record base_revision null. Only base/base_revision changed; findings, counts, and input_identity byte-identical.
@@ -310,6 +310,19 @@ Updated:
 - `expected/human-full.txt`
 
 ## Pending — python_adversarial_buffer_token (11)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
+
+Command:
+`cargo xtask goldens bless python_adversarial_buffer_token --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — python_adversarial_buffer_token (12)
 
 Reason:
 #4324 / RIPR-SPEC-0122: the bounded digest names all five stage states on one compact Evidence line (reach, infection, propagation, observation, discriminator) instead of letting the positional 2-line detail window hide the decisive stages behind a bare count; the detail window keeps its two lines and the remainder line now reads `N more detail line(s) in --format human-full`. JSON output is unchanged.

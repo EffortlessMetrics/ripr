@@ -15,7 +15,7 @@ Start here:
   Why weak: a related test reaches this change, but no test input tells the old and new behavior apart
   Changed behavior: weight_grams >= 2_000
   Missing discriminator: No detected boundary input for the changed predicate
-  Related test: tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax
+  Related test (1 of 2): tests/fees.rs:4 heavy_crate_pays_fragile_fee_and_eu_tax
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator not established
     - reach yes: Related tests appear to reach fragile_fee: heavy_crate_pays_fragile_fee_and_eu_tax
@@ -28,5 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/infection_expected_value_literal/input/src/lib.rs:28 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

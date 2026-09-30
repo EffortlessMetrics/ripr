@@ -14,7 +14,7 @@ Start here:
   Static exposure: no path (no_static_path, warning, confidence 0.48)
   Why no path: no related test was found that reaches this change
   Changed behavior: amount >= 100
-  Missing discriminator: No detected boundary input for the changed predicate
+  Missing discriminator (1 of 4): No detected boundary input for the changed predicate
   Next step: This owner is exposed across a language boundary (FFI or binding); whether an
     external-language test observes the change is not statically known — verify the external oracle
     rather than adding a same-language test.
@@ -29,6 +29,7 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
+    - fixtures/rust_pyo3_cross_language_limit/input/src/lib.rs:20 (no_static_path)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json
 
