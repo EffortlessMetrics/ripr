@@ -322,6 +322,13 @@ the typed outcome and its `limitations[]` rather than infer completeness from
 `findings` or `probes`. For `unsupported_input` and
 `partial_with_limitations`, zero findings is explicitly not a clean result.
 
+`eol_only_churn` (#4952) is a churn-shape disclosure, not an incomplete-analysis
+limitation: a changed file's lines pair identical before/after text at the same
+positions, so the churn is line-ending-only and probes treat the text as
+unchanged. It is the one limitation kind that may ride on a complete outcome
+(`complete_with_findings` / `complete_no_findings`); every other kind marks the
+outcome incomplete. Human output renders it without the incomplete-scope hedge.
+
 When an *unchanged* Rust test file is indexed by lexical fallback after the
 reference parser refuses it, and a classified owner consults that file for
 related-test evidence (a related test came from it, or the file source calls

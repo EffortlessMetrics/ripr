@@ -215,16 +215,23 @@ fn render_analysis_outcome_disclosure(out: &mut String, output: &CheckOutput) {
         return;
     }
     // The "zero findings" hedge only makes sense when there are zero findings;
-    // a partial run with findings gets the scope caveat instead.
-    if output.findings.is_empty() {
-        out.push_str(
-            "  Zero findings is not a clean result because the analyzed scope is incomplete.\n",
-        );
-    } else {
-        out.push_str(&format!(
-            "  The {} finding(s) below cover only the analyzed scope; behavior outside it has no finding.\n",
-            output.findings.len()
-        ));
+    // a partial run with findings gets the scope caveat instead. #4952: the
+    // EOL-only churn disclosure does not scope the analysis down, so the
+    // incomplete-scope hedges stay off when it is the only limitation.
+    let scoped_down = outcome.limitations.iter().any(|limitation| {
+        limitation.kind != crate::analysis_outcome::AnalysisLimitationKind::EolOnlyChurn
+    });
+    if scoped_down {
+        if output.findings.is_empty() {
+            out.push_str(
+                "  Zero findings is not a clean result because the analyzed scope is incomplete.\n",
+            );
+        } else {
+            out.push_str(&format!(
+                "  The {} finding(s) below cover only the analyzed scope; behavior outside it has no finding.\n",
+                output.findings.len()
+            ));
+        }
     }
     for limitation in &outcome.limitations {
         // Plain words lead; the schema tokens follow in parentheses so the
@@ -806,6 +813,99 @@ mod tests {
         let empty = render(&partial_outcome_output(Vec::new())?);
         assert!(empty.contains("Zero findings is not a clean result"));
         assert!(!empty.contains("finding(s) below cover only"));
+        Ok(())
+    }
+
+    // #4952: the EOL-only churn disclosure is a churn-shape note, not an
+    // incompleteness, so a complete run carrying it renders the limitation
+    // without the incomplete-scope hedges.
+    fn eol_only_outcome_output(findings: Vec<Finding>) -> Result<CheckOutput, String> {
+        use crate::analysis_outcome::{
+            AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+            AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+            AnalysisStage,
+        };
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::EolOnlyChurn,
+            AnalysisStage::DiffParse,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::Retry,
+                "Normalize line endings and re-run the analysis.",
+            )?,
+        )
+        .with_affected_items(1)?
+        .with_detail(
+            "1 file(s) changed only in line endings; probes treat text as unchanged: src/lib.rs",
+        )?;
+        let outcome = AnalysisOutcome::new(
+            if findings.is_empty() {
+                AnalysisOutcomeKind::CompleteNoFindings
+            } else {
+                AnalysisOutcomeKind::CompleteWithFindings
+            },
+            AnalysisIdentity::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 2,
+                // CompleteNoFindings requires a probe or candidate subject.
+                candidate_line_count: if findings.is_empty() { 1 } else { 0 },
+                finding_count: u64::try_from(findings.len()).unwrap_or(u64::MAX),
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![limitation],
+        )?;
+        Ok(CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings,
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            suppression: None,
+            analysis_outcome: Some(outcome),
+            partial_scope: None,
+        })
+    }
+
+    #[test]
+    fn eol_only_disclosure_renders_without_the_incomplete_scope_hedges() -> Result<(), String> {
+        let rendered = render(&eol_only_outcome_output(vec![sample_finding()])?);
+        assert!(rendered.contains("analysis complete"), "{rendered}");
+        assert!(
+            rendered.contains(
+                "Limitation: some files changed only in line endings during parsing the diff (eol_only_churn at diff_parse)"
+            ),
+            "{rendered}"
+        );
+        assert!(rendered.contains("affected items: 1"), "{rendered}");
+        // A disclosure does not scope the analysis down: no incomplete-scope
+        // hedge may accompany it.
+        assert!(
+            !rendered.contains("finding(s) below cover only"),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("Zero findings is not a clean result"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn eol_only_disclosure_with_zero_findings_does_not_claim_incomplete_scope() -> Result<(), String>
+    {
+        let rendered = render(&eol_only_outcome_output(Vec::new())?);
+        assert!(
+            !rendered.contains("Zero findings is not a clean result"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("eol_only_churn"), "{rendered}");
         Ok(())
     }
 
