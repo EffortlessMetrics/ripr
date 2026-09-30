@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Prepare native/npm `0.11.0-alpha.2` with fresh same-source wheel, pip/uv and
+  npm qualification. Reuse the native builder, bind all seven executed jobs
+  and the exact native artifact, and preserve independent PyPI publication
+  authority. This preparation does not publish either registry or add platforms.
+
 - Add manual, existing-package npm staging from exact source-main qualification
   artifacts. Read-only admission checks native bytes, all four qualification
   artifacts and installed-use denominators before an isolated stage-only OIDC

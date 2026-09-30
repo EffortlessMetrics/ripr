@@ -29,6 +29,11 @@ class AdmissionTests(unittest.TestCase):
     def test_admits_exact_successful_source_run(self):
         self.assertEqual(admission.validate_run(self.run, self.commit, self.identity), 2)
 
+    def test_npm_reusable_native_run_is_not_pypi_publication_authority(self):
+        npm_run = dict(self.run, path=".github/workflows/npm-package-qualification.yml")
+        with self.assertRaisesRegex(ValueError, "qualification run path mismatch"):
+            admission.validate_run(npm_run, self.commit, self.identity)
+
     def test_rejects_wrong_run_authority_and_identity(self):
         for field, value in [("id", 124), ("event", "pull_request"), ("head_branch", "feature"),
                              ("head_sha", "d" * 40), ("conclusion", "failure"),

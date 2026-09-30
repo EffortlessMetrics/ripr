@@ -1,4 +1,4 @@
-"""Prepare/inspect a Linux npm tarball from a pinned, published native wheel.
+"""Prepare/inspect a Linux npm tarball from same-run qualified native bytes.
 
 No npm credentials or registry writes. Product and packaging source identities are
 separate: packaging never relabels native bytes as a new product build.
@@ -27,6 +27,9 @@ FILES = {"package.json", "README.md", "LICENSE-MIT", "LICENSE-APACHE", "bin/ripr
 REPOSITORY = "EffortlessMetrics/ripr"
 QUALIFIER = ".github/workflows/npm-package-qualification.yml"
 CLIENTS = (("20.20.1", "10.8.2"), ("24.19.0", "11.9.0"))
+NATIVE_JOBS = {"native / build and inspect Linux x64 wheel",
+               "native / clean pip install and useful Python journey",
+               "native / clean uv install and useful Python journey"}
 ROUTES = ("local", "global", "npm-exec", "npx")
 CONSUMER_CONTROLS = (
     "piped LSP initialize/shutdown preserves clean framed stdout",
@@ -55,21 +58,70 @@ def run(args, cwd=ROOT):
     return subprocess.check_output(args, cwd=cwd, text=True, timeout=120).strip()
 
 
-def source_pin(root=ROOT):
-    pin = json.loads((root / "packaging/npm/native-source.json").read_text())
-    require(pin.get("schema_version") == 1, "unsupported native pin schema")
-    require(pin.get("repository") == "EffortlessMetrics/ripr", "wrong native repository")
-    for key in ("product_source_sha", "product_source_tree"):
-        require(re.fullmatch(r"[0-9a-f]{40}", pin.get(key, "")), f"invalid {key}")
-    for key in ("cargo_lock_sha256", "wheel_sha256", "payload_sha256"):
-        require(re.fullmatch(r"[0-9a-f]{64}", pin.get(key, "")), f"invalid {key}")
-    require(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+", pin.get("native_version", "")), "prerelease version required")
-    require(pin.get("target") == "x86_64-unknown-linux-gnu" and pin.get("minimum_glibc") == "2.34", "unsupported native target")
+def source_contract(root=ROOT):
+    """Derive version authority from Cargo, never from a previous registry pin."""
     version_match = re.search(r'\[workspace.package\][\s\S]*?^version = "([^"]+)"', (root / "Cargo.toml").read_text(), re.MULTILINE)
-    require(version_match is not None and version_match[1] == pin["native_version"], "workspace/native version drift; qualify a new native release")
-    require(pin["wheel_filename"] == f"ripr_rs-{pin['python_version']}-py3-none-manylinux_2_34_x86_64.whl", "wrong wheel filename")
-    require(re.fullmatch(r"https://files\.pythonhosted\.org/packages/[0-9a-f/]+/" + re.escape(pin["wheel_filename"]), pin["wheel_url"]), "unexpected wheel origin")
-    return pin
+    require(version_match is not None, "missing workspace version")
+    version = version_match[1]
+    parts = re.fullmatch(r"((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-(alpha|beta|rc)\.((?:0|[1-9][0-9]*))", version)
+    require(parts is not None, "prerelease version required")
+    python_version = parts[1] + {"alpha": "a", "beta": "b", "rc": "rc"}[parts[2]] + parts[3]
+    toolchain = re.search(r'^channel = "([^"]+)"$', (root / "rust-toolchain.toml").read_text(), re.MULTILINE)
+    require(toolchain is not None and toolchain[1] == "1.95.0", "unsupported native build toolchain")
+    features = re.search(r"^features = (\[[^\n]+\])$", (root / "packaging/python/pyproject.toml").read_text(), re.MULTILINE)
+    require(features is not None and json.loads(features[1]) == ["lang-python", "lang-rust", "lang-typescript"], "native adapter feature contract changed")
+    return dict(schema_version=2, repository=REPOSITORY, native_version=version, python_version=python_version,
+                target="x86_64-unknown-linux-gnu", minimum_glibc="2.34", rust_toolchain=toolchain[1],
+                features=json.loads(features[1]), cargo_lock_sha256=digest((root / "Cargo.lock").read_bytes()),
+                wheel_filename=f"ripr_rs-{python_version}-py3-none-manylinux_2_34_x86_64.whl")
+
+
+def inspect_native_evidence(files, source, run_id, attempt, artifact, root=ROOT):
+    """Derive a native pin from independently bound same-source wheel evidence."""
+    require(set(source) == {"sha", "tree"} and all(isinstance(v, str) and re.fullmatch(r"[0-9a-f]{40}", v) for v in source.values()), "invalid native source identity")
+    require(all(isinstance(v, str) and re.fullmatch(r"[1-9][0-9]*", v) for v in (run_id, attempt)), "invalid native run identity")
+    require(artifact.get("name") == f"npm-native-wheel-{run_id}-{attempt}" and type(artifact.get("id")) is int and artifact["id"] > 0, "wrong native artifact identity")
+    require(isinstance(artifact.get("digest"), str) and re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["digest"]), "missing native artifact digest")
+    require(type(artifact.get("size_in_bytes")) is int and 0 < artifact["size_in_bytes"] <= 40_000_000, "invalid native artifact size")
+    contract = source_contract(root)
+    filename = contract["wheel_filename"]
+    require(set(files) == {"qualification.json", "wheel-receipt.json", "wheelhouse/" + filename}, "native artifact inventory mismatch")
+    wheel = files["wheelhouse/" + filename]
+    wheel_hash = digest(wheel)
+    qualification = json.loads(files["qualification.json"])
+    expected = dict(schema_version=1, source_sha=source["sha"], source_tree=source["tree"],
+                    version=contract["python_version"], native_version=contract["native_version"],
+                    wheel_filename=filename, wheel_sha256=wheel_hash, repository=REPOSITORY,
+                    run_id=int(run_id), run_attempt=int(attempt), target=contract["target"],
+                    platform_tag="py3-none-manylinux_2_34_x86_64")
+    require(isinstance(qualification, dict), "missing native qualification object")
+    for key, value in expected.items():
+        require(type(qualification.get(key)) is type(value) and qualification[key] == value, f"native qualification {key} mismatch")
+    receipt = json.loads(files["wheel-receipt.json"])
+    require(isinstance(receipt, dict), "missing native wheel receipt object")
+    expected = dict(schema_version=2, channel="pypi-source-wheelhouse", source_repository=REPOSITORY,
+                    producer_run_id=run_id, producer_run_attempt=attempt, publication_attempted=False,
+                    candidate_sha=source["sha"], candidate_tree=source["tree"],
+                    cargo_lock_sha256=contract["cargo_lock_sha256"], native_version=contract["native_version"],
+                    python_version=contract["python_version"], distribution="ripr-rs", executable="ripr",
+                    rust_target=contract["target"], compatibility_state="auditwheel_manylinux_2_34",
+                    native_execution="ubuntu-22.04-x64", scope="linux-x64-glibc-only", features=contract["features"])
+    for key, value in expected.items():
+        require(type(receipt.get(key)) is type(value) and receipt[key] == value, f"native receipt {key} mismatch")
+    toolchain = receipt.get("toolchain")
+    require(isinstance(toolchain, dict) and isinstance(toolchain.get("rustc"), str) and
+            toolchain["rustc"].startswith("rustc " + contract["rust_toolchain"] + " (") and
+            "\nhost: x86_64-unknown-linux-gnu\n" in toolchain["rustc"], "native build toolchain mismatch")
+    metadata = receipt.get("wheel")
+    require(isinstance(metadata, dict) and metadata.get("filename") == filename and
+            metadata.get("sha256") == wheel_hash and metadata.get("tag") == qualification["platform_tag"], "native wheel metadata mismatch")
+    payload_hash = metadata.get("installed_payload_sha256")
+    require(isinstance(payload_hash, str) and re.fullmatch(r"[0-9a-f]{64}", payload_hash), "missing native payload digest")
+    pin = dict(contract, origin="same-run-qualified-wheel", product_source_sha=source["sha"],
+               product_source_tree=source["tree"], wheel_sha256=wheel_hash, payload_sha256=payload_hash,
+               qualification_run_id=int(run_id), qualification_run_attempt=int(attempt), native_artifact=artifact,
+               native_qualification_url=f"https://github.com/{REPOSITORY}/actions/runs/{run_id}")
+    return pin, inspect_wheel(wheel, pin, root)
 
 
 def manifest(pin, root=ROOT):
@@ -154,14 +206,6 @@ def validate_tarball(path, pin, provenance, root=ROOT):
     return {"filename": path.name, "sha256": digest(path.read_bytes()), "integrity": "sha512-" + base64.b64encode(hashlib.sha512(path.read_bytes()).digest()).decode(), "files": sorted(FILES)}
 
 
-def download_wheel(pin):
-    with urllib.request.urlopen(pin["wheel_url"], timeout=60) as response:
-        require(response.url == pin["wheel_url"], "wheel redirected")
-        data = response.read(30_000_001)
-    require(len(data) <= 30_000_000, "oversized wheel download")
-    return data
-
-
 def validate_release_identity(identity):
     """Reject ambiguous identities before forming paths, API requests or outputs."""
     for field, pattern in {
@@ -204,15 +248,23 @@ def authorize_release(identity, publisher_sha):
         require(type(repository.get("id")) is int and repository["id"] > 0, "missing repository identity")
     require(commit.get("sha") == identity["source_sha"] and commit.get("tree", {}).get("sha") == identity["source_tree"], "source commit/tree mismatch")
     jobs = github_api(f"actions/runs/{identity['run_id']}/attempts/{identity['run_attempt']}/jobs?per_page=100")
-    names = {"package", "publisher-controls", *(f"consumer ({node}, {npm})" for node, npm in CLIENTS)}
+    require(isinstance(jobs, dict) and isinstance(jobs.get("jobs"), list) and
+            all(isinstance(job, dict) for job in jobs["jobs"]), "missing qualification jobs list")
+    names = {*NATIVE_JOBS, "package", "publisher-controls", *(f"consumer ({node}, {npm})" for node, npm in CLIENTS)}
     require(jobs.get("total_count") == len(jobs.get("jobs", [])) == len(names), "missing qualification jobs")
     require({job.get("name") for job in jobs["jobs"]} == names, "qualification job set mismatch")
     require(all(job.get("status") == "completed" and job.get("conclusion") == "success" for job in jobs["jobs"]), "qualification job did not execute successfully")
     listing = github_api(f"actions/runs/{identity['run_id']}/artifacts?per_page=100")
-    require(type(listing.get("total_count")) is int and listing["total_count"] == len(listing.get("artifacts", [])) <= 100, "incomplete artifact list")
     suffix = f"{identity['run_id']}-{identity['run_attempt']}"
     wanted = [f"npm-prepared-{suffix}", *(f"npm-consumer-{node}-{suffix}" for node, _ in CLIENTS),
-              f"npm-publisher-controls-{suffix}"]
+              f"npm-publisher-controls-{suffix}", f"npm-native-wheel-{suffix}"]
+    return {"identity": identity, "artifacts": select_artifacts(listing, wanted, run_info)}
+
+
+def select_artifacts(listing, wanted, run_info):
+    require(isinstance(listing, dict) and isinstance(listing.get("artifacts"), list) and
+            all(isinstance(artifact, dict) for artifact in listing["artifacts"]), "missing qualification artifacts list")
+    require(type(listing.get("total_count")) is int and listing["total_count"] == len(listing.get("artifacts", [])) <= 100, "incomplete artifact list")
     artifacts = []
     for name in wanted:
         matches = [artifact for artifact in listing["artifacts"] if artifact.get("name") == name]
@@ -224,10 +276,39 @@ def authorize_release(identity, publisher_sha):
         require(isinstance(artifact.get("digest"), str) and re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["digest"]), "missing artifact digest")
         binding = artifact.get("workflow_run")
         require(isinstance(binding, dict), "missing artifact workflow_run object")
-        require(binding.get("id") == int(identity["run_id"]) and binding.get("head_sha") == identity["source_sha"], "artifact source/run mismatch")
+        require(binding.get("id") == run_info["id"] and binding.get("head_sha") == run_info["head_sha"], "artifact source/run mismatch")
         require(binding.get("repository_id") == run_info["repository"]["id"] and binding.get("head_repository_id") == run_info["head_repository"]["id"], "artifact repository mismatch")
         artifacts.append({key: artifact[key] for key in ("id", "name", "digest", "size_in_bytes")})
-    return {"identity": identity, "artifacts": artifacts}
+    require(len({artifact["id"] for artifact in artifacts}) == len(wanted), "duplicate artifact ID")
+    return artifacts
+
+
+def prepare_native_input(source, run_id, attempt):
+    """Qualification may run on a PR; release admission still requires main."""
+    require(all(isinstance(v, str) and re.fullmatch(r"[1-9][0-9]*", v) for v in (run_id, attempt)), "qualification run/attempt required")
+    run_info = github_api(f"actions/runs/{run_id}")
+    require(type(run_info.get("id")) is int and run_info["id"] == int(run_id) and
+            type(run_info.get("run_attempt")) is int and run_info["run_attempt"] == int(attempt), "native preparation attempt mismatch")
+    require(run_info.get("head_sha") == source["sha"] and run_info.get("path") == QUALIFIER,
+            "native preparation source/workflow mismatch")
+    require(run_info.get("event") == "pull_request" or
+            (run_info.get("event") == "workflow_dispatch" and run_info.get("head_branch") == "main"), "unsupported qualification event")
+    for key in ("repository", "head_repository"):
+        value = run_info.get(key)
+        require(isinstance(value, dict) and value.get("full_name") == REPOSITORY and
+                type(value.get("id")) is int and value["id"] > 0, "foreign native preparation repository")
+    jobs = github_api(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+    require(isinstance(jobs, dict) and isinstance(jobs.get("jobs"), list) and
+            all(isinstance(job, dict) for job in jobs["jobs"]), "missing native preparation jobs list")
+    require(type(jobs.get("total_count")) is int and jobs["total_count"] == len(jobs["jobs"]) <= 100, "incomplete native preparation job list")
+    native_jobs = [job for job in jobs["jobs"] if job.get("name") in NATIVE_JOBS]
+    require(len(native_jobs) == len(NATIVE_JOBS) and {job["name"] for job in native_jobs} == NATIVE_JOBS and
+            all(job.get("status") == "completed" and job.get("conclusion") == "success" for job in native_jobs), "native build and pip/uv consumers must execute successfully")
+    listing = github_api(f"actions/runs/{run_id}/artifacts?per_page=100")
+    artifact, = select_artifacts(listing, [f"npm-native-wheel-{run_id}-{attempt}"], run_info)
+    data = github_api(f"actions/artifacts/{artifact['id']}/zip", binary=True)
+    require(len(data) == artifact["size_in_bytes"], "native artifact transfer size mismatch")
+    return inspect_native_evidence(read_qualification_zip(data, artifact["digest"]), source, run_id, attempt, artifact)
 
 
 def read_qualification_zip(data, expected_digest):
@@ -366,18 +447,17 @@ def admit_release(destination, identity, publisher_sha, operation):
     """Copy only admitted bytes for a separate OIDC job; never invoke npm here."""
     require(operation in ("admit_only", "stage"), "unsupported release operation")
     authority = authorize_release(identity, publisher_sha)
-    pin = source_pin()
-    require(pin["native_version"] == identity["version"], "release/native version mismatch")
-    native = inspect_wheel(download_wheel(pin), pin)
-    provenance = dict(schema_version=1, product_source=pin,
-                      packaging_source={"sha": identity["source_sha"], "tree": identity["source_tree"]},
-                      sbom_sha256=digest(native["sbom.cyclonedx.json"]),
-                      native_build_repeated=False, automatic_npm_oidc_provenance=False)
     bundles = []
     for artifact in authority["artifacts"]:
         data = github_api(f"actions/artifacts/{artifact['id']}/zip", binary=True)
         require(len(data) == artifact["size_in_bytes"], "artifact transfer size mismatch")
         bundles.append(read_qualification_zip(data, artifact["digest"]))
+    source = {"sha": identity["source_sha"], "tree": identity["source_tree"]}
+    pin, native = inspect_native_evidence(bundles[4], source, identity["run_id"], identity["run_attempt"], authority["artifacts"][4])
+    require(pin["native_version"] == identity["version"], "release/native version mismatch")
+    provenance = dict(schema_version=1, product_source=pin, packaging_source=source,
+                      sbom_sha256=digest(native["sbom.cyclonedx.json"]),
+                      native_build_repeated=False, automatic_npm_oidc_provenance=False)
     prepared = bundles[0]
     filename = f"effortlessmetrics-ripr-{identity['version']}.tgz"
     source_files = {"npm_consumer.py": (ROOT / ".github/scripts/npm_consumer.py").read_bytes()}
@@ -430,20 +510,14 @@ def admit_release(destination, identity, publisher_sha, operation):
     return report
 
 
-def prepare(destination, wheel=None):
-    pin = source_pin()
+def prepare(destination):
     require(not destination.exists(), "destination already exists")
     # A real release candidate is committed; untracked output under target is fine.
     require(not run(["git", "diff", "--name-only", "HEAD"]), "tracked source is dirty")
-    for required in (".github/scripts/npm_package.py", "packaging/npm/native-source.json", "packaging/npm/package.template.json", "packaging/npm/README.md"):
+    for required in (".github/scripts/npm_package.py", "packaging/python/pyproject.toml", "packaging/npm/package.template.json", "packaging/npm/README.md"):
         run(["git", "ls-files", "--error-unmatch", required])
     source = {"sha": run(["git", "rev-parse", "HEAD"]), "tree": run(["git", "rev-parse", "HEAD^{tree}"])}
-    if wheel:
-        require(wheel.is_file() and not wheel.is_symlink(), "invalid input wheel")
-        wheel_data = wheel.read_bytes()
-    else:
-        wheel_data = download_wheel(pin)
-    files = inspect_wheel(wheel_data, pin)
+    pin, files = prepare_native_input(source, os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_RUN_ATTEMPT"))
     provenance = {"schema_version": 1, "product_source": pin, "packaging_source": source,
                   "sbom_sha256": digest(files["sbom.cyclonedx.json"]), "native_build_repeated": False,
                   "automatic_npm_oidc_provenance": False}
@@ -474,13 +548,11 @@ def prepare(destination, wheel=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("destination", type=Path)
-    parser.add_argument("--wheel", type=Path)
     parser.add_argument("--admit-release", action="store_true")
     parser.add_argument("--inspect-staging-response", type=Path)
     parser.add_argument("--operation", choices=("admit_only", "stage"), default="admit_only")
     args = parser.parse_args()
     if args.admit_release or args.inspect_staging_response:
-        require(args.wheel is None, "release admission downloads the committed native pin")
         require(not (args.admit_release and args.inspect_staging_response), "choose one release operation")
         identity = {key: os.environ[key.upper()] for key in
                     ("run_id", "run_attempt", "source_sha", "source_tree", "version", "tarball_sha256")}
@@ -493,7 +565,7 @@ def main():
             print(canonical(result).decode())
     else:
         require(args.operation == "admit_only", "preparation cannot stage")
-        prepare(args.destination.resolve(), args.wheel)
+        prepare(args.destination.resolve())
 
 
 if __name__ == "__main__":

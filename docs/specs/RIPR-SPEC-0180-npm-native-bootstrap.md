@@ -11,14 +11,19 @@ adding npm as a distribution channel.
 
 ## Behavior
 
-The `@effortlessmetrics/ripr` npm alpha contains the exact pinned Linux x86-64 ELF from the
-published `ripr-rs` wheel. The command remains `ripr`. It exposes `bin/ripr`
+The `@effortlessmetrics/ripr` npm prerelease contains the exact Linux x86-64 ELF
+from a fresh wheel built and qualified in the same run and attempt. The npm
+qualifier reuses the existing Python build/pip/uv workflow; the standalone PyPI
+publisher keeps its independent manual-main workflow authority. The command remains `ripr`. It exposes `bin/ripr`
 directly, declares Linux/x64/
 glibc metadata, and documents glibc 2.34+ and npm 10+. It has no lifecycle
 scripts, package dependencies, source compilation or install/runtime download.
 
-The source pin binds wheel and native digests, product version and product
-source. Version must match Cargo. Packaging commit/tree are separate provenance
+A runtime native pin is derived from the immutable three-file wheel artifact,
+its API ID/ZIP digest, qualification and wheel receipts, and trusted current
+Cargo version/lockfile/features/toolchain. All must agree on source/run/attempt.
+The original alpha.1 public-wheel pin is historical evidence only; it is never
+relabelled or used as a fallback. Version authority remains Cargo. Packaging commit/tree are separate provenance
 fields. Package creation fails on an uncommitted tracked tree, wrong input
 bytes, unsupported metadata, unsafe archive entries, stale RECORD, missing
 notices, or tarball identity/mode/provenance drift.
@@ -36,7 +41,9 @@ honest incomplete output when the Python preview is disabled.
 
 Source-owned staging is a separate manual operation. Read-only admission binds
 the exact current main SHA/tree, latest complete manual qualification attempt,
-four executed jobs and four immutable artifact ZIP digests. It reuses the
+seven executed jobs and five selected immutable artifact ZIP digests. The
+closed job set includes native build, pip and uv success; the same-run native
+artifact is independently revalidated before either npm receipt is admitted. It reuses the
 native/wheel/tar authority above and requires both retained installed-use rows,
 all four distinct routes, fresh reinstall, and real npm staging-client transport
 of those bytes against a loopback mock registry. No artifact code runs during
@@ -92,7 +99,7 @@ requires operator UI verification when GitHub's GET response omits it.
 
 ```text
 python3 -m unittest discover -s .github/scripts -p test_npm_package.py
-python3 .github/scripts/npm_package.py target/ripr/npm-qualified
+python3 .github/scripts/npm_package.py target/ripr/npm-qualified # inside the qualified workflow run
 python3 .github/scripts/npm_consumer.py target/ripr/npm-qualified target/ripr/npm-consumer
 cargo xtask check-file-policy
 cargo xtask check-workflows
@@ -102,8 +109,8 @@ cargo xtask check-spec-numbering
 
 ## Acceptance Examples
 
-- A genuine pinned wheel produces one package with the original native digest,
-  both licenses, SBOM and distinct packaging/product source identities.
+- A fresh same-run qualified wheel produces one package with its exact native
+  digest, both licenses, SBOM and separately recorded packaging/product identities.
 - A changed native byte, wrong wheel hash, symlink, stale RECORD or missing
   executable is rejected before publication.
 - Four installed routes each produce a real Python-preview finding and
@@ -111,7 +118,7 @@ cargo xtask check-spec-numbering
 - Contradictory OS, CPU or libc metadata is rejected by the selected npm clients.
 - A PR qualifier, stale attempt, failed/skipped job, altered archive or empty
   installed-use row cannot reach the credentialed stage job.
-- Admission-only can inspect already-public alpha bytes but returns
+- Admission-only can inspect a candidate for an already-public version but returns
   stage_eligible false; explicit staging rejects that immutable version.
 - A successful loopback stage sends exactly the qualified tar, no lifecycle
   marker appears, and the receipt retains two selected/observed requests.
@@ -125,8 +132,9 @@ cargo xtask check-spec-numbering
 
 ## Implementation Mapping
 
-- `.github/scripts/npm_package.py`: pinned-input validation and npm tar creation.
-- `packaging/npm/native-source.json`: native product-source authority and hashes.
+- `.github/scripts/npm_package.py`: same-run native-input validation and npm tar creation.
+- `.github/workflows/python-wheel-qualification.yml`: canonical native build and pip/uv qualification.
+- `packaging/npm/bootstrap-alpha1-native-source.json`: immutable historical bootstrap record.
 - `packaging/npm/package.template.json`: single-platform CLI package contract.
 - `.github/workflows/npm-package-qualification.yml`: exact-head, attempt-bound proof.
 - `.github/workflows/publish-npm.yml`: default read-only admission and isolated
