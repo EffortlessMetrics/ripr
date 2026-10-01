@@ -44,6 +44,32 @@ suite('distribution descriptor', () => {
     ]
   };
 
+  test('admits supported prerelease versions only in development catalogs', () => {
+    for (const version of ['0.11.0-alpha.1', '0.11.0-beta.2', '0.11.0-rc.1']) {
+      const development = {
+        ...stable,
+        productVersion: version,
+        channel: 'development',
+        releaseTag: `v${version}`,
+        releaseRef: `refs/tags/v${version}`,
+        manifestFile: `ripr-server-manifest-v${version}.json`
+      };
+      const parsed = parseDistributionDescriptor(JSON.stringify(development));
+      assert.strictEqual(resolveDistributionRequest(version, parsed, 'development_fixture').productVersion, version);
+      assert.throws(() => resolveDistributionRequest(version, parsed), /not eligible for managed resolution/);
+      for (const channel of ['stable', 'rc']) {
+        assert.throws(() => parseDistributionDescriptor(JSON.stringify({
+          ...development, channel
+        })), /product version is not semantic/);
+      }
+    }
+    for (const productVersion of ['0.11.0-alpha.01', '0.11.0-alpha', '0.11.0-dev.1', '0.11.0+build']) {
+      assert.throws(() => parseDistributionDescriptor(JSON.stringify({
+        ...stable, channel: 'development', productVersion
+      })), /product version is not semantic/);
+    }
+  });
+
   test('keeps package version distinct from an RC release placement', () => {
     const request = resolveDistributionRequest('0.11.0', rc);
     assert.strictEqual(request.productVersion, '0.11.0');

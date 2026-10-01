@@ -52,6 +52,8 @@ mod ripr_swarm;
 mod run;
 mod rust_judged_panel;
 mod rust_region_scan;
+#[cfg(test)]
+mod test_binary;
 mod verification_contracts;
 mod version;
 mod windows_advisory;
@@ -22386,6 +22388,26 @@ pub(crate) fn is_non_rust_programming_candidate(path: &str) -> bool {
 }
 
 pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
+    if matches!(
+        path,
+        ".github/scripts/pypi_admission.py" | ".github/scripts/test_pypi_admission.py"
+    ) {
+        return Some(
+            "Source-owned PyPI admission uses the runner's standard-library Python ZIP/metadata runtime without building or executing artifact code before OIDC; its tests exercise the same bounded controller.",
+        );
+    }
+
+    if matches!(
+        path,
+        ".github/scripts/npm_package.py"
+            | ".github/scripts/npm_consumer.py"
+            | ".github/scripts/test_npm_package.py"
+    ) {
+        return Some(
+            "Source-owned npm qualification uses runner standard-library ZIP/tar metadata inspection and isolated npm consumers; no Python runs during npm installation or native use.",
+        );
+    }
+
     if path.starts_with("editors/vscode/") && path.ends_with(".ts") {
         return Some(
             "VS Code extension source and tests must run in the VS Code Extension Host TypeScript API.",
