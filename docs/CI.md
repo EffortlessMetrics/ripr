@@ -722,12 +722,30 @@ The VS Code extension build and extension publish workflows use Node 24. This
 is separate from the VS Code extension-host compatibility declared in
 `editors/vscode/package.json`.
 
-The coverage workflow currently runs:
+The coverage workflow currently runs the supported external-test recipe in
+one shell (show-env first, clean after that environment, plain instrumented
+build/test, then report), binding the analyzer-consuming xtask tests to the
+actual instrumented executable through an absolute explicit override:
 
 ```bash
+llvm_cov_env="$(cargo llvm-cov show-env --export-prefix)"
+eval "$llvm_cov_env"
 cargo llvm-cov clean --workspace
-cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+cargo build --workspace --all-features
+export RIPR_TEST_BINARY="$CARGO_LLVM_COV_TARGET_DIR/debug/ripr"
+test -f "$RIPR_TEST_BINARY"
+"$RIPR_TEST_BINARY" --version
+sha256sum "$RIPR_TEST_BINARY"
+cargo test --workspace --all-features --tests
+cargo llvm-cov report --lcov --output-path lcov.info
 ```
+
+The show-env output is captured in a standalone assignment before `eval`
+so a producer failure propagates under `set -e` instead of being masked
+by `eval`.
+
+`report` takes no build flags, and at this virtual workspace root it covers
+all members even without `--workspace`.
 
 It uploads `lcov.info` as the `rust-lcov` GitHub Actions artifact and uploads
 the same file to Codecov with the `rust` flag and `rust-workspace` upload name.

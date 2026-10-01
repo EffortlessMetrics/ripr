@@ -31,11 +31,19 @@ jobs:
 
       - uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Clean coverage state
-        run: cargo llvm-cov clean --workspace
-
       - name: Generate coverage
-        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+        run: |
+          set -euo pipefail
+          llvm_cov_env="$(cargo llvm-cov show-env --export-prefix)"
+          eval "$llvm_cov_env"
+          cargo llvm-cov clean --workspace
+          cargo build --workspace --all-features
+          export RIPR_TEST_BINARY="$CARGO_LLVM_COV_TARGET_DIR/debug/ripr"
+          test -f "$RIPR_TEST_BINARY"
+          "$RIPR_TEST_BINARY" --version
+          sha256sum "$RIPR_TEST_BINARY"
+          cargo test --workspace --all-features --tests
+          cargo llvm-cov report --lcov --output-path lcov.info
 
       - name: Upload coverage artifact
         if: always()
