@@ -236,6 +236,7 @@ fn exhaustive_help_marks_non_public_rows_visibly() -> Result<(), String> {
         "ripr agent start --root . --seam-id ID [--out target/ripr/workflow] [advanced]",
         "ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json [advanced]",
         "ripr agent packet --root . (--seam-id ID | --gap-ledger PATH --gap-id ID) --json [advanced]",
+        "ripr agent card --root . --seam-id ID [--json] [advanced]",
         "ripr agent verify --root . --before before.json --after after.json --json [advanced]",
         "ripr agent verify-execute --root . --packet packet.json --result-json result.json --authorize --json [advanced]",
         "ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json [advanced]",

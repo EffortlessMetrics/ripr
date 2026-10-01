@@ -3584,6 +3584,139 @@ fn agent_packet_unknown_seam_id_names_the_seam_id_source() -> Result<(), Box<dyn
     Ok(())
 }
 
+/// `ripr agent card` is the default bounded handoff (#4667): one seam projects
+/// to the versioned `RepairCardV1`, the complete canonical packet stays
+/// behind the card's explicit packet route, and the same typed fields render
+/// as the compact human summary without `--json`.
+#[test]
+fn agent_card_hands_off_one_seam_as_the_default_repair_card()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-card-handoff");
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::create_dir_all(root.join("tests"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"boundary_gap_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lib]\nname = \"boundary_gap_fixture\"\npath = \"src/lib.rs\"\n",
+    )?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}\n",
+    )?;
+    std::fs::write(
+        root.join("tests/pricing.rs"),
+        "use boundary_gap_fixture::discounted_total;\n\n#[test]\nfn below_threshold_has_no_discount() {\n    assert_eq!(discounted_total(50, 100), 50);\n}\n\n#[test]\nfn far_above_threshold_discounts() {\n    assert_eq!(discounted_total(10_000, 100), 9_990);\n}\n",
+    )?;
+    init_git_fixture_repo(&root)?;
+    run_git(&root, &["add", "Cargo.toml", "src", "tests"])?;
+    let commit = run_command(
+        "git",
+        Some(&root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "fixture source",
+        ],
+    )?;
+    assert!(
+        commit.status.success(),
+        "fixture source commit failed: {commit:?}"
+    );
+    // Dirty the worktree so the current analysis names the seam's gap and its
+    // witness; the boundary predicate itself is unchanged.
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 20\n    } else {\n        amount\n    }\n}\n",
+    )?;
+
+    let root_arg = root.display().to_string();
+    let card = run_ripr(&[
+        "agent",
+        "card",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        "67fc764ba37d77bd",
+        "--json",
+    ]);
+    assert_success(&card);
+    let card_stdout = String::from_utf8_lossy(&card.stdout);
+    let card_json: serde_json::Value = serde_json::from_str(&card_stdout)?;
+    assert_eq!(card_json["schema_version"], "repair_card.v1");
+    assert_eq!(card_json["subject"]["seam_id"], "67fc764ba37d77bd");
+    let head = run_command("git", Some(&root), &["rev-parse", "HEAD"])?;
+    assert!(head.status.success());
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    assert_eq!(card_json["snapshot"]["repository_head"], head);
+    // The complete packet is routed, never embedded: the wire card names the
+    // packet route and carries no packet envelope content.
+    assert!(
+        !card_stdout.contains("agent-seam-packets-json"),
+        "the wire card must not embed the canonical packet:\n{card_stdout}"
+    );
+    let references = card_json["detail_references"]
+        .as_array()
+        .ok_or("detail_references must be an array")?;
+    let packet_reference = references
+        .iter()
+        .find(|reference| reference["family"] == "canonical_packet")
+        .ok_or("canonical packet detail reference missing")?;
+    assert_eq!(packet_reference["state"], "current");
+    let route = packet_reference["route"]
+        .as_str()
+        .ok_or("canonical packet reference must name a route")?;
+    assert!(
+        route.contains("ripr agent packet --seam-id 67fc764ba37d77bd"),
+        "{route}"
+    );
+
+    // The default surface is the compact human summary of the same card.
+    let human = run_ripr(&[
+        "agent",
+        "card",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        "67fc764ba37d77bd",
+    ]);
+    assert_success(&human);
+    let human_stdout = String::from_utf8_lossy(&human.stdout);
+    for needle in [
+        "Repair card ",
+        "  seam: 67fc764ba37d77bd",
+        "  next action:",
+        "  full packet: ripr agent packet ",
+        "--seam-id 67fc764ba37d77bd --json",
+    ] {
+        assert!(
+            human_stdout.contains(needle),
+            "missing {needle:?}:\n{human_stdout}"
+        );
+    }
+
+    // A cold agent's `probe:...` finding ID is refused with the same seam-ID
+    // source hint the packet surface names.
+    let unknown = run_ripr(&[
+        "agent",
+        "card",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        "probe:src_lib.rs:predicate:566edf6b",
+    ]);
+    assert!(!unknown.status.success());
+    let stderr = String::from_utf8_lossy(&unknown.stderr);
+    assert!(
+        stderr.contains("is a `ripr check` finding ID, not a seam ID"),
+        "{stderr}"
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
 /// The `unchanged_after_attempt` route is reachable only from a promotable
 /// receipt: a live verify pair, its analysis outcome, and a receipt bound to
 /// both (#4268). The committed unchanged-after-attempt receipt is

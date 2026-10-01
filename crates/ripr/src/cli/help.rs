@@ -39,6 +39,7 @@ use crate::output::first_pr::FIRST_PR_HELP;
 #[cfg(test)]
 const REGISTERED_COMMAND_PATHS: &[&str] = &[
     "agent brief",
+    "agent card",
     "agent packet",
     "agent repair",
     "agent receipt",
@@ -109,6 +110,7 @@ const REGISTERED_COMMAND_PATHS: &[&str] = &[
 /// suggestions; callers fall back to naming `ripr <path> --help`.
 pub(super) fn help_text_for(command: &str) -> Option<&'static str> {
     let help_text = match command {
+        "agent card" => AGENT_CARD_HELP,
         "agent brief" => AGENT_BRIEF_HELP,
         "agent packet" => AGENT_PACKET_HELP,
         "agent repair" => AGENT_REPAIR_HELP,
@@ -295,6 +297,10 @@ pub(super) fn print_agent_packet_help() {
     println!("{AGENT_PACKET_HELP}");
 }
 
+pub(super) fn print_agent_card_help() {
+    println!("{AGENT_CARD_HELP}");
+}
+
 pub(super) fn print_agent_verify_help() {
     println!("{AGENT_VERIFY_HELP}");
 }
@@ -376,7 +382,7 @@ mod tests {
         Ok(())
     }
     use super::{
-        AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
+        AGENT_BRIEF_HELP, AGENT_CARD_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         ANNOTATIONS_HELP, ASSISTANT_LOOP_HELP, BASELINE_HELP, CACHE_CLEAR_HELP, CACHE_STATUS_HELP,
         CALIBRATE_HELP, CHECK_HELP, CONFIG_HELP, CONTEXT_HELP, COVERAGE_GRIP_HELP, DIFF_HELP,
@@ -385,17 +391,17 @@ mod tests {
         IMPACTED_EVIDENCE_HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PLUS_HELP,
         POLICY_HELP, PR_COMMENTS_HELP, PR_EVIDENCE_HELP, PR_LEDGER_HELP, PR_REVIEW_HELP,
         PR_SUMMARY_HELP, REPORTS_HELP, RERUN_HELP, REVIEW_COMMENTS_HELP, SWARM_HELP,
-        SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP, print_agent_brief_help, print_agent_help,
-        print_agent_packet_help, print_agent_receipt_help, print_agent_repair_help,
-        print_agent_review_summary_help, print_agent_start_help, print_agent_status_help,
-        print_agent_verify_help, print_assistant_loop_help, print_baseline_help,
-        print_calibrate_help, print_check_help, print_config_help, print_context_help,
-        print_coverage_grip_help, print_diff_help, print_doctor_help, print_evidence_health_help,
-        print_explain_help, print_first_action_help, print_gate_help, print_help, print_help_all,
-        print_init_help, print_lsp_help, print_outcome_help, print_pilot_help, print_policy_help,
-        print_pr_comments_help, print_pr_ledger_help, print_pr_review_help, print_reports_help,
-        print_rerun_help, print_review_comments_help, print_swarm_help, print_swarm_ingest_help,
-        print_swarm_queue_help, print_zero_help,
+        SWARM_INGEST_HELP, SWARM_QUEUE_HELP, ZERO_HELP, print_agent_brief_help,
+        print_agent_card_help, print_agent_help, print_agent_packet_help, print_agent_receipt_help,
+        print_agent_repair_help, print_agent_review_summary_help, print_agent_start_help,
+        print_agent_status_help, print_agent_verify_help, print_assistant_loop_help,
+        print_baseline_help, print_calibrate_help, print_check_help, print_config_help,
+        print_context_help, print_coverage_grip_help, print_diff_help, print_doctor_help,
+        print_evidence_health_help, print_explain_help, print_first_action_help, print_gate_help,
+        print_help, print_help_all, print_init_help, print_lsp_help, print_outcome_help,
+        print_pilot_help, print_policy_help, print_pr_comments_help, print_pr_ledger_help,
+        print_pr_review_help, print_reports_help, print_rerun_help, print_review_comments_help,
+        print_swarm_help, print_swarm_ingest_help, print_swarm_queue_help, print_zero_help,
     };
     use crate::cli::command::known_commands;
 
@@ -697,6 +703,11 @@ mod tests {
         assert!(AGENT_PACKET_HELP.starts_with("Write a per-change handoff packet"));
         assert!(AGENT_PACKET_HELP.contains("Usage: ripr agent packet"));
         assert!(AGENT_PACKET_HELP.contains("agent-seam-packets-json"));
+        assert!(
+            AGENT_CARD_HELP.starts_with("Hand off one seam as the compact default repair card")
+        );
+        assert!(AGENT_CARD_HELP.contains("Usage: ripr agent card"));
+        assert!(AGENT_CARD_HELP.contains("repair_card.v1"));
         assert!(AGENT_VERIFY_HELP.starts_with("Verify static-evidence movement"));
         assert!(AGENT_VERIFY_HELP.contains("Usage: ripr agent verify"));
         assert!(AGENT_VERIFY_HELP.contains("repo-exposure-json"));
@@ -863,6 +874,7 @@ mod tests {
         print_agent_start_help();
         print_agent_brief_help();
         print_agent_packet_help();
+        print_agent_card_help();
         print_agent_verify_help();
         print_agent_receipt_help();
         print_agent_status_help();
@@ -932,6 +944,7 @@ mod tests {
             AGENT_PARSER_RS,
             &["parse_agent_packet_options"],
         ),
+        ("agent card", AGENT_PARSER_RS, &["parse_agent_card_options"]),
         (
             "agent repair",
             AGENT_PARSER_RS,

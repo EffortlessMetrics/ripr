@@ -60,6 +60,9 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), CommandError> {
         AgentCommand::Start(options) => run_agent_start(options).map_err(CommandError::from),
         AgentCommand::Brief(options) => run_agent_brief(options).map_err(CommandError::from),
         AgentCommand::Packet(options) => run_agent_packet(options).map_err(CommandError::from),
+        AgentCommand::Card(options) => {
+            super::agent_card::run_agent_card(options).map_err(CommandError::from)
+        }
         // A deliberate named refusal (drifted analysis inputs, no movement)
         // maps to exit code 3, as it does inside `repair --phase after`.
         // Stdout stays empty on every refusal: the release negative corpus
@@ -85,6 +88,7 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), CommandError> {
         | AgentCommand::StartHelp
         | AgentCommand::BriefHelp
         | AgentCommand::PacketHelp
+        | AgentCommand::CardHelp
         | AgentCommand::VerifyHelp
         | AgentCommand::VerifyExecuteHelp
         | AgentCommand::ReceiptHelp
@@ -262,7 +266,7 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
 /// `probe:...` finding ID that `ripr check` prints; the error must name where
 /// seam IDs come from instead of leaving "not found" as a dead end. The
 /// pilot command names the same root the failing call used.
-fn unknown_seam_id_hint(root: &Path, seam_id: &str) -> String {
+pub(super) fn unknown_seam_id_hint(root: &Path, seam_id: &str) -> String {
     // `bound_root` over the raw path, like the LSP routes: `display_path`
     // would turn a literal backslash in a Unix path into a separator (#4287).
     let root = crate::agent::loop_commands::shell_arg(&crate::agent::loop_commands::bound_root(
@@ -1821,7 +1825,7 @@ mod tests {
         assert_eq!(
             agent(&args(&["unknown"])),
             Err(CommandError::Failure(
-                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
+                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `card`, `verify`, `verify-execute`, `receipt`, `status`, `review-summary`, or `repair`"
                     .to_string()
             ))
         );

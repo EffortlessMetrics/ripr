@@ -25,17 +25,11 @@ pub(crate) mod python_repair_binding;
 pub(crate) mod python_repair_verification;
 pub(crate) mod receipt;
 pub(crate) mod repair_attempt;
-// Staged internal repair-card contract (RIPR-SPEC-0192, #4663). The public Rust
-// API remains unchanged until #4667 connects the first producer (CLI
-// projection) and a consumer adopts the card.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "staged internal contract; #4667 connects the first producer (CLI projection) before any consumer"
-    )
-)]
 pub(crate) mod repair_card;
+/// Production handoff producer that assembles a `RepairCardV1` for one seam
+/// entry (#4667: card-first bounded agent handoff; canonical packet stays
+/// behind the explicit `ripr agent packet` route).
+pub(crate) mod repair_card_handoff;
 pub(crate) mod ripr_plus;
 mod selector;
 pub(crate) mod temp_diff;

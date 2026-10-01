@@ -11,6 +11,17 @@ are scoped or reviewed.
 
 ### Added
 
+- CLI: `ripr agent card --seam-id ID [--json]` (RIPR-SPEC-0194, #4667) makes
+  the compact `RepairCardV1` the default bounded agent handoff. The card is
+  assembled verbatim from the shared authorities — the check finding's
+  fix-instruction witness, repair-route readiness and packet eligibility, the
+  packet's own edit-cage derivation, the seam's latest repair-attempt
+  manifest, and the typed command catalog — with producer-owned portable
+  workspace identity (fail-closed, never minted from a checkout path). The
+  complete canonical packet stays behind the card's explicit detail route;
+  `ripr agent packet` is unchanged and remains the compatibility path.
+  Without `--json`, the same typed fields render as a compact human summary
+  that never re-derives, reorders, or strengthens the card.
 - Domains: `RepairCardV1` detail references (RIPR-SPEC-0193, #4666) keep the
   default card finite: nine load-bearing evidence families (full fix
   instruction, witness/stage evidence, related-test candidates, limitation

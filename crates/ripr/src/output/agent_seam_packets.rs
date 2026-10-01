@@ -74,7 +74,7 @@ const RUNTIME_CONFIRMATION_NOTE: &str =
     "optional cargo-mutants confirmation; ripr reports static evidence only";
 
 /// Packet task for a seam the agent can repair with a targeted test.
-const TASK_WRITE_TARGETED_TEST: &str = "write_targeted_test";
+pub(crate) const TASK_WRITE_TARGETED_TEST: &str = "write_targeted_test";
 
 /// Root the rendered repair-loop commands assume. The packet carries no
 /// workspace path of its own, and the receipt command already projected
@@ -2104,7 +2104,7 @@ fn push_markdown_bullets(out: &mut String, items: &[String]) {
     }
 }
 
-fn task_for(entry: &ClassifiedSeam) -> &'static str {
+pub(crate) fn task_for(entry: &ClassifiedSeam) -> &'static str {
     // Only reached through the packet queue pre-filter
     // (`repair_packet_queue_visible`); under that filter the authority's
     // fail-closed flip reduces to producer route readiness.

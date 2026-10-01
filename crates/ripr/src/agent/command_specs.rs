@@ -164,14 +164,9 @@ pub(crate) fn agent_regeneration_command_spec(
 /// redirect, no writes, directly executable.
 /// Consumed by the #1617 follow-up slices (hover/protocol surfaces) once
 /// they carry the inspection route; the stdout display and recovery are
-/// already pinned here so the contract cannot drift before wiring.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "wired by the #1617 slice that carries inspection routes"
-    )
-)]
+/// Typed inspection-route command spec for one agent artifact. #4667 wires
+/// the first live caller: the repair card names this route as its one next
+/// action, so the spec is no longer a staged contract.
 pub(crate) fn agent_inspection_command_spec(
     route: AgentArtifactRoute,
     root: &str,

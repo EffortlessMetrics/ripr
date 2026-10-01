@@ -612,7 +612,7 @@ fn display_root(root: &Path) -> String {
     root.to_string_lossy().replace('\\', "/")
 }
 
-fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
     let output = git_spawn(root, args)?;
     if !output.status.success() {
         return Err(format!(

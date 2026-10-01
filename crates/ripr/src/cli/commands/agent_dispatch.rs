@@ -7,6 +7,7 @@ pub(super) fn run_agent_help_command(command: &AgentCommand) -> Option<Result<()
         AgentCommand::StartHelp => Some(print_help(help::print_agent_start_help)),
         AgentCommand::BriefHelp => Some(print_help(help::print_agent_brief_help)),
         AgentCommand::PacketHelp => Some(print_help(help::print_agent_packet_help)),
+        AgentCommand::CardHelp => Some(print_help(help::print_agent_card_help)),
         AgentCommand::VerifyHelp => Some(print_help(help::print_agent_verify_help)),
         AgentCommand::VerifyExecuteHelp => Some(print_help(help::print_agent_verify_execute_help)),
         AgentCommand::ReceiptHelp => Some(print_help(help::print_agent_receipt_help)),

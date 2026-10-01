@@ -32,13 +32,6 @@ pub(crate) struct RepairCardDetailSource {
 }
 
 impl RepairCardDetailSource {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "staged internal contract; #4667 connects the first producer-owned detail sources"
-        )
-    )]
     pub(crate) fn current(
         family: RepairCardDetailFamily,
         route: &str,
@@ -53,13 +46,6 @@ impl RepairCardDetailSource {
         }
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "staged internal contract; #4667 connects the first producer-owned detail sources"
-        )
-    )]
     pub(crate) fn unavailable(family: RepairCardDetailFamily, reason: &str) -> Self {
         Self {
             family,
