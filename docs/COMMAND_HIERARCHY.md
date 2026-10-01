@@ -18,7 +18,7 @@ see [installation](QUICKSTART.md#installation) for published and source builds.
 | Check configuration | `ripr config validate` | Validation of `ripr.toml` without analysis. |
 | Start the LSP sidecar | `ripr lsp --stdio` | Saved-workspace feedback for an LSP client. |
 | Serve MCP status | `ripr mcp --stdio` | [Read-only workspace status](interop/mcp.md), not analysis or execution. |
-| Read detailed help | `ripr help <command>` or `ripr help --all` | Options for one command or the full reference. |
+| Read detailed help | `ripr help <command>`, `ripr help workflow [name]`, or `ripr help --all` | Options for one command, one bounded workflow's steps, or the full reference. |
 
 ## Repair transaction
 
@@ -90,8 +90,15 @@ command's job. Keep detailed options in command help and the relevant reference;
 do not copy them into every introduction. The typed command-identity catalog lives in
 `crates/ripr/src/cli/command_catalog.rs` ([RIPR-SPEC-0184](specs/RIPR-SPEC-0184-public-command-catalog.md),
 [#4822](https://github.com/EffortlessMetrics/ripr-swarm/issues/4822)).
-Richer discovery metadata, workflow help, and `help --json` remain tracked in
-[#1613](https://github.com/EffortlessMetrics/ripr-swarm/issues/1613).
+The richer discovery surfaces this guide once deferred are now shipped and
+serve as its validation authority: the typed command metadata table validates
+the human help and hierarchy documentation, and `help --all` exposes the
+advanced and compatibility class markers
+([RIPR-SPEC-0187](specs/RIPR-SPEC-0187-command-metadata-human-projection.md)),
+`ripr help workflow` lists the bounded task workflows
+([RIPR-SPEC-0189](specs/RIPR-SPEC-0189-workflow-catalog-help-workflow.md)), and
+`help --json` emits the versioned machine-readable catalog
+([RIPR-SPEC-0190](specs/RIPR-SPEC-0190-help-json-machine-discovery.md)).
 
 ## Non-claims
 

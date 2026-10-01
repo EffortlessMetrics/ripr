@@ -615,6 +615,34 @@ fn docs_keep_the_canonical_role_vocabulary() -> Result<(), String> {
     Ok(())
 }
 
+/// #2930 drift rule: the discovery chain (#4873, #4962, #4965, #4971) shipped
+/// after #2931 closed the original prose-alignment claim, so the hierarchy
+/// guide must name the landed discovery surfaces in its drift rule and its
+/// help row, and must not keep deferring them to #1613 as future work.
+#[test]
+fn hierarchy_doc_points_at_landed_discovery_surfaces() -> Result<(), String> {
+    let drift_rule = doc_section(COMMAND_HIERARCHY_DOC, "## Drift rule")?;
+    for needle in ["RIPR-SPEC-0187", "RIPR-SPEC-0189", "RIPR-SPEC-0190"] {
+        assert_contains("docs/COMMAND_HIERARCHY.md drift rule", &drift_rule, needle)?;
+    }
+    if drift_rule.contains("remain tracked") {
+        return Err(
+            "docs/COMMAND_HIERARCHY.md drift rule still defers shipped discovery surfaces as future work"
+                .to_string(),
+        );
+    }
+    let help_row = COMMAND_HIERARCHY_DOC
+        .lines()
+        .find(|line| line.contains("Read detailed help"))
+        .ok_or_else(|| "command guide lost task row `Read detailed help`".to_string())?;
+    assert_contains(
+        "docs/COMMAND_HIERARCHY.md help row",
+        help_row,
+        "ripr help workflow",
+    )?;
+    Ok(())
+}
+
 #[test]
 fn doc_routes_allow_editorial_rewording_and_table_spacing() -> Result<(), String> {
     let reworded = COMMAND_HIERARCHY_DOC

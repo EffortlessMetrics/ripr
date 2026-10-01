@@ -2371,6 +2371,15 @@ are scoped or reviewed.
   `npm run package` stops with `Extension entrypoint(s) missing`
   ([#4865](https://github.com/EffortlessMetrics/ripr-swarm/pull/4865)).
 
+### Docs
+
+- `docs/COMMAND_HIERARCHY.md` now names the discovery surfaces that shipped
+  after #2931: the typed command metadata table validates the human help and
+  hierarchy documentation, `ripr help workflow` lists the bounded task
+  workflows, and `help --json` emits the versioned machine-readable catalog.
+  The guide no longer defers these to #1613 as future work, and its help row
+  includes the workflow surface (#2930, #4976).
+
 ## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
 
 Release date: 2026-06-15 (crates.io publication; the GitHub release draft for this version remains unfinalized).
