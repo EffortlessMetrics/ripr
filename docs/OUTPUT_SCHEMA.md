@@ -230,8 +230,10 @@ RIPR Zero authority.
 GitHub Actions displays at most 10 annotations of each level (error, warning,
 notice) per step and drops the rest silently. Disclosure notices therefore lead
 the stream: the unannotated-denominator notice (suppressed or not-current
-findings) and, when any level exceeds 10, a notice naming how many annotations
-of that level were emitted. Per-finding annotations follow.
+findings, including when every finding is policy-suppressed) and, when any
+level exceeds 10, a notice naming how many annotations of that level were
+emitted. An all-suppressed run emits that `::notice` rather than zero bytes;
+suppressed findings stay unannotated. Per-finding annotations follow.
 
 When the producer-owned `analysis_outcome` is not complete (for example
 `unsupported_input` or `partial_with_limitations`), the stream starts with a
@@ -1797,7 +1799,8 @@ Example:
 Scope: the flag applies to the findings-based check formats (`human`,
 `human-full`, `json`, `github`). Human output lists suppressed findings as compact
 one-liners instead of detailed blocks; GitHub-format output skips
-annotations for suppressed findings. SARIF keeps its existing
+annotations for suppressed findings and, when the policy hides every finding,
+emits a denominator `::notice` rather than an empty stream. SARIF keeps its existing
 `.ripr/suppressions.toml` `finding_id` suppression channel, and badge/repo
 formats keep their own suppression projections — `ripr check` rejects the
 flag for those formats instead of silently ignoring it. Date-expiry

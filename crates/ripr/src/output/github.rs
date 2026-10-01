@@ -22,7 +22,9 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
     let mut per_level = std::collections::BTreeMap::<&'static str, usize>::new();
     // Findings suppressed by an explicit `--suppression-policy` (#1441) are
     // not annotated: filtering PR-annotation noise on accepted surfaces is
-    // the purpose of the policy. The JSON surface keeps them visible.
+    // the purpose of the policy. The JSON surface keeps them visible. When
+    // every finding is omitted this way, emit a denominator notice (#4393)
+    // rather than an empty stream.
     let suppressed_ids: std::collections::BTreeSet<&str> = output
         .suppression
         .iter()
@@ -937,13 +939,71 @@ mod tests {
 
         let rendered = render(&output);
 
-        // The suppressed finding is never annotated, but the run still
-        // carries a denominator so all-suppressed is not silent (#4393).
+        // Deliberate re-pin of the former empty-string assertion: suppressed
+        // findings stay unannotated, but all-suppressed is not silent (#4393).
         assert_eq!(
             rendered,
             "::notice title=ripr::Annotated 0 of 1 static exposure finding(s); 1 suppressed by policy policy/ripr-suppressions.toml. Run `ripr check --format json` to list every finding.\n",
         );
         assert!(!rendered.contains("file=src/lib.rs"));
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "all-suppressed is not an empty run: {rendered}"
+        );
+    }
+
+    #[test]
+    fn render_over_broad_src_policy_keeps_unmatched_annotation() {
+        // Over-broad `src/**` hides every src finding; a tests/ finding
+        // outside that glob must still annotate. This rejects both silence
+        // and "any suppression blanks the whole stream" (#4393).
+        use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
+        let mut output = output_with_unknown_finding();
+        let template = output.findings[0].clone();
+        let mut src_other = template.clone();
+        src_other.id = "probe:src_other_rs:4:static_unknown".to_string();
+        src_other.probe.location = SourceLocation::new("src/other.rs", 4, 1);
+        let mut tests_other = template;
+        tests_other.id = "probe:tests_other_rs:8:static_unknown".to_string();
+        tests_other.probe.location = SourceLocation::new("tests/other.rs", 8, 1);
+        let src_lib_id = output.findings[0].id.clone();
+        output.findings = vec![output.findings[0].clone(), src_other, tests_other];
+        output.suppression = Some(CheckSuppressionOutcome {
+            policy_path: "policy/over-broad.toml".to_string(),
+            suppressed: vec![
+                SuppressedCheckFinding {
+                    finding_id: src_lib_id,
+                    selector: "src/**".to_string(),
+                },
+                SuppressedCheckFinding {
+                    finding_id: "probe:src_other_rs:4:static_unknown".to_string(),
+                    selector: "src/**".to_string(),
+                },
+            ],
+            warnings: Vec::new(),
+        });
+
+        let rendered = render(&output);
+
+        assert_eq!(
+            rendered.lines().next(),
+            Some(
+                "::notice title=ripr::Annotated 1 of 3 static exposure finding(s); 2 suppressed by policy policy/over-broad.toml. Run `ripr check --format json` to list every finding."
+            ),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("file=src/lib.rs") && !rendered.contains("file=src/other.rs"),
+            "over-broad src/** must not annotate src findings: {rendered}"
+        );
+        assert!(
+            rendered.contains("file=tests/other.rs"),
+            "a finding outside the over-broad glob must stay annotated: {rendered}"
+        );
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "{rendered}"
+        );
     }
 
     #[test]
