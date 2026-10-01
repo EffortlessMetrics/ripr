@@ -8,12 +8,19 @@
 //! nested `cargo build`, it reports the probed locations and asks for
 //! `cargo build -p ripr` first.
 //!
-//! Candidate order: the `RIPR_TEST_BINARY` explicit override first, then the
-//! active `CARGO_TARGET_DIR` (routed CI points it at scratch), then
-//! `CARGO_LLVM_COV_TARGET_DIR` (the Coverage workflow builds the instrumented
-//! analyzer under llvm-cov's separate target), then the workspace `target/`
-//! directory. The profile follows the test build itself (`cargo test
+//! Candidate order: the `RIPR_TEST_BINARY` explicit override first, then
+//! `CARGO_LLVM_COV_TARGET_DIR` (builtin `cargo llvm-cov` runs build the
+//! instrumented analyzer under llvm-cov's separate target), then the active
+//! `CARGO_TARGET_DIR` (routed CI points it at scratch), then the workspace
+//! `target/` directory. The profile follows the test build itself (`cargo test
 //! --release` looks under `release/`).
+//!
+//! The explicit override is identity, not a hint: when `RIPR_TEST_BINARY` is
+//! configured (even empty), it must name the analyzer file or resolution
+//! fails closed — it never falls through to another executable. The llvm-cov
+//! target likewise wins over the ordinary target dirs when set, so an
+//! ordinary (uninstrumented) binary cannot shadow the instrumented analyzer
+//! under a coverage run. Empty target-dir values are treated as unset.
 //!
 //! [`resolve_built_ripr_binary`] is the pure core and is unit-tested below
 //! against staged synthetic target layouts. The environment wrapper is covered
@@ -25,7 +32,9 @@ use std::path::{Path, PathBuf};
 /// path so unit tests can stage synthetic target layouts without touching
 /// process-wide environment variables.
 pub(crate) struct BinarySearch {
-    /// `RIPR_TEST_BINARY` override: used verbatim when it names a file.
+    /// `RIPR_TEST_BINARY` override: identity, used verbatim or failed closed.
+    /// A configured override (including empty) that does not name a file is
+    /// an error, never a fallthrough to another candidate.
     pub(crate) override_binary: Option<PathBuf>,
     /// Active cargo target directory (`CARGO_TARGET_DIR`).
     pub(crate) cargo_target_dir: Option<PathBuf>,
@@ -37,10 +46,16 @@ pub(crate) struct BinarySearch {
     pub(crate) profile: &'static str,
 }
 
-/// First `is_file()` hit wins; the hit is returned as an absolute display
-/// path. When nothing matches, the error lists every probed location so a
-/// miss under an unfamiliar target layout is diagnosable instead of silent.
+/// The configured `RIPR_TEST_BINARY` override is identity: it must name the
+/// analyzer file or resolution fails closed. Otherwise the first `is_file()`
+/// hit across the target dirs wins; the hit is returned as an absolute
+/// display path. When nothing matches, the error lists every probed location
+/// so a miss under an unfamiliar target layout is diagnosable instead of
+/// silent.
 pub(crate) fn resolve_built_ripr_binary(search: &BinarySearch) -> Result<String, String> {
+    if let Some(override_binary) = &search.override_binary {
+        return resolve_explicit_override(override_binary);
+    }
     let candidates = built_ripr_binary_candidates(search);
     for candidate in &candidates {
         if candidate.is_file() {
@@ -57,6 +72,44 @@ pub(crate) fn resolve_built_ripr_binary(search: &BinarySearch) -> Result<String,
             .collect::<Vec<_>>()
             .join(", ")
     ))
+}
+
+/// Resolve the explicit override verbatim or fail closed: a configured
+/// empty, missing, or non-file override never falls through to another
+/// executable. Diagnostics name the configured value, where a relative value
+/// resolved (test processes run with cwd at the xtask package dir), and the
+/// two honest recoveries (fix the override, or unset it for target lookup).
+fn resolve_explicit_override(override_binary: &Path) -> Result<String, String> {
+    if override_binary.as_os_str().is_empty() {
+        return Err(
+            "RIPR_TEST_BINARY is set but empty; supply the explicit built analyzer binary or unset RIPR_TEST_BINARY to allow target-directory lookup (tests resolve the binary and never spawn a nested build)"
+                .to_string(),
+        );
+    }
+    if !override_binary.is_file() {
+        let resolved = std::path::absolute(override_binary)
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| override_binary.display().to_string());
+        if override_binary.is_dir() {
+            return Err(format!(
+                "RIPR_TEST_BINARY=`{}` is a directory, not the analyzer executable (resolved `{resolved}`); the explicit override is the analyzer identity and never falls back to another binary; supply the explicit built binary file or unset RIPR_TEST_BINARY to allow target-directory lookup (tests resolve the binary and never spawn a nested build)",
+                override_binary.display()
+            ));
+        }
+        if override_binary.exists() {
+            return Err(format!(
+                "RIPR_TEST_BINARY=`{}` exists but is not a regular file (resolved `{resolved}`); the explicit override is the analyzer identity and never falls back to another binary; supply the explicit built binary file or unset RIPR_TEST_BINARY to allow target-directory lookup (tests resolve the binary and never spawn a nested build)",
+                override_binary.display()
+            ));
+        }
+        return Err(format!(
+            "RIPR_TEST_BINARY=`{}` does not name an existing file (resolved `{resolved}`); the explicit override is the analyzer identity and never falls back to another binary; run `cargo build -p ripr` first if it is not built yet, or unset RIPR_TEST_BINARY to allow target-directory lookup (tests resolve the binary and never spawn a nested build)",
+            override_binary.display()
+        ));
+    }
+    std::path::absolute(override_binary)
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|error| format!("resolve built ripr binary: {error}"))
 }
 
 /// Thin environment wrapper over [`resolve_built_ripr_binary`]: the override,
@@ -85,13 +138,13 @@ pub(crate) fn resolve_built_ripr_binary_from_env() -> Result<String, String> {
 fn built_ripr_binary_candidates(search: &BinarySearch) -> Vec<PathBuf> {
     let file_name = format!("ripr{}", std::env::consts::EXE_SUFFIX);
     let mut candidates = Vec::new();
-    if let Some(override_binary) = &search.override_binary {
-        candidates.push(override_binary.clone());
-    }
-    if let Some(target_dir) = &search.cargo_target_dir {
+    // Instrumentation authority first: when a coverage run sets the llvm-cov
+    // target, its instrumented analyzer wins over any ordinary binary under
+    // the active cargo target dir or the workspace target.
+    if let Some(target_dir) = non_empty_dir(&search.llvm_cov_target_dir) {
         candidates.push(target_dir.join(search.profile).join(&file_name));
     }
-    if let Some(target_dir) = &search.llvm_cov_target_dir {
+    if let Some(target_dir) = non_empty_dir(&search.cargo_target_dir) {
         candidates.push(target_dir.join(search.profile).join(&file_name));
     }
     candidates.push(
@@ -102,6 +155,13 @@ fn built_ripr_binary_candidates(search: &BinarySearch) -> Vec<PathBuf> {
             .join(&file_name),
     );
     candidates
+}
+
+/// Empty target-dir values carry no location (matching cargo-llvm-cov's own
+/// empty-means-unset handling); skipping them keeps an empty
+/// `CARGO_TARGET_DIR` from resolving to a cwd-relative accident.
+fn non_empty_dir(dir: &Option<PathBuf>) -> Option<&PathBuf> {
+    dir.as_ref().filter(|dir| !dir.as_os_str().is_empty())
 }
 
 struct TempRoot {
@@ -193,11 +253,14 @@ fn override_binary_wins_over_every_target_dir() -> Result<(), String> {
 }
 
 #[test]
-fn cargo_target_dir_wins_over_llvm_cov_and_default() -> Result<(), String> {
-    let temp = TempRoot::new("cargo-target-wins")?;
+fn llvm_cov_target_dir_wins_over_cargo_target_and_default() -> Result<(), String> {
+    let temp = TempRoot::new("llvm-cov-beats-cargo-target")?;
     let file_name = binary_file_name();
-    let expected = temp.touch(&format!("cargo-target/debug/{file_name}"))?;
-    temp.touch(&format!("llvm-cov-target/debug/{file_name}"))?;
+    // An ordinary binary sits under the active cargo target dir, but the
+    // instrumented analyzer under the llvm-cov target must win: the ordinary
+    // executable must not shadow instrumentation when a coverage run is active.
+    temp.touch(&format!("cargo-target/debug/{file_name}"))?;
+    let expected = temp.touch(&format!("llvm-cov-target/debug/{file_name}"))?;
     temp.touch(&format!("workspace/target/debug/{file_name}"))?;
     let search = BinarySearch {
         override_binary: None,
@@ -208,7 +271,7 @@ fn cargo_target_dir_wins_over_llvm_cov_and_default() -> Result<(), String> {
     };
     ensure(
         resolve_built_ripr_binary(&search)? == absolute_string(&expected)?,
-        "the active cargo target dir must win over llvm-cov and default",
+        "the llvm-cov target dir must win over the cargo target dir and default",
     )?;
     Ok(())
 }
@@ -273,16 +336,16 @@ fn profile_selects_the_profile_subdir() -> Result<(), String> {
 }
 
 #[test]
-fn directories_and_missing_files_are_skipped() -> Result<(), String> {
-    let temp = TempRoot::new("skip-non-files")?;
+fn target_dir_non_files_are_skipped() -> Result<(), String> {
+    let temp = TempRoot::new("skip-target-non-files")?;
     let file_name = binary_file_name();
     // A directory at the cargo-target candidate path must not match: only
-    // `is_file()` hits resolve.
+    // `is_file()` hits resolve. No override is configured here; an invalid
+    // explicit override instead fails closed (see the override tests below).
     temp.mkdir(&format!("cargo-target/debug/{file_name}"))?;
     let expected = temp.touch(&format!("workspace/target/debug/{file_name}"))?;
     let search = BinarySearch {
-        // A set-but-missing override is skipped, like every other candidate.
-        override_binary: Some(temp.root.join("no-such-override")),
+        override_binary: None,
         cargo_target_dir: Some(temp.root.join("cargo-target")),
         llvm_cov_target_dir: Some(temp.root.join("no-such-llvm-cov-target")),
         workspace_root: temp.root.join("workspace"),
@@ -290,7 +353,118 @@ fn directories_and_missing_files_are_skipped() -> Result<(), String> {
     };
     ensure(
         resolve_built_ripr_binary(&search)? == absolute_string(&expected)?,
-        "directories and missing files must be skipped for the next candidate",
+        "target-dir directories and missing files must be skipped for the next candidate",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn explicit_override_missing_fails_closed_despite_fallback() -> Result<(), String> {
+    let temp = TempRoot::new("override-missing-fail-closed")?;
+    let file_name = binary_file_name();
+    // Rescue candidates exist under every target dir, but none may rescue an
+    // invalid explicit override: the override is identity.
+    temp.touch(&format!("llvm-cov-target/debug/{file_name}"))?;
+    temp.touch(&format!("cargo-target/debug/{file_name}"))?;
+    temp.touch(&format!("rescue-workspace/target/debug/{file_name}"))?;
+    let search = BinarySearch {
+        override_binary: Some(temp.root.join("no-such-override")),
+        cargo_target_dir: Some(temp.root.join("cargo-target")),
+        llvm_cov_target_dir: Some(temp.root.join("llvm-cov-target")),
+        workspace_root: temp.root.join("rescue-workspace"),
+        profile: "debug",
+    };
+    let error = resolve_built_ripr_binary(&search).err().ok_or(
+        "test-binary test failed: a missing explicit override must fail closed, not fall through to another binary",
+    )?;
+    for expected in [
+        "RIPR_TEST_BINARY",
+        "no-such-override",
+        "does not name an existing file",
+        "never falls back",
+        "unset RIPR_TEST_BINARY",
+        "cargo build -p ripr",
+    ] {
+        ensure(
+            error.contains(expected),
+            &format!("the override error must name `{expected}`, got: {error}"),
+        )?;
+    }
+    ensure(
+        !error.contains("rescue-workspace"),
+        &format!("the override error must not name the unrescued fallback, got: {error}"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn explicit_override_directory_fails_closed_despite_fallback() -> Result<(), String> {
+    let temp = TempRoot::new("override-dir-fail-closed")?;
+    let file_name = binary_file_name();
+    temp.touch(&format!("llvm-cov-target/debug/{file_name}"))?;
+    temp.touch(&format!("cargo-target/debug/{file_name}"))?;
+    temp.touch(&format!("rescue-workspace/target/debug/{file_name}"))?;
+    let override_dir = temp.mkdir("override-dir")?;
+    let search = BinarySearch {
+        override_binary: Some(override_dir),
+        cargo_target_dir: Some(temp.root.join("cargo-target")),
+        llvm_cov_target_dir: Some(temp.root.join("llvm-cov-target")),
+        workspace_root: temp.root.join("rescue-workspace"),
+        profile: "debug",
+    };
+    let error = resolve_built_ripr_binary(&search).err().ok_or(
+        "test-binary test failed: a directory explicit override must fail closed, not fall through to another binary",
+    )?;
+    for expected in [
+        "RIPR_TEST_BINARY",
+        "override-dir",
+        "is a directory",
+        "never falls back",
+        "unset RIPR_TEST_BINARY",
+    ] {
+        ensure(
+            error.contains(expected),
+            &format!("the override error must name `{expected}`, got: {error}"),
+        )?;
+    }
+    ensure(
+        !error.contains("rescue-workspace"),
+        &format!("the override error must not name the unrescued fallback, got: {error}"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn explicit_override_empty_fails_closed_despite_fallback() -> Result<(), String> {
+    let temp = TempRoot::new("override-empty-fail-closed")?;
+    let file_name = binary_file_name();
+    temp.touch(&format!("llvm-cov-target/debug/{file_name}"))?;
+    temp.touch(&format!("cargo-target/debug/{file_name}"))?;
+    temp.touch(&format!("rescue-workspace/target/debug/{file_name}"))?;
+    let search = BinarySearch {
+        override_binary: Some(PathBuf::new()),
+        cargo_target_dir: Some(temp.root.join("cargo-target")),
+        llvm_cov_target_dir: Some(temp.root.join("llvm-cov-target")),
+        workspace_root: temp.root.join("rescue-workspace"),
+        profile: "debug",
+    };
+    let error = resolve_built_ripr_binary(&search).err().ok_or(
+        "test-binary test failed: an empty explicit override must fail closed, not fall through to another binary",
+    )?;
+    for expected in [
+        "RIPR_TEST_BINARY",
+        "is set but empty",
+        "unset RIPR_TEST_BINARY",
+        "never spawn a nested build",
+    ] {
+        ensure(
+            error.contains(expected),
+            &format!("the override error must name `{expected}`, got: {error}"),
+        )?;
+    }
+    ensure(
+        !error.contains("rescue-workspace"),
+        &format!("the override error must not name the unrescued fallback, got: {error}"),
     )?;
     Ok(())
 }
@@ -298,8 +472,10 @@ fn directories_and_missing_files_are_skipped() -> Result<(), String> {
 #[test]
 fn missing_everywhere_names_each_probed_location() -> Result<(), String> {
     let temp = TempRoot::new("missing-error")?;
+    // No override configured: the miss error lists the target-dir probe order
+    // (llvm-cov first for instrumentation authority).
     let search = BinarySearch {
-        override_binary: Some(temp.root.join("no-such-override")),
+        override_binary: None,
         cargo_target_dir: Some(temp.root.join("no-such-cargo-target")),
         llvm_cov_target_dir: Some(temp.root.join("no-such-llvm-cov-target")),
         workspace_root: temp.root.join("no-such-workspace"),
@@ -309,9 +485,8 @@ fn missing_everywhere_names_each_probed_location() -> Result<(), String> {
         .err()
         .ok_or("test-binary test failed: a total miss must be an error")?;
     for expected in [
-        "no-such-override",
-        "no-such-cargo-target",
         "no-such-llvm-cov-target",
+        "no-such-cargo-target",
         "no-such-workspace",
         "cargo build -p ripr",
         "never spawn a nested build",
@@ -321,5 +496,48 @@ fn missing_everywhere_names_each_probed_location() -> Result<(), String> {
             &format!("the miss error must name `{expected}`, got: {error}"),
         )?;
     }
+    let llvm_cov_at = error.find("no-such-llvm-cov-target").unwrap_or(usize::MAX);
+    let cargo_at = error.find("no-such-cargo-target").unwrap_or(usize::MAX);
+    let workspace_at = error.find("no-such-workspace").unwrap_or(usize::MAX);
+    ensure(
+        llvm_cov_at < cargo_at && cargo_at < workspace_at,
+        &format!(
+            "the miss error must probe llvm-cov before cargo-target before workspace, got: {error}"
+        ),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn empty_target_dirs_are_skipped() -> Result<(), String> {
+    let temp = TempRoot::new("empty-target-dirs")?;
+    let file_name = binary_file_name();
+    let expected = temp.touch(&format!("workspace/target/debug/{file_name}"))?;
+    let search = BinarySearch {
+        override_binary: None,
+        // Empty carries no location; both must be skipped for the workspace
+        // fallback rather than resolving to a cwd-relative accident.
+        cargo_target_dir: Some(PathBuf::new()),
+        llvm_cov_target_dir: Some(PathBuf::new()),
+        workspace_root: temp.root.join("workspace"),
+        profile: "debug",
+    };
+    ensure(
+        resolve_built_ripr_binary(&search)? == absolute_string(&expected)?,
+        "empty target dirs must be skipped for the workspace fallback",
+    )?;
+    let error = resolve_built_ripr_binary(&BinarySearch {
+        override_binary: None,
+        cargo_target_dir: Some(PathBuf::new()),
+        llvm_cov_target_dir: Some(PathBuf::new()),
+        workspace_root: temp.root.join("no-such-workspace"),
+        profile: "debug",
+    })
+    .err()
+    .ok_or("test-binary test failed: a total miss must be an error")?;
+    ensure(
+        error.contains("no-such-workspace"),
+        &format!("the miss error must name the workspace probe, got: {error}"),
+    )?;
     Ok(())
 }

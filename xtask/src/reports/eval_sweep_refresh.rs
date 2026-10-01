@@ -2536,7 +2536,7 @@ mod python_eval_sweep_refresh {
     }
 
     /// Resolves the built ripr binary through the shared resolve-only probe
-    /// (override, active target dir, llvm-cov target dir, workspace target).
+    /// (override, llvm-cov target dir, active target dir, workspace target).
     /// Like every other binary-consuming test, this never spawns a nested
     /// build: run `cargo build -p ripr` first on a cold checkout.
     fn built_ripr_binary() -> Result<String, String> {

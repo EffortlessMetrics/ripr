@@ -1650,7 +1650,7 @@ mod tests {
     }
 
     /// The absolute worktree binary via the shared resolve-only probe
-    /// (override, active target dir, llvm-cov target dir, workspace target;
+    /// (override, llvm-cov target dir, active target dir, workspace target;
     /// never a nested build).
     fn worktree_binary() -> Result<String, String> {
         crate::test_binary::resolve_built_ripr_binary_from_env()
