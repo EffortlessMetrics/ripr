@@ -10509,6 +10509,134 @@ fn init_force_overwrites_existing_config() -> Result<(), String> {
     Ok(())
 }
 
+/// Runs `ripr init` with every written file capped at 512 bytes. SIGXFSZ is
+/// ignored so the cut-short write returns `EFBIG`, as a full disk returns
+/// `ENOSPC`, instead of killing the process.
+#[cfg(unix)]
+fn run_size_limited_init(root: &str, force: bool) -> Result<Output, String> {
+    let mut args = vec![
+        "-c",
+        "trap '' XFSZ; ulimit -f 1 && exec \"$0\" \"$@\"",
+        env!("CARGO_BIN_EXE_ripr"),
+        "init",
+        "--root",
+        root,
+    ];
+    if force {
+        args.push("--force");
+    }
+    run_command("sh", None, &args).map_err(|e| format!("spawn size-limited init: {e}"))
+}
+
+#[cfg(unix)]
+#[test]
+fn init_that_cannot_finish_writing_keeps_the_previous_config() -> Result<(), String> {
+    // #4883: --force removed the old config before writing the new one, so a
+    // full disk left a truncated fragment where the user's config had been.
+    let workspace = make_temp_workspace(None)?;
+    let config_path = workspace.join("ripr.toml");
+    let previous = "[analysis]\nmode = \"deep\"\n";
+    std::fs::write(&config_path, previous).map_err(|e| format!("seed ripr.toml: {e}"))?;
+    let root = workspace.display().to_string();
+
+    let forced = run_size_limited_init(&root, true)?;
+    assert!(
+        !forced.status.success(),
+        "the size-limited --force write must fail: {forced:?}"
+    );
+    let stdout = String::from_utf8_lossy(&forced.stdout);
+    assert!(
+        !stdout.contains("Overwrote existing"),
+        "a failed overwrite must not be reported as done: {stdout}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&config_path).map_err(|e| format!("read ripr.toml: {e}"))?,
+        previous,
+        "a failed --force write must leave the previous config in place"
+    );
+    let leftovers: Vec<String> = std::fs::read_dir(&workspace)
+        .map_err(|e| format!("read workspace: {e}"))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".tmp"))
+        .collect();
+    assert_eq!(leftovers, Vec::<String>::new());
+
+    // Without an existing config, a cut-short write must not leave a
+    // fragment that a rerun refuses to replace.
+    std::fs::remove_file(&config_path).map_err(|e| format!("remove ripr.toml: {e}"))?;
+    let fresh = run_size_limited_init(&root, false)?;
+    assert!(
+        !fresh.status.success(),
+        "the size-limited write must fail: {fresh:?}"
+    );
+    assert!(
+        !config_path.exists(),
+        "a cut-short init left a truncated ripr.toml"
+    );
+    let staged: Vec<String> = std::fs::read_dir(&workspace)
+        .map_err(|e| format!("read workspace: {e}"))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".tmp"))
+        .collect();
+    assert_eq!(
+        staged,
+        Vec::<String>::new(),
+        "a failed init left its staging file"
+    );
+    assert_success(&run_ripr(&["init", "--root", &root]));
+
+    ignore_remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn init_force_replaces_a_symlinked_config_without_writing_its_target() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    use std::os::unix::fs::PermissionsExt as _;
+    let target = workspace.join("elsewhere.toml");
+    std::fs::write(&target, "keep\n").map_err(|e| format!("seed target: {e}"))?;
+    // A distinctive mode on the link target: the replacement must not take it
+    // on, because the rename replaces the link, not the file it points at.
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o604))
+        .map_err(|e| format!("chmod target: {e}"))?;
+    let fresh_probe = workspace.join("mode-probe");
+    std::fs::write(&fresh_probe, "").map_err(|e| format!("write probe: {e}"))?;
+    let default_mode = std::fs::metadata(&fresh_probe)
+        .map_err(|e| format!("stat probe: {e}"))?
+        .permissions()
+        .mode()
+        & 0o777;
+    let config_path = workspace.join("ripr.toml");
+    std::os::unix::fs::symlink(&target, &config_path).map_err(|e| format!("symlink: {e}"))?;
+
+    let root = workspace.display().to_string();
+    assert_success(&run_ripr(&["init", "--root", &root, "--force"]));
+    assert_eq!(
+        std::fs::read_to_string(&target).map_err(|e| format!("read target: {e}"))?,
+        "keep\n",
+        "--force wrote through the symlink"
+    );
+    let metadata =
+        std::fs::symlink_metadata(&config_path).map_err(|e| format!("stat ripr.toml: {e}"))?;
+    assert!(
+        metadata.file_type().is_file(),
+        "ripr.toml must be a regular file"
+    );
+    assert_eq!(
+        metadata.permissions().mode() & 0o777,
+        default_mode,
+        "the replacement inherited the symlink target's permissions"
+    );
+    let config = std::fs::read_to_string(&config_path).map_err(|e| format!("read: {e}"))?;
+    assert!(config.contains("mode = \"draft\""));
+
+    ignore_remove_dir_all(&workspace);
+    Ok(())
+}
+
 #[test]
 fn baseline_create_writes_reviewed_ledger_and_refuses_overwrite() -> Result<(), String> {
     let workspace = unique_temp_workspace("baseline-create");
