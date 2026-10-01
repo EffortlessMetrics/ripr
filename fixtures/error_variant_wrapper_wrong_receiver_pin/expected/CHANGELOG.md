@@ -88,6 +88,7 @@ Updated:
 ## Pending — error_variant_wrapper_wrong_receiver_pin (8)
 
 Reason:
+RIPR-SPEC-0108: #4760 other-type parse_summary is not direct_owner_call; owner-type witness leads
 RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
 
 Command:

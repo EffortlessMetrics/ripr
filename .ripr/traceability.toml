@@ -6920,6 +6920,14 @@ tests = [
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_wrong_limitation_detail",
   "xtask/src/main.rs::tests::evidence_promotion_semantic_assertions_reject_wrong_limitation_route",
   "xtask/src/main.rs::validate_evidence_promotion_honesty_corpus_at",
+  "crates/ripr/src/analysis/classify/related_tests.rs::tests::given_two_impls_when_test_calls_other_type_then_name_only_relation",
+  "crates/ripr/src/analysis/classify/related_tests.rs::tests::given_two_impls_when_test_calls_owner_type_then_direct_owner_call",
+  "crates/ripr/src/analysis/classify/related_tests.rs::tests::given_two_impls_when_receiver_type_is_unresolved_then_name_only_relation",
+  "crates/ripr/src/analysis/classify/related_tests.rs::tests::given_two_impls_when_test_uses_owner_ufcs_then_direct_owner_call",
+  "crates/ripr/src/analysis/classify/related_tests.rs::tests::given_unique_impl_method_when_receiver_type_is_unresolved_then_direct_owner_call",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::related_tests_cap_keeps_a_second_test_when_one_test_has_many_oracles",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::given_two_impls_when_compact_grip_sees_other_type_call_then_not_direct_owner_call",
+  "crates/ripr/src/analysis/test_grip_evidence/tests.rs::given_two_impls_when_compact_grip_sees_owner_type_call_then_direct_owner_call",
 ]
 fixtures = [
   "fixtures/benches_harness_evidence",
@@ -6944,6 +6952,8 @@ fixtures = [
   "fixtures/rust_transitive_reach_test_helper_chain",
   "fixtures/rust_macro_reach_limitation",
   "fixtures/typescript_adversarial_same_method_other_class",
+  "fixtures/rust_adversarial_same_method_other_type",
+  "fixtures/rust_same_method_owner_type_positive",
   "fixtures/typescript_adversarial_token_substring",
   "fixtures/typescript_adversarial_render_unobserved_sink",
   "fixtures/typescript_adversarial_owner_identity_after_insertion",

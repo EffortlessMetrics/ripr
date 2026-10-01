@@ -606,6 +606,25 @@ fn find_related_tests_with_candidates<'a>(
         }
     }
     let owner_name_is_unique = workspace_complete && same_name_function_count == 1;
+    // Same-crate trait impls share a method name (`size_hint` on WhileSome
+    // and Combinations). The uniqueness bypass above only gates *cross-crate*
+    // package-prefix filtering; this count is the receiver-identity gate
+    // (#4760) and uses whatever the index actually contains.
+    let indexed_same_name_count = if owner_name.is_empty() {
+        0
+    } else {
+        match candidates {
+            RelatedTestCandidates::Indexed(candidate_index) => {
+                candidate_index.function_indices(owner_name).len()
+            }
+            #[cfg(test)]
+            RelatedTestCandidates::FullScan => index
+                .functions
+                .iter()
+                .filter(|function| function.name == owner_name)
+                .count(),
+        }
+    };
 
     // For module-level struct/field probes (owner_fn is None) derive the package
     // prefix from the probe's source file so cross-crate spurious matches are
@@ -883,8 +902,11 @@ fn find_related_tests_with_candidates<'a>(
         // emitted `RelatedTest` can carry `relation_reason` /
         // `relation_confidence` tags for consumer filtering.
         let reason = if calls_owner {
-            // The test directly calls or mentions the changed owner function.
-            RelationReason::DirectOwnerCall
+            // A unique owner name, or a receiver resolved to this impl, is a
+            // direct call. An impl method whose name has other workspace
+            // definitions cannot be `direct_owner_call` until the receiver
+            // is bound to this impl (#4760).
+            owner_call_relation_reason(test, owner_fn, owner_name, indexed_same_name_count)
         } else if helper_chain_reaches {
             // The test calls a function that reaches the owner through
             // the bounded helper-transfer chain (#3296).
@@ -1925,6 +1947,177 @@ pub(in crate::analysis) fn package_prefix(path: &Path) -> Option<String> {
     None
 }
 
+fn is_ident_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn ident_boundary(bytes: &[u8], start: usize, end: usize) -> bool {
+    let before_ok = start == 0 || !bytes.get(start - 1).copied().is_some_and(is_ident_byte);
+    let after_ok = end >= bytes.len() || !bytes.get(end).copied().is_some_and(is_ident_byte);
+    before_ok && after_ok
+}
+
+fn ident_ending_at(text: &str, end_exclusive: usize) -> Option<&str> {
+    let bytes = text.as_bytes();
+    let mut end = end_exclusive.min(bytes.len());
+    while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    let mut start = end;
+    while start > 0 && is_ident_byte(bytes[start - 1]) {
+        start -= 1;
+    }
+    (start < end).then(|| &text[start..end])
+}
+
+fn skip_ws_if_paren(text: &str, after_name: usize) -> bool {
+    let bytes = text.as_bytes();
+    let mut i = after_name;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    bytes.get(i).copied() == Some(b'(')
+}
+
+/// Self-type of an impl-method owner from its parser-backed symbol id
+/// (`src/lib.rs::impl Iterator for WhileSome::size_hint` → `WhileSome`).
+/// `None` for free functions. Generics, references, and path prefixes are
+/// stripped so a `let it = WhileSome { .. }` binding can match.
+pub(in crate::analysis) fn impl_self_type_name(owner_id: &str) -> Option<String> {
+    let impl_rest = owner_id.split("::impl ").nth(1)?;
+    let impl_body = impl_rest.rsplit_once("::")?.0;
+    let self_ty = match impl_body.rsplit_once(" for ") {
+        Some((_, ty)) => ty,
+        None => impl_body,
+    };
+    compact_impl_type_name(self_ty)
+}
+
+fn compact_impl_type_name(ty: &str) -> Option<String> {
+    let ty = ty.trim();
+    let ty = ty.strip_prefix('&').unwrap_or(ty).trim();
+    let ty = ty.strip_prefix("mut ").unwrap_or(ty).trim();
+    let ty = ty.strip_prefix("dyn ").unwrap_or(ty).trim();
+    let ty = ty.split('<').next()?.trim();
+    let name = ty.rsplit("::").next()?.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+fn last_let_statement<'a>(body: &'a str, binding: &str) -> Option<&'a str> {
+    if binding.is_empty() {
+        return None;
+    }
+    let bytes = body.as_bytes();
+    let mut last = None;
+    let mut search = 0usize;
+    while let Some(relative) = body[search..].find("let ") {
+        let let_at = search + relative;
+        let mut i = let_at + 4;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if body[i..].starts_with("mut") && ident_boundary(bytes, i, i + 3) {
+            i += 3;
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+        }
+        if body[i..].starts_with(binding) && ident_boundary(bytes, i, i + binding.len()) {
+            let stmt_end = body[i..]
+                .find(';')
+                .map(|offset| i + offset)
+                .unwrap_or(body.len());
+            last = Some(&body[let_at..stmt_end]);
+        }
+        search = let_at + 1;
+    }
+    last
+}
+
+fn let_binding_mentions_type(body: &str, binding: &str, type_name: &str) -> bool {
+    last_let_statement(body, binding)
+        .is_some_and(|stmt| super::reveal::contains_as_whole_word(stmt, type_name))
+}
+
+fn text_resolves_method_to_type(
+    text: &str,
+    method: &str,
+    impl_type: &str,
+    body_for_lets: &str,
+) -> bool {
+    let bytes = text.as_bytes();
+    let mut search = 0usize;
+    while let Some(relative) = text[search..].find(method) {
+        let at = search + relative;
+        let after = at + method.len();
+        if ident_boundary(bytes, at, after) && skip_ws_if_paren(text, after) {
+            if at >= 2 && bytes[at - 2] == b':' && bytes[at - 1] == b':' {
+                if ident_ending_at(text, at - 2).is_some_and(|ty| ty == impl_type) {
+                    return true;
+                }
+            } else if at > 0 && bytes[at - 1] == b'.' {
+                if let Some(recv) = ident_ending_at(text, at - 1) {
+                    if recv == impl_type
+                        || let_binding_mentions_type(body_for_lets, recv, impl_type)
+                    {
+                        return true;
+                    }
+                } else {
+                    let start = at.saturating_sub(96);
+                    if super::reveal::contains_as_whole_word(&text[start..at], impl_type) {
+                        return true;
+                    }
+                }
+            }
+        }
+        search = at + method.chars().next().map_or(1, char::len_utf8);
+    }
+    false
+}
+
+/// Whether a test invokes `method` on a receiver bound to `impl_type`
+/// (constructor, type annotation, UFCS `Type::method`, or `Type { .. }.method`).
+/// Unresolved receivers fail closed (#4760).
+pub(in crate::analysis) fn method_call_resolves_to_impl_type(
+    test: &TestSummary,
+    method: &str,
+    impl_type: &str,
+) -> bool {
+    if method.is_empty() || impl_type.is_empty() {
+        return false;
+    }
+    let masked_body = mask_comments_and_strings(&test.body);
+    if text_resolves_method_to_type(&masked_body, method, impl_type, &masked_body) {
+        return true;
+    }
+    test.calls.iter().any(|call| {
+        call.name == method
+            && text_resolves_method_to_type(&call.text, method, impl_type, &masked_body)
+    })
+}
+
+fn owner_call_relation_reason(
+    test: &TestSummary,
+    owner_fn: Option<&FunctionSummary>,
+    owner_name: &str,
+    indexed_same_name_count: usize,
+) -> RelationReason {
+    let Some(owner) = owner_fn else {
+        return RelationReason::DirectOwnerCall;
+    };
+    let Some(impl_type) = impl_self_type_name(&owner.id.0) else {
+        return RelationReason::DirectOwnerCall;
+    };
+    if indexed_same_name_count <= 1 {
+        return RelationReason::DirectOwnerCall;
+    }
+    if method_call_resolves_to_impl_type(test, owner_name, &impl_type) {
+        RelationReason::DirectOwnerCall
+    } else {
+        RelationReason::WeakTokenSubstring
+    }
+}
+
 /// True when `body` mentions `owner_name` immediately followed by `(`.
 ///
 /// A fallback for tests whose `calls` facts did not capture the call, e.g. a
@@ -1938,14 +2131,12 @@ pub(in crate::analysis) fn package_prefix(path: &Path) -> Option<String> {
 /// cross-crate `other.compute_hash(...)` matches and downgraded every
 /// method-owner fixture from `direct_owner_call` to `owner_named_test`.
 ///
-/// That suppression is also unnecessary. `CallFact` carries no receiver or
-/// path information (`analysis/extract/calls.rs` keeps only the bare trailing
-/// identifier), so receiver identity cannot be recovered here — but the
-/// cross-crate bypass is already gated on the owner name being unique across
-/// `index.functions`, and `syntax/ra.rs` indexes impl methods alongside free
-/// functions. A same-named method on another type is therefore itself in the
-/// index, the name is not unique, and the bypass never fires. The uniqueness
-/// gate subsumes the receiver concern.
+/// Cross-crate uniqueness still gates the package-prefix bypass. Same-crate
+/// competing impls of one method name (`size_hint` on WhileSome vs
+/// Combinations) stay `calls_owner` here and are demoted from
+/// `direct_owner_call` by [`owner_call_relation_reason`] when the receiver
+/// is not resolved to this impl (#4760). Full `CallFact` receiver fields
+/// remain #3727.
 pub(in crate::analysis) fn body_contains_owner_call(body: &str, owner_name: &str) -> bool {
     if owner_name.is_empty() {
         return false;
@@ -2358,6 +2549,157 @@ mod tests {
         let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
 
         assert_eq!(related.len(), 1, "method owner must keep its calling test");
+        assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
+    }
+
+    fn impl_function(file: &str, name: &str, impl_segment: &str) -> FunctionSummary {
+        let mut owner = function(file, name);
+        owner.id = SymbolId(format!("{file}::{impl_segment}::{name}"));
+        owner
+    }
+
+    #[test]
+    fn impl_self_type_name_reads_trait_and_inherent_impl_segments() {
+        assert_eq!(
+            impl_self_type_name("src/lib.rs::impl Iterator for WhileSome::size_hint").as_deref(),
+            Some("WhileSome")
+        );
+        assert_eq!(
+            impl_self_type_name("src/lib.rs::impl Iterator for WhileSome<I>::size_hint").as_deref(),
+            Some("WhileSome")
+        );
+        assert_eq!(
+            impl_self_type_name("src/adaptors/mod.rs::impl WhileSome::size_hint").as_deref(),
+            Some("WhileSome")
+        );
+        assert_eq!(
+            impl_self_type_name("src/lib.rs::size_hint").as_deref(),
+            None
+        );
+    }
+
+    /// #4760: two impls of one trait method. A test that calls the method on
+    /// the *other* type is name-only, not `direct_owner_call`.
+    #[test]
+    fn given_two_impls_when_test_calls_other_type_then_name_only_relation() {
+        let owner = impl_function("src/lib.rs", "size_hint", "impl Iterator for WhileSome");
+        let other = impl_function("src/lib.rs", "size_hint", "impl Iterator for Combinations");
+        let index = RustIndex {
+            functions: vec![owner.clone(), other],
+            tests: vec![test_with_call(
+                "tests/size_hints.rs",
+                "combinations_inexact_size_hints",
+                "let it = Combinations { remaining: 3 };\nassert_eq!(it.size_hint().1, Some(3));",
+                "size_hint",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "(0, self.iter.size_hint().1)");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert_eq!(related.len(), 1, "the same-named call is still related");
+        assert_eq!(related[0].0.name, "combinations_inexact_size_hints");
+        assert_eq!(
+            related[0].1,
+            RelationReason::WeakTokenSubstring,
+            "an unresolved / other-type receiver cannot be direct_owner_call"
+        );
+    }
+
+    /// #4760: the same two-impl workspace, but the test constructs the
+    /// changed type. Receiver identity keeps `direct_owner_call`.
+    #[test]
+    fn given_two_impls_when_test_calls_owner_type_then_direct_owner_call() {
+        let owner = impl_function("src/lib.rs", "size_hint", "impl Iterator for WhileSome");
+        let other = impl_function("src/lib.rs", "size_hint", "impl Iterator for Combinations");
+        let index = RustIndex {
+            functions: vec![owner.clone(), other],
+            tests: vec![test_with_call(
+                "tests/size_hints.rs",
+                "while_some_size_hint_upper_bound",
+                "let it = WhileSome { inner: vec![Some(1), Some(2)] };\nassert_eq!(it.size_hint().1, Some(2));",
+                "size_hint",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "(0, self.iter.size_hint().1)");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].0.name, "while_some_size_hint_upper_bound");
+        assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
+    }
+
+    /// #4760: itertools shape — extension-method construction never names
+    /// the type, so the receiver stays unresolved and cannot be direct.
+    #[test]
+    fn given_two_impls_when_receiver_type_is_unresolved_then_name_only_relation() {
+        let owner = impl_function("src/lib.rs", "size_hint", "impl Iterator for WhileSome");
+        let other = impl_function("src/lib.rs", "size_hint", "impl Iterator for Combinations");
+        let index = RustIndex {
+            functions: vec![owner.clone(), other],
+            tests: vec![test_with_call(
+                "tests/test_std.rs",
+                "combinations_inexact_size_hints",
+                "let it = (0..3).combinations(2);\nassert_eq!(it.size_hint().1, Some(3));",
+                "size_hint",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "(0, None)");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].1, RelationReason::WeakTokenSubstring);
+    }
+
+    /// #4760: UFCS `WhileSome::size_hint(&it)` names the impl type.
+    #[test]
+    fn given_two_impls_when_test_uses_owner_ufcs_then_direct_owner_call() {
+        let owner = impl_function("src/lib.rs", "size_hint", "impl Iterator for WhileSome");
+        let other = impl_function("src/lib.rs", "size_hint", "impl Iterator for Combinations");
+        let index = RustIndex {
+            functions: vec![owner.clone(), other],
+            tests: vec![test_with_call(
+                "tests/size_hints.rs",
+                "while_some_ufcs",
+                "let it = WhileSome { inner: vec![] };\nassert_eq!(WhileSome::size_hint(&it).1, Some(0));",
+                "size_hint",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "(0, self.iter.size_hint().1)");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
+    }
+
+    /// Unique impl methods keep `direct_owner_call` even when the binding
+    /// does not spell the type — uniqueness is enough when there is no
+    /// competing definition (#4760 does not apply).
+    #[test]
+    fn given_unique_impl_method_when_receiver_type_is_unresolved_then_direct_owner_call() {
+        let owner = impl_function("src/lib.rs", "apply", "impl Ledger");
+        let index = RustIndex {
+            functions: vec![owner.clone()],
+            tests: vec![test_with_call(
+                "tests/ledger_tests.rs",
+                "changes_balance",
+                "let mut ledger = new_ledger();\nledger.apply(5);",
+                "apply",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "self.persist(amount * 9)");
+
+        let related = find_related_tests(&probe, Some(&owner), &index, true, None, None);
+
+        assert_eq!(related.len(), 1);
         assert_eq!(related[0].1, RelationReason::DirectOwnerCall);
     }
 

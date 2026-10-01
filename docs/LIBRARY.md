@@ -108,6 +108,7 @@ Major durable discoveries in `docs/LEARNINGS.md`, newest first:
 
 | Date | One-line lesson | Section in LEARNINGS.md |
 |---|---|---|
+| 2026-09-29 | Same-crate trait methods are not unique; competing impl names need receiver identity | [Same-crate trait methods](LEARNINGS.md#2026-09-29-same-crate-trait-methods-are-not-unique-just-because-they-share-a-crate-4760) |
 | 2026-09-29 | Missing git and a missing cwd share `NotFound`; do not remap both | [Missing Git vs Missing Cwd](LEARNINGS.md#2026-09-29-missing-git-and-a-missing-cwd-share-notfound-4735) |
 | 2026-07-29 | A visible fallback must survive the warm path | [Visible Fallback](LEARNINGS.md#2026-07-29-a-visible-fallback-must-survive-the-warm-path) |
 | 2026-07-29 | Preserve the source vocabulary at every operator boundary | [Source Vocabulary](LEARNINGS.md#2026-07-29-preserve-the-source-vocabulary-at-every-operator-boundary) |

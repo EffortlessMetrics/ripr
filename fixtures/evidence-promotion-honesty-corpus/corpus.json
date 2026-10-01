@@ -32,6 +32,22 @@
       ]
     },
     {
+      "id": "rust_same_method_other_type",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_adversarial_same_method_other_type",
+      "vector": "method_owner_same_name_different_impl_type_identity",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" },
+        { "type": "must_not_promote" },
+        { "type": "expected_class", "class": "weakly_exposed" },
+        { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
       "id": "rust_split_test_boundary_oracle",
       "language": "rust",
       "tier": "pure",
@@ -1172,6 +1188,20 @@
         { "type": "must_not_have_receipt_command" },
         { "type": "expected_oracle", "kind": "exact_value", "strength": "strong" },
         { "type": "expected_class", "class": "exposed" }
+      ]
+    },
+    {
+      "id": "rust_same_method_owner_type_positive_control",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/rust_same_method_owner_type_positive",
+      "vector": "same_entity_receiver_identity_relation_still_fires",
+      "control": "must_stay_exposed",
+      "assertions": [
+        { "type": "must_promote" },
+        { "type": "must_disclose_scope" },
+        { "type": "must_not_emit_repair_packet" },
+        { "type": "must_not_have_receipt_command" }
       ]
     },
     {

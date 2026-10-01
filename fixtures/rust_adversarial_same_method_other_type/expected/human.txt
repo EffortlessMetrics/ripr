@@ -1,0 +1,33 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_adversarial_same_method_other_type/input
+
+Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) shown
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+Start here:
+  State: a test gap to inspect or repair (top_gap)
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/rust_adversarial_same_method_other_type/input/src/lib.rs:22
+  Static exposure: weak (weakly_exposed, warning, confidence 0.66)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: (0, Some(self.remaining))
+  Missing discriminator: No strong discriminator was detected
+  Related test (1 of 5): tests/size_hints.rs:4 combinations_inexact_size_hints
+  Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
+  Evidence: reach weak · infection yes · propagation yes · observation yes · discriminator weak
+    - reach weak: No test is seen calling size_hint; tests share only its file or a name token: combinations_inexact_size_hints
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 12 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/rust_adversarial_same_method_other_type/input --diff fixtures/rust_adversarial_same_method_other_type/diff.patch --mode fast probe:src_lib.rs:return_value:c861ec7a
+  ripr context --root fixtures/rust_adversarial_same_method_other_type/input --diff fixtures/rust_adversarial_same_method_other_type/diff.patch --mode fast --at probe:src_lib.rs:return_value:c861ec7a
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+    - fixtures/rust_adversarial_same_method_other_type/input/src/lib.rs:22 (weakly_exposed)
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

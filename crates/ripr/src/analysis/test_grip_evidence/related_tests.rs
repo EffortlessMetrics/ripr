@@ -1,4 +1,5 @@
 use super::*;
+use crate::analysis::classify::{impl_self_type_name, method_call_resolves_to_impl_type};
 
 pub(super) mod context;
 
@@ -52,6 +53,8 @@ pub(super) struct OwnerContext {
     module_path: Option<String>,
     prefix: Option<String>,
     fixture_names: BTreeSet<String>,
+    impl_type: Option<String>,
+    same_name_count: usize,
 }
 
 impl OwnerContext {
@@ -67,6 +70,17 @@ impl OwnerContext {
             .and_then(|file| context.index.files.get(file))
             .map(fixture_names_for_owner_file)
             .unwrap_or_default();
+        let impl_type = owner_fn.and_then(|owner| impl_self_type_name(&owner.id.0));
+        let same_name_count = if name.is_empty() {
+            0
+        } else {
+            context
+                .index
+                .functions
+                .iter()
+                .filter(|function| function.name == name)
+                .count()
+        };
         Self {
             name,
             name_lower,
@@ -74,6 +88,8 @@ impl OwnerContext {
             module_path,
             prefix,
             fixture_names,
+            impl_type,
+            same_name_count,
         }
     }
 }
@@ -199,7 +215,19 @@ pub(super) fn match_direct_owner_call(
     let Some(indices) = context.tests_by_call_name.get(&owner.name) else {
         return;
     };
+    let require_impl_identity = owner.same_name_count > 1 && owner.impl_type.is_some();
     for test_index in indices {
+        if require_impl_identity {
+            let Some(indexed) = context.tests.get(*test_index) else {
+                continue;
+            };
+            let Some(impl_type) = owner.impl_type.as_deref() else {
+                continue;
+            };
+            if !method_call_resolves_to_impl_type(indexed.test, &owner.name, impl_type) {
+                continue;
+            }
+        }
         insert_related_candidate(
             candidates,
             context,

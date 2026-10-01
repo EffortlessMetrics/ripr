@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -19,6 +19,6 @@ impl Iterator for WhileSome {
+     }
+
+     fn size_hint(&self) -> (usize, Option<usize>) {
+-        (0, None)
++        (0, Some(self.remaining))
+     }
+ }

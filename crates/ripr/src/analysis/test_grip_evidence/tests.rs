@@ -3349,6 +3349,133 @@ fn given_direct_owner_call_and_same_file_match_when_related_tests_are_ranked_the
     Ok(())
 }
 
+/// #4760: compact grip must not credit `direct_owner_call` when the test
+/// calls a same-named trait method on a different impl type.
+#[test]
+fn given_two_impls_when_compact_grip_sees_other_type_call_then_not_direct_owner_call()
+-> Result<(), String> {
+    let prod_src = r#"
+pub struct WhileSome { pub remaining: usize }
+pub struct Combinations { pub remaining: usize }
+impl Iterator for WhileSome {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (0, Some(self.remaining)) }
+}
+impl Iterator for Combinations {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (self.remaining, Some(self.remaining)) }
+}
+"#;
+    let other_type_test = (
+        "tests/size_hints.rs",
+        r#"
+#[test]
+fn combinations_inexact_size_hints() {
+    let it = Combinations { remaining: 3 };
+    assert_eq!(it.size_hint().1, Some(3));
+}
+"#,
+    );
+    let files: Vec<(PathBuf, &str)> = vec![
+        (PathBuf::from("src/lib.rs"), prod_src),
+        (PathBuf::from(other_type_test.0), other_type_test.1),
+    ];
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+    let while_some = seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::ReturnValue
+                && s.expression().contains("(0, Some(self.remaining))")
+        })
+        .ok_or_else(|| {
+            format!(
+                "WhileSome size_hint return seam present; seams: {:?}",
+                seams
+                    .iter()
+                    .map(|s| (s.kind(), s.expression().to_string()))
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    let evidence = evidence_for_seam(while_some, &index);
+    let labels: Vec<_> = evidence
+        .related_tests
+        .iter()
+        .map(|g| (g.test_name.clone(), g.relation_reason))
+        .collect();
+    assert!(
+        !labels.is_empty(),
+        "the same-named call is still related: {labels:?}"
+    );
+    assert!(
+        labels
+            .iter()
+            .all(|(_, reason)| *reason != RelationReason::DirectOwnerCall),
+        "other-type size_hint must not be direct_owner_call: {labels:?}"
+    );
+    Ok(())
+}
+
+/// #4760: compact grip keeps `direct_owner_call` when the test constructs
+/// the changed impl type.
+#[test]
+fn given_two_impls_when_compact_grip_sees_owner_type_call_then_direct_owner_call()
+-> Result<(), String> {
+    let prod_src = r#"
+pub struct WhileSome { pub remaining: usize }
+pub struct Combinations { pub remaining: usize }
+impl Iterator for WhileSome {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (0, Some(self.remaining)) }
+}
+impl Iterator for Combinations {
+    type Item = usize;
+    fn next(&mut self) -> Option<Self::Item> { None }
+    fn size_hint(&self) -> (usize, Option<usize>) { (self.remaining, Some(self.remaining)) }
+}
+"#;
+    let owner_type_test = (
+        "tests/size_hints.rs",
+        r#"
+#[test]
+fn while_some_size_hint_upper_bound() {
+    let it = WhileSome { remaining: 2 };
+    assert_eq!(it.size_hint().1, Some(it.remaining));
+}
+"#,
+    );
+    let files: Vec<(PathBuf, &str)> = vec![
+        (PathBuf::from("src/lib.rs"), prod_src),
+        (PathBuf::from(owner_type_test.0), owner_type_test.1),
+    ];
+    let index = index_from_files(&files)?;
+    let seams = inventory_seams_from_index(&[PathBuf::from("src/lib.rs")], &index);
+    let while_some = seams
+        .iter()
+        .find(|s| {
+            s.kind() == SeamKind::ReturnValue
+                && s.expression().contains("(0, Some(self.remaining))")
+        })
+        .ok_or_else(|| "WhileSome size_hint return seam present".to_string())?;
+    let evidence = evidence_for_seam(while_some, &index);
+    let labels: Vec<_> = evidence
+        .related_tests
+        .iter()
+        .map(|g| (g.test_name.clone(), g.relation_reason))
+        .collect();
+    assert!(
+        labels
+            .iter()
+            .any(|(name, reason)| name == "while_some_size_hint_upper_bound"
+                && *reason == RelationReason::DirectOwnerCall),
+        "owner-type size_hint must stay direct_owner_call: {labels:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn producer_records_real_rust_test_symbol_identity_for_inline_and_integration_tests()
 -> Result<(), String> {
