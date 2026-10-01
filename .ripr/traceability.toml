@@ -8761,6 +8761,11 @@ tests = [
   "crates/ripr/src/lsp/tests.rs::receipt_status_discloses_bounded_client_feature_profile",
   "crates/ripr/src/lsp/tests.rs::malformed_experimental_blocks_keep_the_standard_session_and_disclose_unsupported",
   "crates/ripr/src/lsp/tests.rs::initialize_surfaces_poisoned_client_features_store_as_a_session_failure",
+  "crates/ripr/src/lsp/client_features.rs::tests::watched_files_relative_pattern_support_is_parsed_and_fails_closed",
+  "crates/ripr/src/lsp/backend.rs::workspace_input_tests::dynamic_watchers_anchor_diagnostics_inputs_at_the_root",
+  "crates/ripr/src/lsp/backend.rs::workspace_input_tests::dynamic_watchers_skip_absolute_diagnostics_globs_for_metacharacter_roots",
+  "crates/ripr/src/lsp/tests.rs::watched_diagnostics_inputs_register_root_anchored_and_refresh_over_the_wire",
+  "crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_root_switch_reanchors_diagnostics_input_watchers",
 ]
 fixtures = []
 code = [

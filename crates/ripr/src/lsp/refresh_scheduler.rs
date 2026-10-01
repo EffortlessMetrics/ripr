@@ -35,6 +35,9 @@ pub(super) enum RefreshReason {
     DidClose,
     ConfigReload,
     ExplicitRefresh,
+    /// A watched non-buffer diagnostics input changed on disk: the root gap
+    /// decision ledger or the root `.git/HEAD` (#4896).
+    WatchedInput,
 }
 
 impl RefreshReason {
@@ -45,7 +48,17 @@ impl RefreshReason {
             Self::DidClose => "did_close",
             Self::ConfigReload => "config_reload",
             Self::ExplicitRefresh => "explicit_refresh",
+            Self::WatchedInput => "watched_input",
         }
+    }
+
+    /// Whether a request for this reason must resolve Git inputs against the
+    /// live repository and bypass input-identity dedup. The refresh input
+    /// identity carries neither the gap ledger contents nor the checked-out
+    /// branch, so a watched-input refresh deduplicated against an equal
+    /// identity would silently keep the diagnostics the event invalidated.
+    fn resolves_fresh(self) -> bool {
+        matches!(self, Self::ExplicitRefresh | Self::WatchedInput)
     }
 }
 
@@ -79,6 +92,7 @@ pub(super) struct RefreshTelemetrySnapshot {
     pub(super) did_close_requests: u64,
     pub(super) config_reload_requests: u64,
     pub(super) explicit_refresh_requests: u64,
+    pub(super) watched_input_requests: u64,
     pub(super) analyses_started: u64,
     pub(super) requests_coalesced: u64,
     pub(super) active_attempts_cooperatively_cancelled: u64,
@@ -211,6 +225,7 @@ impl RefreshScheduler {
             RefreshReason::DidClose => state.telemetry.did_close_requests += 1,
             RefreshReason::ConfigReload => state.telemetry.config_reload_requests += 1,
             RefreshReason::ExplicitRefresh => state.telemetry.explicit_refresh_requests += 1,
+            RefreshReason::WatchedInput => state.telemetry.watched_input_requests += 1,
         }
 
         // Resolve the load-bearing Git inputs once for this request (#2000,
@@ -223,10 +238,10 @@ impl RefreshScheduler {
         // saving from #1919. Ref movement inside an in-flight episode is
         // observed by the first post-episode request, which always resolves
         // against the live repository (the episode cache clears at idle), and
-        // an explicit refresh always resolves fresh.
+        // an explicit or watched-input refresh always resolves fresh.
         let episode_in_flight = state.active.is_some() || state.pending_latest.is_some();
         let git_inputs = match reason {
-            RefreshReason::ExplicitRefresh => None,
+            _ if reason.resolves_fresh() => None,
             _ if episode_in_flight => state
                 .episode_git_inputs
                 .as_ref()
@@ -259,7 +274,7 @@ impl RefreshScheduler {
             ),
         };
 
-        if reason != RefreshReason::ExplicitRefresh {
+        if !reason.resolves_fresh() {
             if let Some(active) = state.active.as_ref()
                 && active.identity() == identity
                 && active.scope.covers(scope)
@@ -571,6 +586,44 @@ mod tests {
         }
         if request(&scheduler, 1, RefreshScope::Interactive) != RefreshDecision::Deduplicated {
             return Err("completed full request should cover interactive retry".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn watched_input_refresh_bypasses_dedup_of_an_unchanged_input_identity() -> Result<(), String> {
+        // #4896: a rewritten gap ledger or a moved `.git/HEAD` leaves the
+        // refresh input identity unchanged, so the watched-input refresh must
+        // not be absorbed by the completed request for that same identity.
+        let scheduler = RefreshScheduler::default();
+        let RefreshDecision::Start(active) = request(&scheduler, 1, RefreshScope::Interactive)
+        else {
+            return Err("first request should start".to_string());
+        };
+        if scheduler.finish(&active, true).is_some() {
+            return Err("no request should remain after the active request".to_string());
+        }
+        if request(&scheduler, 1, RefreshScope::Interactive) != RefreshDecision::Deduplicated {
+            return Err("an unchanged saved input must stay deduplicated".to_string());
+        }
+        let watched = scheduler.request(
+            PathBuf::from("/workspace"),
+            config(),
+            1,
+            0,
+            RefreshScope::Interactive,
+            RefreshReason::WatchedInput,
+        );
+        let RefreshDecision::Start(watched) = watched else {
+            return Err(format!(
+                "watched input must start a refresh, got {watched:?}"
+            ));
+        };
+        if watched.reason.as_str() != "watched_input" {
+            return Err("watched-input request must carry its own reason".to_string());
+        }
+        if scheduler.telemetry().watched_input_requests != 1 {
+            return Err("watched-input requests must be counted".to_string());
         }
         Ok(())
     }

@@ -141,6 +141,15 @@ are scoped or reviewed.
   succeeds. A plain `ripr init` stages and fsyncs the new file, then links it
   into place only if nothing appeared there, so a failed write leaves no file
   (#4883).
+- `ripr lsp` now refreshes diagnostics when the root gap decision ledger
+  (`target/ripr/reports/gap-decision-ledger.json`) is rewritten or the root
+  `.git/HEAD` moves. Before, a `ripr check` run from a terminal or a
+  `git checkout` that touched no open buffer left the old diagnostics in place
+  until the next save. The server watches exactly those two root paths, anchored
+  at the workspace root (as a relative pattern where the client supports it,
+  otherwise as absolute paths), re-anchors them when the workspace root
+  changes, and ignores nested copies. Workspace status now discloses the
+  client's `watched_files_relative_pattern_support` (#4896).
 - An unchanged Rust test file that the reference parser refuses is no longer
   a silent related-test hole. If a classified owner consults that
   lexical-fallback file (the file contributed a related test, or it calls the
