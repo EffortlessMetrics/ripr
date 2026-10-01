@@ -34,7 +34,7 @@
 //! that separation for inline `#[cfg(test)]` modules; this module keeps
 //! it for whole files).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// The producer-owned role of one source file.
@@ -127,6 +127,12 @@ pub(crate) struct SourceRoleContext {
     /// diff probes whatever their layout says. Recorded only for the files a
     /// caller asks about (`apply_module_graph_evidence`).
     pub(crate) module_graph_orphans: BTreeSet<PathBuf>,
+    /// Relative paths no resolved module edge reaches, but an out-of-line
+    /// `mod` whose `#[path]` target is unresolved (a `cfg_attr` path) spells
+    /// them as a candidate, mapped to that declaration's workspace-relative
+    /// file and line. rustc may compile them, but ripr cannot compose their
+    /// module context, so their evidence is incomplete. They still seed.
+    pub(crate) module_graph_unresolved_routes: BTreeMap<PathBuf, (PathBuf, usize)>,
 }
 
 impl SourceRoleContext {

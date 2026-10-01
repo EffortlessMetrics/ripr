@@ -141,7 +141,7 @@ pub(super) fn include_literal_path(expression: &str) -> Option<PathBuf> {
     parse_rust_string_literal(inner).map(PathBuf::from)
 }
 
-fn parse_rust_string_literal(literal: &str) -> Option<String> {
+pub(super) fn parse_rust_string_literal(literal: &str) -> Option<String> {
     if let Some(body) = literal
         .strip_prefix('"')
         .and_then(|body| body.strip_suffix('"'))

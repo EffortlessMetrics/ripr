@@ -1350,6 +1350,10 @@ impl RustAdapter {
                 .map(|file| file.path.as_path()),
         )?;
 
+        // Files whose probes became findings: only their evidence can be
+        // missing a related test, so only they earn an unresolved-route
+        // limitation.
+        let mut files_with_findings = std::collections::BTreeSet::new();
         for changed in analyzable_changed_files
             .iter()
             .filter(|file| self.accepts_path(&file.path))
@@ -1378,6 +1382,9 @@ impl RustAdapter {
             cancellation::checkpoint()?;
             let probes =
                 analysis_probes::probes_for_file_with_relations(&options.root, changed, &index);
+            if !probes.is_empty() {
+                files_with_findings.insert(changed.path.clone());
+            }
             for seeded in probes {
                 seeded.record_span(&mut parser_spans);
                 let probe = seeded.probe;
@@ -1480,10 +1487,79 @@ impl RustAdapter {
                             && source_role_context.module_graph_orphans.contains(*path)
                     }),
                 )?)
+                .chain(unresolved_route_limitations(
+                    files_with_findings.iter().filter_map(|path| {
+                        source_role_context
+                            .module_graph_unresolved_routes
+                            .get(path)
+                            .map(|route| (path, route))
+                    }),
+                )?)
                 .collect(),
             rust_diagnostic_origins,
         })
     }
+}
+
+/// Bounds a path to `max_chars` for a recovery sentence, whose length is
+/// capped: a long path shortens the sentence, never fails the analysis.
+fn bounded_path_display(path: &Path, max_chars: usize) -> String {
+    let display = path.to_string_lossy().replace('\\', "/");
+    if display.chars().count() > max_chars {
+        let kept = max_chars.saturating_sub(1);
+        format!("{}…", display.chars().take(kept).collect::<String>())
+    } else {
+        display
+    }
+}
+
+/// One typed limitation per changed Rust file whose only route into its
+/// crate is a `mod` with an unresolved `#[path]` target (#4435). The file
+/// still seeds, but ripr composes no module context for it, so related
+/// tests can be missed; the run names the declaration instead of reading as
+/// complete.
+fn unresolved_route_limitations<'a>(
+    routes: impl Iterator<Item = (&'a std::path::PathBuf, &'a (std::path::PathBuf, usize))>,
+) -> Result<Vec<crate::analysis_outcome::AnalysisLimitation>, String> {
+    use crate::analysis_outcome::{
+        AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+        AnalysisStage,
+    };
+    routes
+        .map(|(path, (declaring_file, line))| {
+            let display = path.to_string_lossy().replace('\\', "/");
+            // Two paths share the recovery sentence's character budget.
+            let named = bounded_path_display(path, 100);
+            let declaration = format!("{}:{line}", bounded_path_display(declaring_file, 100));
+            let limitation = AnalysisLimitation::new(
+                AnalysisLimitationKind::LanguageScopeUnsupported,
+                AnalysisStage::LanguageAdapter,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::InspectFailure,
+                    format!(
+                        "{named} is reached only through the `mod` at {declaration}, whose \
+                         `#[path]` target ripr cannot resolve (a `cfg_attr` or non-literal \
+                         path), so its related tests may be missing from these findings. \
+                         A plain `#[path = \"...\"]` declaration, or `#[cfg]`-gated \
+                         declarations per target, resolve."
+                    ),
+                )?,
+            );
+            // A path the portable form rejects drops the field, never the run;
+            // the recovery text still names the file.
+            limitation
+                .clone()
+                .with_path(&display)
+                .unwrap_or(limitation)
+                .with_affected_items(1)?
+                .with_detail(
+                    "No resolved `mod`, `#[path]` or `include!` edge reaches this changed \
+                     Rust file; a `mod` with an unresolved `#[path]` target names it, so ripr \
+                     composes no module context for it and its findings may miss related \
+                     tests.",
+                )
+        })
+        .collect()
 }
 
 /// One typed limitation per changed Rust file that no Cargo target's module
@@ -1499,13 +1575,7 @@ fn unreached_module_limitations<'a>(
     paths
         .map(|path| {
             let display = path.to_string_lossy().replace('\\', "/");
-            // The recovery text is bounded; a long path shortens the
-            // sentence, never fails the analysis.
-            let named = if display.chars().count() > 160 {
-                format!("{}…", display.chars().take(159).collect::<String>())
-            } else {
-                display.clone()
-            };
+            let named = bounded_path_display(path, 160);
             let limitation = AnalysisLimitation::new(
                 AnalysisLimitationKind::LanguageScopeUnsupported,
                 AnalysisStage::LanguageAdapter,
@@ -4689,6 +4759,101 @@ fn absent_delimiter_boundary_returns_head() {
         );
         assert_eq!(orphan_limitation_paths(&result), vec!["src/unused.rs"]);
         fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_analysis_names_the_unresolved_path_a_changed_file_is_reached_through()
+    -> Result<(), String> {
+        // #4435 follow-up: `src/platform/unix_impl.rs` enters the crate only
+        // through `#[cfg_attr(unix, path = ...)] mod sys;`, which ripr cannot
+        // resolve, so it gets no module context and its findings can miss
+        // related tests. It still seeds, and the run names the declaration.
+        // `src/used.rs` is reached by a resolved `mod` and earns nothing;
+        // `src/sys.rs` (the default resolution) changes only a comment, so
+        // it has no finding to qualify.
+        let root = temp_root("module-graph-unresolved-route")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='shop'\nversion='0.1.0'\nedition='2021'\n",
+        )?;
+        write(
+            &root.join("src/lib.rs"),
+            "pub mod used;\n#[cfg_attr(unix, path = \"platform/unix_impl.rs\")]\nmod sys;\n",
+        )?;
+        write(&root.join("src/used.rs"), DISCOUNT_SOURCE)?;
+        write(&root.join("src/platform/unix_impl.rs"), DISCOUNT_SOURCE)?;
+        write(
+            &root.join("src/sys.rs"),
+            "// fallback\npub fn fallback() {}\n",
+        )?;
+        let diff = format!(
+            "{}{}diff --git a/src/sys.rs b/src/sys.rs\n\
+             --- a/src/sys.rs\n\
+             +++ b/src/sys.rs\n\
+             @@ -1,2 +1,2 @@\n\
+             -// old fallback\n\
+             +// fallback\n \
+             pub fn fallback() {{}}\n",
+            predicate_change_diff("src/used.rs"),
+            predicate_change_diff("src/platform/unix_impl.rs"),
+        );
+
+        let result = module_graph_diff(&root, &diff)?;
+
+        let files = finding_files(&root, &result);
+        for seeded in ["src/used.rs", "src/platform/unix_impl.rs"] {
+            assert!(
+                files.iter().any(|file| file == seeded),
+                "{seeded} must still seed: {files:?}"
+            );
+        }
+        let routes = result
+            .limitations
+            .iter()
+            .filter(|limitation| {
+                limitation
+                    .bounded_detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("unresolved `#[path]` target"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            routes
+                .iter()
+                .filter_map(|limitation| limitation.path.clone())
+                .collect::<Vec<_>>(),
+            vec!["src/platform/unix_impl.rs"]
+        );
+        let recovery = routes
+            .first()
+            .map(|limitation| limitation.recovery.detail.clone())
+            .unwrap_or_default();
+        assert!(
+            recovery.contains("the `mod` at src/lib.rs:3"),
+            "the limitation must name the declaration: {recovery}"
+        );
+        assert!(orphan_limitation_paths(&result).is_empty());
+        fs::remove_dir_all(root).map_err(|error| format!("remove fixture: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn unresolved_route_limitation_bounds_long_paths() -> Result<(), String> {
+        let long = PathBuf::from(format!("src/{}.rs", "deep/".repeat(80)));
+        let route = (
+            PathBuf::from(format!("src/{}/lib.rs", "x".repeat(300))),
+            usize::MAX,
+        );
+        let limitations = super::unresolved_route_limitations(std::iter::once((&long, &route)))?;
+        let recovery = limitations
+            .first()
+            .map(|limitation| limitation.recovery.detail.clone())
+            .unwrap_or_default();
+        assert!(
+            recovery.contains('…') && recovery.contains(&format!(":{}", usize::MAX)),
+            "{recovery}"
+        );
         Ok(())
     }
 

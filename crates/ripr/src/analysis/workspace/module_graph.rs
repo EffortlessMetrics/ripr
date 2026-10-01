@@ -15,6 +15,11 @@
 //!   the file, so no target compiles it. It seeds no probes.
 //! - **external module sources**: a package whose `[lib]`/`[[bin]]` root sits
 //!   outside its own directory reaches the file from that root. It seeds.
+//! - **unresolved routes**: no resolved edge reaches the file, but a `mod`
+//!   the owning package's walk meets has an unresolved `#[path]` that spells
+//!   it (`#[cfg_attr(unix, path = "unix.rs")] mod sys;`), directly or through
+//!   that target's own children. It seeds, and the run names the
+//!   declaration, because ripr composes no module context for the file.
 //!
 //! Unknown never proves absence. A walk that meets an edge the scan cannot
 //! resolve (dynamic `#[path]`, `cfg_if!`-wrapped declarations, a parse error,
@@ -108,6 +113,39 @@ struct PackageWalk {
     scans: BTreeMap<PathBuf, Option<RustModuleTreeScan>>,
     /// False once any edge could not be resolved.
     complete: bool,
+    /// Out-of-line `mod` declarations with an unresolved `#[path]` that the
+    /// walk met, with the literal targets they spell.
+    unresolved_paths: Vec<UnresolvedPath>,
+    /// Whether an unresolved declaration's spelled targets are walked like
+    /// `#[path]` edges. Only the walk that asks whether such a declaration
+    /// could be a file's route does this; a package walk never does, so its
+    /// verdicts rest on resolved edges alone.
+    follow_unresolved_paths: bool,
+    /// For a route walk: which entry of the owning walk's
+    /// `unresolved_paths` each queued entry descends from. Visits are shared
+    /// across declarations, so the walk stays linear in the tree it reads.
+    route_tags: BTreeMap<(PathBuf, ChildAnchor), usize>,
+    /// For a route walk: the declaration each reached file descends from.
+    reached_tags: BTreeMap<PathBuf, usize>,
+    /// One lazily explored route walk seeded with every unresolved
+    /// declaration's targets, kept so later asked-for files reuse it.
+    route_walk: Option<Box<PackageWalk>>,
+}
+
+/// One `mod` declaration with an unresolved `#[path]`, as a package walk met
+/// it.
+#[derive(Clone, Debug)]
+struct UnresolvedPath {
+    /// The declaring file, anchored like every walked path.
+    declaring_file: PathBuf,
+    line: usize,
+    /// The declared module name; with the line it tells apart two
+    /// declarations written on one line.
+    name: String,
+    /// The literal targets its attributes spell, resolved against the
+    /// declaring file's directory, and its default-resolution targets, each
+    /// with the anchor its own children resolve under.
+    targets: Vec<(PathBuf, ChildAnchor)>,
 }
 
 /// Records module-tree evidence for `candidates` (workspace-relative Rust
@@ -131,6 +169,7 @@ where
     let mut member_packages: Option<BTreeSet<PathBuf>> = None;
     let mut external_declarers: Option<(BTreeSet<PathBuf>, bool)> = None;
     let mut escaping: Option<Option<EscapingReach>> = None;
+    let mut resolved_escaping: Option<Option<EscapingReach>> = None;
     for candidate in candidates {
         if candidate.extension().and_then(|ext| ext.to_str()) != Some("rs") {
             continue;
@@ -163,6 +202,7 @@ where
         .collect::<BTreeSet<_>>();
         let mut owner_proves_unreached = true;
         let mut owner_walked = false;
+        let mut reached = false;
         let mut owner_reaches_production = false;
         for dir in &owners {
             let Some(walk) = walks
@@ -183,7 +223,10 @@ where
                 }
                 // Compiled from a test root: never an orphan, but an external
                 // root may still reach it as production.
-                Some(Origin::Evidence) => owner_proves_unreached = false,
+                Some(Origin::Evidence) => {
+                    owner_proves_unreached = false;
+                    reached = true;
+                }
                 None => owner_proves_unreached &= walk.proves_unreached(),
             }
         }
@@ -223,10 +266,16 @@ where
                 {
                     declaring_packages.insert(package_dir.clone());
                 }
-                Some(Origin::Production) => declarers_prove_unreached = false,
+                Some(Origin::Production) => {
+                    declarers_prove_unreached = false;
+                    reached = true;
+                }
                 // Reached only from a test, bench or example root: compiled,
                 // just not as production. No grant, and no orphan.
-                Some(Origin::Evidence) => declarers_prove_unreached = false,
+                Some(Origin::Evidence) => {
+                    declarers_prove_unreached = false;
+                    reached = true;
+                }
                 None => declarers_prove_unreached &= walk.proves_unreached(),
             }
         }
@@ -251,6 +300,41 @@ where
                 .is_some_and(|reach| reach.proves_unreached(workspace_root, &targets))
         {
             context.module_graph_orphans.insert(relative);
+        } else if !reached {
+            // No resolved edge reaches the file. The owners' walks are
+            // exhausted, so every unresolved `#[path]` they could meet is
+            // recorded; one that spells a route to the file is named.
+            let route = owners.iter().find_map(|dir| {
+                walks
+                    .get_mut(dir)?
+                    .as_mut()?
+                    .unresolved_route_to(workspace_root, &targets)
+            });
+            // A resolved `#[path]` or `include!` in another package can still
+            // compile the file with a context of its own.
+            let reached_from_outside = route.is_some()
+                && resolved_escaping
+                    .get_or_insert_with(|| {
+                        listing.as_ref().and_then(|listing| {
+                            EscapingReach::scan_resolved(workspace_root, listing)
+                        })
+                    })
+                    .as_mut()
+                    .is_some_and(|reach| reach.walk.find(workspace_root, &targets).is_some());
+            if let Some((declaring_file, line)) = route.filter(|_| !reached_from_outside) {
+                // A declaring file outside the workspace is named by its file
+                // name, never by an absolute path.
+                let declaring_file =
+                    match declaring_file.strip_prefix(lexical(&normalize(workspace_root))) {
+                        Ok(relative) => relative.to_path_buf(),
+                        Err(_) => {
+                            PathBuf::from("…").join(declaring_file.file_name().unwrap_or_default())
+                        }
+                    };
+                context
+                    .module_graph_unresolved_routes
+                    .insert(relative, (declaring_file, line));
+            }
         }
     }
     external_packages
@@ -394,6 +478,21 @@ impl EscapingReach {
     /// scanned completely. Files a symlinked directory reaches are not
     /// listed; the symlink alias covers them.
     fn scan(workspace_root: &Path, listing: &WorkspaceListing) -> Option<Self> {
+        Self::scan_edges(workspace_root, listing, true)
+    }
+
+    /// Like [`Self::scan`], but walks the resolved edges even when some
+    /// file scans incompletely. It can show a file reached from outside the
+    /// asked walks, never that one is unreached.
+    fn scan_resolved(workspace_root: &Path, listing: &WorkspaceListing) -> Option<Self> {
+        Self::scan_edges(workspace_root, listing, false)
+    }
+
+    fn scan_edges(
+        workspace_root: &Path,
+        listing: &WorkspaceListing,
+        require_complete: bool,
+    ) -> Option<Self> {
         let mut roots = Vec::new();
         for file in &listing.rust_files {
             let source = match read_source(workspace_root, file) {
@@ -410,7 +509,7 @@ impl EscapingReach {
             // Any unresolved construct (a dependency's item macro can expand
             // to `#[path = "../../b/src/x.rs"] mod x;` without spelling it)
             // leaves every verdict unknown.
-            if !scan.complete {
+            if require_complete && !scan.complete {
                 return None;
             }
             let directory = file.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -422,7 +521,8 @@ impl EscapingReach {
                     RustModuleTreeEdge::Include(target) => {
                         roots.push((lexical(&directory.join(target)), ChildAnchor::Included));
                     }
-                    RustModuleTreeEdge::Default { .. } => {}
+                    RustModuleTreeEdge::Default { .. }
+                    | RustModuleTreeEdge::UnresolvedPath { .. } => {}
                 }
             }
         }
@@ -594,6 +694,11 @@ impl PackageWalk {
             production_root_read: false,
             scans: BTreeMap::new(),
             complete: true,
+            unresolved_paths: Vec::new(),
+            follow_unresolved_paths: false,
+            route_tags: BTreeMap::new(),
+            reached_tags: BTreeMap::new(),
+            route_walk: None,
         })
     }
 
@@ -610,7 +715,48 @@ impl PackageWalk {
             production_root_read: false,
             scans: BTreeMap::new(),
             complete: true,
+            unresolved_paths: Vec::new(),
+            follow_unresolved_paths: false,
+            route_tags: BTreeMap::new(),
+            reached_tags: BTreeMap::new(),
+            route_walk: None,
         }
+    }
+
+    /// Whether any `mod` with an unresolved `#[path]` this exhausted walk met
+    /// spells a route to `targets`: one of its literal targets, or a file
+    /// below one through further module edges. Returns the first such
+    /// declaration's file and line.
+    fn unresolved_route_to(
+        &mut self,
+        workspace_root: &Path,
+        targets: &[PathBuf],
+    ) -> Option<(PathBuf, usize)> {
+        if self.unresolved_paths.is_empty() {
+            return None;
+        }
+        let declarations = &self.unresolved_paths;
+        let route = self.route_walk.get_or_insert_with(|| {
+            let mut entries = Vec::new();
+            let mut route_tags = BTreeMap::new();
+            for (tag, declaration) in declarations.iter().enumerate() {
+                for entry in &declaration.targets {
+                    route_tags.entry(entry.clone()).or_insert(tag);
+                    entries.push(entry.clone());
+                }
+            }
+            let mut route = Self::from_loaded_files(entries);
+            route.follow_unresolved_paths = true;
+            route.route_tags = route_tags;
+            Box::new(route)
+        });
+        route.find(workspace_root, targets)?;
+        let tag = targets
+            .iter()
+            .find_map(|target| route.reached_tags.get(target))?;
+        self.unresolved_paths
+            .get(*tag)
+            .map(|declaration| (declaration.declaring_file.clone(), declaration.line))
     }
 
     /// Where the walk reaches any spelling of the asked-for file (lexical
@@ -699,34 +845,92 @@ impl PackageWalk {
         if self.phase == Origin::Production && self.production_roots.contains(&file) {
             self.production_root_read = true;
         }
+        let tag = self.route_tags.get(&(file.clone(), anchor)).copied();
         self.reached.entry(file.clone()).or_insert(self.phase);
+        if let Some(tag) = tag {
+            self.reached_tags.entry(file.clone()).or_insert(tag);
+        }
         if let Ok(canonical) = std::fs::canonicalize(&file)
             && canonical != file
         {
-            self.reached.entry(canonical).or_insert(self.phase);
+            self.reached.entry(canonical.clone()).or_insert(self.phase);
+            if let Some(tag) = tag {
+                self.reached_tags.entry(canonical).or_insert(tag);
+            }
         }
         let directory = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        let mut pending = Vec::new();
         for edge in edges {
             match edge {
                 RustModuleTreeEdge::Default { inline, name } => {
                     for base in child_bases(&file, &directory, anchor) {
                         let base = inline.iter().fold(base, |base, segment| base.join(segment));
-                        self.queue
-                            .push((base.join(format!("{name}.rs")), ChildAnchor::Stem));
-                        self.queue
-                            .push((base.join(&name).join("mod.rs"), ChildAnchor::Directory));
+                        pending.push((base.join(format!("{name}.rs")), ChildAnchor::Stem));
+                        pending.push((base.join(&name).join("mod.rs"), ChildAnchor::Directory));
                     }
                 }
                 RustModuleTreeEdge::Path(target) => {
-                    self.queue
-                        .push((lexical(&directory.join(target)), ChildAnchor::Both));
+                    pending.push((lexical(&directory.join(target)), ChildAnchor::Both));
                 }
                 RustModuleTreeEdge::Include(target) => {
-                    self.queue
-                        .push((lexical(&directory.join(target)), ChildAnchor::Included));
+                    pending.push((lexical(&directory.join(target)), ChildAnchor::Included));
+                }
+                RustModuleTreeEdge::UnresolvedPath {
+                    inline,
+                    name,
+                    line,
+                    candidates,
+                    default_applies,
+                } => {
+                    // A `cfg_attr` path that does not apply leaves default
+                    // resolution, so the default targets are routes too.
+                    let mut targets = candidates
+                        .iter()
+                        .map(|candidate| (lexical(&directory.join(candidate)), ChildAnchor::Both))
+                        .collect::<Vec<_>>();
+                    let bases = if default_applies {
+                        child_bases(&file, &directory, anchor)
+                    } else {
+                        Vec::new()
+                    };
+                    for base in bases {
+                        let base = inline.iter().fold(base, |base, segment| base.join(segment));
+                        targets.push((base.join(format!("{name}.rs")), ChildAnchor::Stem));
+                        targets.push((base.join(&name).join("mod.rs"), ChildAnchor::Directory));
+                    }
+                    if self.follow_unresolved_paths {
+                        pending.extend(targets.iter().cloned());
+                    }
+                    // The evidence phase, or a second anchor, re-expands a
+                    // file already met; a second anchor adds its own
+                    // default targets to the same declaration.
+                    match self.unresolved_paths.iter_mut().find(|known| {
+                        known.declaring_file == file && known.line == line && known.name == name
+                    }) {
+                        Some(known) => {
+                            for target in targets {
+                                if !known.targets.contains(&target) {
+                                    known.targets.push(target);
+                                }
+                            }
+                        }
+                        None => self.unresolved_paths.push(UnresolvedPath {
+                            declaring_file: file.clone(),
+                            line,
+                            name,
+                            targets,
+                        }),
+                    }
                 }
             }
         }
+        // A route walk's entries inherit the declaration they descend from.
+        if let Some(tag) = tag {
+            for entry in &pending {
+                self.route_tags.entry(entry.clone()).or_insert(tag);
+            }
+        }
+        self.queue.extend(pending);
         true
     }
 }
@@ -1292,6 +1496,119 @@ mod tests {
             committed.module_graph_orphans.is_empty(),
             "the `HEAD` manifest compiles `src/old.rs`: {:?}",
             committed.module_graph_orphans
+        );
+        std::fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn unresolved_path_routes_name_the_declaration_for_files_only_it_reaches() -> Result<(), String>
+    {
+        let root = fixture(
+            "unresolved-routes",
+            &[
+                ("Cargo.toml", MANIFEST),
+                (
+                    "src/lib.rs",
+                    "pub mod reached;\n\
+                     #[cfg_attr(unix, path = \"platform/unix_impl.rs\")]\n\
+                     mod sys;\n\
+                     #[path = concat!(\"dyn\", \"amic.rs\")]\n\
+                     mod dynamic;\n\
+                     #[cfg_attr(unix, path = \"a_impl.rs\")] mod a; \
+                     #[cfg_attr(unix, path = \"b_impl.rs\")] mod b;\n",
+                ),
+                ("src/reached.rs", ""),
+                ("src/platform/unix_impl.rs", "mod inner;\n"),
+                ("src/platform/inner.rs", ""),
+                // Default resolution when the `cfg_attr` does not apply.
+                ("src/sys.rs", ""),
+                // A plain `#[path]` always applies, so `mod dynamic;` never
+                // loads `dynamic.rs`.
+                ("src/dynamic.rs", ""),
+                ("src/stray.rs", ""),
+                // Two declarations on one line are two routes.
+                ("src/a_impl.rs", ""),
+                ("src/b_impl.rs", ""),
+            ],
+        )?;
+        let context = evidence_for(
+            &root,
+            &[
+                "src/platform/unix_impl.rs",
+                "src/platform/inner.rs",
+                "src/sys.rs",
+                "src/reached.rs",
+                "src/dynamic.rs",
+                "src/stray.rs",
+                "src/b_impl.rs",
+            ],
+        );
+        let declaration = (PathBuf::from("src/lib.rs"), 3);
+        assert_eq!(
+            context.module_graph_unresolved_routes,
+            BTreeMap::from([
+                (PathBuf::from("src/platform/inner.rs"), declaration.clone()),
+                (
+                    PathBuf::from("src/platform/unix_impl.rs"),
+                    declaration.clone()
+                ),
+                (PathBuf::from("src/sys.rs"), declaration),
+                (
+                    PathBuf::from("src/b_impl.rs"),
+                    (PathBuf::from("src/lib.rs"), 6)
+                ),
+            ]),
+            "only the spelled target, its child and the default resolution are routes"
+        );
+        // The unresolved declarations keep every verdict unknown.
+        assert!(
+            context.module_graph_orphans.is_empty(),
+            "{:?}",
+            context.module_graph_orphans
+        );
+        std::fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn unresolved_route_yields_to_a_resolved_path_from_another_package() -> Result<(), String> {
+        // Package `b` compiles `a/src/x.rs` through a resolved `#[path]`, so
+        // the file has a context even though `a` only names it in a
+        // `cfg_attr`. `a/src/y.rs` has no such route and stays named.
+        let root = fixture(
+            "unresolved-routes-sibling",
+            &[
+                (
+                    "Cargo.toml",
+                    "[workspace]\nmembers = ['a', 'b']\nresolver = '2'\n",
+                ),
+                (
+                    "a/Cargo.toml",
+                    "[package]\nname='a'\nversion='0.1.0'\nedition='2021'\n",
+                ),
+                (
+                    "a/src/lib.rs",
+                    "#[cfg_attr(windows, path = \"x.rs\")]\nmod sys;\n\
+                     #[cfg_attr(windows, path = \"y.rs\")]\nmod other;\n",
+                ),
+                ("a/src/x.rs", ""),
+                ("a/src/y.rs", ""),
+                (
+                    "b/Cargo.toml",
+                    "[package]\nname='b'\nversion='0.1.0'\nedition='2021'\n",
+                ),
+                (
+                    "b/src/lib.rs",
+                    "#[path = \"../../a/src/x.rs\"]\npub mod x;\n",
+                ),
+            ],
+        )?;
+        let context = evidence_for(&root, &["a/src/x.rs", "a/src/y.rs"]);
+        assert_eq!(
+            context.module_graph_unresolved_routes,
+            BTreeMap::from([(
+                PathBuf::from("a/src/y.rs"),
+                (PathBuf::from("a/src/lib.rs"), 4)
+            )]),
         );
         std::fs::remove_dir_all(root).map_err(|error| error.to_string())
     }

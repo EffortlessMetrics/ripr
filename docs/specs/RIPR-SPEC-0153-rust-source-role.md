@@ -108,7 +108,12 @@ std macro that cannot emit items (at item level, inside a body, or nested
 in a std macro's arguments), a declaration inside a macro token tree, a
 dynamic or `cfg_attr` `#[path]`, a non-literal `include!`, or a parse
 error anywhere keeps the layout rule, since such a file could reach the
-changed one. The production-like opt-in still wins. Evidence-role files remain fully indexed:
+changed one. A changed file no resolved edge reaches, but that an
+out-of-line `mod` with an unresolved `#[path]` names (a target spelled in
+its `cfg_attr`, a child of one, or its default resolution when every path
+is inside `cfg_attr`), still seeds; when it produces a finding, the run
+records one `language_scope_unsupported` limitation naming the file and
+that declaration, since ripr composes no module context for it. The production-like opt-in still wins. Evidence-role files remain fully indexed:
 functions stay available for owner relations, activation input,
 sink/oracle evidence, and selectors. `TestFact` semantics are untouched
 — source role never registers a helper as an executable test selector.
@@ -232,6 +237,11 @@ The #3532 harness registry joined the same identity as FindingAffecting
   raw-identifier edges seed; an unknown tree (`cfg_if!`) keeps seeding;
   the LSP partition drops the same anchors. Each walk regression pairs a
   reached file with a true orphan so neither direction goes unpinned.
+- Unresolved `#[path]` routes (#4435): a file reached only through a
+  `cfg_attr` path target, its child, or the `cfg_attr`-only default
+  resolution records the limitation naming the declaration, while a
+  resolved sibling, a comment-only change, a file a plain `#[path]`
+  never loads, and a `cfg` predicate's own `path = ".."` do not.
 
 - The repo production contract carries over exactly: `xtask/`, files
   without a `src` component, and `tests.rs` stems stay non-production;

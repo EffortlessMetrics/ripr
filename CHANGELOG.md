@@ -67,6 +67,14 @@ are scoped or reviewed.
 
 ### Fixed
 
+- A changed Rust file whose only route into its crate is a `mod` with an
+  unresolved `#[path]` target (`#[cfg_attr(unix, path = "unix.rs")] mod sys;`,
+  including that declaration's default `sys.rs` and the target's own child
+  modules) no longer reads as a complete analysis. ripr cannot compose its
+  module context, so related tests can be missed; when the file produces a
+  finding, the run reports a limitation naming the file and the declaration
+  (#4435). Files reached through resolved `mod` edges, in the same workspace
+  or in crates that use conditional paths elsewhere, are unchanged.
 - CLI: `ripr progress:` heartbeats no longer stop partway through a long
   stage. The standard policy capped the stream at 16 heartbeat lines, so a
   minutes-long repo audit walk went silent roughly half a minute in while

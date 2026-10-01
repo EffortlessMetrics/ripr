@@ -8971,6 +8971,11 @@ tests = [
   "crates/ripr/src/analysis/workspace/module_graph.rs::tests::walk_follows_mod_rs_bin_roots_and_evidence_roots",
   "crates/ripr/src/analysis/workspace/module_graph.rs::tests::another_packages_path_edge_and_unknown_macros_block_the_orphan_verdict",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::partition_drops_anchors_no_module_tree_reaches",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_analysis_names_the_unresolved_path_a_changed_file_is_reached_through",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::unresolved_route_limitation_bounds_long_paths",
+  "crates/ripr/src/analysis/syntax/module_tree.rs::tests::unresolved_path_declarations_report_the_targets_they_spell",
+  "crates/ripr/src/analysis/workspace/module_graph.rs::tests::unresolved_path_routes_name_the_declaration_for_files_only_it_reaches",
+  "crates/ripr/src/analysis/workspace/module_graph.rs::tests::unresolved_route_yields_to_a_resolved_path_from_another_package",
 ]
 fixtures = [
   "crates/ripr/tests/data/source-role-corpus",

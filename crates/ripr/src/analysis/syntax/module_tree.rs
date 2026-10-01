@@ -27,6 +27,10 @@
 //!
 //! An incomplete scan never proves a file unreachable; the consumer keeps its
 //! layout rule for that package.
+//!
+//! A top-level `mod name;` whose `#[path]` is unresolved still reports the
+//! literal targets it spells (`cfg_attr(unix, path = "unix.rs")`), so the
+//! consumer can name a changed file that only such a declaration reaches.
 
 use ra_ap_syntax::{
     AstNode, SyntaxKind,
@@ -35,7 +39,7 @@ use ra_ap_syntax::{
 use std::path::PathBuf;
 
 use super::nesting::parse_clean_source_file;
-use super::ra::{include_literal_path, path_target_from_attributes};
+use super::ra::{include_literal_path, parse_rust_string_literal, path_target_from_attributes};
 use crate::analysis::facts::ModulePathTarget;
 
 /// Std item-position macros whose expansion cannot declare a module.
@@ -95,6 +99,21 @@ pub(crate) enum RustModuleTreeEdge {
     Path(PathBuf),
     /// `include!("...")`, relative to the including file's directory.
     Include(PathBuf),
+    /// Out-of-line `mod name;` whose `#[path]` target is unresolved (a
+    /// `cfg_attr` path, duplicate or non-literal `#[path]`). `candidates`
+    /// are the literal `path = "..."` targets its attributes spell, relative
+    /// to the declaring file's directory; empty when there are none, or when
+    /// the declaration sits in an inline module. `default_applies` is true
+    /// when every path is conditional (`cfg_attr`): one that does not apply
+    /// leaves default resolution of `name`. `line` is the `mod` token's
+    /// 1-based line. Always accompanies an incomplete scan.
+    UnresolvedPath {
+        inline: Vec<String>,
+        name: String,
+        line: usize,
+        candidates: Vec<PathBuf>,
+        default_applies: bool,
+    },
 }
 
 /// The module-tree edges of one file and whether the scan saw every edge.
@@ -144,7 +163,39 @@ pub(crate) fn rust_module_tree_scan(text: &str) -> RustModuleTreeScan {
                 scan.edges
                     .push(RustModuleTreeEdge::Path(PathBuf::from(path)));
             }
-            ModulePathTarget::Literal(_) | ModulePathTarget::Unknown => scan.complete = false,
+            ModulePathTarget::Literal(_) => scan.complete = false,
+            ModulePathTarget::Unknown => {
+                scan.complete = false;
+                let (spelled, always_applies) = spelled_path_literals(&module);
+                let candidates = if inline.is_empty() {
+                    spelled
+                } else {
+                    Vec::new()
+                };
+                let offset: usize = module
+                    .mod_token()
+                    .map(|token| token.text_range().start().into())
+                    .unwrap_or_else(|| module.syntax().text_range().start().into());
+                let line = text
+                    .get(..offset)
+                    .map_or(1, |prefix| prefix.matches('\n').count() + 1);
+                // A plain `#[path]`, or `cfg_attr` paths under `p` and
+                // `not(p)`, always apply; otherwise a `cfg_attr` path may not,
+                // leaving default resolution. A non-literal `#[path]` spells
+                // nothing but still always applies.
+                let default_applies = !always_applies
+                    && !module.attrs().any(|attr| {
+                        attr.path()
+                            .is_some_and(|path| path.syntax().text() == "path")
+                    });
+                scan.edges.push(RustModuleTreeEdge::UnresolvedPath {
+                    inline,
+                    name: name.text().trim_start_matches("r#").to_string(),
+                    line,
+                    candidates,
+                    default_applies,
+                });
+            }
         }
     }
     for macro_call in tree.syntax().descendants().filter_map(ast::MacroCall::cast) {
@@ -236,6 +287,129 @@ fn nests_unknown_macro_call(tokens: &ast::TokenTree) -> bool {
     })
 }
 
+/// Every `path = "<literal>"` a declaration's attributes introduce: a plain
+/// `#[path = ..]`, and the attributes a `cfg_attr` introduces after its
+/// predicate, nested `cfg_attr` included. A predicate's own `key = "value"`
+/// pairs are skipped, even one whose key is `path`.
+///
+/// The second value is true when some introduced path always applies: a
+/// plain `#[path]`, or two top-level `cfg_attr` paths whose predicates are
+/// `p` and `not(p)`. Default resolution is then never the module's file.
+fn spelled_path_literals(module: &ast::Module) -> (Vec<PathBuf>, bool) {
+    let mut candidates = Vec::new();
+    let mut plain_path = false;
+    let mut predicates = Vec::new();
+    for attr in module.attrs() {
+        let tokens = attr
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| !token.kind().is_trivia())
+            .map(|token| (token.kind(), token.text().to_string()))
+            .collect::<Vec<_>>();
+        // `#[ .. ]` or `#![ .. ]`: the attribute body sits inside the brackets.
+        let Some(open) = tokens
+            .iter()
+            .position(|(kind, _)| *kind == SyntaxKind::L_BRACK)
+        else {
+            continue;
+        };
+        let body = tokens
+            .get(open + 1..tokens.len().saturating_sub(1))
+            .unwrap_or_default();
+        if !introduced_path_literals(body, &mut candidates) {
+            continue;
+        }
+        match cfg_attr_arguments(body) {
+            None => plain_path = true,
+            // Only a predicate that alone gates a path directly can pair
+            // with its negation; a nested `cfg_attr` adds a condition.
+            Some(arguments) => {
+                let direct = arguments.iter().skip(1).any(|argument| {
+                    cfg_attr_arguments(argument).is_none()
+                        && introduced_path_literals(argument, &mut Vec::new())
+                });
+                if let Some(predicate) = arguments.first().filter(|_| direct) {
+                    predicates.push(
+                        predicate
+                            .iter()
+                            .map(|(_, text)| text.as_str())
+                            .collect::<String>(),
+                    );
+                }
+            }
+        }
+    }
+    let complementary = predicates
+        .iter()
+        .any(|predicate| predicates.contains(&format!("not({predicate})")));
+    (candidates, plain_path || complementary)
+}
+
+/// The top-level comma-separated arguments of `cfg_attr(..)`, predicate
+/// first, or `None` when `body` is not a `cfg_attr`.
+fn cfg_attr_arguments(body: &[(SyntaxKind, String)]) -> Option<Vec<&[(SyntaxKind, String)]>> {
+    // The parser tokenizes `cfg_attr` as a contextual keyword.
+    let [
+        (name_kind, name),
+        (SyntaxKind::L_PAREN, _),
+        inner @ ..,
+        (SyntaxKind::R_PAREN, _),
+    ] = body
+    else {
+        return None;
+    };
+    if name != "cfg_attr" || !matches!(name_kind, SyntaxKind::IDENT | SyntaxKind::CFG_ATTR_KW) {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut segment_start = 0usize;
+    let mut arguments = Vec::new();
+    for (position, (kind, _)) in inner.iter().enumerate() {
+        match kind {
+            SyntaxKind::L_PAREN | SyntaxKind::L_BRACK | SyntaxKind::L_CURLY => depth += 1,
+            SyntaxKind::R_PAREN | SyntaxKind::R_BRACK | SyntaxKind::R_CURLY => {
+                depth = depth.saturating_sub(1);
+            }
+            SyntaxKind::COMMA if depth == 0 => {
+                arguments.push(inner.get(segment_start..position).unwrap_or_default());
+                segment_start = position + 1;
+            }
+            _ => {}
+        }
+    }
+    arguments.push(inner.get(segment_start..).unwrap_or_default());
+    Some(arguments)
+}
+
+/// Collects the `path` literal of one attribute body (`path = ".."`, or
+/// what `cfg_attr(<predicate>, <attr>, ..)` introduces, recursively), and
+/// says whether it introduced any.
+fn introduced_path_literals(body: &[(SyntaxKind, String)], candidates: &mut Vec<PathBuf>) -> bool {
+    if let [
+        (SyntaxKind::IDENT, key),
+        (SyntaxKind::EQ, _),
+        (SyntaxKind::STRING, value),
+    ] = body
+        && key == "path"
+        && let Some(literal) = parse_rust_string_literal(value)
+    {
+        if !candidates.contains(&PathBuf::from(&literal)) {
+            candidates.push(PathBuf::from(literal));
+        }
+        return true;
+    }
+    let Some(arguments) = cfg_attr_arguments(body) else {
+        return false;
+    };
+    // The predicate introduces nothing; every argument after it is visited.
+    let mut introduced = false;
+    for argument in arguments.into_iter().skip(1) {
+        introduced |= introduced_path_literals(argument, candidates);
+    }
+    introduced
+}
+
 /// The inline modules enclosing an out-of-line declaration, outermost first,
 /// or `None` when the declaration sits outside the item tree (a function body
 /// or other block).
@@ -325,6 +499,62 @@ mod tests {
             "}".repeat(300)
         );
         assert!(!rust_module_tree_scan(&deep).complete);
+    }
+
+    fn unresolved(
+        line: usize,
+        name: &str,
+        candidates: &[&str],
+        default_applies: bool,
+    ) -> RustModuleTreeEdge {
+        RustModuleTreeEdge::UnresolvedPath {
+            inline: Vec::new(),
+            name: name.to_string(),
+            line,
+            candidates: candidates.iter().map(PathBuf::from).collect(),
+            default_applies,
+        }
+    }
+
+    #[test]
+    fn unresolved_path_declarations_report_the_targets_they_spell() {
+        let scan = rust_module_tree_scan(
+            "#[cfg_attr(all(unix, feature = \"fast\"), path = \"unix.rs\")]\n\
+             #[cfg_attr(windows, cfg_attr(target_env = \"msvc\", path = r\"win/msvc.rs\"))]\n\
+             mod sys;\n\
+             #[path = \"a.rs\"]\n#[path = \"b.rs\"]\nmod twice;\n\
+             #[path = concat!(\"dyn\", \".rs\")]\nmod r#dynamic;\n\
+             mod outer { #[cfg_attr(unix, path = \"nested.rs\")] mod inner; }\n\
+             #[cfg_attr(path = \"predicate.rs\", path = \"chosen.rs\")] mod keyed;\n\
+             #[cfg_attr(unix, path = \"u.rs\")]\n#[cfg_attr(not(unix), path = \"w.rs\")]\nmod either;\n\
+             #[cfg_attr(unix, cfg_attr(x, path = \"n.rs\"))]\n#[cfg_attr(not(unix), path = \"m.rs\")]\nmod nested_pair;\n",
+        );
+        assert!(!scan.complete, "{scan:?}");
+        assert_eq!(
+            scan.edges,
+            vec![
+                // A cfg predicate's own `feature = "..."` is not a target.
+                unresolved(3, "sys", &["unix.rs", "win/msvc.rs"], true),
+                // A plain `#[path]` always applies: no default resolution.
+                unresolved(6, "twice", &["a.rs", "b.rs"], false),
+                unresolved(8, "dynamic", &[], false),
+                // Inside an inline module the directory rules differ, so no
+                // spelled target is reported; default resolution still is.
+                RustModuleTreeEdge::UnresolvedPath {
+                    inline: vec!["outer".to_string()],
+                    name: "inner".to_string(),
+                    line: 9,
+                    candidates: Vec::new(),
+                    default_applies: true,
+                },
+                // A custom cfg whose key is `path` is predicate, not target.
+                unresolved(10, "keyed", &["chosen.rs"], true),
+                // `unix` and `not(unix)` cover every target: no default.
+                unresolved(13, "either", &["u.rs", "w.rs"], false),
+                // Under `unix` without `x` neither path applies.
+                unresolved(16, "nested_pair", &["n.rs", "m.rs"], true),
+            ]
+        );
     }
 
     #[test]
