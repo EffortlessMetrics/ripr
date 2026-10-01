@@ -89,6 +89,19 @@ suite('Standard LSP compatibility probe', () => {
     });
   }
 
+  test('accepts the exact incremental document sync shape the server advertises', async () => {
+    const fake = fakeServer('incremental-sync');
+    const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs);
+    assert.strictEqual(result.status, 'compatible', JSON.stringify(result));
+  });
+
+  test('rejects an advertised document sync kind the consumer does not implement', async () => {
+    const fake = fakeServer('unsupported-sync');
+    const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs);
+    assert.strictEqual(result.status, 'incompatible');
+    assert.deepStrictEqual(result.status === 'incompatible' ? result.kind : undefined, 'missing_required_capability');
+  });
+
   test('accepts a structurally valid initialize error as an initialize rejection', async () => {
     const fake = fakeServer('initialize-error');
     const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs);
@@ -302,6 +315,8 @@ function consume() {
       if (mode === 'missing-diagnostics') delete capabilities.diagnosticProvider;
       if (mode === 'missing-workspace-folders') delete capabilities.workspace;
       if (mode === 'missing-command') capabilities.executeCommandProvider.commands.pop();
+      if (mode === 'incremental-sync') capabilities.textDocumentSync = { openClose: true, change: 2, willSave: false, willSaveWaitUntil: false, save: { includeText: false } };
+      if (mode === 'unsupported-sync') capabilities.textDocumentSync = { openClose: true, change: 3, willSave: false, willSaveWaitUntil: false, save: { includeText: false } };
       const envelope = { jsonrpc: mode === 'wrong-jsonrpc' ? '1.0' : '2.0', id: message.id, result: { capabilities, serverInfo: { name: mode === 'wrong-identity' ? 'other' : 'ripr', version: '9.9.9' } } };
       if (mode === 'missing-jsonrpc') delete envelope.jsonrpc;
       if (mode === 'missing-response-payload') delete envelope.result;

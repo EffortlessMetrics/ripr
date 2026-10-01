@@ -533,11 +533,14 @@ are scoped or reviewed.
   comment, so the documented route produced no cards. A gap-ledger card is
   keyed by its gap record and now omits `seam_id` when the row has none; the
   schema requires `seam_id` only on diff-scoped cards (#4524).
-- LSP: the server now asks clients for `textDocument/didSave`. It advertised
-  only the numeric full-sync kind, which under the LSP spec does not request
-  save notifications, so a strictly conforming editor could save without ripr
-  re-analyzing. The capability is now the options form with `save: true`,
-  which the VS Code extension's compatibility check already accepts.
+- LSP: the server now asks clients for `textDocument/didSave` and negotiates
+  incremental document sync (#1746). It advertised only the numeric full-sync
+  kind, which under the LSP spec does not request save notifications, so a
+  strictly conforming editor could save without ripr re-analyzing. The
+  capability is now the options form with incremental ranges and
+  `save: {includeText: false}`: conforming clients send `didSave` without
+  resending the whole document, and the VS Code extension's compatibility
+  check accepts the advertised shape.
 - Rust: a changed PyO3 binding with no Rust test now reads `no_static_path`
   with the `cross_language_oracle_visibility_unresolved` limitation, and its
   next step says to add or check tests in the binding's other language

@@ -11,7 +11,7 @@ use tower_lsp_server::ls_types::{
     CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CodeLensOptions,
     DiagnosticOptions, DiagnosticServerCapabilities, ExecuteCommandOptions,
     HoverProviderCapability, InitializeParams, InitializeResult, OneOf, PositionEncodingKind,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    SaveOptions, ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
     TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
@@ -56,14 +56,20 @@ pub(super) fn initialize_result_for_client(
         capabilities: ServerCapabilities {
             // Options form, not the bare `Kind`: under the LSP spec only
             // `save` opts a client into `textDocument/didSave`, and saved
-            // content is what ripr analyzes. The VS Code compatibility check
-            // accepts `save: true`.
+            // content is what ripr analyzes. `include_text: false` keeps
+            // that opt-in without the client resending the whole document:
+            // the server compares its retained buffer, and a buffer whose
+            // synchronization authority is unknown (#1746) never supplies
+            // the save identity.
             text_document_sync: Some(TextDocumentSyncCapability::Options(
                 TextDocumentSyncOptions {
                     open_close: Some(true),
-                    change: Some(TextDocumentSyncKind::FULL),
-                    save: Some(TextDocumentSyncSaveOptions::Supported(true)),
-                    ..TextDocumentSyncOptions::default()
+                    change: Some(TextDocumentSyncKind::INCREMENTAL),
+                    will_save: Some(false),
+                    will_save_wait_until: Some(false),
+                    save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+                        include_text: Some(false),
+                    })),
                 },
             )),
             position_encoding: Some(position_encoding),
@@ -296,6 +302,31 @@ mod tests {
                 PositionEncodingKind::UTF16
             );
         }
+    }
+
+    #[test]
+    fn initialize_result_advertises_incremental_saved_workspace_sync() -> Result<(), String> {
+        let Some(TextDocumentSyncCapability::Options(options)) =
+            initialize_result().capabilities.text_document_sync
+        else {
+            return Err("expected explicit textDocumentSync options".to_string());
+        };
+        if options.open_close != Some(true)
+            || options.change != Some(TextDocumentSyncKind::INCREMENTAL)
+            || options.will_save != Some(false)
+            || options.will_save_wait_until != Some(false)
+        {
+            return Err(
+                "textDocumentSync options drifted from the saved-workspace contract".into(),
+            );
+        }
+        let Some(TextDocumentSyncSaveOptions::SaveOptions(save)) = options.save else {
+            return Err("expected explicit save options".to_string());
+        };
+        if save.include_text != Some(false) {
+            return Err("didSave text must remain optional for saved-workspace authority".into());
+        }
+        Ok(())
     }
 
     #[test]

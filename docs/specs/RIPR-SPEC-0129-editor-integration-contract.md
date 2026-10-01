@@ -35,10 +35,12 @@ Any off-the-shelf LSP client (Neovim, Helix, Eglot, etc.) that implements
 the base LSP specification.
 
 Consumes:
-- full document sync advertised as `{openClose: true, change: 1, save: true}`,
-  so every conforming client sends `textDocument/didSave` (saved content is
-  the analysis input; the bare numeric kind does not request save
-  notifications)
+- incremental document sync advertised as
+  `{openClose: true, change: 2, willSave: false, willSaveWaitUntil: false,
+  save: {includeText: false}}` (#1746), so every conforming client sends
+  `textDocument/didSave` (saved content is the analysis input; the options
+  form's `save` member requests save notifications and `includeText: false`
+  avoids resending the whole document on each save)
 - `MethodNotFound` (`-32601`, method named in `data`) for any unhandled
   request whose method starts with `$/`; unhandled `$/` notifications stay
   silent (LSP 3.17 "$ Notifications and Requests", #4456)
@@ -247,9 +249,9 @@ qualified as static analysis results; diagnostic codes and data remain stable.
 
 - `capabilities.rs` tests verify the capability advertisement shape
   (pull diagnostics, code action kinds, riprAgent capability).
-- `tests/lsp_lifecycle.rs::initialize_advertises_full_sync_with_save_notifications`
+- `tests/lsp_lifecycle.rs::initialize_advertises_incremental_sync_with_save_notifications`
   verifies over the real wire that the document-sync advertisement requests
-  `didSave`.
+  incremental changes and `didSave` without resending the document (#1746).
 - `tests/lsp_lifecycle.rs::dollar_request_is_answered_method_not_found`
   verifies over the real wire that a `$/` request gets `-32601` naming the
   method, while the same `$/` notification gets no response.

@@ -476,13 +476,17 @@ function validateInitializeResult(result: unknown): Omit<LspCompatibilityEvidenc
 }
 
 function supportedTextDocumentSync(value: unknown): boolean {
-  if (value === 1) {
+  if (value === 1 || value === 2) {
     return true;
   }
-  if (!isObject(value) || value.change !== 1) {
+  if (!isObject(value) || (value.change !== 1 && value.change !== 2)) {
     return false;
   }
-  return value.save === true || (isObject(value.save) && value.save.includeText !== false);
+  // `save: { includeText: false }` keeps didSave opted in without the client
+  // resending the whole document; the server compares its retained buffer.
+  // Only an explicit `save: false` (or an omitted save) stays unsupported,
+  // because saved content is what ripr analyzes.
+  return value.save === true || isObject(value.save);
 }
 
 type CheckedJsonRpcResponse =
