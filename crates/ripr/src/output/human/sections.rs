@@ -1027,7 +1027,9 @@ fn classification_hint(class: &ExposureClass, ripr: &RiprEvidence) -> Option<Str
     match class {
         ExposureClass::WeaklyExposed => {
             if reveal.discriminate.state == StageState::Weak {
-                Some("a related test reaches this change but does not observe the exact changed value".to_string())
+                // #4381: the shared missing-discriminator sentence lives in
+                // output::gap_vocabulary; quote the constant, never re-type it.
+                Some(crate::output::gap_vocabulary::MISSING_DISCRIMINATOR_SENTENCE.to_string())
             } else {
                 Some(partial_path_hint(ripr).to_string())
             }

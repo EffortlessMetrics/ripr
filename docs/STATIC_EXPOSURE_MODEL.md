@@ -80,6 +80,27 @@ static analysis should stop or escalate.
 | `propagation_unknown` | The changed behavior crosses an opaque propagation boundary. |
 | `static_unknown` | Syntax-first analysis cannot make a credible judgment. |
 
+## Cross-Surface Vocabulary Authority (#4381)
+
+One gap state — "related tests reach the change, but no discriminator
+would notice" — is named by two published schema tokens: `weakly_exposed`
+(exposure/probe class, `ripr check`) and `weakly_gripped` (seam grip class,
+`ripr pilot`, seam packets, evidence records). Both tokens are external
+contract: JSON packets, evidence records, SARIF, config `[severity]` keys,
+and LSP diagnostic codes consume them, so **neither token changes** (the
+wording decision of PR #4520 stands; this records the presentation
+decision of issue #4381, option B).
+
+The exposure and grip domains remain two contracts; they are not merged
+into one taxonomy. `crates/ripr/src/output/gap_vocabulary.rs` is the only
+presentation mapping between them — the grip-to-exposure counterpart table,
+the mixed-input resolver, and the shared discriminator phrasing constants
+(`MISSING_DISCRIMINATOR_SENTENCE`, `MISSING_DISCRIMINATOR_LABEL`). A
+per-surface translation fork such as a local `"weakly_gripped" =>
+"weakly_exposed"` table is forbidden; the module's
+`no_per_surface_translation_forks` test is the drift guard, and ranking
+tables in the grip domain are not translations and stay in their domain.
+
 ## Public Badge Projection
 
 Public `ripr` badges are not raw exposure-class totals, seam-native inventory,

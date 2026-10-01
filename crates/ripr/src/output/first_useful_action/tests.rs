@@ -2355,6 +2355,43 @@ fn repair_start_carries_optional_outcome_without_inventing_it() -> Result<(), St
 }
 
 #[test]
+fn repair_start_for_ungripped_card_does_not_claim_related_test_reach() -> Result<(), String> {
+    let mut comments = exact_line_comments()?;
+    // An ungripped seam has no related test that reaches the change — that
+    // absence is the class definition (analysis::seam_classification) — yet a
+    // producer-admitted proposed test target can still make its card
+    // repair-ready (analysis::repair_route value_route_readiness), so the
+    // card can name both a repair start and a missing discriminator. The
+    // why text must not claim reachability for such a card.
+    comments
+        .pointer_mut("/comments/0")
+        .and_then(Value::as_object_mut)
+        .ok_or("fixture card is not an object")?
+        .insert("grip_class".to_string(), serde_json::json!("ungripped"));
+    let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+    let value: Value = serde_json::from_str(&render_first_useful_action_json(&report)?)
+        .map_err(|error| error.to_string())?;
+    let why = value
+        .get("why")
+        .and_then(Value::as_str)
+        .ok_or("report carries no why")?;
+    if why.contains("a related test reaches this change") {
+        return Err(format!(
+            "ungripped repair start overclaimed reachability: {why}"
+        ));
+    }
+    if !why.contains("missing discriminator `amount == discount_threshold`") {
+        return Err(format!(
+            "ungripped repair start lost the named value: {why}"
+        ));
+    }
+    if value.get("status").and_then(Value::as_str) != Some("actionable") {
+        return Err("ungripped card must keep its repair-start actionability".to_string());
+    }
+    Ok(())
+}
+
+#[test]
 fn carried_repair_start_leads_a_fresh_pr_and_its_absence_keeps_the_missing_proof_route()
 -> Result<(), String> {
     let comments = exact_line_comments()?;

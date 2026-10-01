@@ -1070,7 +1070,9 @@ fn push_python_repair_card_terminal(out: &mut String, card: &PythonRepairCard) {
         card.current_test_evidence
     ));
     out.push_str(&format!(
-        "  missing discriminator: {}\n",
+        // #4381: the label comes from the shared gap-vocabulary authority.
+        "  {}: {}\n",
+        crate::output::gap_vocabulary::MISSING_DISCRIMINATOR_LABEL,
         card.missing_discriminator
     ));
     out.push_str(&format!(

@@ -904,10 +904,14 @@ fn movement_from_classes(before: Option<&str>, after: Option<&str>) -> Option<St
 }
 
 fn grip_rank(value: &str) -> Option<u8> {
+    // #4381: normalize either domain's spelling through the shared authority
+    // before ranking, so this table ranks one vocabulary instead of
+    // hard-coding the grip/exposure equivalence arm by arm.
+    let value = crate::output::gap_vocabulary::exposure_class_of(value).unwrap_or(value);
     match value {
-        "ungripped" | "reachable_unrevealed" => Some(0),
-        "weakly_gripped" | "weakly_exposed" => Some(1),
-        "strongly_gripped" | "exposed" => Some(2),
+        "no_static_path" | "reachable_unrevealed" => Some(0),
+        "weakly_exposed" => Some(1),
+        "exposed" => Some(2),
         _ => None,
     }
 }

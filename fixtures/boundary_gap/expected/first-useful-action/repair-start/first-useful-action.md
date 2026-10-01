@@ -11,7 +11,7 @@ Start the focused-test repair for this seam.
 ## One-Screen Recommendation
 
 - Changed behavior: `amount >= discount_threshold`
-- Why: The changed behavior lacks a discriminator for `amount == discount_threshold`; the review card names its repair start.
+- Why: The changed behavior — a related test reaches this change but does not observe the exact changed value; missing discriminator `amount == discount_threshold`. The review card names its repair start.
 - Current evidence strength: `Static evidence found related test context, but the current check is weak because the discriminator is missing.`
 - Missing discriminator: amount == discount_threshold
 - Focused proof intent: assert_eq!(discounted_total(/* boundary input where amount == discount_threshold */), /* expected */)

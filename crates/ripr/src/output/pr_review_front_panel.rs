@@ -2245,24 +2245,15 @@ fn receipt_from_input(
 }
 
 fn normalize_class(value: String) -> String {
-    match value.as_str() {
-        "weakly_gripped" => "weakly_exposed".to_string(),
-        "strongly_gripped" => "exposed".to_string(),
-        _ => value,
-    }
+    // #4381: the presentation mapping lives only in
+    // `output::gap_vocabulary`; this wrapper keeps the call sites local but
+    // carries no translation table of its own.
+    crate::output::gap_vocabulary::present_exposure_class(&value)
 }
 
 fn normalized_receipt_class(value: &str) -> Option<&'static str> {
-    match value {
-        "weakly_gripped" | "weakly_exposed" => Some("weakly_exposed"),
-        "strongly_gripped" | "exposed" => Some("exposed"),
-        "reachable_unrevealed" => Some("reachable_unrevealed"),
-        "ungripped" | "no_static_path" => Some("no_static_path"),
-        "infection_unknown" => Some("infection_unknown"),
-        "propagation_unknown" => Some("propagation_unknown"),
-        "static_unknown" => Some("static_unknown"),
-        _ => None,
-    }
+    // #4381: single shared authority; no per-surface fork.
+    crate::output::gap_vocabulary::exposure_class_of(value)
 }
 
 fn string_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {

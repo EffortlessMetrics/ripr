@@ -126,8 +126,12 @@ pub(super) fn push_path_field(out: &mut String, name: &str, path: &Path, trailin
 pub(super) fn why_line(entry: &ClassifiedSeam) -> String {
     if let Some(missing) = entry.evidence.missing_discriminators.first() {
         return format!(
-            "missing discriminator: {} ({})",
-            missing.value, missing.reason
+            // #4381: name the value with the shared canonical label rather
+            // than a per-surface retype of it.
+            "{}: {} ({})",
+            crate::output::gap_vocabulary::MISSING_DISCRIMINATOR_LABEL,
+            missing.value,
+            missing.reason
         );
     }
     let summary = entry.evidence.discriminate.summary.trim();

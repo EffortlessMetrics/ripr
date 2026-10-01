@@ -27,7 +27,8 @@ a merge gate. A gate should exist only when a repository explicitly configures
 one, and it should fail only for narrow, high-confidence, new gaps.
 
 The policy layer also needs a strict runtime boundary. Static RIPR evidence can
-say a changed seam appears weakly exercised or lacks a discriminator. Imported
+say a changed seam appears weakly exercised or names a missing discriminator
+(#4381: the shared sentence lives in `output::gap_vocabulary`). Imported
 runtime mutation calibration can only adjust confidence when a pre-existing
 calibration artifact joins runtime evidence to the same static seam. The gate
 must not run mutation testing, infer runtime outcomes, or use runtime outcome

@@ -30,7 +30,7 @@
     "changed_behavior": "amount >= discount_threshold"
   },
   "title": "Start the focused-test repair for this seam",
-  "why": "The changed behavior lacks a discriminator for `amount == discount_threshold`; the review card names its repair start.",
+  "why": "The changed behavior — a related test reaches this change but does not observe the exact changed value; missing discriminator `amount == discount_threshold`. The review card names its repair start.",
   "why_first": [
     "The review card carries a repair start, so the seam passed the repair-packet check where the card was produced.",
     "No assistant proof exists yet, so the repair has not started.",
