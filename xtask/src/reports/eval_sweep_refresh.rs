@@ -2700,6 +2700,21 @@ mod python_eval_sweep_refresh {
         Ok(())
     }
 
+    /// Apply or remove an Everyone listing-deny ACE. A zero `icacls` exit is
+    /// not the same as enumeration actually being denied (#3878); callers must
+    /// probe `read_dir` before treating the subtree as unreadable.
+    #[cfg(windows)]
+    fn icacls(sealed: &Path, args: &[&str], context: &str) -> Result<(), String> {
+        let mut owned = vec![sealed.to_string_lossy().into_owned()];
+        owned.extend(args.iter().map(|argument| (*argument).to_string()));
+        let output =
+            capture_output_with_timeout("icacls", &owned, &[], Duration::from_secs(30), context)?;
+        if output.timed_out || !output.status.is_some_and(|status| status.success()) {
+            return Err(format!("{context} failed: {}", first_line(&output.stderr)));
+        }
+        Ok(())
+    }
+
     const SUBJECT_SHAPES: [&str; 8] = [
         "pytest_library",
         "unittest_library",
@@ -3325,6 +3340,92 @@ mod python_eval_sweep_refresh {
                 .limitation
                 .as_deref()
                 .is_some_and(|s| s.contains("sealed"))
+        );
+        Ok(())
+    }
+
+    /// On Windows, also retain a real filesystem control for permission-denied
+    /// directory enumeration. `icacls` succeeding is not the denial (#3878);
+    /// this test lists the subtree first and reports the unavailable
+    /// precondition explicitly rather than asserting incompleteness. A failed
+    /// ACL restoration fails the test instead of leaving denied residue at the
+    /// reusable temp path.
+    #[cfg(windows)]
+    #[test]
+    fn real_unreadable_subtree_marks_corpus_selection_incomplete() -> Result<(), String> {
+        let dir = temp_root("corpus-real-unreadable");
+        super::discard_partial_dir(&dir);
+        let sealed = dir.join("sealed");
+        std::fs::create_dir_all(&sealed).map_err(|error| error.to_string())?;
+        std::fs::write(sealed.join("hidden.py"), "x = 1\n").map_err(|error| error.to_string())?;
+        icacls(
+            &sealed,
+            &["/deny", "*S-1-1-0:(OI)(CI)(RD)"],
+            "python_eval_sweep_refresh test icacls deny",
+        )
+        .map_err(|error| format!("deny the sealed subtree: {error}"))?;
+
+        let listing_denied = std::fs::read_dir(&sealed).is_err();
+        let counts = if listing_denied {
+            Some(count_corpus(&dir))
+        } else {
+            None
+        };
+        let restore = icacls(
+            &sealed,
+            &["/remove:d", "*S-1-1-0"],
+            "python_eval_sweep_refresh test icacls restore",
+        );
+        super::discard_partial_dir(&dir);
+        restore.map_err(|error| format!("restore the sealed subtree ACL: {error}"))?;
+        if dir.exists() {
+            return Err(format!(
+                "NOT_ESTABLISHED: the sealed test tree at {} could not be removed; a denied subtree must not remain at the PID/thread-derived temp path for a later run",
+                dir.display()
+            ));
+        }
+
+        let counts = counts.ok_or_else(|| {
+            "NOT_ESTABLISHED: this process can still list a directory after icacls /deny *S-1-1-0:(OI)(CI)(RD)"
+                .to_string()
+        })?;
+        assert!(!counts.complete);
+        assert!(
+            counts
+                .limitation
+                .as_deref()
+                .is_some_and(|s| s.contains("sealed"))
+        );
+        Ok(())
+    }
+
+    /// A failed `icacls` invocation maps to `Err`. The restore propagation in
+    /// `real_unreadable_subtree_marks_corpus_selection_incomplete` relies on
+    /// that mapping: a failed `/remove:d` must fail the test, not silently
+    /// leave a denied subtree at the reusable temp path.
+    #[cfg(windows)]
+    #[test]
+    fn icacls_failure_maps_to_err() -> Result<(), String> {
+        let missing = std::env::temp_dir().join(format!(
+            "ripr-evalsweep-refresh-missing-icacls-probe-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let error = match icacls(
+            &missing,
+            &["/deny", "*S-1-1-0:(OI)(CI)(RD)"],
+            "python_eval_sweep_refresh test icacls failure probe",
+        ) {
+            Ok(()) => {
+                return Err(
+                    "expected the icacls failure probe to fail against a missing path".to_string(),
+                );
+            }
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("icacls failure probe failed"),
+            "the error names the failed context: {error}"
         );
         Ok(())
     }
