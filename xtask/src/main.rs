@@ -1386,6 +1386,8 @@ fn vscode_package_admitted(
     let inventory = read_vsix_inventory(&vsix_path)?;
     check_vsix_inventory(&inventory, VSIX_MAX_ENTRIES, VSIX_MAX_UNCOMPRESSED_BYTES)
         .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
+    let (inventory_uncompressed, inventory_compressed) = vsix_size_totals(&inventory)
+        .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
     let vsix_sha256 = sha256_file(&vsix_path)?;
     let receipt = serde_json::json!({
         "schema_version": "package-receipt/1",
@@ -1402,8 +1404,8 @@ fn vscode_package_admitted(
         "admission": admission_value,
         "inventory": {
             "entries": inventory.len(),
-            "uncompressed_bytes": inventory.iter().map(|entry| entry.size).sum::<u64>(),
-            "compressed_bytes": inventory.iter().map(|entry| entry.compressed_size).sum::<u64>(),
+            "uncompressed_bytes": inventory_uncompressed,
+            "compressed_bytes": inventory_compressed,
         },
         "tracked_template_restored": staged_release,
         "publication_mutation_attempted": false,
@@ -1491,6 +1493,24 @@ fn read_vsix_inventory(vsix_path: &Path) -> Result<Vec<VsixEntry>, String> {
     Ok(entries)
 }
 
+/// Checked totals for the packaged VSIX inventory. Wrapping or panicking
+/// sums would let hostile archive metadata slip past the fail-closed size
+/// bound, so both totals accumulate with u64 checked addition and reject
+/// the archive on overflow.
+fn vsix_size_totals(entries: &[VsixEntry]) -> Result<(u64, u64), String> {
+    let mut uncompressed: u64 = 0;
+    let mut compressed: u64 = 0;
+    for entry in entries {
+        uncompressed = uncompressed
+            .checked_add(entry.size)
+            .ok_or_else(|| format!("size total overflows u64 at entry {}", entry.name))?;
+        compressed = compressed
+            .checked_add(entry.compressed_size)
+            .ok_or_else(|| format!("size total overflows u64 at entry {}", entry.name))?;
+    }
+    Ok((uncompressed, compressed))
+}
+
 fn check_vsix_inventory(
     entries: &[VsixEntry],
     max_entries: usize,
@@ -1515,7 +1535,7 @@ fn check_vsix_inventory(
             entries.len()
         ));
     }
-    let uncompressed: u64 = entries.iter().map(|entry| entry.size).sum();
+    let (uncompressed, _) = vsix_size_totals(entries)?;
     if uncompressed > max_uncompressed_bytes {
         return Err(format!(
             "unpacks to {uncompressed} bytes, above the {max_uncompressed_bytes}-byte bound"
