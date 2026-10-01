@@ -728,6 +728,7 @@ build/test, then report), binding the analyzer-consuming xtask tests to the
 actual instrumented executable through an absolute explicit override:
 
 ```bash
+set -euo pipefail
 llvm_cov_env="$(cargo llvm-cov show-env --export-prefix)"
 eval "$llvm_cov_env"
 cargo llvm-cov clean --workspace

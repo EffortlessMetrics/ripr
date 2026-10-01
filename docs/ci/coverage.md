@@ -64,6 +64,7 @@ binary. `report` takes no build flags and, at this virtual workspace root,
 covers all members even without `--workspace`.
 
 ```bash
+set -euo pipefail
 llvm_cov_env="$(cargo llvm-cov show-env --export-prefix)"
 eval "$llvm_cov_env"
 cargo llvm-cov clean --workspace
