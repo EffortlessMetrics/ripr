@@ -157,6 +157,19 @@ reason = "xtask package manifest."
 covered_by = ["cargo check -p xtask --locked"]
 
 # ---------------------------------------------------------------------------
+# Distribution adapters
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "packaging/python/pyproject.toml"
+kind = "python_package_manifest"
+owner = "release/distribution"
+surface = "config"
+classification = "config"
+reason = "PEP 517/621 and Maturin authoring manifest for the wheel-only ripr-rs adapter (#4490)."
+covered_by = ["cargo xtask check-release-targets"]
+
+# ---------------------------------------------------------------------------
 # CI / GitHub workflows
 # ---------------------------------------------------------------------------
 

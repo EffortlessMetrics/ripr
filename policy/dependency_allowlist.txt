@@ -43,4 +43,5 @@ fixtures/python_no_config_repair_gap/input/pyproject.toml|fixture_input|analysis
 fixtures/python_src_layout_repair_gap/input/pyproject.toml|fixture_input|analysis-fixtures|Python src-layout repair-routing fixture needs a project marker as analyzed input.
 metrics/rust-judged-behavior-panel/subjects/**/Cargo.lock|fixture_input|rust-judged-panel|Governed replay subjects pin their empty Cargo dependency graphs for deterministic offline materialization.
 metrics/rust-judged-behavior-panel/subjects/**/Cargo.toml|fixture_input|rust-judged-panel|Governed replay subjects carry analyzed Cargo package manifests for issue #3198.
+packaging/python/pyproject.toml|python_distribution_manifest|release/distribution|Pinned PEP 517/621 Maturin build contract for the wheel-only ripr-rs adapter (#4490).
 xtask/Cargo.toml|rust_tool_manifest|repo-policy|xtask package manifest.

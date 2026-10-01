@@ -1,0 +1,38 @@
+[build-system]
+requires = ["maturin==1.14.1"]
+build-backend = "maturin"
+
+[project]
+name = "ripr-rs"
+dynamic = ["version"]
+description = "Find static mutation-exposure gaps before expensive mutation testing"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.10"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-APACHE", "LICENSE-MIT"]
+authors = [{ name = "Effortless Metrics" }]
+keywords = ["mutation-testing", "testing", "rust", "static-analysis", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Topic :: Software Development :: Testing",
+]
+
+[project.urls]
+Repository = "https://github.com/EffortlessMetrics/ripr"
+Documentation = "https://github.com/EffortlessMetrics/ripr#readme"
+Issues = "https://github.com/EffortlessMetrics/ripr/issues"
+
+[tool.maturin]
+bindings = "bin"
+targets = [{ name = "ripr", kind = "bin" }]
+manifest-path = "../../crates/ripr/Cargo.toml"
+locked = true
+strip = true
+features = ["lang-python", "lang-rust", "lang-typescript"]

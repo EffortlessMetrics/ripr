@@ -1,0 +1,621 @@
+name: Qualify ripr-rs Python Wheel (read-only)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/python-wheel-qualification.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/ripr/**"
+      - "fixtures/python/**"
+      - "packaging/python/**"
+      - "policy/dependency_allowlist.txt"
+      - "policy/distribution.toml"
+      - "policy/non-rust-allowlist.toml"
+      - "policy/workflow_allowlist.txt"
+      - "rust-toolchain.toml"
+      - "xtask/**"
+
+# This workflow builds and consumes local artifacts only. It cannot publish,
+# mint an OIDC token, create a release, mutate a tag, or write repository data.
+permissions:
+  contents: read
+
+concurrency:
+  group: python-wheel-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  RUST_TARGET: x86_64-unknown-linux-gnu
+  MATURIN_VERSION: "1.14.1"
+  TWINE_VERSION: "7.0.0"
+  UV_VERSION: "0.12.19"
+  PIP_VERSION: "26.2.1"
+  PACKAGING_VERSION: "26.3"
+
+jobs:
+  build-wheel:
+    name: build and inspect Linux x64 wheel
+    runs-on: ubuntu-22.04
+    outputs:
+      native_version: ${{ steps.candidate.outputs.native_version }}
+      python_version: ${{ steps.python_version.outputs.python_version }}
+      payload_sha256: ${{ steps.validate.outputs.payload_sha256 }}
+      wheel_sha256: ${{ steps.validate.outputs.wheel_sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+          targets: ${{ env.RUST_TARGET }}
+
+      - name: Bind exact source candidate and native version
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          [[ "${CANDIDATE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "${CANDIDATE_SHA,,}"
+          native_version="$(cargo metadata --no-deps --format-version 1 | jq -er '.packages[] | select(.name == "ripr") | .version')"
+          test -n "${native_version}"
+          echo "native_version=${native_version}" >> "${GITHUB_OUTPUT}"
+          echo "RIPR_NATIVE_VERSION=${native_version}" >> "${GITHUB_ENV}"
+
+      - name: Install pinned package tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          venv="${GITHUB_WORKSPACE}/target/ripr/python-build/venv"
+          evidence="${GITHUB_WORKSPACE}/target/ripr/python-wheel-evidence"
+          python3 -m venv "${venv}"
+          "${venv}/bin/python" -m pip install --disable-pip-version-check --upgrade "pip==${PIP_VERSION}"
+          "${venv}/bin/python" -m pip install --disable-pip-version-check \
+            "maturin==${MATURIN_VERSION}" \
+            "twine==${TWINE_VERSION}" \
+            "uv==${UV_VERSION}" \
+            "packaging==${PACKAGING_VERSION}"
+          mkdir -p \
+            "${evidence}/wheelhouse" \
+            "${evidence}/broken/missing-script" \
+            "${evidence}/broken/stale-record" \
+            "${evidence}/tooling"
+          "${venv}/bin/python" -m pip download \
+            --disable-pip-version-check \
+            --no-deps \
+            --only-binary=:all: \
+            --dest "${evidence}/tooling" \
+            "pip==${PIP_VERSION}" \
+            "uv==${UV_VERSION}"
+          "${venv}/bin/python" -VV
+          "${venv}/bin/python" -m pip --version
+          "${venv}/bin/python" -m maturin --version
+          "${venv}/bin/python" -m twine --version
+          "${venv}/bin/python" -m uv --version
+          "${venv}/bin/python" -c 'import packaging; print(f"packaging {packaging.__version__}")'
+
+      - name: Validate package source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo xtask check-release-targets
+          cargo test -p xtask --locked policy::distribution::tests -- --nocapture
+
+      - name: Resolve and cross-check Python distribution version
+        id: python_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python="${GITHUB_WORKSPACE}/target/ripr/python-build/venv/bin/python"
+          python_version="$(RIPR_NATIVE_VERSION="${RIPR_NATIVE_VERSION}" "${python}" - <<'PY'
+          import os
+          from packaging.version import Version
+
+          cases = {
+              "0.11.0": "0.11.0",
+              "0.11.0-alpha.1": "0.11.0a1",
+              "0.11.0-beta.2": "0.11.0b2",
+              "0.11.0-rc.1": "0.11.0rc1",
+          }
+          for native, expected in cases.items():
+              actual = Version(native).public
+              assert actual == expected, (native, actual, expected)
+
+          print(Version(os.environ["RIPR_NATIVE_VERSION"]).public)
+          PY
+          )"
+          test -n "${python_version}"
+          echo "python_version=${python_version}" >> "${GITHUB_OUTPUT}"
+          echo "RIPR_PYTHON_VERSION=${python_version}" >> "${GITHUB_ENV}"
+
+      - name: Build wheel without a compatibility-floor claim
+        shell: bash
+        run: |
+          set -euo pipefail
+          python="${GITHUB_WORKSPACE}/target/ripr/python-build/venv/bin/python"
+          cd packaging/python
+          "${python}" -m maturin build \
+            --release \
+            --target "${RUST_TARGET}" \
+            --compatibility linux \
+            --out "${GITHUB_WORKSPACE}/target/ripr/python-wheel-evidence/wheelhouse"
+          mapfile -t wheels < <(find "${GITHUB_WORKSPACE}/target/ripr/python-wheel-evidence/wheelhouse" -maxdepth 1 -type f -name '*.whl' -print | sort)
+          test "${#wheels[@]}" = "1"
+          test "$(basename "${wheels[0]}")" = "ripr_rs-${RIPR_PYTHON_VERSION}-py3-none-linux_x86_64.whl"
+          test -z "$(find "${GITHUB_WORKSPACE}/target/ripr/python-wheel-evidence/wheelhouse" -maxdepth 1 -type f ! -name '*.whl' -print -quit)"
+
+      - name: Validate metadata, RECORD, payload, and negative controls
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python="${GITHUB_WORKSPACE}/target/ripr/python-build/venv/bin/python"
+          evidence="${GITHUB_WORKSPACE}/target/ripr/python-wheel-evidence"
+          wheel="$(find "${evidence}/wheelhouse" -maxdepth 1 -type f -name '*.whl' -print -quit)"
+          "${python}" -m twine check --strict "${wheel}" | tee "${evidence}/twine-check.txt"
+
+          export TOOL_PYTHON_VERSION
+          export TOOL_PIP_VERSION
+          export TOOL_MATURIN_VERSION
+          export TOOL_TWINE_VERSION
+          export TOOL_UV_VERSION
+          export TOOL_PACKAGING_VERSION
+          export CANDIDATE_TREE
+          export CARGO_LOCK_SHA256
+          export RUSTC_VERBOSE_VERSION
+          export CARGO_VERBOSE_VERSION
+          TOOL_PYTHON_VERSION="$("${python}" -VV 2>&1 | tr '\n' ' ')"
+          TOOL_PIP_VERSION="$("${python}" -m pip --version)"
+          TOOL_MATURIN_VERSION="$("${python}" -m maturin --version)"
+          TOOL_TWINE_VERSION="$("${python}" -m twine --version | head -n 1)"
+          TOOL_UV_VERSION="$("${python}" -m uv --version)"
+          TOOL_PACKAGING_VERSION="$("${python}" -c 'import packaging; print(packaging.__version__)')"
+          CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          CARGO_LOCK_SHA256="$(sha256sum Cargo.lock | awk '{print $1}')"
+          RUSTC_VERBOSE_VERSION="$(rustc -vV)"
+          CARGO_VERBOSE_VERSION="$(cargo -vV)"
+
+          "${python}" - "${wheel}" "${evidence}" <<'PY'
+          import base64
+          import csv
+          import hashlib
+          import io
+          import json
+          import os
+          from email.parser import Parser
+          from pathlib import Path, PurePosixPath
+          import sys
+          import zipfile
+
+          wheel = Path(sys.argv[1])
+          evidence = Path(sys.argv[2])
+          expected_native_version = os.environ["RIPR_NATIVE_VERSION"]
+          expected_python_version = os.environ["RIPR_PYTHON_VERSION"]
+          expected_filename = f"ripr_rs-{expected_python_version}-py3-none-linux_x86_64.whl"
+
+          def digest_bytes(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
+
+          def validate(path: Path) -> dict[str, str]:
+              assert path.name == expected_filename, f"unexpected wheel filename: {path.name}"
+              with zipfile.ZipFile(path) as archive:
+                  names = archive.namelist()
+                  assert names, "wheel is empty"
+                  for name in names:
+                      pure = PurePosixPath(name)
+                      assert not pure.is_absolute(), f"absolute wheel member: {name}"
+                      assert ".." not in pure.parts, f"traversal wheel member: {name}"
+
+                  scripts = [name for name in names if name.endswith(".data/scripts/ripr")]
+                  assert len(scripts) == 1, f"expected exactly one ripr script, got {scripts}"
+                  script = scripts[0]
+                  script_info = archive.getinfo(script)
+                  script_mode = script_info.external_attr >> 16
+                  assert script_mode & 0o111, f"ripr script is not executable: mode={oct(script_mode)}"
+                  script_bytes = archive.read(script)
+                  assert script_bytes, "ripr script is empty"
+
+                  metadata_paths = [name for name in names if name.endswith(".dist-info/METADATA")]
+                  wheel_paths = [name for name in names if name.endswith(".dist-info/WHEEL")]
+                  record_paths = [name for name in names if name.endswith(".dist-info/RECORD")]
+                  assert len(metadata_paths) == len(wheel_paths) == len(record_paths) == 1
+                  metadata_path = metadata_paths[0]
+                  wheel_path = wheel_paths[0]
+                  record_path = record_paths[0]
+
+                  metadata = Parser().parsestr(archive.read(metadata_path).decode("utf-8"))
+                  assert metadata["Name"] == "ripr-rs"
+                  assert metadata["Version"] == expected_python_version
+                  assert metadata["Requires-Python"] == ">=3.10"
+                  assert metadata["License-Expression"] == "MIT OR Apache-2.0"
+                  assert not metadata.get_all("Requires-Dist"), "native wheel acquired runtime dependencies"
+
+                  wheel_metadata = archive.read(wheel_path).decode("utf-8")
+                  tags = [
+                      line.removeprefix("Tag: ")
+                      for line in wheel_metadata.splitlines()
+                      if line.startswith("Tag: ")
+                  ]
+                  assert tags == ["py3-none-linux_x86_64"], f"unexpected wheel tags: {tags}"
+                  assert not any(tag.endswith("-any") for tag in tags)
+
+                  license_mit = [name for name in names if PurePosixPath(name).name == "LICENSE-MIT"]
+                  license_apache = [
+                      name for name in names if PurePosixPath(name).name == "LICENSE-APACHE"
+                  ]
+                  assert len(license_mit) == len(license_apache) == 1
+                  assert archive.read(license_mit[0]) == Path("LICENSE-MIT").read_bytes()
+                  assert archive.read(license_apache[0]) == Path("LICENSE-APACHE").read_bytes()
+
+                  record_rows = list(csv.reader(io.StringIO(archive.read(record_path).decode("utf-8"))))
+                  record = {row[0]: row[1:] for row in record_rows}
+                  assert set(names) == set(record), "RECORD inventory does not equal archive inventory"
+                  for name in names:
+                      digest, size = record[name]
+                      if name == record_path:
+                          assert digest == size == ""
+                          continue
+                      payload = archive.read(name)
+                      expected_digest = (
+                          base64.urlsafe_b64encode(hashlib.sha256(payload).digest())
+                          .rstrip(b"=")
+                          .decode("ascii")
+                      )
+                      assert digest == f"sha256={expected_digest}", f"RECORD digest mismatch for {name}"
+                      assert size == str(len(payload)), f"RECORD size mismatch for {name}"
+
+                  return {
+                      "script_path": script,
+                      "script_sha256": digest_bytes(script_bytes),
+                      "wheel_tag": tags[0],
+                  }
+
+          positive = validate(wheel)
+
+          missing_script = evidence / "broken" / "missing-script" / wheel.name
+          with zipfile.ZipFile(wheel) as source, zipfile.ZipFile(missing_script, "w") as destination:
+              for info in source.infolist():
+                  if info.filename == positive["script_path"]:
+                      continue
+                  destination.writestr(info, source.read(info.filename))
+          try:
+              validate(missing_script)
+          except AssertionError as error:
+              missing_script_result = str(error)
+              assert "exactly one ripr script" in missing_script_result
+          else:
+              raise AssertionError("wheel validator accepted a wheel with its ripr executable removed")
+
+          stale_record = evidence / "broken" / "stale-record" / wheel.name
+          with zipfile.ZipFile(wheel) as source, zipfile.ZipFile(stale_record, "w") as destination:
+              for info in source.infolist():
+                  payload = source.read(info.filename)
+                  if info.filename == positive["script_path"]:
+                      payload += b"\nrecord-negative-control\n"
+                  destination.writestr(info, payload)
+          try:
+              validate(stale_record)
+          except AssertionError as error:
+              stale_record_result = str(error)
+              assert "RECORD digest mismatch" in stale_record_result
+          else:
+              raise AssertionError("wheel validator accepted payload bytes with a stale RECORD")
+
+          receipt = {
+              "schema_version": 2,
+              "channel": "pypi-local-wheelhouse",
+              "publication_attempted": False,
+              "candidate_sha": os.environ["CANDIDATE_SHA"].lower(),
+              "candidate_tree": os.environ["CANDIDATE_TREE"],
+              "cargo_lock_sha256": os.environ["CARGO_LOCK_SHA256"],
+              "native_version": expected_native_version,
+              "python_version": expected_python_version,
+              "distribution": "ripr-rs",
+              "executable": "ripr",
+              "rust_target": os.environ["RUST_TARGET"],
+              "compatibility_state": "unqualified",
+              "compatibility_owner": "issue:#4489",
+              "wheel": {
+                  "filename": wheel.name,
+                  "sha256": digest_bytes(wheel.read_bytes()),
+                  "tag": positive["wheel_tag"],
+                  "installed_payload_sha256": positive["script_sha256"],
+              },
+              "negative_controls": [
+                  {
+                      "mutation": "removed .data/scripts/ripr",
+                      "result": missing_script_result,
+                  },
+                  {
+                      "mutation": "mutated .data/scripts/ripr without updating RECORD",
+                      "result": stale_record_result,
+                  },
+              ],
+              "toolchain": {
+                  "rustc": os.environ["RUSTC_VERBOSE_VERSION"],
+                  "cargo": os.environ["CARGO_VERBOSE_VERSION"],
+                  "python": os.environ["TOOL_PYTHON_VERSION"],
+                  "pip": os.environ["TOOL_PIP_VERSION"],
+                  "maturin": os.environ["TOOL_MATURIN_VERSION"],
+                  "twine": os.environ["TOOL_TWINE_VERSION"],
+                  "uv": os.environ["TOOL_UV_VERSION"],
+                  "packaging": os.environ["TOOL_PACKAGING_VERSION"],
+              },
+              "runner": {
+                  "os": os.environ.get("RUNNER_OS"),
+                  "arch": os.environ.get("RUNNER_ARCH"),
+                  "image_os": os.environ.get("ImageOS"),
+                  "image_version": os.environ.get("ImageVersion"),
+              },
+          }
+          (evidence / "wheel-receipt.json").write_text(
+              json.dumps(receipt, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(receipt, indent=2))
+          PY
+
+          {
+            echo "payload_sha256=$(jq -er '.wheel.installed_payload_sha256' "${evidence}/wheel-receipt.json")"
+            echo "wheel_sha256=$(jq -er '.wheel.sha256' "${evidence}/wheel-receipt.json")"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Package independent Python consumer fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="${GITHUB_WORKSPACE}/target/ripr/python-wheel-evidence"
+          tar -czf "${evidence}/python-basic-fixture.tar.gz" \
+            -C "${GITHUB_WORKSPACE}" \
+            fixtures/python/basic
+          tar -tzf "${evidence}/python-basic-fixture.tar.gz" \
+            | grep -Fx 'fixtures/python/basic/diff.patch'
+
+      - name: Upload no-publish wheel evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-rs-python-wheel-${{ env.CANDIDATE_SHA }}
+          path: target/ripr/python-wheel-evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  consume:
+    name: clean ${{ matrix.client }} install and useful Python journey
+    needs: build-wheel
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        client: [pip, uv]
+    env:
+      RIPR_NATIVE_VERSION: ${{ needs.build-wheel.outputs.native_version }}
+      RIPR_PYTHON_VERSION: ${{ needs.build-wheel.outputs.python_version }}
+      EXPECTED_PAYLOAD_SHA256: ${{ needs.build-wheel.outputs.payload_sha256 }}
+      EXPECTED_WHEEL_SHA256: ${{ needs.build-wheel.outputs.wheel_sha256 }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: ripr-rs-python-wheel-${{ env.CANDIDATE_SHA }}
+          path: evidence
+
+      - name: Install from the local wheelhouse without Rust or source checkout
+        shell: bash
+        env:
+          CLIENT: ${{ matrix.client }}
+        run: |
+          set -euo pipefail
+          base_path="/usr/bin:/bin"
+          wheel="$(find evidence/wheelhouse -maxdepth 1 -type f -name '*.whl' -print -quit)"
+          test -n "${wheel}"
+          test "$(sha256sum "${wheel}" | awk '{print $1}')" = "${EXPECTED_WHEEL_SHA256}"
+          if env -i HOME="${HOME}" PATH="${base_path}" bash -c \
+            'command -v cargo >/dev/null || command -v rustc >/dev/null || command -v ripr >/dev/null'; then
+            echo "::error::clean consumer inherited Cargo, rustc, or ripr" >&2
+            exit 1
+          fi
+
+          planted="${RUNNER_TEMP}/planted-${CLIENT}"
+          planted_marker="${RUNNER_TEMP}/planted-${CLIENT}-executed"
+          mkdir -p "${planted}"
+          cat > "${planted}/ripr" <<SH
+          #!/usr/bin/env bash
+          printf 'planted PATH ripr was executed\n' > "${planted_marker}"
+          exit 97
+          SH
+          chmod +x "${planted}/ripr"
+
+          if [ "${CLIENT}" = pip ]; then
+            venv="${RUNNER_TEMP}/pip-consumer"
+            python3 -m venv "${venv}"
+            "${venv}/bin/python" -m pip install \
+              --disable-pip-version-check \
+              --no-index \
+              --find-links evidence/tooling \
+              "pip==${PIP_VERSION}"
+            "${venv}/bin/python" -m pip install \
+              --disable-pip-version-check \
+              --no-index \
+              --find-links evidence/wheelhouse \
+              "ripr-rs==${RIPR_PYTHON_VERSION}"
+            executable="${venv}/bin/ripr"
+            consumer_path="${venv}/bin:${planted}:${base_path}"
+            consumer_python="${venv}/bin/python"
+          else
+            bootstrap="${RUNNER_TEMP}/uv-bootstrap"
+            tool_dir="${RUNNER_TEMP}/uv-tools"
+            tool_bin="${RUNNER_TEMP}/uv-bin"
+            cache_dir="${RUNNER_TEMP}/uv-cache"
+            python3 -m venv "${bootstrap}"
+            "${bootstrap}/bin/python" -m pip install \
+              --disable-pip-version-check \
+              --no-index \
+              --find-links evidence/tooling \
+              "pip==${PIP_VERSION}" \
+              "uv==${UV_VERSION}"
+            uv_version="$("${bootstrap}/bin/python" -m uv --version)"
+            [[ "${uv_version}" == "uv ${UV_VERSION}"* ]]
+            mkdir -p "${tool_bin}"
+            UV_OFFLINE=1 \
+            UV_TOOL_DIR="${tool_dir}" \
+            UV_TOOL_BIN_DIR="${tool_bin}" \
+            UV_CACHE_DIR="${cache_dir}" \
+              "${bootstrap}/bin/python" -m uv tool install "${wheel}"
+            executable="${tool_bin}/ripr"
+            consumer_path="${tool_bin}:${planted}:${bootstrap}/bin:${base_path}"
+            consumer_python="${bootstrap}/bin/python"
+            {
+              echo "UV_TOOL_DIR=${tool_dir}"
+              echo "UV_TOOL_BIN_DIR=${tool_bin}"
+              echo "UV_CACHE_DIR=${cache_dir}"
+            } >> "${GITHUB_ENV}"
+          fi
+
+          resolved="$(env -i HOME="${HOME}" PATH="${consumer_path}" bash -c 'command -v ripr')"
+          test "${resolved}" = "${executable}"
+          test "$(sha256sum "${resolved}" | awk '{print $1}')" = "${EXPECTED_PAYLOAD_SHA256}"
+          test "$(env -i HOME="${HOME}" PATH="${consumer_path}" ripr --version)" = \
+            "ripr ${RIPR_NATIVE_VERSION} (${CANDIDATE_SHA,,})"
+          test ! -e "${planted_marker}"
+          {
+            echo "CLIENT=${CLIENT}"
+            echo "CONSUMER_EXECUTABLE=${executable}"
+            echo "CONSUMER_PATH=${consumer_path}"
+            echo "CONSUMER_PYTHON=${consumer_python}"
+            echo "PLANTED_DIR=${planted}"
+            echo "PLANTED_MARKER=${planted_marker}"
+            echo "WHEEL_PATH=${wheel}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Run no-config Python preview, fresh-shell follow-up, and disable control
+        shell: bash
+        run: |
+          set -euo pipefail
+          project="${RUNNER_TEMP}/${CLIENT} consumer ü"
+          fixture="${project}/fixtures/python/basic"
+          check_json="${RUNNER_TEMP}/${CLIENT}-python-check.json"
+          disabled_json="${RUNNER_TEMP}/${CLIENT}-python-disabled.json"
+          explain_text="${RUNNER_TEMP}/${CLIENT}-python-explain.txt"
+          project_marker="${RUNNER_TEMP}/${CLIENT}-project-python-executed"
+          mkdir -p "${project}"
+          tar -xzf evidence/python-basic-fixture.tar.gz -C "${project}"
+          mkdir -p "${fixture}/.venv/bin"
+          cat > "${fixture}/.venv/bin/python" <<SH
+          #!/usr/bin/env bash
+          printf 'project virtualenv was executed\n' > "${project_marker}"
+          exit 98
+          SH
+          chmod +x "${fixture}/.venv/bin/python"
+
+          env -i \
+            HOME="${HOME}" \
+            PATH="${CONSUMER_PATH}" \
+            HTTP_PROXY="http://127.0.0.1:9" \
+            HTTPS_PROXY="http://127.0.0.1:9" \
+            NO_PROXY="" \
+            ripr check \
+              --root "${fixture}" \
+              --diff "${fixture}/diff.patch" \
+              --mode fast \
+              --json > "${check_json}"
+          jq -e '
+            .summary.changed_rust_files == 0
+            and .summary.probes > 0
+            and .summary.findings > 0
+            and (.findings | length) > 0
+            and any(.summary.changed_files_by_language[]?;
+              .language == "python" and .files == 1)
+            and any(.preview_languages[]?;
+              .language == "python"
+              and .enabled == true
+              and .analyzed == true
+              and .category == "preview_language_advisory")
+            and .findings[0].language == "python"
+            and .findings[0].language_status == "preview"
+          ' "${check_json}" >/dev/null
+          finding_id="$(jq -er '.findings[0].id' "${check_json}")"
+          env -i \
+            HOME="${HOME}" \
+            PATH="${CONSUMER_PATH}" \
+            PROJECT="${fixture}" \
+            FINDING_ID="${finding_id}" \
+            EXPLAIN_TEXT="${explain_text}" \
+            bash --noprofile --norc -c '
+              cd "${PROJECT}"
+              ripr explain \
+                --root . \
+                --diff diff.patch \
+                --mode fast \
+                "${FINDING_ID}" > "${EXPLAIN_TEXT}"
+            '
+          test -s "${explain_text}"
+          grep -F "${finding_id}" "${explain_text}"
+          test ! -e "${project_marker}"
+          test ! -e "${PLANTED_MARKER}"
+
+          cat > "${fixture}/ripr.toml" <<'EOF'
+          [languages]
+          enabled = ["rust"]
+          EOF
+          env -i HOME="${HOME}" PATH="${CONSUMER_PATH}" \
+            ripr check \
+              --root "${fixture}" \
+              --diff "${fixture}/diff.patch" \
+              --mode fast \
+              --json > "${disabled_json}"
+          jq -e '
+            .summary.probes == 0
+            and .summary.findings == 0
+            and .analysis_outcome.analysis_complete == false
+            and any(.analysis_outcome.outcome.limitations[]?;
+              .kind == "language_adapter_unavailable")
+            and any(.preview_languages[]?;
+              .language == "python"
+              and .enabled == false
+              and .analyzed == false
+              and (.why | contains("empty result is not Rust-grade clean")))
+          ' "${disabled_json}" >/dev/null
+          echo "PROJECT_FIXTURE=${fixture}" >> "${GITHUB_ENV}"
+
+      - name: Reinstall and uninstall cleanly
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${CLIENT}" = pip ]; then
+            "${CONSUMER_PYTHON}" -m pip install \
+              --disable-pip-version-check \
+              --force-reinstall \
+              --no-index \
+              --find-links evidence/wheelhouse \
+              "ripr-rs==${RIPR_PYTHON_VERSION}"
+            test "$(sha256sum "${CONSUMER_EXECUTABLE}" | awk '{print $1}')" = \
+              "${EXPECTED_PAYLOAD_SHA256}"
+            "${CONSUMER_PYTHON}" -m pip uninstall -y ripr-rs
+            if "${CONSUMER_PYTHON}" -m pip show ripr-rs >/dev/null 2>&1; then
+              echo "::error::ripr-rs remained installed after uninstall" >&2
+              exit 1
+            fi
+          else
+            UV_OFFLINE=1 \
+            UV_TOOL_DIR="${UV_TOOL_DIR}" \
+            UV_TOOL_BIN_DIR="${UV_TOOL_BIN_DIR}" \
+            UV_CACHE_DIR="${UV_CACHE_DIR}" \
+              "${CONSUMER_PYTHON}" -m uv tool install --force "${WHEEL_PATH}"
+            test "$(sha256sum "${CONSUMER_EXECUTABLE}" | awk '{print $1}')" = \
+              "${EXPECTED_PAYLOAD_SHA256}"
+            UV_OFFLINE=1 \
+            UV_TOOL_DIR="${UV_TOOL_DIR}" \
+            UV_TOOL_BIN_DIR="${UV_TOOL_BIN_DIR}" \
+            UV_CACHE_DIR="${UV_CACHE_DIR}" \
+              "${CONSUMER_PYTHON}" -m uv tool uninstall ripr-rs
+          fi
+          test ! -e "${CONSUMER_EXECUTABLE}"
+          test "$(env -i HOME="${HOME}" PATH="${CONSUMER_PATH}" bash -c 'command -v ripr')" = \
+            "${PLANTED_DIR}/ripr"
+          test -f "${PROJECT_FIXTURE}/src/pricing.py"
+          test ! -e "${PLANTED_MARKER}"
