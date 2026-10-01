@@ -65,6 +65,7 @@ map is:
 | `ripr mcp` status tool and resource | `schema_version` | `ripr-mcp-workspace-status-v1` (see [MCP workspace status server](interop/mcp.md)) |
 | `ripr swarm queue --json` | `schema_version` | `0.2` |
 | `ripr help --json` | `schema_version` | `1` |
+| `RepairCardV1` DTO (RIPR-SPEC-0192; no CLI projection until #4667) | `schema_version` | `repair_card.v1` |
 
 The published JSON Schemas have these current versions. Each row is checked
 against the schema's pinned `const` and every named producer source by
@@ -89,6 +90,27 @@ records that distinction.
 
 Bump rules below apply per contract: a breaking change to one family bumps
 that family's version only.
+
+## Repair card (`RepairCardV1`, schema `repair_card.v1`)
+
+`RepairCardV1` (RIPR-SPEC-0192, #4663) is the compact provider-neutral
+repair work object: one card orders one governed repair as a verbatim
+projection of the fix-instruction summary, repair-route readiness, typed
+target selection, typed command references and optional repair-attempt
+state. The card carries a sha256 semantic digest scoped to its load-bearing
+fields (command display strings, like all presentation, never enter
+identity; no timestamp or absolute checkout spelling exists on the DTO), a
+single fail-closed route gate, five separate `done_when` axes, and a bounded
+rejected-alternative set. It describes the work order and never marks itself
+complete; observed completion stays with the RepairAttempt/receipt
+authorities.
+
+The schema is additive within `repair_card.v1`: new fields arrive with
+`#[serde(default)]`; a breaking shape change mints a new version. No CLI,
+LSP, or MCP projection emits the card yet (#4667); bounded detail references
+and field/budget ratification land in #4666/#4669. The version constant
+lives in `crates/ripr/src/domain/repair_card.rs` and is pinned by unit
+tests and `cargo xtask check-output-contracts`.
 
 ## Executed-control packet (`executed_control_packet`, schema `1`)
 

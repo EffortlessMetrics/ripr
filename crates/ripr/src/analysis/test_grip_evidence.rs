@@ -146,12 +146,24 @@ impl TestTargetEvidence {
         &self.symbol_id
     }
 
-    #[cfg(test)]
+    /// Projection accessors for the RepairCard builder (#4663): the card
+    /// copies these facts verbatim and never re-derives them.
+    pub(crate) fn relation(&self) -> RelationReason {
+        self.relation
+    }
+
+    pub(crate) fn test_kind(&self) -> TestKind {
+        self.test_kind
+    }
+
+    pub(crate) fn workspace_identity(&self) -> &str {
+        &self.workspace_identity
+    }
+
     pub(crate) fn file(&self) -> &Path {
         &self.file
     }
 
-    #[cfg(test)]
     pub(crate) fn line(&self) -> usize {
         self.line
     }

@@ -10316,3 +10316,45 @@ metrics = [
   "portable_consumer_complete",
   "portable_consumer_fail_closed",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0192"
+name = "repair card v1 projected from shared repair authorities"
+spec = "docs/specs/RIPR-SPEC-0192-repair-card-v1.md"
+tests = [
+  "crates/ripr/src/repair_card_digest.rs::tests::digest_is_stable_across_presentation_only_changes",
+  "crates/ripr/src/repair_card_digest.rs::tests::every_load_bearing_field_move_remints_the_digest",
+  "crates/ripr/src/repair_card_digest.rs::tests::proposed_and_existing_targets_stay_distinct",
+  "crates/ripr/src/repair_card_digest.rs::tests::done_when_keeps_all_five_axes_separate",
+  "crates/ripr/src/domain/repair_card.rs::tests::route_exposure_follows_instruction_and_readiness_together",
+  "crates/ripr/src/app/repair_card.rs::tests::ready_card_projects_authority_facts_verbatim",
+  "crates/ripr/src/app/repair_card.rs::tests::stale_card_omits_route_and_keeps_instruction",
+  "crates/ripr/src/app/repair_card.rs::tests::not_ready_with_command_fails_closed",
+  "crates/ripr/src/app/repair_card.rs::tests::limited_card_surfaces_producer_blocker_and_missing_evidence",
+  "crates/ripr/src/app/repair_card.rs::tests::unavailable_card_has_no_target_and_no_action",
+  "crates/ripr/src/app/repair_card.rs::tests::ineligible_packet_with_command_fails_closed",
+  "crates/ripr/src/app/repair_card.rs::tests::mismatched_seam_identity_fails_closed",
+  "crates/ripr/src/app/repair_card.rs::tests::mismatched_gap_identity_fails_closed",
+  "crates/ripr/src/app/repair_card.rs::tests::basis_without_target_fails_closed",
+  "crates/ripr/src/app/repair_card.rs::tests::suggested_assertion_without_text_fails_closed",
+  "crates/ripr/src/app/repair_card.rs::tests::inspect_only_card_is_advisory_only",
+  "crates/ripr/src/app/repair_card.rs::tests::proposed_target_stays_proposed",
+  "crates/ripr/src/app/repair_card.rs::tests::over_boundary_rejected_alternatives_fail_closed",
+  "crates/ripr/src/app/repair_card.rs::tests::wrong_owner_shape_records_basis_and_rejections",
+  "crates/ripr/src/app/repair_card.rs::tests::effect_observer_shape_projects_observer_goal_and_improved_axis",
+  "crates/ripr/src/app/repair_card.rs::tests::attempt_state_copies_without_upgrade",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/domain/repair_card.rs",
+  "crates/ripr/src/repair_card_digest.rs",
+  "crates/ripr/src/app/repair_card.rs",
+  "crates/ripr/src/analysis/test_grip_evidence.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0192-repair-card-v1.md",
+]
+metrics = [
+  "repair_card_schema_version",
+  "repair_card_violations",
+]

@@ -72,6 +72,7 @@ mod build_identity;
     )
 )]
 mod edit_cage;
+mod repair_card_digest;
 // Shared internal repair-guidance availability vocabulary for the agent packet
 // children under #2830. The public Rust API remains unchanged until those
 // consumers adopt and deliberately expose the contract.
