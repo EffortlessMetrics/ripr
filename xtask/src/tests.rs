@@ -46124,6 +46124,31 @@ fn vsix_inventory_bounds_entry_count_and_unpacked_size() -> Result<(), String> {
 }
 
 #[test]
+fn vsix_inventory_rejects_size_totals_that_overflow_u64() -> Result<(), String> {
+    let overflowing = vec![
+        vsix_entry("extension/package.json", u64::MAX),
+        vsix_entry("extension/out/a.js", 1),
+    ];
+    let Err(error) = super::check_vsix_inventory(&overflowing, 10, u64::MAX) else {
+        return Err("a size total that overflows u64 must be rejected".to_string());
+    };
+    assert!(error.contains("overflows u64"), "{error}");
+    Ok(())
+}
+
+#[test]
+fn vsix_size_totals_reject_compressed_overflow_without_panicking() -> Result<(), String> {
+    let mut inflated = vsix_entry("extension/package.json", 1);
+    inflated.compressed_size = u64::MAX;
+    let overflowing = vec![inflated, vsix_entry("extension/out/a.js", 1)];
+    let Err(error) = super::vsix_size_totals(&overflowing) else {
+        return Err("a compressed total that overflows u64 must be rejected".to_string());
+    };
+    assert!(error.contains("overflows u64"), "{error}");
+    Ok(())
+}
+
+#[test]
 fn vscode_package_inspection_accepts_single_catalog() -> Result<(), String> {
     with_temp_cwd("vscode-package-inspection", |root| {
         let vsix = root.join("ripr-0.4.0.vsix");
