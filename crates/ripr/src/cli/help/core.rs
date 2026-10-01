@@ -228,7 +228,7 @@ Environment variables:
                                     index before check fails closed as
                                     diff_scope_oversized. With --json, stdout
                                     carries a non-consumable limited artifact.
-                                    Default: 800.
+                                    Default: 1200.
   RIPR_PARTIAL_DIFF_FILE_BUDGET     Changed-line files analyzed before check
                                     returns a bounded limited_partial_scope
                                     partition with exact selected paths,
