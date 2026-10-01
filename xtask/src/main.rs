@@ -52,6 +52,8 @@ mod ripr_swarm;
 mod run;
 mod rust_judged_panel;
 mod rust_region_scan;
+#[cfg(test)]
+mod test_binary;
 mod verification_contracts;
 mod version;
 mod windows_advisory;
