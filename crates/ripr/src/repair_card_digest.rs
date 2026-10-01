@@ -1,4 +1,5 @@
-//! Semantic digest for `RepairCardV1` (RIPR-SPEC-0192, #4663).
+//! Semantic digest for `RepairCardV1` (RIPR-SPEC-0192, #4663; detail
+//! references added under RIPR-SPEC-0193, #4666).
 //!
 //! The digest logic lives at the crate root, not in `domain`, because domain
 //! must not know JSON rendering (see `command_spec_digest.rs` for the same
@@ -7,9 +8,9 @@
 //! enter identity.
 
 use crate::domain::{
-    FixInstructionSummary, RepairCardAssertionGoal, RepairCardAttempt, RepairCardDoneWhen,
-    RepairCardReadinessFacts, RepairCardSnapshot, RepairCardSubject, RepairCardTarget,
-    RepairCardV1,
+    FixInstructionSummary, RepairCardAssertionGoal, RepairCardAttempt, RepairCardDetailFamily,
+    RepairCardDetailState, RepairCardDoneWhen, RepairCardReadinessFacts, RepairCardSnapshot,
+    RepairCardSubject, RepairCardTarget, RepairCardV1,
 };
 
 /// The scoped semantic surface: every load-bearing field except the digest
@@ -38,6 +39,17 @@ struct RepairCardDigestInput<'a> {
     attempt: &'a Option<RepairCardAttempt>,
     claim_boundary: &'a str,
     limitations: &'a [String],
+    /// Routed detail identity: family, producer-reported state, and content
+    /// digest. Retrieval routes, ordinals, byte counts, and the budget summary
+    /// are presentation/detail and never enter identity (#4666).
+    detail_references: Vec<RepairCardDigestDetail<'a>>,
+}
+
+#[derive(serde::Serialize)]
+struct RepairCardDigestDetail<'a> {
+    family: &'a RepairCardDetailFamily,
+    state: &'a RepairCardDetailState,
+    detail_digest: &'a str,
 }
 
 #[derive(serde::Serialize)]
@@ -78,6 +90,15 @@ pub(crate) fn repair_card_semantic_digest(card: &RepairCardV1) -> Result<String,
         attempt: &card.attempt,
         claim_boundary: &card.claim_boundary,
         limitations: &card.limitations,
+        detail_references: card
+            .detail_references
+            .iter()
+            .map(|reference| RepairCardDigestDetail {
+                family: &reference.family,
+                state: &reference.state,
+                detail_digest: &reference.detail_digest,
+            })
+            .collect(),
     };
     let serialized = serde_json::to_string(&input)
         .map_err(|error| format!("repair card digest serialization failed: {error}"))?;
@@ -100,8 +121,8 @@ mod tests {
     use super::*;
     use crate::domain::{
         FixInstructionState, REPAIR_CARD_CLAIM_BOUNDARY, REPAIR_CARD_SCHEMA_VERSION,
-        RepairCardCommandRef, RepairCardProposedTestKind, RepairCardSnapshotCurrentness,
-        RepairCardTestKind,
+        RepairCardCommandRef, RepairCardDetailSummary, RepairCardProposedTestKind,
+        RepairCardSnapshotCurrentness, RepairCardTestKind,
     };
 
     fn snapshot() -> RepairCardSnapshot {
@@ -193,6 +214,9 @@ mod tests {
             }),
             claim_boundary: REPAIR_CARD_CLAIM_BOUNDARY.to_string(),
             limitations: Vec::new(),
+            detail_references: Vec::new(),
+            detail_summary: RepairCardDetailSummary::default(),
+            complete_evidence_digest: String::new(),
         }
     }
 
@@ -391,6 +415,89 @@ mod tests {
             serde_json::from_str(&json).map_err(|error| error.to_string())?;
         if round_tripped != card.done_when {
             return Err("done_when axes did not round trip independently".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn detail_references_enter_identity_without_retrieval_spelling() -> Result<(), String> {
+        fn detail_ref(
+            route: &str,
+            digest: &str,
+            bytes: usize,
+            ordinal: usize,
+            state: crate::domain::RepairCardDetailState,
+        ) -> crate::domain::RepairCardDetailRef {
+            crate::domain::RepairCardDetailRef {
+                family: crate::domain::RepairCardDetailFamily::WitnessStageEvidence,
+                state,
+                route: Some(route.to_string()),
+                unavailable_reason: None,
+                detail_digest: digest.to_string(),
+                omitted_bytes: bytes,
+                ordinal,
+                omission_class: crate::domain::RepairCardOmissionClass::AuthorityOwnedDetail,
+            }
+        }
+
+        let base = card_fixture();
+        let base_digest = repair_card_semantic_digest(&base)?;
+
+        let mut moved = base.clone();
+        moved.detail_references.push(detail_ref(
+            "workspace:demo/probe/witness",
+            "digest-a",
+            10,
+            0,
+            crate::domain::RepairCardDetailState::Current,
+        ));
+        let with_ref = repair_card_semantic_digest(&moved)?;
+        if with_ref == base_digest {
+            return Err("detail reference did not enter the semantic identity".to_string());
+        }
+
+        let mut respelled = moved.clone();
+        let Some(reference) = respelled.detail_references.get_mut(0) else {
+            return Err("fixture reference missing".to_string());
+        };
+        reference.route = Some("workspace:equivalent/probe/witness".to_string());
+        if repair_card_semantic_digest(&respelled)? != with_ref {
+            return Err("route spelling entered the semantic identity".to_string());
+        }
+
+        let mut reaccounted = moved.clone();
+        let Some(reference) = reaccounted.detail_references.get_mut(0) else {
+            return Err("fixture reference missing".to_string());
+        };
+        reference.ordinal = 9;
+        reference.omitted_bytes = 999;
+        if repair_card_semantic_digest(&reaccounted)? != with_ref {
+            return Err("ordinal or byte accounting entered the semantic identity".to_string());
+        }
+
+        let mut rederived = moved.clone();
+        rederived.complete_evidence_digest = "garbage".to_string();
+        rederived.detail_summary.selected_bytes = 123_456;
+        if repair_card_semantic_digest(&rederived)? != with_ref {
+            return Err("budget accounting entered the semantic identity".to_string());
+        }
+
+        let mut restated = moved.clone();
+        let Some(reference) = restated.detail_references.get_mut(0) else {
+            return Err("fixture reference missing".to_string());
+        };
+        reference.detail_digest = "digest-b".to_string();
+        if repair_card_semantic_digest(&restated)? == with_ref {
+            return Err("detail content digest is not load-bearing".to_string());
+        }
+
+        let mut stale = moved.clone();
+        let Some(reference) = stale.detail_references.get_mut(0) else {
+            return Err("fixture reference missing".to_string());
+        };
+        reference.state = crate::domain::RepairCardDetailState::Stale;
+        if repair_card_semantic_digest(&stale)? == with_ref {
+            return Err("detail state is not load-bearing".to_string());
         }
         Ok(())
     }

@@ -11,6 +11,18 @@ are scoped or reviewed.
 
 ### Added
 
+- Domains: `RepairCardV1` detail references (RIPR-SPEC-0193, #4666) keep the
+  default card finite: nine load-bearing evidence families (full fix
+  instruction, witness/stage evidence, related-test candidates, limitation
+  detail, canonical packet, RepairAttempt status, focused-proof receipt,
+  static movement, optional mutation calibration) ride behind typed
+  `RepairCardDetailRef` routes with sha256 content digests and measured
+  selected/omitted/complete byte accounting under a versioned provisional
+  budget (`repair-card-budget-v1`; #4669 ratifies the numbers). Stale,
+  malformed, wrong-root, missing and unavailable evidence stays visibly so;
+  budgeting never changes canonical identity, readiness, target selection or
+  actionability, and oversized compact fields or root-specific route
+  spellings fail closed instead of truncating silently.
 - Domains: `RepairCardV1` (`repair_card.v1`, RIPR-SPEC-0192) is the compact
   provider-neutral repair work object projected from the shared repair
   authorities: fix-instruction summary, repair-route readiness, typed target

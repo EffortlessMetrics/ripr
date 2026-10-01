@@ -10358,3 +10358,49 @@ metrics = [
   "repair_card_schema_version",
   "repair_card_violations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0193"
+name = "repair card detail references and overflow disclosure"
+spec = "docs/specs/RIPR-SPEC-0193-repair-card-detail-references.md"
+tests = [
+  "crates/ripr/src/repair_card_budget.rs::tests::default_budget_routes_every_family_in_deterministic_order",
+  "crates/ripr/src/repair_card_budget.rs::tests::byte_accounting_measures_the_actual_normalized_representation",
+  "crates/ripr/src/repair_card_budget.rs::tests::oversized_single_detail_stays_bounded_and_visible",
+  "crates/ripr/src/repair_card_budget.rs::tests::equivalent_facts_keep_identity_regardless_of_source_order",
+  "crates/ripr/src/repair_card_budget.rs::tests::route_spelling_is_presentation_not_identity",
+  "crates/ripr/src/repair_card_budget.rs::tests::unavailable_family_requires_exact_reason_and_no_content",
+  "crates/ripr/src/repair_card_budget.rs::tests::routed_states_require_portable_routes_and_content",
+  "crates/ripr/src/repair_card_budget.rs::tests::stale_malformed_wrongroot_missing_states_stay_visible",
+  "crates/ripr/src/repair_card_budget.rs::tests::budgeting_never_strengthens_card_state",
+  "crates/ripr/src/repair_card_budget.rs::tests::duplicate_family_fails_closed",
+  "crates/ripr/src/repair_card_budget.rs::tests::oversized_compact_field_fails_closed_naming_the_field",
+  "crates/ripr/src/repair_card_budget.rs::tests::item_bound_is_enforced",
+  "crates/ripr/src/repair_card_budget.rs::tests::budget_numbers_are_presentation_not_identity",
+  "crates/ripr/src/repair_card_budget.rs::tests::empty_projection_stays_finite_and_stable",
+  "crates/ripr/src/repair_card_budget.rs::tests::complete_digest_binds_card_identity_to_evidence",
+  "crates/ripr/src/repair_card_budget.rs::tests::wire_bound_is_measured_with_the_finalized_card_id",
+  "crates/ripr/src/repair_card_budget.rs::tests::escapes_count_toward_the_inline_budget",
+  "crates/ripr/src/repair_card_budget.rs::tests::detail_vocabulary_round_trips_snake_case",
+  "crates/ripr/src/domain/repair_card.rs::tests::budget_validate_rejects_zero_limits",
+  "crates/ripr/src/domain/repair_card.rs::tests::detail_summary_default_names_the_budget_version",
+  "crates/ripr/src/app/repair_card.rs::tests::ready_card_with_detail_sources_carries_typed_references",
+  "crates/ripr/src/app/repair_card.rs::tests::detail_content_move_remints_card_identity",
+  "crates/ripr/src/app/repair_card.rs::tests::stale_detail_evidence_does_not_strengthen_or_weaken_route",
+  "crates/ripr/src/repair_card_digest.rs::tests::detail_references_enter_identity_without_retrieval_spelling",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/domain/repair_card.rs",
+  "crates/ripr/src/repair_card_budget.rs",
+  "crates/ripr/src/repair_card_digest.rs",
+  "crates/ripr/src/app/repair_card.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0193-repair-card-detail-references.md",
+]
+metrics = [
+  "repair_card_schema_version",
+  "repair_card_budget_version",
+  "repair_card_violations",
+]

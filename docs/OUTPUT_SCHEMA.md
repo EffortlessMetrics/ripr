@@ -66,6 +66,7 @@ map is:
 | `ripr swarm queue --json` | `schema_version` | `0.2` |
 | `ripr help --json` | `schema_version` | `1` |
 | `RepairCardV1` DTO (RIPR-SPEC-0192; no CLI projection until #4667) | `schema_version` | `repair_card.v1` |
+| `RepairCardV1` detail references and overflow disclosure (RIPR-SPEC-0193, #4666) | `budget_version` | `repair-card-budget-v1` |
 
 The published JSON Schemas have these current versions. Each row is checked
 against the schema's pinned `const` and every named producer source by
@@ -107,10 +108,29 @@ authorities.
 
 The schema is additive within `repair_card.v1`: new fields arrive with
 `#[serde(default)]`; a breaking shape change mints a new version. No CLI,
-LSP, or MCP projection emits the card yet (#4667); bounded detail references
-and field/budget ratification land in #4666/#4669. The version constant
-lives in `crates/ripr/src/domain/repair_card.rs` and is pinned by unit
-tests and `cargo xtask check-output-contracts`.
+LSP, or MCP projection emits the card yet (#4667); measured field/budget
+ratification lands in #4669.
+
+Detail references and overflow disclosure (RIPR-SPEC-0193, #4666) keep the
+default card finite: nine load-bearing evidence families — the full fix
+instruction, witness/stage evidence, related-test candidates, limitation
+detail, the canonical packet, RepairAttempt status, the focused-proof
+receipt, static movement, and optional mutation calibration — ride behind
+typed `RepairCardDetailRef` routes with sha256 content digests and measured
+omitted bytes instead of embedding in the card. The card carries
+`detail_references` (deterministic family-sorted order), a measured
+`detail_summary` (selected/omitted/complete bytes, referenced and
+unavailable item counts, sorted omission classes), and a
+`complete_evidence_digest` binding the semantic card id with the routed
+families' content digests.
+Stale, malformed, wrong-root, missing and unavailable evidence states stay
+visible on the references; the card never upgrades them and never lets
+budgeting change readiness, target selection or actionability. The
+item/byte budget (`repair-card-budget-v1`: 16 detail items, 64 KiB wire
+card, 4 KiB per compact inline field) is provisional but versioned; #4669
+ratifies the numbers. The budget-version constant lives in
+`crates/ripr/src/domain/repair_card.rs` and is pinned by unit tests and
+`cargo xtask check-output-contracts`.
 
 ## Executed-control packet (`executed_control_packet`, schema `1`)
 

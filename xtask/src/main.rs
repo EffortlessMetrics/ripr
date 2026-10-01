@@ -13951,6 +13951,22 @@ fn check_output_contracts() -> Result<(), String> {
                     &mut violations,
                 );
             }
+            "repair_card_budget_version" => {
+                require_contract_value(
+                    "crates/ripr/src/domain/repair_card.rs",
+                    &repair_card_domain,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
             "context_version" => {
                 require_contract_value(
                     "crates/ripr/src/output/json/",

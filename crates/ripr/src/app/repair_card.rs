@@ -10,11 +10,12 @@
 use crate::analysis::repair_route::{RepairRouteReadiness, RepairTargetSelection};
 use crate::domain::{
     CommandSpec, FixInstructionSummary, REPAIR_CARD_CLAIM_BOUNDARY, REPAIR_CARD_SCHEMA_VERSION,
-    RepairCardAssertionGoal, RepairCardAttempt, RepairCardCommandRef, RepairCardDoneWhen,
-    RepairCardProposedTestKind, RepairCardReadinessFacts, RepairCardRejectedAlternative,
-    RepairCardSnapshot, RepairCardSubject, RepairCardTarget, RepairCardTestKind, RepairCardV1,
-    repair_card_route_exposable,
+    RepairCardAssertionGoal, RepairCardAttempt, RepairCardBudget, RepairCardCommandRef,
+    RepairCardDoneWhen, RepairCardProposedTestKind, RepairCardReadinessFacts,
+    RepairCardRejectedAlternative, RepairCardSnapshot, RepairCardSubject, RepairCardTarget,
+    RepairCardTestKind, RepairCardV1, repair_card_route_exposable,
 };
+use crate::repair_card_budget::{RepairCardDetailSource, apply_repair_card_budget};
 use crate::repair_card_digest::repair_card_semantic_digest;
 
 /// Bounded input selected by the caller (CLI projection wiring lands in #4667,
@@ -54,6 +55,12 @@ pub(crate) struct RepairCardInput<'a> {
     pub(crate) rejected_alternatives: Vec<RepairCardRejectedAlternative>,
     pub(crate) attempt: Option<&'a crate::app::repair_attempt::RepairAttemptManifest>,
     pub(crate) limitations: Vec<String>,
+    /// Producer-owned detail sources for the load-bearing evidence families
+    /// (#4666): the card routes to them instead of embedding their content.
+    pub(crate) detail_sources: Vec<RepairCardDetailSource>,
+    /// Versioned item/byte budget applied to the wire card. The default is
+    /// provisional-but-versioned; #4669 ratifies the numbers.
+    pub(crate) budget: RepairCardBudget,
 }
 
 /// Project the shared repair authorities into a versioned repair card.
@@ -127,7 +134,11 @@ pub(crate) fn build_repair_card(input: &RepairCardInput<'_>) -> Result<RepairCar
         attempt: input.attempt.map(project_attempt),
         claim_boundary: REPAIR_CARD_CLAIM_BOUNDARY.to_string(),
         limitations: input.limitations.clone(),
+        detail_references: Vec::new(),
+        detail_summary: crate::domain::RepairCardDetailSummary::default(),
+        complete_evidence_digest: String::new(),
     };
+    apply_repair_card_budget(&mut card, &input.detail_sources, &input.budget)?;
     card.repair_card_id = repair_card_semantic_digest(&card)?;
     Ok(card)
 }
@@ -230,7 +241,8 @@ mod tests {
     use crate::domain::CommandRole;
     use crate::domain::{
         CardCurrentnessGoal, EditCageGoal, FixInstructionState, FocusedExecutionGoal,
-        MutationConfirmationGoal, StaticMovementGoal,
+        MutationConfirmationGoal, RepairCardDetailFamily, RepairCardDetailState,
+        StaticMovementGoal,
     };
     use std::path::{Path, PathBuf};
 
@@ -349,6 +361,8 @@ mod tests {
             rejected_alternatives: Vec::new(),
             attempt: None,
             limitations: Vec::new(),
+            detail_sources: Vec::new(),
+            budget: RepairCardBudget::default(),
         }
     }
 
@@ -711,6 +725,107 @@ mod tests {
         }
         if attempt.state != "awaiting_edit" {
             return Err(format!("attempt state drifted: {}", attempt.state));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ready_card_with_detail_sources_carries_typed_references() -> Result<(), String> {
+        let instruction = instruction(FixInstructionState::FixSiteReady);
+        let readiness = ready_readiness();
+        let command = verify_command();
+        let mut input = base_input(&instruction, &readiness);
+        input.next_command = Some(&command);
+        input.detail_sources = vec![
+            RepairCardDetailSource::current(
+                RepairCardDetailFamily::CanonicalPacket,
+                "workspace:demo/packet/canonical",
+                serde_json::json!({ "packet": true }),
+            ),
+            RepairCardDetailSource::unavailable(
+                RepairCardDetailFamily::MutationCalibration,
+                "mutation calibration authority does not serve this seam",
+            ),
+        ];
+
+        let card = build_repair_card(&input)?;
+        if card.detail_references.len() != 2 {
+            return Err(format!(
+                "expected two typed references, found {}",
+                card.detail_references.len()
+            ));
+        }
+        if card.detail_references[0].family != RepairCardDetailFamily::CanonicalPacket {
+            return Err("references are not in deterministic family order".to_string());
+        }
+        if card.detail_references[1].family != RepairCardDetailFamily::MutationCalibration {
+            return Err("unavailable family lost its reference".to_string());
+        }
+        if card.detail_summary.referenced_items != 1 || card.detail_summary.unavailable_items != 1 {
+            return Err(
+                "detail accounting did not count referenced/unavailable families".to_string(),
+            );
+        }
+        if card.complete_evidence_digest.is_empty() {
+            return Err("complete evidence identity was not minted".to_string());
+        }
+        if !card.readiness.repair_ready || card.next_action.is_none() {
+            return Err("budgeting changed readiness or actionability".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn detail_content_move_remints_card_identity() -> Result<(), String> {
+        let instruction = instruction(FixInstructionState::FixSiteReady);
+        let readiness = ready_readiness();
+
+        let mut first_input = base_input(&instruction, &readiness);
+        first_input.detail_sources = vec![RepairCardDetailSource::current(
+            RepairCardDetailFamily::WitnessStageEvidence,
+            "workspace:demo/probe/witness",
+            serde_json::json!({ "note": "before" }),
+        )];
+        let first = build_repair_card(&first_input)?;
+
+        let mut second_input = base_input(&instruction, &readiness);
+        second_input.detail_sources = vec![RepairCardDetailSource::current(
+            RepairCardDetailFamily::WitnessStageEvidence,
+            "workspace:demo/probe/witness",
+            serde_json::json!({ "note": "after" }),
+        )];
+        let second = build_repair_card(&second_input)?;
+
+        if first.repair_card_id == second.repair_card_id {
+            return Err("detail content move did not remint the semantic identity".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn stale_detail_evidence_does_not_strengthen_or_weaken_route() -> Result<(), String> {
+        let instruction = instruction(FixInstructionState::FixSiteReady);
+        let readiness = ready_readiness();
+        let command = verify_command();
+        let mut input = base_input(&instruction, &readiness);
+        input.next_command = Some(&command);
+        input.detail_sources = vec![RepairCardDetailSource {
+            family: RepairCardDetailFamily::WitnessStageEvidence,
+            state: RepairCardDetailState::Stale,
+            route: Some("workspace:demo/probe/witness".to_string()),
+            unavailable_reason: None,
+            content: serde_json::json!({ "note": "stale witness" }),
+        }];
+
+        let card = build_repair_card(&input)?;
+        if card.detail_references[0].state != RepairCardDetailState::Stale {
+            return Err("stale evidence state was not projected verbatim".to_string());
+        }
+        if !card.readiness.repair_ready {
+            return Err("stale detail evidence weakened the readiness flip".to_string());
+        }
+        if card.next_action.is_none() {
+            return Err("stale detail evidence stripped the exposed route".to_string());
         }
         Ok(())
     }

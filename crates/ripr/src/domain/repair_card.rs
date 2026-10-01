@@ -26,6 +26,176 @@ pub const MAX_REPAIR_CARD_REJECTED_ALTERNATIVES: usize = 3;
 /// mutation-confirmation claims stay with the attempt/receipt authorities.
 pub const REPAIR_CARD_CLAIM_BOUNDARY: &str = "Static repair work order for one governed repair, projected from current product authorities; it does not establish completion, correctness, runtime behavior, or mutation confirmation.";
 
+/// Versioned detail/budget contract. The budget numbers are
+/// provisional-but-versioned: #4669 ratifies them against measured agent use.
+/// Additive budget changes keep this version; semantic budget changes mint a
+/// new one.
+pub const REPAIR_CARD_BUDGET_VERSION: &str = "repair-card-budget-v1";
+
+/// Default bound on detail-reference items carried on one wire card. The nine
+/// load-bearing evidence families stay well inside this bound.
+pub const DEFAULT_REPAIR_CARD_MAX_DETAIL_ITEMS: usize = 16;
+
+/// Default bound on the normalized serialized size of the wire card (UTF-8
+/// bytes of the compact card JSON, detail references included).
+pub const DEFAULT_REPAIR_CARD_MAX_SERIALIZED_BYTES: usize = 64 * 1024;
+
+/// Default bound for any single compact prose field embedded in the card.
+/// Oversized compact fields fail closed instead of being silently truncated;
+/// the full content lives behind the family's detail reference.
+pub const DEFAULT_REPAIR_CARD_MAX_INLINE_DETAIL_BYTES: usize = 4 * 1024;
+
+/// Versioned item/byte budget for one wire card. Presentation/detail only:
+/// budgeting can never change canonical identity, readiness, target selection
+/// or actionability (#4666).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RepairCardBudget {
+    pub max_detail_items: usize,
+    pub max_serialized_bytes: usize,
+    pub max_inline_detail_bytes: usize,
+}
+
+impl Default for RepairCardBudget {
+    fn default() -> Self {
+        Self {
+            max_detail_items: DEFAULT_REPAIR_CARD_MAX_DETAIL_ITEMS,
+            max_serialized_bytes: DEFAULT_REPAIR_CARD_MAX_SERIALIZED_BYTES,
+            max_inline_detail_bytes: DEFAULT_REPAIR_CARD_MAX_INLINE_DETAIL_BYTES,
+        }
+    }
+}
+
+impl RepairCardBudget {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_detail_items == 0 {
+            return Err("max_detail_items must be greater than zero".to_string());
+        }
+        if self.max_serialized_bytes == 0 {
+            return Err("max_serialized_bytes must be greater than zero".to_string());
+        }
+        if self.max_inline_detail_bytes == 0 {
+            return Err("max_inline_detail_bytes must be greater than zero".to_string());
+        }
+        Ok(())
+    }
+}
+
+/// One load-bearing evidence family the compact card routes to instead of
+/// embedding. The families name the authorities #4666 keeps explicitly
+/// reachable from a finite card.
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RepairCardDetailFamily {
+    /// The full fix-instruction detail behind the embedded summary.
+    FixInstruction,
+    /// Witness/stage evidence for the changed behavior.
+    WitnessStageEvidence,
+    /// Related-test candidates considered for the target.
+    RelatedTestCandidates,
+    /// Per-limitation detail behind the compact limitation lines.
+    LimitationDetail,
+    /// The complete canonical packet; never embedded, always routed.
+    CanonicalPacket,
+    /// The RepairAttempt authority's full status detail.
+    RepairAttemptStatus,
+    /// The focused-proof receipt for the selected route.
+    FocusedProofReceipt,
+    /// Static-movement detail behind the compact done-when axis.
+    StaticMovement,
+    /// Optional mutation-calibration detail; never required to close a card.
+    MutationCalibration,
+}
+
+/// Producer-reported state of referenced evidence. The card projects the state
+/// visibly and never upgrades it: stale evidence stays stale on the card.
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RepairCardDetailState {
+    Current,
+    Stale,
+    Malformed,
+    WrongRoot,
+    Missing,
+    Unavailable,
+}
+
+/// Why a family rides outside the wire card.
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RepairCardOmissionClass {
+    /// The authority never embeds this family (the canonical packet).
+    NotEmbeddable,
+    /// The full content stays in its owning authority; the card routes to it.
+    AuthorityOwnedDetail,
+    /// The producer reported the evidence unavailable; the exact reason rides
+    /// on the reference.
+    Unavailable,
+}
+
+/// One stable, typed route to an omitted load-bearing evidence family.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RepairCardDetailRef {
+    pub family: RepairCardDetailFamily,
+    pub state: RepairCardDetailState,
+    /// Stable portable retrieval route. `None` exactly when the family is
+    /// unavailable; absolute checkout spellings are rejected at build time so
+    /// equivalent roots keep one identity.
+    #[serde(default)]
+    pub route: Option<String>,
+    /// Exact producer-owned reason; `Some` exactly when no route exists.
+    #[serde(default)]
+    pub unavailable_reason: Option<String>,
+    /// sha256 hex over the family's normalized serialized content; the
+    /// identity of the omitted evidence itself.
+    pub detail_digest: String,
+    /// Normalized serialized bytes of the omitted content, measured from the
+    /// actual representation.
+    pub omitted_bytes: usize,
+    /// Deterministic position in family-sorted reference order.
+    pub ordinal: usize,
+    pub omission_class: RepairCardOmissionClass,
+}
+
+/// Budget accounting for the wire card. Counts and bytes are measured from
+/// the actual normalized representations, never estimated.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RepairCardDetailSummary {
+    pub budget_version: String,
+    /// Families routed by reference.
+    pub referenced_items: usize,
+    /// Families reported unavailable (exact reason recorded per reference).
+    pub unavailable_items: usize,
+    /// Normalized serialized bytes of the final wire card.
+    pub selected_bytes: usize,
+    /// Sum of normalized serialized bytes routed behind references.
+    pub omitted_bytes: usize,
+    /// `selected_bytes + omitted_bytes`: the complete evidence size.
+    pub complete_bytes: usize,
+    /// Deterministic (sorted, deduplicated) omission classes present.
+    #[serde(default)]
+    pub omission_classes: Vec<RepairCardOmissionClass>,
+}
+
+impl Default for RepairCardDetailSummary {
+    fn default() -> Self {
+        Self {
+            budget_version: REPAIR_CARD_BUDGET_VERSION.to_string(),
+            referenced_items: 0,
+            unavailable_items: 0,
+            selected_bytes: 0,
+            omitted_bytes: 0,
+            complete_bytes: 0,
+            omission_classes: Vec::new(),
+        }
+    }
+}
+
 /// Portable snapshot identity. `workspace_identity` is producer-supplied and
 /// portable (never an absolute checkout spelling); absolute paths, timestamps
 /// and presentation formatting never enter the card identity.
@@ -227,6 +397,17 @@ pub struct RepairCardV1 {
     pub attempt: Option<RepairCardAttempt>,
     pub claim_boundary: String,
     pub limitations: Vec<String>,
+    /// Stable typed routes to every omitted load-bearing evidence family
+    /// (#4666), in deterministic family-sorted order.
+    #[serde(default)]
+    pub detail_references: Vec<RepairCardDetailRef>,
+    /// Measured budget accounting for this wire card (#4666).
+    #[serde(default)]
+    pub detail_summary: RepairCardDetailSummary,
+    /// Identity of the complete evidence: the semantic card id joined with
+    /// every routed family's content digest. Budget-independent.
+    #[serde(default)]
+    pub complete_evidence_digest: String,
 }
 
 /// Every exposure gate in one place: a card may expose a current edit or
@@ -261,5 +442,46 @@ mod tests {
             FixInstructionState::FixSiteReady,
             false
         ));
+    }
+
+    #[test]
+    fn budget_validate_rejects_zero_limits() {
+        let cases = [
+            (
+                RepairCardBudget {
+                    max_detail_items: 0,
+                    ..RepairCardBudget::default()
+                },
+                "max_detail_items must be greater than zero",
+            ),
+            (
+                RepairCardBudget {
+                    max_serialized_bytes: 0,
+                    ..RepairCardBudget::default()
+                },
+                "max_serialized_bytes must be greater than zero",
+            ),
+            (
+                RepairCardBudget {
+                    max_inline_detail_bytes: 0,
+                    ..RepairCardBudget::default()
+                },
+                "max_inline_detail_bytes must be greater than zero",
+            ),
+        ];
+        for (budget, expected) in cases {
+            assert_eq!(budget.validate().err().as_deref(), Some(expected));
+        }
+        assert!(matches!(RepairCardBudget::default().validate(), Ok(())));
+    }
+
+    #[test]
+    fn detail_summary_default_names_the_budget_version() {
+        let summary = RepairCardDetailSummary::default();
+        assert_eq!(summary.budget_version, REPAIR_CARD_BUDGET_VERSION);
+        assert_eq!(summary.referenced_items, 0);
+        assert_eq!(summary.unavailable_items, 0);
+        assert_eq!(summary.omitted_bytes, 0);
+        assert!(summary.omission_classes.is_empty());
     }
 }

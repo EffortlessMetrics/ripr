@@ -77,9 +77,13 @@ pub use probe::{
     SOURCE_CURRENTNESS_VALUES, SourceCurrentness, StopReason, ValueContext, ValueFact,
 };
 pub use repair_card::{
-    CardCurrentnessGoal, EditCageGoal, FocusedExecutionGoal, MAX_REPAIR_CARD_REJECTED_ALTERNATIVES,
-    MutationConfirmationGoal, REPAIR_CARD_CLAIM_BOUNDARY, REPAIR_CARD_SCHEMA_VERSION,
-    RepairCardAssertionGoal, RepairCardAttempt, RepairCardCommandRef, RepairCardDoneWhen,
+    CardCurrentnessGoal, DEFAULT_REPAIR_CARD_MAX_DETAIL_ITEMS,
+    DEFAULT_REPAIR_CARD_MAX_INLINE_DETAIL_BYTES, DEFAULT_REPAIR_CARD_MAX_SERIALIZED_BYTES,
+    EditCageGoal, FocusedExecutionGoal, MAX_REPAIR_CARD_REJECTED_ALTERNATIVES,
+    MutationConfirmationGoal, REPAIR_CARD_BUDGET_VERSION, REPAIR_CARD_CLAIM_BOUNDARY,
+    REPAIR_CARD_SCHEMA_VERSION, RepairCardAssertionGoal, RepairCardAttempt, RepairCardBudget,
+    RepairCardCommandRef, RepairCardDetailFamily, RepairCardDetailRef, RepairCardDetailState,
+    RepairCardDetailSummary, RepairCardDoneWhen, RepairCardOmissionClass,
     RepairCardProposedTestKind, RepairCardReadinessFacts, RepairCardRejectedAlternative,
     RepairCardSnapshot, RepairCardSnapshotCurrentness, RepairCardSubject, RepairCardTarget,
     RepairCardTestKind, RepairCardV1, StaticMovementGoal, repair_card_route_exposable,
