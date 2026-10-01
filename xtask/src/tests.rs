@@ -46137,10 +46137,12 @@ fn vsix_inventory_rejects_size_totals_that_overflow_u64() -> Result<(), String> 
 }
 
 #[test]
-fn vsix_size_totals_reject_compressed_overflow_without_panicking() -> Result<(), String> {
+fn vsix_inventory_rejects_compressed_totals_that_overflow_u64() -> Result<(), String> {
     let mut inflated = vsix_entry("extension/package.json", 1);
     inflated.compressed_size = u64::MAX;
-    let overflowing = vec![inflated, vsix_entry("extension/out/a.js", 1)];
+    let mut tail = vsix_entry("extension/out/a.js", 1);
+    tail.compressed_size = 1;
+    let overflowing = vec![inflated, tail];
     let Err(error) = super::vsix_size_totals(&overflowing) else {
         return Err("a compressed total that overflows u64 must be rejected".to_string());
     };
