@@ -2535,28 +2535,12 @@ mod python_eval_sweep_refresh {
         ))
     }
 
-    /// Resolves the built ripr binary anchored at the workspace root. The
-    /// shared fixture builder resolves `target/debug/ripr` against the test
-    /// process cwd (the xtask package dir), which is the wrong target dir for
-    /// a workspace-member test run; the workspace root is `xtask/..`.
+    /// Resolves the built ripr binary through the shared resolve-only probe
+    /// (override, active target dir, llvm-cov target dir, workspace target).
+    /// Like every other binary-consuming test, this never spawns a nested
+    /// build: run `cargo build -p ripr` first on a cold checkout.
     fn built_ripr_binary() -> Result<String, String> {
-        let binary_name = format!("ripr{}", std::env::consts::EXE_SUFFIX);
-        let target_dir = match std::env::var_os("CARGO_TARGET_DIR") {
-            Some(dir) => PathBuf::from(dir),
-            None => PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_default()
-                .join("target"),
-        };
-        let binary = target_dir.join("debug").join(binary_name);
-        if !binary.is_file() {
-            // Cold checkout: build through the shared fixture builder.
-            return crate::ripr_fixture_binary();
-        }
-        std::path::absolute(&binary)
-            .map(|path| path.to_string_lossy().to_string())
-            .map_err(|error| format!("resolve built ripr binary failed: {error}"))
+        crate::test_binary::resolve_built_ripr_binary_from_env()
     }
 
     fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
