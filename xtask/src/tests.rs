@@ -29605,6 +29605,9 @@ fn known_commands_include_current_report_and_policy_commands() {
     assert!(commands.contains(&"badges [--check] [--gap-ledger <path>]"));
     assert!(commands.contains(&"pr-triage-report"));
     assert!(commands.contains(&"gh-pr-status --pr <number>"));
+    assert!(commands.contains(
+        &"merge-queue capture [--repo <owner/name>] [--out <dir>] [--input <path>] [--prior <path>]"
+    ));
     assert!(commands.contains(&"check-badge-diff-policy"));
     assert!(commands.contains(&"check-command-catalog"));
     assert!(commands.contains(&"worktree doctor"));

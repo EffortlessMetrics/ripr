@@ -31,6 +31,12 @@ are scoped or reviewed.
   append one compact JSONL record so adopting consumers can populate history
   trend fields. Generated CI still only reads those files when present and
   never passes `--out-jsonl` (#4392).
+- Ops: `cargo xtask merge-queue capture` writes the MQ0 read-only current-state
+  receipt for merge/protection surfaces (`#4832`). Desired settings, live
+  observation, apply-route capability, and rollback identity stay separate
+  facts. The command ends in exactly one of `READY_FOR_DESIRED_STATE`,
+  `CAPABILITY_BLOCKED`, `NOT_PROVEN`, or `DRIFT_REPAIR_REQUIRED`, and it never
+  applies settings or enables a queue.
 - CI: a dispatch-only local-wheelhouse qualification lane records pip and uv
   isolation facts and evaluates a fail-closed aggregate. Missing, skipped,
   zero-subject, or mismatched rows cannot pass. No PyPI credentials or

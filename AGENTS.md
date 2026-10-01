@@ -371,8 +371,8 @@ cargo xtask check-agent-skills
 
 `shape` may make safe local format/allowlist edits and reports. `fix-pr` shapes
 then refreshes the summary. `pr-summary`, `pr-triage-report`, `gh-pr-status`,
-`ci-budget` and `module-health` supply scoped operational evidence; advisory
-reports do not independently block merge. `worktree doctor` reports local
+`ci-budget`, `merge-queue capture`, and `module-health` supply scoped
+operational evidence; advisory reports do not independently block merge. `worktree doctor` reports local
 hygiene, not an instruction to chase main. See `docs/PR_AUTOMATION.md`.
 
 Large-repo scans are build-heavy. Prefer `repo-badge-json`, generated receipts,

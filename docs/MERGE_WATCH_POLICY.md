@@ -106,6 +106,23 @@ Auto-merge and merge queue may be used only when they are already enabled for
 the repository and the operator has authority to use them. This document does
 not grant permission to change those settings.
 
+## Current-state capture
+
+`cargo xtask merge-queue capture` is the MQ0 read-only receipt for the current
+merge/protection surface. It writes desired settings, live observation,
+apply-route capability, and rollback identity as separate facts, then ends in
+exactly one of `READY_FOR_DESIRED_STATE`, `CAPABILITY_BLOCKED`, `NOT_PROVEN`,
+or `DRIFT_REPAIR_REQUIRED`.
+
+```bash
+cargo xtask merge-queue capture --repo EffortlessMetrics/ripr-swarm --out target/ripr/reports/merge-queue
+```
+
+Ordinary tests use a sanitized `--input` snapshot and do not touch the network.
+The command never applies settings, rulesets, workflow changes, or queue
+dogfood. A checked-in `.github/settings.yml` file is desired-state evidence,
+not live read-back.
+
 ## Cleanup
 
 After a PR branch is merged or abandoned, clean only the worktree created for
