@@ -18,7 +18,7 @@ use serde_json::{Map, Value, json};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
 
 const SCHEMA_VERSION: &str = "0.1";
 const DEFAULT_ROOT: &str = ".";
@@ -674,13 +674,32 @@ impl CommandOutput {
     }
 }
 
+/// Cooperative deadline for the first-pr git probes (#4363): revision,
+/// worktree and ref questions that must not pin the command on a hung git.
+const FIRST_PR_GIT_DEADLINE: Duration = Duration::from_mins(1);
+
+/// Deadline for the diff-range probes, which walk the whole range and can
+/// take far longer than a revision probe on a large pull request.
+const FIRST_PR_GIT_DIFF_DEADLINE: Duration = Duration::from_mins(5);
+
 fn run_git(root: &Path, args: &[String]) -> Result<CommandOutput, String> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .map_err(|err| err.to_string())?;
+    let deadline = if args.first().map(String::as_str) == Some("diff") {
+        FIRST_PR_GIT_DIFF_DEADLINE
+    } else {
+        FIRST_PR_GIT_DEADLINE
+    };
+    run_git_within(root, args, deadline)
+}
+
+/// [`run_git`] with the deadline as a parameter, so a test can prove the
+/// deadline reaches the shared git runner.
+fn run_git_within(
+    root: &Path,
+    args: &[String],
+    deadline: Duration,
+) -> Result<CommandOutput, String> {
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = crate::git::run_git_output_with_deadline(root, &args, Some(deadline))?;
     Ok(CommandOutput {
         code: output.status.code(),
         stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
@@ -2540,15 +2559,12 @@ fn git_diff_range_valid(root: &Path, base: &str, head: &str) -> Result<(), Strin
     // still passes `-z` so the grammar is unambiguous and no C-quoted
     // rendering is ever produced on this route.
     let range = format!("{base}...{head}");
-    let output = Command::new("git")
-        .arg("diff")
-        .arg("--name-only")
-        .arg("-z")
-        .arg("--no-ext-diff")
-        .arg(&range)
-        .current_dir(root)
-        .output()
-        .map_err(|err| format!("failed to run git diff: {err}"))?;
+    let output = crate::git::run_git_output_with_deadline(
+        root,
+        &["diff", "--name-only", "-z", "--no-ext-diff", &range],
+        Some(FIRST_PR_GIT_DIFF_DEADLINE),
+    )
+    .map_err(|err| format!("failed to run git diff: {err}"))?;
     if output.status.success() {
         return Ok(());
     }
@@ -2569,14 +2585,17 @@ fn git_success_with_ceiling(
     args: &[&str],
     ceiling: Option<&Path>,
 ) -> Result<bool, String> {
-    let mut cmd = Command::new("git");
-    cmd.args(args).current_dir(root);
-    if let Some(c) = ceiling {
-        cmd.env("GIT_CEILING_DIRECTORIES", c);
-    }
-    let output = cmd
-        .output()
-        .map_err(|err| format!("failed to run git: {err}"))?;
+    let envs: Vec<(&str, &std::ffi::OsStr)> = ceiling
+        .map(|c| ("GIT_CEILING_DIRECTORIES", c.as_os_str()))
+        .into_iter()
+        .collect();
+    let output = crate::git::run_git_output_with_deadline_and_env(
+        root,
+        args,
+        &envs,
+        Some(FIRST_PR_GIT_DEADLINE),
+    )
+    .map_err(|err| format!("failed to run git: {err}"))?;
     Ok(output.status.success())
 }
 
@@ -5961,6 +5980,20 @@ mod tests {
         init_git_repo_with_initial_files(path, &["Cargo.toml"])
     }
 
+    #[test]
+    fn run_git_forwards_its_deadline_to_git() -> Result<(), String> {
+        // #4363: a zero deadline is refused before spawn with the named
+        // timeout error; dropping the deadline would resolve the root.
+        let root = std::env::temp_dir();
+        let args = git_args(&["--version"]);
+        run_git_within(&root, &args, Duration::from_mins(1))
+            .map_err(|err| format!("control: {err}"))?;
+        match run_git_within(&root, &args, Duration::ZERO) {
+            Err(err) if crate::git::is_git_invocation_timeout(&err) => Ok(()),
+            other => Err(format!("zero deadline must be refused, got {other:?}")),
+        }
+    }
+
     fn init_git_repo_with_initial_files(path: &Path, files: &[&str]) -> Result<(), String> {
         run_git_setup(path, &["init"])?;
         run_git_setup(path, &["config", "user.email", "ripr@example.invalid"])?;
@@ -5973,7 +6006,7 @@ mod tests {
     }
 
     fn run_git_setup(path: &Path, args: &[&str]) -> Result<(), String> {
-        let output = Command::new("git")
+        let output = std::process::Command::new("git")
             .args(args)
             .current_dir(path)
             .output()

@@ -671,12 +671,18 @@ fn normalize_path(path: &Path) -> String {
         .to_string()
 }
 
+/// Cooperative deadline for the receipt HEAD stamp (#4363): a hung git
+/// records `unknown` instead of pinning `ripr plus`.
+const RIPR_PLUS_GIT_HEAD_DEADLINE: std::time::Duration = std::time::Duration::from_mins(1);
+
 fn git_head(repo: &Path) -> String {
-    std::process::Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["rev-parse", "HEAD"])
-        .output()
+    git_head_within(repo, RIPR_PLUS_GIT_HEAD_DEADLINE)
+}
+
+/// [`git_head`] with the deadline as a parameter, so a test can prove the
+/// deadline reaches the shared git runner.
+fn git_head_within(repo: &Path, deadline: std::time::Duration) -> String {
+    crate::git::run_git_output_with_deadline(repo, &["rev-parse", "HEAD"], Some(deadline))
         .ok()
         .and_then(|output| {
             if output.status.success() {
@@ -963,5 +969,51 @@ mod tests {
         assert!(markdown.contains("## Evaluation Status"));
         assert!(markdown.contains("Indeterminate"));
         assert!(markdown.contains("N/A"));
+    }
+
+    #[test]
+    fn git_head_forwards_its_deadline_to_git() -> Result<(), String> {
+        // #4363: a zero deadline is refused before spawn, so the stamp must
+        // fall back to `unknown` even where HEAD resolves; dropping the
+        // deadline would stamp the real commit.
+        use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-git-head-deadline-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&repo).map_err(|err| err.to_string())?;
+        let result = (|| {
+            fixture_git_ok(&repo, &["init", "--quiet"])?;
+            fixture_git_ok(
+                &repo,
+                &[
+                    "-c",
+                    "user.email=ripr@example.invalid",
+                    "-c",
+                    "user.name=RIPR Test",
+                    "commit",
+                    "--quiet",
+                    "--allow-empty",
+                    "--no-gpg-sign",
+                    "-m",
+                    "init",
+                ],
+            )?;
+            let bounded = git_head_within(&repo, std::time::Duration::from_mins(1));
+            if bounded.len() != 40 {
+                return Err(format!("control: expected a commit id, got {bounded}"));
+            }
+            let refused = git_head_within(&repo, std::time::Duration::ZERO);
+            if refused != "unknown" {
+                return Err(format!("zero deadline must stamp unknown, got {refused}"));
+            }
+            Ok(())
+        })();
+        let _ = remove_fixture_tree(&repo);
+        result
     }
 }

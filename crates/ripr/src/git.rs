@@ -266,6 +266,23 @@ fn git_command(root: &Path, args: &[&str]) -> Command {
     command
 }
 
+/// [`run_git_output_with_deadline`] with extra environment variables set on
+/// the child, for probes that must scope repository discovery (for example
+/// `GIT_CEILING_DIRECTORIES`).
+pub(crate) fn run_git_output_with_deadline_and_env(
+    root: &Path,
+    args: &[&str],
+    envs: &[(&str, &std::ffi::OsStr)],
+    timeout: Option<Duration>,
+) -> Result<Output, String> {
+    let describe = format!("git -C {} {:?}", root.display(), args);
+    let mut command = git_command(root, args);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    collect_output_with_deadline(command, timeout, &describe)
+}
+
 /// Run Git through the shared deadline/process-tree authority while retaining
 /// at most `max_output_bytes` from each output stream.
 ///
