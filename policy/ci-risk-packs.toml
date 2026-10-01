@@ -98,7 +98,7 @@ owner = "repo-maintainers"
 reason = "VS Code extension implementation, package, or tests need editor-loop proof."
 
 [risk_pack.release_surface]
-paths = ["docs/RELEASE.md", "docs/RELEASE_BINARIES.md", "docs/RELEASE_MARKETPLACE.md", "docs/PUBLISHING.md", "docs/PYTHON_WHEELHOUSE_QUALIFICATION.md", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml", ".github/workflows/python-wheelhouse-qualification.yml", "policy/python-wheelhouse-qualification.toml", "Cargo.toml", "Cargo.lock"]
+paths = ["docs/RELEASE.md", "docs/RELEASE_BINARIES.md", "docs/RELEASE_MARKETPLACE.md", "docs/PUBLISHING.md", "docs/PYTHON_WHEELHOUSE_QUALIFICATION.md", ".github/workflows/publish-extension.yml", ".github/workflows/release-server-binaries.yml", ".github/workflows/npm-launcher.yml", ".github/workflows/python-wheelhouse-qualification.yml", "policy/python-wheelhouse-qualification.toml", "packaging/npm/launcher/**", "Cargo.toml", "Cargo.lock"]
 required = ["rust", "policy", "security-posture"]
 advisory = ["coverage"]
 on_demand = ["release-package", "publish-dry-run", "vsix-package", "extension-marketplace-publish", "server-archive", "python-wheelhouse", "release-readiness-proof"]
@@ -108,7 +108,7 @@ owner = "repo-maintainers"
 reason = "Release, packaging, publishing, or binary distribution changes carry release-bearing risk."
 
 [risk_pack.dependency]
-paths = ["Cargo.toml", "Cargo.lock", "editors/vscode/package.json", "editors/vscode/package-lock.json", "deny.toml"]
+paths = ["Cargo.toml", "Cargo.lock", "editors/vscode/package.json", "editors/vscode/package-lock.json", "packaging/npm/launcher/package.json", "deny.toml"]
 required = ["rust", "policy", "security-posture"]
 advisory = ["coverage", "test-analytics"]
 on_demand = ["release-package"]

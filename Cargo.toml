@@ -6,9 +6,11 @@ resolver = "2"
 [workspace.package]
 # Single source of truth for the released version. `crates/ripr` inherits this
 # with `version.workspace = true`; the VS Code extension is compared against it
-# by `cargo xtask release-readiness` (`extension-version-match`). Bumping a
-# release means editing this line plus the two editor manifests, not three
-# scattered package versions (#2711).
+# by `cargo xtask release-readiness` (`extension-version-match`), and the npm
+# launcher by `cargo xtask check-release-targets`. Bumping a release means
+# running `cargo xtask bump-version`, which rewrites this line, the two editor
+# manifests, and the npm launcher manifest atomically, not scattered package
+# versions (#2711).
 version = "0.11.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"

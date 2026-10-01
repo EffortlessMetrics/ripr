@@ -1,0 +1,54 @@
+name: npm Launcher
+
+on:
+  pull_request:
+    paths:
+      - "packaging/npm/launcher/**"
+      - "policy/distribution.toml"
+      - "policy/non-rust-allowlist.toml"
+      - "policy/dependency_allowlist.txt"
+      - "policy/ci-risk-packs.toml"
+      - "xtask/src/policy/distribution/**"
+      - ".github/workflows/npm-launcher.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "packaging/npm/launcher/**"
+      - "policy/distribution.toml"
+      - "policy/non-rust-allowlist.toml"
+      - "policy/dependency_allowlist.txt"
+      - "policy/ci-risk-packs.toml"
+      - "xtask/src/policy/distribution/**"
+      - ".github/workflows/npm-launcher.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  launcher:
+    name: script-free launcher contract / Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 24]
+    defaults:
+      run:
+        working-directory: packaging/npm/launcher
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Test launcher
+        run: npm test
+
+      - name: Verify package contents
+        run: npm pack --dry-run --json --ignore-scripts

@@ -1,0 +1,91 @@
+{
+  "name": "@effortlessmetrics/ripr",
+  "version": "0.11.0",
+  "description": "Install the native ripr static mutation-exposure analyzer through npm.",
+  "license": "MIT OR Apache-2.0",
+  "author": "Effortless Metrics",
+  "homepage": "https://github.com/EffortlessMetrics/ripr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EffortlessMetrics/ripr.git",
+    "directory": "packaging/npm/launcher"
+  },
+  "bugs": {
+    "url": "https://github.com/EffortlessMetrics/ripr/issues"
+  },
+  "type": "commonjs",
+  "bin": {
+    "ripr": "bin/ripr.cjs"
+  },
+  "files": [
+    "bin/ripr.cjs",
+    "lib/launcher.cjs",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "pack:check": "npm pack --dry-run --json"
+  },
+  "optionalDependencies": {
+    "@effortlessmetrics/ripr-darwin-arm64": "0.11.0",
+    "@effortlessmetrics/ripr-darwin-x64": "0.11.0",
+    "@effortlessmetrics/ripr-linux-arm64-gnu": "0.11.0",
+    "@effortlessmetrics/ripr-linux-x64-gnu": "0.11.0",
+    "@effortlessmetrics/ripr-win32-x64-msvc": "0.11.0"
+  },
+  "ripr": {
+    "schemaVersion": 1,
+    "product": "ripr",
+    "executable": "ripr",
+    "platforms": [
+      {
+        "nodePlatform": "darwin",
+        "nodeArch": "arm64",
+        "libc": null,
+        "rustTarget": "aarch64-apple-darwin",
+        "package": "@effortlessmetrics/ripr-darwin-arm64",
+        "executable": "bin/ripr"
+      },
+      {
+        "nodePlatform": "darwin",
+        "nodeArch": "x64",
+        "libc": null,
+        "rustTarget": "x86_64-apple-darwin",
+        "package": "@effortlessmetrics/ripr-darwin-x64",
+        "executable": "bin/ripr"
+      },
+      {
+        "nodePlatform": "linux",
+        "nodeArch": "arm64",
+        "libc": "glibc",
+        "rustTarget": "aarch64-unknown-linux-gnu",
+        "package": "@effortlessmetrics/ripr-linux-arm64-gnu",
+        "executable": "bin/ripr"
+      },
+      {
+        "nodePlatform": "linux",
+        "nodeArch": "x64",
+        "libc": "glibc",
+        "rustTarget": "x86_64-unknown-linux-gnu",
+        "package": "@effortlessmetrics/ripr-linux-x64-gnu",
+        "executable": "bin/ripr"
+      },
+      {
+        "nodePlatform": "win32",
+        "nodeArch": "x64",
+        "libc": null,
+        "rustTarget": "x86_64-pc-windows-msvc",
+        "package": "@effortlessmetrics/ripr-win32-x64-msvc",
+        "executable": "bin/ripr.exe"
+      }
+    ]
+  }
+}

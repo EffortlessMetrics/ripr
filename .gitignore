@@ -19,6 +19,8 @@ editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/dist/
 editors/vscode/.vscode-test/
+packaging/npm/**/node_modules/
+packaging/npm/**/*.tgz
 .claude/
 .zcode/
 crates/ripr/examples/**/target/

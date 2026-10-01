@@ -532,6 +532,64 @@ reason = "Names the wasm32-wasip2 target so rustup installs it when Zed builds t
 covered_by = ["cd editors/zed && cargo build --locked --release --target wasm32-wasip2"]
 
 # ---------------------------------------------------------------------------
+# npm distribution adapter
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "packaging/npm/launcher/package.json"
+kind = "npm_distribution_manifest"
+owner = "release/distribution"
+surface = "repo"
+classification = "config"
+reason = "Source manifest for the script-free scoped npm launcher."
+covered_by = ["cargo xtask check-release-targets", "npm test --prefix packaging/npm/launcher", "npm --prefix packaging/npm/launcher pack --dry-run --json --ignore-scripts"]
+
+[[allow]]
+glob = "packaging/npm/launcher/bin/*.cjs"
+kind = "npm_distribution_launcher"
+owner = "release/distribution"
+surface = "repo"
+classification = "production"
+reason = "Small Node entrypoint for the scoped npm launcher; it delegates to the reviewed launcher library without installation-time code."
+covered_by = ["cargo xtask check-release-targets", "npm test --prefix packaging/npm/launcher"]
+
+[[allow]]
+glob = "packaging/npm/launcher/lib/*.cjs"
+kind = "npm_distribution_launcher"
+owner = "release/distribution"
+surface = "repo"
+classification = "production"
+reason = "Dependency-free runtime adapter that validates and launches one exact native payload."
+covered_by = ["cargo xtask check-release-targets", "npm test --prefix packaging/npm/launcher"]
+
+[[allow]]
+glob = "packaging/npm/launcher/test/*.cjs"
+kind = "npm_distribution_test"
+owner = "release/distribution"
+surface = "repo"
+classification = "test"
+reason = "Dependency-free launcher behavior and package-content controls."
+covered_by = ["npm test --prefix packaging/npm/launcher"]
+
+[[allow]]
+glob = "packaging/npm/launcher/*.md"
+kind = "npm_distribution_docs"
+owner = "release/distribution"
+surface = "docs"
+classification = "docs"
+reason = "Package-page source documentation for the npm launcher."
+covered_by = ["npm --prefix packaging/npm/launcher pack --dry-run --json --ignore-scripts"]
+
+[[allow]]
+glob = "packaging/npm/launcher/LICENSE-*"
+kind = "npm_distribution_license"
+owner = "release/distribution"
+surface = "repo"
+classification = "metadata"
+reason = "License notices included in the npm launcher tarball."
+covered_by = ["npm --prefix packaging/npm/launcher pack --dry-run --json --ignore-scripts"]
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 

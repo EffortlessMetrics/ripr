@@ -4,8 +4,8 @@
 # glob|kind|owner|reason
 #
 # New dependency manager files or manifests require an allowlist entry with an
-# owner and reason. Keep dependency surfaces scoped to Cargo, the VS Code
-# extension, and fixture input workspaces.
+# owner and reason. Keep dependency surfaces scoped to Cargo, editor extensions,
+# distribution adapters, and fixture input workspaces.
 #
 # Approved crate decisions:
 # ra_ap_syntax|production_analyzer|analysis|ADR 0006 approves Rust-native
@@ -43,5 +43,6 @@ fixtures/python_no_config_repair_gap/input/pyproject.toml|fixture_input|analysis
 fixtures/python_src_layout_repair_gap/input/pyproject.toml|fixture_input|analysis-fixtures|Python src-layout repair-routing fixture needs a project marker as analyzed input.
 metrics/rust-judged-behavior-panel/subjects/**/Cargo.lock|fixture_input|rust-judged-panel|Governed replay subjects pin their empty Cargo dependency graphs for deterministic offline materialization.
 metrics/rust-judged-behavior-panel/subjects/**/Cargo.toml|fixture_input|rust-judged-panel|Governed replay subjects carry analyzed Cargo package manifests for issue #3198.
+packaging/npm/launcher/package.json|npm_distribution_manifest|release/distribution|Source manifest for the script-free scoped npm launcher; dependencies are exact platform payload identities governed by policy/distribution.toml.
 packaging/python/pyproject.toml|python_distribution_manifest|release/distribution|Pinned PEP 517/621 Maturin build contract for the wheel-only ripr-rs adapter (#4490).
 xtask/Cargo.toml|rust_tool_manifest|repo-policy|xtask package manifest.
