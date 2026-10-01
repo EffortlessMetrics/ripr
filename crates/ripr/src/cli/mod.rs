@@ -10,6 +10,7 @@ mod commands_options;
 mod commands_timestamps;
 mod execute;
 mod help;
+mod help_json;
 mod parse;
 mod progress;
 mod rerun;
@@ -87,6 +88,18 @@ pub fn run(mut args: Vec<String>) -> Result<(), CommandError> {
     {
         args.remove(pos);
         crate::set_verbose(true);
+        // #4825: the machine-discovery route has a strict one-flag grammar and
+        // a silent-stderr contract. Combining it with the global verbosity
+        // flag is a usage error — the flag must not be silently extracted,
+        // leaving a plausible document plus a stderr diagnostic.
+        // `args` still carries argv[0]; the command body starts at index 1.
+        if args.get(1).is_some_and(|arg| arg == "help")
+            && args.get(2).is_some_and(|arg| arg == "--json")
+        {
+            return Err(CommandError::from(
+                "usage: ripr help --json (this route accepts no other arguments)".to_string(),
+            ));
+        }
         eprintln!("ripr: verbose mode enabled");
     }
     // Selection is side-effect-free parsing; the lock is acquired before the

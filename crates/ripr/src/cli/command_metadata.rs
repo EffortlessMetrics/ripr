@@ -27,25 +27,17 @@
 //!   the typed workflow catalog by #4824
 //!   ([`crate::cli::workflow_catalog`]) and never re-derived from prose.
 //!
-//! Out of scope for this slice: a `help --json` schema (#4825) and any command
-//! behavior change. The seam for the JSON child is [`metadata()`] plus
-//! [`catalog()`]: a complete typed command description with no human-text
-//! scraping. The #4824 workflow catalog is the first production consumer of
-//! this table; its validators cross-check workflow summaries against these
-//! rows so a command-side change contradicting a workflow fails visibly.
+//! The #4825 `help --json` child (RIPR-SPEC-0190) is the second production
+//! consumer: it projects this table into the versioned machine-discovery
+//! document, so a command-side metadata edit remints the document digest. The
+//! seam for the JSON child is [`metadata()`] plus [`catalog()`]: a complete
+//! typed command description with no human-text scraping. The #4824 workflow
+//! catalog is the first production consumer of this table; its validators
+//! cross-check workflow summaries against these rows so a command-side change
+//! contradicting a workflow fails visibly.
 //!
-//! The whole module is the C2 query surface. The #4824 workflow catalog is
-//! the first production consumer; fields that only the human-projection and
-//! hierarchy-doc checks read stay test-consumed until the #4825 JSON child
-//! lands, so the residual dead-code allow is scoped to `not(test)` and names
-//! that seam.
-#![cfg_attr(
-    not(test),
-    allow(
-        dead_code,
-        reason = "RIPR-SPEC-0187/0188 query surface: workflow_catalog consumes the table in production; the #4825 JSON child consumes the remaining accessors"
-    )
-)]
+//! The whole module is the C2 query surface consumed by both production
+//! children.
 
 use crate::cli::command_catalog::{CommandCatalogEntry, CommandClass, catalog};
 
@@ -83,6 +75,18 @@ pub(crate) enum CommandOperation {
     StateChanging,
 }
 
+impl CommandOperation {
+    /// Machine token for the versioned discovery document (#4825); the
+    /// human help labels render separately.
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadOnly => "read-only",
+            Self::WritesArtifacts => "writes-artifacts",
+            Self::StateChanging => "state-changing",
+        }
+    }
+}
+
 /// Cost class vocabulary shared with #1572 and the `check --mode` help.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CommandCost {
@@ -92,6 +96,18 @@ pub(crate) enum CommandCost {
     Analysis,
     /// Whole-workspace analysis; an order of magnitude longer (check --mode).
     Workspace,
+}
+
+impl CommandCost {
+    /// Machine token for the versioned discovery document (#4825); the
+    /// human help labels render separately.
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Small => "small",
+            Self::Analysis => "analysis",
+            Self::Workspace => "workspace",
+        }
+    }
 }
 
 /// Independent side-effect disclosures (#1572 vocabulary plus child

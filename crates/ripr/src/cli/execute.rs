@@ -1,5 +1,5 @@
 use crate::cli::command::CliCommand;
-use crate::cli::{CommandError, commands, help, rerun};
+use crate::cli::{CommandError, commands, help, help_json, rerun};
 
 pub(super) fn execute(command: CliCommand) -> Result<(), CommandError> {
     match command {
@@ -14,6 +14,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), CommandError> {
         CliCommand::HelpWorkflow(name) => {
             help::print_workflow(name.as_deref()).map_err(CommandError::from)
         }
+        CliCommand::HelpJson => help_json::print_help_json().map_err(CommandError::from),
         CliCommand::Version => {
             println!("{}", crate::build_identity::version_line());
             Ok(())

@@ -10198,3 +10198,43 @@ metrics = [
   "workflow_catalog_entries",
   "workflow_catalog_violations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0190"
+name = "versioned machine discovery via help --json"
+spec = "docs/specs/RIPR-SPEC-0190-help-json-machine-discovery.md"
+tests = [
+  "crates/ripr/src/cli/help_json.rs::tests::production_document_is_valid_and_nonempty",
+  "crates/ripr/src/cli/help_json.rs::tests::output_is_byte_stable_and_explicitly_ordered",
+  "crates/ripr/src/cli/help_json.rs::tests::reordered_source_rows_normalize_to_the_same_document",
+  "crates/ripr/src/cli/help_json.rs::tests::duplicate_command_identity_fails_closed",
+  "crates/ripr/src/cli/help_json.rs::tests::zero_command_or_workflow_rows_fail_closed",
+  "crates/ripr/src/cli/help_json.rs::tests::workflow_references_resolve_to_exact_command_rows",
+  "crates/ripr/src/cli/help_json.rs::tests::single_metadata_change_updates_only_the_intended_row_and_digest",
+  "crates/ripr/src/cli/help_json.rs::tests::single_workflow_transition_change_updates_row_and_digest",
+  "crates/ripr/src/cli/help_json.rs::tests::human_help_wording_is_outside_the_identity_surface",
+  "crates/ripr/src/cli/help_json.rs::tests::classifications_and_aliases_are_projected",
+  "crates/ripr/src/cli/help_json.rs::tests::compatibility_relation_projects_the_canonical_target",
+  "crates/ripr/src/cli/help_json.rs::tests::catalog_digest_ignores_product_version_and_document_copy",
+  "crates/ripr/src/cli/help_json.rs::tests::step_effects_follow_the_supplied_metadata_table",
+  "crates/ripr/src/cli/command.rs::tests::help_json_parses_the_machine_discovery_route",
+  "crates/ripr/tests/cli_smoke.rs::help_json_is_deterministic_across_roots_env_and_side_effect_free",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/cli/help_json.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/mod.rs",
+  "crates/ripr/src/cli/command_catalog.rs",
+  "crates/ripr/src/cli/command_metadata.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0190-help-json-machine-discovery.md",
+]
+metrics = [
+  "help_json_schema_version",
+  "help_json_command_rows",
+  "help_json_workflow_rows",
+  "help_json_document_violations",
+]

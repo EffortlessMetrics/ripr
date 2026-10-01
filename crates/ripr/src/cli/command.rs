@@ -7,6 +7,10 @@ pub(super) enum CliCommand {
     /// guidance (RIPR-SPEC-0189 / #4824). `None` lists the workflow
     /// identities; `Some(name)` renders one workflow.
     HelpWorkflow(Option<String>),
+    /// `ripr help --json`: the versioned machine-readable command and
+    /// workflow discovery document (RIPR-SPEC-0190 / #4825). Serializes the
+    /// accepted typed catalogs only; never executes or inspects anything.
+    HelpJson,
     Version,
     Init(Vec<String>),
     Config(Vec<String>),
@@ -71,6 +75,17 @@ impl CliCommand {
             Some("help") => {
                 if wants_all(&command_args) {
                     return Ok(Self::HelpAll);
+                }
+                // `ripr help --json` is the versioned machine-discovery route
+                // (RIPR-SPEC-0190 / #4825): strict grammar, exactly one flag.
+                if command_args.first().is_some_and(|arg| arg == "--json") {
+                    return match command_args.len() {
+                        1 => Ok(Self::HelpJson),
+                        _ => Err(
+                            "usage: ripr help --json (this route accepts no other arguments)"
+                                .to_string(),
+                        ),
+                    };
                 }
                 // `ripr help workflow [name]` is the bounded workflow-discovery
                 // route (RIPR-SPEC-0189): it intercepts before the
@@ -545,5 +560,33 @@ mod tests {
                 Err(usage.to_string())
             );
         }
+    }
+
+    /// `ripr help --json` parses to the versioned machine-discovery route:
+    /// exactly the one flag, any extra argument is a usage error, and the
+    /// route intercepts before the `help <command>` rewrite (#4825).
+    #[test]
+    fn help_json_parses_the_machine_discovery_route() {
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["--json"])),
+            Ok(CliCommand::HelpJson)
+        );
+        let usage = "usage: ripr help --json (this route accepts no other arguments)";
+        for bad in [
+            args(&["--json", "extra"]),
+            args(&["--json", "--quiet"]),
+            args(&["--json", "--all"]),
+        ] {
+            assert_eq!(
+                CliCommand::from_parts(Some("help"), bad),
+                Err(usage.to_string())
+            );
+        }
+        // `help --json` wins over the `help <command>` rewrite only at the
+        // first argument; a later `--json` still belongs to the subcommand.
+        assert_eq!(
+            CliCommand::from_parts(Some("help"), args(&["check", "--json"])),
+            Ok(CliCommand::Check(args(&["--help", "--json"])))
+        );
     }
 }

@@ -1311,6 +1311,179 @@ fn workflow_help_is_bounded_and_repo_byte_identical() -> Result<(), String> {
 }
 
 #[test]
+fn help_json_is_deterministic_across_roots_env_and_side_effect_free() -> Result<(), String> {
+    let root_a = unique_temp_workspace("help-json-a");
+    let root_b = unique_temp_workspace("help-json-b");
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        for root in [&root_a, &root_b] {
+            std::fs::create_dir_all(root)?;
+            run_git(root, &["init"])?;
+        }
+        let before_a = snapshot_tree(&root_a)?;
+        let before_b = snapshot_tree(&root_b)?;
+        let root_a_text = root_a.to_string_lossy().to_string();
+        let root_b_text = root_b.to_string_lossy().to_string();
+        let bin = env!("CARGO_BIN_EXE_ripr");
+
+        let baseline = run_command(bin, Some(&root_a), &["help", "--json"])?;
+        if !baseline.status.success() {
+            return Err(format!(
+                "ripr help --json failed: status={:?}, stderr={}",
+                baseline.status.code(),
+                String::from_utf8_lossy(&baseline.stderr)
+            )
+            .into());
+        }
+        if !baseline.stderr.is_empty() {
+            return Err(format!(
+                "ripr help --json wrote to stderr: {:?}",
+                String::from_utf8_lossy(&baseline.stderr)
+            )
+            .into());
+        }
+        let baseline_stdout = baseline.stdout.clone();
+
+        // Required control 1: two different workspace roots produce the same
+        // bytes, and neither root's path leaks into the document.
+        let other_root = run_command(bin, Some(&root_b), &["help", "--json"])?;
+        if other_root.stdout != baseline_stdout {
+            return Err("help --json bytes differ across workspace roots".into());
+        }
+        let stdout_text = String::from_utf8_lossy(&baseline_stdout).to_string();
+        if stdout_text.contains(&root_a_text) || stdout_text.contains(&root_b_text) {
+            return Err("help --json leaked a host workspace path".into());
+        }
+
+        // Required control 2: TTY/color/width/locale knobs cannot move the
+        // document. The strict grammar also rejects every extra flag, so
+        // `help --json --quiet` fails closed instead of quietly re-shaping
+        // the machine document.
+        let env_cases: [&[(&str, &str)]; 6] = [
+            &[("NO_COLOR", "1")],
+            &[("FORCE_COLOR", "1"), ("CLICOLOR_FORCE", "1")],
+            &[("TERM", "dumb")],
+            &[("TERM", "xterm-256color"), ("COLORTERM", "truecolor")],
+            &[("COLUMNS", "40")],
+            &[("COLUMNS", "200"), ("LC_ALL", "C")],
+        ];
+        for env in env_cases {
+            let output = run_command_with_env(bin, &root_a, &["help", "--json"], env)?;
+            if !output.status.success() {
+                return Err(format!(
+                    "ripr help --json failed under env {env:?}: status={:?}, stderr={}",
+                    output.status.code(),
+                    String::from_utf8_lossy(&output.stderr)
+                )
+                .into());
+            }
+            if output.stdout != baseline_stdout {
+                return Err(format!("help --json bytes moved under env {env:?}").into());
+            }
+            if !output.stderr.is_empty() {
+                return Err(format!(
+                    "help --json wrote to stderr under env {env:?}: {:?}",
+                    String::from_utf8_lossy(&output.stderr)
+                )
+                .into());
+            }
+        }
+        let rejected = run_command(bin, Some(&root_a), &["help", "--json", "--quiet"])?;
+        if rejected.status.success() {
+            return Err("help --json --quiet must fail closed, not silently merge flags".into());
+        }
+        // The global verbosity flag is extracted before dispatch; combined
+        // with the machine route it must fail closed with the same usage
+        // family instead of emitting a document plus a stderr diagnostic.
+        for verbose_args in [
+            &["help", "--json", "--verbose"][..],
+            &["--verbose", "help", "--json"][..],
+            &["help", "--json", "-v"][..],
+        ] {
+            let rejected = run_command(bin, Some(&root_a), verbose_args)?;
+            if rejected.status.success() {
+                return Err(format!(
+                    "ripr {verbose_args:?} must fail closed, not bypass the machine grammar"
+                )
+                .into());
+            }
+            if String::from_utf8_lossy(&rejected.stderr).contains("verbose mode enabled") {
+                return Err(format!(
+                    "ripr {verbose_args:?} leaked the verbose diagnostic on the machine route"
+                )
+                .into());
+            }
+        }
+
+        // Versioned-shape contract: schema_version 1, nonempty sections, and a
+        // sha256 hex digest. A partial document must not pass as complete.
+        let value: serde_json::Value = serde_json::from_slice(&baseline_stdout)
+            .map_err(|error| format!("help --json is not valid JSON: {error}"))?;
+        if value["schema_version"] != serde_json::json!(1) {
+            return Err(format!(
+                "help --json schema_version moved: {}",
+                value["schema_version"]
+            )
+            .into());
+        }
+        let commands = value["commands"]
+            .as_array()
+            .ok_or("help --json commands missing")?;
+        let workflows = value["workflows"]
+            .as_array()
+            .ok_or("help --json workflows missing")?;
+        if commands.is_empty() || workflows.is_empty() {
+            return Err("help --json emitted an empty section".into());
+        }
+        for row in commands {
+            if row.get("relation").is_none() || row.get("discovery").is_none() {
+                return Err(format!(
+                    "help --json command row {} lost its relation/discovery projection",
+                    row["id"]
+                )
+                .into());
+            }
+        }
+        let digest = value["catalog_digest"]
+            .as_str()
+            .ok_or("help --json catalog_digest missing")?;
+        if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(format!("help --json digest is not sha256 hex: {digest:?}").into());
+        }
+        if value.get("limitations").is_none() || value.get("non_claims").is_none() {
+            return Err("help --json lost its limitations/non_claims boundaries".into());
+        }
+
+        // Required control 11: the route proves zero workspace side effects.
+        let after_a = snapshot_tree(&root_a)?;
+        let after_b = snapshot_tree(&root_b)?;
+        if after_a != before_a {
+            return Err(format!(
+                "help --json changed workspace A; diff follows\n{}",
+                snapshot_diff(&before_a, &after_a)
+            )
+            .into());
+        }
+        if after_b != before_b {
+            return Err(format!(
+                "help --json changed workspace B; diff follows\n{}",
+                snapshot_diff(&before_b, &after_b)
+            )
+            .into());
+        }
+        Ok(())
+    })();
+    let cleanup_a = std::fs::remove_dir_all(&root_a);
+    let cleanup_b = std::fs::remove_dir_all(&root_b);
+    match (result, cleanup_a, cleanup_b) {
+        (Ok(()), Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(()), Ok(())) => Err(error.to_string()),
+        (result, cleanup_a, cleanup_b) => Err(format!(
+            "help --json contract result={result:?}, cleanup_a={cleanup_a:?}, cleanup_b={cleanup_b:?}"
+        )),
+    }
+}
+
+#[test]
 fn isolated_installed_binary_version_contract_is_side_effect_free() -> Result<(), String> {
     let root = unique_temp_workspace("version-installed");
     // Coverage runtimes own only this external directory; the product prefix
