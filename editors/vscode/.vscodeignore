@@ -10,6 +10,3 @@ out/**/*.map
 out/test/**
 out/src/test/**
 out/scripts/**
-# `cargo xtask` builds into a cwd-relative target dir (.cargo/config.toml), so
-# `npm run compile` from this directory leaves build output here.
-target/**
