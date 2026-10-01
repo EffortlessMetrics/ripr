@@ -11,6 +11,7 @@ are allowlisted exceptions, not casual additions.
 Non-Rust files are allowed when they belong to an approved surface:
 
 - VS Code extension TypeScript under `editors/vscode`
+- stdlib Python portable native-ripr consumer under `tools/python/portable-ripr-consumer` (#4713)
 - GitHub Actions workflow and issue-template YAML
 - fixture inputs used by analyzer tests
 - documentation and snippets
@@ -39,11 +40,18 @@ files such as `.ts`, `.js`, `.py`, and `.sh`:
 2. the file must match a Rust-coded retention rule for an approved runtime
    surface that cannot reasonably move to Rust.
 
-Today, the only retained programming surface is the VS Code extension
-TypeScript code and tests, because that client runs inside the VS Code
-Extension Host and binds directly to VS Code's TypeScript API. Other repo
-automation, release helpers, fixture runners, and policy checks should be
-converted to Rust/`xtask` rather than newly allowlisted.
+Today, retained programming surfaces are:
+
+- VS Code extension TypeScript under `editors/vscode`, because that client
+  runs inside the VS Code Extension Host and binds directly to VS Code's
+  TypeScript API;
+- the stdlib Python portable native-ripr consumer under
+  `tools/python/portable-ripr-consumer/` (#4713), because the consumer has
+  to run in Python-capable agent environments that cannot compile RIPR or
+  search PATH for it. Packet staging and oracles stay in Rust/`xtask`.
+
+Other repo automation, release helpers, fixture runners, and policy checks
+should be converted to Rust/`xtask` rather than newly allowlisted.
 
 If the file does not match the current allowlist, update the allowlist with an
 owner and reason in the same PR. If it is a programming-language file, also

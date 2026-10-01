@@ -639,6 +639,22 @@ reason = "Fixture-backed base/head attribution rules for canonical evidence comp
 covered_by = ["cargo test -p ripr --test causal_delta_fixture", "cargo xtask check-file-policy"]
 
 # ---------------------------------------------------------------------------
+# Portable consumer (Python stdlib packet transport)
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "tools/python/portable-ripr-consumer/**/*.py"
+kind = "portable_native_consumer"
+owner = "agent/portable-consumer"
+surface = "repo"
+classification = "tooling"
+reason = "Stdlib Python 3.11+ packet consumer for agent environments that have a qualified native ripr payload but no Cargo/rustc or execution-kernel network; packet staging and oracles stay in Rust/xtask (#4713)."
+covered_by = [
+    "cargo test -p xtask --locked --offline portable_consumer",
+    "cargo test -p ripr --locked --offline --test portable_consumer_packet",
+]
+
+# ---------------------------------------------------------------------------
 # Brand / assets
 # ---------------------------------------------------------------------------
 

@@ -30,3 +30,7 @@ crates/ripr/examples/**/target/
 crates/ripr/target/
 # Editor test/build artifacts (mirrors the root target/ ignore).
 editors/vscode/target/
+
+# Python bytecode from stdlib py_compile / local consumer runs.
+__pycache__/
+*.pyc

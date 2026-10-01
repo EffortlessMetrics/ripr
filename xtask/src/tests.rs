@@ -8521,6 +8521,10 @@ fn non_rust_programming_policy_requires_retention_rule() {
             .is_some()
     );
     assert!(non_rust_programming_retention_reason("scripts/check.py").is_none());
+    assert!(
+        non_rust_programming_retention_reason("tools/python/portable-ripr-consumer/run.py")
+            .is_some()
+    );
 }
 
 #[test]
@@ -8555,6 +8559,19 @@ fn rust_conversion_candidates_retains_fixture_and_editor_boundaries() -> Result<
     assert_eq!(fixture.kind, "retained_fixture_input");
     assert_eq!(editor.priority, "retained");
     assert_eq!(editor.kind, "retained_external_runtime");
+    Ok(())
+}
+
+#[test]
+fn rust_conversion_candidates_retain_the_portable_consumer_python_runtime() -> Result<(), String> {
+    let Some(consumer) =
+        super::non_rust_source_conversion_candidate("tools/python/portable-ripr-consumer/run.py")
+    else {
+        return Err("portable consumer python should be assessed".to_string());
+    };
+
+    assert_eq!(consumer.priority, "retained");
+    assert_eq!(consumer.kind, "retained_external_runtime");
     Ok(())
 }
 

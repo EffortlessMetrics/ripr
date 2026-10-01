@@ -10253,3 +10253,61 @@ metrics = [
   "help_json_workflow_rows",
   "help_json_document_violations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0191"
+name = "Portable native RIPR consumer packet"
+spec = "docs/specs/RIPR-SPEC-0191-portable-native-consumer-packet.md"
+tests = [
+  "xtask/src/portable_consumer.rs::tests::run_py_compiles_with_stdlib_python",
+  "xtask/src/portable_consumer.rs::tests::consumer_source_does_not_search_path_or_open_a_network_client",
+  "xtask/src/portable_consumer.rs::tests::product_json_classes_are_discriminated_without_launch",
+  "xtask/src/portable_consumer.rs::tests::complete_stub_packet_runs_the_packet_payload_not_a_path_decoy",
+  "xtask/src/portable_consumer.rs::tests::foreign_cwd_still_passes_the_explicit_subject_root",
+  "xtask/src/portable_consumer.rs::tests::digest_mismatch_fails_closed_before_launch",
+  "xtask/src/portable_consumer.rs::tests::consumer_script_digest_mismatch_fails_closed_before_launch",
+  "xtask/src/portable_consumer.rs::tests::packet_digest_field_mismatch_fails_closed_before_launch",
+  "xtask/src/portable_consumer.rs::tests::missing_executable_fails_closed",
+  "xtask/src/portable_consumer.rs::tests::missing_manifest_is_incompatible_payload",
+  "xtask/src/portable_consumer.rs::tests::platform_mismatch_fails_closed_before_launch",
+  "xtask/src/portable_consumer.rs::tests::relative_path_escape_fails_closed_before_launch",
+  "xtask/src/portable_consumer.rs::tests::malformed_product_json_fails_closed",
+  "xtask/src/portable_consumer.rs::tests::empty_stdout_is_partial_product_output",
+  "xtask/src/portable_consumer.rs::tests::typed_product_limitation_is_not_complete",
+  "xtask/src/portable_consumer.rs::tests::incomplete_analysis_outcome_is_partial_product_output",
+  "xtask/src/portable_consumer.rs::tests::zero_subjects_fail_closed_when_required",
+  "xtask/src/portable_consumer.rs::tests::zero_subjects_are_complete_when_not_required",
+  "xtask/src/portable_consumer.rs::tests::payload_timeout_is_classified_not_as_a_semantic_failure",
+  "xtask/src/portable_consumer.rs::tests::nonzero_payload_exit_is_execution_failure",
+  "xtask/src/portable_consumer.rs::tests::unknown_operation_fails_closed",
+  "xtask/src/portable_consumer.rs::tests::unwritable_output_fails_closed",
+  "xtask/src/portable_consumer.rs::tests::subject_digest_drift_fails_closed",
+  "xtask/src/portable_consumer.rs::tests::arm64_machine_names_match_rust_aarch64",
+  "xtask/src/portable_consumer.rs::tests::pilot_reads_the_summary_artifact_not_terminal_stdout",
+  "xtask/src/portable_consumer.rs::tests::missing_pilot_summary_is_partial_product_output",
+  "xtask/src/portable_consumer.rs::tests::stale_pilot_summary_is_not_classified_as_complete",
+  "xtask/src/portable_consumer.rs::tests::argv_template_must_start_with_the_allowlisted_operation",
+  "xtask/src/portable_consumer.rs::tests::pilot_rejects_diff_before_launch",
+  "xtask/src/portable_consumer.rs::tests::subject_file_cap_is_environment_unavailable_not_drift",
+  "xtask/src/portable_consumer.rs::tests::subject_digest_is_rechecked_after_launch",
+  "xtask/src/portable_consumer.rs::tests::existing_output_symlink_is_unwritable",
+  "xtask/src/portable_consumer.rs::tests::write_probe_symlink_is_unwritable",
+  "xtask/src/portable_consumer.rs::tests::packet_digest_matches_the_producer_formula",
+  "crates/ripr/tests/portable_consumer_packet.rs::native_packet_analyzes_a_boundary_gap_without_path_or_compiler_fallback",
+  "crates/ripr/tests/portable_consumer_packet.rs::native_packet_pilot_consumes_the_summary_artifact",
+]
+fixtures = [
+  "fixtures/boundary_gap/input",
+]
+code = [
+  "tools/python/portable-ripr-consumer/run.py",
+  "xtask/src/portable_consumer.rs",
+  "crates/ripr/tests/portable_consumer_packet.rs",
+]
+outputs = [
+  "tools/python/portable-ripr-consumer/README.md",
+]
+metrics = [
+  "portable_consumer_complete",
+  "portable_consumer_fail_closed",
+]
