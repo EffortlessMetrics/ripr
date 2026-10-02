@@ -12,7 +12,7 @@ use std::fs;
 
 use crate::{FixKind, PolicyReportSpec, finish_policy_report};
 
-pub(crate) use contract::DistributionContract;
+pub(crate) use contract::{DistributionContract, TargetContract};
 pub(crate) use version::pep440_version;
 
 pub(crate) const CONTRACT_PATH: &str = "policy/distribution.toml";

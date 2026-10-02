@@ -39,6 +39,33 @@ the source release must generate its own manifest for its selected source
 commit and independently verify the promoted assets. Public release creation
 and asset upload belong only to `EffortlessMetrics/ripr`.
 
+### Final native payload identity
+
+Each target job stages the bytes that packaging is allowed to consume under:
+
+```text
+target/ripr/distribution/v<VERSION>/<target>/payload/
+```
+
+Beside that directory it writes `payload-identity.json` and
+`payload-identity.md`. The strict identity binds the product, native version,
+target, executable, source commit and tree, `Cargo.lock`, selected features,
+Rust/Cargo toolchain, bounded runner identity, ordered payload file
+paths/roles/sizes/digests, and one aggregate payload digest. Runtime
+compatibility evidence is copied from `policy/distribution.toml`; it remains
+`unqualified` until #4489 records measured compatibility.
+
+`release-server-archive` archives only this staged directory. The qualification
+workflow extracts the resulting archive and runs the same Rust verifier over
+the extracted bytes before recording `archive_readback_verified: true` in that
+target's build identity; the aggregate receipt repeats the field only after an
+all-targets gate asserts every per-target readback flag. It
+retains the exact JSON/Markdown identities with each target's build identity,
+then requires five selected, five executed, zero failed, and zero not-run
+targets before writing the aggregate receipt. This proves payload and archive
+shape for the exact candidate; it does not establish a public release, wheel,
+npm package, or native runtime compatibility floor.
+
 ## Exact-candidate qualification (read-only)
 
 Use `.github/workflows/server-archive-qualification.yml` when archive shape

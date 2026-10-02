@@ -7765,20 +7765,9 @@ fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
 }
 
 #[test]
-fn release_server_archive_prepares_package_before_format_validation() -> Result<(), String> {
-    with_temp_cwd("release-server-archive", |root| {
+fn release_server_archive_rejects_format_before_repository_bound_staging() -> Result<(), String> {
+    with_temp_cwd("release-server-archive-invalid-format", |_root| {
         let executable = if cfg!(windows) { "ripr.exe" } else { "ripr" };
-        write(
-            &root
-                .join("target")
-                .join("x86_64-unknown-linux-gnu")
-                .join("release")
-                .join(executable),
-            "binary",
-        );
-        write(&root.join("LICENSE-MIT"), "mit");
-        write(&root.join("LICENSE-APACHE"), "apache");
-
         let args = vec![
             "--version".to_string(),
             "v1.2.3".to_string(),
@@ -7794,17 +7783,6 @@ fn release_server_archive_prepares_package_before_format_validation() -> Result<
             return Err("unsupported archive format should fail".to_string());
         };
         assert!(err.contains("unsupported release server archive format"));
-        assert_eq!(
-            fs::read_to_string(root.join("package").join(executable))
-                .map_err(|err| format!("read packaged executable: {err}"))?,
-            "binary"
-        );
-        assert_eq!(
-            fs::read_to_string(root.join("package").join("README-server.txt"))
-                .map_err(|err| format!("read packaged README: {err}"))?,
-            super::release_server_readme("1.2.3")
-        );
-        assert!(root.join("dist").is_dir());
         Ok(())
     })
 }
@@ -9584,19 +9562,19 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
             || candidate
                 .matches("git init \"${GITHUB_WORKSPACE}\"")
                 .count()
-                != 3
+                != 4
             || candidate
                 .matches("-c credential.helper= -c http.extraheader= fetch")
                 .count()
-                != 3
+                != 4
             || !candidate.contains("git -c credential.helper= -c http.extraheader= ls-remote")
             || candidate
                 .matches("https://github.com/EffortlessMetrics/ripr-swarm.git")
                 .count()
-                != 4
+                != 5
         {
             return Err(
-                "candidate source must use three isolated unauthenticated git fetches".to_owned(),
+                "candidate source must use four isolated unauthenticated git fetches".to_owned(),
             );
         }
         if !candidate.contains("permissions:\n  contents: read")
@@ -9663,11 +9641,11 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
         if candidate
             .matches("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a")
             .count()
-            != 3
+            != 5
             || candidate
                 .matches("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c")
                 .count()
-                != 2
+                != 3
             || candidate.contains("release-upload-assets")
             || candidate.contains("gh release")
             || candidate.contains("gh api")
@@ -9712,7 +9690,13 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
             "ruleset_id",
             "--arg repository \"${REPOSITORY}\"",
             "release_assets_created: false",
-            "cargo build --locked -p ripr --release",
+            "archive_readback_verified = $true",
+            "(.archive_readback_verified == true) and",
+            "archive_readback_verified: true",
+            "RECEIPT_INSTRUMENT_REPOSITORY: ${{ job.workflow_repository }}",
+            "RECEIPT_INSTRUMENT_SHA: ${{ job.workflow_sha }}",
+            "endswith(\" / \" + $suffix)",
+            "cargo xtask release-server-archive",
             "os: ubuntu-22.04\n",
             "os: ubuntu-22.04-arm\n",
             "GLIBC_FLOOR: \"2.34\"",
@@ -9803,8 +9787,11 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
             workflow.replacen("curl --silent --show-error", "gh api", 1),
         ),
         (
-            "unlocked server build",
-            workflow.replacen("cargo build --locked -p ripr", "cargo build -p ripr", 1),
+            "bypassed delegated server builder",
+            workflow.replace(
+                "cargo xtask release-server-archive",
+                "cargo build --release -p ripr",
+            ),
         ),
         (
             "newer glibc runner",
@@ -9869,6 +9856,38 @@ fn server_archive_qualification_workflow_is_sha_bound_and_credential_free() -> R
         (
             "token credential",
             workflow.replacen("ruleset_mode", "GH_TOKEN", 1),
+        ),
+        (
+            "caller SHA receipt instrument",
+            workflow.replacen(
+                "RECEIPT_INSTRUMENT_SHA: ${{ job.workflow_sha }}",
+                "RECEIPT_INSTRUMENT_SHA: ${{ github.sha }}",
+                1,
+            ),
+        ),
+        (
+            "exact-only matrix job lookup",
+            workflow.replacen(
+                "select(.name == $suffix or (.name | endswith(\" / \" + $suffix)))",
+                "select(.name == $suffix)",
+                1,
+            ),
+        ),
+        (
+            "implicit archive readback",
+            workflow.replacen(
+                "archive_readback_verified: true",
+                "archive_shape_verified: true",
+                1,
+            ),
+        ),
+        (
+            "false archive readback identity",
+            workflow.replacen(
+                "archive_readback_verified = $true",
+                "archive_readback_verified = $false",
+                1,
+            ),
         ),
     ] {
         if validate(&broken).is_ok() {
@@ -9953,6 +9972,80 @@ fn server_archive_ruleset_shape_fixtures_are_strict_and_discriminating() -> Resu
     if run_predicate(&wrong_shape, "wrong-shape.json")? {
         return Err("workflow jq predicate accepted a malformed ruleset shape".to_string());
     }
+    Ok(())
+}
+
+#[test]
+fn server_archive_terminal_job_name_filter_accepts_direct_and_reusable_names() -> Result<(), String>
+{
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest should have a repository parent".to_string())?;
+    let workflow =
+        fs::read_to_string(repo_root.join(".github/workflows/server-archive-qualification.yml"))
+            .map_err(|error| format!("failed to read qualification workflow: {error}"))?;
+    let marker = "jq -r --arg suffix \"build and qualify ${target}\" '";
+    let program_start = workflow
+        .find(marker)
+        .map(|offset| offset + marker.len())
+        .ok_or_else(|| "terminal job-name jq marker is missing".to_string())?;
+    let program_end = workflow[program_start..]
+        .find("' \"${response}\"")
+        .ok_or_else(|| "terminal job-name jq terminator is missing".to_string())?;
+    let program = workflow[program_start..program_start + program_end].trim();
+    if program.is_empty() {
+        return Err("terminal job-name jq program is empty".to_string());
+    }
+    if !program.contains(".name == $suffix") || !program.contains("endswith(\" / \" + $suffix)") {
+        return Err(
+            "terminal job-name jq program must accept direct and reusable caller names".to_string(),
+        );
+    }
+
+    let suffix = "build and qualify x86_64-unknown-linux-gnu";
+    let fixture_root = temp_dir("server-terminal-job-names");
+    let run = |names: &[&str]| -> Result<String, String> {
+        let jobs: Vec<Value> = names
+            .iter()
+            .map(|name| serde_json::json!({ "name": name, "conclusion": "success" }))
+            .collect();
+        let path = fixture_root.join(format!("jobs-{}.json", jobs.len()));
+        fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({ "jobs": jobs }))
+                .map_err(|error| format!("serialize workflow-jobs fixture: {error}"))?,
+        )
+        .map_err(|error| format!("write workflow-jobs fixture: {error}"))?;
+        let path_text = path
+            .to_str()
+            .ok_or_else(|| "workflow-jobs fixture path was not UTF-8".to_string())?;
+        let _cwd_guard = super::acquire_test_cwd_read_guard();
+        let stdout =
+            crate::run_output("jq", &["-r", "--arg", "suffix", suffix, program, path_text])
+                .map_err(|error| format!("run terminal job-name jq filter: {error}"))?;
+        Ok(stdout.trim().to_string())
+    };
+
+    if run(&[suffix])? != "success" {
+        return Err(
+            "terminal job-name jq filter rejected the direct dispatch job name".to_string(),
+        );
+    }
+    let reusable = format!("rehearse / {suffix}");
+    if run(&[reusable.as_str()])? != "success" {
+        return Err(
+            "terminal job-name jq filter rejected the reusable-caller job name".to_string(),
+        );
+    }
+    if run(&["build and qualify"])? != "missing" {
+        return Err("terminal job-name jq filter matched an unrelated job name".to_string());
+    }
+    if run(&[suffix, reusable.as_str()])? != "duplicate" {
+        return Err(
+            "terminal job-name jq filter did not report a duplicated target job".to_string(),
+        );
+    }
+    ignore_remove_dir_all(&fixture_root);
     Ok(())
 }
 
