@@ -1,6 +1,7 @@
 mod annotations;
 mod back_sync;
 mod badges;
+mod blind_journey;
 mod bun;
 mod candidate_control;
 mod ci_budget;
@@ -83,6 +84,9 @@ pub(crate) use badges::{
 pub(crate) use badges::{
     badge_artifacts, badge_basis, check_badge_diff_policy, check_badge_endpoints,
     repo_badge_artifacts, ripr_plus, update_badge_endpoints,
+};
+pub(crate) use blind_journey::{
+    assess_blind_journey_fixture_corpus, blind_journey_contract_report,
 };
 pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary, configured_bridge_inventory};
 pub(crate) use ci_budget::ci_budget;

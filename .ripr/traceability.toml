@@ -10827,3 +10827,63 @@ outputs = [
 metrics = [
   "owner_return_pin_false_exposed",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0200"
+name = "Blind journey prompt, intervention and transcript receipt contract"
+spec = "docs/specs/RIPR-SPEC-0200-blind-journey-contract.md"
+tests = [
+  "xtask/src/blind_journey.rs::tests::clean_generic_prompt_validates_positive",
+  "xtask/src/blind_journey.rs::tests::each_contamination_category_rejects_independently",
+  "xtask/src/blind_journey.rs::tests::public_docs_and_ordinary_source_reads_stay_allowed",
+  "xtask/src/blind_journey.rs::tests::private_hint_after_passing_verification_stays_non_positive",
+  "xtask/src/blind_journey.rs::tests::hidden_hint_cannot_hide_behind_passing_axes",
+  "xtask/src/blind_journey.rs::tests::manual_artifact_plumbing_is_classified_and_non_positive",
+  "xtask/src/blind_journey.rs::tests::workspace_binary_substitution_records_candidate_identity_failure",
+  "xtask/src/blind_journey.rs::tests::instrument_watchdog_observes_without_helping",
+  "xtask/src/blind_journey.rs::tests::either_eligible_product_presented_choice_validates",
+  "xtask/src/blind_journey.rs::tests::quiet_neighbor_selection_fails_the_answer_key_comparison",
+  "xtask/src/blind_journey.rs::tests::forbidden_edit_fails_the_edit_cage_comparison",
+  "xtask/src/blind_journey.rs::tests::honest_limitation_keeps_the_complete_transcript",
+  "xtask/src/blind_journey.rs::tests::missing_predecessor_rejects_the_transcript",
+  "xtask/src/blind_journey.rs::tests::reordered_trace_rejects_the_transcript",
+  "xtask/src/blind_journey.rs::tests::altered_prompt_bytes_reject_the_digest_binding",
+  "xtask/src/blind_journey.rs::tests::changed_answer_key_rejects_the_digest_binding",
+  "xtask/src/blind_journey.rs::tests::reviewer_label_cannot_override_mechanical_rejection",
+  "xtask/src/blind_journey.rs::tests::answer_key_never_reaches_the_operator_projection",
+  "xtask/src/blind_journey.rs::tests::equivalent_roots_share_portable_identity",
+  "xtask/src/blind_journey.rs::tests::unsupported_future_schema_rejects_every_packet",
+  "xtask/src/blind_journey.rs::tests::positive_receipt_requires_an_accepted_review",
+  "xtask/src/blind_journey.rs::tests::non_product_action_requires_closed_classification",
+  "xtask/src/blind_journey.rs::tests::receipt_review_divergence_rejects",
+  "xtask/src/blind_journey.rs::tests::forbidden_edit_event_rejects_even_when_the_selected_edit_is_allowed",
+  "xtask/src/blind_journey.rs::tests::honest_forbidden_edit_run_is_accepted",
+  "xtask/src/blind_journey.rs::tests::selection_event_mismatch_rejects",
+  "xtask/src/reports/blind_journey.rs::tests::committed_corpus_and_receipt_validate_against_the_live_validator",
+  "xtask/src/reports/blind_journey.rs::tests::receipt_with_a_drifted_schema_version_is_rejected",
+  "xtask/src/reports/blind_journey.rs::tests::receipt_without_limitations_is_rejected",
+  "xtask/src/reports/blind_journey.rs::tests::receipt_with_a_blank_limitation_is_rejected",
+  "xtask/src/reports/blind_journey.rs::tests::receipt_without_not_exercised_combinations_is_rejected",
+  "xtask/src/reports/blind_journey.rs::tests::json_and_markdown_derive_from_one_dto_deterministically",
+  "xtask/src/reports/blind_journey.rs::tests::required_scenarios_cannot_be_dropped_from_the_corpus",
+]
+fixtures = [
+  "fixtures/blind_journey_contract",
+]
+code = [
+  "xtask/src/blind_journey.rs",
+  "xtask/src/reports/blind_journey.rs",
+  "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "fixtures/blind_journey_contract/corpus.json",
+  "metrics/blind-journey-contract/contract-receipt.json",
+]
+metrics = [
+  "blind_journey_contract_scenarios",
+  "blind_journey_contract_positive_scenarios",
+  "blind_journey_contract_expectation_failures",
+  "blind_journey_contract_receipt_status",
+]

@@ -1726,3 +1726,69 @@ pub(crate) fn user_surface_projection_required_run_status_violations(
         })
         .collect()
 }
+
+pub(crate) fn validate_blind_journey_contract_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/blind_journey_contract");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "blind journey contract fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0200") {
+            violations.push(
+                "blind journey contract SPEC.md must name its RIPR-SPEC-0200 decision".to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "blind journey contract SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    validate_blind_journey_contract_fixture_corpus_at(&root.join("corpus.json"), violations)
+}
+
+fn validate_blind_journey_contract_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "blind journey contract corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let body = read_text_lossy(path)?;
+    let corpus = match crate::blind_journey::load_blind_journey_fixture_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!("blind journey contract corpus is invalid: {error}"));
+            return Ok(());
+        }
+    };
+    let missing = crate::blind_journey::missing_blind_journey_required_scenarios(
+        corpus.scenarios.iter().map(|scenario| scenario.id.as_str()),
+    );
+    for id in missing {
+        violations.push(format!(
+            "blind journey contract corpus is missing required scenario {id}"
+        ));
+    }
+    let report = crate::reports::assess_blind_journey_fixture_corpus(&corpus);
+    for failure in &report.expectation_failures {
+        violations.push(format!("blind journey contract corpus drifted: {failure}"));
+    }
+    Ok(())
+}

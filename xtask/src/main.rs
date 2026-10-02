@@ -22,6 +22,7 @@ use ripr::output::start_here_state::{
 };
 
 mod agent_skills;
+mod blind_journey;
 mod branch_inventory;
 mod cache;
 mod command;
