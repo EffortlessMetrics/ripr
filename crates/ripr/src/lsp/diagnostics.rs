@@ -5099,6 +5099,73 @@ mod delivery_tests {
     }
 
     #[test]
+    fn diagnostic_result_ids_ignore_refresh_clock_and_attempt_snapshot_handle() -> Result<(), String>
+    {
+        let mut first = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![diagnostic("same", 4)])],
+        )?;
+        first.refresh.generated_at = std::time::SystemTime::UNIX_EPOCH;
+        first.refresh.duration = Some(std::time::Duration::from_millis(1));
+        first.refresh.snapshot_id = None;
+        let mut second = first.clone();
+        second.refresh.generated_at = std::time::SystemTime::now();
+        second.refresh.duration = Some(std::time::Duration::from_secs(9));
+        second.refresh.snapshot_id = Some("attempt:refresh:9".to_string());
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse URI failed: {err}"))?;
+        if document_diagnostic_result_id(&first, &uri)
+            != document_diagnostic_result_id(&second, &uri)
+        {
+            return Err(
+                "refresh clock or attempt snapshot_id entered the document result ID".to_string(),
+            );
+        }
+        if workspace_diagnostic_result_id(&first) != workspace_diagnostic_result_id(&second) {
+            return Err(
+                "refresh clock or attempt snapshot_id entered the workspace result ID".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_result_ids_change_for_message_only_and_profile_changes() -> Result<(), String> {
+        let first = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![diagnostic("same", 4)])],
+        )?;
+        let mut message_changed = diagnostic("same", 4);
+        message_changed.message = "diagnostic same but wording changed".to_string();
+        let second = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![message_changed])],
+        )?;
+        let mut profile_changed = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![diagnostic("same", 4)])],
+        )?;
+        profile_changed.diagnostic_profile = LspDiagnosticProfile::Actionable;
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse URI failed: {err}"))?;
+        if document_diagnostic_result_id(&first, &uri)
+            == document_diagnostic_result_id(&second, &uri)
+        {
+            return Err("message-only change must invalidate the document result ID".to_string());
+        }
+        if document_diagnostic_result_id(&first, &uri)
+            == document_diagnostic_result_id(&profile_changed, &uri)
+        {
+            return Err(
+                "diagnostic profile change must invalidate the document result ID".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn canonicalization_removes_exact_duplicate_payloads() -> Result<(), String> {
         let uri = "file:///workspace/src/lib.rs"
             .parse::<Uri>()

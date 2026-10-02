@@ -9,6 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Changed
+
+- LSP: identity-law tests pin that `action_id` excludes title, range,
+  message, snapshot handles, client capability, and disabled reason; build
+  and parse share one fingerprint; analysis input identity excludes
+  deadlines and position encoding; diagnostic result IDs ignore refresh
+  clock and attempt handles. (#1932)
+
 ### Added
 
 - LSP: the seam code actions and seam hover project the compact RepairCard

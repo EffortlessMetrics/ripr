@@ -161,6 +161,34 @@ pub(super) fn action_class_for_kind(kind: &str) -> &'static str {
     }
 }
 
+/// Producer-owned addressed identities copied into `CodeAction.data` and
+/// used, first-present, as the `action_id` fingerprint subject. Title text,
+/// diagnostic messages, snapshot handles, client capability, and disabled
+/// reasons never appear here.
+const ADDRESSED_IDENTITY_KEYS: [&str; 4] = ["canonical_gap_id", "gap_id", "seam_id", "finding_id"];
+
+/// One fingerprint formula for build and parse (#1932). Snapshot
+/// `input_identity` is instance freshness on the payload, not this id.
+fn fingerprint_action_id(
+    action_class: &str,
+    canonical_identity: &str,
+    command_id: &str,
+    action_name: &str,
+) -> String {
+    crate::config::config_fingerprint(&format!(
+        "{action_class}|{canonical_identity}|{command_id}|{action_name}"
+    ))
+}
+
+fn first_addressed_identity(data: &serde_json::Map<String, Value>) -> Option<String> {
+    for key in ADDRESSED_IDENTITY_KEYS {
+        if let Some(value) = optional_payload_string(data, key) {
+            return Some(value);
+        }
+    }
+    None
+}
+
 /// Inputs for one action's `data` payload. Identity fields come from the
 /// addressed diagnostic's producer-owned `data` block and diagnostic code;
 /// nothing is re-derived from title text.
@@ -195,11 +223,12 @@ pub(super) struct ActionDataInputs<'a> {
 pub(super) fn action_data(inputs: &ActionDataInputs<'_>) -> Value {
     let action_class = action_class_for_kind(inputs.action_kind);
     let canonical_identity = canonical_identity(inputs.diagnostic).unwrap_or_default();
-    let action_id = crate::config::config_fingerprint(&format!(
-        "{action_class}|{canonical_identity}|{command_id}|{action_name}",
-        command_id = inputs.command_id,
-        action_name = inputs.action_name
-    ));
+    let action_id = fingerprint_action_id(
+        action_class,
+        &canonical_identity,
+        inputs.command_id,
+        inputs.action_name,
+    );
     let mut payload = serde_json::Map::new();
     payload.insert(
         "schema_version".to_string(),
@@ -223,14 +252,9 @@ pub(super) fn action_data(inputs: &ActionDataInputs<'_>) -> Value {
             payload.insert("diagnostic_id".to_string(), Value::String(code));
         }
         if let Some(data) = diagnostic.data.as_ref().and_then(Value::as_object) {
-            for key in ["canonical_gap_id", "gap_id", "seam_id", "finding_id"] {
-                if let Some(value) = data
-                    .get(key)
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                {
-                    payload.insert(key.to_string(), Value::String(value.to_string()));
+            for key in ADDRESSED_IDENTITY_KEYS {
+                if let Some(value) = optional_payload_string(data, key) {
+                    payload.insert(key.to_string(), Value::String(value));
                 }
             }
         }
@@ -260,18 +284,7 @@ pub(super) fn action_data(inputs: &ActionDataInputs<'_>) -> Value {
 /// The canonical addressed identity for the `action_id` fingerprint: the
 /// first producer-owned identity present on the diagnostic.
 fn canonical_identity(diagnostic: Option<&Diagnostic>) -> Option<String> {
-    let data = diagnostic?.data.as_ref()?.as_object()?;
-    for key in ["canonical_gap_id", "gap_id", "seam_id", "finding_id"] {
-        if let Some(value) = data
-            .get(key)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            return Some(value.to_string());
-        }
-    }
-    None
+    first_addressed_identity(diagnostic?.data.as_ref()?.as_object()?)
 }
 
 /// The diagnostic's producer-owned code (e.g. `ripr-gap-...`), when set.
@@ -388,11 +401,12 @@ pub(super) fn parse_validated_action_data(
         required_client_capability,
     };
     let canonical_identity = parsed.canonical_identity().unwrap_or_default();
-    let recomputed = crate::config::config_fingerprint(&format!(
-        "{action_class}|{canonical_identity}|{command_id}|{action_name}",
-        action_class = parsed.action_class,
-        action_name = parsed.action_name
-    ));
+    let recomputed = fingerprint_action_id(
+        &parsed.action_class,
+        canonical_identity,
+        command_id,
+        &parsed.action_name,
+    );
     if recomputed != action_id {
         return Err(
             "code action data action_id does not recompute from its payload identity".to_string(),
@@ -642,5 +656,139 @@ mod tests {
             return Err(format!("disabled reason missing: {payload}"));
         }
         Ok(())
+    }
+
+    fn action_id_of(inputs: &ActionDataInputs<'_>) -> Result<String, String> {
+        action_data(inputs)["action_id"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| "action_id must be a string".to_string())
+    }
+
+    #[test]
+    fn action_id_ignores_title_range_message_snapshot_capability_and_disabled_reason()
+    -> Result<(), String> {
+        let mut diagnostic = gap_diagnostic();
+        let baseline = action_id_of(&inputs_for(Some(&diagnostic)))?;
+
+        diagnostic.message = "completely different markdown **title**".to_string();
+        diagnostic.range.start.line = 99;
+        diagnostic.range.end.character = 3;
+        let mut presentation = inputs_for(Some(&diagnostic));
+        if action_id_of(&presentation)? != baseline {
+            return Err("title, message, and range must not enter action_id".to_string());
+        }
+
+        presentation.input_identity = Some("input:fnv1a64:ffffffffffffffff".to_string());
+        presentation.evidence_identity = Some(serde_json::json!({"snapshot_id": "attempt-9"}));
+        presentation.required_client_capability = "ripr.someOtherClient";
+        presentation.disabled_reason = Some(ActionDisabledReason::StaleSnapshot);
+        if action_id_of(&presentation)? != baseline {
+            return Err(
+                "snapshot freshness, client capability, and disabled reason must not enter action_id"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn action_id_uses_canonical_gap_id_and_trims_whitespace() -> Result<(), String> {
+        let mut diagnostic = gap_diagnostic();
+        let baseline = action_id_of(&inputs_for(Some(&diagnostic)))?;
+
+        if let Some(data) = diagnostic.data.as_mut().and_then(Value::as_object_mut) {
+            data.insert(
+                "gap_id".to_string(),
+                Value::String("gap:other-producer".to_string()),
+            );
+            data.insert(
+                "seam_id".to_string(),
+                Value::String("seam-other".to_string()),
+            );
+            data.insert(
+                "finding_id".to_string(),
+                Value::String("finding-other".to_string()),
+            );
+        }
+        if action_id_of(&inputs_for(Some(&diagnostic)))? != baseline {
+            return Err(
+                "lower-precedence identities must not change action_id when canonical_gap_id is present"
+                    .to_string(),
+            );
+        }
+
+        if let Some(data) = diagnostic.data.as_mut().and_then(Value::as_object_mut) {
+            data.insert(
+                "canonical_gap_id".to_string(),
+                Value::String("  gap:rust:pricing:threshold-boundary  ".to_string()),
+            );
+        }
+        if action_id_of(&inputs_for(Some(&diagnostic)))? != baseline {
+            return Err("canonical identity whitespace must be trimmed".to_string());
+        }
+
+        if let Some(data) = diagnostic.data.as_mut().and_then(Value::as_object_mut) {
+            data.insert(
+                "canonical_gap_id".to_string(),
+                Value::String("gap:rust:pricing:other-boundary".to_string()),
+            );
+        }
+        if action_id_of(&inputs_for(Some(&diagnostic)))? == baseline {
+            return Err("canonical_gap_id changes must change action_id".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn empty_canonical_gap_id_falls_through_to_gap_id() -> Result<(), String> {
+        let mut diagnostic = gap_diagnostic();
+        if let Some(data) = diagnostic.data.as_mut().and_then(Value::as_object_mut) {
+            data.insert(
+                "canonical_gap_id".to_string(),
+                Value::String("   ".to_string()),
+            );
+        }
+        let via_gap = action_id_of(&inputs_for(Some(&diagnostic)))?;
+
+        let mut only_gap = gap_diagnostic();
+        if let Some(data) = only_gap.data.as_mut().and_then(Value::as_object_mut) {
+            data.remove("canonical_gap_id");
+        }
+        if action_id_of(&inputs_for(Some(&only_gap)))? != via_gap {
+            return Err("blank canonical_gap_id must fall through to gap_id".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_validated_action_data_round_trips_and_rejects_cross_class_action_id()
+    -> Result<(), String> {
+        let diagnostic = gap_diagnostic();
+        let payload = action_data(&inputs_for(Some(&diagnostic)));
+        let parsed = parse_validated_action_data(&payload, "ripr.copyContext")?;
+        if parsed.canonical_identity() != Some("gap:rust:pricing:threshold-boundary") {
+            return Err(format!(
+                "parse must retain canonical identity, got {:?}",
+                parsed.canonical_identity()
+            ));
+        }
+        if parsed.input_identity.as_deref() != Some("input:fnv1a64:0123456789abcdef") {
+            return Err("parse must retain instance input_identity".to_string());
+        }
+
+        let mut swapped = inputs_for(Some(&diagnostic));
+        swapped.action_name = "copy_first_repair_packet";
+        let other_id = action_id_of(&swapped)?;
+        let mut tampered = payload;
+        tampered
+            .as_object_mut()
+            .ok_or_else(|| "payload must be an object".to_string())?
+            .insert("action_id".to_string(), Value::String(other_id));
+        match parse_validated_action_data(&tampered, "ripr.copyContext") {
+            Ok(_) => Err("a swapped sibling action_id must be rejected".to_string()),
+            Err(error) if error.contains("does not recompute") => Ok(()),
+            Err(error) => Err(format!("unexpected parse rejection: {error}")),
+        }
     }
 }

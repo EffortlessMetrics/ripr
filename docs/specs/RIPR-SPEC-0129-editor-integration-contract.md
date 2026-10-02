@@ -266,7 +266,12 @@ qualified as static analysis results; diagnostic codes and data remain stable.
   and the emitted-kinds ⊆ advertised-kinds parity invariant.
 - `action_contract.rs` tests verify the versioned data payload shape, the
   deterministic `action_id`, and the closed disabled-reason vocabulary
-  (#1892); `actions.rs` tests verify the fail-closed emit guard; further
+  (#1892); identity-law tests (#1932) prove `action_id` ignores title,
+  range, message, snapshot `input_identity`, evidence handles, client
+  capability, and disabled reason, trims/falls through canonical
+  identities, and that `parse_validated_action_data` round-trips the
+  retained production fingerprint and rejects a swapped sibling
+  `action_id`. `actions.rs` tests verify the fail-closed emit guard; further
   `tests.rs` tests verify the omit-vs-disabled policy both directions, the
   disabled-never-executes invariant across scenarios, the kind retention
   under `context.only`, and the named suppression reasons (`stale_snapshot`,

@@ -78,8 +78,9 @@ advance on the saved-workspace open/save/close and explicit refresh paths.
 ## Test Mapping
 
 - Refresh-plan tests cover unchanged, changed, and removed URI behavior.
-- Delivery tests cover stable sorting, exact duplicate removal, and equivalent
-  root digest normalization.
+- Delivery tests cover stable sorting, exact duplicate removal, equivalent
+  root digest normalization, refresh-clock/`snapshot_id` exclusion from
+  result IDs, and message-only or profile invalidation of those IDs.
 - The boundary-gap LSP fixture pins the additive diagnostic identity field.
 
 ## Claim boundary
