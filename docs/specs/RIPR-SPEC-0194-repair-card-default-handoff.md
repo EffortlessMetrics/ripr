@@ -63,10 +63,13 @@ check), then assembles one `RepairCardV1`:
   owner, so another seam's witness is never credited to this card. The
   repository head (`git rev-parse HEAD`), the portable
   workspace identity, the seam's most recent repair-attempt manifest by
-  `created_unix_ms`, the rendered canonical packet behind
-  `PacketCommandContext::Standalone`, and the typed packet inspection
-  command. `assemble_repair_card` is the pure, unit-tested projection from
-  those facts.
+  `created_unix_ms`, the rendered canonical packet behind a portable
+  `PacketCommandContext::Standalone { root: "." }` render — the
+  content-bound bytes feed `detail_digest` / `complete_evidence_digest`,
+  so equivalent checkout roots must hash identically and the render never
+  carries the bound checkout spelling (#5005) — and the typed packet
+  inspection command. `assemble_repair_card` is the pure, unit-tested
+  projection from those facts.
 - Snapshot identity is producer-owned through admitted `TestTargetEvidence`
   (the selected Existing target's identity, else the first related test's
   admitted target identity). When nothing on the seam names a portable
@@ -96,11 +99,21 @@ check), then assembles one `RepairCardV1`:
   the current transaction has no allowed test-only edit surface.
   Already-limited routes retain their original static diagnosis without
   replacing it with a secondary edit-cage refusal.
-- `done_when` is projection-only: static movement `closed_by_selected_route`,
-  edit cage `compliant`, mutation confirmation `not_requested`, currentness
-  `current`; focused test execution is `verified_pass` exactly when the
-  packet task is the targeted-test task, else `explicitly_not_run`. The card
-  never marks the work complete.
+- `done_when` is projection-only: static movement
+  `closed_by_selected_route`, edit cage `compliant`, mutation confirmation
+  `not_requested`; focused test execution is `verified_pass` exactly when
+  the packet task is the targeted-test task, else `explicitly_not_run`.
+  Both currentness axes (`snapshot.currentness` and `done_when.currentness`)
+  project one producer-observed tree fact: a bounded
+  `git status --porcelain --ignored` probe, scoped to the seam file, every
+  related-test file, and the recommended test file (in their filesystem
+  spelling, not a display encoding), reads `current` when that scope is
+  clean against the bound head and `accepted_dirty_draft` when any
+  uncommitted change — tracked, untracked, or ignored — touches it,
+  because the analysis reads working-tree bytes while the snapshot binds
+  the committed head. A probe failure fails closed: no card is minted, so
+  no unchecked `current` claim escapes. The card never marks the work
+  complete.
 - The next action is the typed `ripr agent packet --seam-id ID --json`
   inspection command, and only when the shared fail-closed route gate opens
   (`repair_card_route_exposable(instruction.state, readiness.repair_ready)`

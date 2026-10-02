@@ -3651,6 +3651,14 @@ fn agent_card_hands_off_one_seam_as_the_default_repair_card()
     assert!(head.status.success());
     let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
     assert_eq!(card_json["snapshot"]["repository_head"], head);
+    // #5008: the card binds the committed HEAD while its analysis read the
+    // dirty working tree, so both currentness axes must project the accepted
+    // dirty draft instead of an unchecked `current` claim.
+    assert_eq!(card_json["snapshot"]["currentness"], "accepted_dirty_draft");
+    assert_eq!(
+        card_json["done_when"]["currentness"],
+        "accepted_dirty_draft"
+    );
     // The complete packet is routed, never embedded: the wire card names the
     // packet route and carries no packet envelope content.
     assert!(
@@ -3690,12 +3698,50 @@ fn agent_card_hands_off_one_seam_as_the_default_repair_card()
         "  next action:",
         "  full packet: ripr agent packet ",
         "--seam-id 67fc764ba37d77bd --json",
+        // #5008: the human summary names the dirty-draft state verbatim, not
+        // the `{:?}` debug spelling.
+        "accepted_dirty_draft",
     ] {
         assert!(
             human_stdout.contains(needle),
             "missing {needle:?}:\n{human_stdout}"
         );
     }
+
+    // Committing the evidence change makes the scope clean: both axes
+    // project `current` again.
+    run_git(&root, &["add", "src/lib.rs"])?;
+    let committed = run_command(
+        "git",
+        Some(&root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "fixture source with discount",
+        ],
+    )?;
+    assert!(
+        committed.status.success(),
+        "fixture follow-up commit failed: {committed:?}"
+    );
+    let clean_card = run_ripr(&[
+        "agent",
+        "card",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        "67fc764ba37d77bd",
+        "--json",
+    ]);
+    assert_success(&clean_card);
+    let clean_stdout = String::from_utf8_lossy(&clean_card.stdout);
+    let clean_json: serde_json::Value = serde_json::from_str(&clean_stdout)?;
+    assert_eq!(clean_json["snapshot"]["currentness"], "current");
+    assert_eq!(clean_json["done_when"]["currentness"], "current");
 
     // A cold agent's `probe:...` finding ID is refused with the same seam-ID
     // source hint the packet surface names.
@@ -3714,6 +3760,96 @@ fn agent_card_hands_off_one_seam_as_the_default_repair_card()
         "{stderr}"
     );
     std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+/// #5005: the same seam at the same head mints the same `repair_card_id`
+/// and `complete_evidence_digest` from two equivalent checkout roots. The
+/// card content-hashes the canonical packet envelope; before the portable
+/// render, the packet's `next`-block command strings embedded each
+/// checkout's absolute root spelling and root-dependent digests leaked into
+/// the card identity.
+#[test]
+fn agent_card_identity_is_portable_across_equivalent_checkout_roots()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-card-portable-identity-a");
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::create_dir_all(root.join("tests"))?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"boundary_gap_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lib]\nname = \"boundary_gap_fixture\"\npath = \"src/lib.rs\"\n",
+    )?;
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 20\n    } else {\n        amount\n    }\n}\n",
+    )?;
+    std::fs::write(
+        root.join("tests/pricing.rs"),
+        "use boundary_gap_fixture::discounted_total;\n\n#[test]\nfn below_threshold_has_no_discount() {\n    assert_eq!(discounted_total(50, 100), 50);\n}\n\n#[test]\nfn far_above_threshold_discounts() {\n    assert_eq!(discounted_total(10_000, 100), 9_990);\n}\n",
+    )?;
+    init_git_fixture_repo(&root)?;
+    run_git(&root, &["add", "Cargo.toml", "src", "tests"])?;
+    let commit = run_command(
+        "git",
+        Some(&root),
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "fixture source",
+        ],
+    )?;
+    assert!(
+        commit.status.success(),
+        "fixture source commit failed: {commit:?}"
+    );
+    // The equivalent checkout: a clone of the same head at a different
+    // absolute path, so any absolute-root spelling in the content-bound
+    // packet would differ between the two card runs.
+    let second = unique_temp_workspace("agent-card-portable-identity-b");
+    let clone = run_command(
+        "git",
+        Some(&root),
+        &["clone", &root.to_string_lossy(), &second.to_string_lossy()],
+    )?;
+    assert!(
+        clone.status.success(),
+        "equivalent checkout clone failed: {clone:?}"
+    );
+
+    let card_for = |root_arg: &str| -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        let card = run_ripr(&[
+            "agent",
+            "card",
+            "--root",
+            root_arg,
+            "--seam-id",
+            "67fc764ba37d77bd",
+            "--json",
+        ]);
+        assert_success(&card);
+        let stdout = String::from_utf8_lossy(&card.stdout);
+        Ok(serde_json::from_str(&stdout)?)
+    };
+    let first_card = card_for(&root.display().to_string())?;
+    let second_card = card_for(&second.display().to_string())?;
+    assert_eq!(
+        first_card["snapshot"]["repository_head"], second_card["snapshot"]["repository_head"],
+        "both checkouts must bind the same head for the identity comparison"
+    );
+    assert_eq!(
+        first_card["repair_card_id"], second_card["repair_card_id"],
+        "equivalent checkout roots minted different repair card identities"
+    );
+    assert_eq!(
+        first_card["complete_evidence_digest"], second_card["complete_evidence_digest"],
+        "equivalent checkout roots minted different complete evidence identities"
+    );
+    std::fs::remove_dir_all(&root)?;
+    std::fs::remove_dir_all(&second)?;
     Ok(())
 }
 

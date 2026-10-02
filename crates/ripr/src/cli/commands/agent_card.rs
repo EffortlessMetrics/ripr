@@ -70,6 +70,16 @@ fn render_agent_card(options: &AgentCardOptions) -> Result<RepairCardV1, String>
 ///
 /// Crate-visible for the #4669 usability measurement, which counts the human
 /// presentation separately from the JSON wire shape (RIPR-SPEC-0196).
+/// The wire spelling of a typed value, presented verbatim in the human
+/// summary (the enum remains the authority; the renderer never re-interprets
+/// a value and never prints a `{:?}` debug spelling).
+fn wire_name<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 pub(crate) fn agent_card_prose_lines(card: &RepairCardV1) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push(format!("Repair card {}", card.repair_card_id));
@@ -80,8 +90,10 @@ pub(crate) fn agent_card_prose_lines(card: &RepairCardV1) -> Vec<String> {
     }
     lines.push(subject);
     lines.push(format!(
-        "  snapshot: {} @ {} ({:?})",
-        card.snapshot.workspace_identity, card.snapshot.repository_head, card.snapshot.currentness
+        "  snapshot: {} @ {} ({})",
+        card.snapshot.workspace_identity,
+        card.snapshot.repository_head,
+        wire_name(&card.snapshot.currentness)
     ));
     lines.push(format!(
         "  instruction: {:?} (fix site: {}, suggested assertion: {})",
@@ -146,12 +158,12 @@ pub(crate) fn agent_card_prose_lines(card: &RepairCardV1) -> Vec<String> {
         ));
     }
     lines.push(format!(
-        "  done when: static movement {:?}, focused test {:?}, edit cage {:?}, mutation {:?}, currentness {:?}",
+        "  done when: static movement {:?}, focused test {:?}, edit cage {:?}, mutation {:?}, currentness {}",
         card.done_when.static_movement,
         card.done_when.focused_test_execution,
         card.done_when.edit_cage,
         card.done_when.mutation_confirmation,
-        card.done_when.currentness
+        wire_name(&card.done_when.currentness)
     ));
     for stop in &card.stop_conditions {
         lines.push(format!("  stop: {stop}"));

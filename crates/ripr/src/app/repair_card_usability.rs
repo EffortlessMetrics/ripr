@@ -34,15 +34,12 @@ use crate::cli::commands::agent_card::agent_card_prose_lines;
 use crate::domain::{
     Confidence, DEFAULT_REPAIR_CARD_MAX_DETAIL_ITEMS, DEFAULT_REPAIR_CARD_MAX_SERIALIZED_BYTES,
     DiagnosticConfidence, DiagnosticFixSite, DiagnosticWitness, DiagnosticWitnessLimitation,
-    MissingDiscriminatorFact, StageEvidence, StageState,
-};
-use crate::output::agent_seam_packets::{
-    PacketCommandContext, render_agent_seam_packet_json_with_context,
+    MissingDiscriminatorFact, RepairCardSnapshotCurrentness, StageEvidence, StageState,
 };
 use crate::output::json::render_pretty_with_newline;
 
 use super::repair_attempt::{RepairAttemptId, RepairAttemptManifest, RepairAttemptState};
-use super::repair_card_handoff::{SeamCardFacts, assemble_repair_card};
+use super::repair_card_handoff::{SeamCardFacts, assemble_repair_card, card_packet_json};
 
 /// Versioned schema identity of the usability report document.
 pub const REPAIR_CARD_USABILITY_SCHEMA_VERSION: &str = "1.0";
@@ -214,10 +211,10 @@ fn normalized_bytes(rendered: &str) -> usize {
 
 fn measure_profile(profile: &SyntheticProfile) -> Result<Value, String> {
     let seam_id = profile.entry.seam.id().as_str().to_string();
-    let packet_json = render_agent_seam_packet_json_with_context(
-        &profile.entry,
-        PacketCommandContext::Standalone { root: "." },
-    );
+    // The synthetic measurement assembles pure facts with no checkout: the
+    // content-bound packet render is the producer's own portable-root render
+    // and the currentness fact is the clean-tree projection.
+    let packet_json = card_packet_json(&profile.entry);
     let attempt = profile
         .attempt_head
         .map(|head| measurement_attempt(&seam_id, head))
@@ -232,6 +229,7 @@ fn measure_profile(profile: &SyntheticProfile) -> Result<Value, String> {
         packet_json: &packet_json,
         repository_head: "abc123",
         workspace_identity: "workspace:measurement",
+        currentness: RepairCardSnapshotCurrentness::Current,
         next_command: Some(next_command),
     })?;
     let card_wire = render_pretty_with_newline(&card, "repair card usability measurement")?;

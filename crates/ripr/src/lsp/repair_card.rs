@@ -13,17 +13,13 @@
 use super::state::AnalysisSnapshot;
 use crate::agent::artifact::git_output;
 use crate::agent::command_specs::{AgentArtifactRoute, agent_inspection_command_spec};
-use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::repair_route::repair_packet_eligibility;
 use crate::app::repair_card_handoff::{
-    SeamCardFacts, assemble_repair_card, latest_attempt_for_seam, witness_from_findings,
-    workspace_identity_for,
+    SeamCardFacts, assemble_repair_card, card_packet_json, evidence_tree_currentness,
+    latest_attempt_for_seam, witness_from_findings, workspace_identity_for,
 };
 use crate::domain::{FixInstructionState, RepairCardDetailState, RepairCardV1};
-use crate::output::agent_seam_packets::{
-    PacketCommandContext, render_agent_seam_packet_json_with_context,
-};
 
 /// Assemble the same [`RepairCardV1`] the CLI `ripr agent card` handoff
 /// builds, from the completed snapshot's own authorities instead of re-running
@@ -54,13 +50,12 @@ pub(super) fn seam_repair_card(
         .to_string();
     let workspace_identity = workspace_identity_for(entry, readiness).ok()?;
     let attempt = latest_attempt_for_seam(root, &seam_id).ok()?;
-    let packet_root = loop_commands::bound_root(&root.to_string_lossy());
-    let packet_json = render_agent_seam_packet_json_with_context(
-        entry,
-        PacketCommandContext::Standalone {
-            root: packet_root.as_str(),
-        },
-    );
+    // The editor card binds the same producer facts as the CLI handoff: the
+    // content-hashed packet renders with the portable root (never the
+    // checkout spelling) and both currentness axes project the one bounded
+    // dirty-state probe, failing closed to omission when it cannot run.
+    let currentness = evidence_tree_currentness(root, entry).ok()?;
+    let packet_json = card_packet_json(entry);
     let next_command = agent_inspection_command_spec(
         AgentArtifactRoute::Packet,
         &root.to_string_lossy(),
@@ -74,6 +69,7 @@ pub(super) fn seam_repair_card(
         packet_json: &packet_json,
         repository_head: &repository_head,
         workspace_identity: &workspace_identity,
+        currentness,
         next_command: Some(next_command),
     })
     .ok()
