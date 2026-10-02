@@ -68,17 +68,20 @@ post-decision audit step.
 
 `rustpython-parser` pulls in the `rust-unic` Unicode crate family
 (`unic-char-range`, `unic-common`, `unic-char-property`, `unic-emoji-char`,
-`unic-ucd-ident`). The `rust-unic` project is unmaintained; RustSec issued
-six separate advisories against the family in 2025:
+`unic-ucd-ident`, `unic-ucd-version`). The `rust-unic` project is
+unmaintained; RustSec issued a separate advisory for each crate in the family
+in 2025, six of which match our graph:
 
 - RUSTSEC-2025-0075 (`unic-char-range`)
 - RUSTSEC-2025-0080 (`unic-common`)
 - RUSTSEC-2025-0081 (`unic-char-property`)
 - RUSTSEC-2025-0090 (`unic-emoji-char`)
-- RUSTSEC-2025-0098 (`rust-unic` umbrella announcement)
+- RUSTSEC-2025-0098 (`unic-ucd-version`)
 - RUSTSEC-2025-0100 (`unic-ucd-ident`)
 
-Each advisory's Solution line is the same: "No safe upgrade is available."
+Each is informational `unmaintained` with `patched = []`; none lists a
+fixed version. They name `icu_properties` and `unicode-ident` as
+alternatives, which only `rustpython-parser` itself could adopt.
 
 Mitigation in `deny.toml`: each advisory id is suppressed individually under
 `advisories.ignore` with a verbose comment explaining what the crate is, why
@@ -98,6 +101,15 @@ The revisit triggers are explicit in
 
 Either event retires this learning and triggers a parser substrate
 re-evaluation.
+
+Status as of 2026-10-01 (reconciled from ripr-swarm#3890 to the source
+graph): Astral now publishes `ruff_python_parser` to crates.io (0.0.x,
+crate owners `charliermarsh` and `astral-crates-bot`, weekly releases since
+2026-06, per the 2026-09-22 crates.io observation), with no `unic`
+dependency. It is not yet the "stable versioning" bar above, and 0.0.14
+declares `rust-version = 1.96` against our MSRV 1.95. The six suppressions
+were extended to 2026-12-31 for the 0.11 line; the migration decision stays
+with [ripr#1430](https://github.com/EffortlessMetrics/ripr/issues/1430).
 
 ## Structural observation
 

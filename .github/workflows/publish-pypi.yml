@@ -1,47 +1,139 @@
-name: PyPI publisher contract
+name: Publish qualified ripr-rs prerelease
 
-# Trusted-publisher identity registered for the future PyPI distribution:
-#
-#   project:     ripr-rs
-#   owner:       EffortlessMetrics
-#   repository:  ripr
-#   workflow:    publish-pypi.yml
-#   environment: pypi
-#
-# This bootstrap workflow intentionally cannot publish. It has no OIDC
-# permission and no upload step. Complete #1781, qualify the exact wheel set,
-# and obtain explicit release authorization before enabling publication.
-
+# Registered tuple: EffortlessMetrics/ripr, publish-pypi.yml, environment pypi.
+# Dispatch defaults to admission only. Publication is a separate explicit release
+# decision, never a side effect of a tag, release, PR, or qualification completion.
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Admit evidence only, or explicitly publish the exact qualified wheel
+        type: choice
+        options: [admit_only, publish]
+        default: admit_only
+        required: true
+      qualification_run_id:
+        description: Successful source-main Python wheel qualification run ID
+        type: string
+        required: true
+      source_sha:
+        description: Exact qualified source commit SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      source_tree:
+        description: Exact qualified source tree SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      version:
+        description: Canonical Python prerelease version, for example 0.11.0rc1
+        type: string
+        required: true
+      wheel_sha256:
+        description: Exact qualified wheel SHA-256 (64 lowercase hex characters)
+        type: string
+        required: true
+      confirmation:
+        description: For publication only, type publish ripr-rs followed by a space and the exact version
+        type: string
+        required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
+
 jobs:
-  publisher-contract:
-    name: Record ripr-rs publisher tuple (no publish)
+  admission:
     if: ${{ github.repository == 'EffortlessMetrics/ripr' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      artifact_id: ${{ steps.stage.outputs.artifact-id }}
+    env:
+      RUN_ID: ${{ inputs.qualification_run_id }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      SOURCE_TREE: ${{ inputs.source_tree }}
+      VERSION: ${{ inputs.version }}
+      WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require explicit publication confirmation
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$OPERATION" != publish || test "$CONFIRMATION" = "publish ripr-rs $VERSION"
+      - name: Test the trusted admission controller
+        run: python3 -m unittest discover -s .github/scripts -p 'test_pypi_admission.py'
+      - name: Admit successful source-main run and immutable artifact identity
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/pypi_admission.py authorize
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ steps.authorize.outputs.artifact_id }}
+          run-id: ${{ inputs.qualification_run_id }}
+          github-token: ${{ github.token }}
+          path: qualified
+          merge-multiple: true
+      - name: Verify source receipt, version, platform, and wheel bytes
+        env:
+          QUALIFICATION_ATTEMPT: ${{ steps.authorize.outputs.attempt }}
+        run: >-
+          python3 .github/scripts/pypi_admission.py stage
+          --artifact-root qualified --destination admitted
+          --attempt "$QUALIFICATION_ATTEMPT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        id: stage
+        with:
+          name: pypi-admitted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: admitted/*.whl
+          if-no-files-found: error
+          retention-days: 5
+
+  publish:
+    name: Publish exact admitted wheel (no build or source execution)
+    needs: admission
+    if: >-
+      github.repository == 'EffortlessMetrics/ripr' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.operation == 'publish' &&
+      inputs.confirmation == format('publish ripr-rs {0}', inputs.version)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/project/ripr-rs/
+    permissions:
+      id-token: write
     steps:
-      - name: Record trusted-publisher contract
+      # Deliberately no checkout, pip install, build, or package execution here.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.admission.outputs.artifact_id }}
+          path: dist
+          merge-multiple: true
+      - name: Recheck the sole upload file after transfer
+        env:
+          EXPECTED_SHA256: ${{ inputs.wheel_sha256 }}
+          EXPECTED_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          {
-            echo "## PyPI trusted-publisher contract"
-            echo
-            echo "- Distribution: \`ripr-rs\`"
-            echo "- GitHub owner: \`EffortlessMetrics\`"
-            echo "- Repository: \`ripr\`"
-            echo "- Workflow: \`publish-pypi.yml\`"
-            echo "- Environment: \`pypi\`"
-            echo "- Publication enabled: **no**"
-            echo
-            echo "This workflow deliberately has no \`id-token: write\` permission"
-            echo "and no package-upload step. Complete #1781 and obtain explicit"
-            echo "release authorization before enabling publication."
-          } >> "$GITHUB_STEP_SUMMARY"
+          test "$(find dist -mindepth 1 | wc -l)" -eq 1
+          wheel="dist/ripr_rs-${EXPECTED_VERSION}-py3-none-manylinux_2_34_x86_64.whl"
+          test -f "$wheel" && test ! -L "$wheel"
+          test "$(sha256sum "$wheel" | cut -d ' ' -f 1)" = "$EXPECTED_SHA256"
+      - name: Publish through the registered trusted publisher
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: false
