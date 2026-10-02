@@ -49,6 +49,34 @@ not be published or enforced as a real count.
 
 ## Scope: diff vs repo
 
+### Informational `ripr plus` receipts
+
+`ripr plus --repo-exposure-summary <path>` and `--gap-ledger <path>` compose
+existing evidence; they do not produce a complete test-efficiency measurement
+or establish that the supplied evidence describes current candidate bytes.
+An exposure-only zero must not become a full RIPR+ zero qualification.
+
+These legacy receipt inputs therefore retain observed counters as
+`known_actionable_unresolved` and `counts`, while the complete `unresolved`
+total and qualified `head` are null, `status` is `indeterminate`, and
+`zero_unresolved_established` is false. `observed_repository_head` is only the
+HEAD observed during composition, not a binding of the input artifact to it.
+`incomplete_evidence` and warnings name the missing quality, identity and
+blocked-scope evidence. Static limitations and unsupported scope are not
+silently counted as resolved, nor are raw seams relabeled as actionable debt.
+
+Plain composition may exit 0 after writing this informational receipt;
+`--check` exits nonzero when zero is not established. Unreadable or malformed
+input also fails while retaining an indeterminate receipt. The compatibility
+`cargo xtask ripr-plus` path uses the same qualification boundary. Neither
+route should be enabled as an organization-wide zero policy from these inputs.
+A portable measured and candidate-bound producer is separate work; do not
+invent a supported command or reinterpret an incomplete result as pass.
+
+The badge surfaces retain their own advisory scope contract. In particular,
+missing test-efficiency evidence renders `needs test-efficiency`, not a
+measured zero. A badge count alone does not authorize merge or publication.
+
 | Scope | Primary producers | Subject | Basis | Use |
 | --- | --- | --- | --- | --- |
 | `diff` | `ripr check --format badge-*`; `cargo xtask badge-artifacts` | A selected diff; the repository wrapper uses one resolved base-to-head range | `finding_exposure` | PR summary and retained CI artifacts |
@@ -571,3 +599,10 @@ suite. A green command is evidence for that exact head and subject only.
 - [Configuration](CONFIGURATION.md) — intent, suppressions, modes, and limits.
 - [Verification](VERIFICATION.md) — evidence and non-claim boundaries.
 - [Deferred work](DEFERRED.md) — hosted badge service and other non-current surfaces.
+
+The legacy receipt remains schema version `0.1`: its existing indeterminate
+status already permits an unknown (`null`) unresolved count. Qualified `head`
+is now also `null` when no candidate binding is established; the observed local
+HEAD is retained separately. Consumers must require established authority, not
+coerce null to zero or use the observed HEAD as proof. This receipt is distinct
+from the four-field Shields badge schema.

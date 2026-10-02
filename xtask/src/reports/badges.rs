@@ -809,19 +809,29 @@ fn build_badge_basis_report(
 
 pub(crate) fn ripr_plus_impl(args: &[String]) -> Result<(), String> {
     let options = parse_repo_badge_artifact_options(args, "ripr-plus")?;
+    let check = args.iter().any(|arg| arg == "--check");
     run_with_repo_root_cwd(|| {
         let head = git_value(&["rev-parse", "HEAD"]);
-        let receipt = match ripr_plus_receipt_from_options(&options, &head) {
+        let receipt = match ripr_plus_receipt_from_options(&options, &head)
+            .and_then(ripr::app::qualify_legacy_ripr_plus_receipt)
+        {
             Ok(r) => r,
             Err(err) => {
                 write_error_ripr_plus_receipt(&head, &err)?;
-                return Ok(());
+                return Err(err);
             }
         };
         let json = serde_json::to_string_pretty(&receipt)
             .map_err(|err| format!("failed to serialize ripr-plus receipt: {err}"))?;
         write_report("ripr-plus.json", &format!("{json}\n"))?;
-        write_report("ripr-plus.md", &ripr_plus_receipt_markdown(&receipt))
+        write_report("ripr-plus.md", &ripr_plus_receipt_markdown(&receipt))?;
+        if check && receipt["zero_unresolved_established"] != true {
+            return Err(
+                "RIPR+ zero is not established; inspect the receipt's incomplete-evidence warnings"
+                    .to_string(),
+            );
+        }
+        Ok(())
     })
 }
 
@@ -850,7 +860,10 @@ pub(crate) fn error_ripr_plus_receipt(head: &str, err: &str) -> Value {
         "unresolved": null,
         "top_files": [],
         "suppressed": null,
-        "head": head,
+        "head": null,
+        "observed_repository_head": head,
+        "candidate_binding": "not_established",
+        "zero_unresolved_established": false,
         "counts": {},
         "reason_counts": {},
         "machine_readable_cause": machine_readable_cause,
@@ -1149,7 +1162,7 @@ pub(crate) fn ripr_plus_receipt_from_repo_exposure_summary_json_with_source(
 
 pub(crate) fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
     let mut body = String::from("# ripr+ Repo Receipt\n\n");
-    body.push_str("This report is the repo-wide RIPR+ quality-gate input. It uses the public canonical actionable gap basis and does not count raw seam inventory as unresolved debt.\n\n");
+    body.push_str("This is an informational projection of supplied exposure/ledger evidence. It does not establish complete test-quality measurement or a current-candidate zero result. Raw seams are not actionable debt.\n\n");
     body.push_str("## Basis\n\n");
     body.push_str("| Field | Value |\n");
     body.push_str("| --- | --- |\n");
@@ -1190,13 +1203,21 @@ pub(crate) fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
             .and_then(Value::as_u64)
             .unwrap_or(0)
     ));
+    if let Some(known) = receipt
+        .get("known_actionable_unresolved")
+        .and_then(serde_json::Value::as_u64)
+    {
+        body.push_str(&format!(
+            "| Known actionable exposure items (unqualified) | {known} |\n"
+        ));
+    }
     body.push_str(&format!(
-        "| Head | `{}` |\n",
+        "| Qualified candidate head | `{}` |\n",
         markdown_cell(&json_string_field_value(receipt, "head"))
     ));
     if is_indeterminate || unresolved_is_null {
         body.push_str("\n## Evaluation Status\n\n");
-        body.push_str("> **Indeterminate** — the evaluation did not complete. No gap count is available from this run. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
+        body.push_str("> **Indeterminate** — a complete, current quality result is not established. Any known exposure count above is partial evidence, not the complete unresolved total. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
         if let Some(warnings) = receipt
             .get("warnings")
             .and_then(Value::as_array)

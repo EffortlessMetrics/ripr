@@ -1903,6 +1903,14 @@ are scoped or reviewed.
   `no_scope` complete, and unparseable garbage keeps its existing
   `unsupported_input` contract (#4375).
 
+- CLI: `ripr plus` and the compatibility `cargo xtask ripr-plus` receipt
+  composition no longer turn exposure-only zero into complete RIPR+ quality
+  authority. Legacy inputs remain informational and `indeterminate`, preserving
+  known counts separately while total unresolved debt and qualified head are
+  unknown. `--check` now refuses incomplete evidence; invalid input replaces
+  an old receipt with an indeterminate error receipt and returns nonzero.
+  See `docs/BADGE_POLICY.md` for the compatibility and measurement boundary.
+
 ### Added
 
 - Zed: a Zed extension in `editors/zed` starts `ripr lsp --stdio` from your

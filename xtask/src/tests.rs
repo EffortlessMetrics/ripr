@@ -26219,11 +26219,16 @@ fn error_ripr_plus_receipt_timeout_has_indeterminate_status_and_null_unresolved(
         warnings > 0,
         "warnings must be non-empty on an error receipt"
     );
-    let head = receipt.get("head").and_then(Value::as_str).unwrap_or("");
     assert!(
-        !head.is_empty(),
-        "head must be non-empty on an error receipt"
+        receipt["head"].is_null(),
+        "error receipt cannot qualify a candidate"
     );
+    assert_eq!(
+        receipt["observed_repository_head"],
+        "abc1234def5678abc1234def5678abc1234def5678"
+    );
+    assert_eq!(receipt["candidate_binding"], "not_established");
+    assert_eq!(receipt["zero_unresolved_established"], false);
     assert_eq!(receipt["schema_version"], "0.1");
     Ok(())
 }
@@ -26252,7 +26257,7 @@ fn ripr_plus_receipt_markdown_indeterminate_does_not_claim_zero_unresolved() -> 
 }
 
 #[test]
-fn ripr_plus_receipt_happy_path_regression_pass_status() -> Result<(), String> {
+fn ripr_plus_partial_happy_path_cannot_establish_zero() -> Result<(), String> {
     let fixture = r#"{
             "schema_version": "0.1",
             "format": "repo-exposure-summary-json",
@@ -26286,17 +26291,16 @@ fn ripr_plus_receipt_happy_path_regression_pass_status() -> Result<(), String> {
         }"#;
     let receipt = ripr_plus_receipt_from_repo_exposure_summary_json(fixture, "abc1234")?;
 
-    let status = receipt["status"].as_str().unwrap_or("");
-    assert!(
-        status == "pass" || status == "warn",
-        "happy-path receipt must have pass or warn status, got {status:?}"
-    );
-    let unresolved = receipt.get("unresolved").and_then(Value::as_u64);
-    assert!(
-        unresolved.is_some(),
-        "happy-path receipt must have a concrete unresolved count, not null"
-    );
-    assert_eq!(unresolved, Some(0));
+    // Preserve the raw composition counter, then exercise the final shared
+    // boundary used by both public command surfaces.
+    assert_eq!(receipt["unresolved"], 0);
+    let receipt = ripr::app::qualify_legacy_ripr_plus_receipt(receipt)?;
+    assert_eq!(receipt["status"], "indeterminate");
+    assert!(receipt["unresolved"].is_null());
+    assert!(receipt["head"].is_null());
+    assert_eq!(receipt["known_actionable_unresolved"], 0);
+    assert_eq!(receipt["observed_repository_head"], "abc1234");
+    assert_eq!(receipt["zero_unresolved_established"], false);
     Ok(())
 }
 

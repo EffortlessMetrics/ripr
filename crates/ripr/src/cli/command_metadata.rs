@@ -1971,8 +1971,10 @@ const METADATA: &[CommandMetadata] = &[
         json_support: true,
         example: "ripr plus --gap-ledger target/ripr/reports/gap-decision-ledger.json",
         next_routes: &["reports gap-ledger", "reports index"],
-        stop_states: &["exit 2 when the named artifact cannot be read or composed"],
-        limitations: "artifact-composition-only; it does not run an in-process full-repo scan.",
+        stop_states: &[
+            "exit 2 when the artifact cannot be composed or --check cannot establish zero",
+        ],
+        limitations: "informational legacy composition; complete test-quality and current-candidate zero are not established.",
         not_applicable_reason: None,
     },
     CommandMetadata {

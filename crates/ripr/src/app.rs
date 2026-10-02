@@ -35,6 +35,16 @@ pub(crate) mod repair_card_handoff;
 /// real-opportunity accounting that back the versioned decision receipt.
 pub mod repair_card_usability;
 pub(crate) mod ripr_plus;
+
+/// Shared final qualification boundary for legacy RIPR+ receipt composition.
+/// Exposure summaries and gap ledgers preserve useful observed counts, but
+/// cannot establish complete test-quality evidence bound to the current candidate.
+/// The compatibility xtask uses this same boundary before writing a receipt.
+pub fn qualify_legacy_ripr_plus_receipt(
+    receipt: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    ripr_plus::qualify_legacy_receipt(receipt)
+}
 mod selector;
 pub(crate) mod temp_diff;
 pub(crate) mod verification_execution;

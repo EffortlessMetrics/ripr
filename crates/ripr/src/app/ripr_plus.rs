@@ -1,7 +1,7 @@
 //! `ripr plus` — binary-first RIPR+ repo receipt (composition-only).
 //!
 //! Ports `cargo xtask ripr-plus` into the `ripr` binary so downstream
-//! consumers can produce the repo-wide RIPR+ quality-gate receipt without
+//! consumers can compose an informational RIPR+ receipt without
 //! compiling their own xtask.
 //!
 //! # Binary-first scope
@@ -42,6 +42,7 @@ const RIPR_PLUS_MD: &str = "target/ripr/reports/ripr-plus.md";
 struct RiprPlusOptions {
     repo_exposure_summary: Option<PathBuf>,
     gap_ledger: Option<PathBuf>,
+    check: bool,
 }
 
 /// Entry point for `ripr plus`. Composes a RIPR+ repo receipt from a
@@ -67,8 +68,14 @@ fn compose_and_write_receipt(
     options: &RiprPlusOptions,
     head: &str,
 ) -> Result<(), String> {
-    match ripr_plus_receipt_from_options(options, head) {
-        Ok(receipt) => write_receipt(repo, &receipt),
+    match ripr_plus_receipt_from_options(options, head).and_then(qualify_legacy_receipt) {
+        Ok(receipt) => {
+            write_receipt(repo, &receipt)?;
+            if options.check && receipt["zero_unresolved_established"] != true {
+                return Err("RIPR+ zero is not established; inspect the receipt's incomplete-evidence warnings".to_string());
+            }
+            Ok(())
+        }
         Err(err) => {
             let receipt = error_ripr_plus_receipt(head, &err);
             write_receipt(repo, &receipt)?;
@@ -82,7 +89,7 @@ fn parse_options(args: &[String]) -> Result<RiprPlusOptions, String> {
     let mut index = 0usize;
     while index < args.len() {
         match args[index].as_str() {
-            "--check" => {}
+            "--check" => options.check = true,
             "--gap-ledger" => {
                 index += 1;
                 options.gap_ledger =
@@ -142,20 +149,70 @@ Usage: ripr plus --repo-exposure-summary <path> | --gap-ledger <path> [--check]
 Options:
   --repo-exposure-summary <path>  Compose the receipt from a repo-exposure-summary-json artifact (pure composition).
   --gap-ledger <path>             Compose the receipt from a gap decision ledger (ledger-only composition; no repo scan).
-  --check                         Accepted for xtask parity (no-op).
+  --check                         Require established zero; incomplete evidence exits 2.
 
 Exit status: 0 when the receipt was composed; 2 when the named artifact
-cannot be read or composed (an `indeterminate` receipt is still written).
+cannot be read or composed, or --check cannot establish zero (an
+`indeterminate` receipt is still written).
 
 Outputs:
   target/ripr/reports/ripr-plus.json
   target/ripr/reports/ripr-plus.md
 
-This receipt is the repo-wide RIPR+ quality-gate input. It uses the
-public canonical actionable gap basis and does not count raw seam
-inventory as unresolved debt. The binary-first `ripr plus` is
-artifact-composition-only: it does not run an in-process full-repo scan.
+Current inputs contain exposure or ledger evidence only. They do not establish
+complete test-efficiency measurement or bind that evidence to current candidate
+bytes. Known actionable counts remain informational; complete unresolved debt
+and candidate authority remain indeterminate, so --check cannot pass from these
+inputs. This command does not scan a repository or turn raw seams into debt.
 ";
+
+/// The supported legacy inputs have no complete test-quality/current-candidate
+/// contract. A zero exposure counter cannot cross that missing proof boundary.
+pub(crate) fn qualify_legacy_receipt(mut receipt: Value) -> Result<Value, String> {
+    let fields = receipt
+        .as_object_mut()
+        .ok_or_else(|| "RIPR+ receipt must be an object".to_string())?;
+    let known = fields
+        .get("known_actionable_unresolved")
+        .or_else(|| fields.get("unresolved"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let observed_head = fields
+        .get("observed_repository_head")
+        .or_else(|| fields.get("head"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    fields.insert("known_actionable_unresolved".to_string(), known);
+    fields.insert("observed_repository_head".to_string(), observed_head);
+    fields.insert("unresolved".to_string(), Value::Null);
+    fields.insert("head".to_string(), Value::Null);
+    fields.insert("status".to_string(), json!("indeterminate"));
+    fields.insert("zero_unresolved_established".to_string(), json!(false));
+    fields.insert("candidate_binding".to_string(), json!("not_established"));
+    fields.insert(
+        "machine_readable_cause".to_string(),
+        json!("quality_evidence_incomplete"),
+    );
+    fields.insert(
+        "incomplete_evidence".to_string(),
+        json!([
+            "complete_test_efficiency_measurement",
+            "current_candidate_binding",
+            "blocked_and_unsupported_scope_disposition"
+        ]),
+    );
+    let warnings = fields.entry("warnings").or_insert_with(|| json!([]));
+    let warnings = warnings
+        .as_array_mut()
+        .ok_or_else(|| "RIPR+ receipt warnings must be an array".to_string())?;
+    let warning = json!(
+        "Exposure/ledger counts alone do not establish complete RIPR+ zero. Test-efficiency measurement, current-candidate binding and blocked/unsupported scope disposition are not established; inspect the source evidence and do not use this receipt as a zero gate."
+    );
+    if !warnings.contains(&warning) {
+        warnings.push(warning);
+    }
+    Ok(receipt)
+}
 
 fn ripr_plus_receipt_from_options(options: &RiprPlusOptions, head: &str) -> Result<Value, String> {
     if let Some(summary_path) = options.repo_exposure_summary.as_deref() {
@@ -402,7 +459,10 @@ fn error_ripr_plus_receipt(head: &str, err: &str) -> Value {
         "unresolved": null,
         "top_files": [],
         "suppressed": null,
-        "head": head,
+        "head": null,
+        "observed_repository_head": head,
+        "candidate_binding": "not_established",
+        "zero_unresolved_established": false,
         "counts": {},
         "reason_counts": {},
         "machine_readable_cause": machine_readable_cause,
@@ -424,7 +484,7 @@ fn error_ripr_plus_receipt(head: &str, err: &str) -> Value {
 
 fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
     let mut body = String::from("# ripr+ Repo Receipt\n\n");
-    body.push_str("This report is the repo-wide RIPR+ quality-gate input. It uses the public canonical actionable gap basis and does not count raw seam inventory as unresolved debt.\n\n");
+    body.push_str("This is an informational projection of supplied exposure/ledger evidence. It does not establish complete test-quality measurement or a current-candidate zero result. Raw seams are not actionable debt.\n\n");
     body.push_str("## Basis\n\n");
     body.push_str("| Field | Value |\n");
     body.push_str("| --- | --- |\n");
@@ -465,13 +525,21 @@ fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
             .and_then(Value::as_u64)
             .unwrap_or(0)
     ));
+    if let Some(known) = receipt
+        .get("known_actionable_unresolved")
+        .and_then(Value::as_u64)
+    {
+        body.push_str(&format!(
+            "| Known actionable exposure items (unqualified) | {known} |\n"
+        ));
+    }
     body.push_str(&format!(
-        "| Head | `{}` |\n",
+        "| Qualified candidate head | `{}` |\n",
         markdown_cell(&json_string_field_value(receipt, "head"))
     ));
     if is_indeterminate || unresolved_is_null {
         body.push_str("\n## Evaluation Status\n\n");
-        body.push_str("> **Indeterminate** — the evaluation did not complete. No gap count is available from this run. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
+        body.push_str("> **Indeterminate** — a complete, current quality result is not established. Any known exposure count above is partial evidence, not the complete unresolved total. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
         if let Some(warnings) = receipt
             .get("warnings")
             .and_then(Value::as_array)
@@ -899,6 +967,7 @@ mod tests {
         let options = RiprPlusOptions {
             repo_exposure_summary: None,
             gap_ledger: Some(repo.join("nope.json")),
+            check: false,
         };
         let result = compose_and_write_receipt(&repo, &options, "deadbeef");
         let written = fs::read_to_string(repo.join(RIPR_PLUS_JSON));

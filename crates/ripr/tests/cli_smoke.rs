@@ -18514,6 +18514,126 @@ fn plus_help_exits_cleanly() {
     );
 }
 
+/// An exposure-only counter is not a complete, current RIPR+ quality result.
+/// Exercise the installed command and written receipt, not a fabricated gate.
+#[test]
+fn plus_partial_zero_cannot_be_used_as_a_current_quality_gate() -> Result<(), String> {
+    let root = unique_temp_workspace("plus-incomplete-zero");
+    std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    run_git(&root, &["init"])?;
+    run_git(&root, &["config", "user.email", "test@test.com"])?;
+    run_git(&root, &["config", "user.name", "Test"])?;
+    std::fs::write(root.join("README.md"), "quality receipt fixture\n")
+        .map_err(|error| error.to_string())?;
+    run_git(&root, &["add", "README.md"])?;
+    run_git(&root, &["commit", "-m", "candidate"])?;
+    for known in [0, 2] {
+        let summary = serde_json::json!({
+            "schema_version": "0.1",
+            "format": "repo-exposure-summary-json",
+            "basis": "canonical_actionable_gap",
+            "metadata": {"head": "unrelated-source-head", "root": "other-repository"},
+            "metrics": {
+                "unsuppressed_exposure_gaps": known,
+                "suppressed_exposure_gaps": 0,
+                "raw_seams": 8,
+                "grip_class": {"weakly_gripped": 5}
+            },
+            "reason_breakdown": {"gap_state": {"static_limitation": 6}},
+            "top_files": [],
+            // Unrecognized claims cannot promote this legacy input contract.
+            "qualification": {"complete": true, "zero_unresolved": true}
+        });
+        std::fs::write(root.join("summary.json"), summary.to_string())
+            .map_err(|error| error.to_string())?;
+        let composed = run_command(
+            env!("CARGO_BIN_EXE_ripr"),
+            Some(&root),
+            &["plus", "--repo-exposure-summary", "summary.json"],
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(
+            composed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&composed.stderr)
+        );
+        let receipt: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join("target/ripr/reports/ripr-plus.json"))
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(receipt["status"], "indeterminate", "{receipt}");
+        assert!(receipt["unresolved"].is_null(), "{receipt}");
+        assert_eq!(receipt["known_actionable_unresolved"], known, "{receipt}");
+        assert_eq!(receipt["zero_unresolved_established"], false, "{receipt}");
+        assert!(
+            receipt["head"].is_null(),
+            "receipt must not bind unrelated evidence to HEAD: {receipt}"
+        );
+        assert_eq!(receipt["candidate_binding"], "not_established", "{receipt}");
+        let checked = run_command(
+            env!("CARGO_BIN_EXE_ripr"),
+            Some(&root),
+            &["plus", "--repo-exposure-summary", "summary.json", "--check"],
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(checked.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&checked.stderr).contains("zero is not established"));
+    }
+    let qualified = ripr::app::qualify_legacy_ripr_plus_receipt(serde_json::json!({
+        "status": "pass", "unresolved": 0, "head": "old-head", "warnings": []
+    }))?;
+    assert_eq!(
+        ripr::app::qualify_legacy_ripr_plus_receipt(qualified.clone())?,
+        qualified
+    );
+    assert_eq!(
+        ripr::app::qualify_legacy_ripr_plus_receipt(serde_json::json!({
+            "status": "pass", "unresolved": 0, "warnings": "malformed"
+        }))
+        .err()
+        .as_deref(),
+        Some("RIPR+ receipt warnings must be an array")
+    );
+    let ledger = include_str!(
+        "../../../fixtures/first_successful_pr/empty-diff/inputs/reports/gap-decision-ledger.json"
+    );
+    std::fs::write(root.join("ledger.json"), ledger).map_err(|error| error.to_string())?;
+    for (flag, file) in [
+        ("--gap-ledger", "ledger.json"),
+        ("--repo-exposure-summary", "broken.json"),
+    ] {
+        std::fs::write(root.join("broken.json"), "{broken").map_err(|error| error.to_string())?;
+        // A stale successful artifact must be replaced even on invalid input.
+        std::fs::write(
+            root.join("target/ripr/reports/ripr-plus.json"),
+            r#"{"status":"pass","unresolved":0,"head":"stale"}"#,
+        )
+        .map_err(|error| error.to_string())?;
+        let output = run_command(
+            env!("CARGO_BIN_EXE_ripr"),
+            Some(&root),
+            &["plus", flag, file, "--check"],
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(output.status.code(), Some(2));
+        let receipt: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join("target/ripr/reports/ripr-plus.json"))
+                .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(receipt["status"], "indeterminate");
+        assert!(receipt["head"].is_null() && receipt["unresolved"].is_null());
+        assert_eq!(receipt["zero_unresolved_established"], false);
+        let markdown = std::fs::read_to_string(root.join("target/ripr/reports/ripr-plus.md"))
+            .map_err(|error| error.to_string())?;
+        assert!(markdown.contains("| Unresolved | N/A"));
+        assert!(!markdown.contains("| Unresolved | 0 |"));
+    }
+    std::fs::remove_dir_all(root).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 /// Build a real producer packet for a verify route and return (root, packet).
 ///
 /// The packet comes from `ripr agent packet --gap-ledger`, the canonical
