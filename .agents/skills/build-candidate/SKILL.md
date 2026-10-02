@@ -67,7 +67,7 @@ Local commits and test runs are useful unpublished candidate evidence, not lande
 
 Choose reversible in-scope implementations from evidence. Routine commit/push/PR/review repair/protected merge is already inside an authorized delivery goal. Ask only at an actual scope, destructive-action, exposure, settings, release-authorization or non-derivable product boundary. Do not create rival candidates, reservation files, overlap maps or sibling monitoring.
 
-After a durable merge/closure handoff, remove only lane-created worktrees, branches and temporary residue. Preserve retained proof and unrelated work.
+After a durable merge/closure handoff, apply the [bounded storage closeout](../../../docs/PR_AUTOMATION.md#bounded-local-storage-and-proof-retention) procedure to lane-created worktrees, branches and temporary residue. Return each exact resource as `released`, `retained with reason`, or `awaiting owner verification` before removal. Releasing ownership alone is not deletion authority. Preserve retained and unknown resources, required proof and unrelated work.
 
 # Valid exits
 

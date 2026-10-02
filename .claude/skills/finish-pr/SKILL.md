@@ -62,7 +62,7 @@ Routine publication and convergence inside the selected repository claim—push 
 14. Merge ordinary `ripr-swarm` development PRs with the repository's protected squash method. Exact history-preserving source-integration transactions are a separate controlled path and follow their governing issue instead of this rule.
 15. After merge, verify `main`, update issue acceptance, parent state, generated evidence, and any residual work. A merged PR means implementation landed; it does not by itself complete the parent issue, release phase, or high-level goal.
 16. After deliberate closure or supersession, record the winning candidate and preserved residual work.
-17. Remove only the lane-created worktree, stale local branch, and temporary residue after the merged or closed disposition is durable.
+17. Close out every lane-created worktree and generated resource using [bounded storage closeout](../../../docs/PR_AUTOMATION.md#bounded-local-storage-and-proof-retention). Return each exact resource as released, retained with a concrete consumer/evidence reason, or awaiting owner verification. Preserve required proof and unique work; use the already-authorized recoverable handling for confirmed inactive residue instead of leaving every previous executable expanded indefinitely. A terminal PR disposition alone is not resource-release evidence.
 
 # Release-scope law
 

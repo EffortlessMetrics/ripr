@@ -25,6 +25,8 @@ Identify the actual shell, host/target platform, repository remote, root, worktr
 
 One writer owns the candidate worktree at a time. A delegated writer receives the claim, input identity, write boundary, non-goals, proof and handback; the root does not edit concurrently. Reviewers read committed objects or create their own detached inspection worktree. Preserve pre-existing changes and never move another writer's HEAD.
 
+Before allocating a worktree, starting a build, or freezing an executable, apply the [bounded storage closeout](../../../docs/PR_AUTOMATION.md#bounded-local-storage-and-proof-retention) procedure. The existing root/task owns each exact resource, its peak-growth budget, required witnesses and planned disposition before generation. Include frozen copies and restoration staging in the budget; a Cargo build budget alone does not cover them. Release or recoverably archive no-longer-needed outputs from completed candidates before admitting the next batch. This is root-owned admission using existing tooling, not a new registry or an automatic cleanup claim.
+
 Bind background commands to retained task/session handles, candidate identities and logs. A process-name filter, quiet interval or stale report does not establish failure or orphaned work. Read the native exit and terminal report, not stderr noise or a success-looking line alone. Serialize Cargo operations that share a worktree, target lock or memory bottleneck. Do not kill unrelated processes. The parent goal may advance another ready claim on a separate worker/worktree while this candidate waits.
 
 # Procedure
@@ -65,7 +67,7 @@ Local commits and test runs are useful unpublished candidate evidence, not lande
 
 Choose reversible in-scope implementations from evidence. Routine commit/push/PR/review repair/protected merge is already inside an authorized delivery goal. Ask only at an actual scope, destructive-action, exposure, settings, release-authorization or non-derivable product boundary. Do not create rival candidates, reservation files, overlap maps or sibling monitoring.
 
-After a durable merge/closure handoff, remove only lane-created worktrees, branches and temporary residue. Preserve retained proof and unrelated work.
+After a durable merge/closure handoff, apply the [bounded storage closeout](../../../docs/PR_AUTOMATION.md#bounded-local-storage-and-proof-retention) procedure to lane-created worktrees, branches and temporary residue. Return each exact resource as `released`, `retained with reason`, or `awaiting owner verification` before removal. Releasing ownership alone is not deletion authority. Preserve retained and unknown resources, required proof and unrelated work.
 
 # Valid exits
 
