@@ -18,6 +18,7 @@ fn reveal_evidence(
         probe,
         &probe.expression,
         related_tests,
+        &[],
         &|_, _| false,
         &|_, _| false,
         &|_, _| false,
@@ -28,6 +29,7 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
     probe: &Probe,
     analysis_expression: &str,
     related_tests: &[(&TestSummary, RelationReason)],
+    owner_local_bindings: &[String],
     same_name_import_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     cross_package_name_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     owner_return_pin: &dyn Fn(&TestSummary, &OracleFact) -> bool,
@@ -52,6 +54,7 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
         probe,
         analysis_expression,
         related_tests,
+        owner_local_bindings,
         same_name_import_defeats,
         cross_package_name_defeats,
         owner_return_pin,
@@ -218,12 +221,21 @@ fn analyze_related_assertions(
     probe: &Probe,
     analysis_expression: &str,
     related_tests: &[(&TestSummary, RelationReason)],
+    owner_local_bindings: &[String],
     same_name_import_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     cross_package_name_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     owner_return_pin: &dyn Fn(&TestSummary, &OracleFact) -> bool,
 ) -> RevealAssertionAnalysis {
     let probe_tokens = if is_effect_family(&probe.family) {
+        // An effect target rooted at a binding the owner itself introduces
+        // (`let table = ..; table.validate()?;`) names a value no test can
+        // hold: a test's same-named local is a different binding, so the
+        // shared name is coincidence, not observation of the effect. The
+        // field and method tokens of the target still confirm.
         effect_target_tokens(analysis_expression)
+            .into_iter()
+            .filter(|token| !owner_local_bindings.contains(token))
+            .collect()
     } else {
         extract_identifier_tokens(analysis_expression)
     };
@@ -493,6 +505,33 @@ fn error_path_variant_token(expression: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Whether an assertion observes an error at all: a typed error oracle, a
+/// guarded `Result` match, or an identifier that names an error or a panic
+/// (`Err`, `ParseError`, `unwrap_err`, `is_err`, `err`, `should_panic`).
+/// Deliberately lenient: it only decides whether a token overlap may count
+/// as observing a changed error path, never whether the oracle is strong.
+fn assertion_observes_error(assertion: &OracleFact) -> bool {
+    if matches!(
+        assertion.kind,
+        OracleKind::ExactErrorVariant | OracleKind::BroadError | OracleKind::GuardedResultMatch
+    ) {
+        return true;
+    }
+    // Split raw identifiers here: the shared token extractor drops `Err`
+    // and `is_err` as assertion noise, and they are exactly the signal.
+    assertion
+        .text
+        .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
+        .any(|token| {
+            let lower = token.to_ascii_lowercase();
+            lower.ends_with("error")
+                || lower.contains("panic")
+                || lower
+                    .split('_')
+                    .any(|segment| segment == "err" || segment == "error")
+        })
 }
 
 /// Probe-side matching inputs shared by every assertion of one probe
@@ -1286,6 +1325,12 @@ fn assertion_matches_probe_detail_with_literals(
                     }))
     } else if wrapper_seam {
         // A #3700 wrapper error seam stays unconfirmable: see above.
+        false
+    } else if matches!(family, ProbeFamily::ErrorPath) && !assertion_observes_error(assertion) {
+        // A changed error path (`reader.read(buf)?`, `return Err(..)`) is
+        // visible to a test only as an error. An assertion that never
+        // touches an error (`assert_eq!(reader.len(), 10)`) cannot observe
+        // it, however many identifiers it shares with the changed line.
         false
     } else if matches!(assertion.kind, OracleKind::GuardedResultMatch)
         && error_construction_variant.is_some()
@@ -2362,6 +2407,109 @@ mod tests {
                     ));
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// A changed `?` propagation is visible only as an error. A success-value
+    /// assertion that shares the reader's name (ripgrep `line_buffer.rs`
+    /// `rdr.read(..)?` vs a test's `rdr.bstr()`) must not confirm it; an
+    /// error-observing assertion over the same name still does.
+    #[test]
+    fn error_path_is_confirmed_only_by_an_error_observing_assertion() -> Result<(), String> {
+        let probe = probe(ProbeFamily::ErrorPath, "let n = rdr.read(&mut buf)?;");
+        let success = test_with_assertions(
+            "reads_everything",
+            vec![oracle(
+                "assert_eq!(rdr.len(), 10);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_, discriminate, _) =
+            reveal_evidence(&probe, &[(&success, RelationReason::DirectOwnerCall)]);
+        if discriminate.state != StageState::Weak {
+            return Err(format!(
+                "success-value assertion confirmed an error path: {discriminate:?}"
+            ));
+        }
+        for text in [
+            "assert!(matches!(rdr.read(&mut buf), Err(_)));",
+            "assert_eq!(read_all(rdr).unwrap_err().kind(), Other);",
+            "assert_eq!(rdr.last_error(), Some(ReadError::Closed));",
+        ] {
+            let failing = test_with_assertions(
+                "reports_read_error",
+                vec![oracle(text, OracleKind::ExactValue, OracleStrength::Strong)],
+            );
+            let (_, discriminate, _) =
+                reveal_evidence(&probe, &[(&failing, RelationReason::DirectOwnerCall)]);
+            if discriminate.state != StageState::Yes {
+                return Err(format!(
+                    "error-observing assertion `{text}` lost confirmation: {discriminate:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// A deleted call on a binding the owner introduces (`let table = ..;
+    /// table.validate()?;`, regex `dfa.accels.validate()?`) is not observed by
+    /// a test's same-named local. A parameter receiver (`cache.insert(..)` on
+    /// `cache: &mut Cache`) and the target's method token still confirm.
+    #[test]
+    fn effect_target_rooted_at_an_owner_local_needs_more_than_the_local_name() -> Result<(), String>
+    {
+        let owner_locals = vec!["table".to_string()];
+        let reveal = |probe: &Probe, test: &TestSummary| {
+            reveal_evidence_with_expression(
+                probe,
+                &probe.expression,
+                &[(test, RelationReason::DirectOwnerCall)],
+                &owner_locals,
+                &|_, _| false,
+                &|_, _| false,
+                &|_, _| false,
+            )
+            .1
+        };
+        let deletion = probe(ProbeFamily::CallDeletion, "table.validate()?;");
+        let same_name = test_with_assertions(
+            "keeps_rows",
+            vec![oracle(
+                "assert_eq!(table.total(), 3);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        let discriminate = reveal(&deletion, &same_name);
+        if discriminate.state != StageState::Weak {
+            return Err(format!(
+                "owner-local name confirmed a deleted call: {discriminate:?}"
+            ));
+        }
+        let names_method = test_with_assertions(
+            "validates",
+            vec![oracle(
+                "assert_eq!(table.validate(), Ok(()));",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        if reveal(&deletion, &names_method).state != StageState::Yes {
+            return Err("the target's method token must still confirm".to_string());
+        }
+        let parameter = probe(ProbeFamily::CallDeletion, "cache.insert(\"k\", value);");
+        let parameter_observer = test_with_assertions(
+            "stores",
+            vec![oracle(
+                "assert_eq!(cache.inserted, vec![1]);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+        );
+        if reveal(&parameter, &parameter_observer).state != StageState::Yes {
+            return Err("a receiver that is not an owner local must still confirm".to_string());
         }
         Ok(())
     }
@@ -4101,6 +4249,7 @@ return Err(\"typed pin\".into());
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_test, callee| file_imports_foreign_callee_name(test_source, callee, &crate_names),
             &|_, _| false,
             &|_, _| false,
@@ -4146,6 +4295,7 @@ return Err(\"typed pin\".into());
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_, callee| file_imports_foreign_callee_name(without_import, callee, &own_crate_names),
             &|_, _| false,
             &|_, _| false,
@@ -4160,6 +4310,7 @@ return Err(\"typed pin\".into());
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_, callee| {
                 file_imports_foreign_callee_name(own_crate_import, callee, &own_crate_names)
             },
@@ -4197,6 +4348,7 @@ return Err(\"typed pin\".into());
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_, callee| file_imports_foreign_callee_name(aliased_import, callee, &crate_names),
             &|_, _| false,
             &|_, _| false,
@@ -4234,6 +4386,7 @@ return Err(\"typed pin\".into());
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_test, callee| file_imports_foreign_callee_name(test_source, callee, &crate_names),
             &|_, _| false,
             &|_, _| false,
@@ -4396,6 +4549,7 @@ return Err(\"typed pin\".into());
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_, _| false,
             &|_, _| true,
             &|_, _| false,
@@ -4415,6 +4569,7 @@ return Err(\"typed pin\".into());
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_, _| false,
             &|_, _| false,
             &|_, _| false,
@@ -4997,6 +5152,7 @@ return Err(\"typed pin\".into());
             &probe,
             "Err(ParseError::SiblingVariant)",
             &[(&test, RelationReason::DirectOwnerCall)],
+            &[],
             &|_, _| false,
             &|_, _| false,
             &|_, _| false,

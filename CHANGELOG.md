@@ -114,6 +114,17 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Rust: a changed `?` error path no longer reads `exposed` because a
+  success-value assertion shares a variable name with it. ripgrep's
+  `rdr.read(buf)?` was credited to a test asserting `rdr.bstr()`, and the
+  `?` → `unwrap_or(0)` mutant survives the suite. An `error_path` probe is now
+  confirmed only by an assertion that observes an error. A deleted call on a
+  binding the changed function introduces (regex `dfa.accels.validate()?`,
+  whose deletion survives the suite) is no longer confirmed by a test's
+  same-named local; field, method and parameter names still confirm. Both
+  read `weakly_exposed` now.
+- Rust: a `pub(crate) struct Name<'a> {` line is no longer probed as a call
+  deletion and reported `no_static_path`.
 - A changed source file that is not in the working tree (sparse checkout
   or a local delete) is now a named `changed_file_absent_from_worktree`
   limitation and a partial analysis outcome. Before, `ripr check` treated
@@ -121,8 +132,6 @@ are scoped or reviewed.
   reported `scoped production files: 0/0` with no disclosure. Probes for
   that file are withheld. The repair is to check the file out or disable
   sparse checkout for it.
-- Changes in languages ripr does not analyze (Go, Java, C, C++, shell and
-  others) are no longer called non-source files. A Go-only diff reported
 - Rust: a test that pins the changed owner's whole return value now
   confirms a changed `return_value` expression, including through a method
   call. `assert_eq!(a.try_get_int(3), Ok(-1))` on the tokio-rs/bytes

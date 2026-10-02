@@ -276,6 +276,7 @@ fn is_assertion_macro(text: &str) -> bool {
 fn has_call_shape(text: &str) -> bool {
     !is_constant_declaration(text)
         && !is_tuple_type_declaration(text)
+        && !parens_are_only_visibility(text)
         && text.contains('(')
         && text.contains(')')
         && !is_function_signature(text)
@@ -284,6 +285,13 @@ fn has_call_shape(text: &str) -> bool {
         && !starts_with_binding_or_control(text)
         && !text.trim_end().ends_with(',')
         && call_prefix_is_named(text)
+}
+
+/// Whether the only parentheses on the line are a restricted visibility
+/// (`pub(crate) struct Holder<'a> {`, `pub(super) use a::b;`). The
+/// visibility is declaration syntax, so `pub` must not read as a callee.
+fn parens_are_only_visibility(text: &str) -> bool {
+    strip_pub_visibility(skip_outer_attributes(text.trim())).is_some_and(|rest| !rest.contains('('))
 }
 
 /// Tuple enum variants and tuple structs are declarations, not executable
@@ -645,6 +653,29 @@ fn is_constant_declaration(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restricted_visibility_parens_are_not_a_call() {
+        for line in [
+            "pub(crate) struct IgnoreRef<'a> {",
+            "pub(super) enum Mode {",
+            "#[derive(Clone)] pub(in crate::walk) struct Walk {",
+            "pub(crate) use self::walk::Walk;",
+            "pub(crate) mod dir;",
+        ] {
+            assert!(
+                !classify_changed_line(line).contains(&ProbeFamily::CallDeletion),
+                "`{line}` is a declaration, not a call"
+            );
+        }
+        for line in ["send_invoice(invoice)", "self.inner.parent.clone()"] {
+            let families = classify_changed_line(line);
+            assert!(
+                families.contains(&ProbeFamily::CallDeletion),
+                "`{line}` must stay a call: {families:?}"
+            );
+        }
+    }
 
     #[test]
     fn classify_changed_line_detects_core_probe_shapes() {
