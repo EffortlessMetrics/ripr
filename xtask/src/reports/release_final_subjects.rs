@@ -87,6 +87,12 @@ pub(crate) fn release_final_server_subjects(args: &[String]) -> Result<(), Strin
     let inventory_digest = packet
         .as_ref()
         .map(|value| sha256_bytes(value.inventory.as_bytes()));
+    let provenance_inputs_digest = packet
+        .as_ref()
+        .map(|value| sha256_bytes(value.provenance_inputs.as_bytes()));
+    let subject_checksums_digest = packet
+        .as_ref()
+        .map(|value| sha256_bytes(value.subject_checksums.as_bytes()));
     let mut expected_targets = release_server_target_set().to_vec();
     expected_targets.sort_unstable();
     let receipt = json!({
@@ -98,6 +104,8 @@ pub(crate) fn release_final_server_subjects(args: &[String]) -> Result<(), Strin
         "candidate_tree": options.candidate_tree,
         "product_version": options.version,
         "inventory_sha256": inventory_digest,
+        "provenance_inputs_sha256": provenance_inputs_digest,
+        "subject_checksums_sha256": subject_checksums_digest,
         "expected_targets": expected_targets,
         "observed_staging_files": observations,
         "failures": failures,
@@ -113,8 +121,14 @@ pub(crate) fn release_final_server_subjects(args: &[String]) -> Result<(), Strin
     let mut markdown = format!(
         "# Final server subject preparation\n\nDisposition: {disposition}\n\nProvenance verified: false\nRelease upload eligible: false\nPublication attempted: false\n\n"
     );
-    if let Some(digest) = inventory_digest {
-        markdown.push_str(&format!("Inventory SHA-256: `{digest}`\n\n"));
+    for (label, digest) in [
+        ("Inventory", inventory_digest),
+        ("Provenance inputs", provenance_inputs_digest),
+        ("Subject checksums", subject_checksums_digest),
+    ] {
+        if let Some(digest) = digest {
+            markdown.push_str(&format!("{label} SHA-256: `{digest}`\n\n"));
+        }
     }
     for failure in &failures {
         markdown.push_str(&format!("- {}\n", failure.replace(['\n', '\r'], " ")));
@@ -456,9 +470,9 @@ fn prepare_packet(options: &Options, snapshot: &Snapshot) -> Result<Packet, Stri
     let manifest_name = format!("ripr-server-manifest-v{}.json", options.version);
     let assembly_name = format!("ripr-server-assembly-v{}.receipt.json", options.version);
     for (name, bytes) in [
-        (&manifest_name, &accepted.manifest),
-        (&"SHA256SUMS".to_string(), &accepted.checksums),
-        (&assembly_name, &accepted.assembly_receipt),
+        (manifest_name.as_str(), accepted.manifest.as_str()),
+        ("SHA256SUMS", accepted.checksums.as_str()),
+        (assembly_name.as_str(), accepted.assembly_receipt.as_str()),
     ] {
         let file = snapshot
             .get(name)

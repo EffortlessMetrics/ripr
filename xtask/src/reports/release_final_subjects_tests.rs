@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 const VERSION: &str = "1.2.3";
 const REPOSITORY: &str = "EffortlessMetrics/ripr";
@@ -107,6 +108,13 @@ fn release_final_subject_inventory_command_uses_assembler_contract() -> Result<(
             let receipt = read_json(&root.join("prepared/final-server-subjects.receipt.json"))?;
             assert_eq!(receipt["disposition"], "rejected");
             assert_eq!(receipt["release_upload_eligible"], false);
+            for field in [
+                "inventory_sha256",
+                "provenance_inputs_sha256",
+                "subject_checksums_sha256",
+            ] {
+                assert_eq!(receipt.get(field), Some(&Value::Null), "{field}");
+            }
             return Ok(());
         }
         result?;
@@ -151,6 +159,44 @@ fn release_final_subject_inventory_command_uses_assembler_contract() -> Result<(
         assert!(request["action_identity"].is_null());
         assert_eq!(request["verification_observed"], false);
         assert_eq!(request["release_upload_eligible"], false);
+        let markdown = fs::read_to_string(root.join("prepared/final-server-subjects.receipt.md"))
+            .map_err(|error| error.to_string())?;
+        for (field, name, label) in [
+            (
+                "inventory_sha256",
+                "final-server-subjects.json",
+                "Inventory",
+            ),
+            (
+                "provenance_inputs_sha256",
+                "final-server-provenance-inputs.json",
+                "Provenance inputs",
+            ),
+            (
+                "subject_checksums_sha256",
+                "final-server-subjects.sha256",
+                "Subject checksums",
+            ),
+        ] {
+            let bytes =
+                fs::read(root.join("prepared").join(name)).map_err(|error| error.to_string())?;
+            assert!(!bytes.is_empty(), "{name} must contain prepared bytes");
+            let digest = format!("{:x}", Sha256::digest(&bytes));
+            assert_eq!(
+                receipt.get(field).and_then(Value::as_str),
+                Some(digest.as_str()),
+                "receipt must bind the exact raw bytes of {name}"
+            );
+            assert!(markdown.contains(&format!("{label} SHA-256: `{digest}`")));
+            let mut changed = bytes;
+            changed.push(b'\n');
+            let changed_digest = format!("{:x}", Sha256::digest(&changed));
+            assert_ne!(
+                receipt.get(field).and_then(Value::as_str),
+                Some(changed_digest.as_str()),
+                "the original receipt must not bind changed {name} bytes"
+            );
+        }
         Ok(())
     })
 }
@@ -207,11 +253,17 @@ mod inventory_controls {
                 return Err("expected final-subject rejection, got successful preparation".into());
             }
         };
-        assert!(error.contains(expected), "expected {expected}: {error}");
+        assert!(
+            error.contains(expected),
+            "expected rejection category: {expected}"
+        );
         let receipt = read_json(&root.join(output).join("final-server-subjects.receipt.json"))?;
         assert_eq!(receipt["disposition"], "rejected");
         assert_eq!(receipt["release_upload_eligible"], false);
         assert_eq!(receipt["provenance_verified"], false);
+        assert_eq!(receipt["attestation_attempted"], false);
+        assert_eq!(receipt["credential_requested"], false);
+        assert_eq!(receipt["publication_mutation_attempted"], false);
         assert!(
             receipt["failures"]
                 .as_array()
@@ -222,12 +274,17 @@ mod inventory_controls {
                 .as_array()
                 .is_some_and(|rows| !rows.is_empty())
         );
-        assert!(
-            !root
-                .join(output)
-                .join("final-server-subjects.json")
-                .exists()
-        );
+        for (field, name) in [
+            ("inventory_sha256", "final-server-subjects.json"),
+            (
+                "provenance_inputs_sha256",
+                "final-server-provenance-inputs.json",
+            ),
+            ("subject_checksums_sha256", "final-server-subjects.sha256"),
+        ] {
+            assert_eq!(receipt.get(field), Some(&Value::Null), "{field}");
+            assert!(!root.join(output).join(name).exists(), "{name}");
+        }
         assert!(
             root.join(output)
                 .join("final-server-subjects.receipt.md")

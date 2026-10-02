@@ -16274,7 +16274,9 @@ terminal-red state still retains all evidence produced before the stop.
   identity, and `verification_observed=false`
 - `ripr.release_final_server_subject_receipt.v1`: `inventoried | rejected`, expected
   source identity and targets, bounded per-file observations and failure reasons,
-  and an inventory digest only for successful preparation
+  and `inventory_sha256`, `provenance_inputs_sha256`, and
+  `subject_checksums_sha256` binding the exact raw bytes of all three preparation
+  files on success; all three fields are explicitly `null` on rejection
 
 All three objects retain `release_upload_eligible=false`. The receipt also
 retains `credential_requested=false`, `attestation_attempted=false`,

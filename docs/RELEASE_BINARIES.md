@@ -144,8 +144,13 @@ The fresh output contains `final-server-subjects.json`,
 `final-server-provenance-inputs.json`, `final-server-subjects.sha256`, and
 `final-server-subjects.receipt.{json,md}`. The external subject-checksum list
 includes the digest of the public `SHA256SUMS` bytes without modifying or making
-that public file self-referential. A rejected packet has only its diagnostic
-receipt, never a successful inventory from a prior generation.
+that public file self-referential. The machine receipt is installed last and
+binds the exact raw bytes of all three preparation files through
+`inventory_sha256`, `provenance_inputs_sha256`, and `subject_checksums_sha256`.
+A rejected packet has only its diagnostic receipt, with those digest fields
+explicitly `null` and no inventory, provenance-input, or subject-checksum file
+from a successful generation. These byte commitments provide no signing or
+publication authority.
 
 This is the inventory/rehearsal portion of #1502, which remains open. The next
 transition must select a reviewed full-SHA producer action, separately establish
