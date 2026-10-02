@@ -1,3 +1,6 @@
+mod bounded;
+pub(crate) use bounded::BoundedAgentBrief;
+
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
 use crate::analysis::{ClassifiedSeam, RepoSeam};
@@ -470,9 +473,9 @@ impl<'a> AgentBriefChangedScope<'a> {
     /// True when `classified` holds at least the requested number of
     /// selectable seams at the changed-line or changed-owner priority.
     /// An explicit seam id selects by id, so it never qualifies.
-    pub(crate) fn fills_selection(
+    pub(crate) fn fills_selection<'entry>(
         &self,
-        classified: &[ClassifiedSeam],
+        classified: impl IntoIterator<Item = &'entry ClassifiedSeam>,
         requested_max: usize,
         policy: AgentBriefPolicy<'_>,
     ) -> bool {
@@ -481,7 +484,7 @@ impl<'a> AgentBriefChangedScope<'a> {
         }
         let needed = normalize_requested_max(requested_max);
         classified
-            .iter()
+            .into_iter()
             .filter(|entry| agent_brief_omission_reason(entry, policy).is_none())
             .filter(|entry| {
                 why_now_for(entry, &self.working_set).is_some_and(|why_now| {
@@ -694,33 +697,29 @@ fn compare_selected(
     right: &AgentBriefSelectedSeam<'_>,
     policy: AgentBriefPolicy<'_>,
 ) -> Ordering {
-    why_now_sort_priority(&left.why_now)
-        .cmp(&why_now_sort_priority(&right.why_now))
+    compare_selected_parts(left.seam, &left.why_now, right.seam, &right.why_now, policy)
+}
+
+fn compare_selected_parts(
+    left: &ClassifiedSeam,
+    left_why: &AgentBriefWhyNow,
+    right: &ClassifiedSeam,
+    right_why: &AgentBriefWhyNow,
+    policy: AgentBriefPolicy<'_>,
+) -> Ordering {
+    why_now_sort_priority(left_why)
+        .cmp(&why_now_sort_priority(right_why))
         .then_with(|| {
-            severity_priority(policy.severity_for(left.seam.class))
-                .cmp(&severity_priority(policy.severity_for(right.seam.class)))
+            severity_priority(policy.severity_for(left.class))
+                .cmp(&severity_priority(policy.severity_for(right.class)))
         })
-        .then_with(|| grip_priority(left.seam.class).cmp(&grip_priority(right.seam.class)))
+        .then_with(|| grip_priority(left.class).cmp(&grip_priority(right.class)))
         .then_with(|| {
-            best_relation_confidence_priority(left.seam)
-                .cmp(&best_relation_confidence_priority(right.seam))
+            best_relation_confidence_priority(left).cmp(&best_relation_confidence_priority(right))
         })
-        .then_with(|| {
-            normalized_path(left.seam.seam.file()).cmp(&normalized_path(right.seam.seam.file()))
-        })
-        .then_with(|| {
-            left.seam
-                .seam
-                .display_line()
-                .cmp(&right.seam.seam.display_line())
-        })
-        .then_with(|| {
-            left.seam
-                .seam
-                .id()
-                .as_str()
-                .cmp(right.seam.seam.id().as_str())
-        })
+        .then_with(|| normalized_path(left.seam.file()).cmp(&normalized_path(right.seam.file())))
+        .then_with(|| left.seam.display_line().cmp(&right.seam.display_line()))
+        .then_with(|| left.seam.id().as_str().cmp(right.seam.id().as_str()))
 }
 
 fn why_now_sort_priority(why_now: &AgentBriefWhyNow) -> u8 {
@@ -886,7 +885,7 @@ mod tests {
         StageEvidence::new(state, Confidence::Medium, "test stage")
     }
 
-    fn classified(
+    pub(super) fn classified(
         file: &str,
         line: usize,
         owner: &str,
@@ -942,6 +941,129 @@ mod tests {
                 new_test_target: None,
             },
         }
+    }
+
+    #[test]
+    fn streamed_selection_matches_complete_ranking_and_omissions_across_windows()
+    -> Result<(), String> {
+        use crate::analysis::ScopedEvidenceConsumer;
+        let config = RiprConfig::default();
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
+        let entries = (0..97)
+            .map(|i| {
+                classified(
+                    "src/pricing.rs",
+                    i + 1,
+                    &format!("pricing::case_{i}"),
+                    "value > 10",
+                    match i % 7 {
+                        0 => SeamGripClass::WeaklyGripped,
+                        1 => SeamGripClass::Ungripped,
+                        2 => SeamGripClass::ActivationUnknown,
+                        3 => SeamGripClass::StronglyGripped,
+                        4 => SeamGripClass::Intentional,
+                        5 => SeamGripClass::Suppressed,
+                        _ => SeamGripClass::ReachableUnrevealed,
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let expected = select(&entries, &working_set, 10);
+        for width in [1, 7, 32, 33] {
+            let mut actual =
+                BoundedAgentBrief::new(&working_set, 10, AgentBriefPolicy::from_config(&config))?;
+            // First-stage ordering need not match inventory ordering.
+            let order = (0..entries.len()).rev().collect::<Vec<_>>();
+            for window in order.chunks(width) {
+                for &ordinal in window {
+                    actual.observe(ordinal, entries[ordinal].clone())?;
+                    assert!(actual.retained_payloads() <= 10);
+                }
+            }
+            let selected = actual.selection()?;
+            assert_eq!(selected_ids(&selected), selected_ids(&expected));
+            assert_eq!(selected.warnings, expected.warnings);
+            assert_eq!(
+                selected
+                    .top_seams
+                    .iter()
+                    .map(|s| &s.why_now)
+                    .collect::<Vec<_>>(),
+                expected
+                    .top_seams
+                    .iter()
+                    .map(|s| &s.why_now)
+                    .collect::<Vec<_>>()
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn streamed_first_stage_threshold_matches_full_selection_with_hidden_ties() -> Result<(), String>
+    {
+        use crate::analysis::ScopedEvidenceConsumer;
+        let config = RiprConfig::default();
+        let policy = AgentBriefPolicy::from_config(&config);
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            (1..=24)
+                .map(|line| AgentBriefLine::new("src/pricing.rs", line))
+                .collect(),
+        );
+        let scope = AgentBriefChangedScope::new(&working_set);
+        for visible in [9, 10, 11] {
+            let entries = (1..=24)
+                .map(|line| {
+                    classified(
+                        "src/pricing.rs",
+                        line,
+                        "pricing::same_owner",
+                        "n > 10",
+                        if line <= visible {
+                            SeamGripClass::WeaklyGripped
+                        } else {
+                            SeamGripClass::StronglyGripped
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+            let expected = scope.fills_selection(&entries, 10, policy);
+            assert_eq!(expected, visible >= 10);
+            let mut sink = BoundedAgentBrief::new(&working_set, 10, policy)?;
+            for (ordinal, entry) in entries.iter().enumerate().rev() {
+                sink.observe(ordinal, entry.clone())?;
+            }
+            assert_eq!(sink.first_stage_sufficient(), expected);
+            assert_eq!(
+                selected_ids(&sink.selection()?),
+                selected_ids(&select(&entries, &working_set, 10))
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn streamed_selection_rejects_duplicate_identity_across_windows() -> Result<(), String> {
+        let config = RiprConfig::default();
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
+        let entry = classified(
+            "src/pricing.rs",
+            1,
+            "pricing::a",
+            "value > 10",
+            SeamGripClass::WeaklyGripped,
+        );
+        let mut actual =
+            BoundedAgentBrief::new(&working_set, 10, AgentBriefPolicy::from_config(&config))?;
+        actual.observe(0, entry.clone())?;
+        assert_eq!(
+            actual.observe(32, entry).err().as_deref(),
+            Some("duplicate seam identity in streamed review evidence")
+        );
+        Ok(())
     }
 
     fn related_test(

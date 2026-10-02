@@ -287,6 +287,34 @@ any of these states as consumable success:
   (`proof_claim = false` is binding).
 - an empty artifact body presented as a successful scan.
 
+## Bounded review evidence retention (#4691)
+
+The Rust `review-comments` route evaluates full seam evidence in windows of
+32 seams by default. `RIPR_REVIEW_EVIDENCE_WINDOW_SIZE` accepts integers 1–256
+for bounded workload diagnosis; invalid values fail the run. The existing
+classifier, relation logic, ranking and omission policy remain authoritative.
+The route retains at most the requested top ten full classified payloads between
+windows. Hidden matching seams still contribute to the existing bounded named
+warnings and exact per-reason omission counts. Evaluation counts describe all
+considered seams, rather than only the retained display candidates.
+
+The full changed-owner first stage is evaluated before deciding whether it
+already supplies enough ranked guidance; otherwise the remaining stage is
+visited. Canonical inventory deduplication precedes partitioning. An unexpected
+repeated identity at the consumer boundary is refused rather than silently
+changing ranking or counts. Window cancellation and invalid configuration cannot
+produce a complete receipt or an all-clear from the partial selection.
+
+This bounds per-seam full-evidence retention, not total process memory. The
+workspace index, source facts, per-test facts, seam inventory, first/rest ordinal vectors and compact identity
+sets remain corpus-sized; one seam's full evidence can also be large. Index
+admission, reusable exact-subject analysis handoff and full downstream replay
+remain separate work in #4670/#4969, #4692 and #4693. The cooperative timeout
+checks window boundaries and existing inner checkpoints; it is not a hard
+allocator limit or a guarantee against one long parser/evidence operation.
+Existing captured-input semantics are preserved; this change does not add
+concurrent worktree mutation detection.
+
 ## Acceptance Examples
 
 ### Limited diff-first run consumed safely

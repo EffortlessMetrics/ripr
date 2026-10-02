@@ -1293,6 +1293,10 @@ are scoped or reviewed.
   follow-ups. Matching `.ripr/allow-attributes.txt` rows were dropped
   ([#3801](https://github.com/EffortlessMetrics/ripr-swarm/issues/3801)).
 
+- Review guidance: evaluate full seam evidence in bounded windows and retain
+  only the canonical top-ten full payloads between windows (#4691). Preserve
+  rankings, omission disclosure and evaluated/unevaluated counts; interrupted
+  windows remain incomplete. Whole-index and per-test facts remain corpus-sized.
 - PR review guidance retains unresolved headline-eligible recommendations
   when the nearby recommended test file changes. Test-file proximity no
   longer erases these cards; evidence limitations and output caps remain

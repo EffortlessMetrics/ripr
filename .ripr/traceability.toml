@@ -5444,9 +5444,19 @@ metrics = [
 id = "RIPR-SPEC-0070"
 name = "Downstream review consumer use case"
 spec = "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md"
-tests = []
+tests = [
+  "crates/ripr/tests/cli_smoke.rs::review_guidance_windows_preserve_output_and_bound_retained_payloads",
+  "crates/ripr/src/app/agent_brief.rs::tests::streamed_selection_matches_complete_ranking_and_omissions_across_windows",
+  "crates/ripr/src/app/agent_brief.rs::tests::streamed_selection_rejects_duplicate_identity_across_windows",
+  "crates/ripr/src/app/agent_brief.rs::tests::streamed_first_stage_threshold_matches_full_selection_with_hidden_ties",
+  "crates/ripr/src/app/agent_brief/bounded.rs::tests::late_hidden_scope_match_discards_fallback_and_counter_overflow_refuses",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::streamed_windows_preserve_full_evidence_and_refuse_boundary_cancellation",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/app/agent_brief/bounded.rs",
+  "crates/ripr/src/analysis/seam_inventory.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md",
 ]

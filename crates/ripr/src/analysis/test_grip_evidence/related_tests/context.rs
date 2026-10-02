@@ -146,6 +146,12 @@ impl CompactTest<'_> {
 }
 
 impl<'a> CompactGripContext<'a> {
+    pub(crate) fn clear_window_memos(&self) {
+        self.owner_named_cache.borrow_mut().clear();
+        self.same_module_cache.borrow_mut().clear();
+        self.parsed_sources.borrow_mut().clear();
+    }
+
     pub(crate) fn new(index: &'a RustIndex) -> Self {
         match Self::build(index, || Ok::<(), std::convert::Infallible>(())) {
             Ok(context) => context,

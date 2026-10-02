@@ -236,6 +236,14 @@ impl<'index> EvidencePass<'index> {
         Self { context }
     }
 
+    /// Drop memoized owner/AST detail at a window boundary. Immutable test
+    /// indexes and file-bounded scalar/line facts stay reusable.
+    pub(crate) fn clear_window_memos(&self) {
+        if let Some(context) = &self.context {
+            context.clear_window_memos();
+        }
+    }
+
     /// Evidence for `seams`, sorted by `seam_id`; empty when the context
     /// could not be built. Carries the same cancellation contract as
     /// [`evidence_for_seams`].

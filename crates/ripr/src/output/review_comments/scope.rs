@@ -54,7 +54,7 @@ impl ReviewCommentsAnalysisScope {
             total_rust_files: Some(inventory.total_rust_files),
             total_production_files: Some(inventory.total_production_files),
             production_files_considered: inventory.scoped_production_files.len(),
-            classified_seams_considered: inventory.classified.len(),
+            classified_seams_considered: inventory.classified_seams_considered,
             unevaluated_seams: inventory.unevaluated_seams,
             absent_changed_files: display_paths(&inventory.absent_changed_files),
             downstream_consumable: true,
