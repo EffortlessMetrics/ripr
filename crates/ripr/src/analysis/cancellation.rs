@@ -150,7 +150,21 @@ impl Drop for ContextGuard {
 }
 
 pub(crate) fn with_token<T>(token: &AnalysisCancellationToken, work: impl FnOnce() -> T) -> T {
-    let previous = CURRENT_TOKEN.with(|slot| slot.replace(Some(token.clone())));
+    with_optional_token(Some(token), work)
+}
+
+/// Capture the owning request before dispatching work to a different thread.
+pub(crate) fn current_token() -> Option<AnalysisCancellationToken> {
+    CURRENT_TOKEN.with(|slot| slot.borrow().clone())
+}
+
+/// Install exactly the captured context, including no token. Restoring the
+/// previous context prevents cancellation leaking between reused pool jobs.
+pub(crate) fn with_optional_token<T>(
+    token: Option<&AnalysisCancellationToken>,
+    work: impl FnOnce() -> T,
+) -> T {
+    let previous = CURRENT_TOKEN.with(|slot| slot.replace(token.cloned()));
     let _guard = ContextGuard(previous);
     work()
 }
@@ -185,6 +199,65 @@ pub(crate) fn is_cancellation_error(error: &str) -> bool {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn optional_worker_context_restores_after_unwind() -> Result<(), String> {
+        let outer = AnalysisCancellationToken::new();
+        outer.cancel(AnalysisAbortKind::Cancelled);
+        let inner = AnalysisCancellationToken::new();
+        let result = with_token(&outer, || {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                with_optional_token(Some(&inner), || {
+                    assert_eq!(current_token(), Some(inner.clone()));
+                    std::panic::resume_unwind(Box::new("intentional context restoration control"));
+                });
+            }))
+        });
+        assert_eq!(
+            result
+                .err()
+                .and_then(|payload| payload.downcast_ref::<&str>().copied()),
+            Some("intentional context restoration control")
+        );
+        assert_eq!(current_token(), None);
+        // Also verify restoration while the outer request is still installed.
+        with_token(&outer, || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                with_optional_token(None, || std::panic::resume_unwind(Box::new(7usize)))
+            }));
+            assert_eq!(
+                result
+                    .err()
+                    .and_then(|payload| payload.downcast_ref::<usize>().copied()),
+                Some(7)
+            );
+            assert_eq!(
+                checkpoint().err().as_deref(),
+                Some("analysis cancelled: Cancelled")
+            );
+        });
+        checkpoint()
+    }
+
+    #[test]
+    fn optional_worker_context_clears_and_restores_an_outer_request() -> Result<(), String> {
+        let token = AnalysisCancellationToken::new();
+        token.cancel(AnalysisAbortKind::Cancelled);
+        with_token(&token, || {
+            assert_eq!(current_token(), Some(token.clone()));
+            with_optional_token(None, || {
+                assert_eq!(current_token(), None);
+                checkpoint()
+            })?;
+            assert_eq!(
+                checkpoint().err().as_deref(),
+                Some("analysis cancelled: Cancelled")
+            );
+            Ok::<(), String>(())
+        })?;
+        assert_eq!(current_token(), None);
+        checkpoint()
+    }
 
     #[test]
     fn owned_budget_expires_and_default_token_has_no_deadline() -> Result<(), String> {

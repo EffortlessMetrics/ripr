@@ -25,20 +25,31 @@ pub fn build_index_with_test_harnesses(
     files: &[PathBuf],
     registrations: &[TestHarnessRegistration],
 ) -> Result<model::RustIndex, String> {
-    let mut index = build::build_index(root, files)?;
-    parameterized_tests::promote_explicit_test_case_functions(&mut index);
-    test_styles::normalize_index_test_styles(&mut index);
+    let mut index = index_phase("index_parse", || build::build_index(root, files))?;
+    index_phase("index_parameterized_tests", || {
+        parameterized_tests::promote_explicit_test_case_functions(&mut index);
+        Ok(())
+    })?;
+    index_phase("index_test_styles", || {
+        test_styles::normalize_index_test_styles(&mut index)
+    })?;
     // Composition runs strictly after the normalizer: the normalizer
     // recomputes every role from same-file text and would stomp composed
     // roles (#3533). Composed grants only ever upgrade `Production` to the
     // evidence-only `CfgTestModule`, never the reverse. The workspace root
     // anchors crate-root identity for default module resolution.
-    role_composition::compose_index_source_roles(&mut index, root);
+    index_phase("index_role_composition", || {
+        role_composition::compose_index_source_roles(&mut index, root);
+        Ok(())
+    })?;
     // Explicit harness registrations are the most specific authority, so
     // they run after composition and a composed generic grant can never
     // overwrite a registered subject's role (#3532). The workspace root
     // anchors the Cargo target metadata validation (#3608).
-    harness_registry::apply_registrations(&mut index, root, registrations);
+    index_phase("index_harness_registry", || {
+        harness_registry::apply_registrations(&mut index, root, registrations);
+        Ok(())
+    })?;
     Ok(index)
 }
 
@@ -47,17 +58,30 @@ pub(crate) fn build_index_from_loaded_files_with_cache_and_test_harnesses(
     files: &[(PathBuf, Vec<u8>)],
     registrations: &[TestHarnessRegistration],
 ) -> Result<build::CachedRustIndex, String> {
-    let mut cached = build::build_index_from_loaded_files_with_cache(root, files)?;
-    parameterized_tests::promote_explicit_test_case_functions(&mut cached.index);
-    test_styles::normalize_index_test_styles(&mut cached.index);
-    role_composition::compose_index_source_roles(&mut cached.index, root);
+    let mut cached = index_phase("index_cached_parse", || {
+        build::build_index_from_loaded_files_with_cache(root, files)
+    })?;
+    index_phase("index_parameterized_tests", || {
+        parameterized_tests::promote_explicit_test_case_functions(&mut cached.index);
+        Ok(())
+    })?;
+    index_phase("index_test_styles", || {
+        test_styles::normalize_index_test_styles(&mut cached.index)
+    })?;
+    index_phase("index_role_composition", || {
+        role_composition::compose_index_source_roles(&mut cached.index, root);
+        Ok(())
+    })?;
     // Explicit harness registrations are the most specific authority, so
     // they run after composition and a composed generic grant can never
     // overwrite a registered subject's role (#3532). The workspace root
     // anchors the Cargo target metadata validation (#3608); the verdict
     // is recomputed after cache retrieval, so a manifest edit re-validates
     // immediately.
-    harness_registry::apply_registrations(&mut cached.index, root, registrations);
+    index_phase("index_harness_registry", || {
+        harness_registry::apply_registrations(&mut cached.index, root, registrations);
+        Ok(())
+    })?;
     Ok(cached)
 }
 
@@ -80,3 +104,25 @@ pub use model::{
 pub(crate) use model::source_digest;
 #[cfg(test)]
 pub(crate) use model::{WorkspaceFileAuthority, WorkspaceRootAuthority};
+
+/// Phase tracing extends the existing opt-in latency stream; normal output is
+/// unchanged. A cancelled intermediate index is never returned as complete.
+fn index_phase<T>(name: &str, work: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    crate::analysis::cancellation::checkpoint()?;
+    let started = std::time::Instant::now();
+    let trace = std::env::var_os("RIPR_REPO_EXPOSURE_LATENCY_TRACE").is_some();
+    if trace {
+        eprintln!("ripr_repo_exposure_latency phase={name} status=start duration_ms=0");
+    }
+    let result = work();
+    if trace {
+        let status = if result.is_ok() { "finished" } else { "failed" };
+        eprintln!(
+            "ripr_repo_exposure_latency phase={name} status={status} duration_ms={}",
+            started.elapsed().as_millis()
+        );
+    }
+    let value = result?;
+    crate::analysis::cancellation::checkpoint()?;
+    Ok(value)
+}

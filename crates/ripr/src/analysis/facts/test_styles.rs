@@ -1,36 +1,37 @@
 use super::cfg_predicates;
 use super::{FileFacts, FunctionFact, FunctionSourceRole, RustIndex, TestFact};
+use crate::analysis::cancellation;
 use crate::analysis::extract::extract_assertions;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct FunctionKey {
-    file: PathBuf,
+struct FunctionKey<'a> {
+    file: &'a Path,
     start_line: usize,
     end_line: usize,
-    name: String,
-    body: String,
+    name: &'a str,
+    body: &'a str,
 }
 
-impl FunctionKey {
-    fn from_function(function: &FunctionFact) -> Self {
+impl<'a> FunctionKey<'a> {
+    fn from_function(function: &'a FunctionFact) -> Self {
         Self {
-            file: function.file.clone(),
+            file: &function.file,
             start_line: function.start_line,
             end_line: function.end_line,
-            name: function.name.clone(),
-            body: function.body.clone(),
+            name: &function.name,
+            body: &function.body,
         }
     }
 
-    fn from_test(test: &TestFact) -> Self {
+    fn from_test(test: &'a TestFact) -> Self {
         Self {
-            file: test.file.clone(),
+            file: &test.file,
             start_line: test.start_line,
             end_line: test.end_line,
-            name: test.name.clone(),
-            body: test.body.clone(),
+            name: &test.name,
+            body: &test.body,
         }
     }
 }
@@ -39,41 +40,50 @@ impl FunctionKey {
 /// attribute vocabulary. This runs immediately after index construction so
 /// every index consumer sees the same executable-test role regardless of
 /// which syntax producer handled the file.
-pub(super) fn normalize_index_test_styles(index: &mut RustIndex) {
+pub(super) fn normalize_index_test_styles(index: &mut RustIndex) -> Result<(), String> {
     for facts in index.files.values_mut() {
-        normalize_file_test_styles(facts);
+        cancellation::checkpoint()?;
+        normalize_file_test_styles(facts)?;
     }
 
+    // Per-file facts own the normalized tests. Drop the obsolete flat copy
+    // before rebuilding it; exact borrowed keys must not duplicate every body.
+    index.tests.clear();
     let mut role_by_function = BTreeMap::new();
     let mut test_by_function = BTreeMap::new();
     for facts in index.files.values() {
+        cancellation::checkpoint()?;
         for function in &facts.functions {
+            cancellation::checkpoint()?;
             role_by_function.insert(FunctionKey::from_function(function), function.source_role);
         }
         for test in &facts.tests {
-            test_by_function.insert(FunctionKey::from_test(test), test.clone());
+            cancellation::checkpoint()?;
+            test_by_function.insert(FunctionKey::from_test(test), test);
         }
     }
 
     for function in &mut index.functions {
+        cancellation::checkpoint()?;
         if let Some(role) = role_by_function.get(&FunctionKey::from_function(function)) {
             function.source_role = *role;
         }
     }
 
-    let mut normalized_tests = Vec::new();
     for function in &index.functions {
+        cancellation::checkpoint()?;
         if !function.source_role.is_evidence_role() {
             continue;
         }
         if let Some(test) = test_by_function.remove(&FunctionKey::from_function(function)) {
-            normalized_tests.push(test);
+            index.tests.push((*test).clone());
         }
     }
-    index.tests = normalized_tests;
+    cancellation::checkpoint()?;
+    Ok(())
 }
 
-fn normalize_file_test_styles(facts: &mut FileFacts) {
+fn normalize_file_test_styles(facts: &mut FileFacts) -> Result<(), String> {
     let mut existing_tests = std::mem::take(&mut facts.tests)
         .into_iter()
         .map(|test| ((test.start_line, test.name.clone()), test))
@@ -84,6 +94,7 @@ fn normalize_file_test_styles(facts: &mut FileFacts) {
     let mut normalized_tests = Vec::new();
 
     for function in &mut facts.functions {
+        cancellation::checkpoint()?;
         let key = (function.start_line, function.name.clone());
         let existing_test = existing_tests.remove(&key);
         let has_test_attribute = match lexical_lines.as_deref() {
@@ -129,6 +140,7 @@ fn normalize_file_test_styles(facts: &mut FileFacts) {
     }
 
     facts.tests = normalized_tests;
+    Ok(())
 }
 
 fn test_fact_from_function(function: &FunctionFact) -> TestFact {

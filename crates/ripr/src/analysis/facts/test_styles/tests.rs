@@ -156,7 +156,7 @@ mod tests {
 "#,
     )?;
 
-    normalize_file_test_styles(&mut facts);
+    normalize_file_test_styles(&mut facts)?;
 
     assert_eq!(
         test_names(&facts),
@@ -246,7 +246,7 @@ mod any_tests {
 "#,
     )?;
 
-    normalize_file_test_styles(&mut facts);
+    normalize_file_test_styles(&mut facts)?;
 
     for helper in ["test_second_helper", "test_first_helper"] {
         assert!(
@@ -281,7 +281,7 @@ mod any_tests {
 }
 
 #[test]
-fn normalizer_preserves_producer_roles_for_shared_authority_spellings() {
+fn normalizer_preserves_producer_roles_for_shared_authority_spellings() -> Result<(), String> {
     // #3530: the preservation walk consumes the shared cfg-predicate
     // authority, so whitespace variants and multi-line attribute spellings
     // the producer accepts keep their evidence role, while a non-test cfg
@@ -316,7 +316,7 @@ mod production_gate {
         ..FileFacts::default()
     };
 
-    normalize_file_test_styles(&mut facts);
+    normalize_file_test_styles(&mut facts)?;
 
     for name in ["whitespace_helper", "multiline_helper"] {
         assert!(
@@ -340,6 +340,7 @@ mod production_gate {
             .is_some_and(|function| !function.source_role.is_evidence_role()),
         "a cfg gate without a test requirement must fail closed"
     );
+    Ok(())
 }
 
 fn cfg_function_fact(name: &str, start_line: usize) -> FunctionFact {
@@ -396,7 +397,7 @@ fn conditional_test_attribute() {}
 "#,
     )?;
 
-    normalize_file_test_styles(&mut facts);
+    normalize_file_test_styles(&mut facts)?;
 
     assert_eq!(
         test_names(&facts),
@@ -759,5 +760,198 @@ fn integration_test() {
             .map_err(std::io::Error::other)?,
         serde_json::json!("parameterized_expansion")
     );
+    Ok(())
+}
+
+#[test]
+fn normalization_identity_keys_borrow_body_storage() -> Result<(), String> {
+    let facts = RaRustSyntaxAdapter.summarize_file(
+        Path::new("src/ownership.rs"),
+        "#[test] fn pins_value() { assert_eq!(1 + 2, 3); }",
+    )?;
+    let function = facts.functions.first().ok_or("fixture function")?;
+    let test = facts.tests.first().ok_or("fixture test")?;
+    assert!(!function.body.is_empty());
+    assert!(!test.body.is_empty());
+    let key = FunctionKey::from_function(function);
+    assert_eq!(key.body.as_ptr(), function.body.as_ptr());
+    assert_eq!(key.name.as_ptr(), function.name.as_ptr());
+    let key = FunctionKey::from_test(test);
+    assert_eq!(key.body.as_ptr(), test.body.as_ptr());
+    assert_eq!(key.name.as_ptr(), test.name.as_ptr());
+    Ok(())
+}
+
+fn normalization_fixture_index() -> Result<RustIndex, String> {
+    let mut index = RustIndex::default();
+    for (file, source) in [
+        (
+            "src/a.rs",
+            "pub fn value() -> i32 { 3 }\n#[test] fn pins() { assert_eq!(value(), 3); }\n#[cfg(test)] mod tests { fn helper() -> i32 { 4 } }",
+        ),
+        (
+            "src/b.rs",
+            "#[tokio::test] async fn asynchronous() { assert!(true); }\n#[tokio::test_helper] fn lookalike() {}\n#[test_case(1)] fn parameterized(n: i32) { assert_eq!(n, 1); }",
+        ),
+    ] {
+        let facts = RaRustSyntaxAdapter.summarize_file(Path::new(file), source)?;
+        index.functions.extend(facts.functions.clone());
+        index.tests.extend(facts.tests.clone());
+        index.files.insert(PathBuf::from(file), facts);
+    }
+    Ok(index)
+}
+
+/// Frozen pre-repair aggregation oracle. The per-file role authority is shared;
+/// only the formerly owning whole-index maps are reproduced here.
+fn legacy_normalization_aggregate(index: &mut RustIndex) -> Result<(), String> {
+    for facts in index.files.values_mut() {
+        normalize_file_test_styles(facts)?;
+    }
+    let mut roles = BTreeMap::new();
+    let mut tests = BTreeMap::new();
+    for facts in index.files.values() {
+        for function in &facts.functions {
+            roles.insert(
+                (
+                    function.file.clone(),
+                    function.start_line,
+                    function.end_line,
+                    function.name.clone(),
+                    function.body.clone(),
+                ),
+                function.source_role,
+            );
+        }
+        for test in &facts.tests {
+            tests.insert(
+                (
+                    test.file.clone(),
+                    test.start_line,
+                    test.end_line,
+                    test.name.clone(),
+                    test.body.clone(),
+                ),
+                test.clone(),
+            );
+        }
+    }
+    for function in &mut index.functions {
+        let key = (
+            function.file.clone(),
+            function.start_line,
+            function.end_line,
+            function.name.clone(),
+            function.body.clone(),
+        );
+        if let Some(role) = roles.get(&key) {
+            function.source_role = *role;
+        }
+    }
+    let mut normalized = Vec::new();
+    for function in &index.functions {
+        if !function.source_role.is_evidence_role() {
+            continue;
+        }
+        let key = (
+            function.file.clone(),
+            function.start_line,
+            function.end_line,
+            function.name.clone(),
+            function.body.clone(),
+        );
+        if let Some(test) = tests.remove(&key) {
+            normalized.push(test);
+        }
+    }
+    index.tests = normalized;
+    Ok(())
+}
+
+#[test]
+fn borrowed_normalization_matches_owned_reference_with_duplicate_coordinates() -> Result<(), String>
+{
+    let mut actual = normalization_fixture_index()?;
+    let original = actual
+        .functions
+        .iter()
+        .find(|function| function.name == "pins")
+        .ok_or("pins function")?
+        .clone();
+    let mut other_body = original.clone();
+    other_body
+        .body
+        .push_str(" /* distinct body at identical coordinates */");
+    // A prefix-only lookup would incorrectly promote this unmatched body.
+    // Keep a distinct role so equality cannot pass merely because the first
+    // original function already consumed the sole matching TestFact.
+    other_body.source_role = FunctionSourceRole::Production;
+    actual.functions.push(other_body);
+    actual.functions.push(original);
+    let mut expected = actual.clone();
+    legacy_normalization_aggregate(&mut expected)?;
+    normalize_index_test_styles(&mut actual)?;
+    assert_eq!(
+        serde_json::to_value(&actual).map_err(|error| error.to_string())?,
+        serde_json::to_value(&expected).map_err(|error| error.to_string())?
+    );
+    assert!(!actual.tests.is_empty());
+    Ok(())
+}
+
+#[test]
+fn normalization_observes_cancellation_inside_function_walk() -> Result<(), String> {
+    use crate::analysis::cancellation::{AnalysisCancellationToken, with_token};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::{Duration, Instant};
+    let mut index = normalization_fixture_index()?;
+    // If the first file's inner checkpoints are missing, the later global
+    // checkpoints can still return the same error/count after touching file b.
+    // This sentinel must remain untouched when cancellation happens in file a.
+    index
+        .files
+        .get_mut(Path::new("src/b.rs"))
+        .and_then(|facts| {
+            facts
+                .functions
+                .iter_mut()
+                .find(|function| function.name == "lookalike")
+        })
+        .ok_or("second-file sentinel")?
+        .source_role = FunctionSourceRole::CfgTestModule;
+    let start = Instant::now();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = Arc::clone(&calls);
+    let token = AnalysisCancellationToken::with_budget(
+        start,
+        Duration::from_secs(1),
+        Arc::new(move || {
+            if observed.fetch_add(1, Ordering::SeqCst) >= 3 {
+                start + Duration::from_secs(1)
+            } else {
+                start
+            }
+        }),
+    );
+    let result = with_token(&token, || normalize_index_test_styles(&mut index));
+    assert_eq!(
+        result.err().as_deref(),
+        Some("analysis cancelled: DeadlineExceeded")
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 4);
+    let untouched = index
+        .files
+        .get(Path::new("src/b.rs"))
+        .and_then(|facts| {
+            facts
+                .functions
+                .iter()
+                .find(|function| function.name == "lookalike")
+        })
+        .ok_or("retained second-file sentinel")?;
+    assert_eq!(untouched.source_role, FunctionSourceRole::CfgTestModule);
     Ok(())
 }

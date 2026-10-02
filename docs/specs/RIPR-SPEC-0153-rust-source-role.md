@@ -199,6 +199,20 @@ hashes the `ripr.toml` text, so no generation bump is required for it.
 The #3532 harness registry joined the same identity as FindingAffecting
 (2 → 3, canonical length-prefixed encoding pinned byte-for-byte).
 
+### Index normalization ownership
+
+Whole-index source-role normalization borrows its exact identity keys
+(file, start/end lines, name and full body) and per-file test references.
+It does not allocate another owned body for every lookup key or retain an
+obsolete flat test payload while rebuilding the normalized flat view. Full
+body equality remains part of identity; this is not a hash-only or weakened
+match. The per-file and global test/function order and role semantics remain
+identical to the previous owning-map implementation.
+
+Cancellation in these walks refuses the partially normalized index. This
+reduces transient duplication; complete corpus/source facts still scale with
+input size and no constant-memory or reduced-analysis-coverage claim is made.
+
 ## Required Evidence
 
 - A changed Cargo bench seeds no production probes but stays in
