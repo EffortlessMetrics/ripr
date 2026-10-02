@@ -3,6 +3,25 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-09-29: Absent worktree files are not `no_static_path` (#4586)
+
+Rust discovery walks the disk. A changed file that is in the diff but not
+on disk (sparse checkout, local delete) drops out of the index. Probes
+are still built from the diff text, find no owner, and used to classify
+as a complete `no_static_path`. That is a false-clean: a test may reach
+the owner; ripr could not see the file.
+
+Name `changed_file_absent_from_worktree`, withhold the probe (or emit
+`static_unknown`), and keep the outcome partial. Do not read git objects
+as a silent substitute for the missing worktree file in this lane.
+review-comments must list the dropped path the same way; `0/0` scoped
+production files without that disclosure is the same false-clean.
+
+Presence is not `root.join(diff_path)` alone. Git diffs keep the
+repository-relative path while `--root` is often a crate subdirectory;
+treat a suffix as the same file only when the stripped prefix is a
+trailing component sequence of `--root`. A sibling crate's `src/lib.rs`
+must not satisfy another crate's missing path.
 ## 2026-09-29: Same-crate trait methods are not unique just because they share a crate (#4760)
 
 `body_contains_owner_call` and `tests_by_call_name` match `size_hint(` including

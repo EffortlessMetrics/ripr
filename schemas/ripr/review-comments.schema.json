@@ -515,6 +515,7 @@
             "diff_scope_oversized",
             "language_adapter_unavailable",
             "language_scope_unsupported",
+            "changed_file_absent_from_worktree",
             "producer_timeout",
             "producer_failure"
           ]
@@ -654,6 +655,15 @@
           "description": "Present only when seams on changed lines and in changed owner functions filled every review slot and the rest of the scope was not evaluated.",
           "type": "integer",
           "minimum": 1
+        },
+        "absent_changed_files": {
+          "description": "Changed source files named by the diff that are not regular files in the working tree (sparse checkout or local delete). Present only when at least one such file was dropped.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "downstream_consumable": {
           "type": "boolean"

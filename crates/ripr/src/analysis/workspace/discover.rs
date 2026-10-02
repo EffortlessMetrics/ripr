@@ -13,6 +13,90 @@ const DEFAULT_IGNORED_DIRS: &[&str] = &[
     "node_modules",
 ];
 
+/// Changed source files that are not regular files in the working tree.
+///
+/// Sparse checkout and local deletes drop these from disk walks, so the
+/// owner never enters the index. Callers must disclose that as a named
+/// limitation instead of classifying the missing owner as
+/// `no_static_path` (#4586). Non-source paths (docs, manifests) are
+/// ignored: they are not analysis subjects.
+pub(crate) fn changed_source_files_absent_from_worktree<'a>(
+    root: &Path,
+    changed_paths: impl IntoIterator<Item = &'a Path>,
+) -> Vec<PathBuf> {
+    let mut absent = Vec::new();
+    for path in changed_paths {
+        if route(path).is_none() {
+            continue;
+        }
+        if worktree_contains_regular_source_file(root, path) {
+            continue;
+        }
+        absent.push(PathBuf::from(super::classify::normalize_path(path)));
+    }
+    absent.sort();
+    absent.dedup();
+    absent
+}
+
+fn worktree_contains_regular_source_file(root: &Path, relative: &Path) -> bool {
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return false;
+    }
+    if is_regular_file(&root.join(relative)) {
+        return true;
+    }
+    // Git diffs keep the repository-relative path. `--root` is often a
+    // crate subdirectory, so `root.join(diff_path)` misses a file that
+    // is on disk as the matching suffix (`src/lib.rs` under
+    // `examples/sample` while the diff names
+    // `crates/ripr/examples/sample/src/lib.rs`). Accept a suffix only
+    // when the stripped prefix is a trailing component sequence of
+    // `root`; a sibling crate's `src/lib.rs` must not count.
+    let normalized = super::classify::normalize_path(relative);
+    let root_norm = super::classify::normalize_path(root);
+    for (prefix, suffix) in path_prefix_suffix_pairs(&normalized) {
+        // A one-component prefix (`src`) matching only the root
+        // basename would map `src/lib.rs` onto a root-level `lib.rs`
+        // when `--root` itself is named `src`. Require a multi-segment
+        // crate/repo prefix, as in `crates/ripr/examples/sample`.
+        if !prefix.contains('/') || !root_ends_with_prefix(&root_norm, prefix) {
+            continue;
+        }
+        if is_regular_file(&root.join(suffix)) {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_regular_file(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|meta| meta.is_file())
+}
+
+fn path_prefix_suffix_pairs(normalized: &str) -> impl Iterator<Item = (&str, &str)> {
+    let bytes = normalized.as_bytes();
+    (0..normalized.len()).filter_map(move |idx| {
+        if idx == 0 || bytes.get(idx) != Some(&b'/') {
+            return None;
+        }
+        let prefix = normalized.get(..idx)?;
+        let suffix = normalized.get(idx + 1..)?;
+        if prefix.is_empty() || suffix.is_empty() {
+            return None;
+        }
+        Some((prefix, suffix))
+    })
+}
+
+fn root_ends_with_prefix(root_norm: &str, prefix: &str) -> bool {
+    root_norm == prefix || root_norm.ends_with(&format!("/{prefix}"))
+}
+
 pub fn discover_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     let adapter = RustAdapter;
@@ -252,6 +336,92 @@ mod tests {
             result,
             vec![(LanguageId::Perl, PathBuf::from("lib/My/App.pm"))]
         );
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    /// #4586: a changed source path that is not a regular file on disk
+    /// is named; docs and a present sibling stay out of the list.
+    #[test]
+    fn absent_worktree_source_is_named_and_present_or_nonsource_paths_are_not()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!("ripr-absent-worktree-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("src"))?;
+        fs::write(dir.join("src/lib.rs"), "pub fn one() -> i32 { 1 }\n")?;
+        fs::write(dir.join("README.md"), "docs\n")?;
+
+        let absent = changed_source_files_absent_from_worktree(
+            &dir,
+            [
+                Path::new("src/lib.rs"),
+                Path::new("src/missing.rs"),
+                Path::new("README.md"),
+            ],
+        );
+        assert_eq!(absent, vec![PathBuf::from("src/missing.rs")]);
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    /// #4586: a repo-relative diff path against a crate subdirectory
+    /// root is the same on-disk file, not an absent worktree file.
+    /// A sibling crate prefix must not borrow this crate's `src/lib.rs`.
+    #[test]
+    fn repo_relative_diff_path_under_crate_root_is_present()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-absent-worktree-prefix-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let crate_root = dir.join("crates/ripr/examples/sample");
+        fs::create_dir_all(crate_root.join("src"))?;
+        fs::write(crate_root.join("src/lib.rs"), "pub fn one() -> i32 { 1 }\n")?;
+
+        let absent = changed_source_files_absent_from_worktree(
+            &crate_root,
+            [
+                Path::new("crates/ripr/examples/sample/src/lib.rs"),
+                Path::new("crates/other/src/lib.rs"),
+                Path::new("crates/ripr/examples/sample/src/missing.rs"),
+            ],
+        );
+        assert_eq!(
+            absent,
+            vec![
+                PathBuf::from("crates/other/src/lib.rs"),
+                PathBuf::from("crates/ripr/examples/sample/src/missing.rs"),
+            ]
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    /// #4586: a `--root` whose last component is `src` must not treat a
+    /// root-level `lib.rs` as the missing nested `src/lib.rs`.
+    #[test]
+    fn single_component_root_basename_does_not_mask_nested_absent_file()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-absent-worktree-src-root-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let crate_root = dir.join("src");
+        fs::create_dir_all(&crate_root)?;
+        fs::write(crate_root.join("lib.rs"), "pub fn one() -> i32 { 1 }\n")?;
+
+        let absent =
+            changed_source_files_absent_from_worktree(&crate_root, [Path::new("src/lib.rs")]);
+        assert_eq!(absent, vec![PathBuf::from("src/lib.rs")]);
+
         let _ = fs::remove_dir_all(&dir);
         Ok(())
     }

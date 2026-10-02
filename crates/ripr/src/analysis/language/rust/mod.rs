@@ -30,6 +30,10 @@ use crate::analysis::committed_source::{self, CommittedSourceRead};
 use crate::analysis::diagnostic_origin::{OriginBuildContext, origins_for_rust_findings};
 use crate::analysis::facts::RustIndex;
 use crate::analysis::path_glob::{path_glob_matches, segment_glob_matches};
+use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+    AnalysisStage,
+};
 use crate::config::OraclePolicy;
 use crate::domain::{
     ExposureClass, Finding, Probe, SourceCurrentness, StaticLimitKind, StopReason,
@@ -1281,6 +1285,24 @@ impl RustAdapter {
         rust_index::apply_oracle_policy(&mut index, oracle_policy);
         let mut related_test_candidate_index = None;
 
+        let rust_changed_for_presence = analyzable_changed_files
+            .iter()
+            .filter(|file| self.accepts_path(&file.path))
+            .filter(|file| {
+                partial_scope
+                    .as_ref()
+                    .is_none_or(|scope| scope.selects(&file.path))
+            })
+            .map(|file| file.path.as_path());
+        let absent_changed_files = workspace::changed_source_files_absent_from_worktree(
+            &options.root,
+            rust_changed_for_presence,
+        );
+        let absent_changed_set = absent_changed_files
+            .iter()
+            .map(|path| workspace::normalize_path(path))
+            .collect::<BTreeSet<_>>();
+
         let mut findings = Vec::new();
         let mut parser_spans = BTreeMap::new();
         let mut changed_rust_files = 0usize;
@@ -1374,6 +1396,12 @@ impl RustAdapter {
             // the LSP scope partition so the editor keeps what this loop
             // reports.
             if !workspace::seeds_diff_probes(&changed.path, &source_role_context) {
+                continue;
+            }
+            // #4586: a changed file the working tree does not contain has no
+            // owner in the disk-built index. Building a probe from the diff
+            // text alone yields a false `no_static_path`.
+            if absent_changed_set.contains(&workspace::normalize_path(&changed.path)) {
                 continue;
             }
             // Cooperative cancellation (#1972): check once per changed file
@@ -1481,6 +1509,7 @@ impl RustAdapter {
                 .count(),
             limitations: limitations
                 .into_iter()
+                .chain(limitations_for_absent_changed_files(&absent_changed_files)?)
                 .chain(unreached_module_limitations(
                     changed_rust_paths.iter().filter(|path| {
                         layout_seeded_rust_paths.contains(*path)
@@ -1499,6 +1528,30 @@ impl RustAdapter {
             rust_diagnostic_origins,
         })
     }
+}
+
+fn limitations_for_absent_changed_files(
+    paths: &[std::path::PathBuf],
+) -> Result<Vec<AnalysisLimitation>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            let display = workspace::normalize_path(path);
+            AnalysisLimitation::new(
+                AnalysisLimitationKind::ChangedFileAbsentFromWorktree,
+                AnalysisStage::LanguageAdapter,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::Retry,
+                    "Check out the missing file, or disable sparse checkout for it, then re-run the analysis.",
+                )?,
+            )
+            .with_path(&display)?
+            .with_affected_items(1)?
+            .with_detail(
+                "changed file is absent from the working tree (sparse checkout or local delete); probes for this file were withheld",
+            )
+        })
+        .collect()
 }
 
 /// Bounds a path to `max_chars` for a recovery sentence, whose length is
@@ -1867,7 +1920,8 @@ mod tests {
         diff_changed_rust_line_limit_from_env, diff_identity_from_changed_files,
         diff_index_file_limit_from_env, enforce_changed_rust_line_limit,
         enforce_repo_index_file_limit, is_binary_source_path, is_cargo_binary_invocation,
-        is_generated_rust_file, is_generated_rust_file_with_patterns, macro_reach_limit_kind,
+        is_generated_rust_file, is_generated_rust_file_with_patterns,
+        limitations_for_absent_changed_files, macro_reach_limit_kind,
         partial_diff_budgets_from_env, partition_canonical_form,
         replace_witnessed_no_path_infection_summary, repo_index_file_limit_from_env,
         select_partial_diff_partition, select_partial_diff_partition_with_identity, sha256_hex,
@@ -1991,6 +2045,231 @@ mod tests {
                 })
             }),
             "changed test must remain indexed as related evidence: {:?}",
+            result.findings
+        );
+        Ok(())
+    }
+
+    fn pricing_threshold_diff() -> &'static str {
+        "diff --git a/src/lib.rs b/src/lib.rs\n\
+         --- a/src/lib.rs\n\
+         +++ b/src/lib.rs\n\
+         @@ -1,3 +1,3 @@\n\
+          pub fn discount(total: i32) -> i32 {\n\
+         -    if total > 100 { total / 10 } else { 0 }\n\
+         +    if total >= 100 { total / 10 } else { 0 }\n\
+          }\n"
+    }
+
+    fn write_pricing_crate(root: &Path, include_lib: bool) -> Result<(), String> {
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='pricing'\nversion='0.1.0'\nedition='2024'\n",
+        )?;
+        write(
+            &root.join("tests/t.rs"),
+            "#[test]\nfn high_total_gets_discount() {\n    assert_eq!(pricing::discount(200), 20);\n}\n",
+        )?;
+        if include_lib {
+            write(
+                &root.join("src/lib.rs"),
+                "pub fn discount(total: i32) -> i32 {\n    if total >= 100 { total / 10 } else { 0 }\n}\n",
+            )?;
+        }
+        Ok(())
+    }
+
+    /// #4586: a changed production file missing from the working tree
+    /// (sparse checkout / local delete) must not become a clean
+    /// `no_static_path`. The adapter withholds probes and names the file.
+    #[test]
+    fn analyze_diff_discloses_changed_file_absent_from_worktree() -> Result<(), String> {
+        let root = temp_root("absent-worktree-lib")?;
+        write_pricing_crate(&root, false)?;
+        let changed_files = diff::parse_unified_diff(pricing_threshold_diff());
+        assert_eq!(
+            changed_files.len(),
+            1,
+            "fixture must parse the changed production file"
+        );
+
+        let result = RustAdapter.analyze_diff(
+            &diff_options(root, AnalysisMode::Draft),
+            &OraclePolicy::default(),
+            &changed_files,
+        )?;
+
+        assert_eq!(
+            result.changed_files, 1,
+            "the absent file is still a changed Rust subject"
+        );
+        assert!(
+            result.findings.iter().all(|finding| {
+                finding.class != ExposureClass::NoStaticPath
+                    && finding.class != ExposureClass::StaticUnknown
+            }),
+            "probes for the absent file must be withheld, not classified: {:?}",
+            result.findings
+        );
+        let limitation = result
+            .limitations
+            .iter()
+            .find(|limitation| {
+                limitation.kind
+                    == crate::analysis_outcome::AnalysisLimitationKind::ChangedFileAbsentFromWorktree
+            })
+            .ok_or_else(|| {
+                format!(
+                    "expected changed_file_absent_from_worktree, got {:?}",
+                    result.limitations
+                )
+            })?;
+        assert_eq!(limitation.path.as_deref(), Some("src/lib.rs"));
+        assert_eq!(limitation.affected_items, Some(1));
+        let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+        assert!(
+            detail.contains("absent from the working tree"),
+            "detail must name the limitation, got {detail:?}"
+        );
+        assert!(
+            limitation.recovery.detail.contains("sparse checkout")
+                && limitation.recovery.detail.contains("Check out"),
+            "recovery must tell the operator to restore the file: {}",
+            limitation.recovery.detail
+        );
+        Ok(())
+    }
+
+    /// #4586: a deep absent path must still produce the typed limitation.
+    /// Embedding the path in `bounded_detail` would exceed 512 characters
+    /// and abort the run.
+    #[test]
+    fn absent_file_limitation_survives_a_detail_over_budget_path() -> Result<(), String> {
+        let deep = format!("src/{}missing.rs", "deep/".repeat(90));
+        assert!(
+            format!(
+                "changed file `{deep}` is absent from the working tree (sparse checkout or local delete); probes for this file were withheld"
+            )
+            .chars()
+            .count()
+                > crate::analysis_outcome::MAX_ANALYSIS_LIMITATION_DETAIL_CHARS,
+            "fixture must exceed the detail budget when the path is interpolated"
+        );
+        let limitations = limitations_for_absent_changed_files(&[std::path::PathBuf::from(&deep)])?;
+        assert_eq!(limitations.len(), 1);
+        assert_eq!(limitations[0].path.as_deref(), Some(deep.as_str()));
+        let detail = limitations[0].bounded_detail.as_deref().unwrap_or_default();
+        assert!(
+            detail.chars().count() <= crate::analysis_outcome::MAX_ANALYSIS_LIMITATION_DETAIL_CHARS,
+            "detail must stay bounded, got {} chars",
+            detail.chars().count()
+        );
+        assert!(
+            detail.contains("absent from the working tree"),
+            "detail must still name the limitation: {detail}"
+        );
+        Ok(())
+    }
+
+    /// #4586 negative: the same change on disk is ordinary analysis,
+    /// not an absent-worktree limitation.
+    #[test]
+    fn analyze_diff_does_not_name_absent_worktree_when_the_file_is_present() -> Result<(), String> {
+        let root = temp_root("present-worktree-lib")?;
+        write_pricing_crate(&root, true)?;
+        let result = RustAdapter.analyze_diff(
+            &diff_options(root, AnalysisMode::Draft),
+            &OraclePolicy::default(),
+            &diff::parse_unified_diff(pricing_threshold_diff()),
+        )?;
+        assert!(
+            result.limitations.iter().all(|limitation| {
+                limitation.kind
+                    != crate::analysis_outcome::AnalysisLimitationKind::ChangedFileAbsentFromWorktree
+            }),
+            "present file must not emit the absent-worktree limitation: {:?}",
+            result.limitations
+        );
+        assert!(
+            !result.findings.is_empty(),
+            "present changed production file must still produce findings"
+        );
+        Ok(())
+    }
+
+    /// #4586 mixed: analyze the file that is on disk; disclose only the
+    /// sibling that is not.
+    #[test]
+    fn analyze_diff_keeps_present_files_when_a_sibling_is_absent() -> Result<(), String> {
+        let root = temp_root("mixed-absent-sibling")?;
+        write_pricing_crate(&root, true)?;
+        write(
+            &root.join("src/present.rs"),
+            "pub fn present(flag: bool) -> bool {\n    if flag { true } else { false }\n}\n",
+        )?;
+        let changed_files = diff::parse_unified_diff(
+            "diff --git a/src/lib.rs b/src/lib.rs\n\
+             --- a/src/lib.rs\n\
+             +++ b/src/lib.rs\n\
+             @@ -1,3 +1,3 @@\n\
+              pub fn discount(total: i32) -> i32 {\n\
+             -    if total > 100 { total / 10 } else { 0 }\n\
+             +    if total >= 100 { total / 10 } else { 0 }\n\
+              }\n\
+             diff --git a/src/missing.rs b/src/missing.rs\n\
+             --- a/src/missing.rs\n\
+             +++ b/src/missing.rs\n\
+             @@ -1,3 +1,3 @@\n\
+              pub fn extra(flag: bool) -> bool {\n\
+             -    if flag { true } else { false }\n\
+             +    if flag { false } else { true }\n\
+              }\n",
+        );
+        let result = RustAdapter.analyze_diff(
+            &diff_options(root, AnalysisMode::Draft),
+            &OraclePolicy::default(),
+            &changed_files,
+        )?;
+        assert_eq!(result.changed_files, 2);
+        assert_eq!(
+            result
+                .limitations
+                .iter()
+                .filter(|limitation| {
+                    limitation.kind
+                        == crate::analysis_outcome::AnalysisLimitationKind::ChangedFileAbsentFromWorktree
+                })
+                .count(),
+            1
+        );
+        assert_eq!(
+            result.limitations[0].path.as_deref(),
+            Some("src/missing.rs")
+        );
+        assert!(
+            result.findings.iter().any(|finding| {
+                finding
+                    .probe
+                    .location
+                    .file
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .ends_with("src/lib.rs")
+            }),
+            "the present sibling must still be classified: {:?}",
+            result.findings
+        );
+        assert!(
+            result.findings.iter().all(|finding| {
+                !finding
+                    .probe
+                    .location
+                    .file
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .ends_with("src/missing.rs")
+            }),
+            "the absent sibling must not receive a probe: {:?}",
             result.findings
         );
         Ok(())

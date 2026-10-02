@@ -7233,6 +7233,12 @@ id = "RIPR-SPEC-0147"
 name = "typed analysis outcome projection"
 spec = "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md"
 tests = [
+  "crates/ripr/src/analysis/pipeline.rs::tests::changed_file_absent_from_worktree_is_a_partial_limitation",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::analyze_diff_discloses_changed_file_absent_from_worktree",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::analyze_diff_does_not_name_absent_worktree_when_the_file_is_present",
+  "crates/ripr/src/analysis/language/rust/mod.rs::tests::analyze_diff_keeps_present_files_when_a_sibling_is_absent",
+  "crates/ripr/src/analysis/workspace/discover.rs::tests::absent_worktree_source_is_named_and_present_or_nonsource_paths_are_not",
+  "crates/ripr/src/cli/commands.rs::tests::review_comments_discloses_changed_file_absent_from_worktree",
   "crates/ripr/src/analysis/diff/parse/stream/tests.rs::unfinished_declared_hunks_are_malformed_at_eof_and_boundaries",
   "crates/ripr/src/analysis/diff/parse/stream/tests.rs::declared_hunk_counts_reject_excess_body_and_invalid_numbers",
   "crates/ripr/src/analysis/diff/parse/stream/tests.rs::declared_ranges_reject_line_zero_and_unusable_end_coordinates",

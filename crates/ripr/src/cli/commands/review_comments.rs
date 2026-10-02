@@ -488,6 +488,17 @@ fn review_comments_with_diff_loader_at(
         output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
         policy,
     );
+    if !scoped_inventory.absent_changed_files.is_empty() {
+        let listed = scoped_inventory
+            .absent_changed_files
+            .iter()
+            .map(|path| path.display().to_string().replace('\\', "/"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        selection.warnings.push(format!(
+            "changed_file_absent_from_worktree: {listed} is absent from the working tree (sparse checkout or local delete); check out the file, or disable sparse checkout for it"
+        ));
+    }
     if scoped_inventory.unevaluated_seams > 0 {
         // The cap count covers only evaluated seams, so it is a floor.
         for warning in &mut selection.warnings {
@@ -1659,6 +1670,74 @@ mod tests {
             return Err(format!("unexpected gap-ledger timeout receipt: {receipt}"));
         }
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
+    }
+
+    /// #4586: review-comments must name a changed production file that
+    /// the working tree does not contain. `0/0` scoped production files
+    /// without that disclosure is the false-clean the issue forbids.
+    #[test]
+    fn review_comments_discloses_changed_file_absent_from_worktree() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-absent-worktree");
+        std::fs::create_dir_all(root.join("tests"))
+            .map_err(|err| format!("create tests: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"review_comments_absent\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        std::fs::write(
+            root.join("tests/t.rs"),
+            "#[test]\nfn high_total_gets_discount() {\n    assert_eq!(pricing::discount(200), 20);\n}\n",
+        )
+        .map_err(|err| format!("write tests/t.rs: {err}"))?;
+
+        let out = root.join("target/ripr/review/comments.json");
+        let root_arg = root.display().to_string();
+        let out_arg = out.display().to_string();
+        review_comments_with_diff_loader(
+            &args(&[
+                "--root", &root_arg, "--base", "HEAD~1", "--head", "HEAD", "--out", &out_arg,
+            ]),
+            |_diff_root, _base, _head| {
+                Ok("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -2 +2 @@\n-    if total > 100 { total / 10 } else { 0 }\n+    if total >= 100 { total / 10 } else { 0 }\n".to_string())
+            },
+        )?;
+
+        let rendered_json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read review comments JSON: {err}"))?;
+        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
+            .map_err(|err| format!("read review comments Markdown: {err}"))?;
+        let value: serde_json::Value = serde_json::from_str(&rendered_json)
+            .map_err(|err| format!("parse review comments JSON: {err}"))?;
+        let absent = value["analysis_scope"]["absent_changed_files"]
+            .as_array()
+            .ok_or_else(|| {
+                format!(
+                    "analysis_scope.absent_changed_files must be present, got {}",
+                    value["analysis_scope"]
+                )
+            })?;
+        assert!(
+            absent
+                .iter()
+                .any(|path| path.as_str() == Some("src/lib.rs")),
+            "dropped file must be listed, got {absent:?}"
+        );
+        assert!(
+            rendered_md.contains("changed_file_absent_from_worktree"),
+            "markdown must name the limitation:\n{rendered_md}"
+        );
+        assert!(
+            rendered_md.contains("src/lib.rs"),
+            "markdown must name the dropped file:\n{rendered_md}"
+        );
+        assert!(
+            rendered_md.contains("sparse checkout") || rendered_md.contains("Check out"),
+            "markdown must carry the repair hint:\n{rendered_md}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
         Ok(())
     }
 }

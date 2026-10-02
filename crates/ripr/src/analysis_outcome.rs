@@ -76,6 +76,7 @@ impl AnalysisLimitationKind {
             Self::DiffScopeOversized => "diff_scope_oversized",
             Self::LanguageAdapterUnavailable => "language_adapter_unavailable",
             Self::LanguageScopeUnsupported => "language_scope_unsupported",
+            Self::ChangedFileAbsentFromWorktree => "changed_file_absent_from_worktree",
             Self::ProducerTimeout => "producer_timeout",
             Self::ProducerFailure => "producer_failure",
             Self::EolOnlyChurn => "eol_only_churn",
@@ -91,6 +92,7 @@ impl AnalysisLimitationKind {
             Self::DiffScopeOversized => "the diff is larger than the configured limit",
             Self::LanguageAdapterUnavailable => "no analyzer is available for a changed language",
             Self::LanguageScopeUnsupported => "some changed files were not analyzed",
+            Self::ChangedFileAbsentFromWorktree => "a changed file is absent from the working tree",
             Self::ProducerTimeout => "the analysis ran out of time",
             Self::ProducerFailure => "part of the analysis failed",
             Self::EolOnlyChurn => "some files changed only in line endings",
@@ -170,6 +172,7 @@ pub(crate) enum AnalysisLimitationKind {
     DiffScopeOversized,
     LanguageAdapterUnavailable,
     LanguageScopeUnsupported,
+    ChangedFileAbsentFromWorktree,
     ProducerTimeout,
     ProducerFailure,
     /// #4952: a file's changed lines pair identical before/after text at the
@@ -745,6 +748,10 @@ mod tests {
             (
                 AnalysisLimitationKind::LanguageScopeUnsupported,
                 "language_scope_unsupported",
+            ),
+            (
+                AnalysisLimitationKind::ChangedFileAbsentFromWorktree,
+                "changed_file_absent_from_worktree",
             ),
             (AnalysisLimitationKind::ProducerTimeout, "producer_timeout"),
             (AnalysisLimitationKind::ProducerFailure, "producer_failure"),

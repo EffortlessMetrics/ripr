@@ -114,6 +114,15 @@ are scoped or reviewed.
 
 ### Fixed
 
+- A changed source file that is not in the working tree (sparse checkout
+  or a local delete) is now a named `changed_file_absent_from_worktree`
+  limitation and a partial analysis outcome. Before, `ripr check` treated
+  the missing owner as a clean `no_static_path`, and `ripr review-comments`
+  reported `scoped production files: 0/0` with no disclosure. Probes for
+  that file are withheld. The repair is to check the file out or disable
+  sparse checkout for it.
+- Changes in languages ripr does not analyze (Go, Java, C, C++, shell and
+  others) are no longer called non-source files. A Go-only diff reported
 - Rust: a test that pins the changed owner's whole return value now
   confirms a changed `return_value` expression, including through a method
   call. `assert_eq!(a.try_get_int(3), Ok(-1))` on the tokio-rs/bytes

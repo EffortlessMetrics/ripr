@@ -29,6 +29,8 @@ pub(crate) struct ReviewCommentsAnalysisScope {
     /// Scoped seams skipped because changed-line seams filled every
     /// review slot; zero when the whole scope was classified.
     pub(crate) unevaluated_seams: usize,
+    /// Changed source files named by the diff that are not on disk (#4586).
+    pub(crate) absent_changed_files: Vec<String>,
     pub(crate) downstream_consumable: bool,
     pub(crate) limitation: &'static str,
     pub(crate) repair_route: &'static str,
@@ -54,6 +56,7 @@ impl ReviewCommentsAnalysisScope {
             production_files_considered: inventory.scoped_production_files.len(),
             classified_seams_considered: inventory.classified.len(),
             unevaluated_seams: inventory.unevaluated_seams,
+            absent_changed_files: display_paths(&inventory.absent_changed_files),
             downstream_consumable: true,
             limitation: "review_comments_diff_scope_only",
             repair_route: "analysis/diff-scoped-large-repo-review-fast-path",
@@ -80,6 +83,7 @@ impl ReviewCommentsAnalysisScope {
             production_files_considered: working_set.files.len(),
             classified_seams_considered,
             unevaluated_seams: 0,
+            absent_changed_files: Vec::new(),
             downstream_consumable: true,
             limitation: "review_comments_working_set_scope_only",
             repair_route: "analysis/review-comments-working-set",
@@ -125,6 +129,7 @@ impl ReviewCommentsAnalysisScope {
             production_files_considered: anchor_files.len(),
             classified_seams_considered: records.len(),
             unevaluated_seams: 0,
+            absent_changed_files: Vec::new(),
             downstream_consumable: true,
             limitation: "review_comments_gap_ledger_artifact_scope_only",
             repair_route: "reports/gap-decision-ledger",
