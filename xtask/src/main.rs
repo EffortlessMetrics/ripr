@@ -1628,10 +1628,20 @@ fn vscode_test_e2e() -> Result<(), String> {
     };
     vscode_compile()?;
     let workspace_path = vscode_test_workspace_path()?;
-    let mut envs = vec![(
-        "RIPR_TEST_WORKSPACE_PATH",
-        path_to_utf8(&workspace_path, "VS Code test workspace path")?,
-    )];
+    // The catalog contract test must invoke this owning Rust producer, not
+    // rebuild through nested Cargo or discover an unrelated binary on PATH.
+    let xtask_path = std::env::current_exe()
+        .map_err(|err| format!("failed to resolve VS Code test catalog producer: {err}"))?;
+    let mut envs = vec![
+        (
+            "RIPR_TEST_WORKSPACE_PATH",
+            path_to_utf8(&workspace_path, "VS Code test workspace path")?,
+        ),
+        (
+            "RIPR_TEST_XTASK_PATH",
+            path_to_utf8(&xtask_path, "VS Code test catalog producer path")?,
+        ),
+    ];
     if provided_server.is_none() {
         let packaged = packaged_server.as_ref().ok_or_else(|| {
             "default VS Code test server was not staged through the release archive shape"
