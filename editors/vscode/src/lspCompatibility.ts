@@ -413,7 +413,8 @@ function validateInitializeResult(result: unknown): Omit<LspCompatibilityEvidenc
   }
   const capabilities = result.capabilities;
   const missing: string[] = [];
-  if (!supportedTextDocumentSync(capabilities.textDocumentSync)) missing.push('textDocumentSync');
+  const syncFailure = unsupportedTextDocumentSyncReason(capabilities.textDocumentSync);
+  if (syncFailure) missing.push(`textDocumentSync (${syncFailure})`);
   if (!providerEnabled(capabilities.hoverProvider)) missing.push('hoverProvider');
   if (!providerEnabled(capabilities.codeActionProvider)) missing.push('codeActionProvider');
   if (!providerEnabled(capabilities.diagnosticProvider)) missing.push('diagnosticProvider');
@@ -475,18 +476,39 @@ function validateInitializeResult(result: unknown): Omit<LspCompatibilityEvidenc
   };
 }
 
-function supportedTextDocumentSync(value: unknown): boolean {
-  if (value === 1 || value === 2) {
-    return true;
+function unsupportedTextDocumentSyncReason(value: unknown): string | undefined {
+  if (value === 1) {
+    return undefined;
   }
-  if (!isObject(value) || (value.change !== 1 && value.change !== 2)) {
-    return false;
+  if (value === 2) {
+    return 'incremental sync requires options advertising openClose and save';
+  }
+  if (!isObject(value)) {
+    return 'requires full or incremental change notifications';
+  }
+  if (value.openClose !== true) {
+    return 'openClose must be true';
+  }
+  if (value.change !== 1 && value.change !== 2) {
+    return 'requires full or incremental change notifications';
+  }
+  if (value.willSave === true) {
+    return 'willSave is unsupported';
+  }
+  if (value.willSaveWaitUntil === true) {
+    return 'willSaveWaitUntil is unsupported';
   }
   // `save: { includeText: false }` keeps didSave opted in without the client
   // resending the whole document; the server compares its retained buffer.
   // Only an explicit `save: false` (or an omitted save) stays unsupported,
   // because saved content is what ripr analyzes.
-  return value.save === true || isObject(value.save);
+  if (value.save !== true && !isObject(value.save)) {
+    return 'save must be enabled';
+  }
+  if (isObject(value.save) && value.save.includeText === true) {
+    return 'save.includeText is unsupported';
+  }
+  return undefined;
 }
 
 type CheckedJsonRpcResponse =

@@ -70,6 +70,35 @@ suite('Standard LSP compatibility probe', () => {
     });
   }
 
+  for (const mode of ['sync-full', 'sync-incremental'] as const) {
+    test(`accepts serviceable ${mode} options`, async () => {
+      const fake = fakeServer(mode);
+      const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs);
+      assert.strictEqual(result.status, 'compatible', JSON.stringify(result));
+    });
+  }
+
+  for (const [mode, reason] of [
+    ['sync-numeric-incremental', 'requires options advertising openClose and save'],
+    ['sync-save-false', 'save'],
+    ['sync-no-save', 'save'],
+    ['sync-no-open-close', 'openClose'],
+    ['sync-open-close-false', 'openClose'],
+    ['sync-will-save', 'willSave'],
+    ['sync-will-save-wait', 'willSaveWaitUntil'],
+    ['sync-include-text', 'includeText']
+  ] as const) {
+    test(`rejects unserviceable ${mode} with a sync reason`, async () => {
+      const fake = fakeServer(mode);
+      const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs);
+      assert.strictEqual(result.status, 'incompatible', JSON.stringify(result));
+      if (result.status === 'incompatible') {
+        assert.strictEqual(result.kind, 'missing_required_capability');
+        assert.match(result.detail, new RegExp(`textDocumentSync.*${reason}`));
+      }
+    });
+  }
+
   for (const mode of [
     'missing-jsonrpc',
     'wrong-jsonrpc',
@@ -310,7 +339,15 @@ function consume() {
     const message = JSON.parse(input.subarray(start, start + length).toString()); input = input.subarray(start + length);
     if (message.method === 'initialize') {
       const commands = ['ripr.refresh','ripr.collectContext','ripr.collectEvidenceContext','ripr.collectWorkspaceStatus','ripr.collectRepairPacket','ripr.collectTopLimitation','ripr.collectReceiptStatus'];
-      const capabilities = { textDocumentSync: 1, hoverProvider: true, codeActionProvider: true, diagnosticProvider: {}, executeCommandProvider: { commands }, workspace: { workspaceFolders: { supported: true } }, positionEncoding: mode === 'utf8' ? 'utf-8' : 'utf-16' };
+      const syncOptions = { openClose: true, change: mode === 'sync-incremental' ? 2 : 1, save: { includeText: false }, willSave: false, willSaveWaitUntil: false };
+      if (mode === 'sync-save-false') syncOptions.save = false;
+      if (mode === 'sync-no-save') delete syncOptions.save;
+      if (mode === 'sync-no-open-close') delete syncOptions.openClose;
+      if (mode === 'sync-open-close-false') syncOptions.openClose = false;
+      if (mode === 'sync-will-save') syncOptions.willSave = true;
+      if (mode === 'sync-will-save-wait') syncOptions.willSaveWaitUntil = true;
+      if (mode === 'sync-include-text') syncOptions.save.includeText = true;
+      const capabilities = { textDocumentSync: mode === 'sync-numeric-incremental' ? 2 : mode.startsWith('sync-') ? syncOptions : 1, hoverProvider: true, codeActionProvider: true, diagnosticProvider: {}, executeCommandProvider: { commands }, workspace: { workspaceFolders: { supported: true } }, positionEncoding: mode === 'utf8' ? 'utf-8' : 'utf-16' };
       if (mode === 'missing-hover') delete capabilities.hoverProvider;
       if (mode === 'missing-diagnostics') delete capabilities.diagnosticProvider;
       if (mode === 'missing-workspace-folders') delete capabilities.workspace;
