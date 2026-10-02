@@ -71,36 +71,62 @@ argv, config, diff, process, timeout, and analyzer-input identities below the
 ignored `target/` tree.
 
 The owned build removes inherited `CARGO_TARGET_DIR` and
-`CARGO_BUILD_BUILD_DIR` before starting Cargo. The latter matters even with a
-private `--target-dir`: Cargo can otherwise reuse a same-name/version path
-dependency from shared intermediate storage and link old behavior into a new
-application. With no `build.build-dir` configuration, Cargo places its
-intermediate artifacts in the owned target as well. Normal caller overrides
-outside this transaction, the workspace toolchain pin, and the existing
-`CARGO_HOME` registry cache remain unchanged.
+`CARGO_BUILD_BUILD_DIR`, then explicitly binds both final and intermediate
+artifacts to the same previously absent attempt-owned `build-target` directory.
+Its exact recorded command is:
 
-This is **environment-override isolation, not complete Cargo configuration
-isolation**. A `build.build-dir` setting in a workspace, ancestor, or Cargo-home
-configuration can still redirect intermediates. The separate #5038 claim
-owns explicit per-command binding and the compatibility decision for historical
-host receipts. The current receipt format records the final target command and
-binary bytes; neither a current application stamp, successful build, correct
-version nor a new binary hash establishes which dependency implementation was
-linked. This limitation does not establish that any historical RIPR receipt was
-contaminated.
+```text
+cargo build -p ripr --locked --offline --target-dir <absolute-target> --config <build.build-dir=TOML-quoted-absolute-target>
+```
 
-The regression at `host_run/build_tests.rs` calls the real `build_fresh_binary`
-owner in an isolated test subprocess. Two dependency-free, version-valid
+Cargo's [command-line configuration](https://doc.rust-lang.org/cargo/reference/config.html#command-line-overrides)
+takes precedence over inherited environment,
+workspace, ancestor, and Cargo-home `build.build-dir` settings. Only that key is
+overridden: ordinary caller builds, the workspace toolchain pin, existing
+`CARGO_HOME` registry cache, and unrelated legitimate configuration (including
+configured compiler-cache wrappers under the existing policy) remain intact.
+This is intermediate-directory isolation, not a hermetic-build or arbitrary
+malicious-configuration defense. It assumes the selected Cargo/compiler and
+configured wrappers are trustworthy and that the attempt is not concurrently
+modified. Neither a current application stamp, successful build, correct version
+nor a new binary hash alone establishes which dependency implementation linked.
+
+The override uses TOML serialization rather than shell interpolation, preserving
+quotes, backslashes, spaces, and Unicode. The pinned [Cargo 1.95 path-template
+parser](https://github.com/rust-lang/cargo/blob/rust-1.95.0/src/cargo/util/context/path.rs)
+interprets braces even in a quoted value and has no literal-brace escape.
+A checkout/output path containing `{` or `}`, or a non-UTF-8 path, therefore fails
+with actionable guidance before Cargo starts. Use a UTF-8 checkout/output path
+without braces. Native Windows execution is a separate qualification boundary;
+portable source and path-encoding tests do not claim native Windows runtime proof.
+
+Historical eight-argument host build receipts remain retained evidence of their
+original commands and bytes; their intermediate provenance is not established.
+The existing build-identity validator recognizes that exact historical recipe
+and rejects current admission and packet export with an explicit rebuild-required
+message. Re-run `cargo xtask rust-judged-panel replay --out <same-output-root>`
+from the intended clean source using this builder. A successful new generation
+records and validates the exact ten-argument recipe, then advances `current.json`
+under the existing transaction. Old runs are neither modified nor silently
+upgraded. A failed rebuild leaves the old pointer and evidence intact, but those
+historical receipts still cannot support new packet export. This does not assert
+that any historical receipt was actually contaminated; retained portable packets
+are not rewritten by this host-build change.
+
+The regressions at `host_run/build_tests.rs` invoke the real `build_fresh_binary`
+owner in isolated test subprocesses. Two dependency-free, version-valid
 workspaces have different same-name/version path-dependency implementations.
-Both ordinary and inherited-shared-intermediate A → B → A sequences execute
-three distinct binaries and compare actual subject/core behavior, with source
-and binary hashes, raw build/behavior streams, and receipts under
+Ordinary, inherited-environment, repository, ancestor, Cargo-home, and mixed
+precedence A → B → A sequences execute three distinct binaries apiece and require
+actual OLD → NEW → OLD dependency behavior. An unrelated configuration marker
+must survive and caller configuration bytes must remain unchanged. Source and
+binary hashes, raw build/behavior streams, and receipts are retained under
 `target/ripr/rust-judged-panel-host-tests/`. Failed attempts retain their evidence.
 Successful test fixtures are removed by default; deliberate qualification can
 retain the complete bytes with `RIPR_HOST_BUILD_KEEP_EVIDENCE=1`:
 
 ```sh
-RIPR_HOST_BUILD_KEEP_EVIDENCE=1 cargo test -p xtask rust_judged_panel::host_run::build_tests::fresh_build_ignores_inherited_intermediates -- --exact --nocapture
+RIPR_HOST_BUILD_KEEP_EVIDENCE=1 cargo test -p xtask rust_judged_panel::host_run::build_tests::fresh_build_ -- --nocapture
 ```
 
 Each attempt is staged under an exclusive lock. Only a validated three-case
@@ -108,6 +134,26 @@ generation receives `run-index.json`, is moved into the immutable `runs/`
 namespace, and advances `current.json` last. A failed, partial, or concurrent
 attempt cannot become current. The build has no network fallback: an offline
 cache miss is a failed attempt.
+
+Build admission binds the command and executed binary to caller-owned context,
+not just to one another. Before publication the recorded absolute path must
+belong to the actual staging attempt. After publication the digest-checked
+current/index run ID and normalized output-relative path fix the logical suffix
+`<output>/.staging-<run-id>/build-target/debug/ripr` (or `ripr.exe`). The retained
+binary must use the matching `build-target/debug/` path, remain canonically
+confined to that generation, and match its recorded bytes and digest. Relative,
+traversing, other-output, other-run and differently retained paths are refused.
+Path roots use the native platform's absolute-path rules, including Windows
+drive and UNC roots; drive-relative paths are not absolute.
+
+Publication preserves the original staging path while moving its artifacts to
+`runs/<run-id>`. Moving the complete checkout to a new root also preserves
+admission and portable semantic identity: the historical absolute prefix is
+not compared with today's checkout root. An identical bound suffix under a
+different prefix remains valid. This is logical run membership, **not
+authentication of the historical checkout root or execution**. These unsigned
+receipts cannot distinguish that prefix change from legitimate relocation and
+do not gain such provenance from agreeing path strings or hashes.
 
 These files are host-bound run receipts. They do not by themselves select or
 bless findings, interpret quiet output, populate judgments, or support a
