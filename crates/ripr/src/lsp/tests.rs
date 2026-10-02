@@ -20055,7 +20055,7 @@ fn framed_lsp_component_degradation_is_typed_logged_and_recovers() -> Result<(),
             message.get("method").and_then(serde_json::Value::as_str) == Some("$/progress")
                 && message["params"]["value"]["kind"].as_str() == Some("end")
                 && message["params"]["value"]["message"].as_str()
-                    == Some("analysis limited (run status: limited)")
+                    == Some("analysis completed with limited evidence")
         });
         if !progress_end_limited {
             return Err(format!(

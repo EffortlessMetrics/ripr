@@ -11,6 +11,18 @@ are scoped or reviewed.
 
 ### Changed
 
+- LSP: the work-done progress terminal end for a limited run no longer
+  interpolates the raw internal run-status tag (`analysis limited (run
+  status: seams_deferred)`); the end message is now the human phrase
+  `analysis completed with limited evidence`, and the run-status tag stays
+  machine-only on the typed `ripr/analysisStatus` payload (#5003).
+- MCP: the `ripr_workspace_status` tool description and the
+  `ripr://workspace/status` resource description state positively what the
+  document contains (repository-root discovery, configuration presence, and
+  launch-trust/authority facts), disavow reading `workspace_state: ready`
+  as an analysis result, and name the real evidence route (`ripr check
+  --format json` and editor diagnostics from the ripr language server)
+  (#5002).
 - LSP: identity-law tests pin that `action_id` excludes title, range,
   message, snapshot handles, client capability, and disabled reason; build
   and parse share one fingerprint; analysis input identity excludes

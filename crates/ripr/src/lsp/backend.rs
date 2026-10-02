@@ -1427,7 +1427,9 @@ impl Backend {
                 if health_is_for_request && health.run_status() == "full" {
                     AnalysisProgressEnd::Complete
                 } else {
-                    AnalysisProgressEnd::Limited(health.run_status().to_string())
+                    // #5003: the disclosed run status stays machine-only on
+                    // `ripr/analysisStatus`; the progress end carries no tag.
+                    AnalysisProgressEnd::Limited
                 }
             }
             RefreshAttemptOutcome::Failed => {

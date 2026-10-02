@@ -76,10 +76,11 @@ impl AnalysisProgressPhase {
 pub(super) enum AnalysisProgressEnd {
     /// Snapshot published with run status `full`.
     Complete,
-    /// Snapshot published with a limited run status (carries the disclosed
-    /// run status, e.g. `seams_deferred`, so the message agrees with the
-    /// snapshot/`ripr/analysisStatus` run status).
-    Limited(String),
+    /// Snapshot published with a limited run status. Carries no run-status
+    /// tag: the tag is machine-only vocabulary and stays on the typed
+    /// `ripr/analysisStatus` payload; the client-facing end message is a
+    /// pinned human phrase (see `Self::message`).
+    Limited,
     /// Analysis or analysis task failed (carries the internal failure kind
     /// tag, e.g. `analysis_error`/`task_failure`; never the raw error, which
     /// may contain paths).
@@ -96,7 +97,7 @@ impl AnalysisProgressEnd {
     fn message(&self) -> String {
         match self {
             Self::Complete => "analysis complete".to_string(),
-            Self::Limited(run_status) => format!("analysis limited (run status: {run_status})"),
+            Self::Limited => "analysis completed with limited evidence".to_string(),
             Self::Failed(Some(kind)) => format!("analysis failed ({})", kind.as_str()),
             Self::Failed(None) => "analysis failed".to_string(),
             Self::Cancelled => "analysis cancelled".to_string(),
@@ -636,12 +637,7 @@ mod tests {
             let request = test_request(2);
             tracker.begin(&request, AnalysisProgressPhase::Queued).await;
             tracker.transition_to_analyzing(2).await;
-            tracker
-                .end(
-                    2,
-                    AnalysisProgressEnd::Limited("seams_deferred".to_string()),
-                )
-                .await;
+            tracker.end(2, AnalysisProgressEnd::Limited).await;
 
             let events = sink.events();
             let token = "ripr-analysis-2".to_string();
@@ -660,7 +656,7 @@ mod tests {
                 },
                 ProgressEvent::End {
                     token: token.clone(),
-                    message: "analysis limited (run status: seams_deferred)".to_string(),
+                    message: "analysis completed with limited evidence".to_string(),
                 },
             ];
             if events != expected {
@@ -867,7 +863,7 @@ mod tests {
     fn terminal_messages_carry_no_paths_or_source_excerpts() -> Result<(), String> {
         let ends = vec![
             AnalysisProgressEnd::Complete,
-            AnalysisProgressEnd::Limited("cache_limited".to_string()),
+            AnalysisProgressEnd::Limited,
             AnalysisProgressEnd::Failed(Some(AnalysisFailureKind::TaskFailure)),
             AnalysisProgressEnd::Failed(None),
             AnalysisProgressEnd::Cancelled,
@@ -878,6 +874,32 @@ mod tests {
             let message = end.message();
             if message.contains('/') || message.contains('\\') || message.contains(".rs") {
                 return Err(format!("terminal message leaks path content: {message}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn limited_end_message_is_pinned_human_phrase_without_run_status_tag() -> Result<(), String> {
+        // #5003: the raw run-status tag (`seams_deferred`, `cache_limited`,
+        // ...) is machine-only vocabulary. The terminal work-done end message
+        // must stay a human phrase; the tag remains available on the typed
+        // `ripr/analysisStatus` payload.
+        let message = AnalysisProgressEnd::Limited.message();
+        if message != "analysis completed with limited evidence" {
+            return Err(format!("limited end message drifted: {message:?}"));
+        }
+        let leaked_tags = [
+            "run status",
+            "seams_deferred",
+            "cache_limited",
+            "limited_partial_scope",
+        ];
+        for leaked in leaked_tags {
+            if message.contains(leaked) {
+                return Err(format!(
+                    "limited end message leaks the internal run-status tag {leaked:?}: {message:?}"
+                ));
             }
         }
         Ok(())
