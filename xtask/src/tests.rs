@@ -29004,11 +29004,206 @@ fn policy_checker_facade_runs_current_repo_checks() -> Result<(), String> {
         check_allow_attributes()?;
         check_local_context()?;
         check_file_policy()?;
+        assert_packet_coverage_report()?;
         check_executable_files()?;
         check_workflows()?;
         check_droid_review_config()?;
         check_process_policy()?;
         check_network_policy()
+    })
+}
+
+fn assert_packet_coverage_report() -> Result<(), String> {
+    let report = crate::read_text_lossy(Path::new("target/ripr/reports/file-policy.md"))?;
+    let common = report
+        .lines()
+        .find(|line| line.ends_with("`cargo test -p xtask --locked --offline portable_consumer`"))
+        .ok_or("common packet coverage is absent from the policy report")?;
+    let common_tests = packet_coverage_selected_tests(common)?;
+    for subject in [
+        "portable_consumer::tests::consumer_source_does_not_search_path_or_open_a_network_client",
+        "portable_consumer::tests::packet_digest_matches_the_producer_formula",
+    ] {
+        if !common_tests.contains(&subject) || !common.contains("declared=all; applicable;") {
+            return Err(format!(
+                "common packet subject not selected: {subject}: {common}"
+            ));
+        }
+    }
+    let native = report
+        .lines()
+        .find(|line| {
+            line.ends_with(
+                "`cargo test -p ripr --locked --offline --test portable_consumer_packet`",
+            )
+        })
+        .ok_or("native packet coverage is absent from the policy report")?;
+    if packet_coverage_selected_count(common)? < 2 {
+        return Err(format!(
+            "common packet selection lost required subjects: {common}"
+        ));
+    }
+    if cfg!(windows) {
+        if !common.contains("host=windows; declared=all; applicable;")
+            || !native
+                .contains("host=windows; declared=unix; not_applicable; selected=not_enumerated;")
+            || native.contains("tests=[")
+        {
+            return Err(format!(
+                "Windows packet applicability drifted: {common}\n{native}"
+            ));
+        }
+    } else {
+        let native_tests = packet_coverage_selected_tests(native)?;
+        if !native.contains("host=unix; declared=unix; applicable;")
+            || packet_coverage_selected_count(native)? < 2
+        {
+            return Err(format!(
+                "Unix native packet selector was not retained: {native}"
+            ));
+        }
+        for subject in [
+            "native_packet_analyzes_a_boundary_gap_without_path_or_compiler_fallback",
+            "native_packet_pilot_consumes_the_summary_artifact",
+        ] {
+            if !native_tests.contains(&subject) {
+                return Err(format!(
+                    "Unix native packet subject missing: {subject}: {native}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn packet_coverage_selected_count(row: &str) -> Result<usize, String> {
+    row.split_once("; selected=")
+        .and_then(|(_, rest)| rest.split_once(';'))
+        .ok_or_else(|| format!("selected count absent from coverage row: {row}"))?
+        .0
+        .parse()
+        .map_err(|error| format!("invalid selected count in {row}: {error}"))
+}
+
+fn packet_coverage_selected_tests(row: &str) -> Result<Vec<&str>, String> {
+    let tests = row
+        .rsplit_once("; `")
+        .and_then(|(fields, _)| fields.split_once("; tests=["))
+        .and_then(|(_, tests)| tests.strip_suffix(']'))
+        .ok_or_else(|| format!("selected tests field missing or malformed: {row}"))?;
+    let selected: Vec<_> = tests.split(", ").collect();
+    if selected.iter().any(|test| {
+        test.is_empty() || test.contains([',', '[', ']', ';']) || test.contains(char::is_whitespace)
+    }) || selected.len() != packet_coverage_selected_count(row)?
+    {
+        return Err(format!("selected identities and count disagree: {row}"));
+    }
+    Ok(selected)
+}
+
+fn packet_coverage_report_fixture() -> String {
+    let host = if cfg!(windows) { "windows" } else { "unix" };
+    let native = if cfg!(windows) {
+        "not_applicable; selected=not_enumerated".to_string()
+    } else {
+        concat!(
+            "applicable; selected=2; tests=[",
+            "native_packet_analyzes_a_boundary_gap_without_path_or_compiler_fallback, ",
+            "native_packet_pilot_consumes_the_summary_artifact]",
+        )
+        .to_string()
+    };
+    format!(
+        concat!(
+            "- line 1; host={host}; declared=all; applicable; selected=2; tests=[",
+            "portable_consumer::tests::consumer_source_does_not_search_path_or_open_a_network_client, ",
+            "portable_consumer::tests::packet_digest_matches_the_producer_formula]; ",
+            "`cargo test -p xtask --locked --offline portable_consumer`\n",
+            "- line 1; host={host}; declared=unix; {native}; ",
+            "`cargo test -p ripr --locked --offline --test portable_consumer_packet`\n",
+        ),
+        host = host,
+        native = native,
+    )
+}
+
+#[test]
+fn packet_coverage_report_accepts_exact_selected_names() -> Result<(), String> {
+    with_temp_cwd("packet-coverage-exact-names", |root| {
+        let path = root.join("target/ripr/reports/file-policy.md");
+        let report = packet_coverage_report_fixture();
+        write(&path, &report);
+        assert_packet_coverage_report()?;
+        let extra = report.replacen(
+            "selected=2; tests=[",
+            "selected=3; tests=[neighboring_control, ",
+            1,
+        );
+        write(&path, &extra);
+        assert_packet_coverage_report()
+    })
+}
+
+#[test]
+fn packet_coverage_report_rejects_neighboring_selected_names() -> Result<(), String> {
+    with_temp_cwd("packet-coverage-neighbor-names", |root| {
+        let path = root.join("target/ripr/reports/file-policy.md");
+        let report = packet_coverage_report_fixture();
+        write(&path, &report);
+        assert_packet_coverage_report()?;
+        for subject in [
+            "portable_consumer::tests::consumer_source_does_not_search_path_or_open_a_network_client",
+            "portable_consumer::tests::packet_digest_matches_the_producer_formula",
+            "native_packet_analyzes_a_boundary_gap_without_path_or_compiler_fallback",
+            "native_packet_pilot_consumes_the_summary_artifact",
+        ] {
+            // The native target is deliberately not enumerated on Windows.
+            if !report.contains(subject) {
+                continue;
+            }
+            for neighbor in [
+                format!("neighbor::{subject}"),
+                format!("{subject}_neighbor"),
+            ] {
+                write(&path, &report.replace(subject, &neighbor));
+                if assert_packet_coverage_report().is_ok() {
+                    return Err(format!(
+                        "neighboring selected identity accepted: {neighbor}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn packet_coverage_report_rejects_invalid_selected_fields() -> Result<(), String> {
+    with_temp_cwd("packet-coverage-invalid-fields", |root| {
+        let path = root.join("target/ripr/reports/file-policy.md");
+        let report = packet_coverage_report_fixture();
+        write(&path, &report);
+        assert_packet_coverage_report()?;
+        for row in report.lines().filter(|row| row.contains("; tests=[")) {
+            for malformed in [
+                row.replace("selected=2", "selected=0"),
+                row.replace("selected=2", "selected=1"),
+                row.replace("selected=2", "selected=3"),
+                row.replace("selected=2", "selected=invalid"),
+                row.replace("; tests=[", "; subjects=["),
+                row.replace("; tests=[", "; tests="),
+                row.replace("]; `", "; `"),
+                row.replace("; tests=[", "; tests=[, "),
+                row.replace("]; `", ", ]; `"),
+                row.replace("]; `", "]; tests=[]; `"),
+            ] {
+                write(&path, &report.replace(row, &malformed));
+                if assert_packet_coverage_report().is_ok() {
+                    return Err(format!("malformed selected field accepted: {malformed}"));
+                }
+            }
+        }
+        Ok(())
     })
 }
 
@@ -29108,6 +29303,68 @@ covered_by = ["npm run compile"]
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].glob.as_deref(), Some("editors/vscode/**/*.ts"));
         assert_eq!(entries[0].surface.as_deref(), Some("editor"));
+        Ok(())
+    })
+}
+
+#[test]
+fn file_policy_allowlist_accepts_host_scoped_coverage() -> Result<(), String> {
+    with_temp_cwd("file-policy-host-coverage", |root| {
+        let path = root.join("allowlist.toml");
+        write(
+            &path,
+            r#"[[allow]]
+glob = "tools/example.py"
+kind = "tool"
+owner = "policy"
+surface = "repo"
+classification = "tooling"
+reason = "Host-scoped tests supplement common controls."
+covered_by = ["cargo test -p xtask common", "cargo xtask check-file-policy"]
+covered_by_unix = ["cargo test -p xtask unix_control"]
+covered_by_windows = ["cargo test -p xtask windows_control"]
+"#,
+        );
+        let commands = crate::read_file_policy_test_commands(&path.to_string_lossy())?;
+        assert_eq!(commands.len(), 3, "keep common and both platform selectors");
+        assert_eq!(commands[0].host, None);
+        assert_eq!(commands[1].host, Some(crate::FilePolicyHost::Unix));
+        assert_eq!(commands[2].host, Some(crate::FilePolicyHost::Windows));
+        assert!(commands[0].command.ends_with(" common"));
+        assert!(commands[1].command.ends_with(" unix_control"));
+        assert!(commands[2].command.ends_with(" windows_control"));
+        Ok(())
+    })
+}
+
+#[test]
+fn file_policy_allowlist_rejects_malformed_host_coverage() -> Result<(), String> {
+    with_temp_cwd("file-policy-invalid-host", |root| {
+        let path = root.join("allowlist.toml");
+        let entry = concat!(
+            "[[allow]]\nglob = \"tools/example.py\"\nkind = \"tool\"\n",
+            "owner = \"policy\"\nsurface = \"repo\"\nclassification = \"tooling\"\n",
+            "reason = \"Explicit applicability\"\ncovered_by = [\"cargo test common\"]\n",
+        );
+        for invalid in [
+            "covered_by_linux = [\"cargo test native\"]",
+            "covered_by_Unix = [\"cargo test native\"]",
+            "covered_by_unix = \"cargo test native\"",
+            "covered_by_unix = [1]",
+            "covered_by_unix = []",
+            "covered_by_windows = [\" \" ]",
+            "covered_by_windows = [\"cargo xtask check-file-policy\"]",
+            "covered_by_unix = [\"cargo test native\",,]",
+            "covered_by_unix = [\"cargo test native\"]\ncovered_by_unix = []",
+            "covered_by_unix = [\"cargo test native\"] garbage",
+            "[allow.covered_by_unix]",
+            "[allow.covered_by_unknown]",
+        ] {
+            write(&path, &format!("{entry}{invalid}\n"));
+            if crate::read_file_policy_test_commands(&path.to_string_lossy()).is_ok() {
+                return Err(format!("malformed applicability was accepted: {invalid}"));
+            }
+        }
         Ok(())
     })
 }

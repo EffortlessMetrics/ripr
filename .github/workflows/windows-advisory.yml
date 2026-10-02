@@ -245,6 +245,7 @@ jobs:
             target/windows-run2.log
             target/windows-run1.status
             target/windows-run2.status
+            target/ripr/reports/file-policy.md
             target/nofeatures-check.log
             target/nofeatures-check.status
             target/nofeatures-test.log

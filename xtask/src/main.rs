@@ -21182,19 +21182,50 @@ pub(crate) fn read_file_policy_allowlist(path: &str) -> Result<Vec<GlobAllow>, S
         .collect())
 }
 
-pub(crate) fn read_file_policy_test_commands(path: &str) -> Result<Vec<(usize, String)>, String> {
+pub(crate) fn read_file_policy_test_commands(
+    path: &str,
+) -> Result<Vec<FilePolicyTestCommand>, String> {
     let entries = parse_file_policy_allowlist(path)?;
-    Ok(entries
-        .into_iter()
-        .flat_map(|entry| {
-            entry
-                .covered_by
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|command| is_cargo_test_command(command))
-                .map(move |command| (entry.line, command))
-        })
-        .collect())
+    let mut commands = Vec::new();
+    for entry in entries {
+        for (host, values) in [
+            (None, entry.covered_by),
+            (Some(FilePolicyHost::Unix), entry.covered_by_unix),
+            (Some(FilePolicyHost::Windows), entry.covered_by_windows),
+        ] {
+            for command in values.unwrap_or_default() {
+                if is_cargo_test_command(&command) {
+                    commands.push(FilePolicyTestCommand {
+                        line: entry.line,
+                        command,
+                        host,
+                    });
+                }
+            }
+        }
+    }
+    Ok(commands)
+}
+
+impl FilePolicyHost {
+    fn parse(family: &str) -> Result<Self, String> {
+        match family {
+            "unix" => Ok(Self::Unix),
+            "windows" => Ok(Self::Windows),
+            _ => Err(format!("unsupported file-policy host family `{family}`")),
+        }
+    }
+
+    fn current() -> Result<Self, String> {
+        Self::parse(std::env::consts::FAMILY)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Unix => "unix",
+            Self::Windows => "windows",
+        }
+    }
 }
 
 pub(crate) fn is_cargo_test_command(command: &str) -> bool {
@@ -21204,6 +21235,10 @@ pub(crate) fn is_cargo_test_command(command: &str) -> bool {
 
 fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, String> {
     let text = read_text_lossy(Path::new(path))?;
+    // Validate syntax and duplicate keys before the existing governed-field
+    // reader. Malformed applicability must not silently drop a selector.
+    toml::from_str::<toml::Value>(&text)
+        .map_err(|error| format!("{path}: invalid non-Rust allowlist TOML: {error}"))?;
     let mut entries = Vec::new();
     let mut current = FilePolicyAllowEntry::default();
     let mut in_entry = false;
@@ -21229,10 +21264,20 @@ fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, 
             in_entry = true;
             continue;
         }
+        if trimmed.starts_with('[') {
+            return Err(format!(
+                "{path}:{line_number} unsupported non-Rust allowlist table `{trimmed}`"
+            ));
+        }
         let Some((key, value)) = parse_toml_key_value(trimmed) else {
             continue;
         };
         if !in_entry {
+            if key.starts_with("covered_by") {
+                return Err(format!(
+                    "{path}:{line_number} coverage requires an [[allow]] entry"
+                ));
+            }
             continue;
         }
         match key {
@@ -21247,9 +21292,14 @@ fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, 
             "generated_by" => {
                 current.generated_by = Some(parse_string_value(value, path, line_number)?)
             }
-            "covered_by" => {
+            "covered_by" | "covered_by_unix" | "covered_by_windows" => {
                 let value = collect_toml_array_value(path, line_number, value, &lines, &mut idx)?;
-                current.covered_by = Some(parse_inline_array(&value)?);
+                let commands = Some(parse_inline_array(&value)?);
+                match key {
+                    "covered_by_unix" => current.covered_by_unix = commands,
+                    "covered_by_windows" => current.covered_by_windows = commands,
+                    _ => current.covered_by = commands,
+                }
             }
             "expires" | "retired" => {}
             other => {
@@ -21326,6 +21376,19 @@ fn validate_file_policy_allow_entry(
             "{path}:{} non-Rust allowlist `covered_by` values must be non-empty",
             entry.line
         ));
+    }
+    for (field, commands) in [
+        ("covered_by_unix", &entry.covered_by_unix),
+        ("covered_by_windows", &entry.covered_by_windows),
+    ] {
+        if let Some(commands) = commands
+            && (commands.is_empty() || commands.iter().any(|value| !is_cargo_test_command(value)))
+        {
+            return Err(format!(
+                "{path}:{} `{field}` requires a non-empty array of cargo test commands",
+                entry.line
+            ));
+        }
     }
     Ok(())
 }

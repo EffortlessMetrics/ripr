@@ -16,6 +16,21 @@ pub(crate) struct FilePolicyAllowEntry {
     pub(crate) reason: Option<String>,
     pub(crate) generated_by: Option<String>,
     pub(crate) covered_by: Option<Vec<String>>,
+    pub(crate) covered_by_unix: Option<Vec<String>>,
+    pub(crate) covered_by_windows: Option<Vec<String>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FilePolicyHost {
+    Unix,
+    Windows,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct FilePolicyTestCommand {
+    pub(crate) line: usize,
+    pub(crate) command: String,
+    pub(crate) host: Option<FilePolicyHost>,
 }
 
 #[derive(Debug)]

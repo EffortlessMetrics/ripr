@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use crate::run::TimedOutput;
 use crate::{
-    FixKind, PolicyReportSpec, capture_output_with_timeout, collect_files, finish_policy_report,
+    FilePolicyHost, FilePolicyTestCommand, FixKind, PolicyDisclosure, PolicyReportSpec,
+    capture_output_with_timeout, collect_files, finish_policy_report_with_disclosures,
     is_cargo_test_command, is_file_policy_candidate, is_non_rust_programming_candidate,
     matches_any_glob, non_rust_programming_retention_reason, normalize_path,
     read_file_policy_allowlist, read_file_policy_test_commands,
@@ -23,7 +24,8 @@ const COVERED_BY_INSTRUMENT_PREFIX: &str = "covered_by_instrument_timeout:";
 pub(crate) fn check_file_policy() -> Result<(), String> {
     let policy_path = "policy/non-rust-allowlist.toml";
     let allowlist = read_file_policy_allowlist(policy_path)?;
-    validate_test_covered_by(policy_path, &read_file_policy_test_commands(policy_path)?)?;
+    let coverage =
+        validate_test_covered_by(policy_path, &read_file_policy_test_commands(policy_path)?)?;
     let mut violations = Vec::new();
 
     for path in collect_files(Path::new("."))? {
@@ -49,7 +51,7 @@ pub(crate) fn check_file_policy() -> Result<(), String> {
         }
     }
 
-    finish_policy_report(
+    finish_policy_report_with_disclosures(
         PolicyReportSpec {
             report_file: "file-policy.md",
             check: "check-file-policy",
@@ -65,12 +67,48 @@ pub(crate) fn check_file_policy() -> Result<(), String> {
             ),
         },
         &violations,
+        &[PolicyDisclosure {
+            heading: "Test-valued coverage applicability".to_string(),
+            intro: "Applicable selectors must enumerate nonzero tests. Enumeration is not test execution. Host-inapplicable selectors are not enumerated and confer no coverage on this host.".to_string(),
+            items: coverage.iter().map(TestCoverageObservation::render).collect(),
+        }],
     )
 }
 
-fn validate_test_covered_by(path: &str, commands: &[(usize, String)]) -> Result<(), String> {
+#[derive(Debug)]
+struct TestCoverageObservation {
+    selector: FilePolicyTestCommand,
+    host: FilePolicyHost,
+    // None is explicitly inapplicable, never a successful empty enumeration.
+    selected: Option<Vec<String>>,
+}
+
+impl TestCoverageObservation {
+    fn render(&self) -> String {
+        let declared = self.selector.host.map_or("all", FilePolicyHost::name);
+        let status = match &self.selected {
+            Some(tests) => format!(
+                "applicable; selected={}; tests=[{}]",
+                tests.len(),
+                tests.join(", ")
+            ),
+            None => "not_applicable; selected=not_enumerated".to_string(),
+        };
+        format!(
+            "line {}; host={}; declared={declared}; {status}; `{}`",
+            self.selector.line,
+            self.host.name(),
+            self.selector.command
+        )
+    }
+}
+
+fn validate_test_covered_by(
+    path: &str,
+    commands: &[FilePolicyTestCommand],
+) -> Result<Vec<TestCoverageObservation>, String> {
     let mut warmed = BTreeSet::new();
-    validate_test_covered_by_with(path, commands, |args| {
+    validate_test_covered_by_with(path, commands, FilePolicyHost::current()?, |args| {
         let spawns = enumeration_spawns(args);
         let warmup = spawns.len() == 2;
         let mut listed = None;
@@ -178,14 +216,25 @@ fn enumeration_result(output: TimedOutput, timeout: Duration) -> (bool, String, 
 
 fn validate_test_covered_by_with(
     path: &str,
-    commands: &[(usize, String)],
+    commands: &[FilePolicyTestCommand],
+    host: FilePolicyHost,
     mut enumerate: impl FnMut(&[String]) -> Result<(bool, String, String), String>,
-) -> Result<(), String> {
-    for (line, command) in commands {
+) -> Result<Vec<TestCoverageObservation>, String> {
+    let mut observations = Vec::new();
+    for selector in commands {
+        let FilePolicyTestCommand { line, command, .. } = selector;
         if !is_cargo_test_command(command) {
             return Err(format!(
                 "{path}:{line} unsupported test-valued `covered_by`: {command}"
             ));
+        }
+        if selector.host.is_some_and(|declared| declared != host) {
+            observations.push(TestCoverageObservation {
+                selector: selector.clone(),
+                host,
+                selected: None,
+            });
+            continue;
         }
         let words = command.split_whitespace().skip(2);
         let mut args = vec!["test".to_string()];
@@ -208,17 +257,22 @@ fn validate_test_covered_by_with(
                 "{path}:{line} test-valued `covered_by` could not be enumerated: `{command}`\nstdout: {stdout}\nstderr: {stderr}"
             ));
         }
-        let selected = stdout
+        let selected: Vec<String> = stdout
             .lines()
-            .filter(|line| line.ends_with(": test"))
-            .count();
-        if selected == 0 {
+            .filter_map(|line| line.strip_suffix(": test").map(str::to_string))
+            .collect();
+        if selected.is_empty() {
             return Err(format!(
                 "{path}:{line} test-valued `covered_by` selects zero tests: `{command}`"
             ));
         }
+        observations.push(TestCoverageObservation {
+            selector: selector.clone(),
+            host,
+            selected: Some(selected),
+        });
     }
-    Ok(())
+    Ok(observations)
 }
 
 #[cfg(test)]
@@ -233,8 +287,16 @@ mod tests {
     use super::enumeration_spawns;
     use super::validate_test_covered_by;
     use super::validate_test_covered_by_with;
-    use crate::is_cargo_test_command;
     use crate::run::TimedOutput;
+    use crate::{FilePolicyHost, FilePolicyTestCommand, is_cargo_test_command};
+
+    fn common(line: usize, command: &str) -> FilePolicyTestCommand {
+        FilePolicyTestCommand {
+            line,
+            command: command.to_string(),
+            host: None,
+        }
+    }
 
     #[cfg(windows)]
     fn status(code: u32) -> std::process::ExitStatus {
@@ -331,17 +393,107 @@ mod tests {
     }
 
     #[test]
+    fn test_covered_by_host_selection_retains_common_and_discloses_inapplicable()
+    -> Result<(), String> {
+        let commands = [
+            common(1, "cargo test common_case"),
+            FilePolicyTestCommand {
+                host: Some(FilePolicyHost::Unix),
+                ..common(2, "cargo test unix_case")
+            },
+            FilePolicyTestCommand {
+                host: Some(FilePolicyHost::Windows),
+                ..common(3, "cargo test windows_case")
+            },
+        ];
+        for host in [FilePolicyHost::Unix, FilePolicyHost::Windows] {
+            let mut enumerated = Vec::new();
+            let observations =
+                validate_test_covered_by_with("policy.toml", &commands, host, |args| {
+                    let subject = args.get(1).ok_or("missing test filter")?.clone();
+                    enumerated.push(subject.clone());
+                    Ok((true, format!("{subject}: test\n"), String::new()))
+                })?;
+            let applicable = format!("{}_case", host.name());
+            assert_eq!(enumerated, ["common_case", applicable.as_str()]);
+            assert_eq!(observations.len(), 3);
+            assert_eq!(
+                observations[0].selected.as_deref(),
+                Some(["common_case".to_string()].as_slice())
+            );
+            for observation in observations {
+                let rendered = observation.render();
+                assert!(rendered.contains(&format!("host={}", host.name())));
+                if observation
+                    .selector
+                    .host
+                    .is_some_and(|declared| declared != host)
+                {
+                    assert!(observation.selected.is_none());
+                    assert!(rendered.contains("not_applicable; selected=not_enumerated;"));
+                    assert!(!rendered.contains("tests=["));
+                } else {
+                    assert!(rendered.contains("applicable; selected=1; tests=["));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_covered_by_empty_applicable_host_selector_is_rejected() -> Result<(), String> {
+        for host in [FilePolicyHost::Unix, FilePolicyHost::Windows] {
+            for declared in [None, Some(host)] {
+                let commands = [FilePolicyTestCommand {
+                    host: declared,
+                    ..common(1, "cargo test nonexistent_subject")
+                }];
+                let result = validate_test_covered_by_with("policy.toml", &commands, host, |_| {
+                    Ok((true, "0 tests, 0 benchmarks\n".to_string(), String::new()))
+                });
+                match result {
+                    Err(error) if error.contains("selects zero tests") => {}
+                    other => {
+                        return Err(format!("empty applicable selector did not fail: {other:?}"));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_covered_by_unknown_host_family_is_rejected() {
+        assert_eq!(FilePolicyHost::parse("unix"), Ok(FilePolicyHost::Unix));
+        assert_eq!(
+            FilePolicyHost::parse("windows"),
+            Ok(FilePolicyHost::Windows)
+        );
+        for unsupported in ["", "linux", "Windows", "wasm", "unix,windows"] {
+            assert_eq!(
+                FilePolicyHost::parse(unsupported),
+                Err(format!(
+                    "unsupported file-policy host family `{unsupported}`"
+                ))
+            );
+        }
+    }
+
+    #[test]
     fn test_covered_by_requires_nonzero_successful_enumeration() -> Result<(), String> {
-        let commands = [(7, "cargo test -p xtask missing-filter".to_string())];
-        let empty = validate_test_covered_by_with("policy.toml", &commands, |_| {
-            Ok((true, String::new(), String::new()))
-        });
-        let failed = validate_test_covered_by_with("policy.toml", &commands, |_| {
-            Ok((false, String::new(), "instrument failed".to_string()))
-        });
-        let nonzero = validate_test_covered_by_with("policy.toml", &commands, |_| {
-            Ok((true, "selected_case: test\n".to_string(), String::new()))
-        });
+        let commands = [common(7, "cargo test -p xtask missing-filter")];
+        let empty =
+            validate_test_covered_by_with("policy.toml", &commands, FilePolicyHost::Unix, |_| {
+                Ok((true, String::new(), String::new()))
+            });
+        let failed =
+            validate_test_covered_by_with("policy.toml", &commands, FilePolicyHost::Unix, |_| {
+                Ok((false, String::new(), "instrument failed".to_string()))
+            });
+        let nonzero =
+            validate_test_covered_by_with("policy.toml", &commands, FilePolicyHost::Unix, |_| {
+                Ok((true, "selected_case: test\n".to_string(), String::new()))
+            });
         if empty.is_err() && failed.is_err() && nonzero.is_ok() {
             Ok(())
         } else {
@@ -355,21 +507,18 @@ mod tests {
         // closure): the args construction, bounded capture, and status
         // mapping all run for real, and an existing test filter enumerates
         // successfully.
-        let commands = [(
+        let commands = [common(
             12,
-            "cargo test -p xtask test_covered_by_classification_is_token_aware".to_string(),
+            "cargo test -p xtask test_covered_by_classification_is_token_aware",
         )];
-        validate_test_covered_by("policy.toml", &commands)
+        validate_test_covered_by("policy.toml", &commands).map(|_| ())
     }
 
     #[test]
     fn test_covered_by_production_wrapper_preserves_cargo_stderr() -> Result<(), String> {
-        let commands = [(
-            17,
-            "cargo test -p package-that-does-not-exist-3528".to_string(),
-        )];
+        let commands = [common(17, "cargo test -p package-that-does-not-exist-3528")];
         let error = match validate_test_covered_by("policy.toml", &commands) {
-            Ok(()) => return Err("failed Cargo enumeration unexpectedly passed".to_string()),
+            Ok(_) => return Err("failed Cargo enumeration unexpectedly passed".to_string()),
             Err(error) => error,
         };
 
@@ -385,15 +534,20 @@ mod tests {
 
     #[test]
     fn test_covered_by_preserves_enumeration_diagnostics() -> Result<(), String> {
-        let commands = [(19, "cargo test -p xtask missing-filter".to_string())];
-        let error = match validate_test_covered_by_with("policy.toml", &commands, |_| {
-            Ok((
-                false,
-                "compiler stdout".to_string(),
-                "runner stderr".to_string(),
-            ))
-        }) {
-            Ok(()) => return Err("failed enumeration did not remain fail-closed".to_string()),
+        let commands = [common(19, "cargo test -p xtask missing-filter")];
+        let error = match validate_test_covered_by_with(
+            "policy.toml",
+            &commands,
+            FilePolicyHost::Unix,
+            |_| {
+                Ok((
+                    false,
+                    "compiler stdout".to_string(),
+                    "runner stderr".to_string(),
+                ))
+            },
+        ) {
+            Ok(_) => return Err("failed enumeration did not remain fail-closed".to_string()),
             Err(error) => error,
         };
 
@@ -499,15 +653,20 @@ mod tests {
 
     #[test]
     fn test_covered_by_instrument_timeout_is_not_an_unresolved_pointer() -> Result<(), String> {
-        let commands = [(4, "cargo test -p xtask slow_filter".to_string())];
-        let error = match validate_test_covered_by_with("policy.toml", &commands, |_| {
-            Ok((
-                false,
-                String::new(),
-                format!("{COVERED_BY_INSTRUMENT_PREFIX} timed out after 300s"),
-            ))
-        }) {
-            Ok(()) => {
+        let commands = [common(4, "cargo test -p xtask slow_filter")];
+        let error = match validate_test_covered_by_with(
+            "policy.toml",
+            &commands,
+            FilePolicyHost::Unix,
+            |_| {
+                Ok((
+                    false,
+                    String::new(),
+                    format!("{COVERED_BY_INSTRUMENT_PREFIX} timed out after 300s"),
+                ))
+            },
+        ) {
+            Ok(_) => {
                 return Err("instrument timeout unexpectedly passed".to_string());
             }
             Err(error) => error,
@@ -523,11 +682,14 @@ mod tests {
 
     #[test]
     fn test_covered_by_zero_tests_stay_unresolved_and_slow_success_passes() -> Result<(), String> {
-        let commands = [(9, "cargo test -p xtask missing_pointer".to_string())];
-        let unresolved = match validate_test_covered_by_with("policy.toml", &commands, |_| {
-            Ok((true, String::new(), String::new()))
-        }) {
-            Ok(()) => return Err("zero-test enumeration unexpectedly passed".to_string()),
+        let commands = [common(9, "cargo test -p xtask missing_pointer")];
+        let unresolved = match validate_test_covered_by_with(
+            "policy.toml",
+            &commands,
+            FilePolicyHost::Unix,
+            |_| Ok((true, String::new(), String::new())),
+        ) {
+            Ok(_) => return Err("zero-test enumeration unexpectedly passed".to_string()),
             Err(error) => error,
         };
         if !unresolved.contains("selects zero tests") || unresolved.contains("instrument timeout") {
@@ -535,9 +697,10 @@ mod tests {
                 "unresolved pointer was not kept distinct: {unresolved}"
             ));
         }
-        let slow_but_complete = validate_test_covered_by_with("policy.toml", &commands, |_| {
-            Ok((true, "slow_case: test\n".to_string(), String::new()))
-        });
+        let slow_but_complete =
+            validate_test_covered_by_with("policy.toml", &commands, FilePolicyHost::Unix, |_| {
+                Ok((true, "slow_case: test\n".to_string(), String::new()))
+            });
         if slow_but_complete.is_ok() {
             Ok(())
         } else {

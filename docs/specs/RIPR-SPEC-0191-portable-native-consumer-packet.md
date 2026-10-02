@@ -21,6 +21,7 @@ Linked plan:
 Linked issues:
 
 - #4713 — portable offline native ripr consumer packet
+- #5037 — truthful host applicability of native consumer coverage
 - #4493 — wheel/npm install qualification may reuse this consumer later
 - #4521 — final native payload identity remains a separate supply route
 - #4714 — precompiled Rust-test replay is out of scope
@@ -104,6 +105,13 @@ A packet directory contains `manifest.json`, the native payload
   nonempty findings list and `schema_version` `0.2`. That subject stays
   valid under `--features lang-rust` only. A second native journey runs
   `--operation pilot` and classifies `pilot-summary.json`.
+- Host coverage: the native packet target and Python runtime/classifier
+  controls are Unix-only. Windows retains the real common packet-digest and
+  source controls. The canonical non-Rust ledger declares the native selector
+  under `covered_by_unix`; file-policy reports it as inapplicable on Windows,
+  rather than accepting a zero-test enumeration. Malformed or unknown host
+  declarations and empty applicable selections fail closed. The policy facade
+  checks the report's real selected identities and host applicability.
 
 ## Non-Goals
 
@@ -113,6 +121,7 @@ A packet directory contains `manifest.json`, the native payload
 - Wheel/npm channel qualification (#4493)
 - Final native payload identity (#4521)
 - Precompiled Rust-test replay (#4714)
+- A native Windows consumer journey; host-scoped coverage does not implement it
 
 ## Acceptance Examples
 
@@ -124,6 +133,13 @@ A packet directory contains `manifest.json`, the native payload
   finding while Cargo is absent from PATH.
 
 ## Test Mapping
+
+- `xtask/src/tests.rs::file_policy_allowlist_accepts_host_scoped_coverage`
+- `xtask/src/tests.rs::file_policy_allowlist_rejects_malformed_host_coverage`
+- `xtask/src/tests.rs::policy_checker_facade_runs_current_repo_checks`
+- `xtask/src/policy/file_policy.rs::tests::test_covered_by_host_selection_retains_common_and_discloses_inapplicable`
+- `xtask/src/policy/file_policy.rs::tests::test_covered_by_empty_applicable_host_selector_is_rejected`
+- `xtask/src/policy/file_policy.rs::tests::test_covered_by_unknown_host_family_is_rejected`
 
 - `xtask/src/portable_consumer.rs::tests::run_py_compiles_with_stdlib_python`
 - `xtask/src/portable_consumer.rs::tests::consumer_source_does_not_search_path_or_open_a_network_client`
@@ -164,6 +180,9 @@ A packet directory contains `manifest.json`, the native payload
 
 ## Implementation Mapping
 
+- `xtask/src/main.rs` — canonical non-Rust ledger parser and scoped test commands
+- `xtask/src/policy/file_policy.rs` — dynamic host selection, enumeration, report
+- `policy/non-rust-allowlist.toml` — common and Unix-only coverage declaration
 - `tools/python/portable-ripr-consumer/run.py` — stdlib consumer
 - `xtask/src/portable_consumer.rs` — packet staging and stub oracles
 - `crates/ripr/tests/portable_consumer_packet.rs` — native payload journey

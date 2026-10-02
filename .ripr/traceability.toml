@@ -10362,6 +10362,12 @@ id = "RIPR-SPEC-0191"
 name = "Portable native RIPR consumer packet"
 spec = "docs/specs/RIPR-SPEC-0191-portable-native-consumer-packet.md"
 tests = [
+  "xtask/src/tests.rs::file_policy_allowlist_accepts_host_scoped_coverage",
+  "xtask/src/tests.rs::file_policy_allowlist_rejects_malformed_host_coverage",
+  "xtask/src/tests.rs::policy_checker_facade_runs_current_repo_checks",
+  "xtask/src/policy/file_policy.rs::tests::test_covered_by_host_selection_retains_common_and_discloses_inapplicable",
+  "xtask/src/policy/file_policy.rs::tests::test_covered_by_empty_applicable_host_selector_is_rejected",
+  "xtask/src/policy/file_policy.rs::tests::test_covered_by_unknown_host_family_is_rejected",
   "xtask/src/portable_consumer.rs::tests::run_py_compiles_with_stdlib_python",
   "xtask/src/portable_consumer.rs::tests::consumer_source_does_not_search_path_or_open_a_network_client",
   "xtask/src/portable_consumer.rs::tests::product_json_classes_are_discriminated_without_launch",
@@ -10403,6 +10409,9 @@ fixtures = [
   "fixtures/boundary_gap/input",
 ]
 code = [
+  "xtask/src/main.rs",
+  "xtask/src/policy/file_policy.rs",
+  "policy/non-rust-allowlist.toml",
   "tools/python/portable-ripr-consumer/run.py",
   "xtask/src/portable_consumer.rs",
   "crates/ripr/tests/portable_consumer_packet.rs",

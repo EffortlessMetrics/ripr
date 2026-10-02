@@ -16,7 +16,9 @@ status = "active"
 #   surface         ci | editor | docs | fixtures | rust | repo | brand | config | security
 #   classification  production | test | tooling | generated | config | docs | fixture | metadata
 #   reason          one-line justification (matches the existing txt reason)
-#   covered_by      list of commands or checks that exercise this surface
+#   covered_by      commands/checks applicable on every host
+#   covered_by_unix (optional) non-empty cargo test selectors for Unix hosts only
+#   covered_by_windows (optional) non-empty cargo test selectors for Windows hosts only
 #   expires         (optional) date this entry must be re-justified
 #   retired         (optional) true if the entry is allowed to be unused
 #
@@ -669,6 +671,10 @@ classification = "tooling"
 reason = "Stdlib Python 3.11+ packet consumer for agent environments that have a qualified native ripr payload but no Cargo/rustc or execution-kernel network; packet staging and oracles stay in Rust/xtask (#4713)."
 covered_by = [
     "cargo test -p xtask --locked --offline portable_consumer",
+]
+# Native check/pilot journey is cfg(unix). Common packet digest/source controls
+# remain required on Windows; the Python runtime/classifier tests are Unix-only.
+covered_by_unix = [
     "cargo test -p ripr --locked --offline --test portable_consumer_packet",
 ]
 
