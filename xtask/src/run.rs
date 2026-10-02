@@ -479,6 +479,36 @@ pub(crate) fn capture_output_with_timeout(
     timeout: Duration,
     error_context: &str,
 ) -> Result<TimedOutput, String> {
+    capture_output_with_deadline(program, args, envs, Some(timeout), error_context)
+}
+
+/// `capture_output_with_timeout` with no per-step wall-clock cap.
+///
+/// For callers whose child may legitimately run longer than any fixed
+/// host-dependent cutoff, such as a cold Cargo/Clippy build in precommit
+/// (#4150).  The child is still spawned through the shared owned-subprocess
+/// authority and the post-exit pipe drain remains bounded by
+/// `POST_KILL_DRAIN_GRACE`, so a direct child that exits while a
+/// pipe-inheriting descendant survives cannot block the caller for the
+/// descendant's lifetime: the output is truncated with a named diagnostic
+/// instead.  A genuinely hung child still waits until an operator cancels
+/// the run; the hosted job bounds are the only automated stop.
+pub(crate) fn capture_output_without_timeout(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+    error_context: &str,
+) -> Result<TimedOutput, String> {
+    capture_output_with_deadline(program, args, envs, None, error_context)
+}
+
+fn capture_output_with_deadline(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+    deadline: Option<Duration>,
+    error_context: &str,
+) -> Result<TimedOutput, String> {
     let started = Instant::now();
     let mut command = Command::new(program);
     command.args(args);
@@ -515,14 +545,16 @@ pub(crate) fn capture_output_with_timeout(
         spawn_stream_reader_channel(stderr)
     };
 
-    let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
+    let wait_outcome = wait_for_child_with_deadline(&mut child, started, deadline, error_context)?;
 
     // Always use the bounded drain.  On a normal process exit the pipe
     // write-ends are already closed, so the reader threads finish promptly and
     // the grace timeout is never reached — behavior is identical to an
     // unbounded join.  On a timed-out kill the grace timeout caps the drain if
     // a descendant escaped the process-group kill and still holds the pipe open,
-    // guaranteeing the function returns in bounded time regardless.
+    // guaranteeing the function returns in bounded time regardless.  The same
+    // grace bounds the no-deadline path when the direct child exits but a
+    // pipe-inheriting descendant survives it.
     let stdout = drain_stream_reader_bounded(
         stdout_rx,
         stdout_handle,
@@ -580,7 +612,8 @@ pub(crate) fn capture_bytes_in_dir_with_timeout(
         .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
     let (stdout_handle, stdout_rx) = spawn_byte_reader_channel(stdout);
     let (stderr_handle, stderr_rx) = spawn_byte_reader_channel(stderr);
-    let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
+    let wait_outcome =
+        wait_for_child_with_deadline(&mut child, started, Some(timeout), error_context)?;
     let stdout = drain_byte_reader_bounded(
         stdout_rx,
         stdout_handle,
@@ -654,7 +687,8 @@ pub(crate) fn capture_stdout_to_file_with_timeout(
         spawn_stream_reader_channel(stderr)
     };
 
-    let wait_outcome = wait_for_child_with_timeout(&mut child, started, timeout, error_context)?;
+    let wait_outcome =
+        wait_for_child_with_deadline(&mut child, started, Some(timeout), error_context)?;
 
     // Use bounded drains for the same reason as in `capture_output_with_timeout`:
     // after a group-kill an escaped descendant may keep the pipe open.
@@ -727,10 +761,10 @@ fn publish_stdout_capture(
     })
 }
 
-fn wait_for_child_with_timeout(
+fn wait_for_child_with_deadline(
     child: &mut OwnedProcess,
     started: Instant,
-    timeout: Duration,
+    deadline: Option<Duration>,
     error_context: &str,
 ) -> Result<WaitOutcome, String> {
     loop {
@@ -745,7 +779,9 @@ fn wait_for_child_with_timeout(
             });
         }
 
-        if started.elapsed() >= timeout {
+        if let Some(timeout) = deadline
+            && started.elapsed() >= timeout
+        {
             let termination_requested = terminate_after_timeout(child, error_context)?;
             let status = child
                 .wait()
@@ -1046,11 +1082,11 @@ fn spawn_stream_file_writer_channel<T: Read + Send + 'static>(
 mod tests {
     use super::{
         CapturedOutput, POST_KILL_DRAIN_GRACE, capture_output, capture_output_with_timeout,
-        capture_stdout_to_file_with_timeout, command_success_owned, drain_stream_reader_bounded,
-        parse_env_timeout_secs, read_stream_with_latency_progress, run, run_in_dir, run_output,
-        run_output_optional, run_output_owned, run_output_owned_with_envs,
-        run_output_owned_with_timeout, run_owned, spawn_stream_reader_channel,
-        terminate_after_timeout, timeout_was_enforced,
+        capture_output_without_timeout, capture_stdout_to_file_with_timeout, command_success_owned,
+        drain_stream_reader_bounded, parse_env_timeout_secs, read_stream_with_latency_progress,
+        run, run_in_dir, run_output, run_output_optional, run_output_owned,
+        run_output_owned_with_envs, run_output_owned_with_timeout, run_owned,
+        spawn_stream_reader_channel, terminate_after_timeout, timeout_was_enforced,
     };
     use crate::acquire_test_cwd_read_guard;
     use ripr::process_owner::OwnedProcess;
@@ -1459,6 +1495,86 @@ mod tests {
             let _ = fs::remove_file(&marker);
             return Err("timed-out process tree should not run its continuation".to_string());
         }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn capture_output_without_timeout_returns_after_direct_child_exit_with_lingering_pipe_descendant()
+    -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        // The direct `sh` child exits 0 immediately; the backgrounded `sleep`
+        // inherits the captured stdout/stderr pipes and outlives it.  The
+        // no-deadline runner must still return bounded by the post-exit drain
+        // grace instead of waiting for the descendant (#4150 review control),
+        // and it must not report a step timeout.
+        let args = vec!["-c".to_string(), "sleep 60 & exit 0".to_string()];
+        let output =
+            capture_output_without_timeout("sh", &args, &[], "post-exit descendant drain")?;
+
+        assert!(
+            output.status.is_some_and(|status| status.success()),
+            "direct child that exited 0 must not be reported as failed: {:?}",
+            output.status
+        );
+        assert!(
+            !output.timed_out,
+            "the no-deadline path must never report a step timeout"
+        );
+        assert!(
+            output.duration < Duration::from_secs(30),
+            "returned after {}s; the runner waited for the 60s pipe-holding descendant instead of honoring the drain grace",
+            output.duration.as_secs()
+        );
+        assert!(
+            output.stdout.contains("output truncated"),
+            "truncated-capture diagnostic missing from stdout: {:?}",
+            output.stdout
+        );
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn capture_output_without_timeout_returns_after_direct_child_exit_with_lingering_pipe_descendant()
+    -> Result<(), String> {
+        let _cwd_guard = acquire_test_cwd_read_guard();
+        // Same control as the Unix variant: the direct `cmd` child exits 0
+        // immediately after `start /b`-ing a longer-lived ping descendant that
+        // inherits the captured stdout/stderr pipes.  The owned-subprocess Job
+        // Object does not fire (no step timeout), so only the bounded
+        // post-exit drain keeps the call from waiting out the descendant.
+        // `cmd`/`ping` are used instead of PowerShell so the control does not
+        // depend on a heavyweight shell under a loaded host.
+        let script = "start /b ping -n 60 127.0.0.1 >NUL & exit /b 0";
+        let args = vec![
+            "/d".to_string(),
+            "/s".to_string(),
+            "/c".to_string(),
+            script.to_string(),
+        ];
+        let output =
+            capture_output_without_timeout("cmd", &args, &[], "post-exit descendant drain")?;
+
+        assert!(
+            output.status.is_some_and(|status| status.success()),
+            "direct child that exited 0 must not be reported as failed: {:?}",
+            output.status
+        );
+        assert!(
+            !output.timed_out,
+            "the no-deadline path must never report a step timeout"
+        );
+        assert!(
+            output.duration < Duration::from_secs(30),
+            "returned after {}s; the runner waited for the 60s pipe-holding descendant instead of honoring the drain grace",
+            output.duration.as_secs()
+        );
+        assert!(
+            output.stderr.contains("output truncated"),
+            "truncated-capture diagnostic missing from stderr: {:?}",
+            output.stderr
+        );
         Ok(())
     }
 
