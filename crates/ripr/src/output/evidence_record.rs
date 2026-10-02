@@ -24,7 +24,7 @@ pub(crate) use crate::analysis::repair_route::{
 };
 use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::{RelationReason, oracle_semantics_for};
-use crate::domain::CommandSpec;
+use crate::domain::{CommandSpec, EvidenceState};
 use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for_entry,
@@ -629,7 +629,8 @@ fn canonical_item_for(
     static_limitations: &[EvidenceRecordStaticLimitation],
     raw_findings: &[EvidenceRecordRawFinding],
 ) -> EvidenceRecordCanonicalItem {
-    let gap_state = gap_state_for(entry, actionability);
+    let evidence_state = evidence_state_for(entry, actionability);
+    let gap_state = evidence_state.as_str();
     let canonical_item_kind = canonical_item_kind_for(gap_state);
     let alignment_actionability = alignment_actionability_for(entry, actionability);
     let raw_group_size = canonical_gap
@@ -688,7 +689,7 @@ fn canonical_item_for(
                     std::path::Path::new(crate::agent::command_specs::PORTABLE_ROOT),
                 )
             }),
-        receipt_command_spec: (gap_state == "actionable").then(|| {
+        receipt_command_spec: evidence_state.is_actionable().then(|| {
             crate::agent::command_specs::agent_receipt_command_spec(
                 ".",
                 WORKFLOW_AGENT_VERIFY_ARTIFACT,
@@ -751,16 +752,25 @@ pub(crate) fn gap_state_for(
     entry: &ClassifiedSeam,
     actionability: &EvidenceRecordActionability,
 ) -> &'static str {
+    evidence_state_for(entry, actionability).as_str()
+}
+
+/// One consumer-presentation decision; existing output fields retain their
+/// established names and wire values until each consumer migrates.
+pub(crate) fn evidence_state_for(
+    entry: &ClassifiedSeam,
+    actionability: &EvidenceRecordActionability,
+) -> EvidenceState {
     if actionability.class == "static_limitation" {
-        "static_limitation"
+        EvidenceState::StaticLimitation
     } else if actionability.has_concrete_guidance {
-        "actionable"
+        EvidenceState::Actionable
     } else if matches!(entry.class, SeamGripClass::StronglyGripped) {
-        "already_observed"
+        EvidenceState::AlreadyObserved
     } else if matches!(entry.class, SeamGripClass::Intentional) {
-        "internal_only"
+        EvidenceState::InternalOnly
     } else {
-        "unknown"
+        EvidenceState::Unknown
     }
 }
 
@@ -1791,6 +1801,32 @@ fn presentation_text_json(presentation_text: &EvidenceRecordPresentationText) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consumer_evidence_state_preserves_wire_values_and_rejects_unknown_words() {
+        for state in [
+            EvidenceState::Actionable,
+            EvidenceState::AlreadyObserved,
+            EvidenceState::InternalOnly,
+            EvidenceState::StaticLimitation,
+            EvidenceState::Unknown,
+        ] {
+            let encoded = format!("\"{}\"", state.as_str());
+            assert_eq!(
+                serde_json::to_string(&state).ok().as_deref(),
+                Some(encoded.as_str())
+            );
+            assert_eq!(
+                serde_json::from_str::<EvidenceState>(&encoded).ok(),
+                Some(state)
+            );
+        }
+        let decoded = serde_json::from_str::<EvidenceState>("\"unsupported\"");
+        assert!(
+            matches!(decoded, Err(ref error) if error.to_string().contains("unknown variant")),
+            "{decoded:?}"
+        );
+    }
     use crate::analysis::classify_seam;
     use crate::analysis::repair_route::{
         RepairRouteState, RepairTargetSelection, repair_route_readiness,

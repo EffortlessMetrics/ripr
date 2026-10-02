@@ -6,6 +6,7 @@ mod command_spec;
 pub mod context_packet;
 mod diagnostic_witness;
 mod evidence;
+mod evidence_state;
 pub(crate) mod executed_control;
 mod feedback;
 mod finding_test_evidence;
@@ -47,6 +48,7 @@ pub use evidence::{
     Confidence, OracleKind, OracleStrength, RelationConfidence, RelationReason, RevealEvidence,
     RiprEvidence, StageEvidence, StageState,
 };
+pub(crate) use evidence_state::EvidenceState;
 pub(crate) use executed_control::{
     EXECUTED_CONTROL_PACKET_KIND, EXECUTED_CONTROL_SCHEMA_VERSION, ExecutedControlPacketV1,
     ObligationSatisfaction, ResultState,
