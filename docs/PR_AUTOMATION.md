@@ -244,6 +244,71 @@ that lack an obvious work item marker. Its report also includes a short
 next-action queue so agents can move from diagnosis to the right cleanup or
 follow-up validation command without reverse-engineering the findings.
 
+### Bounded local storage and proof retention
+
+The root's existing task/resource ownership carries storage admission and closeout;
+Git and GitHub carry source/PR state. Do not add a registry, daemon or scheduler.
+`worktree doctor` inspects repository hygiene; it does not measure host capacity,
+prove consumer inactivity or authorize deletion. A successful build is not a
+storage closeout.
+
+Before allocating or generating, record in the existing task handoff:
+
+- exact worktree, Git common directory, effective Cargo target/build paths,
+  temporary output and frozen-proof destinations, with their current owners;
+- mandatory current/witness artifacts: the qualified executable and each distinct
+  negative or prior-candidate witness still needed to reproduce the claim,
+  identified by source SHA, artifact hash and the receipt that consumes it;
+- reusable mutable build state, and disposable or superseded outputs eligible for
+  the already-authorized recoverable closeout after their consumers release them;
+- observed free space, the host's accepted reserve and the conservative
+  **peak additional bytes** for compilation, downloads, snapshots, archive creation
+  and full restoration verification on every affected volume. Do not count prospective
+  reclamation before it is verified, assume a compression ratio, or lower a floor
+  merely to admit another run. Stop generation when that budget no longer fits.
+
+Use an existing immutable artifact reference for repeated proof consumers when
+its hash and source identity match. Do not freeze another expanded executable for
+unchanged bytes merely because a new report or stage has a different name. Do not
+hard-link proof into mutable Cargo output; later writes could alter the witness.
+Different bytes or semantics can require separate witnesses. A hash, source/version stamp, Cargo freshness claim, successful rebuild or green
+test alone does not establish the actual executable's dependency/source identity
+or replace a required original witness. Bind qualification to the explicitly
+selected compiler artifact and observed behavior under its admitted ownership.
+
+Before the next batch, and at merge, closure, cancellation or handoff, reconcile
+resources with the actual writer and all queued, running and independent consumers.
+Classify every resource as `released`, `retained with reason`, or
+`awaiting owner verification` in the existing terminal return. Missing process/PID
+observations, old mtimes, an unlocked directory, a clean source tree or a merged PR are not
+release evidence. Preserve open-claim witnesses and unknown resources. Bound a
+retention reason to the real consumer or proof need, rather than keeping every
+superseded runner expanded by default.
+
+For confirmed inactive resources within existing cleanup authority:
+
+1. Re-read source status, ignored/untracked evidence, branch/HEAD/upstream,
+   detached or unpushed work, Git registrations and native ownership immediately
+   before acting. A primary checkout may contain a common Git store used by active
+   linked worktrees. Do not move that store or infer removability from its branch.
+2. Preserve required source, unique work, receipts and restore paths. Use ordinary
+   Git worktree operations for linked trees, and the existing lock/owner protocol
+   for generated state; never repurpose a live target to make room.
+3. For compressed quarantine, retain a manifest with original paths, source and
+   artifact identities, required metadata and restore instructions. Admit both
+   the archive and expanded verification copy while originals still exist,
+   restore into a separate staging path, and compare the restored bytes/metadata
+   before replacing the expanded originals with the recoverable archive. Retain
+   originals if any check fails. A same-filesystem rename alone reclaims no bytes.
+4. Recheck excluded resources and actual free-space gain. Return the archive,
+   verification result and exact restore path in the existing terminal report.
+   Do not permanently purge the archive without the required separate authority.
+
+These are root-owned checks using existing tooling, not new command-enforced
+budgets or automatic deletion. Routine recoverable closeout already covered by
+user/host authority should execute within that scope; ask only for a genuinely
+missing permission or an unresolved ownership/data boundary.
+
 `pr-triage-report` is the open-board hygiene report. It reads open PR metadata
 through GitHub CLI and writes `target/ripr/reports/pr-triage.md` plus
 `target/ripr/reports/pr-triage.json`. It flags same-title families, identical
