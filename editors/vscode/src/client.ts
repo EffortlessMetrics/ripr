@@ -1597,7 +1597,8 @@ export class RiprClientController {
         this.updateStatus(statusForRunStatus(status.run_status, {
           detail: analysisStatusDetail(status),
           retryCommand: typeof status.retry_command === 'string' ? status.retry_command : undefined,
-          dirtyRoutedDocuments: Array.from(this.dirtyRiprDocuments)
+          dirtyRoutedDocuments: Array.from(this.dirtyRiprDocuments),
+          components: status.components
         }));
         void this.refreshFirstUsefulActionStatus();
         return;
@@ -3293,6 +3294,22 @@ function isUnresolvableBaseRefFailure(message: string): boolean {
   return /the base `[^`]+` does not resolve to a commit/.test(message);
 }
 
+/**
+ * One typed per-component outcome record from the server's
+ * `ripr/analysisStatus` payload (#5004). The shape is the server's authority
+ * (`crates/ripr/src/lsp/component_outcome.rs::status_payload`); the client
+ * surfaces it without inventing new semantics.
+ */
+interface AnalysisStatusComponent {
+  component: string;
+  state: string;
+  kind?: string | null;
+  message?: string | null;
+  findings_trustworthy?: boolean;
+  recovery?: string | null;
+  snapshot_identity?: string | null;
+}
+
 interface RiprAnalysisStatusPayload {
   schema_version: string;
   kind: string;
@@ -3309,6 +3326,7 @@ interface RiprAnalysisStatusPayload {
   root_input_identity?: string | null;
   root_detail?: string | null;
   root_recovery_route?: string;
+  components?: AnalysisStatusComponent[];
 }
 
 function analysisStatusPayload(params: unknown): RiprAnalysisStatusPayload | undefined {
@@ -3375,6 +3393,52 @@ const LIMITED_RUN_STATUS_PRESENTATIONS: Record<string, { summary: string; detail
 };
 
 /**
+ * The components whose outcome degraded this run (`limited` or `failed`),
+ * mirroring the server's `ComponentOutcome::is_degraded` so the client
+ * prefers the same records the server logged on its degradation channel.
+ * Malformed entries (missing string `component`/`state`) are dropped: the
+ * payload crosses a process boundary and the presentation must fail closed
+ * to the canned text instead of rendering garbage.
+ */
+function degradedAnalysisComponents(
+  components: readonly AnalysisStatusComponent[] | undefined
+): AnalysisStatusComponent[] {
+  // The payload crosses a process boundary and is only shallowly validated,
+  // so a truthy non-array must take the same fail-closed path as a missing
+  // field before `.filter` runs.
+  if (!Array.isArray(components)) {
+    return [];
+  }
+  return components.filter(
+    (component) =>
+      typeof component?.component === 'string' &&
+      typeof component?.state === 'string' &&
+      (component.state === 'limited' || component.state === 'failed')
+  );
+}
+
+/** One parenthetical description of an untrustworthy component for the detail line. */
+function describeUntrustworthyComponent(component: AnalysisStatusComponent): string {
+  const kind = typeof component.kind === 'string' && component.kind ? ` (${component.kind})` : '';
+  return `${component.component} ${component.state}${kind}`;
+}
+
+/** Distinct, non-empty strings in first-seen order. */
+function uniqueStrings(values: readonly (string | null | undefined)[]): string[] {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0 && !seen.has(value)) {
+      seen.add(value);
+    }
+  }
+  return [...seen];
+}
+
+function capitalizeFirst(value: string): string {
+  return value.length > 0 ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+/**
  * One mapping from a server run_status to the client status presentation for a
  * succeeded saved-workspace analysis (#4326). The server vocabulary is
  * `'full' | 'stale' | 'cache_limited' | 'limited' | 'limited_partial_scope' |
@@ -3390,6 +3454,16 @@ const LIMITED_RUN_STATUS_PRESENTATIONS: Record<string, { summary: string; detail
  *   icon, never the healthy `$(check)`, but without the `stale` kind's
  *   action-gating coupling, since the published snapshot itself is not stale;
  *   each summary names the limitation and the refresh recovery step;
+ * - for the limited family, the typed per-component outcomes
+ *   (`AnalysisStatusComponent`, #5004) take precedence over the canned text
+ *   when the server provides them: a degraded component's `recovery` string
+ *   is the safe recovery action the client may name to the user (for example
+ *   `run ripr check to regenerate the gap decision ledger` for an
+ *   artifact-derived gap-ledger failure, which an editor refresh cannot
+ *   fix), and any component with `findings_trustworthy: false` adds an
+ *   explicit line that the published findings are not trustworthy evidence
+ *   for this snapshot. Run statuses without component detail keep the canned
+ *   presentations unchanged;
  * - `'seams_deferred'` additionally gets its own disclosure: interactive saves
  *   defer the seam inventory, so the summary says seam/gap evidence is deferred
  *   and the recovery is the full refresh;
@@ -3402,6 +3476,7 @@ export function statusForRunStatus(
     detail?: string;
     retryCommand?: string;
     dirtyRoutedDocuments?: readonly string[];
+    components?: readonly AnalysisStatusComponent[];
   } = {}
 ): RiprStatusState {
   const dirty = input.dirtyRoutedDocuments ?? [];
@@ -3438,12 +3513,41 @@ export function statusForRunStatus(
   }
   const limited = LIMITED_RUN_STATUS_PRESENTATIONS[runStatus ?? ''];
   if (limited) {
+    // #5004: the typed per-component outcomes are the authority. A degraded
+    // component's `recovery` names the safe recovery action (some recoveries
+    // cannot run inside the editor, so the canned refresh step would send the
+    // user to an action that cannot fix the degradation), and a component with
+    // `findings_trustworthy: false` must not let "no diagnostics" read as
+    // "no exposure" for this snapshot.
+    const degraded = degradedAnalysisComponents(input.components);
+    const untrustworthy = degraded.filter(
+      (component) => component.findings_trustworthy === false
+    );
+    const recoveries = uniqueStrings(
+      degraded.map((component) => component.recovery)
+    );
+    const recoveryStep = recoveries.map(capitalizeFirst).join('; ');
+    const detail = [
+      input.detail,
+      limited.detail,
+      untrustworthy.length > 0
+        ? `Published findings are not trustworthy evidence for this snapshot (${untrustworthy.map(describeUntrustworthyComponent).join('; ')}).`
+        : undefined
+    ].filter((line): line is string => Boolean(line)).join('\n');
     return {
       kind: 'analysisLimited',
       summary: limited.summary,
-      detail: [input.detail, limited.detail]
-        .filter((line): line is string => Boolean(line)).join('\n'),
-      nextStep: limited.nextStep
+      detail,
+      // The generic `limited` presentations only name a refresh, so a server
+      // recovery replaces them outright. `limited_partial_scope`'s canned step
+      // names the budget remedy, which no component recovery addresses (the
+      // scope budget is snapshot-level, not a component outcome), so the
+      // recovery is composed after it instead of dropping the budget action.
+      nextStep: recoveries.length === 0
+        ? limited.nextStep
+        : runStatus === 'limited_partial_scope'
+          ? `${limited.nextStep} ${recoveryStep}`
+          : recoveryStep
     };
   }
   return {

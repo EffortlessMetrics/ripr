@@ -1679,6 +1679,216 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('limited status prefers the degraded component recovery route over the canned refresh step (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-gap-ledger',
+        snapshot_id: 'snapshot:run-gap-ledger',
+        components: [
+          {
+            component: 'diff',
+            state: 'complete',
+            kind: null,
+            message: null,
+            findings_trustworthy: true,
+            recovery: null,
+            snapshot_identity: 'snapshot:run-gap-ledger'
+          },
+          {
+            component: 'gap_ledger',
+            state: 'failed',
+            kind: 'gap_ledger_parse_failed',
+            message: 'gap diagnostics skipped: ledger parse failed',
+            findings_trustworthy: true,
+            recovery: 'run ripr check to regenerate the gap decision ledger',
+            snapshot_identity: 'snapshot:run-gap-ledger'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // The artifact-derived failure can only be repaired outside the editor,
+      // so the nextStep must name the server-published recovery route, not
+      // the editor refresh that would re-read the same corrupt artifact.
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr check to regenerate the gap decision ledger'),
+        tooltip
+      );
+      assert.ok(!tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited status surfaces findings_trustworthy false as untrustworthy snapshot evidence (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-git-timeout',
+        snapshot_id: 'snapshot:run-git-timeout',
+        components: [
+          {
+            component: 'diff',
+            state: 'failed',
+            kind: 'git_invocation_timeout',
+            message: 'git diff timed out',
+            findings_trustworthy: false,
+            recovery: 'retry ripr.refreshDiagnostics',
+            snapshot_identity: 'snapshot:run-git-timeout'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // The degraded diff published zero findings; "no diagnostics" must not
+      // read as "no exposure" for this snapshot.
+      assert.ok(
+        tooltip.includes(
+          'Published findings are not trustworthy evidence for this snapshot (diff failed (git_invocation_timeout)).'
+        ),
+        tooltip
+      );
+      assert.ok(tooltip.includes('Next safe action: Retry ripr.refreshDiagnostics'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited status keeps the canned refresh step when no degraded component names a recovery (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-no-recovery',
+        snapshot_id: 'snapshot:run-no-recovery',
+        components: [
+          {
+            component: 'seam_inventory',
+            state: 'deferred',
+            kind: 'interactive_refresh_deferral',
+            message: null,
+            findings_trustworthy: true,
+            recovery: 'run ripr.refreshDiagnostics for the full seam inventory',
+            snapshot_identity: 'snapshot:run-no-recovery'
+          },
+          {
+            component: 'diff',
+            state: 'limited',
+            kind: 'budget_exhausted',
+            message: 'static limit reached',
+            findings_trustworthy: true,
+            recovery: null,
+            snapshot_identity: 'snapshot:run-no-recovery'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // No degraded component carries a recovery, and the deferred component's
+      // recovery must not be promoted: the canned refresh step is the fallback.
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics to retry the analysis and restore the missing evidence.'),
+        tooltip
+      );
+      assert.ok(!tooltip.includes('not trustworthy evidence'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited partial scope keeps the budget remedy alongside the component recovery (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited_partial_scope',
+        attempt_id: 'run-partial-plus-ledger',
+        snapshot_id: 'snapshot:run-partial-plus-ledger',
+        components: [
+          {
+            component: 'gap_ledger',
+            state: 'failed',
+            kind: 'gap_ledger_parse_failed',
+            message: 'gap diagnostics skipped: ledger parse failed',
+            findings_trustworthy: true,
+            recovery: 'run ripr check to regenerate the gap decision ledger',
+            snapshot_identity: 'snapshot:run-partial-plus-ledger'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // The artifact recovery does not widen the diff partition, so the canned
+      // budget remedy must survive composition with the component recovery.
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Show Top Limitation to see which budget stopped the run (RIPR_PARTIAL_DIFF_FILE_BUDGET or RIPR_PARTIAL_DIFF_LINE_BUDGET), raise it or narrow the diff, then run ripr: Refresh Diagnostics. Run ripr check to regenerate the gap decision ledger'),
+        tooltip
+      );
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited status fails closed to the canned step for a malformed components payload (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-malformed',
+        snapshot_id: 'snapshot:run-malformed',
+        // A version-mismatched or corrupted server may send a non-array; the
+        // presentation must take the canned fallback instead of throwing.
+        components: 'not-an-array'
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics to retry the analysis and restore the missing evidence.'),
+        tooltip
+      );
+      assert.ok(!tooltip.includes('not trustworthy evidence'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('typed succeeded status discloses deferred seam evidence instead of completed', async () => {
     const context = createControllerTestContext({});
     try {
