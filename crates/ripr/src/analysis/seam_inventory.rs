@@ -784,6 +784,8 @@ fn inventory_classified_seams_from_state_with_config(
 #[derive(Clone, Debug)]
 pub(crate) struct ScopedClassifiedSeamInventory {
     pub(crate) classified: Vec<ClassifiedSeam>,
+    /// Complete evaluation count, independent of retained payload count.
+    pub(crate) classified_seams_considered: usize,
     pub(crate) file_fact_cache: FileFactCacheStats,
     pub(crate) workspace_cache_key: super::seam_cache::RepoSeamCacheKey,
     pub(crate) total_rust_files: usize,
@@ -1140,6 +1142,7 @@ fn try_no_impact_fast_path(
     Ok(NoImpactOutcome::Fast(Box::new(
         ScopedClassifiedSeamInventory {
             classified: Vec::new(),
+            classified_seams_considered: 0,
             file_fact_cache: FileFactCacheStats::zero_work(),
             workspace_cache_key,
             total_rust_files,
@@ -1289,17 +1292,38 @@ pub(crate) fn inventory_diff_scoped_classified_seams_at_with_config(
         changed_owner_names,
         !no_impact_fast_path_disabled(),
         None,
+        None,
     )
 }
 
-/// [`inventory_diff_scoped_classified_seams_at_with_config`] with staged
-/// evidence; see [`DiffScopeEvidenceStages`].
-pub(crate) fn inventory_diff_scoped_classified_seams_staged_at_with_config(
+/// A bounded consumer of classified windows. Implementations retain their
+/// result payloads independently from the complete evaluation denominator.
+pub(crate) trait ScopedEvidenceConsumer {
+    fn in_first_stage(&self, seam: &RepoSeam) -> bool;
+    fn observe(&mut self, ordinal: usize, entry: ClassifiedSeam) -> Result<(), String>;
+    fn first_stage_sufficient(&self) -> bool;
+    fn retained_payloads(&self) -> usize;
+}
+
+const DEFAULT_REVIEW_EVIDENCE_WINDOW: usize = 32;
+const MAX_REVIEW_EVIDENCE_WINDOW: usize = 256;
+
+fn review_evidence_window_size() -> Result<usize, String> {
+    match std::env::var("RIPR_REVIEW_EVIDENCE_WINDOW_SIZE") {
+        Ok(value) => value.parse::<usize>().ok()
+            .filter(|size| (1..=MAX_REVIEW_EVIDENCE_WINDOW).contains(size))
+            .ok_or_else(|| format!("RIPR_REVIEW_EVIDENCE_WINDOW_SIZE must be between 1 and {MAX_REVIEW_EVIDENCE_WINDOW}")),
+        Err(std::env::VarError::NotPresent) => Ok(DEFAULT_REVIEW_EVIDENCE_WINDOW),
+        Err(error) => Err(format!("invalid RIPR_REVIEW_EVIDENCE_WINDOW_SIZE: {error}")),
+    }
+}
+
+pub(crate) fn inventory_diff_scoped_streamed_seams_at_with_config(
     root: &Path,
     config: &RiprConfig,
     changed_files: &[PathBuf],
     changed_owner_names: &[String],
-    stages: &DiffScopeEvidenceStages<'_>,
+    consumer: &mut dyn ScopedEvidenceConsumer,
 ) -> Result<ScopedClassifiedSeamInventory, String> {
     inventory_diff_scoped_classified_seams_inner(
         root,
@@ -1307,8 +1331,99 @@ pub(crate) fn inventory_diff_scoped_classified_seams_staged_at_with_config(
         changed_files,
         changed_owner_names,
         !no_impact_fast_path_disabled(),
-        Some(stages),
+        None,
+        Some((consumer, review_evidence_window_size()?)),
     )
+}
+
+fn classify_scoped_seams_streamed(
+    seams: &[RepoSeam],
+    index: &RustIndex,
+    consumer: &mut dyn ScopedEvidenceConsumer,
+    window_size: usize,
+) -> Result<(usize, usize), String> {
+    if window_size == 0 || window_size > MAX_REVIEW_EVIDENCE_WINDOW {
+        return Err("invalid review evidence window size".into());
+    }
+    let pass = test_grip_evidence::EvidencePass::new(index);
+    cancellation::checkpoint()?;
+    let mut first = Vec::new();
+    let mut rest = Vec::new();
+    for (ordinal, seam) in seams.iter().enumerate() {
+        if consumer.in_first_stage(seam) {
+            first.push(ordinal);
+        } else {
+            rest.push(ordinal);
+        }
+    }
+    let mut evaluated = classify_evidence_windows(seams, &first, &pass, consumer, window_size)?;
+    if consumer.first_stage_sufficient() {
+        trace_latency_phase(
+            "evidence_for_seams",
+            "review_scope_first_stage_sufficient",
+            Duration::ZERO,
+        );
+        return Ok((evaluated, rest.len()));
+    }
+    evaluated = evaluated
+        .checked_add(classify_evidence_windows(
+            seams,
+            &rest,
+            &pass,
+            consumer,
+            window_size,
+        )?)
+        .ok_or("review evidence evaluation count overflow")?;
+    cancellation::checkpoint()?;
+    Ok((evaluated, 0))
+}
+
+fn classify_evidence_windows(
+    seams: &[RepoSeam],
+    ordinals: &[usize],
+    pass: &test_grip_evidence::EvidencePass<'_>,
+    consumer: &mut dyn ScopedEvidenceConsumer,
+    window_size: usize,
+) -> Result<usize, String> {
+    let mut evaluated = 0usize;
+    for window in ordinals.chunks(window_size) {
+        cancellation::checkpoint()?;
+        let window_seams = window
+            .iter()
+            .map(|ordinal| seams[*ordinal].clone())
+            .collect::<Vec<_>>();
+        let evidence = pass.evidence_for(&window_seams);
+        cancellation::checkpoint()?;
+        let classified = seam_classification::classify_seams_owned(window_seams, evidence);
+        if classified.len() != window.len() {
+            return Err(
+                "review evidence window is incomplete; no complete guidance is available".into(),
+            );
+        }
+        for (ordinal, entry) in window.iter().copied().zip(classified) {
+            if entry.seam.id() != seams[ordinal].id() {
+                return Err("review evidence window identity mismatch".into());
+            }
+            consumer.observe(ordinal, entry)?;
+        }
+        evaluated = evaluated
+            .checked_add(window.len())
+            .ok_or("review evidence evaluation count overflow")?;
+        pass.clear_window_memos();
+        trace_latency_phase(
+            "review_evidence_window",
+            &format!(
+                "evaluated_{evaluated}_window_{}_retained_{}",
+                window.len(),
+                consumer.retained_payloads()
+            ),
+            Duration::ZERO,
+        );
+        // No partially completed window can cross the caller's cancellation
+        // boundary as a complete aggregate, even after its payloads were moved.
+        cancellation::checkpoint()?;
+    }
+    Ok(evaluated)
 }
 
 /// Shared body behind [`inventory_diff_scoped_classified_seams_at_with_config`].
@@ -1322,6 +1437,7 @@ fn inventory_diff_scoped_classified_seams_inner(
     changed_owner_names: &[String],
     fast_path_enabled: bool,
     stages: Option<&DiffScopeEvidenceStages<'_>>,
+    consumer: Option<(&mut dyn ScopedEvidenceConsumer, usize)>,
 ) -> Result<ScopedClassifiedSeamInventory, String> {
     cancellation::checkpoint()?;
     let absent_changed_files = workspace::changed_source_files_absent_from_worktree(
@@ -1426,11 +1542,21 @@ fn inventory_diff_scoped_classified_seams_inner(
         seams_started.elapsed(),
     );
     cancellation::checkpoint()?;
-    let (classified, unevaluated_seams) = classify_scoped_seams(seams, &cached.index, stages)?;
+    let (classified, classified_seams_considered, unevaluated_seams) =
+        if let Some((consumer, window_size)) = consumer {
+            let (evaluated, unevaluated) =
+                classify_scoped_seams_streamed(&seams, &cached.index, consumer, window_size)?;
+            (Vec::new(), evaluated, unevaluated)
+        } else {
+            let (classified, unevaluated) = classify_scoped_seams(seams, &cached.index, stages)?;
+            let evaluated = classified.len();
+            (classified, evaluated, unevaluated)
+        };
 
     cancellation::checkpoint()?;
     Ok(ScopedClassifiedSeamInventory {
         classified,
+        classified_seams_considered,
         file_fact_cache: cached.file_fact_cache,
         workspace_cache_key,
         total_rust_files,
@@ -2230,6 +2356,111 @@ marker = "libtest_mimic::Trial"
     }
 
     #[test]
+    fn streamed_windows_preserve_full_evidence_and_refuse_boundary_cancellation()
+    -> Result<(), String> {
+        use crate::analysis::cancellation::{
+            AnalysisAbortKind, AnalysisCancellationToken, with_token,
+        };
+        struct Consumer {
+            entries: Vec<ClassifiedSeam>,
+            cancel: Option<AnalysisCancellationToken>,
+            sufficient: bool,
+        }
+        impl ScopedEvidenceConsumer for Consumer {
+            fn in_first_stage(&self, seam: &RepoSeam) -> bool {
+                seam.owner().ends_with("eligible")
+            }
+            fn observe(&mut self, _: usize, entry: ClassifiedSeam) -> Result<(), String> {
+                self.entries.push(entry);
+                if let Some(token) = &self.cancel {
+                    token.cancel(AnalysisAbortKind::Cancelled);
+                }
+                Ok(())
+            }
+            fn first_stage_sufficient(&self) -> bool {
+                self.sufficient
+            }
+            fn retained_payloads(&self) -> usize {
+                self.entries.len()
+            }
+        }
+        let path = PathBuf::from("src/lib.rs");
+        let source =
+            "pub fn eligible(n:i32)->bool { n >= 10 }\npub fn other(n:i32)->bool { n < 20 }";
+        let mut index = index_from_files(&[
+            (path.clone(), source),
+            (
+                PathBuf::from("tests/boundary.rs"),
+                "#[test] fn exercises_both() { let _ = eligible(11); let _ = other(11); }",
+            ),
+        ])?;
+        index.tests = index
+            .files
+            .values()
+            .flat_map(|facts| facts.tests.iter().cloned())
+            .collect();
+        assert!(!index.tests.is_empty());
+        let seams = inventory_seams_from_index(&[path], &index);
+        if seams.len() < 2 {
+            return Err("fixture must span windows".into());
+        }
+        let (expected, _) = classify_scoped_seams(seams.clone(), &index, None)?;
+        for owner in ["eligible", "other"] {
+            assert!(
+                expected
+                    .iter()
+                    .any(|entry| entry.seam.owner().ends_with(owner)
+                        && !entry.evidence.related_tests.is_empty()),
+                "shared test evidence must reach {owner}"
+            );
+        }
+        for width in [1, 2, 32] {
+            let mut sink = Consumer {
+                entries: Vec::new(),
+                cancel: None,
+                sufficient: false,
+            };
+            let (evaluated, skipped) =
+                classify_scoped_seams_streamed(&seams, &index, &mut sink, width)?;
+            assert_eq!((evaluated, skipped), (seams.len(), 0));
+            assert_eq!(class_by_id(&sink.entries), class_by_id(&expected));
+        }
+        let mut early = Consumer {
+            entries: Vec::new(),
+            cancel: None,
+            sufficient: true,
+        };
+        let (evaluated, skipped) = classify_scoped_seams_streamed(&seams, &index, &mut early, 1)?;
+        let first = expected
+            .iter()
+            .filter(|entry| entry.seam.owner().ends_with("eligible"))
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(!first.is_empty());
+        assert!(first.len() < seams.len());
+        assert_eq!(
+            (evaluated, skipped),
+            (first.len(), seams.len() - first.len())
+        );
+        assert_eq!(class_by_id(&early.entries), class_by_id(&first));
+        let token = AnalysisCancellationToken::new();
+        let mut sink = Consumer {
+            entries: Vec::new(),
+            cancel: Some(token.clone()),
+            sufficient: false,
+        };
+        let result = with_token(&token, || {
+            classify_scoped_seams_streamed(&seams, &index, &mut sink, 1)
+        });
+        assert_eq!(
+            result.err().as_deref(),
+            Some("analysis cancelled: Cancelled")
+        );
+        assert_eq!(sink.entries.len(), 1, "second window must not begin");
+        Ok(())
+    }
+
+    #[test]
     fn staged_scope_evidence_skips_the_rest_only_when_the_first_stage_is_sufficient()
     -> Result<(), String> {
         let prod = PathBuf::from("src/pricing.rs");
@@ -2490,7 +2721,7 @@ pub fn check_b(x: i32) -> i32 {
     x
 }
 "#;
-        let index = index_from_files(&[(a.clone(), a_src), (b.clone(), b_src)])?;
+        let mut index = index_from_files(&[(a.clone(), a_src), (b.clone(), b_src)])?;
 
         let forward = inventory_seams_from_index(&[a.clone(), b.clone()], &index);
         let reversed = inventory_seams_from_index(&[b.clone(), a.clone()], &index);
@@ -2502,6 +2733,22 @@ pub fn check_b(x: i32) -> i32 {
                 "seam IDs depend on input order:\n  forward:  {forward_ids:?}\n  reversed: {reversed_ids:?}"
             ));
         }
+        assert!(!forward_ids.is_empty());
+        let facts = index.files.get_mut(&a).ok_or("fixture file facts")?;
+        let probe = facts
+            .probe_shapes
+            .first()
+            .ok_or("fixture predicate")?
+            .clone();
+        facts.probe_shapes.push(probe);
+        let repeated = inventory_seams_from_index(&[b.clone(), a.clone(), b, a], &index);
+        assert_eq!(
+            repeated
+                .iter()
+                .map(|seam| seam.id().as_str())
+                .collect::<Vec<_>>(),
+            forward_ids
+        );
         Ok(())
     }
 
@@ -4018,6 +4265,7 @@ marker = "libtest_mimic::Trial"
             &[],
             false,
             None,
+            None,
         )?;
         if !full.classified.is_empty() {
             return Err("docs-only diff must classify no seams on the full path".to_owned());
@@ -4201,6 +4449,7 @@ marker = "libtest_mimic::Trial"
             &[],
             false,
             None,
+            None,
         )?;
         if cold.total_rust_files == 0 || cold.total_production_files == 0 {
             return Err(
@@ -4257,6 +4506,7 @@ marker = "libtest_mimic::Trial"
             &changed,
             &[],
             true,
+            None,
             None,
         )?;
         if recovered.workspace_cache_key != cold.workspace_cache_key
@@ -4352,6 +4602,7 @@ marker = "libtest_mimic::Trial"
             &[],
             true,
             None,
+            None,
         )?;
         let full = inventory_diff_scoped_classified_seams_inner(
             &root,
@@ -4359,6 +4610,7 @@ marker = "libtest_mimic::Trial"
             &changed,
             &[],
             false,
+            None,
             None,
         )?;
         // ClassifiedSeam carries evidence payloads without structural

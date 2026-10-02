@@ -8,10 +8,7 @@
 
 use crate::analysis;
 use crate::app::CheckInput;
-use crate::app::agent_brief::{
-    AgentBriefChangedScope, AgentBriefPolicy, AgentBriefResolvedWorkingSet,
-    select_agent_brief_seams,
-};
+use crate::app::agent_brief::{AgentBriefPolicy, AgentBriefResolvedWorkingSet, BoundedAgentBrief};
 use crate::cli::commands_agent_support::{
     agent_brief_lines_from_diff, agent_brief_owner_attribution_for_lines,
 };
@@ -437,29 +434,22 @@ fn review_comments_with_diff_loader_at(
         .iter()
         .map(|owner| owner.owner.clone())
         .collect::<Vec<_>>();
-    // Review slots fill from changed lines and changed owners first, so
-    // the rest of the scope is only evaluated when those fall short.
-    let changed_scope = AgentBriefChangedScope::new(&working_set);
     let policy = AgentBriefPolicy::from_config(&config);
-    let first_stage = |seam: &analysis::RepoSeam| changed_scope.contains(seam);
-    let first_stage_sufficient = |classified: &[analysis::ClassifiedSeam]| {
-        changed_scope.fills_selection(
-            classified,
-            output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
-            policy,
-        )
-    };
-    let stages = analysis::DiffScopeEvidenceStages {
-        first: &first_stage,
-        sufficient: &first_stage_sufficient,
-    };
+    let mut selection_builder = BoundedAgentBrief::new(
+        &working_set,
+        output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
+        policy,
+    )
+    .map_err(|error| {
+        record_review_comments_error(&mut receipt, &receipt_path, "canonical_analysis", error)
+    })?;
     let scoped_inventory = analysis::cancellation::with_token(&cancellation, || {
-        analysis::inventory_diff_scoped_classified_seams_staged_at_with_config(
+        analysis::inventory_diff_scoped_streamed_seams_at_with_config(
             &input.root,
             &config,
             &working_set.files,
             &changed_owner_names,
-            &stages,
+            &mut selection_builder,
         )
     })
     .map_err(|error| {
@@ -482,12 +472,9 @@ fn review_comments_with_diff_loader_at(
     )?;
     receipt.phase("canonical_analysis", "route_construction");
     receipt.write_atomic(&receipt_path)?;
-    let mut selection = select_agent_brief_seams(
-        &scoped_inventory.classified,
-        &working_set,
-        output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
-        policy,
-    );
+    let mut selection = selection_builder.selection().map_err(|error| {
+        record_review_comments_error(&mut receipt, &receipt_path, "route_construction", error)
+    })?;
     if !scoped_inventory.absent_changed_files.is_empty() {
         let listed = scoped_inventory
             .absent_changed_files

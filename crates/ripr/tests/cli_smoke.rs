@@ -20311,3 +20311,144 @@ fn check_json_into_closed_stdout_exits_two_quietly() -> Result<(), std::io::Erro
     );
     Ok(())
 }
+
+#[test]
+fn review_guidance_windows_preserve_output_and_bound_retained_payloads()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("review-windows");
+    std::fs::create_dir_all(root.join("src"))?;
+    init_git_fixture_repo(&root)?;
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname=\"review_windows\"\nversion=\"0.0.0\"\nedition=\"2024\"\n",
+    )?;
+    let source = (0..40)
+        .map(|i| format!("pub fn boundary_{i}(n:i32)->bool {{ n >= 10 }}\n"))
+        .collect::<String>();
+    std::fs::write(root.join("src/lib.rs"), &source)?;
+    run_git(&root, &["add", "."])?;
+    run_git(
+        &root,
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "baseline",
+        ],
+    )?;
+    std::fs::write(root.join("src/lib.rs"), source.replace(">=", ">"))?;
+    run_git(&root, &["add", "."])?;
+    run_git(
+        &root,
+        &[
+            "-c",
+            "user.name=RIPR test",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-m",
+            "change boundaries",
+        ],
+    )?;
+    let mut expected = None;
+    for width in ["1", "7", "32", "33"] {
+        let out = root.join("target").join("window/comments.json");
+        let output = run_command_with_env(
+            env!("CARGO_BIN_EXE_ripr"),
+            &root,
+            &[
+                "review-comments",
+                "--root",
+                ".",
+                "--base",
+                "HEAD^",
+                "--head",
+                "HEAD",
+                "--out",
+                &out.to_string_lossy(),
+            ],
+            &[
+                ("RIPR_REVIEW_EVIDENCE_WINDOW_SIZE", width),
+                ("RIPR_REPO_EXPOSURE_LATENCY_TRACE", "1"),
+            ],
+        )?;
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let bytes = (
+            std::fs::read(&out)?,
+            std::fs::read(out.with_extension("md"))?,
+        );
+        if let Some(ref expected) = expected {
+            assert_eq!(&bytes, expected);
+        } else {
+            expected = Some(bytes);
+        }
+        let trace = String::from_utf8(output.stderr)?;
+        let mut windows = 0;
+        for line in trace
+            .lines()
+            .filter(|line| line.contains("phase=review_evidence_window"))
+        {
+            windows += 1;
+            let counts = line
+                .split("_window_")
+                .nth(1)
+                .ok_or("missing window trace")?;
+            let (actual, rest) = counts
+                .split_once("_retained_")
+                .ok_or("missing retained trace")?;
+            assert!(actual.parse::<usize>()? <= width.parse::<usize>()?);
+            let retained = rest
+                .split_whitespace()
+                .next()
+                .ok_or("missing retained count")?
+                .parse::<usize>()?;
+            assert!(retained <= 10);
+        }
+        assert!(windows > 1, "fixture must span windows: {trace}");
+        let receipt: serde_json::Value = serde_json::from_slice(&std::fs::read(
+            out.parent()
+                .ok_or("output parent")?
+                .join("run-receipt.json"),
+        )?)?;
+        assert_eq!(receipt["status"], "complete");
+    }
+    // Invalid configuration cannot reuse a preceding complete run as authority.
+    let out = root.join("target/window/comments.json");
+    for base in ["HEAD^", "HEAD"] {
+        let refused = run_command_with_env(
+            env!("CARGO_BIN_EXE_ripr"),
+            &root,
+            &[
+                "review-comments",
+                "--root",
+                ".",
+                "--base",
+                base,
+                "--head",
+                "HEAD",
+                "--out",
+                &out.to_string_lossy(),
+            ],
+            &[("RIPR_REVIEW_EVIDENCE_WINDOW_SIZE", "0")],
+        )?;
+        assert!(!refused.status.success());
+        let receipt: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("target/window/run-receipt.json"))?)?;
+        assert_eq!(receipt["status"], "failed");
+        assert!(
+            receipt["completed_artifacts"]
+                .as_array()
+                .ok_or("completed array")?
+                .is_empty()
+        );
+    }
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
