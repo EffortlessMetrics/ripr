@@ -92,9 +92,36 @@ correctness; a negative opinion does not automatically establish a false
 positive. Silence is not a vote.
 
 Export reports objective route-quality counts separately from subjective
-usefulness. Unreviewed, stale, unmatched, and missing-feedback states are
-counts, not success percentages. `reviewed_human_useful_rate` is null when
-no human-reviewed receipts exist.
+usefulness. Raw receipt, review, judgment, unmatched, historical and mismatched
+counts retain all feedback. They are not the denominator of a current-result
+usefulness rate.
+
+`reviewed_human_useful_rate` requires all of the following for each eligible
+receipt: `reviewed_accepted`, a human review actor, a match to an existing
+route-quality row, and exact equality to an explicitly supplied live result
+identity under the existing reference classifier. Rejected, unreviewed,
+agent-reviewed, unmatched, historical and mismatched feedback stays visible
+but contributes to neither the rate numerator nor its denominator. Accepted
+negative opinions do contribute to the denominator. One receipt matching
+several aggregate rows counts once, not once per row.
+
+The join exposes `rate_comparison_provided` and these fields under
+`denominators`:
+
+- `rate_eligible_reviewed_human_total`: eligible receipt denominator;
+- `rate_eligible_reviewed_human_useful`: useful opinions within that denominator;
+- `rate_excluded_reviewed_human_total`: raw human-reviewed receipts excluded
+  from that denominator.
+
+The rate is null when its eligible denominator is zero, including when no
+comparison subject or matching route-quality row is available. Missing
+comparison is not a claim that the receipt is stale: the existing binding
+classification remains unchanged. It is insufficient evidence for this rate.
+The current public CLI does not supply a live comparison subject and therefore
+exports counts with a null rate. This correction adds no flag, analyzer run,
+implicit refresh or currentness claim. An application caller supplying a
+comparison subject remains responsible for that subject's provenance; this
+join does not authenticate a reviewer or independently analyze a repository.
 
 ## Non-Goals
 
@@ -118,6 +145,10 @@ no human-reviewed receipts exist.
   agent versus human review, no fake success rates, join to existing rows,
   path escape, secret-pattern notes, oversized notes, leftover temp files,
   and malformed receipts.
+- Rate controls cover missing comparison, absent and unrelated rows, stale
+  snapshots, older attempts, rejected reviews, nonhuman reviewers, mixed
+  eligible/ineligible feedback, negative opinions and duplicate aggregate
+  rows. Exported JSON and objective counts must agree with the shared join.
 
 ## Inputs
 
@@ -149,6 +180,14 @@ no human-reviewed receipts exist.
    counts.
 8. Export joins a receipt onto an existing route-quality sample gap id
    without rewriting that row's attempted/improved counts.
+9. A human-accepted useful receipt without a current comparison or without
+   a matching row remains counted but cannot produce a numeric rate.
+10. With an explicit current comparison, one accepted useful and one accepted
+    incorrect opinion produce 1/2, even when three additional human-reviewed
+    useful receipts are stale, historical or rejected. Both aggregate rows
+    may show those same five receipts; the rate denominator remains two.
+11. One eligible negative opinion yields 0/1 (numeric zero), not null. No
+    eligible opinions yields null, not zero or one.
 
 ## Test Mapping
 
@@ -167,6 +206,10 @@ no human-reviewed receipts exist.
 - `crates/ripr/src/app/feedback.rs::tests::agent_feedback_is_never_counted_as_human_reviewed`
 - `crates/ripr/src/app/feedback.rs::tests::unreviewed_and_missing_feedback_do_not_become_success_rates`
 - `crates/ripr/src/app/feedback.rs::tests::join_attaches_to_existing_route_quality_rows_without_a_second_ledger`
+- `crates/ripr/src/app/feedback.rs::tests::usefulness_rate_requires_a_comparison_and_a_matching_row`
+- `crates/ripr/src/app/feedback.rs::tests::usefulness_rate_excludes_each_ineligible_review_without_losing_counts`
+- `crates/ripr/src/app/feedback.rs::tests::usefulness_rate_counts_eligible_receipts_once_across_aggregate_rows`
+- `crates/ripr/src/app/feedback.rs::tests::usefulness_rate_keeps_a_current_negative_opinion_in_the_denominator`
 - `crates/ripr/src/app/feedback.rs::tests::path_escape_and_secret_notes_fail_closed`
 - `crates/ripr/src/app/feedback.rs::tests::leftover_temp_files_are_not_loaded_as_receipts`
 - `crates/ripr/src/app/feedback.rs::tests::malformed_receipt_fails_closed`

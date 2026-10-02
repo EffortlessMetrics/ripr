@@ -17441,10 +17441,18 @@ Join JSON (`schema_version` `0.1`, `kind` `usefulness_feedback_join`) keeps
 objective route-quality counts (`repair_kind_attempted`,
 `repair_kind_improved`) separate from subjective usefulness counts. It reports
 denominators for receipts, reviewed/human/unreviewed/agent, unmatched,
-historical, mismatched, and missing-feedback rows. `reviewed_human_useful_rate`
-is a number only when `reviewed_human_total` is nonzero; otherwise it is `null`.
-Unreviewed, stale, unmatched, and missing-feedback states are counts, not
-success percentages. The join does not invent a second attempt ledger.
+historical, mismatched, missing-feedback rows, and the eligible current-result
+rate cohort (`rate_eligible_reviewed_human_total`,
+`rate_eligible_reviewed_human_useful`, `rate_excluded_reviewed_human_total`).
+`rate_comparison_provided` is true only when a live result identity was
+supplied. `reviewed_human_useful_rate` is a number only when
+`rate_eligible_reviewed_human_total` is nonzero; otherwise it is `null`.
+Eligible receipts require `reviewed_accepted`, a human review actor, a match to
+an existing route-quality row, and exact equality to that supplied identity.
+Raw counts retain excluded opinions. Unreviewed, stale, unmatched, and
+missing-feedback states are counts, not success percentages. The join does not
+invent a second attempt ledger. The public CLI currently supplies no comparison
+subject, so its export keeps counts and a null rate.
 
 ## Historical 0.11 candidate execution-scope report
 
