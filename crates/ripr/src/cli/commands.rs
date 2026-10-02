@@ -17,7 +17,7 @@ use crate::cli::commands_timestamps::generated_at_unix_ms;
 #[path = "commands/agent.rs"]
 mod agent;
 #[path = "commands/agent_card.rs"]
-mod agent_card;
+pub(crate) mod agent_card;
 #[path = "commands/agent_dispatch.rs"]
 mod agent_dispatch;
 #[path = "commands/agent_gap_packet.rs"]

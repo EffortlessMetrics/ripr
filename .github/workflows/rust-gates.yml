@@ -239,6 +239,8 @@ jobs:
           path: |
             target/nextest/ci/junit.xml
             target/nextest/ci/run-context.txt
+            target/ripr/reports/repair-card-usability.json
+            target/ripr/reports/repair-card-usability.md
           if-no-files-found: warn
           retention-days: 5
 

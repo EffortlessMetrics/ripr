@@ -55,6 +55,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Goldens(args) => super::reports::goldens(&args),
         XtaskCommand::Metrics => super::reports::metrics_report(),
         XtaskCommand::RustRepairTrustReport => super::reports::rust_repair_trust_report(),
+        XtaskCommand::RepairCardUsabilityReport => super::reports::repair_card_usability_report(),
         XtaskCommand::RustJudgedPanel(args) => super::rust_judged_panel::run(&args),
         XtaskCommand::CheckRustJudgedPanel => super::check_rust_judged_panel(),
         XtaskCommand::CheckReleaseChallengeSelection => {

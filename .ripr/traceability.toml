@@ -10489,3 +10489,40 @@ metrics = [
   "repair_attempt_store_explicit_resolutions",
   "repair_attempt_store_containment_refusals",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0196"
+name = "repair card budget ratification"
+spec = "docs/specs/RIPR-SPEC-0196-repair-card-budget-ratification.md"
+tests = [
+  "crates/ripr/src/app/repair_card_usability.rs::tests::report_is_deterministic_across_runs",
+  "crates/ripr/src/app/repair_card_usability.rs::tests::every_profile_satisfies_the_ratification_relations",
+  "crates/ripr/src/app/repair_card_usability.rs::tests::zero_attempt_cases_keep_real_measurement_not_measurable",
+  "crates/ripr/src/app/repair_card_usability.rs::tests::attempt_cases_flip_real_measurement_to_measurable",
+  "crates/ripr/src/app/repair_card_usability.rs::tests::ratified_defaults_match_the_domain_constants",
+  "crates/ripr/src/app/repair_card_usability.rs::tests::wire_envelope_check_rejects_embedded_packets_and_markers",
+  "xtask/src/reports/repair_card_usability.rs::tests::committed_evidence_files_validate_against_the_live_measurement",
+  "xtask/src/reports/repair_card_usability.rs::tests::receipt_with_a_drifted_bound_is_rejected",
+  "xtask/src/reports/repair_card_usability.rs::tests::receipt_without_limitations_is_rejected",
+  "xtask/src/reports/repair_card_usability.rs::tests::pending_ratification_with_attempt_cases_is_rejected",
+  "xtask/src/reports/repair_card_usability.rs::tests::ratified_real_usability_without_measurements_is_rejected",
+  "xtask/src/reports/repair_card_usability.rs::tests::expectations_with_a_missing_profile_are_rejected",
+  "xtask/src/reports/repair_card_usability.rs::tests::drifted_default_bounds_fail_the_expectations_gate",
+]
+fixtures = [
+  "metrics/repair-card-usability/ratified-expectations.json",
+  "metrics/repair-card-usability/decision-receipt.json",
+]
+code = [
+  "crates/ripr/src/app/repair_card_usability.rs",
+  "xtask/src/reports/repair_card_usability.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0196-repair-card-budget-ratification.md",
+]
+metrics = [
+  "repair_card_usability_profiles",
+  "repair_card_usability_relations",
+  "repair_card_real_attempt_cases",
+  "repair_card_budget_receipt_status",
+]

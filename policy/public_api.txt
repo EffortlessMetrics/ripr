@@ -24,6 +24,12 @@
 # read-only provider DTO and validator contract; covered_by:
 # cargo test -p ripr --lib provider_contract, cargo xtask check-public-api.
 
+# PR #4669: owner product/agent; reason: versioned synthetic measurement and
+# budget-ratification receipt surface shared by the xtask report gate;
+# covered_by: cargo test -p ripr --lib app::repair_card_usability,
+# cargo xtask repair-card-usability-report, cargo xtask check-public-api.
+
+pub const ripr::app::repair_card_usability::REPAIR_CARD_USABILITY_SCHEMA_VERSION
 pub const ripr::lsp::diagnostic_budget::DEFAULT_MAX_INLINE_DETAIL_BYTES
 pub const ripr::lsp::diagnostic_budget::DEFAULT_MAX_ITEMS_PER_DOCUMENT
 pub const ripr::lsp::diagnostic_budget::DEFAULT_MAX_ITEMS_PER_WORKSPACE_RESPONSE
@@ -71,6 +77,7 @@ pub enum ripr::cli::CommandError
 pub fn ripr::analysis::run_analysis
 pub fn ripr::analysis::run_repo_analysis
 pub fn ripr::app::pr_evidence::reject_pr_evidence_error_packet
+pub fn ripr::app::repair_card_usability::repair_card_usability_report
 pub fn ripr::app::render_check
 pub fn ripr::cli::run
 pub fn ripr::lsp::diagnostic_budget::build_budget_items_from_diagnostics
@@ -93,6 +100,7 @@ pub mod ripr::analysis
 pub mod ripr::app
 pub mod ripr::app::pr_evidence
 pub mod ripr::app::pr_summary
+pub mod ripr::app::repair_card_usability
 pub mod ripr::cli
 pub mod ripr::config
 pub mod ripr::domain

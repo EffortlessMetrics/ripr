@@ -30,6 +30,10 @@ pub(crate) mod repair_card;
 /// entry (#4667: card-first bounded agent handoff; canonical packet stays
 /// behind the explicit `ripr agent packet` route).
 pub(crate) mod repair_card_handoff;
+/// Measurement and ratification producer for the RepairCard default budget
+/// (#4669; RIPR-SPEC-0196): synthetic wire-size measurement and governed
+/// real-opportunity accounting that back the versioned decision receipt.
+pub mod repair_card_usability;
 pub(crate) mod ripr_plus;
 mod selector;
 pub(crate) mod temp_diff;

@@ -67,7 +67,10 @@ fn render_agent_card(options: &AgentCardOptions) -> Result<RepairCardV1, String>
 /// enhancement over a raw field dump is the explicit non-actionable reason
 /// when the card carries no next action, because a silent absence there reads
 /// as a bug, not a gate decision.
-fn agent_card_prose_lines(card: &RepairCardV1) -> Vec<String> {
+///
+/// Crate-visible for the #4669 usability measurement, which counts the human
+/// presentation separately from the JSON wire shape (RIPR-SPEC-0196).
+pub(crate) fn agent_card_prose_lines(card: &RepairCardV1) -> Vec<String> {
     let mut lines = Vec::new();
     lines.push(format!("Repair card {}", card.repair_card_id));
     lines.push(format!("  schema: {}", card.schema_version));

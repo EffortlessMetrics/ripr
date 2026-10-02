@@ -331,8 +331,7 @@ The legacy rule "first missing artifact" sent a user with a prepared repair
 attempt back into the manual snapshot loop, sent a fresh workspace to a Bash
 redirect into `target/ripr/workflow/` before that directory existed, and sent
 a failed attempt to `ripr agent receipt`. `ripr agent status` now also reads
-the selected repair-attempt store (default `target/ripr/repair-attempts/`,
-or `--store`; RIPR-SPEC-0195) through the attempt authority
+`target/ripr/repair-attempts/*/attempt.json` through the attempt authority
 (`app::repair_attempt::inventory_repair_attempts`, the same validation the
 after phase applies) and selects `next_command` in this order:
 
@@ -635,7 +634,7 @@ it does not execute the command or grant edit authority.
 
 - `crates/ripr/src/app/agent_status.rs` builds and renders the report from
   existing artifact files and the repair-attempt inventory.
-- `crates/ripr/src/app/repair_attempt/mod.rs::inventory_repair_attempts` lists and
+- `crates/ripr/src/app/repair_attempt.rs::inventory_repair_attempts` lists and
   validates attempt manifests read-only for status.
 - `crates/ripr/src/app/agent_review_summary.rs` joins existing agent status,
   workflow, receipt, cockpit, repo exposure, optional LSP cockpit, and local
