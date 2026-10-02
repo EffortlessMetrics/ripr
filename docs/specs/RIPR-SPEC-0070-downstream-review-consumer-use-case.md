@@ -358,15 +358,30 @@ verbatim instead of inventing flags.
 
 ## Test Mapping
 
-- None yet.
+The bounded review-evidence slice has executable controls and traceability:
 
-This spec is docs-only. Implementation slices add traceability entries
-when the downstream export contract behavior and its fixtures land;
-mapping names should follow the `output/downstream-export-contract`
-prefix.
+- `crates/ripr/tests/cli_smoke.rs::review_guidance_windows_preserve_output_and_bound_retained_payloads`
+  covers window-size output parity, retained cardinality, and failed-receipt
+  authority for invalid configuration.
+- `crates/ripr/src/app/agent_brief.rs::tests::streamed_selection_matches_complete_ranking_and_omissions_across_windows`
+  and `crates/ripr/src/app/agent_brief.rs::tests::streamed_first_stage_threshold_matches_full_selection_with_hidden_ties`
+  compare the bounded selection with the complete reference.
+- `crates/ripr/src/app/agent_brief.rs::tests::streamed_selection_rejects_duplicate_identity_across_windows`
+  and `crates/ripr/src/app/agent_brief/bounded.rs::tests::late_hidden_scope_match_discards_fallback_and_counter_overflow_refuses`
+  pin identity refusal, fallback replacement, and checked counters.
+- `crates/ripr/src/analysis/seam_inventory.rs::tests::streamed_windows_preserve_full_evidence_and_refuse_boundary_cancellation`
+  pins full related-test evidence and incomplete cancellation across windows.
+
+These tests cover that implemented slice only. The broader downstream export
+contract and reject-list fixtures remain proposed; they are not established by
+window parity or by this mapping. Future export-contract mapping names should
+follow the `output/downstream-export-contract` prefix.
 
 ## Implementation Mapping
 
+- `crates/ripr/src/app/agent_brief/bounded.rs` — bounded canonical selection.
+- `crates/ripr/src/analysis/seam_inventory.rs` — windowed full-evidence producer.
+- `crates/ripr/src/cli/commands/review_comments.rs` — existing receipt/CLI boundary.
 - docs/specs/RIPR-SPEC-0070-downstream-review-consumer-use-case.md —
   this document.
 - plans/use-case-specs/implementation-plan.md (planned) — the
