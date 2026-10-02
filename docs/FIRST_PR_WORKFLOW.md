@@ -20,10 +20,21 @@ mutation testing, call providers, or make merge decisions by default.
 
 If `ripr doctor --root PATH` finds an existing or stale start-here packet, its
 refresh command keeps that selected repository even when pasted from another
-directory. Use the labeled PowerShell form when one is printed. This generic
+directory, including roots that traverse a symlink before `..`. If the selected
+directory can no longer be resolved, doctor withholds the refresh command and
+asks you to restore access and retry. Use the labeled PowerShell form when one
+is printed. This generic
 refresh uses the repository's default base and `HEAD`; add explicit `--base REF`
 and `--head REF` to keep a custom comparison. If no default base resolves,
 first-pr reports the missing selection and leaves the existing packet unchanged.
+The rooted recommended first check also keeps the physical selected directory;
+missing-root recovery remains diagnostic and does not create a repository.
+An unavailable root keeps its absolute input spelling, including `..`, rather
+than redirecting recovery to a different directory through lexical cleanup.
+A UTF-8 alias is retained when the physical directory name is not UTF-8. If
+doctor cannot render a lossless rooted command, it asks for an alias instead of
+printing a lossy replacement-character path.
+That recovery is also the first action when no packet has been generated.
 
 ## 1. Pick One PR
 

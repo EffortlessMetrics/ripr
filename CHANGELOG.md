@@ -183,6 +183,14 @@ are scoped or reviewed.
   long as the stage stays active, so worst-case silence is ~8s and
   non-TTY output grows one line per 8s of stage time. Custom policies keep
   their hard count ceiling (#4957).
+- Doctor's current/stale packet refresh and rooted first-check recommendation
+  keep the diagnosed physical repository when a root traverses a symlink before
+  `..`. The refresh retains the root-bound,
+  shell-quoted refresh and default-base/HEAD scope from #4991; unresolved roots
+  now withhold that refresh rather than guess another destination. A lossless
+  alias preserves non-UTF-8 physical roots; no lossy replacement-character path is
+  offered as a rooted command. Missing-root recovery also preserves the input
+  traversal instead of selecting an existing lexical decoy (#4000).
 - CLI argument errors now name the fix on every command. `ripr context`
   no-finding errors carry `ripr explain`'s remediation suffix on both the
   fresh and `--from` paths; `ripr check --format`, `ripr outcome`, and

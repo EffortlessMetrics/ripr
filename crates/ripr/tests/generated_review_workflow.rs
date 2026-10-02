@@ -650,6 +650,273 @@ fn doctor_packet_refresh_runs_from_a_foreign_working_directory() -> Result<(), B
     Ok(())
 }
 
+/// #4000/#4991: the emitted refresh must name the same physical directory
+/// whose packet doctor read, even when the input traverses a symlink and `..`.
+/// Inspect the route without executing a possibly misdirected refresh.
+#[cfg(unix)]
+#[test]
+fn doctor_packet_refresh_and_first_check_preserve_physical_root_identity()
+-> Result<(), Box<dyn Error>> {
+    let base = replay::unique_temp_dir("doctor-refresh-physical-root")?;
+    let parent = base.join("selected parent");
+    let physical = base.join("physical parent");
+    let repo = physical.join("repo");
+    let decoy = parent.join("repo");
+    replay::write_pr_fixture(&repo)?;
+    replay::write_pr_fixture(&decoy)?;
+    fs::create_dir_all(physical.join("child"))?;
+    std::os::unix::fs::symlink(physical.join("child"), parent.join("link"))?;
+    let relative = std::path::Path::new("link/../repo");
+    let absolute = parent.join(relative);
+    let selected = repo.canonicalize()?;
+    assert_eq!(absolute.canonicalize()?, selected);
+    assert_ne!(decoy.canonicalize()?, selected);
+    let reports = "target/ripr/reports";
+    for root in [&repo, &decoy] {
+        let produced = replay::ripr(root, &["first-pr", "--base", "origin/trunk"])?;
+        assert!(
+            produced.status.success(),
+            "{}",
+            String::from_utf8_lossy(&produced.stderr)
+        );
+    }
+    for stale in [false, true] {
+        // Opposite versions prove which packet the doctor actually read.
+        for (root, old) in [(&repo, stale), (&decoy, !stale)] {
+            let path = root.join(reports).join("start-here.json");
+            let mut packet: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path)?)?;
+            packet["ripr_version"] = if old {
+                "0.0.0"
+            } else {
+                env!("CARGO_PKG_VERSION")
+            }
+            .into();
+            fs::write(path, serde_json::to_string_pretty(&packet)?)?;
+        }
+        for spelling in [relative, absolute.as_path()] {
+            let paths = [&repo, &decoy]
+                .into_iter()
+                .flat_map(|root| {
+                    ["start-here.json", "start-here.md"].map(|name| root.join(reports).join(name))
+                })
+                .collect::<Vec<_>>();
+            let before = paths.iter().map(fs::read).collect::<Result<Vec<_>, _>>()?;
+            let doctor = replay::ripr(&parent, &["doctor", "--root", &spelling.to_string_lossy()])?;
+            assert!(
+                doctor.status.success(),
+                "{}",
+                String::from_utf8_lossy(&doctor.stderr)
+            );
+            let stdout = String::from_utf8(doctor.stdout)?;
+            assert_eq!(stdout.contains("stale_evidence"), stale, "{stdout}");
+            let command = stdout
+                .lines()
+                .find(|line| line.starts_with("- Safe next action:"))
+                .and_then(|line| line.split('`').nth(1))
+                .ok_or("doctor emitted no packet refresh command")?;
+            assert_eq!(
+                command,
+                format!("ripr first-pr --root '{}' --head HEAD", selected.display())
+            );
+            let recommended = stdout
+                .lines()
+                .find_map(|line| line.strip_prefix("- Recommended first command: "))
+                .ok_or("doctor emitted no recommended check")?;
+            assert_eq!(
+                recommended,
+                format!("ripr check --root '{}'", selected.display())
+            );
+            let after = paths.iter().map(fs::read).collect::<Result<Vec<_>, _>>()?;
+            assert_eq!(
+                after, before,
+                "diagnosis must preserve both repositories' packets"
+            );
+        }
+    }
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
+/// Missing directories retain their diagnosis/recovery contract; physical
+/// binding of existing roots must not create a directory or packet.
+#[cfg(unix)]
+#[test]
+fn doctor_packet_refresh_missing_root_keeps_recovery_nonwriting() -> Result<(), Box<dyn Error>> {
+    let base = replay::unique_temp_dir("doctor-refresh-missing-root")?;
+    let missing = base.join("missing repository");
+    let doctor = replay::ripr(&base, &["doctor", "--root", &missing.to_string_lossy()])?;
+    assert_eq!(doctor.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&doctor.stderr).contains("doctor found issues"));
+    let stdout = String::from_utf8(doctor.stdout)?;
+    assert!(stdout.contains("not yet generated"), "{stdout}");
+    assert!(!stdout.contains("--head HEAD` refreshes it"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "- Recommended first command: ripr check --root '{}'",
+            missing.display()
+        )),
+        "{stdout}"
+    );
+    assert!(!missing.exists());
+    assert!(!base.join("target").exists());
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
+/// A missing selected directory must not turn into an existing lexical decoy
+/// merely because physical resolution could not finish.
+#[cfg(unix)]
+#[test]
+fn doctor_packet_refresh_missing_alias_never_selects_decoy() -> Result<(), Box<dyn Error>> {
+    let base = replay::unique_temp_dir("doctor-refresh-missing-alias")?;
+    let parent = base.join("selected parent");
+    let physical = base.join("physical parent");
+    let decoy = parent.join("repo");
+    replay::write_pr_fixture(&decoy)?;
+    fs::create_dir_all(physical.join("child"))?;
+    std::os::unix::fs::symlink(physical.join("child"), parent.join("link"))?;
+    let relative = std::path::Path::new("link/../repo");
+    let absolute = parent.join(relative);
+    assert!(!absolute.exists());
+    assert!(!physical.join("repo").exists());
+    let reports = decoy.join("target/ripr/reports");
+    fs::create_dir_all(&reports)?;
+    let json = reports.join("start-here.json");
+    let markdown = reports.join("start-here.md");
+    fs::write(
+        &json,
+        serde_json::to_vec(&serde_json::json!({
+            "ripr_version": env!("CARGO_PKG_VERSION")
+        }))?,
+    )?;
+    fs::write(&markdown, "# decoy packet must remain untouched\n")?;
+    let before = [fs::read(&json)?, fs::read(&markdown)?];
+    for spelling in [relative, absolute.as_path()] {
+        let doctor = replay::ripr(&parent, &["doctor", "--root", &spelling.to_string_lossy()])?;
+        assert_eq!(doctor.status.code(), Some(2));
+        let stdout = String::from_utf8(doctor.stdout)?;
+        assert!(stdout.contains("not yet generated"), "{stdout}");
+        assert!(!stdout.contains("--head HEAD` refreshes it"), "{stdout}");
+        let command = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("- Recommended first command: "))
+            .ok_or("doctor omitted its missing-root recovery")?;
+        assert_eq!(
+            command,
+            format!("ripr check --root '{}'", absolute.display())
+        );
+        assert!(!absolute.exists());
+        assert!(!physical.join("repo").exists());
+        assert_eq!([fs::read(&json)?, fs::read(&markdown)?], before);
+    }
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
+/// A UTF-8 alias may select a directory whose actual name is not UTF-8.
+/// Never promote a lossy replacement-character display into a runnable command.
+#[cfg(unix)]
+#[test]
+fn doctor_packet_refresh_uses_lossless_alias_for_non_utf8_physical_root()
+-> Result<(), Box<dyn Error>> {
+    use std::os::unix::ffi::OsStringExt;
+    let base = replay::unique_temp_dir("doctor-refresh-non-utf8-root")?;
+    let parent = base.join("selected parent");
+    let physical = base.join(std::ffi::OsString::from_vec(
+        b"physical \xff parent".to_vec(),
+    ));
+    let repo = physical.join("repo");
+    replay::write_pr_fixture(&repo)?;
+    fs::create_dir_all(&parent)?;
+    fs::create_dir_all(physical.join("child"))?;
+    std::os::unix::fs::symlink(physical.join("child"), parent.join("link"))?;
+    let relative = std::path::Path::new("link/../repo");
+    let absolute = parent.join(relative);
+    assert!(absolute.to_str().is_some());
+    assert!(absolute.canonicalize()?.to_str().is_none());
+    assert_eq!(absolute.canonicalize()?, repo.canonicalize()?);
+    let reports = repo.join("target/ripr/reports");
+    fs::create_dir_all(&reports)?;
+    let json = reports.join("start-here.json");
+    let markdown = reports.join("start-here.md");
+    fs::write(
+        &json,
+        serde_json::to_vec(&serde_json::json!({
+            "ripr_version": env!("CARGO_PKG_VERSION")
+        }))?,
+    )?;
+    fs::write(&markdown, "# retained fixture packet\n")?;
+    let before = [fs::read(&json)?, fs::read(&markdown)?];
+    for spelling in [relative, absolute.as_path()] {
+        let doctor = replay::ripr(&parent, &["doctor", "--root", &spelling.to_string_lossy()])?;
+        assert!(
+            doctor.status.success(),
+            "{}",
+            String::from_utf8_lossy(&doctor.stderr)
+        );
+        let stdout = String::from_utf8(doctor.stdout)?;
+        let refresh = stdout
+            .lines()
+            .find(|line| line.starts_with("- Safe next action:"))
+            .and_then(|line| line.split('`').nth(1))
+            .ok_or("doctor emitted no lossless packet refresh")?;
+        let check = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("- Recommended first command: "))
+            .ok_or("doctor emitted no lossless recommended check")?;
+        assert_eq!(
+            refresh,
+            format!("ripr first-pr --root '{}' --head HEAD", absolute.display())
+        );
+        assert_eq!(check, format!("ripr check --root '{}'", absolute.display()));
+        assert!(!refresh.contains('\u{fffd}') && !check.contains('\u{fffd}'));
+    }
+    // Here both the physical spelling and the absolute original spelling
+    // contain invalid UTF-8. Under-emit instead of inventing a lossy route.
+    let unavailable = replay::ripr(&physical, &["doctor", "--root", "repo"])?;
+    assert!(unavailable.status.success());
+    let stdout = String::from_utf8(unavailable.stdout)?;
+    assert!(
+        stdout.contains("cannot be represented losslessly"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("- Safe next action: refresh unavailable"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("- Recommended first command unavailable:"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("- Recommended first command: "),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("--head HEAD` refreshes it"), "{stdout}");
+    assert_eq!([fs::read(&json)?, fs::read(&markdown)?], before);
+    fs::remove_file(&markdown)?;
+    let no_packet = replay::ripr(&physical, &["doctor", "--root", "repo"])?;
+    assert!(no_packet.status.success());
+    let stdout = String::from_utf8(no_packet.stdout)?;
+    assert!(stdout.contains("not yet generated"), "{stdout}");
+    assert!(
+        stdout.contains("- Safe next action: selected root cannot be represented losslessly"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("run the recommended first command below"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("- Recommended first command: "),
+        "{stdout}"
+    );
+    assert_eq!(fs::read(&json)?, before[0]);
+    assert!(!markdown.exists());
+    fs::remove_dir_all(base)?;
+    Ok(())
+}
+
 /// #3948/#4287: the artifact regeneration commands `first-pr` renders for
 /// repository A, pasted into Bash from an unrelated directory B, read and
 /// write A. `first-action`, `review-comments`, `agent packet`, `gate
