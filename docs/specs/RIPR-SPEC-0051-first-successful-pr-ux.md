@@ -108,6 +108,16 @@ binary as `stale_evidence` and name the `ripr first-pr` refresh command. They
 must not present that packet as current first-screen evidence. A packet without
 the field is a pre-0.11 artifact, not a contract-invalid document.
 
+Doctor's packet-refresh command binds the diagnosed repository to an absolute
+root, including when diagnosis used a relative root or `.`. It quotes that
+root for Bash and prints a labeled PowerShell form when the spelling differs.
+The generic refresh recomposes against the repository's default base and
+`HEAD`, through first-pr's existing resolver; it does not recover a historical
+custom comparison from packet metadata. Doctor names that scope and explains
+that a custom comparison needs explicit `--base REF` and `--head REF`. If no
+default base resolves, first-pr reports its existing actionable error without
+rewriting the packet. Missing-packet diagnosis still recommends analysis first.
+
 ### Selection rules
 
 The packet should select at most one top item for the first screen:

@@ -4179,6 +4179,7 @@ tests = [
   "crates/ripr/src/output/first_pr.rs::tests::check_first_pr_rejects_other_ripr_version",
   "crates/ripr/src/output/first_pr.rs::tests::python_preview_gap_ledger_is_selected_for_start_here",
   "crates/ripr/tests/generated_review_workflow.rs::generated_first_pr_artifact_commands_run_from_a_foreign_working_directory",
+  "crates/ripr/tests/generated_review_workflow.rs::doctor_packet_refresh_runs_from_a_foreign_working_directory",
   "xtask/src/reports/first_pr.rs",
   "xtask/src/reports/release.rs",
   "xtask/src/main.rs",

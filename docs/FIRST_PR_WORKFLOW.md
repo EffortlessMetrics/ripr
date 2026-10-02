@@ -18,6 +18,13 @@ run ripr
 This workflow is advisory. `ripr` does not edit source, generate tests, run
 mutation testing, call providers, or make merge decisions by default.
 
+If `ripr doctor --root PATH` finds an existing or stale start-here packet, its
+refresh command keeps that selected repository even when pasted from another
+directory. Use the labeled PowerShell form when one is printed. This generic
+refresh uses the repository's default base and `HEAD`; add explicit `--base REF`
+and `--head REF` to keep a custom comparison. If no default base resolves,
+first-pr reports the missing selection and leaves the existing packet unchanged.
+
 ## 1. Pick One PR
 
 Start with a normal PR where a reviewer can understand the intended behavior

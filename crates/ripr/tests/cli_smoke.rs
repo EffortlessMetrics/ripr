@@ -8891,7 +8891,8 @@ fn doctor_reports_version_mismatched_start_here_packet_as_stale() -> Result<(), 
     assert!(!stdout.contains("(present; open it first)"), "{stdout}");
     assert!(
         stdout.contains("Safe next action: `ripr first-pr --root ")
-            && stdout.contains("--base <ref> --head HEAD` refreshes it"),
+            && stdout.contains("--head HEAD` refreshes it")
+            && !stdout.contains("--base <ref>"),
         "{stdout}"
     );
 
