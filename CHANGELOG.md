@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Add `xtask release-final-server-subjects` to prepare the exact twelve existing
+  server upload subjects from canonical assembler output. The nonpublishing
+  inventory, provenance inputs and checksum list are bound by the terminal
+  preparation receipt; rejection retains diagnostics without successful files.
+  This does not attest, verify provenance, authorize uploads or close #1502.
+
 - Fix npm staging's tarball argument to use an explicit local `./dist/` path.
   The real CLI transport test now runs the workflow's shell command from the
   same relative directory layout and refuses Git transports during rehearsal.
