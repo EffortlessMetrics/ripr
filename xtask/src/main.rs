@@ -2283,7 +2283,8 @@ fn workflow_run_xtask_invocation(line: &str) -> Option<WorkflowXtaskInvocation> 
     };
     let rest = line
         .strip_prefix("cargo xtask ")
-        .or_else(|| line.strip_prefix("cargo run --locked -p xtask -- "))?;
+        .or_else(|| line.strip_prefix("cargo run --locked -p xtask -- "))
+        .or_else(|| line.strip_prefix("target/vsix-attachment-tools/debug/xtask "))?;
     let mut tokens = rest.split_whitespace();
     let root = tokens.next()?.trim_matches('"');
     if root.is_empty() || root.starts_with('$') {

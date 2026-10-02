@@ -150,35 +150,25 @@ jobs:
     if: ${{ github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.95.0
+
+      - name: Build attachment helper without publication credential
+        run: cargo build --locked -p xtask --target-dir target/vsix-attachment-tools
+
       - uses: actions/download-artifact@v8
         with:
           name: ripr-vsix
           path: dist
 
       - name: Attach exact VSIX to existing GitHub Release
-        run: |
-          tag="${{ github.ref_name }}"
-          vsix_file="$(find dist -maxdepth 1 -type f -name '*.vsix' -print -quit)"
-          test -n "$vsix_file"
-          asset_name="$(basename "$vsix_file")"
-          local_sha="$(sha256sum "$vsix_file" | awk '{print $1}')"
-          gh release view "$tag" >/dev/null
-          if gh release view "$tag" --json assets --jq '.assets[].name' | grep -Fxq "$asset_name"; then
-            mkdir -p existing
-            gh release download "$tag" --pattern "$asset_name" --dir existing
-            existing_sha="$(sha256sum "existing/$asset_name" | awk '{print $1}')"
-            if [ "$existing_sha" != "$local_sha" ]; then
-              echo "::error::GitHub Release already contains $asset_name with a different SHA-256." >&2
-              exit 1
-            fi
-            echo "GitHub Release already contains the exact VSIX; no upload needed."
-            exit 0
-          fi
-          gh release upload "$tag" "$vsix_file"
-          mkdir -p verified
-          gh release download "$tag" --pattern "$asset_name" --dir verified
-          uploaded_sha="$(sha256sum "verified/$asset_name" | awk '{print $1}')"
-          test "$uploaded_sha" = "$local_sha"
+        run: target/vsix-attachment-tools/debug/xtask release-upload-vsix --tag "$RIPR_RELEASE_TAG"
         env:
+          RIPR_RELEASE_TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
