@@ -53,20 +53,21 @@ top-level `fixtures/` tree so repo-scoped public signals describe the published
 `ripr` package, not its harness. Passing a fixture workspace itself as `--root`
 still analyzes that fixture normally.
 
-Generated Rust that `ripr check` already skips is also outside the seam
-surface. Inventory applies the same `is_generated_rust_file_with_patterns`
-predicate (`bindings.rs`, `schema.rs`, `generated.rs`, `*.gen.rs`,
-`*_generated.rs`, `generated_*`, `gen/`, `generated/`, `out/`, plus
-`[languages.rust] generated_file_patterns`). Those files do not emit seams,
-do not supply test-grip evidence, and are excluded from the corpus fingerprint
-so an edit there does not bust the inventory cache. Repo-exposure discloses
-the skip as `generated_rust_source_skipped` without changing `run_status` to a
-truncated scan. Because those patterns change the seam population, they are
-consumed config for the repo-exposure artifact input identity: a before/after
-pair that differs only in `generated_file_patterns` is not comparable.
-Header-generated files that only `ripr check` will skip after
-a later generated-source predicate land remain inventoried until that
-predicate exists on this trunk.
+Generated Rust that `ripr check` skips is also outside the seam surface.
+Inventory reuses `GeneratedRustSources::for_repo`: conventional generated names
+and directories, additive `[languages.rust] generated_file_patterns`, generator
+headers and `cargo vendor` markers. Exact normalized `handwritten_files` paths
+exempt naming conventions only; explicit patterns, headers and vendor markers
+retain precedence. Default exclusions remain unchanged.
+
+Skipped files do not emit seams or supply test-grip evidence. The corpus
+fingerprint covers the analyzed set, so toggling inclusion and editing included
+source invalidate the cache, while edits confined to excluded bytes do not.
+Repo-exposure discloses `generated_rust_source_skipped` without changing
+`run_status` to a truncated scan. Both generated patterns and handwritten-file
+inclusions are consumed config for its artifact input identity, including when
+diff adapter selection excludes Rust: the inventory producer remains Rust-only.
+A before/after pair with different inclusion policy is not comparable.
 
 ### Stable Seam ID Rules
 

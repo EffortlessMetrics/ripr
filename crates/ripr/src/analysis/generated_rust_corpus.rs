@@ -1,12 +1,12 @@
 //! Analyzable Rust corpus for repo seam inventory.
 //!
 //! `ripr check` already drops generated Rust through
-//! [`is_generated_rust_file_with_patterns`]. Seam inventory used to walk the
+//! [`GeneratedRustSources`]. Seam inventory used to walk the
 //! raw `discover_rust_files` set, so the same files became seams in
 //! repo-exposure. This module is the single owner for the analyzable file
 //! set, the skipped generated paths, and the fingerprint of that same set.
 
-use super::language::is_generated_rust_file_with_patterns;
+use super::language::GeneratedRustSources;
 use super::seam_cache::corpus_fingerprint;
 use super::workspace;
 use crate::config::RiprConfig;
@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 pub(crate) struct AnalyzableRustCorpus {
     pub(crate) analyzable: Vec<PathBuf>,
     pub(crate) skipped_generated: Vec<PathBuf>,
+    pub(crate) naming_only_skips: Vec<PathBuf>,
     pub(crate) fingerprint: Option<String>,
 }
 
@@ -37,11 +38,15 @@ pub(crate) fn partition_analyzable_rust_corpus(
     discovered: Vec<PathBuf>,
     config: &RiprConfig,
 ) -> AnalyzableRustCorpus {
-    let patterns = config.languages().generated_file_patterns();
+    let generated_sources = GeneratedRustSources::for_repo(root, &config.languages().rust);
     let mut analyzable = Vec::new();
     let mut skipped_generated = Vec::new();
+    let mut naming_only_skips = Vec::new();
     for path in discovered {
-        if is_generated_rust_file_with_patterns(&path, patterns) {
+        if generated_sources.contains(&path) {
+            if generated_sources.is_convention_only_exclusion(&path) {
+                naming_only_skips.push(path.clone());
+            }
             skipped_generated.push(path);
         } else {
             analyzable.push(path);
@@ -51,7 +56,39 @@ pub(crate) fn partition_analyzable_rust_corpus(
     AnalyzableRustCorpus {
         analyzable,
         skipped_generated,
+        naming_only_skips,
         fingerprint,
+    }
+}
+
+/// Producer-owned, character-bounded recovery shared by diff and repo output.
+/// Only naming-only exclusions receive the handwritten opt-in action.
+pub(crate) fn generated_rust_recovery(skipped: &[PathBuf], naming_only: &[PathBuf]) -> String {
+    let (paths, naming) = if naming_only.is_empty() {
+        (skipped, false)
+    } else {
+        (naming_only, true)
+    };
+    let mut listed = paths
+        .iter()
+        .take(3)
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if paths.len() > 3 {
+        listed.push_str(&format!(" and {} more", paths.len() - 3));
+    }
+    if listed.chars().count() > 160 {
+        listed = format!("{}…", listed.chars().take(159).collect::<String>());
+    }
+    if naming {
+        format!(
+            "Files skipped only by naming conventions: {listed}. If these are hand-written, declare exact repository-relative paths in `[languages.rust] handwritten_files`. Explicit generated_file_patterns, generator headers and vendor markers remain excluded."
+        )
+    } else {
+        format!(
+            "Generated or vendored files excluded: {listed}. These match explicit generated_file_patterns, generator headers or vendor markers. handwritten_files cannot override those signals; correct only an inaccurate exclusion or analyze the original hand-written source."
+        )
     }
 }
 

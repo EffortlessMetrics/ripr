@@ -1349,8 +1349,10 @@ fn write_agent_repo_exposure_snapshot(root: &Path, path: &Path) -> Result<(), St
     let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(root, &report.classified);
     let python_guidance =
         output::render::detect_python_repo_exposure_guidance_pub(root, &report.classified);
-    let generated_skip =
-        output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
+    let generated_skip = output::repo_exposure::GeneratedRustSkip::from_paths(
+        report.skipped_generated,
+        report.naming_only_skips,
+    );
     let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
         root.to_path_buf(),
         "ready".to_string(),

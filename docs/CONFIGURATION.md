@@ -959,7 +959,26 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `generated_file_patterns` | array of strings | `[]` | Additional Rust generated-source globs. Built-in generated names, `gen/`, `generated/`, and `out/` directories, files whose first five lines carry an `@generated`, rust-bindgen, or `Code generated ... DO NOT EDIT` comment, and `cargo vendor` crates (directories holding `.cargo-checksum.json`) remain excluded. A pattern without `/` matches any filename; a pattern with `/` matches the repository-relative path. `*` matches within one path segment, `?` matches one character, and `**` matches zero or more path segments. Empty, duplicate, absolute, parent-traversing, drive-prefixed, and backslash-containing patterns are rejected. |
+| `generated_file_patterns` | array of strings | `[]` | Additional Rust generated-source globs. Built-in generated names and `gen/`, `generated/`, and `out/` directories remain excluded unless their exact path is in `handwritten_files`. Files whose first five lines carry an `@generated`, rust-bindgen, or `Code generated ... DO NOT EDIT` comment, and `cargo vendor` crates (directories holding `.cargo-checksum.json`) remain excluded. A pattern without `/` matches any filename; a pattern with `/` matches the repository-relative path. `*` matches within one path segment, `?` matches one character, and `**` matches zero or more path segments. Empty, duplicate, absolute, parent-traversing, drive-prefixed, and backslash-containing patterns are rejected. |
+| `handwritten_files` | array of exact paths | `[]` | Repository-relative `.rs` files to analyze despite a built-in generated filename or directory convention. Explicit `generated_file_patterns`, generator headers and vendor markers still exclude them. Leading `./`, internal `.` and repeated `/` are normalized; order is immaterial. Empty, duplicate after normalization, absolute, parent-traversing, drive-prefixed, backslash-containing, control-character, non-Rust and glob paths are rejected. |
+
+For example, a hand-written test of generated workflows can keep its filename:
+
+```toml
+[languages.rust]
+handwritten_files = ["tests/generated_workflow.rs"]
+```
+
+This declaration changes source discovery for diff checks and repository seam
+inventory; it does not grant edit-cage permission or certify an assertion's
+execution or strength. Unlisted convention-matching files remain excluded. Recovery suggests the opt-in
+only for naming-only exclusions; files with stronger markers receive a refusal
+to override those markers instead.
+If an explicit glob or a real generator/vendor marker also matches, remove only
+an inaccurate declaration or marker; `handwritten_files` does not override it.
+The selected source corpus participates in cache identity, and this setting is
+finding-affecting config for artifact/receipt comparison. Rerun analysis after
+changing it; do not reuse an old excluded-source receipt as complete evidence.
 
 For example:
 

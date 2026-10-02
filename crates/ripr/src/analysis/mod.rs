@@ -8,6 +8,7 @@ mod diff;
 mod extract;
 mod facts;
 mod generated_rust_corpus;
+pub(crate) use generated_rust_corpus::generated_rust_recovery;
 pub(crate) mod harness_projection;
 mod language;
 pub(crate) mod new_test_target;
@@ -761,31 +762,31 @@ pub(crate) fn run_analysis_with_oracle_policy(
     pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
-pub(crate) fn run_analysis_with_oracle_policy_and_generated_file_patterns(
+pub(crate) fn run_analysis_with_oracle_policy_and_rust_config(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
-    generated_file_patterns: &[String],
+    rust_config: &crate::config::RustLanguageConfig,
 ) -> Result<AnalysisResult, String> {
-    pipeline::run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
+    pipeline::run_diff_pipeline_with_oracle_policy_and_rust_config(
         options,
         oracle_policy,
         languages,
-        generated_file_patterns,
+        rust_config,
     )
 }
 
-pub(crate) fn run_worktree_analysis_with_oracle_policy_and_generated_file_patterns(
+pub(crate) fn run_worktree_analysis_with_oracle_policy_and_rust_config(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
-    generated_file_patterns: &[String],
+    rust_config: &crate::config::RustLanguageConfig,
 ) -> Result<AnalysisResult, String> {
-    pipeline::run_worktree_pipeline_with_oracle_policy_and_generated_file_patterns(
+    pipeline::run_worktree_pipeline_with_oracle_policy_and_rust_config(
         options,
         oracle_policy,
         languages,
-        generated_file_patterns,
+        rust_config,
     )
 }
 
@@ -802,17 +803,17 @@ pub(crate) fn run_repo_analysis_with_oracle_policy(
     pipeline::run_repo_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
-pub(crate) fn run_repo_analysis_with_oracle_policy_and_generated_file_patterns(
+pub(crate) fn run_repo_analysis_with_oracle_policy_and_rust_config(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
-    generated_file_patterns: &[String],
+    rust_config: &crate::config::RustLanguageConfig,
 ) -> Result<AnalysisResult, String> {
-    pipeline::run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
+    pipeline::run_repo_pipeline_with_oracle_policy_and_rust_config(
         options,
         oracle_policy,
         languages,
-        generated_file_patterns,
+        rust_config,
     )
 }
 

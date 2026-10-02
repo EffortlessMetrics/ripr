@@ -254,7 +254,7 @@ generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
     )?;
 
     assert_eq!(
-        config.languages().generated_file_patterns(),
+        config.languages().rust.generated_file_patterns.as_slice(),
         &["*.gen.rs".to_string(), "src/generated/**/*.rs".to_string()]
     );
     Ok(())
@@ -1067,6 +1067,7 @@ fn check_artifact_identity_fields_classify_every_config_field() -> Result<(), St
 
     let finding_affecting = [
         "languages.rust.generated_file_patterns",
+        "languages.rust.handwritten_files",
         "analysis.production_like_targets",
         "analysis.test_harnesses",
         "oracles.broad_error_strength",
@@ -1620,4 +1621,90 @@ fn bytes_fingerprint_matches_text_fingerprint_and_keeps_invalid_bytes_distinct()
         bytes_fingerprint(b"+caf\x80\n"),
         bytes_fingerprint(b"+caf\x81\n")
     );
+}
+
+#[test]
+fn rust_handwritten_files_accepts_scoped_recovery_configuration() -> Result<(), String> {
+    let config = parse_config(
+        "[languages.rust]\nhandwritten_files = ['tests/./generated_weight_tests.rs']\n",
+    )?;
+    assert_eq!(
+        config.languages.rust.handwritten_files,
+        ["tests/generated_weight_tests.rs"]
+    );
+    Ok(())
+}
+
+#[test]
+fn handwritten_files_rejects_ambiguous_or_escaping_paths() {
+    // Construct the synthetic drive prefix as in the local-context checker's
+    // own negative fixtures; this is not a real machine path in source.
+    let drive = "C";
+    let drive_path = format!("['{drive}:/schema.rs']");
+    for paths in [
+        "['']",
+        "['.']",
+        "['../schema.rs']",
+        "['/tmp/schema.rs']",
+        drive_path.as_str(),
+        "['src\\schema.rs']",
+        "['src/*.rs']",
+        "['src/file?.rs']",
+        "['src/[a].rs']",
+        "['src/schema.txt']",
+        "['src/schema.rs', './src//schema.rs']",
+        r#"["src/schema\u000A.rs"]"#,
+    ] {
+        let result = parse_config(&format!("[languages.rust]\nhandwritten_files = {paths}\n"));
+        assert!(
+            result.is_err(),
+            "invalid exact-path declaration was accepted: {paths}"
+        );
+    }
+}
+
+#[test]
+fn handwritten_files_identities_follow_semantic_paths_and_consumed_language() -> Result<(), String>
+{
+    let default = RiprConfig::default();
+    let first = parse_config(
+        "[languages.rust]\nhandwritten_files = ['src/./schema.rs', 'tests/generated_a.rs']\n",
+    )?;
+    let reordered = parse_config(
+        "[languages.rust]\nhandwritten_files = ['tests/generated_a.rs', './src//schema.rs']\n",
+    )?;
+    assert_eq!(
+        check_artifact_config_identity_hash(&first),
+        check_artifact_config_identity_hash(&reordered)
+    );
+    assert_eq!(
+        repo_exposure_config_identity_hash(&first),
+        repo_exposure_config_identity_hash(&reordered)
+    );
+    assert_ne!(
+        check_artifact_config_identity_hash(&default),
+        check_artifact_config_identity_hash(&first)
+    );
+    assert_ne!(
+        repo_exposure_config_identity_hash(&default),
+        repo_exposure_config_identity_hash(&first)
+    );
+    let mut python = default.clone();
+    python.languages.enabled = vec![LanguageId::Python];
+    let mut python_with_rust = first.clone();
+    python_with_rust.languages.enabled = vec![LanguageId::Python];
+    assert_eq!(
+        check_artifact_config_identity_hash(&python),
+        check_artifact_config_identity_hash(&python_with_rust)
+    );
+    // Repo exposure remains Rust-only even when diff adapter selection is Python.
+    assert_eq!(
+        repo_exposure_config_identity_hash(&first),
+        repo_exposure_config_identity_hash(&python_with_rust)
+    );
+    assert_ne!(
+        repo_exposure_config_identity_hash(&python),
+        repo_exposure_config_identity_hash(&python_with_rust)
+    );
+    Ok(())
 }

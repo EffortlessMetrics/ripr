@@ -250,12 +250,22 @@ tests = [
   "crates/ripr/src/analysis/seam_inventory.rs::tests::seam_inventory_omits_seams_with_no_owner_function",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::given_generated_rust_conventions_when_repo_inventory_runs_then_those_files_are_not_seams",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::given_near_miss_rust_names_when_repo_inventory_runs_then_hand_written_files_stay_seams",
-  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_generator_header_only_ffi_when_repo_inventory_runs_then_file_stays_a_seam",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_generator_header_only_ffi_when_repo_inventory_runs_then_file_is_not_a_seam",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::given_configured_generated_pattern_when_repo_inventory_runs_then_matching_file_is_not_a_seam",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::given_only_generated_file_bytes_change_when_cache_key_is_rebuilt_then_identity_is_stable",
   "crates/ripr/src/analysis/seam_inventory.rs::tests::given_generated_bindings_with_inline_test_when_classified_inventory_runs_then_grip_does_not_credit_them",
   "crates/ripr/src/analysis/generated_rust_corpus.rs::tests::partition_drops_conventional_generated_rust_and_keeps_near_misses",
   "crates/ripr/src/analysis/generated_rust_corpus.rs::tests::partition_applies_configured_generated_file_patterns",
+  "crates/ripr/src/analysis/language/rust/handwritten_files_tests.rs::handwritten_files_exact_scope_keeps_stronger_exclusions_and_repo_parity",
+  "crates/ripr/src/analysis/language/rust/handwritten_files_tests.rs::handwritten_files_root_vendor_marker_retains_precedence",
+  "crates/ripr/src/analysis/language/rust/handwritten_files_tests.rs::handwritten_files_root_vendor_marker_in_diff_retains_precedence",
+  "crates/ripr/src/app/tests/handwritten_recovery.rs::handwritten_files_diff_recovery_indexes_effective_test_without_renaming",
+  "crates/ripr/src/app/tests/handwritten_recovery.rs::handwritten_files_recovery_serializes_bounded_ascii_and_unicode_paths",
+  "crates/ripr/src/analysis/language/rust/handwritten_files_tests.rs::handwritten_files_corpus_identity_tracks_included_bytes_and_restores_exclusion",
+  "crates/ripr/src/config/tests.rs::rust_handwritten_files_accepts_scoped_recovery_configuration",
+  "crates/ripr/src/config/tests.rs::handwritten_files_rejects_ambiguous_or_escaping_paths",
+  "crates/ripr/src/config/tests.rs::handwritten_files_identities_follow_semantic_paths_and_consumed_language",
+  "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_handwritten_files",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_discloses_generated_rust_skip_without_changing_run_status",
   "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_generated_file_patterns",
   "crates/ripr/src/analysis/rust_index.rs::tests::classifies_field_whole_object_side_effect_and_custom_helper_oracles",
@@ -2247,6 +2257,10 @@ id = "RIPR-SPEC-0026"
 name = "Language adapter contract"
 spec = "docs/specs/RIPR-SPEC-0026-language-adapter-contract.md"
 tests = [
+  "crates/ripr/src/app/tests/handwritten_recovery.rs::handwritten_files_diff_recovery_indexes_effective_test_without_renaming",
+  "crates/ripr/src/app/tests/handwritten_recovery.rs::handwritten_files_recovery_serializes_bounded_ascii_and_unicode_paths",
+  "crates/ripr/src/config/tests.rs::rust_handwritten_files_accepts_scoped_recovery_configuration",
+  "crates/ripr/src/config/tests.rs::handwritten_files_rejects_ambiguous_or_escaping_paths",
   "crates/ripr/src/domain/language.rs",
   "crates/ripr/src/domain/language.rs::tests::language_id_wire_strings_are_stable",
   "crates/ripr/src/domain/language.rs::tests::language_feature_availability_matches_build",
@@ -8641,6 +8655,8 @@ id = "RIPR-SPEC-0140"
 name = "check-artifact reuse for explain/context"
 spec = "docs/specs/RIPR-SPEC-0140-check-artifact-reuse.md"
 tests = [
+  "crates/ripr/src/config/tests.rs::handwritten_files_identities_follow_semantic_paths_and_consumed_language",
+  "crates/ripr/src/agent/artifact.rs::tests::repo_exposure_input_identity_tracks_handwritten_files",
   "crates/ripr/src/app/check_artifact/tests.rs::artifact_round_trip_preserves_full_fidelity_findings",
   "crates/ripr/src/app/check_artifact/tests.rs::artifact_wire_form_uses_documented_snake_case_vocabulary",
   "crates/ripr/src/app/check_artifact/tests.rs::language_metadata_serde_uses_documented_wire_casing",

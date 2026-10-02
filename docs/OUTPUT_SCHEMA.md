@@ -3151,8 +3151,10 @@ Field contract:
   - `category: "generated_rust_source_skipped"` appears when repo exposure
     skipped generated Rust that `ripr check` also skips (`bindings.rs`,
     `schema.rs`, `generated.rs`, `*.gen.rs`, `*_generated.rs`, `generated_*`,
-    `gen/`, `generated/`, `out/`, plus `[languages.rust]
-    generated_file_patterns`). `run_status` remains `"complete"` because the
+    `gen/`, `generated/`, `out/`, plus
+    `[languages.rust].generated_file_patterns`, generator headers and vendor
+    markers; exact `handwritten_files` paths exempt naming conventions only).
+    `run_status` remains `"complete"` because the
     skip is intentional scope, not a truncated scan. It carries
     `skipped_file_count`, a bounded `skipped_files` listing (up to three
     paths), optional `skipped_files_omitted`, `repair_route`, and `detail`.

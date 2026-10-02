@@ -21,13 +21,13 @@ mod typescript;
 pub(crate) use diagnostic::ConfigDiagnostic;
 #[cfg(test)]
 use diagnostic::ConfigLocationStatus;
-pub(crate) use model::PERL_EXECUTABLE_OPT_IN_ENV;
 use model::{BunUbProfileConfig, FindingSeverityConfig, ProfilesConfig, SeamSeverityConfig};
 pub use model::{
     CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION, CheckInputExplicit, ConfigIdentityRole, ConfigSeverity,
     LspDiagnosticProfile, OraclePolicy, PerlConfig, RiprConfig, SeverityConfig, TestHarnessAdapter,
     TestHarnessKind, TestHarnessRegistration, TypescriptConfig,
 };
+pub(crate) use model::{PERL_EXECUTABLE_OPT_IN_ENV, RustLanguageConfig};
 #[cfg(test)]
 pub(crate) use python::{PYTHON_EXCLUDED_DIRS, PYTHON_VENDOR_DIR};
 pub(crate) use python::{
@@ -115,11 +115,13 @@ path = ".ripr/suppressions.toml"
 # unavailable. See Campaign 31 #1379 + Support Tiers.)
 enabled = ["rust"]
 # Optional additive Rust generated-source globs. Built-in generated names and
-# directories remain excluded. A pattern without `/` matches any filename;
+# directories remain excluded unless declared in handwritten_files. A pattern without `/` matches any filename;
 # patterns with `/` match the repository-relative path.
 #
 # [languages.rust]
 # generated_file_patterns = ["*.gen.rs", "src/generated/**/*.rs"]
+# handwritten_files = ["tests/generated_workflow.rs"]
+# Exact paths exempt naming conventions only; patterns, headers and vendor markers win.
 
 # Optional Bun stable-byte UB advisory profile. Leave this commented unless the
 # repository wants TypeScript-family preview evidence for Bun Rust/FFI seams.
@@ -259,7 +261,7 @@ pub(crate) fn check_artifact_config_identity_hash(config: &RiprConfig) -> String
 /// differing only in an unconsumed setting stay comparable). Closed set:
 /// when the producer starts consuming another config field, add it here in
 /// the same PR; do not widen the filter to whole sections.
-pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 6] = [
+pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 7] = [
     "oracles.broad_error_strength",
     "oracles.mock_expectation_strength",
     "oracles.snapshot_strength",
@@ -273,6 +275,7 @@ pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 6] = [
     // Generated-file patterns change which Rust files become seams and
     // which paths appear in `generated_rust_source_skipped` (#4788).
     "languages.rust.generated_file_patterns",
+    "languages.rust.handwritten_files",
 ];
 
 /// Canonical config identity for the repo-exposure artifact input identity
@@ -284,7 +287,11 @@ pub(crate) const REPO_EXPOSURE_CONSUMED_CONFIG_FIELDS: [&str; 6] = [
 /// pipeline and legitimately includes typescript/perl inputs the seam
 /// inventory never reads.
 pub(crate) fn repo_exposure_config_identity_hash(config: &RiprConfig) -> String {
-    let mut pairs = config
+    // This producer is Rust-only regardless of the diff adapter selection.
+    // Reuse the canonical field authority with its actual consumed language.
+    let mut consumed = config.clone();
+    consumed.languages.enabled = vec![LanguageId::Rust];
+    let mut pairs = consumed
         .check_artifact_identity_fields()
         .into_iter()
         .filter(|field| {
@@ -430,11 +437,14 @@ impl RiprConfig {
             if let Some(enabled) = languages.enabled {
                 config.languages.enabled = parse_languages_enabled(&enabled)?;
             }
-            if let Some(rust) = languages.rust
-                && let Some(patterns) = rust.generated_file_patterns
-            {
-                config.languages.rust.generated_file_patterns =
-                    parse_generated_file_patterns(&patterns)?;
+            if let Some(rust) = languages.rust {
+                if let Some(patterns) = rust.generated_file_patterns {
+                    config.languages.rust.generated_file_patterns =
+                        parse_generated_file_patterns(&patterns)?;
+                }
+                if let Some(paths) = rust.handwritten_files {
+                    config.languages.rust.handwritten_files = parse_handwritten_files(&paths)?;
+                }
             }
         }
         if let Some(profiles) = raw.profiles {
@@ -520,6 +530,34 @@ fn parse_generated_file_patterns(values: &[String]) -> Result<Vec<String>, Strin
     Ok(parsed)
 }
 
+fn parse_handwritten_files(values: &[String]) -> Result<Vec<String>, String> {
+    let field = "languages.rust.handwritten_files";
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        if value.chars().any(char::is_control) {
+            return Err(format!("{field} must not contain control characters"));
+        }
+        if value.contains(['*', '?', '[', ']']) {
+            return Err(format!(
+                "{field} must contain exact file paths, not glob patterns"
+            ));
+        }
+        let path = parse_relative_path(field, value)?;
+        if path.extension().is_none_or(|extension| extension != "rs") {
+            return Err(format!("{field} must identify a Rust `.rs` file"));
+        }
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        if parsed.contains(&normalized) {
+            return Err(format!(
+                "{field} lists `{normalized}` more than once; remove the duplicate"
+            ));
+        }
+        parsed.push(normalized);
+    }
+    parsed.sort_unstable();
+    Ok(parsed)
+}
+
 fn parse_profiles(raw: RawProfilesConfig) -> Result<ProfilesConfig, String> {
     Ok(ProfilesConfig {
         bun_ub: raw.bun_ub.map(parse_bun_ub_profile).transpose()?,
@@ -586,6 +624,7 @@ struct RawLanguagesConfig {
 #[serde(deny_unknown_fields)]
 struct RawRustLanguageConfig {
     generated_file_patterns: Option<Vec<String>>,
+    handwritten_files: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]

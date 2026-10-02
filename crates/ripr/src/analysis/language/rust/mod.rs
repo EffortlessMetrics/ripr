@@ -942,30 +942,32 @@ pub(crate) fn is_generated_rust_file_with_patterns(
 /// is meant to discriminate.
 ///
 /// Both signals are read through the committed-source overlay, so a
-/// committed-history check classifies the same bytes it indexes. A diff that
-/// touches a crate's `.cargo-checksum.json` also marks that crate vendored,
-/// which covers a crate `cargo vendor` deleted or renamed.
+/// committed-history check classifies the same bytes it indexes. A checksum
+/// path retained in the supplied changed-file facts also marks its crate
+/// vendored when the marker is unavailable in the worktree. Deleted-only
+/// paths are omitted by the diff parser, so this does not establish a marker
+/// after its complete deletion.
 pub(crate) struct GeneratedRustSources<'a> {
     root: &'a Path,
-    patterns: &'a [String],
+    config: &'a crate::config::RustLanguageConfig,
     diff_vendored_dirs: BTreeSet<PathBuf>,
 }
 
 impl<'a> GeneratedRustSources<'a> {
     /// Classifier for repository files, with no diff context.
-    pub(crate) fn for_repo(root: &'a Path, patterns: &'a [String]) -> Self {
+    pub(crate) fn for_repo(root: &'a Path, config: &'a crate::config::RustLanguageConfig) -> Self {
         Self {
             root,
-            patterns,
+            config,
             diff_vendored_dirs: BTreeSet::new(),
         }
     }
 
-    /// Classifier for a diff: crates whose checksum file the diff touches
-    /// count as vendored even when they no longer exist on disk.
+    /// Classifier for a diff: checksum paths in the supplied changed-file
+    /// facts mark their crate vendored even when unavailable on disk.
     pub(crate) fn for_diff(
         root: &'a Path,
-        patterns: &'a [String],
+        config: &'a crate::config::RustLanguageConfig,
         changed_files: &[ChangedFile],
     ) -> Self {
         let diff_vendored_dirs = changed_files
@@ -979,14 +981,35 @@ impl<'a> GeneratedRustSources<'a> {
             .collect();
         Self {
             root,
-            patterns,
+            config,
             diff_vendored_dirs,
         }
     }
 
     /// Whether a repository-relative Rust path is generated or vendored.
     pub(crate) fn contains(&self, path: &Path) -> bool {
-        is_generated_rust_file_with_patterns(path, self.patterns)
+        self.is_convention_excluded(path) || self.has_stronger_exclusion(path)
+    }
+
+    /// Whether an exact handwritten declaration can recover this skipped path.
+    pub(crate) fn is_convention_only_exclusion(&self, path: &Path) -> bool {
+        self.is_convention_excluded(path) && !self.has_stronger_exclusion(path)
+    }
+
+    fn is_convention_excluded(&self, path: &Path) -> bool {
+        is_generated_rust_file(path)
+            && !self
+                .config
+                .handwritten_files
+                .iter()
+                .any(|declared| Path::new(declared) == path)
+    }
+
+    fn has_stronger_exclusion(&self, path: &Path) -> bool {
+        self.config
+            .generated_file_patterns
+            .iter()
+            .any(|pattern| generated_pattern_matches(pattern, path))
             || (route(path) == Some(LanguageId::Rust)
                 && (self.is_in_vendored_crate(path) || self.has_generated_header(path)))
     }
@@ -994,7 +1017,8 @@ impl<'a> GeneratedRustSources<'a> {
     fn is_in_vendored_crate(&self, path: &Path) -> bool {
         path.ancestors()
             .skip(1)
-            .filter(|ancestor| !ancestor.as_os_str().is_empty())
+            // The empty relative ancestor is the selected root, which may
+            // itself be a cargo-vendor crate or have diff-bound checksum metadata.
             .any(|ancestor| {
                 self.diff_vendored_dirs.contains(ancestor)
                     || self.subject_file_exists(&ancestor.join(CARGO_VENDOR_CHECKSUM_FILE))
@@ -1080,28 +1104,28 @@ impl RustAdapter {
         changed_files: &[ChangedFile],
         enabled_languages: &[LanguageId],
     ) -> Result<LanguageDiffResult, String> {
-        self.analyze_diff_for_languages_with_generated_file_patterns(
+        self.analyze_diff_for_languages_with_rust_config(
             options,
             oracle_policy,
             changed_files,
             enabled_languages,
-            &[],
+            &crate::config::RustLanguageConfig::default(),
         )
     }
 
-    pub(crate) fn analyze_diff_for_languages_with_generated_file_patterns(
+    pub(crate) fn analyze_diff_for_languages_with_rust_config(
         &self,
         options: &AnalysisOptions,
         oracle_policy: &OraclePolicy,
         changed_files: &[ChangedFile],
         enabled_languages: &[LanguageId],
-        generated_file_patterns: &[String],
+        rust_config: &crate::config::RustLanguageConfig,
     ) -> Result<LanguageDiffResult, String> {
         // Exclude conventional generated surfaces before hard line limits and
         // partial-diff budgeting so machine output cannot consume the budget
         // that protects actionable source analysis.
         let generated_sources =
-            GeneratedRustSources::for_diff(&options.root, generated_file_patterns, changed_files);
+            GeneratedRustSources::for_diff(&options.root, rust_config, changed_files);
         let analyzable_changed_files = changed_files
             .iter()
             .filter(|file| !generated_sources.contains(&file.path))
@@ -1752,20 +1776,23 @@ impl LanguageAdapter for RustAdapter {
         options: &AnalysisOptions,
         oracle_policy: &OraclePolicy,
     ) -> Result<LanguageRepoResult, String> {
-        self.analyze_repo_with_generated_file_patterns(options, oracle_policy, &[])
+        self.analyze_repo_with_rust_config(
+            options,
+            oracle_policy,
+            &crate::config::RustLanguageConfig::default(),
+        )
     }
 }
 
 impl RustAdapter {
-    pub(crate) fn analyze_repo_with_generated_file_patterns(
+    pub(crate) fn analyze_repo_with_rust_config(
         &self,
         options: &AnalysisOptions,
         oracle_policy: &OraclePolicy,
-        generated_file_patterns: &[String],
+        rust_config: &crate::config::RustLanguageConfig,
     ) -> Result<LanguageRepoResult, String> {
         let rust_files = workspace::discover_rust_files(&options.root)?;
-        let generated_sources =
-            GeneratedRustSources::for_repo(&options.root, generated_file_patterns);
+        let generated_sources = GeneratedRustSources::for_repo(&options.root, rust_config);
         let skipped_files = rust_files
             .iter()
             .filter(|path| generated_sources.contains(path))
@@ -4321,7 +4348,8 @@ fn absent_delimiter_boundary_returns_head() {
         write("src/vendor/mod.rs", "pub fn seller() {}\n")?;
         write("src/lib.rs", "pub fn a() {}\n")?;
 
-        let generated = GeneratedRustSources::for_repo(&root, &[]);
+        let config = crate::config::RustLanguageConfig::default();
+        let generated = GeneratedRustSources::for_repo(&root, &config);
         for path in [
             "src/pb/shop.v1.rs",
             "src/ffi.rs",
@@ -4359,11 +4387,15 @@ fn absent_delimiter_boundary_returns_head() {
             removed("vendor/gone/src/lib.rs"),
         ];
         assert!(
-            GeneratedRustSources::for_diff(&root, &[], &diff)
-                .contains(Path::new("vendor/gone/src/lib.rs"))
+            GeneratedRustSources::for_diff(
+                &root,
+                &crate::config::RustLanguageConfig::default(),
+                &diff
+            )
+            .contains(Path::new("vendor/gone/src/lib.rs"))
         );
         assert!(
-            !GeneratedRustSources::for_repo(&root, &[])
+            !GeneratedRustSources::for_repo(&root, &crate::config::RustLanguageConfig::default())
                 .contains(Path::new("vendor/gone/src/lib.rs"))
         );
         let _ = fs::remove_dir_all(&root);
@@ -4391,7 +4423,8 @@ fn absent_delimiter_boundary_returns_head() {
             ],
         );
         with_overlay(Some(Arc::new(overlay)), || {
-            let generated = GeneratedRustSources::for_repo(&root, &[]);
+            let config = crate::config::RustLanguageConfig::default();
+            let generated = GeneratedRustSources::for_repo(&root, &config);
             assert!(generated.contains(Path::new("src/pb.rs")));
             assert!(!generated.contains(Path::new("src/hand.rs")));
         });
@@ -6068,3 +6101,6 @@ fn absent_delimiter_boundary_returns_head() {
         );
     }
 }
+
+#[cfg(test)]
+mod handwritten_files_tests;

@@ -91,16 +91,20 @@ impl PythonRepoExposureGuidance {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct GeneratedRustSkip {
     pub(crate) paths: Vec<PathBuf>,
+    naming_only_paths: Vec<PathBuf>,
 }
 
 impl GeneratedRustSkip {
     pub(crate) const CATEGORY: &'static str = "generated_rust_source_skipped";
 
-    pub(crate) fn from_paths(paths: Vec<PathBuf>) -> Option<Self> {
+    pub(crate) fn from_paths(paths: Vec<PathBuf>, naming_only_paths: Vec<PathBuf>) -> Option<Self> {
         if paths.is_empty() {
             None
         } else {
-            Some(Self { paths })
+            Some(Self {
+                paths,
+                naming_only_paths,
+            })
         }
     }
 
@@ -109,20 +113,13 @@ impl GeneratedRustSkip {
     }
 
     pub(crate) fn repair_route(&self) -> String {
-        let listed = self.listed_paths();
-        format!(
-            "Not analyzed as generated code: {listed}. ripr treats `gen/`, \
-             `generated/` and `out/` directories and `generated.rs`, `schema.rs`, \
-             `bindings.rs`, `*.gen.rs`, `*_generated.rs` and `generated_*` files, \
-             plus `[languages.rust] generated_file_patterns`, as generated; if one of these \
-             is hand-written, its changes stay outside this analysis."
-        )
+        crate::analysis::generated_rust_recovery(&self.paths, &self.naming_only_paths)
     }
 
     fn detail(&self) -> String {
         format!(
             "{} generated Rust file(s) were intentionally skipped by the generated-file \
-             conventions or configured patterns: {}",
+             conventions, configured patterns, generator headers or vendor markers: {}",
             self.paths.len(),
             self.listed_paths()
         )
@@ -1416,11 +1413,12 @@ mod tests {
 
     #[test]
     fn json_discloses_generated_rust_skip_without_changing_run_status() -> Result<(), String> {
-        let skip = GeneratedRustSkip::from_paths(vec![
+        let paths = vec![
             PathBuf::from("src/bindings.rs"),
             PathBuf::from("src/schema.rs"),
-        ])
-        .ok_or_else(|| "generated skip must be Some for nonempty paths".to_string())?;
+        ];
+        let skip = GeneratedRustSkip::from_paths(paths.clone(), paths)
+            .ok_or_else(|| "generated skip must be Some for nonempty paths".to_string())?;
         let json = render_repo_exposure_json_with_generated_skip(
             &[weakly_gripped_classified()],
             None,
@@ -1459,6 +1457,19 @@ mod tests {
             md.contains("src/bindings.rs"),
             "markdown skip path missing in:\n{md}"
         );
+        for rendered in [&json, &md] {
+            assert!(rendered.contains("handwritten_files"));
+            assert!(rendered.contains("vendor markers remain excluded"));
+        }
+        let protected =
+            GeneratedRustSkip::from_paths(vec![PathBuf::from("src/schema.rs")], Vec::new())
+                .ok_or("protected skip required")?;
+        assert!(
+            protected
+                .repair_route()
+                .contains("handwritten_files cannot override")
+        );
+        assert!(!protected.repair_route().contains("declare exact"));
         Ok(())
     }
 

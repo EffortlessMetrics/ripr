@@ -10,6 +10,7 @@ use crate::domain::{
 use std::path::PathBuf;
 
 mod badge_rendering;
+mod handwritten_recovery;
 mod mode_and_selector;
 mod preview_analyzed_outcome;
 // Drives the Python adapter end to end through `check_workspace_with_config`.

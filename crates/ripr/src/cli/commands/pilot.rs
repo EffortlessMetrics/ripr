@@ -168,8 +168,10 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
     // budget wins when both fire; inventory limit is the outer bound).
     let mut classified = report.classified;
     let inventory_limit_info = report.limit_info;
-    let generated_skip =
-        output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
+    let generated_skip = output::repo_exposure::GeneratedRustSkip::from_paths(
+        report.skipped_generated,
+        report.naming_only_skips,
+    );
     let pilot_budget_info = analysis::apply_pilot_seam_budget(&mut classified);
     let pilot_budget_truncated = pilot_budget_info.is_some();
     let limit_info = pilot_budget_info.or(inventory_limit_info);

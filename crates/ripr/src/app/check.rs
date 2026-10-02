@@ -3,9 +3,9 @@ use super::progress::{
 };
 use super::{CheckInput, CheckOutput};
 use crate::analysis::{
-    AnalysisResult, run_analysis_with_oracle_policy_and_generated_file_patterns,
-    run_repo_analysis_with_oracle_policy_and_generated_file_patterns,
-    run_worktree_analysis_with_oracle_policy_and_generated_file_patterns,
+    AnalysisResult, run_analysis_with_oracle_policy_and_rust_config,
+    run_repo_analysis_with_oracle_policy_and_rust_config,
+    run_worktree_analysis_with_oracle_policy_and_rust_config,
 };
 use crate::config::RiprConfig;
 use crate::domain::LanguageId;
@@ -181,28 +181,26 @@ fn check_with_progress_and_origins(
 
     progress.emit(AnalysisProgressStage::Analyzing);
     let analysis = match scope {
-        AnalysisProgressScope::Diff => run_analysis_with_oracle_policy_and_generated_file_patterns(
+        AnalysisProgressScope::Diff => run_analysis_with_oracle_policy_and_rust_config(
             &options,
             config.oracles(),
             &languages,
-            config.languages().generated_file_patterns(),
+            &config.languages().rust,
         )?,
         AnalysisProgressScope::Worktree => {
-            run_worktree_analysis_with_oracle_policy_and_generated_file_patterns(
+            run_worktree_analysis_with_oracle_policy_and_rust_config(
                 &options,
                 config.oracles(),
                 &languages,
-                config.languages().generated_file_patterns(),
+                &config.languages().rust,
             )?
         }
-        AnalysisProgressScope::Repo => {
-            run_repo_analysis_with_oracle_policy_and_generated_file_patterns(
-                &options,
-                config.oracles(),
-                &languages,
-                config.languages().generated_file_patterns(),
-            )?
-        }
+        AnalysisProgressScope::Repo => run_repo_analysis_with_oracle_policy_and_rust_config(
+            &options,
+            config.oracles(),
+            &languages,
+            &config.languages().rust,
+        )?,
     };
 
     if crate::is_verbose() {

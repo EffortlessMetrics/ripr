@@ -426,10 +426,6 @@ impl LanguagesConfig {
         &self.enabled
     }
 
-    pub(crate) fn generated_file_patterns(&self) -> &[String] {
-        &self.rust.generated_file_patterns
-    }
-
     #[cfg(test)]
     pub(crate) fn enabled_owned(&self) -> Vec<LanguageId> {
         self.enabled.clone()
@@ -440,9 +436,11 @@ impl LanguagesConfig {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RustLanguageConfig {
     pub generated_file_patterns: Vec<String>,
+    /// Exact normalized repository-relative Rust paths exempt from naming conventions.
+    pub handwritten_files: Vec<String>,
 }
 
-fn canonical_generated_file_patterns(patterns: &[String]) -> String {
+fn canonical_sorted_strings(patterns: &[String]) -> String {
     let mut ordered = patterns.iter().collect::<Vec<_>>();
     ordered.sort_unstable();
 
@@ -745,7 +743,7 @@ pub struct CheckInputExplicit {
 /// same PR. The classification is closed: the field enumerator destructures
 /// every config struct without `..`, so an unclassified field fails to
 /// compile, and a unit test pins the resulting role of every field.
-pub const CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION: u32 = 3;
+pub const CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION: u32 = 4;
 
 /// How one `ripr.toml` field participates in the check-artifact identity gate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -843,9 +841,11 @@ impl RiprConfig {
         let SuppressionsConfig { path: _ } = suppressions;
         let LanguagesConfig {
             enabled,
-            rust: RustLanguageConfig {
-                generated_file_patterns,
-            },
+            rust:
+                RustLanguageConfig {
+                    generated_file_patterns,
+                    handwritten_files,
+                },
         } = languages;
         let ProfilesConfig { bun_ub } = profiles;
         let TypescriptConfig {
@@ -858,7 +858,12 @@ impl RiprConfig {
             cache_dir,
         } = perl;
         let generated_file_patterns_identity = if enabled.contains(&LanguageId::Rust) {
-            canonical_generated_file_patterns(generated_file_patterns)
+            canonical_sorted_strings(generated_file_patterns)
+        } else {
+            String::new()
+        };
+        let handwritten_files_identity = if enabled.contains(&LanguageId::Rust) {
+            canonical_sorted_strings(handwritten_files)
         } else {
             String::new()
         };
@@ -982,6 +987,12 @@ impl RiprConfig {
                 role: ConfigIdentityRole::FindingAffecting,
                 value: Some(generated_file_patterns_identity),
                 note: "custom Rust generated-file patterns change which source files are analyzed",
+            },
+            ConfigIdentityField {
+                name: "languages.rust.handwritten_files",
+                role: ConfigIdentityRole::FindingAffecting,
+                value: Some(handwritten_files_identity),
+                note: "explicit handwritten Rust files change the analyzed source corpus",
             },
         ]);
         match bun_ub {

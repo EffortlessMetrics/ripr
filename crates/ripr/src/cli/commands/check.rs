@@ -694,8 +694,10 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                     &input.root,
                     &report.classified,
                 );
-                let generated_skip =
-                    output::repo_exposure::GeneratedRustSkip::from_paths(report.skipped_generated);
+                let generated_skip = output::repo_exposure::GeneratedRustSkip::from_paths(
+                    report.skipped_generated,
+                    report.naming_only_skips,
+                );
                 let artifact_context =
                     crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
                         input.root.clone(),
