@@ -9978,6 +9978,50 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0204"
+name = "Shared behavior-evidence witness adapters and parity corpus"
+spec = "docs/specs/RIPR-SPEC-0204-shared-behavior-evidence-witness.md"
+tests = [
+  "crates/ripr/src/analysis/witness/tests.rs::adapters_copy_producer_classes_and_do_not_invent_targets_on_findings",
+  "crates/ripr/src/analysis/witness/tests.rs::equality_predicate_before_and_after_the_exact_boundary_test",
+  "crates/ripr/src/analysis/witness/tests.rs::exact_versus_broad_error_oracle",
+  "crates/ripr/src/analysis/witness/tests.rs::exact_field_versus_sibling_field_assertion",
+  "crates/ripr/src/analysis/witness/tests.rs::direct_return_versus_unrelated_strong_assertion",
+  "crates/ripr/src/analysis/witness/tests.rs::side_effect_with_and_without_aligned_observer",
+  "crates/ripr/src/analysis/witness/tests.rs::call_presence_direct_caller_and_unresolved_propagation",
+  "crates/ripr/src/analysis/witness/tests.rs::match_arm_sibling_variant_control",
+  "crates/ripr/src/analysis/witness/tests.rs::owner_relations_and_wrong_owner_token_collision_do_not_join",
+  "crates/ripr/src/analysis/witness/tests.rs::no_test_macro_closure_dispatch_opaque_fixture_and_cross_language_limits",
+  "crates/ripr/src/analysis/witness/tests.rs::partial_index_versus_workspace_complete_relation_state",
+  "crates/ripr/src/analysis/witness/tests.rs::equivalent_roots_and_harmless_line_movement_keep_digest",
+  "crates/ripr/src/analysis/witness/tests.rs::stale_or_wrong_input_on_one_path_is_an_explained_scope_difference",
+  "crates/ripr/src/analysis/witness/tests.rs::reordering_source_facts_is_byte_stable",
+  "crates/ripr/src/analysis/witness/tests.rs::candidate_only_relation_cannot_appear_as_established_reach",
+  "crates/ripr/src/analysis/witness/tests.rs::favorable_stage_plus_absent_stage_cannot_collapse_to_equality",
+  "crates/ripr/src/analysis/witness/tests.rs::removing_identity_or_digest_makes_the_row_not_comparable",
+  "crates/ripr/src/analysis/witness/tests.rs::changing_selected_target_state_breaks_the_stale_digest",
+  "crates/ripr/src/analysis/witness/tests.rs::json_and_markdown_derive_from_the_same_normalized_dto",
+  "crates/ripr/src/analysis/witness/tests.rs::unspecified_repo_completeness_is_a_typed_limitation_not_optimistic_parity",
+  "crates/ripr/src/analysis/witness/tests.rs::production_retain_does_not_mutate_producer_classes_or_relations",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/analysis/witness/mod.rs",
+  "crates/ripr/src/analysis/witness/stage.rs",
+  "crates/ripr/src/analysis/witness/relations.rs",
+  "crates/ripr/src/analysis/witness/adapters.rs",
+  "crates/ripr/src/analysis/witness/parity.rs",
+  "crates/ripr/src/analysis/language/rust/mod.rs",
+  "crates/ripr/src/analysis/seam_inventory.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0204-shared-behavior-evidence-witness.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0182"
 name = "Governed identity registry and compatibility map"
 spec = "docs/specs/RIPR-SPEC-0182-governed-identity-registry.md"

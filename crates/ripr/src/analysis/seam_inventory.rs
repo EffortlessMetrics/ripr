@@ -522,7 +522,8 @@ pub(crate) fn inventory_classified_seams_uncached_with_config(
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
     trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
     let classify_started = Instant::now();
-    let classified = seam_classification::classify_seams_owned(seams, evidence);
+    let classified =
+        classify_seams_owned_retaining(seams, evidence, super::witness::repo_adapter_input(false));
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok(classified)
 }
@@ -783,7 +784,11 @@ fn inventory_classified_seams_from_state_with_config(
     cancellation::checkpoint()?;
     trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
     let classify_started = Instant::now();
-    let classified = seam_classification::classify_seams_owned(seams, evidence);
+    let classified = classify_seams_owned_retaining(
+        seams,
+        evidence,
+        super::witness::repo_adapter_input(limit_info.is_some()),
+    );
     cancellation::checkpoint()?;
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok((classified, limit_info, lexical_fallback_files))
@@ -1000,7 +1005,8 @@ pub(crate) fn inventory_changed_test_classified_seams_at_with_config_node(
         })
         .collect::<Vec<_>>();
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
-    let classified = seam_classification::classify_seams_owned(seams, evidence);
+    let classified =
+        classify_seams_owned_retaining(seams, evidence, super::witness::repo_adapter_input(true));
 
     Ok(TargetedTestClassifiedSeamInventory {
         classified,
@@ -1611,7 +1617,8 @@ fn classify_scoped_seams(
         );
         evidence = pass.evidence_for(&first);
         cancellation::checkpoint()?;
-        let classified_first = seam_classification::classify_seams(&first, &evidence);
+        let classified_first =
+            classify_seams_retaining(&first, &evidence, super::witness::repo_adapter_input(true));
         if (stages.sufficient)(&classified_first) {
             trace_latency_phase(
                 "evidence_for_seams",
@@ -1651,7 +1658,31 @@ fn classify_complete_scoped_evidence(
     evidence: Vec<test_grip_evidence::TestGripEvidence>,
 ) -> Result<Vec<ClassifiedSeam>, String> {
     cancellation::checkpoint()?;
-    Ok(seam_classification::classify_seams_owned(seams, evidence))
+    Ok(classify_seams_owned_retaining(
+        seams,
+        evidence,
+        super::witness::repo_adapter_input(true),
+    ))
+}
+
+fn classify_seams_retaining(
+    seams: &[RepoSeam],
+    evidence: &[test_grip_evidence::TestGripEvidence],
+    input: super::witness::AdapterInput,
+) -> Vec<ClassifiedSeam> {
+    let classified = seam_classification::classify_seams(seams, evidence);
+    super::witness::retain_classified_seams(&classified, input);
+    classified
+}
+
+fn classify_seams_owned_retaining(
+    seams: Vec<RepoSeam>,
+    evidence: Vec<test_grip_evidence::TestGripEvidence>,
+    input: super::witness::AdapterInput,
+) -> Vec<ClassifiedSeam> {
+    let classified = seam_classification::classify_seams_owned(seams, evidence);
+    super::witness::retain_classified_seams(&classified, input);
+    classified
 }
 
 fn immediate_caller_file_set(

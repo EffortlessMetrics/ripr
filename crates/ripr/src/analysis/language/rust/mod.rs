@@ -797,6 +797,11 @@ fn owner_name_from_id(
     }
 }
 
+fn push_retained_finding(findings: &mut Vec<Finding>, finding: Finding) {
+    crate::analysis::witness::retain_finding_projection(&finding);
+    findings.push(finding);
+}
+
 /// Shared post-classify application of the extracted probe and oracle owners.
 /// `apply_rust_no_static_path_limit` stays at each pipeline because it is
 /// mixed reach/index work owned by later RA slices.
@@ -1568,7 +1573,7 @@ impl RustAdapter {
                     &index,
                     binding_relation.as_ref(),
                 );
-                findings.push(finding);
+                push_retained_finding(&mut findings, finding);
             }
         }
 
@@ -1995,7 +2000,7 @@ impl RustAdapter {
                 // disclosure for repo-mode (same logic as diff-mode).
                 apply_rust_no_static_path_limit(&mut finding, &probe, &index);
                 apply_probe_and_oracle_limits(&mut finding, &probe, &index, None);
-                findings.push(finding);
+                push_retained_finding(&mut findings, finding);
             }
         }
 

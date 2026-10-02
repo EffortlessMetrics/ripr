@@ -29,6 +29,7 @@ mod summary;
 mod syntax;
 pub(crate) mod test_grip_evidence;
 mod value_resolution;
+mod witness;
 mod workspace;
 
 /// Shared pinned PR-evidence diff assembly (#3930, #4004): the one named

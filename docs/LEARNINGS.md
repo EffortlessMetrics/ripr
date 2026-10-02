@@ -141,6 +141,30 @@ git-root probe on that failure path must name PATH/`--diff` ahead of the
 default-base text. An explicit `--base` still falls through to `run_git_diff`,
 which already passes the named missing-git error through.
 
+## 2026-09-29: Shared-witness adapters must not promote candidate reach (#4790)
+
+`analysis::witness` projects existing `Finding` and `ClassifiedSeam` facts. It
+does not recompute stage meaning. Two traps showed up while writing the
+parity corpus:
+
+- A producer `reach=yes` backed only by `weak_token_substring` (or other
+  candidate relations) must keep those identities in `candidate_facts`. Copying
+  them into established reach is a false promotion even if the producer class
+  stays unchanged.
+- Inherent `diff_only_subject_set` versus `workspace_complete` is the normal
+  cross-path pairing. Treating that pair as an explaining scope difference
+  collapses exact-vs-broad, sibling-field, and missing-observer contradictions
+  into `explained_scope_difference`. Only partial index, stale/wrong input,
+  preview language, and named cross-language limits explain a difference.
+- Scope tokens cannot explain an owner, family, discriminator, or sink
+  mismatch. A partial-index witness paired with the wrong identity is a
+  `contradiction`, not an explained scope difference.
+- Stage `source_identities` belong in the digest. Clearing one without
+  rewriting the digest must make the row `not_comparable`.
+
+Pin both with the #4790 corpus. Later slices (#4792–#4794) migrate authority;
+they must not delete these controls.
+
 ## 2026-09-29: Default output-dir create failures must name the relocate flag (#4774)
 
 `ripr pilot` and `ripr first-pr` create `target/ripr/pilot` and

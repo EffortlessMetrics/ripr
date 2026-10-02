@@ -1,0 +1,63 @@
+schema_version = "2.0"
+id = "ripr.slice.shared-behavior-evidence-witness.v1"
+generation = 1
+
+source_issue = "issue:4790"
+design_reference = "RIPR-SPEC-0204"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds one internal BehaviorEvidenceWitnessV1 and pure-projection adapters from
+existing Rust Finding and ClassifiedSeam facts, plus a discriminating paired
+parity corpus and a deterministic JSON/Markdown report DTO. Existing
+classifiers, public classes, actionability, routes, schemas, cache
+generations, and output bytes stay unchanged. Candidate relations cannot
+appear as established reach. #4792–#4794 authority migration and deletion
+are out of scope.
+"""
+
+non_goals = [
+  "classifier or route behavior change",
+  "new owner, relation, activation, propagation, observation, oracle, or discriminator producers",
+  "removal of existing stage builders",
+  "public schema, protocol, cache-generation, support-tier, release, or publication change",
+  "issue 4792 owner/relation/activation authority migration",
+  "issue 4793 propagation/observation alignment",
+  "issue 4794 duplicate stage-builder deletion",
+]
+
+return_conditions = [
+  "Return to root if any fixture, golden, dogfood, CLI, or repo-exposure output byte changes.",
+  "Return to root if an adapter recomputes ExposureClass, SeamGripClass, or stage meaning.",
+  "Return to root if candidate-only relations appear as established reach.",
+]
+
+owned_seams = [
+  "seam:ripr:analysis:witness",
+  "seam:ripr:contract:ripr-spec-0204-shared-witness",
+]
+
+shared_seams = [
+  "seam:ripr:domain:finding",
+  "seam:ripr:analysis:test-grip-evidence",
+  "seam:ripr:analysis:seam-classification",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:classifier-authority",
+  "seam:ripr:output:public-schema",
+  "seam:ripr:analysis:repair-route-readiness",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0204#shared-witness-adapters-and-parity-corpus"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

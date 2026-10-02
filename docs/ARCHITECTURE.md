@@ -14,7 +14,8 @@ CLI / LSP / MCP / CI
 
 - `domain`: probe, RIPR evidence, oracle strength, exposure classification.
 - `app`: use-case orchestration and public library API.
-- `analysis`: diff loading, syntax indexing, probe generation, classification.
+- `analysis`: diff loading, syntax indexing, probe generation, classification,
+  and an additive shared-witness projection over existing findings and seams.
 - `output`: human, JSON, and GitHub annotation rendering.
 - `cli`: command-line entrypoint.
 - `lsp`: experimental `tower-lsp-server` sidecar entrypoint.
