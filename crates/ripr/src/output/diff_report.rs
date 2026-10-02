@@ -270,7 +270,6 @@ pub(crate) fn build_diff_report(
             .iter()
             .map(|advisory| {
                 let analyzed = advisory.analyzed(&output.language_runs);
-                let failed_run = advisory.non_success_run(&output.language_runs);
                 DiffPreviewLanguageAdvisory {
                 language: advisory.language.clone(),
                 file_count: advisory.file_count,
@@ -280,15 +279,8 @@ pub(crate) fn build_diff_report(
                 category: "preview_language_advisory",
                 why: if analyzed {
                     "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean".to_string()
-                } else if !advisory.enabled {
-                    advisory.not_enabled_why()
-                } else if let Some(run) = failed_run {
-                    format!(
-                        "preview adapter did not complete successfully ({}); files detected but not analyzed; empty result is not Rust-grade clean",
-                        run.status.as_str()
-                    )
                 } else {
-                    "preview adapter enabled but no files were routed; files not analyzed; empty result is not Rust-grade clean".to_string()
+                    advisory.unaudited_why(&output.language_runs)
                 },
             }
             })

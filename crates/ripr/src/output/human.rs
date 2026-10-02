@@ -675,7 +675,8 @@ fn render_language_runs(out: &mut String, output: &CheckOutput) {
 /// of files it counted. The TypeScript adapter also analyzes JavaScript, so a
 /// JavaScript-only diff is "JavaScript files" under the "TypeScript/JavaScript"
 /// adapter, and a mixed one is "TypeScript/JavaScript files" (#4555).
-fn advisory_language_names(
+/// Shared with the GitHub annotation stream so the surfaces cannot drift.
+pub(crate) fn advisory_language_names(
     advisory: &crate::analysis::PreviewLanguageAdvisory,
 ) -> (String, String) {
     let language = language_display_name(&advisory.language);

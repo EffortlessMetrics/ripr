@@ -82,7 +82,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str(&actionability.gap_state);
             message.push('/');
             message.push_str(&actionability.actionability_category);
-            message.push_str(" (advisory preview; no repair packet).");
+            message.push_str(advisory_packet_suffix(actionability.repair_packet_ready));
         }
         if let Some(card) = python_repair_card(finding) {
             message.push_str(" Python repair card: missing discriminator `");
@@ -106,7 +106,8 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             message.push_str(&card.oracle_strength);
             message.push_str(", suggested shape `");
             message.push_str(&card.suggested_assertion_shape);
-            message.push_str("` (advisory preview; no repair packet).");
+            message.push('`');
+            message.push_str(advisory_packet_suffix(card.repair_packet_ready));
             for (index, grip) in card.bun_cross_language_grips.iter().enumerate() {
                 if card.bun_cross_language_grips.len() == 1 {
                     message.push_str(" Bun cross-language grip: ");
@@ -181,14 +182,25 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         .analysis_outcome
         .as_ref()
         .filter(|outcome| !outcome.kind.is_complete());
+    // #5011: an empty stream is only "clean" when nothing was left
+    // unanalyzed. Run states the human and JSON surfaces disclose as NOT
+    // clean (uncommitted working-tree edits, missing analysis scope,
+    // preview-language files detected but not analyzed) downgrade the
+    // empty-stream notice to warnings naming the unanalyzed surface and
+    // the remedy route. These lead the stream like the other disclosures.
+    let state_warnings = unanalyzed_state_warnings(output);
     if let Some(outcome) = incomplete {
         *per_level.entry("warning").or_default() += 1;
         out.push_str(&incomplete_outcome_warning(
             outcome,
             output.findings.is_empty(),
         ));
-    } else if output.findings.is_empty() {
+    } else if output.findings.is_empty() && state_warnings.is_empty() {
         out.push_str("::notice title=ripr::No static exposure findings found\n");
+    }
+    for warning in &state_warnings {
+        *per_level.entry("warning").or_default() += 1;
+        out.push_str(warning);
     }
     if !output.findings.is_empty() && (suppressed > 0 || not_current > 0) {
         out.push_str(&unannotated_denominator_notice(
@@ -231,6 +243,69 @@ fn incomplete_outcome_warning(
         "::warning title=ripr analysis incomplete::{}\n",
         escape_data(&message)
     )
+}
+
+/// The preview suffix must track the shared validator's own verdict, as the
+/// human and JSON surfaces do (#5014): an approved packet is complete (the
+/// preview stays advisory), a blocked one has no repair packet. Claiming
+/// "no repair packet" for a validator-approved packet would route the
+/// operator to a manual step the packet was built to avoid.
+fn advisory_packet_suffix(repair_packet_ready: bool) -> &'static str {
+    if repair_packet_ready {
+        " (advisory preview; complete repair packet)."
+    } else {
+        " (advisory preview; no repair packet)."
+    }
+}
+
+/// Run states the human and JSON surfaces disclose as NOT clean, so an
+/// empty GitHub stream must not read as all-clear either (#5011). Each
+/// warning names the unanalyzed surface and the remedy route, mirroring
+/// the human notes; the preview-advisory arm reuses the JSON surface's
+/// shared `why` strings so the machine surfaces cannot drift.
+fn unanalyzed_state_warnings(output: &CheckOutput) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if output.unanalyzed_working_tree {
+        warnings.push(
+            "::warning title=ripr unanalyzed working tree::Uncommitted source and test changes were not analyzed; `ripr check` reads each file as committed at HEAD. An empty result here does NOT mean those changes are covered; add `--worktree` to include staged and unstaged edits (for example `ripr check --worktree`).\n"
+                .to_string(),
+        );
+    }
+    if output.no_scope_provided {
+        let message = if let Some(base) = output.base.as_deref() {
+            format!(
+                "`{base}...HEAD` contains no changed files, so there was nothing to analyze; the compared base was `{base}`. An empty result means no behavior changed against it — it does NOT mean your changes are covered."
+            )
+        } else {
+            "No analysis scope was provided — `ripr check` is diff-first. Run `ripr check --base BASE` with BASE set to an existing ref to analyze your changes. An empty result here does NOT mean your changed behavior is covered."
+                .to_string()
+        };
+        warnings.push(format!(
+            "::warning title=ripr no analysis scope::{}\n",
+            escape_data(&message)
+        ));
+    }
+    for advisory in &output.preview_language_advisories {
+        if advisory.analyzed(&output.language_runs) {
+            continue;
+        }
+        let why = advisory.unaudited_why(&output.language_runs);
+        let (_language, file_language) = crate::output::human::advisory_language_names(advisory);
+        let file_label = if advisory.file_count == 1 {
+            "file"
+        } else {
+            "files"
+        };
+        let message = format!(
+            "{} {} {} in scope: {}",
+            advisory.file_count, file_language, file_label, why
+        );
+        warnings.push(format!(
+            "::warning title=ripr preview advisory::{}\n",
+            escape_data(&message)
+        ));
+    }
+    warnings
 }
 
 /// GitHub Actions displays at most this many annotations of each level
@@ -787,6 +862,217 @@ mod tests {
     }
 
     #[test]
+    fn render_discloses_unanalyzed_working_tree_instead_of_clean_notice() {
+        // #5011: the human surface prints UNANALYZED_WORKING_TREE_NOTE and
+        // JSON emits "unanalyzed_working_tree": true; the GitHub stream must
+        // not read as clean for the same CheckOutput. The full stream is
+        // pinned by the fixtures/github_unanalyzed_states golden.
+        let mut output = output_with_unknown_finding();
+        output.findings.clear();
+        output.unanalyzed_working_tree = true;
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "{rendered}"
+        );
+        assert_eq!(
+            rendered,
+            include_str!(
+                "../../../../fixtures/github_unanalyzed_states/expected/unanalyzed_working_tree.txt"
+            )
+        );
+    }
+
+    #[test]
+    fn render_discloses_no_scope_provided_instead_of_clean_notice() {
+        // #5011: mirror the human no-scope note; the empty-range variant
+        // (#4012) names the compared base instead. The full stream for the
+        // no-base case is pinned by the fixtures/github_unanalyzed_states
+        // golden.
+        let mut output = output_with_unknown_finding();
+        output.findings.clear();
+        output.no_scope_provided = true;
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "{rendered}"
+        );
+        assert_eq!(
+            rendered,
+            include_str!(
+                "../../../../fixtures/github_unanalyzed_states/expected/no_scope_provided.txt"
+            )
+        );
+
+        let mut ranged = output_with_unknown_finding();
+        ranged.findings.clear();
+        ranged.no_scope_provided = true;
+        ranged.base = Some("main".to_string());
+
+        let rendered = render(&ranged);
+
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("`main...HEAD` contains no changed files"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("compared base was `main`"), "{rendered}");
+    }
+
+    #[test]
+    fn render_discloses_not_analyzed_preview_advisory_instead_of_clean_notice() {
+        // #5011: a detected-but-not-analyzed preview advisory records no
+        // successful LanguageRun, so the outcome stays "complete" — but the
+        // files were not analyzed and the human/JSON/badge surfaces all say
+        // the result is NOT clean. The wire string is deliberately
+        // unregistered so the recovery text is identical in every
+        // feature-lane build (real adapters vary with compile-time
+        // features); the full stream is pinned by the
+        // fixtures/github_unanalyzed_states golden.
+        let mut output = output_with_unknown_finding();
+        output.findings.clear();
+        output.preview_language_advisories = vec![crate::analysis::PreviewLanguageAdvisory {
+            language: "cobol".to_string(),
+            file_count: 2,
+            sample_paths: vec!["src/a.cobol".to_string(), "src/b.cobol".to_string()],
+            javascript_file_count: 0,
+            enabled: false,
+        }];
+
+        let rendered = render(&output);
+
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "{rendered}"
+        );
+        assert_eq!(
+            rendered,
+            include_str!(
+                "../../../../fixtures/github_unanalyzed_states/expected/preview_advisory.txt"
+            )
+        );
+
+        // Real-language arms: file labels follow the human surface's prose
+        // names (#4555), and the recovery text is feature-dependent, so these
+        // assert feature-independent fragments only.
+        let mut typescript = output_with_unknown_finding();
+        typescript.findings.clear();
+        typescript.preview_language_advisories = vec![crate::analysis::PreviewLanguageAdvisory {
+            language: "typescript".to_string(),
+            file_count: 2,
+            sample_paths: vec!["src/a.ts".to_string(), "src/b.ts".to_string()],
+            javascript_file_count: 0,
+            enabled: false,
+        }];
+
+        let rendered = render(&typescript);
+
+        assert!(
+            !rendered.contains("No static exposure findings found"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.starts_with("::warning title=ripr preview advisory::"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("2 TypeScript files"), "{rendered}");
+        assert!(
+            rendered.contains("files detected but not analyzed"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("not Rust-grade clean"), "{rendered}");
+
+        let mut javascript = output_with_unknown_finding();
+        javascript.findings.clear();
+        javascript.preview_language_advisories = vec![crate::analysis::PreviewLanguageAdvisory {
+            language: "typescript".to_string(),
+            file_count: 1,
+            sample_paths: vec!["src/a.js".to_string()],
+            javascript_file_count: 1,
+            enabled: false,
+        }];
+
+        let rendered = render(&javascript);
+
+        assert!(
+            rendered.contains("1 JavaScript file in scope"),
+            "JavaScript-only files take the JavaScript label: {rendered}"
+        );
+    }
+
+    #[test]
+    fn render_preview_actionability_suffix_tracks_repair_packet_readiness() {
+        // #5014: the suffix tracks the shared validator's verdict — an
+        // approved packet is complete (still advisory); a blocked packet has
+        // no repair packet.
+        let mut ready = output_with_unknown_finding();
+        ready.findings[0] = typescript_preview_finding(true);
+
+        let rendered = render(&ready);
+
+        assert!(
+            rendered.contains(
+                "Preview actionability: actionable/complete_repair_packet (advisory preview; complete repair packet)."
+            ),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("no repair packet"),
+            "a validator-approved packet must not be called absent: {rendered}"
+        );
+
+        let mut blocked = output_with_unknown_finding();
+        blocked.findings[0] = typescript_preview_finding(false);
+
+        let rendered = render(&blocked);
+
+        assert!(
+            rendered.contains(
+                "Preview actionability: advisory/incomplete_repair_packet (advisory preview; no repair packet)."
+            ),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn render_typescript_card_suffix_tracks_repair_packet_readiness() {
+        let mut ready = output_with_unknown_finding();
+        ready.findings[0] = typescript_preview_finding(true);
+
+        let rendered = render(&ready);
+
+        assert!(
+            rendered.contains("TypeScript preview card: owner `applyDiscount`"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("(advisory preview; complete repair packet)."),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("no repair packet"),
+            "a validator-approved packet must not be called absent: {rendered}"
+        );
+
+        let mut blocked = output_with_unknown_finding();
+        blocked.findings[0] = typescript_preview_finding(false);
+
+        let rendered = render(&blocked);
+
+        assert!(
+            rendered.contains("(advisory preview; no repair packet)."),
+            "a blocked packet keeps the pinned suffix: {rendered}"
+        );
+    }
+
+    #[test]
     fn render_includes_bun_cross_language_grip_annotation() {
         let mut output = output_with_unknown_finding();
         let finding = &mut output.findings[0];
@@ -1164,6 +1450,64 @@ mod tests {
             analysis_outcome: None,
             partial_scope: None,
         }
+    }
+
+    /// Build a TypeScript preview finding. With `complete_packet`, the
+    /// evidence satisfies the shared repair-packet validator so
+    /// `preview_actionability_for` reports `repair_packet_ready: true`
+    /// (same recipe as the human surface's complete-packet fixture).
+    fn typescript_preview_finding(complete_packet: bool) -> Finding {
+        let mut finding = output_with_unknown_finding().findings[0].clone();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.language = Some(LanguageId::TypeScript);
+        finding.language_status = Some(LanguageStatus::Preview);
+        finding.owner_kind = Some(crate::domain::OwnerKind::Function);
+        finding.probe.location = SourceLocation::new("src/lib.ts", 2, 1);
+        finding.evidence = vec![
+            "owner: applyDiscount".to_string(),
+            "gap_state: advisory".to_string(),
+            "actionability_category: incomplete_repair_packet".to_string(),
+            "why_not_actionable: TypeScript preview lacks a complete repair packet contract"
+                .to_string(),
+            "repair_route: project canonical TypeScript repair packet fields later".to_string(),
+            "missing_actionability_fields: canonical_gap_id, verify_command".to_string(),
+            "missing_graph_legs: verify_command, receipt_command".to_string(),
+            "unlock_condition: project complete repair packet fields before public projection"
+                .to_string(),
+            "evidence_needed_to_promote: canonical gap identity and verify command".to_string(),
+            "raw_evidence_ref: leg=rust_seam;file=src/lib.ts;line=2;kind=typescript_preview_probe;source_id=probe:src_lib.ts:2:typescript_preview;owner=applyDiscount;sample=if amount >= threshold".to_string(),
+        ];
+        if complete_packet {
+            finding
+                .evidence
+                .push("typescript_verify_command: jest tests/discount.test.ts".to_string());
+            finding
+                .evidence
+                .push("typescript_oracle_observed: result".to_string());
+            finding
+                .evidence
+                .push("typescript_oracle_expected: 50".to_string());
+            finding
+                .activation
+                .missing_discriminators
+                .push(MissingDiscriminatorFact {
+                    value: "amount == threshold".to_string(),
+                    reason: "changed TypeScript equality-boundary lacks a concrete discriminator"
+                        .to_string(),
+                    flow_sink: None,
+                });
+            finding.related_tests.push(RelatedTest {
+                name: "applies discount at threshold".to_string(),
+                file: PathBuf::from("tests/discount.test.ts"),
+                line: 5,
+                oracle_strength: OracleStrength::Weak,
+                oracle_kind: OracleKind::ExactValue,
+                oracle: Some("expect(result).toBe(50)".to_string()),
+                relation_reason: None,
+                relation_confidence: None,
+            });
+        }
+        finding
     }
 
     fn output_with_python_repair_card() -> CheckOutput {

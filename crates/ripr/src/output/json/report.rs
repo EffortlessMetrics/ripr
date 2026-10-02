@@ -287,7 +287,6 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         let advisories = &output.preview_language_advisories;
         for (idx, adv) in advisories.iter().enumerate() {
             let analyzed = adv.analyzed(&output.language_runs);
-            let failed_run = adv.non_success_run(&output.language_runs);
             out.push_str("    {\n");
             field(&mut out, 3, "language", &adv.language, true);
             number_field(&mut out, 3, "file_count", adv.file_count, true);
@@ -300,17 +299,9 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             let why_owned;
             let why: &str = if analyzed {
                 "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
-            } else if !adv.enabled {
-                why_owned = adv.not_enabled_why();
-                &why_owned
-            } else if let Some(run) = failed_run {
-                why_owned = format!(
-                    "preview adapter did not complete successfully ({}); files detected but not analyzed; empty result is not Rust-grade clean",
-                    run.status.as_str()
-                );
-                &why_owned
             } else {
-                "preview adapter enabled but no files were routed; files not analyzed; empty result is not Rust-grade clean"
+                why_owned = adv.unaudited_why(&output.language_runs);
+                &why_owned
             };
             field(&mut out, 3, "why", why, false);
             out.push_str("    }");
