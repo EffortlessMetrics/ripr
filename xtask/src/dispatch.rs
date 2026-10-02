@@ -141,6 +141,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseDistributionCatalog(args) => {
             super::reports::distribution_catalog::release_distribution_catalog(&args)
         }
+        XtaskCommand::ReleaseUploadVsix(args) => {
+            super::reports::release_vsix::release_upload_vsix(&args)
+        }
         XtaskCommand::ReleaseUploadAssets(args) => {
             super::reports::release_server::release_upload_assets(&args)
         }

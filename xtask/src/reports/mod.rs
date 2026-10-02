@@ -39,6 +39,7 @@ mod release_denominator;
 mod release_negative;
 mod release_scope;
 pub(crate) mod release_server;
+pub(crate) mod release_vsix;
 mod repo;
 #[cfg(test)]
 mod reverse_authorization;

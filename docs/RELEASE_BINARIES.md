@@ -195,3 +195,20 @@ boundary-gap fixture.
 The extension verifies archive SHA-256 before extraction. It still keeps
 `ripr.server.path` and PATH fallback for offline installs, pinned binaries, and
 enterprise-managed environments.
+
+### Exact VSIX attachment transport
+
+`cargo xtask release-upload-vsix --tag <tag>` consumes exactly one regular
+`dist/*.vsix` file and requires an existing GitHub Release. It reads the asset
+inventory before deciding whether to upload, never replaces an existing asset,
+and independently downloads and SHA-256 compares the resulting asset. An
+existing equal asset is verification-only; conflict, unavailable inventory,
+malformed inventory, upload failure, or verification failure stops the command.
+The command requires explicit release approval and is never part of a local
+validation recipe. Unit tests use a fake transport and make no GitHub requests.
+
+The workflow passes the tag through `RIPR_RELEASE_TAG` as argument data and
+builds the helper before supplying the publication token to the execution step.
+Downloaded verification bytes remain in a uniquely named temporary directory.
+This transport does not admit the final release candidate, authorize a channel,
+or replace the publication-convergence work in #1489/#1646.
