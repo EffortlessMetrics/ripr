@@ -10994,3 +10994,34 @@ outputs = [
 metrics = [
   "agent_card_refusal_kind",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0203"
+name = "Global verbose flag contract"
+spec = "docs/specs/RIPR-SPEC-0203-global-verbose-flag-contract.md"
+tests = [
+  "crates/ripr/src/cli/parse.rs::tests::extract_global_verbose_removes_every_occurrence_in_any_position",
+  "crates/ripr/src/cli/parse.rs::tests::extract_global_verbose_is_idempotent_for_a_repeated_flag",
+  "crates/ripr/src/cli/parse.rs::tests::extract_global_verbose_keeps_lookalike_and_plain_tokens",
+  "crates/ripr/src/cli/mod.rs::tests::run_treats_a_repeated_global_verbose_as_one_enable",
+  "crates/ripr/src/cli/mod.rs::tests::run_keeps_the_global_verbose_out_of_flag_value_position",
+  "crates/ripr/src/cli/mod.rs::tests::run_rejects_verbose_on_the_machine_discovery_route",
+  "crates/ripr/src/startup.rs::tests::startup_extracts_the_global_verbose_flag_in_any_position",
+  "crates/ripr/src/startup.rs::tests::startup_treats_a_repeated_global_verbose_as_one_enable",
+  "crates/ripr/src/cli/help.rs::tests::global_verbose_spellings_are_documented_on_help_all",
+  "crates/ripr/tests/cli_smoke.rs",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/cli/parse.rs",
+  "crates/ripr/src/cli/mod.rs",
+  "crates/ripr/src/startup.rs",
+  "crates/ripr/src/cli/help/overview.rs",
+  "crates/ripr/src/cli/help.rs",
+]
+outputs = [
+  "crates/ripr/src/cli/help/overview.rs",
+]
+metrics = [
+  "unit_test_pass_rate",
+]

@@ -14,35 +14,38 @@ fn dispatch(args: Vec<String>) -> Result<(), CommandError> {
 }
 
 fn routed_mcp_args(args: &[String]) -> Option<Vec<String>> {
-    // #2610: the global --verbose/-v spelling works in any position, so
-    // extract it before the route check. `ripr --verbose mcp` and
-    // `ripr mcp --verbose` route identically; the verbose diagnostic goes
-    // to stderr and MCP protocol frames occupy stdout, so the protocol
-    // stream stays clean.
-    let mut verbose = false;
-    let mut body: Vec<String> = Vec::new();
-    for arg in args.iter().skip(1) {
-        match arg.as_str() {
-            "--verbose" | "-v" => verbose = true,
-            other => body.push(other.to_string()),
-        }
-    }
-    let is_direct = body.first().is_some_and(|first| first == "mcp");
-    let is_help_route = body.first().is_some_and(|first| first == "help")
-        && body.get(1).is_some_and(|second| second == "mcp");
+    // #2610: the global --verbose/-v spelling works in any position, so the
+    // route check skips those tokens; `ripr --verbose mcp` and
+    // `ripr mcp --verbose` route identically. #5009: on the MCP route the
+    // flag is removed by the same single owner the CLI dispatch uses
+    // (`ripr::cli::extract_global_verbose`), so the stripping rule cannot
+    // diverge between command families. The verbose diagnostic goes to
+    // stderr and MCP protocol frames occupy stdout, so the protocol stream
+    // stays clean.
+    let body: Vec<&String> = args
+        .iter()
+        .skip(1)
+        .filter(|arg| !matches!(arg.as_str(), "--verbose" | "-v"))
+        .collect();
+    let is_direct = body.first().is_some_and(|first| *first == "mcp");
+    let is_help_route = body.first().is_some_and(|first| *first == "help")
+        && body.get(1).is_some_and(|second| *second == "mcp");
     if !is_direct && !is_help_route {
         return None;
     }
-    if verbose {
+    let mut owned = args.to_vec();
+    if ripr::cli::extract_global_verbose(&mut owned) {
         ripr::set_verbose(true);
         eprintln!("ripr: verbose mode enabled");
     }
     if is_help_route {
         let mut routed = vec!["--help".to_string()];
-        routed.extend(body.into_iter().skip(2));
+        // `owned` still carries argv[0]; drop it plus the `help mcp` pair.
+        routed.extend(owned.into_iter().skip(3));
         return Some(routed);
     }
-    Some(body.into_iter().skip(1).collect())
+    // `owned` still carries argv[0]; drop it plus the `mcp` command itself.
+    Some(owned.into_iter().skip(2).collect())
 }
 
 fn collect_args() -> Vec<String> {
@@ -88,5 +91,25 @@ mod tests {
             Some(args(&["--help"]))
         );
         assert_eq!(routed_mcp_args(&args(&["ripr", "check"])), None);
+    }
+
+    #[test]
+    fn startup_treats_a_repeated_global_verbose_as_one_enable() {
+        // #5009 regression guard for the MCP startup path: the shared
+        // extraction removes every occurrence, so a repeat routes to the
+        // same MCP argv as a single flag — the same rule the CLI dispatch
+        // path pins in `cli::mod.rs`.
+        assert_eq!(
+            routed_mcp_args(&args(&["ripr", "-v", "-v", "mcp", "--stdio"])),
+            Some(args(&["--stdio"]))
+        );
+        assert_eq!(
+            routed_mcp_args(&args(&["ripr", "mcp", "--stdio", "--verbose", "-v"])),
+            Some(args(&["--stdio"]))
+        );
+        assert_eq!(
+            routed_mcp_args(&args(&["ripr", "-v", "-v", "help", "mcp"])),
+            Some(args(&["--help"]))
+        );
     }
 }

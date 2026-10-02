@@ -18,6 +18,8 @@ mod suggest;
 mod workflow_catalog;
 
 pub(crate) use parse::expect_value;
+#[doc(hidden)]
+pub use parse::extract_global_verbose;
 pub(crate) use suggest::unknown_argument;
 
 /// Top-level error of command dispatch, carrying the process exit-code
@@ -81,12 +83,15 @@ use std::path::Path;
 
 pub fn run(mut args: Vec<String>) -> Result<(), CommandError> {
     let version_requested = parse::top_level_version_requested(&args);
-    // #2610: extract --verbose before command dispatch so it works with any
-    // subcommand. Version is a side-effect-free identity query, so it must not
-    // emit the verbose diagnostic even when callers append or prepend it.
-    if !version_requested && let Some(pos) = args.iter().position(|a| a == "--verbose" || a == "-v")
-    {
-        args.remove(pos);
+    // #2610: the global --verbose/-v spelling is extracted before command
+    // dispatch so it works with any subcommand. #5009: the extraction has
+    // one owner (`parse::extract_global_verbose`) and removes every
+    // occurrence, so a repeat is idempotent on every command family — the
+    // old first-occurrence-only strip made `ripr -v -v check` fail while
+    // `ripr -v -v mcp` routed. Version is a side-effect-free identity
+    // query, so it must not emit the verbose diagnostic even when callers
+    // append or prepend the flag.
+    if !version_requested && parse::extract_global_verbose(&mut args) {
         crate::set_verbose(true);
         // #4825: the machine-discovery route has a strict one-flag grammar and
         // a silent-stderr contract. Combining it with the global verbosity
@@ -553,6 +558,54 @@ mod tests {
                 "missing value for --assistant-proof".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn run_treats_a_repeated_global_verbose_as_one_enable() {
+        // #5009 regression guard for the dispatch path: both occurrences are
+        // stripped before the check parser runs, so the invocation reaches
+        // check's own argument validation instead of failing on a stray
+        // second `-v`.
+        assert_eq!(
+            run(args(&["ripr", "-v", "-v", "check", "--format", "xml"])),
+            Err(CommandError::Failure(
+                "unknown format \"xml\". Accepted: human, text, human-full, text-full, json, github, sarif, badge-json, badge-shields, badge-plus-json, badge-plus-shields, repo-badge-json, repo-badge-shields, repo-badge-plus-json, repo-badge-plus-shields, repo-seams-json, repo-seams-md, repo-exposure-json, repo-exposure-summary-json, repo-exposure-md, repo-sarif, agent-seam-packets-json."
+                    .to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn run_keeps_the_global_verbose_out_of_flag_value_position() {
+        // #5009 documented boundary: extraction is flag-arity blind, so a
+        // `-v` token after a value-taking flag is the global flag, not the
+        // value; check then reports its own missing-value error instead of
+        // silently analyzing a base the user never supplied.
+        assert_eq!(
+            run(args(&["ripr", "check", "--base", "-v"])),
+            Err(CommandError::Failure(
+                "missing value for --base".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn run_rejects_verbose_on_the_machine_discovery_route() {
+        // #4825 contract, pinned for the #5009 single-pass extraction: the
+        // refusal fires identically for one flag, a repeat, and the
+        // appended spelling.
+        for argv in [
+            args(&["ripr", "-v", "help", "--json"]),
+            args(&["ripr", "-v", "-v", "help", "--json"]),
+            args(&["ripr", "help", "--json", "--verbose"]),
+        ] {
+            assert_eq!(
+                run(argv),
+                Err(CommandError::Failure(
+                    "usage: ripr help --json (this route accepts no other arguments)".to_string()
+                ))
+            );
+        }
     }
 
     #[test]

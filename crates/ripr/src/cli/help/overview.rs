@@ -66,6 +66,11 @@ pub(super) const HELP_ALL: &str = r#"ripr — complete command reference.
 Task-oriented overview: ripr --help
 Options for one command: ripr help <command>
 
+Global flags (accepted in any position, before or after the command):
+  -v, --verbose   Extra pipeline diagnostics on stderr: analyzed languages,
+                  mode, and probe/finding counts. A -v/--verbose token is
+                  always this global flag, never another flag's value.
+
 Task map:
   Diagnose setup        ripr doctor
   Inspect one change    ripr check

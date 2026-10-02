@@ -891,6 +891,48 @@ mod tests {
         print_lsp_help();
     }
 
+    /// #5009: the global `-v`/`--verbose` flag is extracted before every
+    /// command parser, so the per-command parity gate below cannot see it.
+    /// Pin its disclosure against the extraction owner itself: every
+    /// spelling the single stripping pass accepts must appear on the
+    /// `ripr help --all` reference, which also discloses what verbose mode
+    /// adds and the any-position contract. A new global spelling therefore
+    /// cannot land without a help disclosure in the same PR.
+    #[test]
+    fn global_verbose_spellings_are_documented_on_help_all() -> Result<(), String> {
+        let parse_rs = include_str!("parse.rs");
+        let (skeleton, literals) = scan_rust_source(parse_rs);
+        let (body_start, body_end) = function_body_span(&skeleton, "extract_global_verbose")
+            .ok_or_else(|| "extract_global_verbose body not found in parse.rs".to_string())?;
+        let mut accepted: Vec<&str> = Vec::new();
+        for (at, literal) in &literals {
+            if *at >= body_start && *at < body_end && !accepted.contains(&literal.as_str()) {
+                accepted.push(literal.as_str());
+            }
+        }
+        if accepted != ["--verbose", "-v"] {
+            return Err(format!(
+                "extract_global_verbose accepts {accepted:?}; update the owner and this \
+                 gate together with the help --all disclosure"
+            ));
+        }
+        for spelling in accepted {
+            if !HELP_ALL.contains(spelling) {
+                return Err(format!(
+                    "help --all omits the global flag spelling {spelling:?}"
+                ));
+            }
+        }
+        for required in ["any position", "stderr"] {
+            if !HELP_ALL.contains(required) {
+                return Err(format!(
+                    "help --all global-flags entry omits the disclosure {required:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     // ── flag/help parity gate (#2342, revived by #4317) ──────────────────────
 
     /// `include_str!` of every file that owns a command's argv parsing. Paths

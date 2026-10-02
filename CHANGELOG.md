@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Changed
 
+- CLI: the global `-v`/`--verbose` flag is now documented on the
+  `ripr help --all` reference (extra stderr pipeline diagnostics; accepted
+  in any position, never consumed as another flag's value), and one shared
+  stripping pass removes every occurrence, so `ripr -v -v <command>`
+  behaves identically for `mcp` and every other command family instead of
+  routing on one family and failing on the rest (#5009).
 - Human output: the Summary denominator is now `N of M finding(s)
   unsuppressed` instead of `N of M finding(s) shown`; the digest renders one
   finding and names the rest under `Hidden:`, so "shown" read as "rendered"

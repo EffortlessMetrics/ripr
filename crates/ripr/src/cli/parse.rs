@@ -71,6 +71,34 @@ fn emit_attached_terminal_stdin_note(
     }
 }
 
+/// Extract every global `-v`/`--verbose` occurrence from argv, reporting
+/// whether at least one was present (#5009).
+///
+/// This is the single owner of the global-flag stripping rule. The CLI
+/// dispatch (`cli::run`) and the binary startup route (`startup.rs`, which
+/// must strip before MCP routing) both call it, so the same global flag
+/// obeys one rule on every command family: all occurrences are removed in
+/// one pass and a repeat is idempotent (`ripr -v -v check` behaves exactly
+/// like `ripr -v check`, matching the MCP route's long-standing behavior).
+///
+/// Value-position boundary, disclosed on the exhaustive help reference
+/// (`ripr help --all`): extraction runs before every command parser and is
+/// deliberately flag-arity blind — routing the global flag through each
+/// command's parser is a non-goal — so a `-v`/`--verbose` token is always
+/// the global flag and can never be consumed as another flag's value.
+/// `ripr check --base -v` therefore enables verbose and lets `check`
+/// report its own `missing value for --base`. Inferring arity from the
+/// previous token instead would break the appended-position contract for
+/// boolean flags (`ripr check --quiet -v`, `ripr mcp --stdio -v`), which
+/// is the common real usage; the documented limitation is the honest
+/// boundary.
+#[doc(hidden)]
+pub fn extract_global_verbose(args: &mut Vec<String>) -> bool {
+    let before = args.len();
+    args.retain(|arg| arg != "--verbose" && arg != "-v");
+    args.len() != before
+}
+
 /// Whether argv requests the package version before a top-level command.
 ///
 /// Only leading flags participate. A command-local contract such as
@@ -241,6 +269,35 @@ mod tests {
             parse_args(args(&["ripr", "lsp", "--version"])),
             Ok(CliCommand::Lsp(args(&["--version"]))),
             "command-local LSP version remains distinct from top-level version"
+        );
+    }
+
+    #[test]
+    fn extract_global_verbose_removes_every_occurrence_in_any_position() {
+        let mut argv = args(&["ripr", "-v", "check", "--quiet", "--verbose", "-v"]);
+        assert!(extract_global_verbose(&mut argv));
+        assert_eq!(argv, args(&["ripr", "check", "--quiet"]));
+    }
+
+    #[test]
+    fn extract_global_verbose_is_idempotent_for_a_repeated_flag() {
+        // #5009: the chosen rule is "all occurrences removed", so a repeat
+        // must reduce to the same argv as a single flag on every command
+        // family, the MCP route included.
+        let mut single = args(&["ripr", "-v", "check"]);
+        let mut repeated = args(&["ripr", "-v", "-v", "check"]);
+        assert!(extract_global_verbose(&mut single));
+        assert!(extract_global_verbose(&mut repeated));
+        assert_eq!(single, repeated);
+    }
+
+    #[test]
+    fn extract_global_verbose_keeps_lookalike_and_plain_tokens() {
+        let mut argv = args(&["ripr", "check", "--verbose-extra", "-vv", "--base", "main"]);
+        assert!(!extract_global_verbose(&mut argv));
+        assert_eq!(
+            argv,
+            args(&["ripr", "check", "--verbose-extra", "-vv", "--base", "main"])
         );
     }
 

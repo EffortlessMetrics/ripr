@@ -81,6 +81,12 @@ pub fn ripr::app::qualify_legacy_ripr_plus_receipt
 pub fn ripr::app::repair_card_usability::repair_card_usability_report
 pub fn ripr::app::render_check
 pub fn ripr::cli::run
+# Global verbose stripping owner (#5009): owner cli; reason: the binary
+# startup route strips the global flag before MCP routing and must call the
+# same single-pass extraction as `ripr::cli::run`, so the owner is
+# re-exported at the cli boundary; covered_by: cargo test -p ripr --lib cli,
+# cargo test -p ripr --bin ripr, cargo xtask check-public-api.
+pub use ripr::cli::extract_global_verbose
 pub fn ripr::lsp::diagnostic_budget::build_budget_items_from_diagnostics
 pub fn ripr::lsp::diagnostic_budget::evaluate_diagnostic_budget
 pub fn ripr::lsp::serve
