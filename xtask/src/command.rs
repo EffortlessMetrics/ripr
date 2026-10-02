@@ -392,6 +392,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "rust-judged-panel check",
         "rust-judged-panel replay [--out target/ripr/<path>]",
         "rust-judged-panel packet [--host-current target/ripr/<path>/current.json]",
+        "rust-judged-panel feedback [--out <dir>] [--check]",
         "rust-judged-panel calibrate [--records <dir>] [--out <dir>] [--check]",
         "check-rust-judged-panel",
         "check-release-challenge-selection",
@@ -783,7 +784,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "stdout only",
             false,
             false,
-            "Validates the governed Rust judged-panel seed, portable packets, rolling production-quiet/actionability observation, and the #4795 calibration scorecard.",
+            "Validates the governed Rust judged-panel seed, portable packets, rolling production-quiet/actionability observation, the #4795 calibration scorecard, and the #4796 feedback ledger.",
         ),
         command_entry(
             "rust-judged-panel replay [--out target/ripr/<path>]",
@@ -802,6 +803,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Projects one validated complete host run into three bounded portable semantic packets; it does not build or execute RIPR.",
         ),
         command_entry(
+            "rust-judged-panel feedback [--out <dir>] [--check]",
+            "report_only",
+            "target/ripr/rust-judged-panel/feedback/",
+            false,
+            false,
+            "Derives deterministic JSON/Markdown from the retained #4796 feedback ledger; --check restages nothing and never writes the honesty corpus, repairs the analyzer, or mutates GitHub.",
+        ),
+        command_entry(
             "rust-judged-panel calibrate [--records <dir>] [--out <dir>] [--check]",
             "report_only",
             "target/ripr/rust-judged-panel/calibration or retained metrics/rust-judged-behavior-panel/calibration-scorecard.{json,md}",
@@ -815,7 +824,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "stdout only",
             false,
             true,
-            "Precommit alias for the same Rust judged-panel semantic validator, including rolling production-quiet observation and the retained calibration scorecard.",
+            "Validates the governed Rust judged-panel seed, portable packets, rolling production-quiet/actionability observation, the #4795 calibration scorecard, and the #4796 feedback ledger.",
         ),
         command_entry(
             "check-release-challenge-selection",

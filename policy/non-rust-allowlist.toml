@@ -394,8 +394,8 @@ kind = "judged_panel_metadata"
 owner = "ripr/evidence-quality"
 surface = "repo"
 classification = "metadata"
-reason = "Selected Rust behavior-panel denominator, including rolling production-quiet observation and the #4795 calibration scorecard; null labels and not_run remain non-results."
-covered_by = ["cargo xtask check-file-policy", "cargo xtask rust-judged-panel check", "cargo test -p xtask --locked --offline rust_judged_panel::rolling_observation", "cargo test -p xtask --locked --offline rust_judged_panel::calibration"]
+reason = "Selected Rust behavior-panel denominator, including rolling production-quiet observation, the #4795 calibration scorecard, and the #4796 feedback ledger; null labels and not_run calibration remain non-results."
+covered_by = ["cargo xtask check-file-policy", "cargo xtask rust-judged-panel check", "cargo test -p xtask --locked --offline rust_judged_panel::rolling_observation", "cargo test -p xtask --locked --offline rust_judged_panel::calibration", "cargo test -p xtask --locked --offline rust_analysis_feedback"]
 
 [[allow]]
 glob = "metrics/rust-judged-behavior-panel/subjects/**"

@@ -186,7 +186,7 @@ validates that rolling packet against the retained subjects:
 - Unauthorized real-repository production-quiet replay stays named as an unmet
   row rather than invented.
 
-The CLI accepts `check`, `replay`, `packet`, and `calibrate`. Bounded real
+The CLI accepts `check`, `replay`, `packet`, `calibrate`, and `feedback`. Bounded real
 ledger replay and live mutation campaigns remain outside the routine PR path.
 `calibrate --check` (and `rust-judged-panel check`) re-derives the retained
 scorecard from the #3806 judgments plus any exact receipts. Runtime results
@@ -225,6 +225,34 @@ Rates always show numerator and denominator. No denominator is
 `not_measurable`, not a fake zero percent. Survived mutants stay visible
 without an automatic false-exposed conclusion. #3076 route-yield and #4578
 rolling-observation denominators are bound by identity and never merged.
+
+## Analyzer feedback ledger
+
+`feedback-ledger.json` is the #4796 sidecar over the same frozen #3806
+judgments. It does not replace the seed, packets, rolling observation, or
+independent judgments, and it does not absorb #4795 calibration.
+
+`cargo xtask rust-judged-panel check` also validates that ledger:
+
+- Every terminal judged case has one failure-direction disposition derived
+  from immutable labels. Human notes cannot strengthen inconclusive or
+  accepted-limitation rows.
+- Confirmed analyzer defects stay `replay_only` with a named
+  materialization/authorization boundary unless a producer-path fixture can
+  retain the exact mechanism. Fixture ids must not be the case id, and
+  `expected_class` shortcuts are rejected.
+- A merged repair without original-case replay remains
+  `repaired_pending_replay`. Wrong-target rows cannot close on a nearby
+  observer identity.
+- Runtime calibration is recorded as `not_run` while the landed #4795
+  receipts stay unauthorized (`proposed_unauthorized`). Those results cannot
+  set the static class.
+- Owner search receipts are recorded. The ledger does not create, assign,
+  close, or label GitHub objects.
+
+`cargo xtask rust-judged-panel feedback [--out] [--check]` derives JSON and
+Markdown from one DTO. There is still no accuracy `report` command and no
+overall analyzer score.
 
 ## Item contract
 

@@ -10618,6 +10618,50 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0199"
+name = "Rust judged-panel analyzer feedback ledger"
+spec = "docs/specs/RIPR-SPEC-0199-rust-judged-panel-feedback-ledger.md"
+tests = [
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_false_exposed_is_not_false_actionable",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_under_credit_is_not_support_promotion",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_wrong_target_requires_exact_identity",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_wrong_target_cannot_close_on_a_nearby_target",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_correct_limitation_is_not_an_analyzer_defect",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_duplicate_owner_is_detected",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_existing_owner_cannot_be_left_unowned",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_incorrect_limitation_cannot_close_as_accepted",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_fixture_hardcoded_to_case_id_is_rejected",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_repaired_fixture_without_original_replay_stays_pending",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_stale_judgment_digest_invalidates_closure",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_reordered_rows_make_byte_stable_reports",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_deleting_an_unfavorable_row_changes_the_denominator",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_human_notes_cannot_strengthen_inconclusive_or_limitation",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_extra_row_is_not_a_judged_case",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_recorded_calibration_belongs_to_4795",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_production_ledger_covers_every_judged_case",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/tests.rs::rust_analysis_feedback_production_reports_carry_the_judged_denominator",
+]
+fixtures = [
+  "metrics/rust-judged-behavior-panel/feedback-ledger.json",
+]
+code = [
+  "xtask/src/rust_judged_panel/rust_analysis_feedback.rs",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/schema.rs",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/lifecycle.rs",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/owners.rs",
+  "xtask/src/rust_judged_panel/rust_analysis_feedback/report.rs",
+]
+outputs = [
+  "metrics/rust-judged-behavior-panel/feedback-ledger.json",
+  "metrics/rust-judged-behavior-panel/README.md",
+]
+metrics = [
+  "rust_judged_panel_feedback_rows",
+  "rust_judged_panel_feedback_analyzer_defects",
+  "rust_judged_panel_feedback_unowned",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0197"
 name = "Owner-return pins through calls that name the owner"
 spec = "docs/specs/RIPR-SPEC-0197-owner-return-pins.md"

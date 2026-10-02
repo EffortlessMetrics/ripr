@@ -1,0 +1,785 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_panel_feedback_ledger",
+  "authority": "EffortlessMetrics/ripr-swarm#4796",
+  "inherited_authorities": [
+    "EffortlessMetrics/ripr-swarm#3164",
+    "EffortlessMetrics/ripr-swarm#3806"
+  ],
+  "excluded_authorities": [
+    "EffortlessMetrics/ripr-swarm#4795"
+  ],
+  "release_judgments_path": "metrics/rust-judged-behavior-panel/release-judgments.json",
+  "release_judgments_sha256": "sha256:04ad4167e930af01d48041e518796f1167d9c3347b5e51445976c80586f6c869",
+  "calibration": {
+    "status": "not_run",
+    "authority": "EffortlessMetrics/ripr-swarm#4795",
+    "reason": "The #4795 calibration producer has landed (`cargo xtask rust-judged-panel calibrate`), but release-challenge receipts stay proposed_unauthorized, so runtime results remain not_run metadata and cannot set the static failure direction."
+  },
+  "limits": [
+    "Every row is a disposition over the frozen #3806 packet. Independent judgments are not rewritten.",
+    "Runtime calibration stays owned by #4795. This ledger records not_run rather than inventing runtime calibration outcomes.",
+    "Confirmed real-repository and historical-commit families stay replay-only: reducing them here would replace the exact judged identity or cross the proposed_unauthorized materialization boundary.",
+    "The ledger records issue/PR search receipts. It does not create, assign, close, or label GitHub objects.",
+    "Parent #3164 is not closed, scored, or support-promoted by this sidecar.",
+    "No overall analyzer score, route-yield merger, or publication action."
+  ],
+  "rows": [
+    {
+      "feedback_id": "rust-feedback-p1617-command-rows-quiet",
+      "case_id": "p1617-command-rows-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "xtask/src/command.rs source-promotion resolve-network-policy catalog entry presence and mutating classification",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "false_exposed",
+      "mechanism": "catalog_entry_presence_and_mutability_not_discriminated",
+      "analyzer_family": "xtask-command-catalog",
+      "semantic_owner": "xtask/src/command.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Exact historical catalog text and command_catalog check behavior are the judged authority. A synthetic catalog snippet would replace that identity.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for catalog-entry discrimination / resolve-network-policy exact oracle returned #2356 (too broad: command inventory) and no focused owner; GitHub is not mutated here.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Malformed-value catalog mutants remain discriminated; the gap is presence and mutating classification."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1617-dispatch-rows-gap",
+      "case_id": "p1617-dispatch-rows-gap",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "xtask/src/dispatch.rs SourcePromotion resolve-network-policy match arm",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "false_exposed",
+      "mechanism": "dispatch_arm_never_taken_but_credited_exposed",
+      "analyzer_family": "xtask-dispatch",
+      "semantic_owner": "xtask/src/dispatch.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "The judged failure is the exact dispatch arm plus production_like_targets opt-in. A toy match arm would not retain that producer edge.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for SourcePromotion dispatch-arm observation returned no focused analyzer-feedback owner; #2356 is inventory, not this mechanism.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Module-internal source_promotion tests are not this row."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1705-headline-rows-gap",
+      "case_id": "p1705-headline-rows-gap",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "crates/ripr/src/output/markdown.rs:190 double-quoted `$` arm in is_compound_bash_command",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "static_under_credit",
+      "mechanism": "aligned_same_diff_test_not_credited_for_powershell_expansion_guard",
+      "analyzer_family": "rust-output-markdown",
+      "semantic_owner": "crates/ripr/src/output/markdown.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Under-credit is the reference run missing the aligned same-diff observer. Replacing markdown.rs with a toy string scanner would drop that producer.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for markdown.rs powershell `$` arm under-credit returned no focused owner distinct from the #3806 packet itself.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["This is a producer-credit candidate, not a support-tier promotion."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1705-headline-survivor-quiet",
+      "case_id": "p1705-headline-survivor-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "crates/ripr/src/output/markdown.rs:190 `$` arm not equivalent to the base `$ (` guard",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "static_under_credit",
+      "mechanism": "aligned_same_diff_test_not_credited_for_powershell_expansion_guard",
+      "analyzer_family": "rust-output-markdown",
+      "semantic_owner": "crates/ripr/src/output/markdown.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Same producer edge as p1705-headline-rows-gap; splitting the family would manufacture a rival owner.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "Same mechanism as p1705-headline-rows-gap; reuse that unowned focused family rather than a rival issue.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Structural judgment only."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1705-passthrough-rows-quiet",
+      "case_id": "p1705-passthrough-rows-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "markdown.rs:244 allowlist passthrough `_` member of is_compound_bash_command",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "underscore_member_has_no_activating_input",
+      "analyzer_family": "rust-output-markdown",
+      "semantic_owner": "crates/ripr/src/output/markdown.rs",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Reference labels are false_exposed=false and under_credit=false; the weak class fits the residual `_` gap.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "No analyzer-defect owner: the judged packet already records a real gap without false exposure.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["The `_` residual is a selected gap, not a silent over-credit."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1706-helper-rows-quiet",
+      "case_id": "p1706-helper-rows-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "crates/ripr/src/analysis/probes/ids.rs dedup_finding_probe_ids",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "wrong_target",
+      "mechanism": "right_outcome_credited_through_weak_token_relations",
+      "analyzer_family": "rust-probe-ids",
+      "semantic_owner": "crates/ripr/src/analysis/probes/ids.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Exact same-diff observer identity is the judged target. A renamed helper would let a nearby test close the row.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": "crates/ripr/src/analysis/probes/ids.rs::dedup_finding_probe_ids_suffixes_repeats_and_rebinds_evidence",
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for probe-id dedup wrong-observer credit returned no focused owner; #3164 is the programme umbrella and must not absorb this mechanism.",
+        "competing": ["issue:3164"]
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Outcome class is not judged false_exposed; the defect is target identity."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1706-wiring-rows-gap",
+      "case_id": "p1706-wiring-rows-gap",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "python.rs:465 and typescript/mod.rs:298 adapter calls to dedup_finding_probe_ids",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "false_exposed",
+      "mechanism": "adapter_call_deletion_credited_without_reaching_observer",
+      "analyzer_family": "rust-adapter-call-observation",
+      "semantic_owner": "crates/ripr/src/analysis",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "The judged edge is the two exact adapter call sites. #4421 pooling honesty is a different owner and did not close this row.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "PR #4421 / #3164 comment records the p1706 adapter-call residual as still open after assertion pooling. #3164 is the programme umbrella, not a focused owner; no GitHub issue is filed here.",
+        "competing": ["issue:3164", "pull:4421"]
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Golden/fixture observers were not_established in the packet."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1731-quiet-test-only",
+      "case_id": "p1731-quiet-test-only",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "test-only quiet control p1731",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "test_only_quiet_control",
+      "analyzer_family": "none",
+      "semantic_owner": "none",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Confirmed quiet on a test-only diff. false_actionable and false_exposed are both false.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "Control row; no analyzer-defect owner.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Test-only quiet is not production-quiet coverage (#4578)."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1732-quiet-test-only",
+      "case_id": "p1732-quiet-test-only",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "test-only quiet control p1732",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "test_only_quiet_control",
+      "analyzer_family": "none",
+      "semantic_owner": "none",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Confirmed quiet on a test-only diff. false_actionable and false_exposed are both false.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "Control row; no analyzer-defect owner.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Test-only quiet is not production-quiet coverage (#4578)."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1741-helper-rows-quiet",
+      "case_id": "p1741-helper-rows-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "crates/ripr/src/edit_cage.rs agent_attributable_delta comparable: delta.comparable constant-true pass-through",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "false_exposed",
+      "mechanism": "comparable_true_passthrough_credited_exposed_without_false_input",
+      "analyzer_family": "rust-edit-cage",
+      "semantic_owner": "crates/ripr/src/edit_cage.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "The judged owner is the exact helper plus H1 survivor. A toy comparable:true struct would replace that authority.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for agent_attributable_delta comparable pass-through returned #4330 (edit-cage packet parity, different mechanism) and no focused false-exposed owner.",
+        "competing": ["issue:4330"]
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Filter/`changes` rows remain discriminated."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1741-pair-rows-gap",
+      "case_id": "p1741-pair-rows-gap",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "app/repair_attempt.rs receipt_binding agent-delta drift refusal",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "receipt_drift_refusal_undiscriminated",
+      "analyzer_family": "rust-repair-attempt",
+      "semantic_owner": "crates/ripr/src/app/repair_attempt.rs",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Analyzer did not credit exposed. The packet records a real gap, not a false-exposed family.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "No analyzer-defect owner; agreement on weakness.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Accept-path subprocess coverage is not this residual."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1744-quiet-test-only",
+      "case_id": "p1744-quiet-test-only",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "test-only quiet control p1744",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "test_only_quiet_control",
+      "analyzer_family": "none",
+      "semantic_owner": "none",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Confirmed quiet on a test-only diff. false_actionable and false_exposed are both false.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "Control row; no analyzer-defect owner.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Test-only quiet is not production-quiet coverage (#4578)."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1745-catalog-row-quiet",
+      "case_id": "p1745-catalog-row-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "xtask/src/command.rs catalog usage text",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "false_exposed",
+      "mechanism": "catalog_usage_text_credited_exposed_without_failing_oracle",
+      "analyzer_family": "xtask-command-catalog",
+      "semantic_owner": "xtask/src/command.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "The judged text is a frozen catalog literal. A generic string-equality fixture would drop that producer.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for catalog usage-text discrimination returned no focused owner; product policy ripr#1752 item 3 is actionability, not this structural row.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Does not overrule the text-only weak/no-repair product policy."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1745-triple-rows-gap",
+      "case_id": "p1745-triple-rows-gap",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "xtask/src/windows_advisory.rs parse_log stuck-set; residual run() partial print",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "static_under_credit",
+      "mechanism": "unobserved_run_partial_print_credited_exposed",
+      "analyzer_family": "xtask-windows-advisory",
+      "semantic_owner": "xtask/src/windows_advisory.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Anchored parse_log behavior is discriminated; the retained under-credit is the exact :314 print residual.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for windows_advisory run() partial-print observation returned no focused owner.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["parse_log insert/remove remain discriminated by same-file tests."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-p1745-wedge-rows-quiet",
+      "case_id": "p1745-wedge-rows-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "windows_advisory.rs:431 stuck.remove",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "stuck_remove_discriminated_by_same_file_test",
+      "analyzer_family": "xtask-windows-advisory",
+      "semantic_owner": "xtask/src/windows_advisory.rs",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Confirmed quiet with aligned observer. false_exposed=false and under_credit=false.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "Positive quiet control; no analyzer-defect owner.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Structural judgment only."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-s2864-fast-mode-notice-limit",
+      "case_id": "s2864-fast-mode-notice-limit",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "cli/commands/check.rs Fast-mode eprintln observed only through cli_smoke spawn",
+      "terminal_judgment": "confirmed_should_limit",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "incorrect_limitation",
+      "mechanism": "subprocess_boundary_named_as_fixture_opaque_with_repair_suggestion",
+      "analyzer_family": "rust-cli-subprocess-limit",
+      "semantic_owner": "crates/ripr/src/cli/commands/check.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "The incorrect limit kind is the named fixture_opaque stop plus boundary-test suggestion on this exact spawn owner.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for Fast-mode notice subprocess limitation naming returned no focused owner distinct from RIPR-SPEC-0166 family generally.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Runtime discrimination by cli_smoke is not denied."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-s3755-aligned-rows-quiet",
+      "case_id": "s3755-aligned-rows-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "parameter_declaration_shape / parameter_line_span",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "right_outcome_wrong_observer_not_judged",
+      "analyzer_family": "rust-parameter-probes",
+      "semantic_owner": "crates/ripr/src/analysis/probes/classify/parameters.rs",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Packet non-claim: observer link is not judged. Labels are not a confirmed analyzer defect.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "Inconclusive observer-link residual is retained without forcing a defect row.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Human notes cannot promote this observer residual into false_exposed."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-s3755-weak-rows-gap",
+      "case_id": "s3755-weak-rows-gap",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "parameters.rs FieldConstruction gate residual S8",
+      "terminal_judgment": "confirmed_should_gap",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "field_construction_gate_undiscriminated",
+      "analyzer_family": "rust-parameter-probes",
+      "semantic_owner": "crates/ripr/src/analysis/probes/classify/parameters.rs",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Weak/static_unknown fits the gap terminal. Not a false-exposed family.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "Agreement on weakness; no analyzer-defect owner.",
+        "competing": []
+      },
+      "status": "no_repair_required",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["S8 is a real selected gap, not silent over-credit."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-s3759-match-arm-quiet",
+      "case_id": "s3759-match-arm-quiet",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "analysis/classify/reveal.rs match-arm literal gate",
+      "terminal_judgment": "confirmed_should_stay_quiet",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "static_under_credit",
+      "mechanism": "match_arm_gate_credited_to_token_unit_tests_not_integration",
+      "analyzer_family": "rust-reveal-match-arm",
+      "semantic_owner": "crates/ripr/src/analysis/classify/reveal.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Under-credit is the exact reveal.rs gate versus its integration observers.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "all-state search for reveal.rs match-arm under-credit returned RIPR-SPEC-0164 / #3759 as the original behavior change, not a focused feedback owner. Umbrella #3164 is not attached.",
+        "competing": ["issue:3759"]
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Not a population-rate or mutation-adequacy claim."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-s3866-doctor-packet-subprocess-limit",
+      "case_id": "s3866-doctor-packet-subprocess-limit",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "cli/commands/doctor.rs start-here packet is_file predicate observed through cli_smoke spawn",
+      "terminal_judgment": "confirmed_should_limit",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "incorrect_limitation",
+      "mechanism": "subprocess_boundary_named_as_fixture_opaque_with_repair_suggestion",
+      "analyzer_family": "rust-cli-subprocess-limit",
+      "semantic_owner": "crates/ripr/src/cli/commands/doctor.rs",
+      "reduction": {
+        "disposition": "replay_only",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "Same incorrect-limitation family as s2864: fixture_opaque plus repair suggestion instead of the subprocess bound.",
+        "materialization_boundary": "proposed_unauthorized_or_historical_exact_commit",
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "unowned_no_github_mutation",
+        "search_receipt": "Reuses the subprocess-limit incorrect-limitation family with s2864 rather than a rival owner. No GitHub mutation.",
+        "competing": []
+      },
+      "status": "open",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["Runtime discrimination by doctor_* cli_smoke tests is not denied."],
+      "notes": null
+    },
+    {
+      "feedback_id": "rust-feedback-s3956-pilot-baseline-file-limit",
+      "case_id": "s3956-pilot-baseline-file-limit",
+      "source": {
+        "panel": "metrics/rust-judged-behavior-panel",
+        "judgments": "EffortlessMetrics/ripr-swarm#3806",
+        "calibration": "EffortlessMetrics/ripr-swarm#4795"
+      },
+      "behavior_identity": "cli/commands/pilot.rs budget-truncated writer observed through cli_smoke spawn",
+      "terminal_judgment": "confirmed_should_limit",
+      "runtime_calibration": { "status": "not_run", "result": null },
+      "failure_direction": "no_confirmed_failure",
+      "mechanism": "subprocess_boundary_correctly_limited",
+      "analyzer_family": "rust-cli-subprocess-limit",
+      "semantic_owner": "crates/ripr/src/cli/commands/pilot.rs",
+      "reduction": {
+        "disposition": "not_a_defect",
+        "fixture_id": null,
+        "expected_class": null,
+        "reason": "limitation_correct is true. Named limit kind may differ from rust_subprocess_binary_reach_unresolved without becoming an analyzer defect.",
+        "materialization_boundary": null,
+        "positive_control": null,
+        "negative_control": null
+      },
+      "target_identity": null,
+      "owner": {
+        "existing": null,
+        "designated": "none",
+        "search_receipt": "Correct limitation control; no analyzer-defect owner.",
+        "competing": []
+      },
+      "status": "accepted_limitation",
+      "repair": { "merged_implementation": null, "original_case_replay": false, "replay_identities": null },
+      "non_claims": ["limitation_correct does not promote support or claim the ideal limit kind."],
+      "notes": null
+    }
+  ]
+}

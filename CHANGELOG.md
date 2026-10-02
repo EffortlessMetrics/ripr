@@ -132,6 +132,13 @@ are scoped or reviewed.
   reveals the active stage and heartbeats; producer `completed` is held until
   the command actually succeeds. Unknown totals stay unknown; `--quiet`
   suppresses the stream. This does not make analysis faster (#4810).
+- `cargo xtask rust-judged-panel feedback` and `check` now retain one
+  checked feedback ledger over the frozen #3806 Rust judgments. Every
+  terminal case gets a disposition; confirmed defects stay replay-only
+  unless a producer-path fixture can keep the exact mechanism; JSON and
+  Markdown reports carry denominators without an overall analyzer score,
+  analyzer repair, #4795 calibration, GitHub mutation, or #3164 closure
+  (#4796).
 
 ### Fixed
 
