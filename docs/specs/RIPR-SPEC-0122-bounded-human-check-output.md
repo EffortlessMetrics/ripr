@@ -79,6 +79,11 @@ Hidden:                                    (only when N > 0)
   Machine data: rerun with --format json
 ```
 
+The Summary denominator counts unsuppressed findings against the total
+(`N of M finding(s) unsuppressed`), disclosing the suppressed remainder; the
+word is never "shown", because the bounded digest renders exactly one finding
+and the `Hidden:` block below names the rest.
+
 Human lines lead with plain words and keep the stable id in parentheses, so a
 reader does not need the internal vocabulary and a script can still match the
 id: `State: a test gap to inspect or repair (top_gap)`, `Analysis outcome:
@@ -98,6 +103,17 @@ remainder that does not exist:
   a language name. Rust-only remainder stays the count line with no breakdown.
   This reads finding identity already on the omitted records; it is not the
   language-availability projection owned by #2615.
+- The omitted set's currentness mix is named wherever it is not purely
+  lower-priority candidates, whether or not a top gap was selected (#5021).
+  Base-side evidence (`base_deleted`, `moved_or_renamed`) and
+  `unresolved_subject` findings are not candidate edit targets, so when they
+  share the omitted set with lower-ranked candidates the count line names the
+  mix — `L lower-priority finding(s) omitted; B base-side evidence, not
+  candidate edit targets` (an `U unresolved currentness, not candidate edit
+  targets` clause joins when present) — and an omitted set that is entirely
+  base-side or entirely unresolved currentness says so (`All N omitted
+  finding(s) are base-side evidence, not candidate edit targets.`). Pure
+  lower-priority omitted sets keep the single count clause.
 - `N == 0` — the heading is `More:` and the count line is not rendered. The
   two format pointers still render, unchanged, because they remain useful
   when nothing was omitted.

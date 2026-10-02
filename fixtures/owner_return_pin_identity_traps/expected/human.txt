@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/owner_return_pin_identity_traps/input
 
-Summary: 6 probe(s), 0 exposed, 4 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 2 static_unknown; 6 of 6 finding(s) shown
+Summary: 6 probe(s), 0 exposed, 4 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 2 static_unknown; 6 of 6 finding(s) unsuppressed
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 8 changed line(s), 4 candidate line(s), 6 probe(s), 6 finding(s).
@@ -27,7 +27,7 @@ Next: drill into the top finding:
   ripr context --root fixtures/owner_return_pin_identity_traps/input --diff fixtures/owner_return_pin_identity_traps/diff.patch --mode fast --at probe:src_lib.rs:return_value:22c1d265
 
 Hidden:
-  5 lower-priority finding(s) omitted from default human output.
+  3 lower-priority finding(s) omitted; 2 base-side evidence, not candidate edit targets.
     - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:7 (weakly_exposed)
     - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:7 (static_unknown)
     - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:50 (weakly_exposed)

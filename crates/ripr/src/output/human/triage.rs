@@ -252,6 +252,12 @@ pub(crate) fn render_human_triage(
     // covered without a rerun — and distinguishes the all-base-side case, where
     // nothing was candidate-actionable and a lower-priority framing would
     // misdescribe the run.
+    //
+    // #5021: that currentness mix is a property of the omitted set, not of
+    // whether a selection exists. When a top gap IS selected, the omitted set
+    // can still hold base-side or unresolved-currentness evidence next to
+    // lower-ranked candidates, so the selected-branch count line names the
+    // same mix instead of labeling every omission "lower-priority".
     if triage.omitted.is_empty() {
         out.push_str("\nMore:\n");
     } else {
@@ -259,11 +265,7 @@ pub(crate) fn render_human_triage(
         if triage.selected.is_none() {
             out.push_str(&no_selection_hidden_line(&triage.omitted));
         } else {
-            out.push_str(&format!(
-                "  {} lower-priority finding(s) omitted from default human output{}.\n",
-                triage.omitted.len(),
-                omitted_identity_suffix(&triage.omitted)
-            ));
+            out.push_str(&selected_hidden_line(&triage.omitted));
         }
         let listed = triage.omitted.len().min(HIDDEN_FINDINGS_LISTED);
         for finding in triage.omitted.iter().take(listed) {
@@ -291,7 +293,7 @@ pub(crate) fn render_human_triage(
 /// identity.
 const HIDDEN_FINDINGS_LISTED: usize = 20;
 
-/// The currentness mix of a no-selection run. `unresolved_subject` is the
+/// The currentness mix of the omitted set. `unresolved_subject` is the
 /// explicit unknown (#3281) — not base-side evidence — so the #4320
 /// no-selection framing must name the actual mix instead of promoting every
 /// unselected finding to a base-side claim (#4320 review).
@@ -301,7 +303,12 @@ enum NoSelectionMix {
     Mixed { base_side: usize, unresolved: usize },
 }
 
-fn no_selection_mix(omitted: &[&Finding]) -> NoSelectionMix {
+/// #5021: the currentness counts of an omitted set, shared by the
+/// no-selection and selected Hidden count lines so both surfaces name the
+/// same mix. Base-side evidence (`base_deleted`, `moved_or_renamed`) is
+/// never a candidate edit target; `unresolved_subject` is the explicit
+/// unknown (#3281), counted separately so it is not promoted to base-side.
+fn omitted_currentness_counts(omitted: &[&Finding]) -> (usize, usize) {
     let base_side = omitted
         .iter()
         .filter(|finding| {
@@ -318,6 +325,11 @@ fn no_selection_mix(omitted: &[&Finding]) -> NoSelectionMix {
             finding.source_currentness == crate::domain::SourceCurrentness::UnresolvedSubject
         })
         .count();
+    (base_side, unresolved)
+}
+
+fn no_selection_mix(omitted: &[&Finding]) -> NoSelectionMix {
+    let (base_side, unresolved) = omitted_currentness_counts(omitted);
     match (base_side, unresolved) {
         (0, 0) => NoSelectionMix::AllBaseSide,
         (_, 0) => NoSelectionMix::AllBaseSide,
@@ -326,6 +338,55 @@ fn no_selection_mix(omitted: &[&Finding]) -> NoSelectionMix {
             base_side: b,
             unresolved: u,
         },
+    }
+}
+
+/// #5021: the `Hidden:` count line for a run where a top gap was selected.
+/// `triage.omitted` is every considered finding except the selected one, so
+/// it can hold base-side or unresolved-currentness evidence next to
+/// lower-ranked candidates; a bare "N lower-priority finding(s) omitted"
+/// would misdescribe that evidence the same way the #4320 no-selection path
+/// already refuses to. Pure lower-priority omitted sets keep the legacy
+/// single clause unchanged.
+fn selected_hidden_line(omitted: &[&Finding]) -> String {
+    let suffix = omitted_identity_suffix(omitted);
+    let (base_side, unresolved) = omitted_currentness_counts(omitted);
+    let lower_priority = omitted.len() - (base_side + unresolved);
+    match (base_side, unresolved, lower_priority) {
+        (0, 0, _) => format!(
+            "  {} lower-priority finding(s) omitted from default human output{}.\n",
+            omitted.len(),
+            suffix
+        ),
+        (_, 0, 0) => format!(
+            "  All {} omitted finding(s) are base-side evidence, not candidate edit targets{}.\n",
+            omitted.len(),
+            suffix
+        ),
+        (0, _, 0) => format!(
+            "  All {} omitted finding(s) have unresolved subject currentness — not established base-side or candidate edit targets{}.\n",
+            omitted.len(),
+            suffix
+        ),
+        (_, _, 0) => format!(
+            "  All {} omitted finding(s) are not candidate edit targets ({} base-side, {} unresolved currentness){}.\n",
+            omitted.len(),
+            base_side,
+            unresolved,
+            suffix
+        ),
+        (base_side, 0, lower_priority) => format!(
+            "  {} lower-priority finding(s) omitted; {} base-side evidence, not candidate edit targets{}.\n",
+            lower_priority, base_side, suffix
+        ),
+        (0, unresolved, lower_priority) => format!(
+            "  {} lower-priority finding(s) omitted; {} unresolved currentness, not candidate edit targets{}.\n",
+            lower_priority, unresolved, suffix
+        ),
+        (base_side, unresolved, lower_priority) => format!(
+            "  {} lower-priority finding(s) omitted; {} base-side evidence and {} unresolved currentness, not candidate edit targets{}.\n",
+            lower_priority, base_side, unresolved, suffix
+        ),
     }
 }
 

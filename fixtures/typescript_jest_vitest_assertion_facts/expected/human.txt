@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/typescript_jest_vitest_assertion_facts/input
 
-Summary: 6 probe(s), 2 exposed, 4 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 6 of 6 finding(s) shown
+Summary: 6 probe(s), 2 exposed, 4 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 6 of 6 finding(s) unsuppressed
 
 Changed file(s) by language: typescript: 1.
 

@@ -188,18 +188,25 @@ fn render_header_summary(output: &CheckOutput) -> String {
     // finding vocabulary. All seven classes render with their canonical
     // `ExposureClass::as_str()` tokens (no `weak`/`unrevealed` abbreviations,
     // no summed unknown bucket — the unknown split is exactly what tells the
-    // reader which discriminator machinery is missing), and the shown/total
-    // denominator discloses suppression: per-class buckets count unsuppressed
-    // findings only, while `summary.findings` stays the total.
+    // reader which discriminator machinery is missing), and the
+    // unsuppressed/total denominator discloses suppression: per-class buckets
+    // count unsuppressed findings only, while `summary.findings` stays the
+    // total.
+    // #5017: the denominator word is `unsuppressed`, never `shown` — the
+    // bounded digest renders exactly one finding and names the rest under
+    // `Hidden:`, so "shown" reads as "rendered" and contradicts the omitted
+    // count on the same page ("6 of 6 shown" next to "5 omitted"). The
+    // full render prints every unsuppressed finding, so the same word stays
+    // truthful on both surfaces.
     let suppressed = output
         .suppression
         .as_ref()
         .map_or(0, |suppression| suppression.suppressed.len());
-    let shown = output.summary.findings.saturating_sub(suppressed);
+    let unsuppressed = output.summary.findings.saturating_sub(suppressed);
     out.push_str(&format!(
         "Summary: {} probe(s), {} exposed, {} weakly_exposed, {} reachable_unrevealed, \
          {} no_static_path, {} infection_unknown, {} propagation_unknown, {} static_unknown; \
-         {} of {} finding(s) shown\n\n",
+         {} of {} finding(s) unsuppressed\n\n",
         output.summary.probes,
         output.summary.exposed,
         output.summary.weakly_exposed,
@@ -208,7 +215,7 @@ fn render_header_summary(output: &CheckOutput) -> String {
         output.summary.infection_unknown,
         output.summary.propagation_unknown,
         output.summary.static_unknown,
-        shown,
+        unsuppressed,
         output.summary.findings,
     ));
     render_language_file_breakdown(&mut out, output);
@@ -777,10 +784,10 @@ mod tests {
         let rendered = render(&output);
 
         assert!(rendered.contains("mode: draft"));
-        // #4322: canonical class tokens, unknown classes kept separate, and a
-        // shown/total denominator.
+        // #4322: canonical class tokens, unknown classes kept separate, and an
+        // unsuppressed/total denominator.
         assert!(rendered.contains(
-            "Summary: 8 probe(s), 1 exposed, 2 weakly_exposed, 1 reachable_unrevealed, 1 no_static_path, 1 infection_unknown, 1 propagation_unknown, 1 static_unknown; 0 of 0 finding(s) shown"
+            "Summary: 8 probe(s), 1 exposed, 2 weakly_exposed, 1 reachable_unrevealed, 1 no_static_path, 1 infection_unknown, 1 propagation_unknown, 1 static_unknown; 0 of 0 finding(s) unsuppressed"
         ));
         assert!(rendered.contains("No diff-derived static exposure probes found."));
         assert!(!rendered.contains("Next:"));
@@ -820,7 +827,7 @@ mod tests {
 
         assert!(
             rendered.contains(
-                "3 infection_unknown, 5 propagation_unknown, 1 static_unknown; 9 of 9 finding(s) shown"
+                "3 infection_unknown, 5 propagation_unknown, 1 static_unknown; 9 of 9 finding(s) unsuppressed"
             ),
             "unknown classes must render separately; got:\n{rendered}"
         );
@@ -831,10 +838,10 @@ mod tests {
     }
 
     /// #4322: per-class buckets count unsuppressed findings only, so the
-    /// header's shown/total denominator must disclose the suppressed
+    /// header's unsuppressed/total denominator must disclose the suppressed
     /// remainder instead of letting a reader sum mismatching counts.
     #[test]
-    fn summary_header_shown_total_denominator_reflects_suppression() {
+    fn summary_header_unsuppressed_total_denominator_reflects_suppression() {
         use crate::output::suppressions::{CheckSuppressionOutcome, SuppressedCheckFinding};
         let mut kept = sample_finding();
         kept.id = "kept-finding".to_string();
@@ -873,7 +880,7 @@ mod tests {
         let rendered = render(&output);
 
         assert!(
-            rendered.contains("; 1 of 2 finding(s) shown"),
+            rendered.contains("; 1 of 2 finding(s) unsuppressed"),
             "the denominator must disclose the suppressed remainder; got:\n{rendered}"
         );
     }
@@ -918,7 +925,7 @@ mod tests {
         assert!(rendered.contains(
             "Summary: 7 probe(s), 1 exposed, 2 weakly_exposed, 3 reachable_unrevealed, \
              4 no_static_path, 5 infection_unknown, 6 propagation_unknown, 7 static_unknown; \
-             7 of 7 finding(s) shown"
+             7 of 7 finding(s) unsuppressed"
         ));
         // Token-to-taxonomy binding: every canonical token appears in the
         // header, so a renamed or added class cannot silently diverge.
@@ -1434,6 +1441,161 @@ mod tests {
             rendered.contains(
                 "  Safe next action: no finding is a candidate edit target (1 base-side, 1 unresolved currentness); rerun with --format human-full to inspect the full evidence before treating this run as actionable.\n"
             ),
+            "{rendered}"
+        );
+    }
+
+    /// #5017: on a multi-finding, unsuppressed run the header denominator
+    /// and the `Hidden:` omitted count must reconcile at a glance: M
+    /// unsuppressed = 1 rendered finding + (M - 1) omitted below. The header
+    /// word is `unsuppressed`, never `shown`, so it cannot be read as
+    /// "rendered" while the Hidden block names the remainder.
+    #[test]
+    fn header_and_hidden_denominators_reconcile_on_multi_finding_run() {
+        let findings = (0..3)
+            .map(|index| {
+                let mut finding = sample_finding();
+                finding.id = format!("finding-{index}");
+                finding.probe.location = SourceLocation::new(format!("src/f{index}.rs"), 1, 1);
+                finding
+            })
+            .collect::<Vec<_>>();
+
+        let rendered = render(&bounded_output_with_findings(findings));
+
+        assert!(
+            rendered.contains("; 3 of 3 finding(s) unsuppressed"),
+            "header denominator must count unsuppressed findings; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("  2 lower-priority finding(s) omitted from default human output.\n"),
+            "Hidden count must name the rendered/omitted remainder; got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("finding(s) shown"),
+            "the word 'shown' must not survive the #5017 rename; got:\n{rendered}"
+        );
+    }
+
+    /// #5021: when a top gap is selected, an all-base-side omitted set is
+    /// still base-side evidence — never a lower-priority candidate — so the
+    /// count line names the disposition instead of labeling it
+    /// lower-priority.
+    #[test]
+    fn hidden_block_selected_all_base_side_omitted_names_base_side_evidence() {
+        let mut selected = sample_finding();
+        selected.id = "selected-gap".to_string();
+        selected.probe.location = SourceLocation::new("src/selected.rs", 1, 1);
+        let mut base = sample_finding();
+        base.id = "omitted-base".to_string();
+        base.probe.location = SourceLocation::new("src/base.rs", 1, 1);
+        base.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+
+        let rendered = render(&bounded_output_with_findings(vec![selected, base]));
+
+        assert!(rendered.contains("(top_gap)"), "{rendered}");
+        assert!(
+            rendered.contains(
+                "  All 1 omitted finding(s) are base-side evidence, not candidate edit targets.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("lower-priority finding(s) omitted"),
+            "base-side evidence must not read as lower-priority:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("    - src/base.rs:1 (weakly_exposed)\n"),
+            "{rendered}"
+        );
+    }
+
+    /// #5021: when a top gap is selected and the omitted set mixes
+    /// lower-ranked candidates with base-side evidence, the count line names
+    /// the mix with its own counts instead of promoting the base-side
+    /// findings to lower-priority candidates.
+    #[test]
+    fn hidden_block_selected_mixed_omitted_names_base_side_count() {
+        // Ranking ties break on file path (see `triage_rank`), so the
+        // intended top gap must sort before the omitted candidates.
+        let mut selected = sample_finding();
+        selected.id = "selected-gap".to_string();
+        selected.probe.location = SourceLocation::new("src/a_selected.rs", 1, 1);
+        let mut base = sample_finding();
+        base.id = "omitted-base".to_string();
+        base.probe.location = SourceLocation::new("src/base.rs", 1, 1);
+        base.source_currentness = crate::domain::SourceCurrentness::MovedOrRenamed;
+        let mut lower = sample_finding();
+        lower.id = "omitted-lower".to_string();
+        lower.probe.location = SourceLocation::new("src/lower.rs", 1, 1);
+
+        let rendered = render(&bounded_output_with_findings(vec![selected, base, lower]));
+
+        assert!(
+            rendered.contains(
+                "  1 lower-priority finding(s) omitted; 1 base-side evidence, not candidate edit targets.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("    - src/base.rs:1 (weakly_exposed)\n"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("    - src/lower.rs:1 (weakly_exposed)\n"),
+            "{rendered}"
+        );
+    }
+
+    /// #5021: `unresolved_subject` is the explicit unknown, not base-side
+    /// evidence; when it shares the omitted set with a selected top gap and
+    /// a lower-ranked candidate, the count line names it as unresolved
+    /// currentness, with its own clause.
+    #[test]
+    fn hidden_block_selected_unresolved_omitted_names_the_unknown_not_base_side() {
+        let mut selected = sample_finding();
+        selected.id = "selected-gap".to_string();
+        selected.probe.location = SourceLocation::new("src/selected.rs", 1, 1);
+        let mut unresolved = sample_finding();
+        unresolved.id = "omitted-unresolved".to_string();
+        unresolved.probe.location = SourceLocation::new("src/unresolved.rs", 1, 1);
+        unresolved.source_currentness = crate::domain::SourceCurrentness::UnresolvedSubject;
+        let mut lower = sample_finding();
+        lower.id = "omitted-lower".to_string();
+        lower.probe.location = SourceLocation::new("src/lower.rs", 1, 1);
+
+        let rendered = render(&bounded_output_with_findings(vec![
+            selected, unresolved, lower,
+        ]));
+
+        assert!(
+            rendered.contains(
+                "  1 lower-priority finding(s) omitted; 1 unresolved currentness, not candidate edit targets.\n"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("base-side evidence"),
+            "unresolved currentness must not read as base-side:\n{rendered}"
+        );
+    }
+
+    /// #5021 renderer-pin companion: a selected run whose omitted set is all
+    /// lower-priority candidates keeps the legacy single clause byte-for-byte
+    /// (also pinned by `render_keeps_hidden_block_when_findings_are_omitted`).
+    #[test]
+    fn hidden_block_selected_all_lower_priority_omitted_keeps_legacy_line() {
+        let mut selected = sample_finding();
+        selected.id = "selected-gap".to_string();
+        selected.probe.location = SourceLocation::new("src/selected.rs", 1, 1);
+        let mut lower = sample_finding();
+        lower.id = "omitted-lower".to_string();
+        lower.probe.location = SourceLocation::new("src/lower.rs", 1, 1);
+
+        let rendered = render(&bounded_output_with_findings(vec![selected, lower]));
+
+        assert!(
+            rendered.contains("  1 lower-priority finding(s) omitted from default human output.\n"),
             "{rendered}"
         );
     }

@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_ranking_noise_control/input
 
-Summary: 4 probe(s), 1 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 1 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 4 of 4 finding(s) shown
+Summary: 4 probe(s), 1 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 1 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 4 of 4 finding(s) unsuppressed
 
 Changed file(s) by language: python: 4.
 
