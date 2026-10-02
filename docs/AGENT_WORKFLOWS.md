@@ -279,6 +279,13 @@ Closing a child does not close its parent.
 | `docs/LEARNINGS.md` | Durable failure modes and invariants |
 | Provider roots and skills | Operating instructions and procedure |
 
+For a bounded repair handoff of one seam — for example when resuming a repair
+attempt in a fresh session — `ripr agent card --root . --seam-id ID [--json]`
+is the default compact handoff (`RepairCardV1`, RIPR-SPEC-0194); `ripr agent
+packet` remains the full-detail compatibility route. See
+[LLM_OPERATOR_GUIDE.md](LLM_OPERATOR_GUIDE.md) and the
+[Output Schema](OUTPUT_SCHEMA.md) § "Repair card".
+
 No `.ripr/goals/active.toml`, current-writer file, stage file or agent-liveness
 record selects ordinary work. Keep status changes evidence-bound and update an
 existing owned reconciliation comment rather than repeatedly appending copies.

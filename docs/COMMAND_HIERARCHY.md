@@ -72,10 +72,13 @@ establish static improvement or acceptance.
 
 ## Advanced commands
 
-`agent start`, `brief`, `packet`, `verify`, `verify-execute`, `receipt`, and
+`agent start`, `brief`, `card`, `packet`, `verify`, `verify-execute`, `receipt`, and
 `review-summary` remain available for explicit control, compatibility, and
 debugging. Use their help and the [LLM operator guide](LLM_OPERATOR_GUIDE.md) rather than
-assembling them as mandatory first-run steps.
+assembling them as mandatory first-run steps. `agent card` is the default
+bounded handoff for one seam — the compact `RepairCardV1` (RIPR-SPEC-0194,
+#4667); `agent packet` remains the compatibility and full-detail route behind
+the card's explicit detail reference.
 
 `feedback record` and `feedback export` record local usefulness judgments
 against an immutable snapshot and join them onto existing route-quality rows.

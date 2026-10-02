@@ -207,6 +207,22 @@ artifact. A spec describes a route, not permission to execute it. See the
 ordinary focused-test loop, prefer the two-phase `ripr agent repair` path above
 to wiring these artifacts together manually.
 
+For the default bounded handoff to an external agent, prefer the compact
+repair card over the full packet:
+
+```bash
+ripr agent card --root . --seam-id <seam-id> --json > target/ripr/workflow/agent-card.json
+```
+
+`ripr agent card` (RIPR-SPEC-0194, #4667) is the default bounded agent
+handoff: it projects the compact `RepairCardV1` — the fix-instruction summary,
+repair-route readiness, typed target selection, typed command references, and
+optional repair-attempt state — with the complete canonical packet behind the
+card's explicit detail route. `ripr agent packet` remains the compatibility
+and full-detail path. See the
+[Output Schema](OUTPUT_SCHEMA.md) § "Repair card" for the field reference; do
+not duplicate card field documentation here.
+
 If the operator needs the full seam packet as well:
 
 ```bash
@@ -457,10 +473,11 @@ the same command and artifact model shown above.
 When handing work to a human or external LLM tool, include:
 
 ```text
+target/ripr/workflow/agent-card.json from `ripr agent card --seam-id <seam-id> --json > target/ripr/workflow/agent-card.json` (default compact handoff)
 target/ripr/workflow/workflow.json
 target/ripr/workflow/commands.md
 target/ripr/workflow/agent-brief.json
-target/ripr/workflow/agent-packet.json when present
+target/ripr/workflow/agent-packet.json when full packet detail is needed
 target/ripr/workflow/agent-verify.json after edit
 target/ripr/reports/agent-receipt.json after verify
 target/ripr/workflow/agent-review-summary.md

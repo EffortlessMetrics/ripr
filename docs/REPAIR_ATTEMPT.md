@@ -18,6 +18,13 @@ The repair packet is written to `target/ripr/workflow/agent-packet.json`. By def
 
 `--seam-id <id> --phase after` remains a compatibility route. It succeeds only when exactly one awaiting attempt has that seam. Zero or multiple matches fail closed; RIPR does not guess which attempt is newest or intended.
 
+To hand the seam to an external coding agent without the full packet,
+`ripr agent card --root . --seam-id <seam-id> --json` projects the compact
+default repair card (`RepairCardV1`, RIPR-SPEC-0194, #4667); the complete
+canonical packet stays behind the card's explicit detail route and
+`ripr agent packet` remains the compatibility path. See the
+[Output Schema](OUTPUT_SCHEMA.md) § "Repair card" for the card fields.
+
 ## Governed Python sequence
 
 Start with an accepted repair-trust selection manifest and its selected row ID

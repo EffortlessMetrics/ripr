@@ -35,8 +35,9 @@ This guide describes **0.11 development**, including `--worktree`, bounded
 `Start here:` output, and durable repair attempts. Those instructions are not a
 claim that the published package has these features. For a released install,
 use the [versioned README](https://github.com/EffortlessMetrics/ripr/blob/v0.10.0/README.md)
-and that binary's help. The 0.10 CLI defaults to `origin/main`; use `--base REF`
-with another existing branch or commit when needed.
+and that binary's help. The 0.10 CLI resolves its default base by trying
+`origin/HEAD`, then `origin/main`, `origin/master`, `main`, and `master`; use
+`--base REF` with another existing branch or commit when needed.
 
 To use this guide's development features, install the development build
 (Rust 1.95 or newer):
@@ -96,9 +97,9 @@ and unstaged edits to tracked files with:
 ripr check --worktree
 ```
 
-The development CLI tries `origin/HEAD`, then `origin/main`, `origin/master`,
-`main`, and `master` for its base. To choose another comparison, replace `REF`
-with an existing branch or commit:
+The CLI resolves its default base by trying `origin/HEAD`, then `origin/main`,
+`origin/master`, `main`, and `master`. To choose another comparison, replace
+`REF` with an existing branch or commit:
 
 ```bash
 ripr check --base REF

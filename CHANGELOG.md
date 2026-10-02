@@ -90,7 +90,11 @@ are scoped or reviewed.
   app-layer builder owns the projection; a sha256 semantic digest covers the
   load-bearing surface, a single fail-closed gate keeps stale/limited/
   unavailable cards from exposing a route, and `done_when` keeps five axes
-  separate. No CLI/LSP/MCP projection consumes the card yet (#4663).
+  separate. At introduction no projection consumed the card (#4663); the CLI
+  projection `ripr agent card` shipped later in this unreleased window
+  (#4667), the LSP seam handoff code action projects the same card and the
+  seam hover shows a bounded summary of it (#4668), and no MCP projection
+  emits the card yet.
 - CLI: the seven full-repo audit-path formats (`repo-seams-json`,
   `repo-seams-md`, `repo-exposure-json`, `repo-exposure-summary-json`,
   `repo-exposure-md`, `repo-sarif`, `agent-seam-packets-json`) are no longer
@@ -2616,6 +2620,23 @@ are scoped or reviewed.
   workflows, and `help --json` emits the versioned machine-readable catalog.
   The guide no longer defers these to #1613 as future work, and its help row
   includes the workflow surface (#2930, #4976).
+
+- The README and `docs/QUICKSTART.md` no longer claim the released 0.10 CLI
+  hard-defaults to `origin/main`; they describe the five-step default-base
+  cascade (`origin/HEAD`, `origin/main`, `origin/master`, `main`, `master`)
+  that v0.10.0 actually implements, and QUICKSTART stops attributing that
+  cascade to the development CLI only. `docs/LLM_OPERATOR_GUIDE.md`,
+  `docs/AGENT_WORKFLOWS.md`, `docs/REPAIR_ATTEMPT.md`, and
+  `docs/COMMAND_HIERARCHY.md` now name `ripr agent card` as the default
+  bounded agent handoff (compact `RepairCardV1`, RIPR-SPEC-0194) with
+  `ripr agent packet` as the compatibility and full-detail route. The
+  Unreleased changelog and `docs/OUTPUT_SCHEMA.md` no longer state that no
+  CLI/LSP projection consumes the RepairCard — the CLI and LSP projections
+  shipped in this unreleased window (#4667, #4668); only the MCP projection
+  remains unshipped
+  ([#5013](https://github.com/EffortlessMetrics/ripr-swarm/issues/5013),
+  [#5018](https://github.com/EffortlessMetrics/ripr-swarm/issues/5018),
+  [#5023](https://github.com/EffortlessMetrics/ripr-swarm/issues/5023)).
 
 ## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
 

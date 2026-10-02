@@ -116,8 +116,10 @@ The schema is additive within `repair_card.v1`: new fields arrive with
 `#[serde(default)]`; a breaking shape change mints a new version. The CLI
 projection is `ripr agent card --seam-id ID [--json]` (RIPR-SPEC-0194,
 #4667): the compact card is the default agent handoff, the complete packet
-stays behind the card's explicit detail route, and no LSP or MCP projection
-emits the card yet; measured field/budget ratification lands in #4669.
+stays behind the card's explicit detail route, and the LSP seam handoff code
+action emits the same card while the seam hover shows a bounded summary of it
+(RIPR-SPEC-0198, #4668); no MCP projection emits the card yet. Measured
+field/budget ratification landed in #4669.
 
 Detail references and overflow disclosure (RIPR-SPEC-0193, #4666) keep the
 default card finite: nine load-bearing evidence families — the full fix
