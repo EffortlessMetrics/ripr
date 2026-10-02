@@ -9,6 +9,8 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
+
 - Add `xtask release-final-server-subjects` to prepare the exact twelve existing
   server upload subjects from canonical assembler output. The nonpublishing
   inventory, provenance inputs and checksum list are bound by the terminal

@@ -193,7 +193,7 @@ fn digest_field(
     if digest.len() != 64
         || !digest
             .chars()
-            .all(|character| character.is_ascii_hexdigit())
+            .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
     {
         return Err(format!(
             "release manifest field `{name}` must be a 64-character lowercase hex digest"
@@ -285,7 +285,7 @@ fn optional_release_arg(args: &[String], flag: &str, env_name: &str) -> Option<S
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_source_repository, rc_placement};
+    use super::{digest_field, normalize_source_repository, rc_placement};
 
     #[test]
     fn rc_placement_accepts_canonical_numbers_including_zero() {
@@ -317,6 +317,25 @@ mod tests {
             rc_placement("0.11.0", "").is_err(),
             "expected rejection for an empty RC tag"
         );
+    }
+
+    #[test]
+    fn digest_field_rejects_uppercase_hex() -> Result<(), String> {
+        let mut object = serde_json::Map::new();
+        object.insert(
+            "digest".to_string(),
+            serde_json::Value::String(format!("A{}", "a".repeat(63))),
+        );
+        let Err(error) = digest_field(&object, "digest") else {
+            return Err("uppercase digest must be rejected".to_string());
+        };
+        assert!(error.contains("lowercase"), "{error}");
+        object.insert(
+            "digest".to_string(),
+            serde_json::Value::String("a".repeat(64)),
+        );
+        assert_eq!(digest_field(&object, "digest"), Ok("a".repeat(64)));
+        Ok(())
     }
 
     #[test]
