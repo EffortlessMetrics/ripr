@@ -305,6 +305,7 @@ fn committed_range_analysis_binds_to_committed_content_of_a_dirty_file() -> Resu
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let result = crate::analysis::run_analysis_with_oracle_policy(
         &options,

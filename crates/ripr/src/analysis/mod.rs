@@ -3,6 +3,7 @@ pub(crate) mod canonical_gap;
 mod classifier;
 mod classify;
 pub(crate) mod committed_source;
+pub(crate) mod consumed_source;
 pub(crate) mod diagnostic_origin;
 mod diff;
 mod extract;
@@ -220,6 +221,7 @@ pub(crate) fn targeted_typescript_findings_for_scope(
         diff_file: None,
         mode: AnalysisMode::Draft,
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
         include_unchanged_tests: config.analysis().include_unchanged_tests().unwrap_or(true),
         resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
         perl_facts_path: None,
@@ -500,6 +502,9 @@ pub enum AnalysisMode {
 #[derive(Clone, Debug)]
 pub struct AnalysisOptions {
     pub root: PathBuf,
+    /// LSP-only, index-only paths admitted from open saved Rust documents.
+    /// These never seed changed-file probes or public analysis input.
+    pub(crate) open_rust_index_paths: std::collections::BTreeSet<PathBuf>,
     pub base: Option<String>,
     pub diff_file: Option<PathBuf>,
     pub mode: AnalysisMode,
@@ -749,6 +754,8 @@ pub struct AnalysisResult {
     pub(crate) uncommitted_source_paths: Vec<String>,
     /// Crate-private numeric diagnostic origins for Rust findings (#4464).
     pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    /// Raw per-path Rust producer observations, separate from decoded geometry.
+    pub(crate) rust_consumed_sources: crate::analysis::consumed_source::ConsumedRustSources,
 }
 
 /// Default language list when callers do not pass `[languages]` config.
@@ -1049,15 +1056,17 @@ mod tests {
     }
 
     #[test]
-    fn analyzes_simple_predicate_gap() {
+    fn analyzes_simple_predicate_gap() -> Result<(), String> {
         let root = temp_dir("simple");
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::create_dir_all(root.join("tests")).unwrap();
+        fs::create_dir_all(root.join("src"))
+            .map_err(|error| format!("failed to create src directory: {error}"))?;
+        fs::create_dir_all(root.join("tests"))
+            .map_err(|error| format!("failed to create tests directory: {error}"))?;
         fs::write(
             root.join("Cargo.toml"),
             "[package]\nname='x'\nversion='0.1.0'\nedition='2024'\n",
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write Cargo.toml: {error}"))?;
         fs::write(
             root.join("src/lib.rs"),
             r#"
@@ -1066,7 +1075,7 @@ pub fn price(amount: i32, threshold: i32) -> i32 {
 }
 "#,
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write src/lib.rs: {error}"))?;
         fs::write(
             root.join("tests/pricing.rs"),
             r#"
@@ -1077,7 +1086,7 @@ fn premium_customer_gets_discount() {
 }
 "#,
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write tests/pricing.rs: {error}"))?;
         fs::write(
             root.join("diff.patch"),
             r#"diff --git a/src/lib.rs b/src/lib.rs
@@ -1090,7 +1099,7 @@ index 0000000..1111111 100644
  }
 "#,
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write diff.patch: {error}"))?;
         let out = run_analysis(&AnalysisOptions {
             root: root.clone(),
             base: None,
@@ -1102,10 +1111,10 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
-        })
-        .unwrap();
+        })?;
         assert!(!out.findings.is_empty());
         assert!(
             out.findings
@@ -1125,14 +1134,15 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
-        })
-        .unwrap();
+        })?;
         assert!(instant.findings.iter().any(|finding| {
             finding.class == crate::domain::ExposureClass::NoStaticPath
                 && finding.related_tests.is_empty()
         }));
+        Ok(())
     }
 
     #[test]
@@ -1179,6 +1189,7 @@ fn premium_customer_gets_discount() {
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1394,6 +1405,7 @@ fn test_with_predicate() {
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1463,6 +1475,7 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1482,6 +1495,7 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1511,6 +1525,7 @@ mod git_candidate_entry_tests {
                 .map_err(|error| error.to_string())?,
             )),
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             ..default_options_for_entry_test()?
         })
     }
@@ -1527,6 +1542,7 @@ mod git_candidate_entry_tests {
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })

@@ -707,6 +707,7 @@ impl LanguageAdapter for TypeScriptAdapter {
             skipped_files,
             limitations,
             rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         })
     }
 
@@ -735,6 +736,7 @@ impl LanguageAdapter for TypeScriptAdapter {
             skipped_files: 0,
             partial_reason: Some("typescript_repo_mode_not_implemented_diff_first".to_string()),
             rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         })
     }
 }

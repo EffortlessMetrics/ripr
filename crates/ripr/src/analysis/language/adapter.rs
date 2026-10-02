@@ -46,6 +46,7 @@ pub(crate) struct LanguageDiffResult {
     /// Crate-private numeric diagnostic origins for Rust findings (#4464).
     /// Empty for preview adapters.
     pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    pub(crate) rust_consumed_sources: crate::analysis::consumed_source::ConsumedRustSources,
 }
 
 /// Per-language results returned by [`LanguageAdapter::analyze_repo`].
@@ -73,6 +74,7 @@ pub(crate) struct LanguageRepoResult {
     /// Crate-private numeric diagnostic origins for Rust findings (#4464).
     /// Empty for preview adapters.
     pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    pub(crate) rust_consumed_sources: crate::analysis::consumed_source::ConsumedRustSources,
 }
 
 /// Boundary trait for per-language adapters.

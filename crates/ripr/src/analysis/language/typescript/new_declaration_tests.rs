@@ -61,6 +61,7 @@ fn analyze(
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let mut added_lines = Vec::new();
     for number in added {

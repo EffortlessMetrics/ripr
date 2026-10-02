@@ -218,6 +218,7 @@ fn findings_on_line_3(old_line: &str, label: &str) -> Result<usize, String> {
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let changed_files = vec![ChangedFile {
         path: PathBuf::from("src/t.ts"),

@@ -57,6 +57,7 @@ fn packet_test_options() -> crate::analysis::AnalysisOptions {
         diff_file: None,
         mode: AnalysisMode::Draft,
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,

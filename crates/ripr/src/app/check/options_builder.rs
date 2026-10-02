@@ -19,5 +19,6 @@ pub(crate) fn analysis_options_from_input_and_config(
         production_like_targets: config.analysis().production_like_targets().clone(),
         test_harnesses: config.analysis().test_harnesses().to_vec(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     }
 }

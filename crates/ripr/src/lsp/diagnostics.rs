@@ -16,7 +16,7 @@ use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
-use crate::app::check_workspace_worktree_with_origins;
+use crate::app::check_workspace_worktree_with_sources_and_open_rust_paths;
 use crate::config::{ConfigSeverity, LspDiagnosticProfile, SeverityConfig};
 #[cfg(test)]
 use crate::domain::RelatedTest;
@@ -756,44 +756,62 @@ pub(super) fn workspace_diagnostics_with_config(
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
 ) -> Result<WorkspaceDiagnostics, String> {
+    workspace_diagnostics_with_config_and_open_rust_paths(
+        root,
+        config,
+        defer_seam_inventory,
+        &Default::default(),
+    )
+}
+
+pub(super) fn workspace_diagnostics_with_config_and_open_rust_paths(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
     // Saved-workspace authority (#3183): editor refreshes analyze the live
     // tracked working tree, including staged and unstaged bytes that the
     // client has persisted, through the same canonical path as
     // `ripr check --worktree`. Document quarantine remains the independent
     // authority that prevents unsaved buffers from being served as current.
-    let (output, origins) = match check_workspace_worktree_with_origins(input, config.repo_config())
-    {
-        Ok(pair) => pair,
-        // #2303: a git invocation that exceeded the configured cooperative
-        // deadline commits a limited snapshot (zero findings, one typed
-        // failed `diff` outcome) instead of dropping the refresh with no
-        // snapshot. ONLY the named timeout error converts; every other
-        // analysis failure keeps the pre-#2303 no-snapshot path.
-        Err(err) if crate::git::is_git_invocation_timeout(&err) => {
-            return Ok(git_timeout_limited_diagnostics(
-                root,
-                config,
-                defer_seam_inventory,
-                err,
-            ));
-        }
-        // #2299: a diff that exceeds the fail-closed scope guard commits a
-        // limited snapshot carrying ONE workspace-scoped warning diagnostic
-        // (plus the typed failed `diff` outcome) instead of dropping the
-        // refresh with no snapshot, so the editor user sees the limitation
-        // in-surface. ONLY the named guard error converts; the CLI keeps the
-        // non-zero exit and unchanged error text.
-        Err(err) if crate::analysis::is_diff_scope_oversized(&err) => {
-            return Ok(oversized_diff_limited_diagnostics(
-                root,
-                config,
-                defer_seam_inventory,
-                err,
-            ));
-        }
-        Err(err) => return Err(format!("workspace analysis failed: {err}")),
-    };
+    let (output, origins, consumed_sources) =
+        match check_workspace_worktree_with_sources_and_open_rust_paths(
+            input,
+            config.repo_config(),
+            open_rust_index_paths,
+        ) {
+            Ok(pair) => pair,
+            // #2303: a git invocation that exceeded the configured cooperative
+            // deadline commits a limited snapshot (zero findings, one typed
+            // failed `diff` outcome) instead of dropping the refresh with no
+            // snapshot. ONLY the named timeout error converts; every other
+            // analysis failure keeps the pre-#2303 no-snapshot path.
+            Err(err) if crate::git::is_git_invocation_timeout(&err) => {
+                return Ok(git_timeout_limited_diagnostics(
+                    root,
+                    config,
+                    defer_seam_inventory,
+                    err,
+                ));
+            }
+            // #2299: a diff that exceeds the fail-closed scope guard commits a
+            // limited snapshot carrying ONE workspace-scoped warning diagnostic
+            // (plus the typed failed `diff` outcome) instead of dropping the
+            // refresh with no snapshot, so the editor user sees the limitation
+            // in-surface. ONLY the named guard error converts; the CLI keeps the
+            // non-zero exit and unchanged error text.
+            Err(err) if crate::analysis::is_diff_scope_oversized(&err) => {
+                return Ok(oversized_diff_limited_diagnostics(
+                    root,
+                    config,
+                    defer_seam_inventory,
+                    err,
+                ));
+            }
+            Err(err) => return Err(format!("workspace analysis failed: {err}")),
+        };
     let root = output.root;
     let base = output.base;
     let analysis_outcome = output.analysis_outcome;
@@ -1041,6 +1059,7 @@ pub(super) fn workspace_diagnostics_with_config(
         .collect();
     let snapshot = AnalysisSnapshot {
         root,
+        rust_consumed_sources: consumed_sources,
         input_identity: None,
         base,
         mode,
@@ -1053,6 +1072,7 @@ pub(super) fn workspace_diagnostics_with_config(
         gap_artifact_rejections: gap_artifact_report.rejections,
         harness_facts,
         diagnostics_by_uri,
+        diagnostic_uri_index: None,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope,
@@ -1117,9 +1137,15 @@ pub(super) fn workspace_diagnostics_with_config_and_cancellation(
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
     cancellation: &AnalysisCancellationToken,
+    open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
 ) -> Result<WorkspaceDiagnostics, String> {
     crate::analysis::cancellation::with_token(cancellation, || {
-        workspace_diagnostics_with_config(root, config, defer_seam_inventory)
+        workspace_diagnostics_with_config_and_open_rust_paths(
+            root,
+            config,
+            defer_seam_inventory,
+            open_rust_index_paths,
+        )
     })
 }
 
@@ -1149,6 +1175,7 @@ fn git_timeout_limited_diagnostics(
     )];
     let snapshot = AnalysisSnapshot {
         root: root.to_path_buf(),
+        rust_consumed_sources: Default::default(),
         input_identity: None,
         base: config.base_ref.clone(),
         mode: config.mode.clone(),
@@ -1169,6 +1196,7 @@ fn git_timeout_limited_diagnostics(
             HarnessFactsOnSnapshot::UnavailableLimitedRun
         },
         diagnostics_by_uri: BTreeMap::new(),
+        diagnostic_uri_index: None,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope: None,
@@ -1250,6 +1278,7 @@ pub(super) fn oversized_diff_limited_diagnostics(
         .collect();
     let snapshot = AnalysisSnapshot {
         root: root.to_path_buf(),
+        rust_consumed_sources: Default::default(),
         input_identity: None,
         base: config.base_ref.clone(),
         mode: config.mode.clone(),
@@ -1270,6 +1299,7 @@ pub(super) fn oversized_diff_limited_diagnostics(
             HarnessFactsOnSnapshot::UnavailableLimitedRun
         },
         diagnostics_by_uri,
+        diagnostic_uri_index: None,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope: None,
@@ -5039,6 +5069,7 @@ mod delivery_tests {
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         Ok(AnalysisSnapshot {
             root: PathBuf::from(root),
+            rust_consumed_sources: Default::default(),
             input_identity: None,
             base: Some("origin/main".to_string()),
             mode: crate::app::Mode::Draft,
@@ -5051,6 +5082,7 @@ mod delivery_tests {
             gap_artifact_rejections: Vec::new(),
             harness_facts: HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
+            diagnostic_uri_index: None,
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,

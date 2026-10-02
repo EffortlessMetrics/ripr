@@ -111,17 +111,50 @@ pub(super) fn path_from_file_uri(uri: &Uri) -> Option<PathBuf> {
 /// wire string as the document's path; that string begins with a scheme, so it
 /// is relative and would otherwise join under every root and read as contained.
 pub(super) fn path_is_within_root(root: &Path, path: &Path) -> bool {
+    path_relative_to_root(root, path).is_some()
+}
+
+/// Resolve one admitted document to the producer's workspace-relative key.
+/// Physical containment is established first. Retain an admitted lexical key
+/// when available, so distinct in-workspace source aliases are not collapsed;
+/// otherwise use the canonical-relative key for an aliased workspace root.
+fn path_relative_to_root(root: &Path, path: &Path) -> Option<PathBuf> {
     if !path.is_absolute() && carries_uri_separator(path) {
-        return false;
+        return None;
     }
     let candidate = if path.is_absolute() {
         path.to_path_buf()
     } else {
         root.join(path)
     };
-    let root = canonical_or_normalized(root);
-    let candidate = canonical_or_normalized(&candidate);
-    paths_equal_or_below(&root, &candidate)
+    let canonical_root = canonical_or_normalized(root);
+    let canonical_candidate = canonical_or_normalized(&candidate);
+    let canonical_relative = relative_path_below(&canonical_root, &canonical_candidate)?;
+    // Lexical collapse of `symlink/..` can name a different root or child.
+    // Preserve the physical key for path/API callers carrying parent segments.
+    if root
+        .components()
+        .chain(candidate.components())
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Some(canonical_relative);
+    }
+    relative_path_below(&normalize_path(root), &normalize_path(&candidate))
+        .or(Some(canonical_relative))
+}
+
+fn relative_path_below(root: &Path, candidate: &Path) -> Option<PathBuf> {
+    if !paths_equal_or_below(root, candidate) {
+        return None;
+    }
+    let relative = candidate
+        .components()
+        .skip(root.components().count())
+        .collect::<PathBuf>();
+    relative
+        .components()
+        .all(|component| matches!(component, Component::Normal(_)))
+        .then_some(relative)
 }
 
 /// Whether a relative candidate's first component ends in a URI scheme
@@ -140,6 +173,10 @@ fn carries_uri_separator(path: &Path) -> bool {
 
 pub(super) fn file_uri_is_within_root(root: &Path, uri: &Uri) -> bool {
     path_from_file_uri(uri).is_some_and(|path| path_is_within_root(root, &path))
+}
+
+pub(super) fn file_uri_relative_to_root(root: &Path, uri: &Uri) -> Option<PathBuf> {
+    path_relative_to_root(root, &path_from_file_uri(uri)?)
 }
 
 pub(super) fn file_uris_match(left: &Uri, right: &Uri) -> bool {
@@ -352,6 +389,16 @@ pub(super) fn read_artifact_capped_with_limit(path: &Path, limit: u64) -> Capped
     CappedArtifactRead::Contents(contents)
 }
 
+#[cfg(all(test, unix))]
+std::thread_local! {
+    static CANONICAL_PROJECTION_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(all(test, unix))]
+pub(super) fn canonical_projection_count_for_test() -> usize {
+    CANONICAL_PROJECTION_COUNT.with(std::cell::Cell::get)
+}
+
 /// Canonicalize the longest existing prefix; only a path with no existing
 /// ancestor at all stays lexical.
 ///
@@ -363,6 +410,8 @@ pub(super) fn read_artifact_capped_with_limit(path: &Path, limit: u64) -> Capped
 /// or under a symlinked ancestor, and which let `linked/missing/../x.rs`
 /// through a symlinked `linked` directory read as contained.
 fn canonical_or_normalized(path: &Path) -> PathBuf {
+    #[cfg(all(test, unix))]
+    CANONICAL_PROJECTION_COUNT.with(|count| count.set(count.get() + 1));
     let normalized = normalize_path(path);
     canonicalize_with_missing_tail(path)
         .or_else(|| canonicalize_with_missing_tail(&normalized))

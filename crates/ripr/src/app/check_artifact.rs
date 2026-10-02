@@ -447,6 +447,8 @@ fn closed_analysis_options_view(options: &AnalysisOptions) -> (bool, Option<&Pat
         resolved_subject_identity: _, // derived, not caller input: the R2
         // producer sets it on the internal options clone only (#3278);
         // the caller-visible subject flows through `git_candidate`
+        open_rust_index_paths: _, // private LSP refresh index-only input;
+        // check artifacts use the ordinary empty-path public check route
         git_candidate: _, // unreachable at write time: `run_check` rejects
         // Git candidate subjects before analysis, so an
         // artifact can never carry one until #3277/#3278

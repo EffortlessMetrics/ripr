@@ -51,6 +51,7 @@ fn analyze(
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let result = TypeScriptAdapter.analyze_diff(&options, &OraclePolicy::default(), &[change]);
     let _ = std::fs::remove_dir_all(&root);

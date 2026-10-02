@@ -4490,6 +4490,7 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -4713,6 +4714,7 @@ fn repo_options(root: &Path) -> AnalysisOptions {
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     }
 }
 

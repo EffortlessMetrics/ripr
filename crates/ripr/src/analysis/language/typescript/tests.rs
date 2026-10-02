@@ -4487,6 +4487,7 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -4539,6 +4540,7 @@ fn invalid_utf8_source_produces_no_finding_or_is_disclosed() -> Result<(), Strin
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![changed("src/broken.ts")];
@@ -4571,6 +4573,7 @@ fn analyze_diff_splits_changed_files_into_typescript_and_javascript() -> Result<
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -4642,6 +4645,7 @@ fn analyze_diff_credits_cross_extension_related_test_oracle_for_mts_sources() ->
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -4744,6 +4748,7 @@ fn analyze_diff_credits_cross_extension_related_test_oracle_for_cts_sources() ->
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -4821,6 +4826,7 @@ fn analyze_diff_does_not_credit_related_test_from_a_different_modern_module() ->
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -4885,6 +4891,7 @@ fn analyze_diff_surfaces_over_limit_read_as_named_limitation() -> Result<(), Str
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let result = adapter.analyze_diff(&options, &OraclePolicy::default(), &[]);
     let _ = std::fs::remove_dir_all(&root);
@@ -4973,6 +4980,7 @@ fn analyze_diff_does_not_count_excluded_or_generated_typescript_files() -> Resul
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let changed_line = crate::analysis::diff::ChangedLine {
         line: 2,
@@ -5073,6 +5081,7 @@ fn analyze_diff_surfaces_over_limit_tsconfig_read_as_named_limitation() -> Resul
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let result = adapter.analyze_diff(&options, &OraclePolicy::default(), &[]);
     let _ = std::fs::remove_dir_all(&root);
@@ -5149,6 +5158,7 @@ fn analyze_diff_surfaces_absolute_base_url_as_named_limitation() -> Result<(), S
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let result = adapter.analyze_diff(&options, &OraclePolicy::default(), &[]);
     let _ = std::fs::remove_dir_all(&root);
@@ -5194,6 +5204,7 @@ fn analyze_repo_discloses_partial_run_instead_of_silent_empty() -> Result<(), St
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let result = adapter.analyze_repo(&options, &policy)?;
@@ -5240,6 +5251,7 @@ fn analyze_diff_dedups_colliding_probe_ids_for_identical_added_lines() -> Result
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -5325,6 +5337,7 @@ fn analyze_diff_keeps_single_occurrence_probe_ids_stable() -> Result<(), String>
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -10545,6 +10558,7 @@ fn delta5_verify_command_absent_from_missing_list_when_runner_resolved() -> Resu
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -10641,6 +10655,7 @@ fn delta5_verify_command_stays_in_missing_list_when_runner_unresolved() -> Resul
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -10740,6 +10755,7 @@ fn mocha_no_lockfile_emits_runner_unresolved_limitation() -> Result<(), String> 
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![ChangedFile {
@@ -13533,6 +13549,7 @@ fn ts_analysis_options(root: PathBuf) -> AnalysisOptions {
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     }
 }
 

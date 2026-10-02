@@ -50,6 +50,7 @@ pub fn check_workspace_worktree_with_config(
     check_with_progress(input, config, AnalysisProgressScope::Worktree, None)
 }
 
+#[cfg(test)]
 pub(crate) fn check_workspace_worktree_with_origins(
     input: CheckInput,
     config: &RiprConfig,
@@ -61,6 +62,45 @@ pub(crate) fn check_workspace_worktree_with_origins(
     String,
 > {
     check_with_progress_and_origins(input, config, AnalysisProgressScope::Worktree, None)
+        .map(|(output, origins, _)| (output, origins))
+}
+
+pub(crate) fn check_workspace_worktree_with_sources(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    String,
+> {
+    check_with_progress_and_origins(input, config, AnalysisProgressScope::Worktree, None)
+}
+
+pub(crate) fn check_workspace_worktree_with_sources_and_open_rust_paths(
+    input: CheckInput,
+    config: &RiprConfig,
+    open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    String,
+> {
+    if open_rust_index_paths.is_empty() {
+        return check_workspace_worktree_with_sources(input, config);
+    }
+    check_with_progress_and_origins_with_open_rust_paths(
+        input,
+        config,
+        AnalysisProgressScope::Worktree,
+        None,
+        open_rust_index_paths,
+    )
 }
 
 /// Runs the repo-baseline static exposure analysis for a workspace. This
@@ -96,6 +136,7 @@ pub(crate) fn check_workspace_repo_with_origins(
     String,
 > {
     check_with_progress_and_origins(input, config, AnalysisProgressScope::Repo, None)
+        .map(|(output, origins, _)| (output, origins))
 }
 
 /// Run a check while observing producer-owned progress boundaries.
@@ -109,7 +150,7 @@ pub(crate) fn check_with_progress(
 }
 
 fn check_with_progress_and_origins(
-    mut input: CheckInput,
+    input: CheckInput,
     config: &RiprConfig,
     scope: AnalysisProgressScope,
     sink: Option<&dyn AnalysisProgressSink>,
@@ -117,6 +158,30 @@ fn check_with_progress_and_origins(
     (
         CheckOutput,
         crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    String,
+> {
+    check_with_progress_and_origins_with_open_rust_paths(
+        input,
+        config,
+        scope,
+        sink,
+        &Default::default(),
+    )
+}
+
+fn check_with_progress_and_origins_with_open_rust_paths(
+    mut input: CheckInput,
+    config: &RiprConfig,
+    scope: AnalysisProgressScope,
+    sink: Option<&dyn AnalysisProgressSink>,
+    open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
     ),
     String,
 > {
@@ -156,7 +221,10 @@ fn check_with_progress_and_origins(
         }
     }
 
-    let options = options_builder::analysis_options_from_input_and_config(&input, config);
+    let mut options = options_builder::analysis_options_from_input_and_config(&input, config);
+    options
+        .open_rust_index_paths
+        .clone_from(open_rust_index_paths);
 
     // Build the language list from config. When --perl-facts is provided,
     // automatically add Perl to the enabled list (the user explicitly opted in
@@ -180,7 +248,7 @@ fn check_with_progress_and_origins(
     }
 
     progress.emit(AnalysisProgressStage::Analyzing);
-    let analysis = match scope {
+    let mut analysis = match scope {
         AnalysisProgressScope::Diff => run_analysis_with_oracle_policy_and_rust_config(
             &options,
             config.oracles(),
@@ -212,12 +280,13 @@ fn check_with_progress_and_origins(
     progress.emit(AnalysisProgressStage::BuildingOutput);
     let suppression_policy = input.suppression_policy.clone();
     let origins = analysis.rust_diagnostic_origins.clone();
+    let consumed_sources = std::mem::take(&mut analysis.rust_consumed_sources);
     let mut output = output_builder::check_output_from_analysis(input, analysis);
     if let Some(policy) = suppression_policy {
         apply_suppression_policy(&mut output, &policy)?;
     }
     progress.complete();
-    Ok((output, origins))
+    Ok((output, origins, consumed_sources))
 }
 
 /// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
@@ -247,6 +316,7 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
             effective_base: None,
             uncommitted_source_paths: Vec::new(),
             rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         },
     )
 }
@@ -781,6 +851,7 @@ mod tests {
             effective_base,
             uncommitted_source_paths: Vec::new(),
             rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         }
     }
 
