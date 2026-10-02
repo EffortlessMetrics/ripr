@@ -11,6 +11,21 @@ are scoped or reviewed.
 
 ### Changed
 
+- CLI: `ripr cache status --json --help` and `ripr cache clear --dry-run
+  --help` now print the subcommand help and exit 0; help was previously
+  recognized only as the sole argument, so any combined invocation failed
+  with a self-referential "Run `ripr cache status --help`" error. `ripr cache
+  --help <anything>` prints the family usage, matching the sibling command
+  families (#5024).
+- CLI: `ripr doctor --profile foo` now renders the accepted set with the
+  standard backticks — `unknown doctor profile \`foo\`; expected \`analysis\`
+  or \`source-build\`` — matching the gate/diff/mode enumeration errors; the
+  outcome and calibrate `--format` errors already name their accepted set via
+  the argument-error alignment pass (#5016).
+- CLI: the `ripr cache status` cleanup hint names `ripr cache clear
+  [--dry-run] [--force]` — the command an installed-binary user can actually
+  run — instead of routing to the maintainer-only `cargo xtask cache gc`
+  (#5012; the text change landed with #4411, this PR pins and verifies it).
 - CLI: the global `-v`/`--verbose` flag is now documented on the
   `ripr help --all` reference (extra stderr pipeline diagnostics; accepted
   in any position, never consumed as another flag's value), and one shared

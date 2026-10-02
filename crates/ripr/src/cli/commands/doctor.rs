@@ -32,7 +32,7 @@ pub(in crate::cli) fn doctor(args: &[String]) -> Result<(), String> {
                     Some("source-build") => output::doctor::DoctorProfile::SourceBuild,
                     Some(other) => {
                         return Err(format!(
-                            "unknown doctor profile `{other}`; expected analysis or source-build"
+                            "unknown doctor profile `{other}`; expected `analysis` or `source-build`"
                         ));
                     }
                     None => return Err("missing value for --profile".to_string()),

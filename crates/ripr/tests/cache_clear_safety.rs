@@ -68,6 +68,50 @@ fn cache_clear_force_preserves_unrelated_siblings_through_exact_binary() -> Resu
 }
 
 #[test]
+fn cache_help_is_positional_free_and_prints_the_subcommand_help() -> Result<(), String> {
+    // #5024: help used to be recognized only as the sole argument, so
+    // `ripr cache status --json --help` exited 2 with a self-referential
+    // unknown-argument error. Pin the exact printed help body per route.
+    let base = temp_dir("help-anywhere");
+    let cache_dir = base.join("help-cache");
+    fs::create_dir_all(&cache_dir).map_err(|error| error.to_string())?;
+
+    let run = |args: &[&str]| run_ripr(&base, &cache_dir, args);
+    let status_help = run(&["cache", "status", "--json", "--help"])?;
+    let status_help_stdout = String::from_utf8_lossy(&status_help.stdout).to_string();
+    let clear_help = run(&["cache", "clear", "--dry-run", "--help"])?;
+    let clear_help_stdout = String::from_utf8_lossy(&clear_help.stdout).to_string();
+    let family_help = run(&["cache", "--help", "status"])?;
+    let family_help_stdout = String::from_utf8_lossy(&family_help.stdout).to_string();
+    remove_base(&base)?;
+
+    if !(status_help.status.success()
+        && status_help_stdout.contains("Usage: ripr cache status [--json]"))
+    {
+        return Err(format!(
+            "cache status --json --help must print the status help and exit 0\nstatus: {}\nstdout:\n{status_help_stdout}",
+            status_help.status
+        ));
+    }
+    if !(clear_help.status.success()
+        && clear_help_stdout.contains("Usage: ripr cache clear [--dry-run] [--force]"))
+    {
+        return Err(format!(
+            "cache clear --dry-run --help must print the clear help and exit 0\nstatus: {}\nstdout:\n{clear_help_stdout}",
+            clear_help.status
+        ));
+    }
+    if !(family_help.status.success() && family_help_stdout.contains("ripr cache status [--json]"))
+    {
+        return Err(format!(
+            "cache --help status must print the family usage and exit 0\nstatus: {}\nstdout:\n{family_help_stdout}",
+            family_help.status
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn cache_status_hint_names_a_published_command_that_clears_the_same_dir() -> Result<(), String> {
     // #4383: the hint used to route to `cargo xtask cache gc`, which does not
     // exist for users of the published crate.

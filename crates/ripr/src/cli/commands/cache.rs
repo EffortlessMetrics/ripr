@@ -399,7 +399,9 @@ fn clear_cache_dir(cache_dir: &Path, options: ClearOptions) -> Result<String, St
 }
 
 fn run_status(args: &[String]) -> Result<(), String> {
-    if matches!(args, [arg] if arg == "--help" || arg == "-h") {
+    // Help is positional-free like every sibling command family (#5024):
+    // `ripr cache status --json --help` prints this help and exits 0.
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!("{CACHE_STATUS_HELP}");
         return Ok(());
     }
@@ -424,7 +426,9 @@ fn run_status(args: &[String]) -> Result<(), String> {
 const CLEANUP_HINT: &str = "The cache is disposable; ripr rebuilds it on the next run. To clear it, run `ripr cache clear --dry-run` to preview, then `ripr cache clear --force`.";
 
 fn run_clear(args: &[String]) -> Result<(), String> {
-    if matches!(args, [arg] if arg == "--help" || arg == "-h") {
+    // Help is positional-free like every sibling command family (#5024):
+    // `ripr cache clear --dry-run --help` prints this help and exits 0.
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!("{CACHE_CLEAR_HELP}");
         return Ok(());
     }
@@ -440,7 +444,10 @@ fn run_clear(args: &[String]) -> Result<(), String> {
 }
 
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
-    if matches!(args, [arg] if arg == "--help" || arg == "-h") {
+    // `ripr cache --help <anything>` prints the family usage (help wins,
+    // matching siblings); subcommand-level argv keeps its own help handling
+    // in `run_status`/`run_clear` (#5024).
+    if matches!(args.first(), Some(arg) if arg == "--help" || arg == "-h") {
         println!("{CACHE_USAGE}");
         return Ok(());
     }
@@ -938,6 +945,43 @@ mod tests {
         if run(&["show".to_string()]).is_ok() {
             return Err("unknown cache subcommand unexpectedly passed".to_string());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn help_is_positional_free_for_status_and_clear() -> Result<(), String> {
+        // #5024: help used to be recognized only as the sole argument, so
+        // `ripr cache status --json --help` failed with a self-referential
+        // "Run `ripr cache status --help`" error instead of printing help.
+        run(&[
+            "status".to_string(),
+            "--json".to_string(),
+            "--help".to_string(),
+        ])?;
+        run(&[
+            "status".to_string(),
+            "--help".to_string(),
+            "--json".to_string(),
+        ])?;
+        run(&["status".to_string(), "-h".to_string(), "--json".to_string()])?;
+        run(&[
+            "clear".to_string(),
+            "--dry-run".to_string(),
+            "--help".to_string(),
+        ])?;
+        run(&[
+            "clear".to_string(),
+            "--help".to_string(),
+            "--force".to_string(),
+        ])?;
+        run(&["clear".to_string(), "-h".to_string()])?;
+        // `ripr cache --help <anything>`: help wins at the family level,
+        // matching the sibling command families.
+        run(&["--help".to_string(), "status".to_string()])?;
+        run(&["-h".to_string(), "clear".to_string()])?;
+        // Family help also wins over an unrecognized trailing token.
+        run(&["--help".to_string(), "unknown".to_string()])?;
+        run(&["-h".to_string(), "unknown".to_string()])?;
         Ok(())
     }
 }

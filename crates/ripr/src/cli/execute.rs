@@ -112,6 +112,12 @@ mod tests {
             ))
         );
         assert_eq!(
+            execute(CliCommand::Doctor(args(&["--profile", "foo"]))),
+            Err(CommandError::Failure(
+                "unknown doctor profile `foo`; expected `analysis` or `source-build`".to_string()
+            ))
+        );
+        assert_eq!(
             execute(CliCommand::Init(args(&["--root"]))),
             Err(CommandError::Failure(
                 "missing value for --root".to_string()
