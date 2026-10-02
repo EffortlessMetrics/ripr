@@ -4598,6 +4598,107 @@ fn analyze_diff_discloses_per_file_read_cap() -> Result<(), String> {
     Ok(())
 }
 
+/// #5022: when the read caps refuse more files than the disclosure sample
+/// cap, the limitation count stays bounded (a stable-sorted sample plus one
+/// summary entry) while the summary preserves the true refused count —
+/// not one limitation per refused file.
+#[test]
+fn analyze_diff_bounds_read_limit_disclosure_and_preserves_refused_total() -> Result<(), String> {
+    let root = unique_test_root("diff-bounded-read-sample");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    let sample_cap = crate::analysis::language::read_limit_disclosure::MAX_READ_LIMIT_SAMPLE_PATHS;
+    let total = sample_cap + 4;
+    for index in 0..total {
+        write_repo_file(
+            &root.join(format!("pkg_{index:02}.py")),
+            &format!("VALUE = {}\n", "1".repeat(200)),
+        )?;
+    }
+    let options = repo_options(&root);
+    let limits = PythonDiffWalkLimits {
+        max_file_read_bytes: 100,
+        ..generous_walk_limits()
+    };
+    let result = PythonAdapter::analyze_diff_with_limits(&options, &[], limits)?;
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+    let sample = result
+        .limitations
+        .iter()
+        .filter(|limitation| {
+            limitation.path.is_some()
+                && matches!(
+                    &limitation.recovery.kind,
+                    AnalysisRecoveryKind::IncreaseConfiguredLimit
+                )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sample.len(),
+        sample_cap,
+        "per-file disclosure is bounded to the sample, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        sample.windows(2).all(|pair| pair[0].path <= pair[1].path),
+        "sample paths must be sorted so repeated runs are byte-stable"
+    );
+    assert!(
+        sample.iter().all(|limitation| {
+            limitation
+                .bounded_detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("file_read_capped"))
+        }),
+        "sample entries keep the distinguishable refusal reason"
+    );
+    let summary = result
+        .limitations
+        .iter()
+        .find(|limitation| {
+            limitation.path.is_none()
+                && limitation
+                    .bounded_detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.starts_with("python_read_limit_sampled:"))
+        })
+        .ok_or_else(|| {
+            format!(
+                "expected one folded summary limitation, got {:?}",
+                result
+                    .limitations
+                    .iter()
+                    .map(|limitation| limitation.bounded_detail.clone())
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    let refused_total =
+        u64::try_from(total).map_err(|err| format!("refused count overflows u64: {err}"))?;
+    assert_eq!(
+        summary.affected_items,
+        Some(refused_total),
+        "summary must carry the true refused count"
+    );
+    let detail = summary.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("not materialized in output"),
+        "summary must state why the full per-file list is absent: {detail}"
+    );
+    assert!(
+        summary
+            .recovery
+            .detail
+            .contains("RIPR_PYTHON_MAX_FILE_READ_BYTES"),
+        "the recovery must name the env knob, got {}",
+        summary.recovery.detail
+    );
+    Ok(())
+}
+
 #[test]
 fn analyze_diff_discloses_unreadable_changed_file() -> Result<(), String> {
     let root = unique_test_root("diff-unreadable-changed");

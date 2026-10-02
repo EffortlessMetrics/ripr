@@ -22,6 +22,7 @@
 use super::super::{
     AnalysisOptions, diff::ChangedFile, fingerprint_probe_id, normalize_expression,
 };
+use super::read_limit_disclosure::bounded_read_limit_limitations;
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 mod bounded_read;
 use crate::analysis_outcome::{
@@ -587,24 +588,23 @@ impl PythonAdapter {
             );
         }
 
-        // Read-bound disclosures: one named limitation per file refused by a
-        // size bound. The recovery names the env knobs so operators can raise
-        // the bounds; the detail carries the distinguishable reason.
-        for (file, err) in &workspace_read.limits {
-            limitations.push(
-                AnalysisLimitation::new(
-                    AnalysisLimitationKind::LanguageScopeUnsupported,
-                    AnalysisStage::LanguageAdapter,
-                    AnalysisRecovery::new(
-                        AnalysisRecoveryKind::IncreaseConfiguredLimit,
-                        "Raise RIPR_PYTHON_MAX_FILE_READ_BYTES and/or RIPR_PYTHON_MAX_WORKSPACE_READ_BYTES, then re-run the analysis.",
-                    )?,
-                )
-                .with_path(normalized_path(file))?
-                .with_affected_items(1)?
-                .with_detail(err.reason())?,
-            );
-        }
+        // Read-bound disclosures: named limitations for the files the read
+        // caps refuse, bounded per run (#5022). The disclosure is a
+        // stable-sorted sample of refused paths; refusals beyond the sample
+        // fold into one summary entry carrying the true refused count, and
+        // its detail states why the full per-file list is not materialized.
+        // Fail-closed behavior is unchanged: every refused file is still
+        // refused; only the disclosure is sampled. The recovery names the
+        // env knobs so operators can raise the bounds.
+        limitations.extend(bounded_read_limit_limitations(
+            "python",
+            workspace_read
+                .limits
+                .iter()
+                .map(|(file, err)| (normalized_path(file), err.reason()))
+                .collect(),
+            "Raise RIPR_PYTHON_MAX_FILE_READ_BYTES and/or RIPR_PYTHON_MAX_WORKSPACE_READ_BYTES, then re-run the analysis.",
+        )?);
 
         // Read-failure disclosure (the TypeScript adapter's #4099 model):
         // an unreadable CHANGED file is never classified and its tests

@@ -26,6 +26,8 @@ mod id;
 mod perl;
 #[cfg(feature = "lang-python")]
 mod python;
+#[cfg(any(feature = "lang-python", feature = "lang-typescript"))]
+mod read_limit_disclosure;
 mod router;
 mod rust;
 #[cfg(feature = "lang-typescript")]

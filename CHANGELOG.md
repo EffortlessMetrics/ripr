@@ -46,6 +46,14 @@ are scoped or reviewed.
   and parse share one fingerprint; analysis input identity excludes
   deadlines and position encoding; diagnostic result IDs ignore refresh
   clock and attempt handles. (#1932)
+- TypeScript/Python adapters: capped-read refusals are now disclosed as a
+  bounded, stable-sorted sample of refused paths (at most 8 per run) plus
+  one summary entry carrying the true refused count, instead of one
+  `AnalysisLimitation` per refused file — a correctly-capped monorepo no
+  longer emits up to ~20,000 limitation entries that dwarf the findings.
+  Every refused file is still refused (fail-closed); only the disclosure is
+  sampled, and the summary states that the full per-file list is not
+  materialized in output. No JSON/SARIF schema shape changes. (#5022)
 
 ### Added
 

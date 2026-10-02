@@ -11,9 +11,11 @@
 //!   env `RIPR_TS_MAX_WORKSPACE_READ_BYTES`).
 //!
 //! Files that exceed either bound are surfaced as named limitations by the
-//! adapter — never silently skipped. Plain IO failures (unreadable files) keep
-//! the pre-existing silent-continue behaviour; lane `ts-d-silent-gaps` owns
-//! disclosure for those, and this lane deliberately leaves that channel alone.
+//! adapter — never silently skipped — with the per-run disclosure sampled
+//! (#5022, `read_limit_disclosure.rs`). Plain IO failures (unreadable
+//! files) keep the pre-existing silent-continue behaviour; lane
+//! `ts-d-silent-gaps` owns disclosure for those, and this lane deliberately
+//! leaves that channel alone.
 
 use std::collections::HashMap;
 use std::io::Read as _;
@@ -139,6 +141,11 @@ pub(crate) struct CappedWorkspaceSources {
 /// - The first file that does not fit the remaining aggregate budget produces
 ///   a single `OverWorkspaceBudget` entry; subsequent files are skipped
 ///   silently because that one entry already discloses the bound.
+/// - The adapter's disclosure of these entries is sampled per run (#5022,
+///   `read_limit_disclosure.rs`): a stable-sorted sample of refused paths
+///   plus one summary entry carrying the true refused count, so a capped
+///   monorepo (up to 20,000 workspace files) cannot emit one limitation
+///   object per refused file.
 /// - Plain IO failures are returned in `io_failures` for the read-failure
 ///   disclosure lane; they never produce a read-limit entry.
 pub(crate) fn read_workspace_sources_capped(

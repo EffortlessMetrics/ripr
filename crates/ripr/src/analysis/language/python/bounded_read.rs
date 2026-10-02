@@ -20,11 +20,12 @@
 //!   knob.
 //!
 //! Files refused by any bound are surfaced by the adapter as named typed
-//! limitations — never silently skipped. Plain IO failures (unreadable or
-//! non-UTF-8 files) are disclosed by the adapter's diff-scoped read-failure
-//! lane, mirroring the TypeScript adapter's #4099 fix: unreadable changed
-//! files become named limitations, unreadable unchanged files count as
-//! skipped files.
+//! limitations — never silently skipped — with the per-run disclosure
+//! sampled (#5022, `read_limit_disclosure.rs`). Plain IO failures
+//! (unreadable or non-UTF-8 files) are disclosed by the adapter's
+//! diff-scoped read-failure lane, mirroring the TypeScript adapter's #4099
+//! fix: unreadable changed files become named limitations, unreadable
+//! unchanged files count as skipped files.
 
 use std::collections::HashMap;
 use std::io::Read as _;
@@ -222,8 +223,12 @@ pub(crate) struct CappedWorkspaceSources {
 ///
 /// - Files over the per-file cap each produce an `OverFileLimit` entry.
 /// - Every file that does not fit the remaining aggregate budget produces
-///   its own `OverWorkspaceBudget` entry, so the adapter's limitation loop
-///   can name each refused path instead of disclosing only the first.
+///   its own `OverWorkspaceBudget` entry, so the adapter's disclosure can
+///   name each refused path instead of disclosing only the first. The
+///   disclosure itself is sampled per run (#5022,
+///   `read_limit_disclosure.rs`): a stable-sorted sample of refused paths
+///   plus one summary entry carrying the true refused count, so a capped
+///   monorepo cannot emit one limitation object per refused file.
 /// - Plain IO failures are returned in `io_failures` for the adapter's
 ///   read-failure disclosure lane; they never produce a read-limit entry.
 pub(crate) fn read_workspace_sources_capped(

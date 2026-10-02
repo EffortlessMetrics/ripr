@@ -4937,6 +4937,110 @@ fn analyze_diff_surfaces_over_limit_read_as_named_limitation() -> Result<(), Str
     Ok(())
 }
 
+/// #5022: a capped monorepo whose refused-file count exceeds the disclosure
+/// sample cap must emit a bounded limitation count — a stable-sorted sample
+/// of refused paths plus one summary entry carrying the true refused count —
+/// instead of one limitation per refused file (up to the 20,000-file
+/// discovery cap).
+#[test]
+fn analyze_diff_bounds_capped_read_disclosure_with_stable_sample_and_total() -> Result<(), String> {
+    let root = ts_unique_tempdir("bounded-read-sample")?;
+    let sample_cap = crate::analysis::language::read_limit_disclosure::MAX_READ_LIMIT_SAMPLE_PATHS;
+    let total = sample_cap + 4;
+    for index in 0..total {
+        ts_write_file(
+            &root.join(format!("src/pkg_{index:02}.ts")),
+            &format!("export const value{index} = {};\n", "x".repeat(200)),
+        )?;
+    }
+
+    let options = ts_analysis_options(root.clone());
+    let result = TypeScriptAdapter::analyze_diff_with_read_limits(
+        &options,
+        &[],
+        64,
+        DEFAULT_TS_MAX_WORKSPACE_READ_BYTES,
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let result = result?;
+
+    let sample = result
+        .limitations
+        .iter()
+        .filter(|limitation| {
+            limitation.path.is_some()
+                && matches!(
+                    &limitation.recovery.kind,
+                    AnalysisRecoveryKind::IncreaseConfiguredLimit
+                )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sample.len(),
+        sample_cap,
+        "per-file disclosure is bounded to the sample, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        sample.windows(2).all(|pair| pair[0].path <= pair[1].path),
+        "sample paths must be sorted so repeated runs are byte-stable"
+    );
+    assert!(
+        sample.iter().all(|limitation| {
+            limitation
+                .bounded_detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("file_read_capped"))
+        }),
+        "sample entries keep the distinguishable refusal reason"
+    );
+    let summary = result
+        .limitations
+        .iter()
+        .find(|limitation| {
+            limitation.path.is_none()
+                && limitation
+                    .bounded_detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.starts_with("typescript_read_limit_sampled:"))
+        })
+        .ok_or_else(|| {
+            format!(
+                "expected one folded summary limitation, got {:?}",
+                result
+                    .limitations
+                    .iter()
+                    .map(|limitation| limitation.bounded_detail.clone())
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    let refused_total =
+        u64::try_from(total).map_err(|err| format!("refused count overflows u64: {err}"))?;
+    assert_eq!(
+        summary.affected_items,
+        Some(refused_total),
+        "summary must carry the true refused count"
+    );
+    let detail = summary.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("not materialized in output"),
+        "summary must state why the full per-file list is absent: {detail}"
+    );
+    assert!(
+        summary
+            .recovery
+            .detail
+            .contains("RIPR_TS_MAX_FILE_READ_BYTES"),
+        "the recovery must name the env knob, got {}",
+        summary.recovery.detail
+    );
+    Ok(())
+}
+
 #[test]
 fn analyze_diff_does_not_count_excluded_or_generated_typescript_files() -> Result<(), String> {
     let stamp = std::time::SystemTime::now()
