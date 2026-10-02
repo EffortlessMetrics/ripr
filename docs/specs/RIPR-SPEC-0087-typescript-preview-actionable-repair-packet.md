@@ -232,6 +232,13 @@ non-actionable category from `typescript_actionability_for`
   plain reads). Then the shape is the observed call with that argument set to
   the boundary value, the observed call stays as stop-condition context, and
   the shared validator decides as for any other packet.
+  A plain-identifier boundary (`amount == threshold`, #4759) is judged only
+  through `typescript_boundary_parameters` evidence naming both sides: the
+  observed integer-literal arguments at those positions decide hit or miss,
+  and a missed equality boundary is derived by giving the receiver the
+  boundary's argument (`discount(50, 100)` becomes `discount(100, 100)`).
+  Without that evidence, or without literal arguments at both positions, the
+  packet fails closed with the boundary placeholder.
 
 If G-A through G-F all hold, the finding has *exactly* the evidence the Rust
 packet requires except the four projection fields named in §3. PR 7 produces

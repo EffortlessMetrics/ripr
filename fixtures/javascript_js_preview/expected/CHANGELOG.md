@@ -503,3 +503,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — javascript_js_preview (13)
+
+Reason:
+RIPR-SPEC-0027: findings comparing two read-only owner parameters carry typescript_boundary_parameters evidence (#4759); no class, packet or shape change
+
+Command:
+`cargo xtask goldens bless javascript_js_preview --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

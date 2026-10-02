@@ -41,6 +41,10 @@ use oxc_parser::config::TokensParserConfig;
 /// Evidence prefix consumed by the TypeScript repair-packet projection.
 pub(crate) const TYPESCRIPT_BOUNDARY_INPUT_PREFIX: &str = "typescript_boundary_input: ";
 
+/// Evidence prefix for a changed comparison between two owner parameters
+/// (#4759), consumed by the same projection.
+pub(crate) const TYPESCRIPT_BOUNDARY_PARAMETERS_PREFIX: &str = "typescript_boundary_parameters: ";
+
 /// The statically derived call input that hits a changed predicate boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TypeScriptBoundaryInput {
@@ -63,51 +67,101 @@ impl TypeScriptBoundaryInput {
     }
 }
 
+/// A changed comparison whose two sides are both owner parameters
+/// (`amount >= threshold`, #4759). No value is known here: the call's own
+/// arguments at the two positions decide whether it hits the boundary, and
+/// the projection reads them from the observed call.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TypeScriptBoundaryParameters {
+    /// The parameter on the discriminator's left side.
+    pub(crate) parameter: String,
+    /// Its positional index in the owner signature.
+    pub(crate) index: usize,
+    /// The parameter on the discriminator's right side.
+    pub(crate) operand: String,
+    /// Its positional index in the owner signature.
+    pub(crate) operand_index: usize,
+}
+
+impl TypeScriptBoundaryParameters {
+    pub(crate) fn evidence_line(&self) -> String {
+        format!(
+            "{TYPESCRIPT_BOUNDARY_PARAMETERS_PREFIX}parameter={};index={};operand={};operand_index={}",
+            self.parameter, self.index, self.operand, self.operand_index
+        )
+    }
+}
+
 /// The boundary input for a changed predicate line, read from the owner's
-/// module through the workspace root. `None` whenever any rule fails.
-pub(crate) fn ts_boundary_input_for_change(
+/// module through the workspace root, as its evidence line. `None` whenever
+/// any rule fails.
+pub(crate) fn ts_boundary_fact_for_change(
     probe_shape: &TypeScriptProbeShape,
     line: usize,
     line_text: &str,
     owner: &TypeScriptOwner,
     workspace_root: Option<&Path>,
-) -> Option<TypeScriptBoundaryInput> {
+) -> Option<String> {
     if !probe_shape.specific || probe_shape.family != ProbeFamily::Predicate {
         return None;
     }
     let root = workspace_root?;
     let source = std::fs::read_to_string(root.join(&owner.file)).ok()?;
     ts_boundary_input_in_source(&source, line, line_text, owner)
+        .map(|input| input.evidence_line())
+        .or_else(|| {
+            ts_boundary_parameters_in_source(&source, line, line_text, owner)
+                .map(|parameters| parameters.evidence_line())
+        })
 }
 
-/// [`ts_boundary_input_for_change`] over an already-read module source.
-pub(crate) fn ts_boundary_input_in_source(
-    source: &str,
-    line: usize,
+/// One discriminator side as written, with its owner-parameter index.
+type DiscriminatorSide = (String, Option<usize>);
+
+/// The changed line's `==` discriminator split into its two sides, with the
+/// owner-parameter index of each side. `None` for a nullish discriminator or
+/// an owner without a fixed positional signature.
+fn discriminator_sides(
     line_text: &str,
     owner: &TypeScriptOwner,
-) -> Option<TypeScriptBoundaryInput> {
+) -> Option<(DiscriminatorSide, DiscriminatorSide)> {
     let (boundary, nullish) = typescript_boundary_discriminator_with_shape(line_text)?;
     if nullish {
         return None;
     }
     let (left, right) = boundary.split_once(" == ")?;
     let (left, right) = (left.trim(), right.trim());
-    let param_index = |operand: &str| owner.params.iter().position(|param| param == operand);
     // `params` is recorded only for a fixed positional signature of plain
-    // bindings; exactly one side may name a parameter.
+    // bindings.
     owner.arity?;
-    let (parameter, index, operand) = match (param_index(left), param_index(right)) {
+    let param_index = |operand: &str| owner.params.iter().position(|param| param == operand);
+    Some((
+        (left.to_string(), param_index(left)),
+        (right.to_string(), param_index(right)),
+    ))
+}
+
+/// [`ts_boundary_fact_for_change`] over an already-read module source, for
+/// a comparison between one parameter and a literal or module constant.
+pub(crate) fn ts_boundary_input_in_source(
+    source: &str,
+    line: usize,
+    line_text: &str,
+    owner: &TypeScriptOwner,
+) -> Option<TypeScriptBoundaryInput> {
+    let ((left, left_index), (right, right_index)) = discriminator_sides(line_text, owner)?;
+    // Exactly one side may name a parameter.
+    let (parameter, index, operand) = match (left_index, right_index) {
         (Some(index), None) => (left, index, right),
         (None, Some(index)) => (right, index, left),
         _ => return None,
     };
-    if !comparison_has_whole_sides(line_text, parameter, operand) {
+    if !comparison_has_whole_sides(line_text, &parameter, &operand) {
         return None;
     }
-    let literal = integer_literal(operand);
+    let literal = integer_literal(&operand);
     let constant = if literal.is_none() {
-        is_constant_shaped_operand(operand).then(|| operand.to_string())
+        is_constant_shaped_operand(&operand).then(|| operand.clone())
     } else {
         None
     };
@@ -115,16 +169,69 @@ pub(crate) fn ts_boundary_input_in_source(
         return None;
     }
     let request = ModuleRequest {
-        parameter: parameter.to_string(),
+        parameters: vec![parameter.clone()],
         owner_start_line: owner.start_line,
         owner_end_line: owner.end_line,
         constant,
         changed_line: line,
         changed_text: line_text.to_string(),
     };
+    let resolved = module_admits(owner, source, request)?;
+    let value = match resolved {
+        Some(value) => value,
+        None => literal?,
+    };
+    Some(TypeScriptBoundaryInput {
+        parameter,
+        index,
+        operand,
+        value,
+    })
+}
+
+/// [`ts_boundary_fact_for_change`] over an already-read module source, for
+/// a comparison between two distinct owner parameters (#4759). The same
+/// module rules hold for both: each is read-only, and the changed line runs
+/// on every call.
+pub(crate) fn ts_boundary_parameters_in_source(
+    source: &str,
+    line: usize,
+    line_text: &str,
+    owner: &TypeScriptOwner,
+) -> Option<TypeScriptBoundaryParameters> {
+    let ((parameter, index), (operand, operand_index)) = discriminator_sides(line_text, owner)?;
+    let (index, operand_index) = (index?, operand_index?);
+    if index == operand_index || !comparison_has_whole_sides(line_text, &parameter, &operand) {
+        return None;
+    }
+    let request = ModuleRequest {
+        parameters: vec![parameter.clone(), operand.clone()],
+        owner_start_line: owner.start_line,
+        owner_end_line: owner.end_line,
+        constant: None,
+        changed_line: line,
+        changed_text: line_text.to_string(),
+    };
+    module_admits(owner, source, request)?;
+    Some(TypeScriptBoundaryParameters {
+        parameter,
+        index,
+        operand,
+        operand_index,
+    })
+}
+
+/// Run the module rules for `request` on the owner's module token stream.
+/// `None` when any rule fails; otherwise the resolved constant value, if the
+/// request names a constant.
+fn module_admits(
+    owner: &TypeScriptOwner,
+    source: &str,
+    request: ModuleRequest,
+) -> Option<Option<i64>> {
     let file = owner.file.clone();
     let owned_source = source.to_string();
-    let resolved = parse_on_worker(&file, &owned_source, move |file, source, allocator| {
+    parse_on_worker(&file, &owned_source, move |file, source, allocator| {
         let ret = Parser::new(allocator, source, source_type_for(file))
             .with_config(TokensParserConfig)
             .parse();
@@ -150,21 +257,14 @@ pub(crate) fn ts_boundary_input_in_source(
             )?),
             None => None,
         };
-        (parameter_is_read_only(source, &tokens, &request)
+        (request
+            .parameters
+            .iter()
+            .all(|parameter| parameter_is_read_only(source, &tokens, &request, parameter))
             && changed_line_runs_on_every_call(source, &tokens, &request))
         .then_some(constant)
     })
-    .ok()??;
-    let value = match resolved {
-        Some(value) => value,
-        None => literal?,
-    };
-    Some(TypeScriptBoundaryInput {
-        parameter: parameter.to_string(),
-        index,
-        operand: operand.to_string(),
-        value,
-    })
+    .ok()?
 }
 
 /// Line-level punctuators, longest first, for [`comparison_has_whole_sides`].
@@ -283,7 +383,8 @@ fn statement_opens_with_comparison(prefix: &[&str]) -> bool {
 }
 
 struct ModuleRequest {
-    parameter: String,
+    /// The owner parameters the changed comparison reads.
+    parameters: Vec<String>,
     owner_start_line: usize,
     owner_end_line: usize,
     constant: Option<String>,
@@ -424,7 +525,12 @@ fn module_is_opaque(source: &str, tokens: &[Tok]) -> bool {
 /// the signature's parameter list, none before it, and every later one a
 /// plain read (no write, update, redeclaration, or nested binding of the
 /// same name). `arguments`, `eval`, and `with` in the module fail closed.
-fn parameter_is_read_only(source: &str, tokens: &[Tok], request: &ModuleRequest) -> bool {
+fn parameter_is_read_only(
+    source: &str,
+    tokens: &[Tok],
+    request: &ModuleRequest,
+    parameter: &str,
+) -> bool {
     if module_is_opaque(source, tokens) {
         return false;
     }
@@ -459,7 +565,7 @@ fn parameter_is_read_only(source: &str, tokens: &[Tok], request: &ModuleRequest)
     let mut in_signature = 0usize;
     for &at in &owner_tokens {
         let token = &tokens[at];
-        if !token.kind.is_identifier_name() || token.text(source) != request.parameter {
+        if !token.kind.is_identifier_name() || token.text(source) != parameter {
             continue;
         }
         if matches!(

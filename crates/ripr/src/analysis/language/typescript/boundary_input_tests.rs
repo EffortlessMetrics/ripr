@@ -772,3 +772,134 @@ fn changed_line_after_an_await_stays_unresolved() {
         "a rejected or never-settling await can stop the boundary input first"
     );
 }
+
+/// The parameter-pair fact for `changed_line` inside `owner_name` (#4759),
+/// with the same outer `None` convention as [`input_for`].
+fn parameters_for(
+    source: &str,
+    owner_name: &str,
+    changed_line: &str,
+) -> Option<Option<TypeScriptBoundaryParameters>> {
+    let owners = extract_owners(Path::new("src/pricing.ts"), source);
+    let owner = owners.iter().find(|owner| owner.name == owner_name)?;
+    let line = source
+        .lines()
+        .position(|text| text.trim_end() == changed_line.trim_end())?
+        + 1;
+    Some(ts_boundary_parameters_in_source(
+        source,
+        line,
+        changed_line,
+        owner,
+    ))
+}
+
+const PARAMETER_PAIR_LINE: &str = "  if (amount >= threshold) {";
+
+fn discount_module(signature: &str, body_extra: &str, changed_line: &str) -> String {
+    format!(
+        "export function discount{signature}: number {{\n{body_extra}\n{changed_line}\n    return Math.floor(amount / 10);\n  }}\n  return 0;\n}}\n"
+    )
+}
+
+#[test]
+fn parameter_pair_comparison_yields_the_parameters_fact() {
+    let source = discount_module(
+        "(amount: number, threshold: number)",
+        "",
+        PARAMETER_PAIR_LINE,
+    );
+    let fact = parameters_for(&source, "discount", PARAMETER_PAIR_LINE).flatten();
+    assert_eq!(
+        fact,
+        Some(TypeScriptBoundaryParameters {
+            parameter: "amount".to_string(),
+            index: 0,
+            operand: "threshold".to_string(),
+            operand_index: 1,
+        })
+    );
+    assert_eq!(
+        fact.map(|fact| fact.evidence_line()),
+        Some(
+            "typescript_boundary_parameters: parameter=amount;index=0;operand=threshold;operand_index=1"
+                .to_string()
+        )
+    );
+    // The single-parameter input fact does not claim this comparison.
+    assert_eq!(
+        input_for(&source, "discount", PARAMETER_PAIR_LINE),
+        Some(None)
+    );
+
+    let reversed_line = "  if (threshold <= amount) {";
+    let reversed = discount_module("(amount: number, threshold: number)", "", reversed_line);
+    assert_eq!(
+        parameters_for(&reversed, "discount", reversed_line)
+            .flatten()
+            .map(|fact| (fact.parameter, fact.index, fact.operand, fact.operand_index)),
+        Some(("threshold".to_string(), 1, "amount".to_string(), 0))
+    );
+}
+
+#[test]
+fn parameter_pairs_the_module_rules_reject_stay_unresolved() {
+    let pair = "(amount: number, threshold: number)";
+    for (label, signature, body_extra, line) in [
+        (
+            "boundary parameter written",
+            pair,
+            "  threshold = threshold + 1;",
+            PARAMETER_PAIR_LINE,
+        ),
+        (
+            "receiver parameter updated",
+            pair,
+            "  amount++;",
+            PARAMETER_PAIR_LINE,
+        ),
+        (
+            "early exit before the comparison",
+            pair,
+            "  if (amount === 0) return 0;",
+            PARAMETER_PAIR_LINE,
+        ),
+        (
+            "same parameter on both sides",
+            pair,
+            "",
+            "  if (amount >= amount) {",
+        ),
+        (
+            "arithmetic side",
+            pair,
+            "",
+            "  if (amount >= threshold + 1) {",
+        ),
+        (
+            "member side",
+            "(amount: number, limits: Limits)",
+            "",
+            "  if (amount >= limits.threshold) {",
+        ),
+        (
+            "destructured boundary parameter",
+            "(amount: number, { threshold }: Limits)",
+            "",
+            PARAMETER_PAIR_LINE,
+        ),
+        (
+            "arguments object",
+            pair,
+            "  const all = arguments;",
+            PARAMETER_PAIR_LINE,
+        ),
+    ] {
+        let source = discount_module(signature, body_extra, line);
+        assert_eq!(
+            parameters_for(&source, "discount", line),
+            Some(None),
+            "{label}: {source}"
+        );
+    }
+}

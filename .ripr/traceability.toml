@@ -6114,6 +6114,12 @@ tests = [
   "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::same_file_integer_const_resolves_to_the_boundary_input",
   "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::rebindable_or_non_literal_constants_stay_unresolved",
   "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::written_or_rebound_parameters_stay_unresolved",
+  # G-G parameter-pair boundary (#4759)
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::missed_parameter_pair_boundary_derives_the_boundary_call",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::unbound_parameter_pair_boundaries_keep_the_packet_closed",
+  "crates/ripr/src/output/typescript_packet_projection.rs::tests::parameter_pair_fact_reads_a_constant_shaped_owner_parameter",
+  "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::parameter_pair_comparison_yields_the_parameters_fact",
+  "crates/ripr/src/analysis/language/typescript/boundary_input_tests.rs::parameter_pairs_the_module_rules_reject_stay_unresolved",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_exposed_finding_is_a_report_only_no_action_record",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_repair_packet_becomes_agent_packet_gap_record",
   "crates/ripr/src/output/gap_decision_ledger.rs::tests::check_output_typescript_fixture_synthesizes_receipt_write_for_packet",
@@ -6141,6 +6147,9 @@ fixtures = [
   "fixtures/ts_repair_packet_boundary_literal_derived",
   "fixtures/ts_repair_packet_boundary_constant_unresolved",
   "fixtures/ts_repair_packet_boundary_literal_guarded",
+  "fixtures/ts_repair_packet_boundary_parameter_pair",
+  "fixtures/ts_repair_packet_boundary_parameter_written",
+  "fixtures/ts_repair_packet_boundary_parameter_constant_shaped",
   # Non-actionable fixtures (each pins a named failure family)
   "fixtures/ts_dynamic_oracle",
   "fixtures/ts_heuristic_relation",

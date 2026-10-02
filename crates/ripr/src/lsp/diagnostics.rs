@@ -4826,6 +4826,7 @@ mod lsp_next_step_parity_tests {
                 "typescript_oracle_confidence: high".to_string(),
                 "typescript_oracle_evidence_ref: tests/discount.test.ts:3".to_string(),
                 "missing_discriminator: amount == threshold".to_string(),
+                "typescript_boundary_parameters: parameter=amount;index=0;operand=threshold;operand_index=1".to_string(),
             ],
             missing: Vec::new(),
             flow_sinks: Vec::new(),

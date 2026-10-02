@@ -480,3 +480,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — typescript_strict_actionability (13)
+
+Reason:
+RIPR-SPEC-0027: findings comparing two read-only owner parameters carry typescript_boundary_parameters evidence (#4759); no class, packet or shape change
+
+Command:
+`cargo xtask goldens bless typescript_strict_actionability --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

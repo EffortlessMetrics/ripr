@@ -59,6 +59,18 @@ pub(crate) enum TargetAssertionShape {
         discriminator: String,
         constant: String,
     },
+    /// The discriminator's boundary operand is a plain identifier
+    /// (`amount == threshold`) that the observed call is not shown to bind to
+    /// a concrete value (#4759): either the analysis side did not pin both
+    /// sides as read-only owner parameters, or the observed arguments at
+    /// those positions are not both integer literals. `shape` carries the
+    /// boundary placeholder and the packet fails closed.
+    UnboundOperand {
+        shape: String,
+        observed_call: String,
+        discriminator: String,
+        operand: String,
+    },
     /// The observed call input does not hit the boundary (or its constant
     /// was unresolved on the discriminator text alone), but the analysis
     /// side pinned the boundary input statically (`typescript_boundary_input`
@@ -120,15 +132,88 @@ impl TypeScriptBoundaryInputFact {
 /// The single boundary input fact on a finding; two or more disagreeing
 /// lines are ambiguous and yield `None`.
 fn typescript_boundary_input_fact(finding: &Finding) -> Option<TypeScriptBoundaryInputFact> {
-    let mut facts = finding
+    single_evidence_line(finding, TYPESCRIPT_BOUNDARY_INPUT_PREFIX)
+        .and_then(TypeScriptBoundaryInputFact::parse)
+}
+
+/// The analysis-side fact that both sides of the changed comparison are
+/// read-only owner parameters (`typescript_boundary_parameters:
+/// parameter=<p>;index=<i>;operand=<o>;operand_index=<j>`, #4759).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TypeScriptBoundaryParametersFact {
+    parameter: String,
+    index: usize,
+    operand: String,
+    operand_index: usize,
+}
+
+const TYPESCRIPT_BOUNDARY_PARAMETERS_PREFIX: &str = "typescript_boundary_parameters: ";
+
+impl TypeScriptBoundaryParametersFact {
+    /// Parse one evidence line; any missing, duplicate, or malformed field,
+    /// or two sides naming the same parameter or position, is `None`.
+    pub(crate) fn parse(line: &str) -> Option<Self> {
+        let body = line.strip_prefix(TYPESCRIPT_BOUNDARY_PARAMETERS_PREFIX)?;
+        let mut fields = BTreeMap::new();
+        for field in body.split(';') {
+            let (key, value) = field.split_once('=')?;
+            if fields.insert(key.trim(), value.trim()).is_some() {
+                return None;
+            }
+        }
+        if fields.len() != 4 {
+            return None;
+        }
+        let parameter = fields.get("parameter")?.to_string();
+        let operand = fields.get("operand")?.to_string();
+        let index: usize = fields.get("index")?.parse().ok()?;
+        let operand_index: usize = fields.get("operand_index")?.parse().ok()?;
+        if !is_plain_identifier(&parameter)
+            || !is_plain_identifier(&operand)
+            || parameter == operand
+            || index == operand_index
+        {
+            return None;
+        }
+        Some(Self {
+            parameter,
+            index,
+            operand,
+            operand_index,
+        })
+    }
+
+    /// The argument positions of `(receiver, boundary)` when the fact names
+    /// exactly these two parameters, in either order.
+    fn positions_for(&self, receiver: &str, boundary: &str) -> Option<(usize, usize)> {
+        if receiver == self.parameter && boundary == self.operand {
+            Some((self.index, self.operand_index))
+        } else if receiver == self.operand && boundary == self.parameter {
+            Some((self.operand_index, self.index))
+        } else {
+            None
+        }
+    }
+}
+
+fn typescript_boundary_parameters_fact(
+    finding: &Finding,
+) -> Option<TypeScriptBoundaryParametersFact> {
+    single_evidence_line(finding, TYPESCRIPT_BOUNDARY_PARAMETERS_PREFIX)
+        .and_then(TypeScriptBoundaryParametersFact::parse)
+}
+
+/// The only evidence line with `prefix`; none or several is `None`.
+fn single_evidence_line<'f>(finding: &'f Finding, prefix: &str) -> Option<&'f str> {
+    let mut lines = finding
         .evidence
         .iter()
-        .filter(|line| line.starts_with(TYPESCRIPT_BOUNDARY_INPUT_PREFIX));
-    let first = facts.next()?;
-    if facts.next().is_some() {
+        .filter(|line| line.starts_with(prefix));
+    let first = lines.next()?;
+    if lines.next().is_some() {
         return None;
     }
-    TypeScriptBoundaryInputFact::parse(first)
+    Some(first)
 }
 
 impl TargetAssertionShape {
@@ -137,6 +222,7 @@ impl TargetAssertionShape {
             Self::Observed { shape } => shape,
             Self::Unreachable { shape, .. }
             | Self::UnresolvedBoundary { shape, .. }
+            | Self::UnboundOperand { shape, .. }
             | Self::DerivedBoundary { shape, .. } => shape,
         }
     }
@@ -166,6 +252,18 @@ impl TargetAssertionShape {
                  `{discriminator}` is not resolved to a concrete value, so the observed \
                  call input `{observed_call}` is not shown to hit it; derive an input \
                  equal to `{constant}` before the packet is delegatable"
+            )),
+            Self::UnboundOperand {
+                observed_call,
+                discriminator,
+                operand,
+                ..
+            } => Some(format!(
+                "boundary operand `{operand}` in the missing discriminator \
+                 `{discriminator}` is not bound to a concrete value by the observed \
+                 call input `{observed_call}`, so that input is not shown to hit it; \
+                 derive an input where `{discriminator}` holds before the packet is \
+                 delegatable"
             )),
         }
     }
@@ -208,6 +306,15 @@ impl TargetAssertionShape {
                 "Do not reuse the observed call input; it is not shown to equal \
                  `{constant}` in the missing discriminator `{discriminator}`. Derive \
                  an input equal to `{constant}` first."
+            )),
+            Self::UnboundOperand {
+                discriminator,
+                operand,
+                ..
+            } => Some(format!(
+                "Do not reuse the observed call input; it is not shown to bind \
+                 `{operand}` so that the missing discriminator `{discriminator}` \
+                 holds. Derive an input where `{discriminator}` holds first."
             )),
         }
     }
@@ -258,7 +365,27 @@ pub(crate) fn typescript_target_assertion_shape(
 }
 
 /// [`typescript_target_assertion_shape`] with the analysis-side boundary
-/// input fact. The fact only ever replaces a non-delegatable verdict
+/// input fact and no parameter-pair fact.
+#[cfg(test)]
+pub(crate) fn typescript_target_assertion_shape_with_boundary_input(
+    family: &crate::domain::ProbeFamily,
+    observed: &str,
+    missing_discriminator: Option<&str>,
+    owner_name: Option<&str>,
+    boundary_input: Option<&TypeScriptBoundaryInputFact>,
+) -> TargetAssertionShape {
+    typescript_target_assertion_shape_with_boundary_facts(
+        family,
+        observed,
+        missing_discriminator,
+        owner_name,
+        boundary_input,
+        None,
+    )
+}
+
+/// [`typescript_target_assertion_shape`] with the analysis-side boundary
+/// facts. The input fact only ever replaces a non-delegatable verdict
 /// (`Misses`, an unresolved constant, or an undecided binding) with a
 /// concrete boundary input; it never overrides an observed input that hits
 /// the boundary, and it applies only when it names the same comparison: the
@@ -266,12 +393,20 @@ pub(crate) fn typescript_target_assertion_shape(
 /// the fact's operand (text-equal constant or equal integer literal), the
 /// operator is equality, and the observed call has an argument at the
 /// fact's position.
-pub(crate) fn typescript_target_assertion_shape_with_boundary_input(
+///
+/// The parameter-pair fact (#4759) is the only way a plain-identifier
+/// boundary (`amount == threshold`) is judged: it binds both sides to call
+/// positions, the observed integer-literal arguments there decide Hits or
+/// Misses, and a miss is re-derived by giving the receiver the boundary's
+/// argument. Without the fact, or without literal arguments, the packet
+/// fails closed.
+pub(crate) fn typescript_target_assertion_shape_with_boundary_facts(
     family: &crate::domain::ProbeFamily,
     observed: &str,
     missing_discriminator: Option<&str>,
     owner_name: Option<&str>,
     boundary_input: Option<&TypeScriptBoundaryInputFact>,
+    boundary_parameters: Option<&TypeScriptBoundaryParametersFact>,
 ) -> TargetAssertionShape {
     let expected_clause = match family {
         crate::domain::ProbeFamily::ErrorPath => ".toThrow(expected)",
@@ -292,7 +427,7 @@ pub(crate) fn typescript_target_assertion_shape_with_boundary_input(
     if !call_callee_is_owner(&call.callee, owner_name) {
         return observed_shape;
     }
-    let Some(comparison) = parse_static_comparison(discriminator) else {
+    let Some(comparison) = parse_static_comparison(discriminator, boundary_parameters) else {
         return observed_shape;
     };
     let placeholder_shape = || {
@@ -301,7 +436,21 @@ pub(crate) fn typescript_target_assertion_shape_with_boundary_input(
             call.callee
         )
     };
-    let reach = static_argument_reaches_boundary(&call, &comparison);
+    let reach = static_argument_reaches_boundary(&call, &comparison, boundary_parameters);
+    if matches!(reach, BoundaryReach::Misses)
+        && let Some((boundary_call, value)) =
+            derived_parameter_boundary_call(&call, &comparison, boundary_parameters)
+        && let StaticBoundary::Parameter(operand) = &comparison.boundary
+    {
+        return TargetAssertionShape::DerivedBoundary {
+            shape: format!("expect({boundary_call}){expected_clause}"),
+            observed_call: observed.to_string(),
+            boundary_call,
+            discriminator: discriminator.to_string(),
+            operand: operand.clone(),
+            value,
+        };
+    }
     if !matches!(reach, BoundaryReach::Hits)
         && let Some(fact) = boundary_input
         && let Some(boundary_call) = derived_boundary_call(&call, &comparison, fact)
@@ -327,6 +476,12 @@ pub(crate) fn typescript_target_assertion_shape_with_boundary_input(
             observed_call: observed.to_string(),
             discriminator: discriminator.to_string(),
             constant,
+        },
+        BoundaryReach::UnboundOperand(operand) => TargetAssertionShape::UnboundOperand {
+            shape: placeholder_shape(),
+            observed_call: observed.to_string(),
+            discriminator: discriminator.to_string(),
+            operand,
         },
     }
 }
@@ -493,6 +648,9 @@ enum StaticBoundary {
     /// A constant-shaped operand (`DISCOUNT_THRESHOLD`) with no value in the
     /// finding evidence.
     Constant(String),
+    /// A plain lowercase identifier (`threshold`): possibly an owner
+    /// parameter the call binds, possibly a module value (#4759).
+    Parameter(String),
 }
 
 struct StaticComparison {
@@ -510,14 +668,22 @@ enum BoundaryReach {
     Undecided,
     /// The boundary is a named constant that no argument names.
     UnresolvedConstant(String),
+    /// The boundary is a plain identifier the observed call is not shown to
+    /// bind to a concrete value.
+    UnboundOperand(String),
 }
 
 /// Parse a discriminator like `user.length == 3` into a static comparison.
 ///
 /// Conservative: only `<ident>` / `<ident>.length` receivers and int, plain
-/// string, or constant-shaped (`UPPER_CASE`) boundaries are recognized;
-/// anything else stays undecided.
-fn parse_static_comparison(discriminator: &str) -> Option<StaticComparison> {
+/// string, constant-shaped (`UPPER_CASE`), or plain identifier boundaries are
+/// recognized; anything else stays undecided. A literal or constant side is
+/// preferred as the boundary in either operand order, so `LIMIT == amount`
+/// never reads `amount` as the boundary.
+fn parse_static_comparison(
+    discriminator: &str,
+    boundary_parameters: Option<&TypeScriptBoundaryParametersFact>,
+) -> Option<StaticComparison> {
     const OPS: [(&str, StaticComparisonOp); 8] = [
         ("===", StaticComparisonOp::Equal),
         ("!==", StaticComparisonOp::NotEqual),
@@ -549,20 +715,57 @@ fn parse_static_comparison(discriminator: &str) -> Option<StaticComparison> {
     // The analysis side keeps operand order (`DISCOUNT_THRESHOLD <= amount`
     // becomes `DISCOUNT_THRESHOLD == amount`), so a boundary written first
     // is read with the operator mirrored (#4215 review).
-    static_comparison_from(left, op, right)
-        .or_else(|| static_comparison_from(right, op.mirrored(), left))
+    // A parameter-pair fact naming both sides is the analysis side's own
+    // reading that both are read-only owner parameters (#4759 review): a
+    // CONSTANT_CASE parameter would otherwise parse as a module constant
+    // and close the packet the emitted fact is evidence for. The fact's own
+    // module rules (plain positional bindings, read-only, changed line runs
+    // on every call) already held when it was emitted, and the packet still
+    // judges only through integer-literal arguments at the fact's positions.
+    if boundary_parameters.is_some_and(|fact| {
+        (fact.parameter == left && fact.operand == right)
+            || (fact.parameter == right && fact.operand == left)
+    }) {
+        return static_parameter_pair_comparison(left, op, right);
+    }
+    static_comparison_from(left, op, right, false)
+        .or_else(|| static_comparison_from(right, op.mirrored(), left, false))
+        .or_else(|| static_comparison_from(left, op, right, true))
+}
+
+/// Both comparison sides are the parameter-pair fact's own parameters, so
+/// both are plain identifiers by the fact's parse; read them as parameters
+/// regardless of name shape (#4759 review).
+fn static_parameter_pair_comparison(
+    receiver: &str,
+    op: StaticComparisonOp,
+    boundary_raw: &str,
+) -> Option<StaticComparison> {
+    let receiver_is_length = parse_static_receiver(receiver)?;
+    is_plain_identifier(boundary_raw).then(|| StaticComparison {
+        receiver: receiver.trim().to_string(),
+        receiver_is_length,
+        op,
+        boundary: StaticBoundary::Parameter(boundary_raw.to_string()),
+    })
 }
 
 fn static_comparison_from(
     receiver: &str,
     op: StaticComparisonOp,
     boundary_raw: &str,
+    identifier_boundary: bool,
 ) -> Option<StaticComparison> {
     let receiver_is_length = parse_static_receiver(receiver)?;
-    let boundary = parse_static_literal(boundary_raw).or_else(|| {
-        is_constant_shaped_operand(boundary_raw)
-            .then(|| StaticBoundary::Constant(boundary_raw.to_string()))
-    })?;
+    let boundary = if identifier_boundary {
+        is_parameter_shaped_operand(boundary_raw)
+            .then(|| StaticBoundary::Parameter(boundary_raw.to_string()))
+    } else {
+        parse_static_literal(boundary_raw).or_else(|| {
+            is_constant_shaped_operand(boundary_raw)
+                .then(|| StaticBoundary::Constant(boundary_raw.to_string()))
+        })
+    }?;
     Some(StaticComparison {
         receiver: receiver.trim().to_string(),
         receiver_is_length,
@@ -655,6 +858,24 @@ fn is_constant_shaped_operand(operand: &str) -> bool {
             .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
 }
 
+/// A plain identifier that could name a parameter: not constant-shaped and
+/// not a value keyword (`true`, `null`, `undefined`, `NaN`, `Infinity`),
+/// whose comparisons this projection leaves undecided as before.
+fn is_parameter_shaped_operand(operand: &str) -> bool {
+    const VALUE_KEYWORDS: [&str; 7] = [
+        "true",
+        "false",
+        "null",
+        "undefined",
+        "NaN",
+        "Infinity",
+        "this",
+    ];
+    is_plain_identifier(operand)
+        && !is_constant_shaped_operand(operand)
+        && !VALUE_KEYWORDS.contains(&operand)
+}
+
 fn apply_static_comparison(op: StaticComparisonOp, lhs: i64, rhs: i64) -> bool {
     match op {
         StaticComparisonOp::Equal => lhs == rhs,
@@ -675,15 +896,31 @@ fn apply_static_comparison(op: StaticComparisonOp, lhs: i64, rhs: i64) -> bool {
 /// no verdict. An unresolved constant boundary is judged before that binding:
 /// it fails the packet closed at any arity unless some argument IS the
 /// constant, because a wrong actionable packet is worse than a missed one.
+///
+/// A plain-identifier boundary is decided only through the parameter-pair
+/// fact (#4759); otherwise it fails closed as unbound at any arity.
 fn static_argument_reaches_boundary(
     call: &StaticCall,
     comparison: &StaticComparison,
+    boundary_parameters: Option<&TypeScriptBoundaryParametersFact>,
 ) -> BoundaryReach {
     if let StaticBoundary::Constant(name) = &comparison.boundary {
         if call.args.iter().any(|argument| argument.trim() == name) {
             return BoundaryReach::Undecided;
         }
         return BoundaryReach::UnresolvedConstant(name.clone());
+    }
+    if let StaticBoundary::Parameter(name) = &comparison.boundary {
+        return match parameter_argument_values(call, comparison, boundary_parameters) {
+            Some((_, receiver, boundary)) => {
+                if apply_static_comparison(comparison.op, receiver, boundary) {
+                    BoundaryReach::Hits
+                } else {
+                    BoundaryReach::Misses
+                }
+            }
+            None => BoundaryReach::UnboundOperand(name.clone()),
+        };
     }
     match static_literal_argument_reaches_boundary(call, comparison) {
         Some(true) => BoundaryReach::Hits,
@@ -711,18 +948,9 @@ fn derived_boundary_call(
         StaticBoundary::Int(value) => {
             *value == fact.value && parse_integer_literal(&fact.operand) == Some(*value)
         }
-        StaticBoundary::Str(_) => false,
+        StaticBoundary::Str(_) | StaticBoundary::Parameter(_) => false,
     };
-    // A spread argument shifts every later position; refuse to bind. An
-    // escape anywhere in the arguments makes the split uncertain, and the
-    // rebuilt call copies the other arguments verbatim, so refuse that too.
-    if !operand_matches
-        || fact.index >= call.args.len()
-        || call
-            .args
-            .iter()
-            .any(|argument| argument.trim_start().starts_with("...") || argument.contains('\\'))
-    {
+    if !operand_matches || fact.index >= call.args.len() || !call_positions_are_stable(call) {
         return None;
     }
     let args: Vec<String> = call
@@ -738,6 +966,64 @@ fn derived_boundary_call(
         })
         .collect();
     Some(format!("{}({})", call.callee, args.join(", ")))
+}
+
+/// A spread argument shifts every later position; refuse to bind. An escape
+/// anywhere in the arguments makes the split uncertain, and a rebuilt call
+/// copies the other arguments verbatim, so refuse that too.
+fn call_positions_are_stable(call: &StaticCall) -> bool {
+    !call
+        .args
+        .iter()
+        .any(|argument| argument.trim_start().starts_with("...") || argument.contains('\\'))
+}
+
+/// The receiver's argument position and the integer-literal arguments bound
+/// to `(receiver, boundary)` when the parameter-pair fact names exactly this
+/// comparison and both observed arguments are integer literals. `None` means
+/// the binding is not shown.
+fn parameter_argument_values(
+    call: &StaticCall,
+    comparison: &StaticComparison,
+    fact: Option<&TypeScriptBoundaryParametersFact>,
+) -> Option<(usize, i64, i64)> {
+    let StaticBoundary::Parameter(boundary) = &comparison.boundary else {
+        return None;
+    };
+    if comparison.receiver_is_length || !call_positions_are_stable(call) {
+        return None;
+    }
+    let (receiver_index, boundary_index) = fact?.positions_for(&comparison.receiver, boundary)?;
+    let receiver = parse_integer_literal(call.args.get(receiver_index)?.trim())?;
+    let boundary = parse_integer_literal(call.args.get(boundary_index)?.trim())?;
+    Some((receiver_index, receiver, boundary))
+}
+
+/// The observed call with the receiver's argument replaced by the
+/// boundary's value, so an equality discriminator holds (#4759). Only for
+/// an equality comparison the parameter-pair fact binds to literals.
+fn derived_parameter_boundary_call(
+    call: &StaticCall,
+    comparison: &StaticComparison,
+    fact: Option<&TypeScriptBoundaryParametersFact>,
+) -> Option<(String, i64)> {
+    if comparison.op != StaticComparisonOp::Equal {
+        return None;
+    }
+    let (receiver_index, _, boundary) = parameter_argument_values(call, comparison, fact)?;
+    let args: Vec<String> = call
+        .args
+        .iter()
+        .enumerate()
+        .map(|(index, argument)| {
+            if index == receiver_index {
+                boundary.to_string()
+            } else {
+                argument.clone()
+            }
+        })
+        .collect();
+    Some((format!("{}({})", call.callee, args.join(", ")), boundary))
 }
 
 /// `Some(true)` reaches a literal boundary, `Some(false)` provably does not,
@@ -765,7 +1051,7 @@ fn static_literal_argument_reaches_boundary(
             let value = parse_integer_literal(argument)?;
             Some(apply_static_comparison(comparison.op, value, *boundary))
         }
-        StaticBoundary::Constant(_) => None,
+        StaticBoundary::Constant(_) | StaticBoundary::Parameter(_) => None,
         StaticBoundary::Str(boundary) => {
             let value = parse_plain_string_literal(argument)?;
             match comparison.op {
@@ -886,13 +1172,15 @@ pub(crate) fn typescript_gap_record_for(finding: &Finding) -> Option<GapRecord> 
     // an agent following it verbatim would duplicate a non-discriminating
     // assertion.
     let boundary_input = typescript_boundary_input_fact(finding);
+    let boundary_parameters = typescript_boundary_parameters_fact(finding);
     let target_shape = evidence_value(finding, "typescript_oracle_observed: ").map(|observed| {
-        typescript_target_assertion_shape_with_boundary_input(
+        typescript_target_assertion_shape_with_boundary_facts(
             &finding.probe.family,
             observed,
             missing_discriminator.as_deref(),
             owner_name.as_deref(),
             boundary_input.as_ref(),
+            boundary_parameters.as_ref(),
         )
     });
     let assertion_shape = target_shape.as_ref().map(|shape| shape.shape().to_string());
@@ -1136,6 +1424,10 @@ mod tests {
                 "typescript_oracle_confidence: high".to_string(),
                 "typescript_oracle_evidence_ref: tests/discount.test.ts:5".to_string(),
                 "missing_discriminator: amount >= threshold".to_string(),
+                // The analysis side pinned both sides as read-only owner
+                // parameters, so `applyDiscount(100, 100)` is shown to hit
+                // the boundary (#4759).
+                "typescript_boundary_parameters: parameter=amount;index=0;operand=threshold;operand_index=1".to_string(),
             ],
             missing: Vec::new(),
             flow_sinks: Vec::new(),
@@ -1397,6 +1689,9 @@ mod tests {
     fn boundary_finding(observed: &str, expected: &str, discriminator: &str) -> Finding {
         let mut finding = complete_finding();
         finding.id = "probe:src_auth.ts:typescript_preview:23e9836b".to_string();
+        finding
+            .evidence
+            .retain(|line| !line.starts_with("typescript_boundary_parameters: "));
         finding.probe.owner = Some(SymbolId("typescript:src/auth.ts::login".to_string()));
         for line in finding.evidence.iter_mut() {
             if line.starts_with("typescript_oracle_observed: ") {
@@ -1667,14 +1962,19 @@ mod tests {
             None,
         );
         assert!(matches!(no_owner, TargetAssertionShape::Observed { .. }));
-        // Non-literal boundaries (e.g. `amount >= threshold`) are undecided.
+        // A plain-identifier boundary (`amount >= threshold`) without the
+        // parameter-pair fact is not shown to be bound by the observed
+        // arguments, so it fails closed instead of standing (#4759).
         let non_literal = typescript_target_assertion_shape(
             &ProbeFamily::Predicate,
             "applyDiscount(100, 100)",
             Some("amount >= threshold"),
             Some("applyDiscount"),
         );
-        assert!(matches!(non_literal, TargetAssertionShape::Observed { .. }));
+        assert!(matches!(
+            non_literal,
+            TargetAssertionShape::UnboundOperand { .. }
+        ));
     }
 
     #[test]
@@ -2133,5 +2433,284 @@ mod tests {
             .evidence
             .push(boundary_input_fact("amount", 0, "5000", 5000));
         assert!(typescript_boundary_input_fact(&finding).is_none());
+    }
+
+    fn boundary_parameters_fact(
+        parameter: &str,
+        index: usize,
+        operand: &str,
+        operand_index: usize,
+    ) -> String {
+        format!(
+            "typescript_boundary_parameters: parameter={parameter};index={index};operand={operand};operand_index={operand_index}"
+        )
+    }
+
+    fn parsed_parameters_fact(line: &str) -> Result<TypeScriptBoundaryParametersFact, String> {
+        TypeScriptBoundaryParametersFact::parse(line)
+            .ok_or_else(|| format!("parameters fact must parse: {line}"))
+    }
+
+    fn parameter_pair_shape(
+        observed: &str,
+        discriminator: &str,
+        fact: Option<&TypeScriptBoundaryParametersFact>,
+    ) -> TargetAssertionShape {
+        typescript_target_assertion_shape_with_boundary_facts(
+            &ProbeFamily::Predicate,
+            observed,
+            Some(discriminator),
+            Some("discount"),
+            None,
+            fact,
+        )
+    }
+
+    /// #4759 repro: `discount(50, 100)` cannot tell `>` from `>=` at
+    /// `amount == threshold`. Without the analysis-side parameter-pair fact
+    /// the packet fails closed; with it, the observed literals decide Misses
+    /// and the receiver takes the boundary's argument.
+    #[test]
+    fn missed_parameter_pair_boundary_derives_the_boundary_call() -> Result<(), String> {
+        let mut finding = boundary_finding("discount(50, 100)", "0", "amount == threshold");
+        finding.probe.owner = Some(SymbolId("typescript:src/pricing.ts::discount".to_string()));
+        let closed =
+            typescript_gap_record_for(&finding).ok_or_else(|| "record must project".to_string())?;
+        let closed_route = closed
+            .repair_route
+            .as_ref()
+            .ok_or_else(|| "repair route must be present".to_string())?;
+        assert_eq!(
+            closed_route.assertion_shape.as_deref(),
+            Some("expect(discount(/* boundary input for amount == threshold */)).toBe(expected)")
+        );
+        assert!(
+            closed_route
+                .stop_conditions
+                .iter()
+                .any(|stop| stop.starts_with("Do not reuse the observed call input")),
+            "{:?}",
+            closed_route.stop_conditions
+        );
+        assert!(validate_agent_gap_record_packet(&closed).is_err());
+
+        finding
+            .evidence
+            .push(boundary_parameters_fact("amount", 0, "threshold", 1));
+        let record =
+            typescript_gap_record_for(&finding).ok_or_else(|| "record must project".to_string())?;
+        let route = record
+            .repair_route
+            .as_ref()
+            .ok_or_else(|| "repair route must be present".to_string())?;
+        assert_eq!(
+            route.assertion_shape.as_deref(),
+            Some("expect(discount(100, 100)).toBe(expected)")
+        );
+        assert!(
+            route.stop_conditions.iter().any(|stop| stop
+                .contains("The observed call `discount(50, 100)` is not shown to hit")
+                && stop.contains("derived from `threshold` = 100")),
+            "{:?}",
+            route.stop_conditions
+        );
+        validate_agent_gap_record_packet(&record)
+            .map_err(|error| format!("derived parameter boundary must be delegatable: {error}"))
+    }
+
+    #[test]
+    fn parameter_pair_fact_decides_hits_and_binds_either_operand_order() -> Result<(), String> {
+        let fact = parsed_parameters_fact(&boundary_parameters_fact("amount", 0, "threshold", 1))?;
+        let hits = parameter_pair_shape("discount(100, 100)", "amount == threshold", Some(&fact));
+        assert_eq!(
+            hits,
+            TargetAssertionShape::Observed {
+                shape: "expect(discount(100, 100)).toBe(expected)".to_string()
+            }
+        );
+        let separators =
+            parameter_pair_shape("discount(1_000, 1000)", "amount == threshold", Some(&fact));
+        assert!(
+            matches!(separators, TargetAssertionShape::Observed { .. }),
+            "{separators:?}"
+        );
+        // `threshold == amount` reads `threshold` as the receiver, so the
+        // derivation gives it the value bound to `amount`.
+        let reversed =
+            parameter_pair_shape("discount(50, 100)", "threshold == amount", Some(&fact));
+        assert_eq!(reversed.shape(), "expect(discount(50, 50)).toBe(expected)");
+        assert!(reversed.packet_ineligibility_reason().is_none());
+        Ok(())
+    }
+
+    /// A parameter-pair fact that does not name this comparison, or observed
+    /// arguments that are not both integer literals, keep the packet closed.
+    #[test]
+    fn unbound_parameter_pair_boundaries_keep_the_packet_closed() -> Result<(), String> {
+        let fact = parsed_parameters_fact(&boundary_parameters_fact("amount", 0, "threshold", 1))?;
+        let other = parsed_parameters_fact(&boundary_parameters_fact("amount", 0, "limit", 1))?;
+        for (label, observed, discriminator, fact) in [
+            ("no fact", "discount(50, 100)", "amount == threshold", None),
+            (
+                "other parameter",
+                "discount(50, 100)",
+                "amount == threshold",
+                Some(&other),
+            ),
+            (
+                "variable argument",
+                "discount(amount, 100)",
+                "amount == threshold",
+                Some(&fact),
+            ),
+            (
+                "float argument",
+                "discount(50.5, 100)",
+                "amount == threshold",
+                Some(&fact),
+            ),
+            (
+                "missing argument",
+                "discount(50)",
+                "amount == threshold",
+                Some(&fact),
+            ),
+            (
+                "spread argument",
+                "discount(...pair)",
+                "amount == threshold",
+                Some(&fact),
+            ),
+            (
+                "length receiver",
+                "discount(50, 100)",
+                "amount.length == threshold",
+                Some(&fact),
+            ),
+        ] {
+            let shape = parameter_pair_shape(observed, discriminator, fact);
+            assert!(
+                matches!(shape, TargetAssertionShape::UnboundOperand { .. }),
+                "{label}: {shape:?}"
+            );
+            assert!(
+                shape.packet_ineligibility_reason().is_some(),
+                "{label}: {shape:?}"
+            );
+            assert!(shape.shape().contains("/* boundary input for "), "{label}");
+        }
+        Ok(())
+    }
+
+    /// #4759 review: a CONSTANT_CASE owner parameter (`LIMIT`) carries the
+    /// parameter-pair fact on the analysis side, but the constant-shaped
+    /// parse fallback closed the packet. When the fact names both comparison
+    /// sides, they are read as parameters; without a matching fact the
+    /// constant reading stays.
+    #[test]
+    fn parameter_pair_fact_reads_a_constant_shaped_owner_parameter() -> Result<(), String> {
+        let fact = parsed_parameters_fact(&boundary_parameters_fact("amount", 0, "LIMIT", 1))?;
+        // Without the fact, `LIMIT` parses as a constant and the packet
+        // fails closed on the unresolved constant.
+        let without = parameter_pair_shape("discount(50, 100)", "amount == LIMIT", None);
+        assert!(
+            matches!(without, TargetAssertionShape::UnresolvedBoundary { .. }),
+            "{without:?}"
+        );
+        // With the fact, both sides are parameters and the observed integer
+        // literals decide; a miss derives the boundary call.
+        let derived = parameter_pair_shape("discount(50, 100)", "amount == LIMIT", Some(&fact));
+        assert_eq!(derived.shape(), "expect(discount(100, 100)).toBe(expected)");
+        assert!(
+            derived.packet_ineligibility_reason().is_none(),
+            "{derived:?}"
+        );
+        let pair_parse = parse_static_comparison("amount == LIMIT", Some(&fact));
+        assert!(matches!(
+            pair_parse.map(|c| (c.receiver, c.boundary)),
+            Some((receiver, StaticBoundary::Parameter(name)))
+                if receiver == "amount" && name == "LIMIT"
+        ));
+        // A hit keeps the observed call.
+        let hits = parameter_pair_shape("discount(100, 100)", "amount == LIMIT", Some(&fact));
+        assert!(
+            matches!(hits, TargetAssertionShape::Observed { .. }),
+            "{hits:?}"
+        );
+        // The written order `LIMIT == amount` binds the same two positions.
+        let reversed = parameter_pair_shape("discount(50, 100)", "LIMIT == amount", Some(&fact));
+        assert_eq!(reversed.shape(), "expect(discount(50, 50)).toBe(expected)");
+        // A fact naming other parameters leaves the constant reading alone.
+        let other = parsed_parameters_fact(&boundary_parameters_fact("amount", 0, "ceiling", 1))?;
+        let mismatch = parameter_pair_shape("discount(50, 100)", "amount == LIMIT", Some(&other));
+        assert!(
+            matches!(mismatch, TargetAssertionShape::UnresolvedBoundary { .. }),
+            "{mismatch:?}"
+        );
+        Ok(())
+    }
+
+    /// Literal and constant sides keep their #4105/#4215 reading in either
+    /// order, and value keywords stay undecided, so the identifier reading
+    /// only takes comparisons the earlier rules left unparsed.
+    #[test]
+    fn identifier_boundary_reading_leaves_earlier_comparisons_alone() {
+        let constant_first = parse_static_comparison("LIMIT == amount", None);
+        assert!(matches!(
+            constant_first.map(|c| (c.receiver, c.boundary)),
+            Some((receiver, StaticBoundary::Constant(name))) if receiver == "amount" && name == "LIMIT"
+        ));
+        let literal_first = parse_static_comparison("5 == amount", None);
+        assert!(matches!(
+            literal_first.map(|c| c.boundary),
+            Some(StaticBoundary::Int(5))
+        ));
+        for keyword in [
+            "flag == true",
+            "value == null",
+            "value === undefined",
+            "ratio == NaN",
+        ] {
+            assert!(
+                parse_static_comparison(keyword, None).is_none(),
+                "{keyword}"
+            );
+            let shape = typescript_target_assertion_shape(
+                &ProbeFamily::Predicate,
+                "discount(1)",
+                Some(keyword),
+                Some("discount"),
+            );
+            assert!(
+                matches!(shape, TargetAssertionShape::Observed { .. }),
+                "{keyword}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_parameter_pair_facts_do_not_parse() {
+        for line in [
+            "typescript_boundary_parameters: parameter=amount;index=0;operand=threshold",
+            "typescript_boundary_parameters: parameter=amount;index=0;operand=amount;operand_index=1",
+            "typescript_boundary_parameters: parameter=amount;index=1;operand=threshold;operand_index=1",
+            "typescript_boundary_parameters: parameter=amount;index=x;operand=threshold;operand_index=1",
+            "typescript_boundary_parameters: parameter=a b;index=0;operand=threshold;operand_index=1",
+            "typescript_boundary_parameters: parameter=amount;index=0;operand=100;operand_index=1",
+            "typescript_boundary_parameters: parameter=amount;index=0;index=0;operand=threshold",
+        ] {
+            assert!(
+                TypeScriptBoundaryParametersFact::parse(line).is_none(),
+                "{line}"
+            );
+        }
+        let mut finding = boundary_finding("discount(50, 100)", "0", "amount == threshold");
+        finding
+            .evidence
+            .push(boundary_parameters_fact("amount", 0, "threshold", 1));
+        finding
+            .evidence
+            .push(boundary_parameters_fact("amount", 0, "threshold", 1));
+        assert!(typescript_boundary_parameters_fact(&finding).is_none());
     }
 }

@@ -1,0 +1,40 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/ts_repair_packet_boundary_parameter_written/input
+
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) shown
+
+Changed file(s) by language: typescript: 1.
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview language, advisory only (preview_limited)
+  Safe next action: this TypeScript preview finding's repair packet is not ready (boundary operand `threshold` in the missing discriminator `amount == threshold` is not bound to a concrete value by the observed call input `discount(50, 100)`, so that input is…); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add or strengthen a test by hand, then rerun `ripr check`.
+  File: src/pricing.ts:3
+  Language: typescript
+  Language status: preview
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: if (amount >= threshold) {
+  Missing discriminator (1 of 2): Related tests reach `discount` with a strong oracle, but no strong assertion observes a `discount(...)` call at the changed predicate boundary `amount == threshold`; inputs on one…
+  Related test (1 of 2): tests/pricing.test.ts:3 no discount below threshold
+  Next step: TypeScript preview advisory: add or strengthen a focused assertion for missing
+    discriminator `amount == threshold`; no actionable repair packet is emitted until verify,
+    receipt, and edit-boundary fields are available.
+  Evidence: reach yes · infection unknown · propagation unknown · observation weak · discriminator weak
+    - reach yes: 2 related test(s) found for owner `discount`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 5 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/ts_repair_packet_boundary_parameter_written/input --diff fixtures/ts_repair_packet_boundary_parameter_written/diff.patch --mode fast probe:src_pricing.ts:typescript_preview:0fb82713
+  ripr context --root fixtures/ts_repair_packet_boundary_parameter_written/input --diff fixtures/ts_repair_packet_boundary_parameter_written/diff.patch --mode fast --at probe:src_pricing.ts:typescript_preview:0fb82713
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

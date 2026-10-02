@@ -1719,6 +1719,7 @@ are scoped or reviewed.
   ([#3999](https://github.com/EffortlessMetrics/ripr-swarm/issues/3999),
   [#4000](https://github.com/EffortlessMetrics/ripr-swarm/issues/4000),
   [#4287](https://github.com/EffortlessMetrics/ripr-swarm/pull/4287)).
+
 - On the Python and TypeScript preview route, `ripr first-pr` now shows how to
   see whether the gap moved after the test edit. A `ripr receipt write`
   receipt records only the verify status it is given and re-checks nothing,
@@ -1925,6 +1926,15 @@ are scoped or reviewed.
   `no_scope` complete, and unparseable garbage keeps its existing
   `unsupported_input` contract (#4375).
 
+- TypeScript repair packets no longer call a non-boundary test complete
+  when the threshold is a parameter. For `if (amount >= threshold)` with
+  tests calling `discount(50, 100)`, `ripr check` said the packet was
+  complete, shaped like `expect(discount(50, 100)).toBe(expected)`, which
+  cannot tell `>` from `>=`. The analysis side now records when both sides
+  are read-only owner parameters, and the packet derives
+  `expect(discount(100, 100)).toBe(expected)`. When the parameters are not
+  shown read-only, or the observed arguments are not integer literals, the
+  packet is not ready and uses the boundary placeholder. (#4759)
 - CLI: `ripr plus` and the compatibility `cargo xtask ripr-plus` receipt
   composition no longer turn exposure-only zero into complete RIPR+ quality
   authority. Legacy inputs remain informational and `indeterminate`, preserving

@@ -395,6 +395,14 @@ boundary without changing the guards (#4104 E):
   level, by a non-`declare` `const` with an integer literal initializer, whose
   every other occurrence in the module is a plain read. Anything else emits
   nothing.
+- **Boundary parameters evidence** (#4759): when both sides of that
+  discriminator are distinct plain positional parameters of the owner
+  (`amount == threshold`), the adapter instead emits
+  `typescript_boundary_parameters: parameter=<left>;index=<i>;operand=<right>;operand_index=<j>`
+  under the same module rules, applied to each parameter: each is read-only
+  in the owner, the changed line compares them as whole sides, and it runs on
+  every call. No value is claimed; the call's own arguments at `<i>` and
+  `<j>` decide whether it hits the boundary.
 
 When the adapter cannot classify, it emits one of the `static_limit_kind`
 values defined in RIPR-SPEC-0026:

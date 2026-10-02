@@ -411,3 +411,16 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — typescript_dynamic_assertion_unresolved (12)
+
+Reason:
+RIPR-SPEC-0027: findings comparing two read-only owner parameters carry typescript_boundary_parameters evidence (#4759); no class, packet or shape change
+
+Command:
+`cargo xtask goldens bless typescript_dynamic_assertion_unresolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

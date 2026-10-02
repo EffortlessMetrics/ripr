@@ -1,0 +1,13 @@
+diff --git a/src/pricing.ts b/src/pricing.ts
+index 0000000..1111111 100644
+--- a/src/pricing.ts
++++ b/src/pricing.ts
+@@ -1,7 +1,7 @@
+ export function discount(amount: number, threshold: number): number {
+   threshold = Math.max(threshold, 1);
+-  if (amount > threshold) {
++  if (amount >= threshold) {
+     return Math.floor(amount / 10);
+   }
+   return 0;
+ }
