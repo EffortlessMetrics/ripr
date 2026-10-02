@@ -142,6 +142,10 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Rust `proptest!` and `quickcheck!` token trees are reparsed as items, so
+  inner `#[test]` / `quickcheck!` functions keep their real lines, owner
+  calls, and `prop_assert*` oracles. An unmarked `proptest!` fn stays a
+  function fact, not a test (#4789).
 - Review guidance: admit workspace and changed-owner inputs before either
   index build, with file/byte limits and a `review_guidance_oversized` failed
   receipt instead of silently truncated guidance (#4388, RIPR-SPEC-0012).

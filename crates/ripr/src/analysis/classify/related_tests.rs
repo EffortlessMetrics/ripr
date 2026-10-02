@@ -2172,7 +2172,7 @@ mod tests {
     use crate::domain::{
         DeltaKind, OracleKind, OracleStrength, ProbeFamily, ProbeId, SourceLocation, SymbolId,
     };
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn candidate_index_bounds_large_unrelated_test_set() {
@@ -5864,5 +5864,73 @@ try_parse_summary(raw).map_err(Into::into)"
             stripped.starts_with("let x = \"           \";"),
             "string contents replaced with spaces: {stripped:?}"
         );
+    }
+
+    #[test]
+    fn given_parser_indexed_proptest_and_quickcheck_when_relating_then_only_marked_tests()
+    -> Result<(), String> {
+        let source = r#"
+pub fn gate(x: u32) -> bool {
+    x > 10
+}
+
+proptest! {
+    #[test]
+    fn gate_threshold(x in 0u32..100) {
+        prop_assert_eq!(gate(x), x > 10);
+    }
+
+    fn unmarked(x in 0u32..100) {
+        prop_assert!(gate(x));
+    }
+}
+
+quickcheck! {
+    fn qc_gate(x: u32) -> bool {
+        gate(x) == (x > 10)
+    }
+}
+"#;
+        let file_facts = crate::analysis::syntax::ra::summarize_file_with_parser(
+            Path::new("src/lib.rs"),
+            source,
+        )
+        .map_err(|error| error.to_string())?;
+        let owner = file_facts
+            .functions
+            .iter()
+            .find(|function| function.name == "gate")
+            .cloned()
+            .ok_or("gate owner")?;
+        let index = RustIndex {
+            functions: file_facts.functions.clone(),
+            tests: file_facts.tests.clone(),
+            files: std::iter::once((PathBuf::from("src/lib.rs"), file_facts)).collect(),
+            ..RustIndex::default()
+        };
+        let mut related_probe = probe("src/lib.rs", "x > 10");
+        related_probe.owner = Some(owner.id.clone());
+
+        let related = find_related_tests(&related_probe, Some(&owner), &index, true, None, None);
+        let names = related
+            .iter()
+            .map(|(test, _)| test.name.as_str())
+            .collect::<Vec<_>>();
+        if !names.contains(&"gate_threshold") {
+            return Err(format!(
+                "proptest #[test] must relate through the parser facts: {names:?}"
+            ));
+        }
+        if !names.contains(&"qc_gate") {
+            return Err(format!(
+                "quickcheck! fn must relate through the parser facts: {names:?}"
+            ));
+        }
+        if names.contains(&"unmarked") {
+            return Err(format!(
+                "unmarked proptest fn must not relate as a test: {names:?}"
+            ));
+        }
+        Ok(())
     }
 }

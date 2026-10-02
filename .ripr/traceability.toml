@@ -23,6 +23,8 @@ tests = [
   "crates/ripr/src/build_identity.rs::tests::cache_identity_binds_the_build_not_only_the_version",
   "crates/ripr/src/analysis/classify/flow.rs",
   "crates/ripr/src/analysis/classifier.rs",
+  "crates/ripr/src/analysis/syntax/ra/property_macros.rs",
+  "crates/ripr/src/analysis/classify/related_tests.rs::tests::given_parser_indexed_proptest_and_quickcheck_when_relating_then_only_marked_tests",
   "crates/ripr/src/analysis/probes/lexical.rs",
   "crates/ripr/src/analysis/rust_index.rs",
   "crates/ripr/src/analysis/mod.rs",
@@ -63,6 +65,7 @@ fixtures = [
   "fixtures/strong_boundary_oracle",
   "fixtures/strong_error_oracle",
   "fixtures/unrelated_test_mentions_token",
+  "fixtures/rust_proptest_quickcheck_tests",
   "fixtures/weak_error_oracle",
   "fixtures/weak_error_oracle_assert_matches"
 ]
@@ -103,6 +106,8 @@ outputs = [
   "fixtures/strong_error_oracle/expected/human.txt",
   "fixtures/unrelated_test_mentions_token/expected/check.json",
   "fixtures/unrelated_test_mentions_token/expected/human.txt",
+  "fixtures/rust_proptest_quickcheck_tests/expected/check.json",
+  "fixtures/rust_proptest_quickcheck_tests/expected/human.txt",
   "fixtures/weak_error_oracle/expected/check.json",
   "fixtures/weak_error_oracle/expected/human.txt",
   "fixtures/weak_error_oracle_assert_matches/expected/check.json",

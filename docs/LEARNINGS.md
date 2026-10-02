@@ -153,6 +153,23 @@ or `--out-dir PATH` only for `PermissionDenied` / `ReadOnlyFilesystem`. A path
 that is already a file is a different failure and must not grow that hint.
 Both commands share `output::file_write::create_output_dir`; do not special-case
 one command's prefix or flag in the other.
+## 2026-09-29: `proptest!` / `quickcheck!` bodies are token trees (#4789)
+
+The Rust grammar does not turn a macro call's body into items. A
+`#[test] fn name(x in 0u32..100) { prop_assert_eq!(gate(x), x > 10); }`
+inside `proptest! { .. }` is therefore not a test, and neither is a
+`quickcheck!` fn, until the inner bytes are copied into a same-length
+overlay (other bytes blanked to spaces) and reparsed.
+
+The overlay must blank proptest strategy parameter lists (`x in
+strategy`, including nested `any::<Vec<(u32, u32)>>()`). Those tokens
+are not a Rust param list; leaving them in place makes the grammar drop
+the function body, so the owner call and oracle never appear.
+
+A `proptest!` fn is a test only when it spells `#[test]`. Every
+`quickcheck!` fn is a test, with `#[quickcheck]` recorded so the test-
+style normalizer keeps the parser-backed `TestFact`. Do not expand
+lookalikes, comments, strings, or macros nested in a function body.
 
 ## 2026-09-16: Parallel-build test flakes are shared-state mechanisms (#3742)
 

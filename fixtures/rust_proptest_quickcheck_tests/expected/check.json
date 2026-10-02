@@ -1,0 +1,171 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_proptest_quickcheck_tests/input",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":2,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:a5860d5c174b52aac1994c244d6af4eb4ad1efbcb20a18a6a2525baf01aa6047","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:f83d04a7",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:f83d04a7",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/rust_proptest_quickcheck_tests/input/src/lib.rs",
+        "line": 2,
+        "expression": "x >= 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach gate: gate_threshold, qc_gate"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain the changed boundary literal [10] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach gate: gate_threshold, qc_gate", "infection weak: Related tests contain the changed boundary literal [10] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (propagation_unknown); related oracle: Strong oracle found: exact value or pattern assertion", "related test tests/properties.rs:5 gate_threshold uses strong exact value oracle: prop_assert_eq!(gate(x), x > 10);", "related test tests/properties.rs:15 qc_gate uses none unknown oracle", "observed assertion argument value 10 at line 6"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach gate: gate_threshold, qc_gate", "Related tests contain the changed boundary literal [10] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink", "No detected boundary input for the changed predicate"],
+      "assertion_texts": {
+        "6": "prop_assert_eq!(gate(x), x > 10);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "10",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "10",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "gate_threshold",
+          "file": "tests/properties.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "prop_assert_eq!(gate(x), x > 10);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "qc_gate",
+          "file": "tests/properties.rs",
+          "line": 15,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:447aae2b",
+      "classification": "propagation_unknown",
+      "severity": "note",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:447aae2b",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/rust_proptest_quickcheck_tests/input/src/lib.rs",
+        "line": 2,
+        "expression": "x > 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach gate: gate_threshold, qc_gate"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain the changed boundary literal [10] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach gate: gate_threshold, qc_gate", "infection weak: Related tests contain the changed boundary literal [10] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (propagation_unknown); related oracle: Strong oracle found: exact value or pattern assertion", "related test tests/properties.rs:5 gate_threshold uses strong exact value oracle: prop_assert_eq!(gate(x), x > 10);", "related test tests/properties.rs:15 qc_gate uses none unknown oracle", "observed assertion argument value 10 at line 6"],
+      "flow_sinks": [
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach gate: gate_threshold, qc_gate", "Related tests contain the changed boundary literal [10] only outside the changed owner's inputs (for example as an expected value); no test input at the changed boundary was detected", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No clear propagation path from changed behavior to an observable sink", "No detected boundary input for the changed predicate"],
+      "assertion_texts": {
+        "6": "prop_assert_eq!(gate(x), x > 10);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "10",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "10",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "gate_threshold",
+          "file": "tests/properties.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "prop_assert_eq!(gate(x), x > 10);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "qc_gate",
+          "file": "tests/properties.rs",
+          "line": 15,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["propagation_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "base_deleted"
+    }
+  ]
+}
