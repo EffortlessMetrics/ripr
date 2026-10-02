@@ -70,6 +70,14 @@ are scoped or reviewed.
   sampled, and the summary states that the full per-file list is not
   materialized in output. No JSON/SARIF schema shape changes. (#5022)
 
+- CI: Windows advisory observations, verdicts and reasons retain Cargo artifact
+  identity, including target kind/source and exact executable hash. Required
+  release controls must resolve to one owning artifact across both samples;
+  missing or ambiguous provenance is refused instead of borrowing another
+  target's pass. Log-derived report entries use bounded excerpts and section
+  counts with explicit truncation and omissions; doctest transitions are
+  explicit and never assigned an inferred package (#5043).
+
 ### Added
 
 - Python same-class method owners that tests reach only through construction
