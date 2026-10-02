@@ -253,6 +253,26 @@ fn git_timeout_from_env(
     }
 }
 
+/// Record one argv output selection, refusing a second one that disagrees
+/// (#4535). Repeating the same format is accepted.
+fn select_output_format(
+    selection: &mut Option<String>,
+    format: &mut OutputFormat,
+    spelling: String,
+    chosen: OutputFormat,
+) -> Result<(), String> {
+    if let Some(previous) = selection.as_deref()
+        && *format != chosen
+    {
+        return Err(format!(
+            "`{previous}` and `{spelling}` select different output formats; pass one"
+        ));
+    }
+    *format = chosen;
+    *selection = Some(spelling);
+    Ok(())
+}
+
 pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput {
         git_timeout: Some(app::default_cli_git_timeout()),
@@ -273,6 +293,10 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // default path triggers auto-resolution.
     let mut base_explicitly_provided = false;
     let mut worktree_explicitly_provided = false;
+    // #4535: the output selection that argv made, spelled as the user wrote
+    // it, so a second selection that disagrees is refused by name instead of
+    // silently winning.
+    let mut format_selection: Option<String> = None;
     let mut root_explicitly_provided = false;
     // RIPR-SPEC-0140: explicit artifact sink for the explain/context reuse
     // pair. No implicit cache: the user names the artifact path.
@@ -328,10 +352,23 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 // position is not the effective mode. It fires once after the
                 // config merge below.
             }
-            "--json" => input.format = OutputFormat::Json,
+            "--json" => {
+                select_output_format(
+                    &mut format_selection,
+                    &mut input.format,
+                    "--json".to_string(),
+                    OutputFormat::Json,
+                )?;
+            }
             "--format" => {
                 i += 1;
-                input.format = parse_format(expect_value(args, i, "--format")?)?;
+                let value = expect_value(args, i, "--format")?;
+                select_output_format(
+                    &mut format_selection,
+                    &mut input.format,
+                    format!("--format {value}"),
+                    parse_format(value)?,
+                )?;
             }
             "--gap-ledger" => {
                 i += 1;
@@ -1156,6 +1193,56 @@ mod tests {
         unique_repo_relative_test_dir,
     };
     use super::*;
+
+    #[test]
+    fn check_refuses_two_output_selections_that_disagree() -> Result<(), String> {
+        // #4535: before, the last selection silently won.
+        for (argv, first, second) in [
+            (
+                ["--json", "--format", "human"],
+                "`--json`",
+                "`--format human`",
+            ),
+            (
+                ["--format", "sarif", "--json"],
+                "`--format sarif`",
+                "`--json`",
+            ),
+        ] {
+            let Err(error) = check(&args(&argv)) else {
+                return Err(format!("{argv:?} must be refused"));
+            };
+            if !(error.contains(first)
+                && error.contains(second)
+                && error.ends_with("select different output formats; pass one"))
+            {
+                return Err(format!("{argv:?} must name both selections, got {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn select_output_format_accepts_a_repeated_selection() -> Result<(), String> {
+        let mut selection = None;
+        let mut format = OutputFormat::Human;
+        select_output_format(
+            &mut selection,
+            &mut format,
+            "--json".into(),
+            OutputFormat::Json,
+        )?;
+        select_output_format(
+            &mut selection,
+            &mut format,
+            "--format json".into(),
+            OutputFormat::Json,
+        )?;
+        if format != OutputFormat::Json {
+            return Err(format!("expected json, got {format:?}"));
+        }
+        Ok(())
+    }
 
     /// Run the real diff pipeline over the sample workspace's valid Rust diff
     /// with the given effective language set, returning the producer outcome

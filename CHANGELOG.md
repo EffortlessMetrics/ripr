@@ -154,6 +154,28 @@ are scoped or reviewed.
 
 ### Fixed
 
+- `RIPR_REPO_EXPOSURE_SEAM_LIMIT` and `RIPR_PILOT_SEAM_BUDGET` refuse a
+  value that is not a seam count. Before, `abc`, `1k` or `-1` read as the `0`
+  opt-out and silently removed the cap. Now the run exits 2 and names the
+  variable (#4529).
+- A repository Git refuses because another user owns it (`detected dubious
+  ownership`) is reported as that, with the `git config --global --add
+  safe.directory` repair. `ripr check` and `ripr doctor` used to say the
+  directory was not inside a Git work tree (#4530).
+- `ripr doctor` on a missing `--root` skips the cargo and rustc checks
+  instead of reporting both tools as unavailable. Outside a Git work tree it
+  no longer prints a raw `git status` failure, and it no longer recommends
+  `ripr check`, which cannot run there (#4531).
+- LSP: an invalid `ripr.toml` now shows a warning in editors without the VS
+  Code integration, at startup and when a later edit breaks the file. The
+  warning names the error location without quoting file contents. Before,
+  analysis paused and the reason went only to the log (#4532).
+- `ripr.toml` errors: an invalid oracle strength names its key. A valid key
+  in the wrong table (for example a top-level `mode`) names the table it
+  belongs under, in the CLI and in `ripr doctor` JSON. The unknown-language
+  error no longer cites an internal campaign (#4534).
+- `ripr check` refuses two output selections that disagree, such as
+  `--json --format human`. Before, the last one silently won (#4535).
 - Rust `proptest!` and `quickcheck!` token trees are reparsed as items, so
   inner `#[test]` / `quickcheck!` functions keep their real lines, owner
   calls, and `prop_assert*` oracles. An unmarked `proptest!` fn stays a

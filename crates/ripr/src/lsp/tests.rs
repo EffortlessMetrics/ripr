@@ -10925,6 +10925,195 @@ fn workspace_folder_transitions_rejected_event_warns_a_generic_client() -> Resul
     })
 }
 
+/// Initialize with one folder and return the `window/showMessage` texts the
+/// server sent before its initialize response (#4532).
+async fn initialize_show_messages(
+    client: &mut WorkspaceFolderTransitionsClient,
+    folders: serde_json::Value,
+    capabilities: serde_json::Value,
+) -> Result<Vec<String>, String> {
+    let id = client.request_id();
+    write_lsp_message(
+        &mut client.writer,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "initialize",
+            "params": {
+                "processId": null,
+                "workspaceFolders": folders,
+                "initializationOptions": { "checkMode": "instant" },
+                "capabilities": capabilities
+            }
+        }),
+    )
+    .await?;
+    let mut shown = Vec::new();
+    loop {
+        let message = read_lsp_message(&mut client.reader).await?;
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(id) {
+            return Ok(shown);
+        }
+        if message.get("method").and_then(serde_json::Value::as_str) == Some("window/showMessage") {
+            shown.push(
+                message["params"]["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            );
+        }
+    }
+}
+
+#[test]
+fn invalid_repo_config_at_initialize_is_shown_to_a_generic_client_only() -> Result<(), String> {
+    // #4532: a generic editor renders neither the log nor
+    // `ripr/analysisStatus`, so the paused analysis must reach it on the
+    // standard channel. The VS Code integration renders the status itself.
+    run_workspace_folder_transitions_exchange("config failure disclosure did not complete", async {
+        let root = unique_lsp_test_root("config-failure-shown")?;
+        std::fs::write(root.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")
+            .map_err(|err| format!("write Cargo.toml failed: {err}"))?;
+        std::fs::write(
+            root.path().join("ripr.toml"),
+            "[analysis]\nmode = \"turbo\"\n",
+        )
+        .map_err(|err| format!("write ripr.toml failed: {err}"))?;
+        let uri = file_uri_for_path(root.path())?;
+        let folders = serde_json::json!([workspace_folder_json(&uri)]);
+
+        let mut generic = WorkspaceFolderTransitionsClient::spawn();
+        let shown =
+            initialize_show_messages(&mut generic, folders.clone(), serde_json::json!({})).await?;
+        generic.finish().await?;
+        if !shown.iter().any(|text| {
+            text.starts_with("ripr config load failed; analysis is paused")
+                && text.contains("analysis.mode `turbo`")
+        }) {
+            return Err(format!(
+                "a generic client must be shown the config failure: {shown:?}"
+            ));
+        }
+
+        let mut integrated = WorkspaceFolderTransitionsClient::spawn();
+        let shown = initialize_show_messages(
+            &mut integrated,
+            folders,
+            serde_json::json!({"experimental": {"riprEditor": {"version": "0.1", "commands": []}}}),
+        )
+        .await?;
+        integrated.finish().await?;
+        if shown.iter().any(|text| text.contains("config load failed")) {
+            return Err(format!(
+                "the riprEditor integration renders the failure from its status: {shown:?}"
+            ));
+        }
+        Ok(())
+    })
+}
+
+/// Send one watched-file change for `ripr.toml`, then a `shutdown` request,
+/// and return the `window/showMessage` texts that arrived before the
+/// shutdown response. Notifications are handled in order, so the change's
+/// disclosure lands before the response.
+async fn reload_show_messages_then_shutdown(
+    client: &mut WorkspaceFolderTransitionsClient,
+    config_uri: &str,
+) -> Result<Vec<String>, String> {
+    write_lsp_message(
+        &mut client.writer,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWatchedFiles",
+            "params": {"changes": [{"uri": config_uri, "type": 2}]}
+        }),
+    )
+    .await?;
+    let id = client.request_id();
+    write_lsp_message(
+        &mut client.writer,
+        serde_json::json!({"jsonrpc": "2.0", "id": id, "method": "shutdown", "params": null}),
+    )
+    .await?;
+    let mut shown = Vec::new();
+    loop {
+        let message = read_lsp_message(&mut client.reader).await?;
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(id) {
+            return Ok(shown);
+        }
+        if message.get("method").and_then(serde_json::Value::as_str) == Some("window/showMessage") {
+            shown.push(
+                message["params"]["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            );
+        }
+    }
+}
+
+#[test]
+fn a_reload_that_breaks_ripr_toml_is_shown_once_without_source_text() -> Result<(), String> {
+    // #4532 review: the reload path shows the failure to a generic client
+    // once per distinct error, and the notice carries the source-free
+    // summary, never the TOML parser's excerpt of the file.
+    run_workspace_folder_transitions_exchange("config reload disclosure did not complete", async {
+        let root = unique_lsp_test_root("config-reload-shown")?;
+        std::fs::write(root.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")
+            .map_err(|err| format!("write Cargo.toml failed: {err}"))?;
+        let uri = file_uri_for_path(root.path())?;
+        let config_uri = file_uri_for_path(&root.path().join("ripr.toml"))?;
+        let mut client = WorkspaceFolderTransitionsClient::spawn();
+        let shown = initialize_show_messages(
+            &mut client,
+            serde_json::json!([workspace_folder_json(&uri)]),
+            serde_json::json!({}),
+        )
+        .await?;
+        if !shown.is_empty() {
+            return Err(format!("a missing config must not warn: {shown:?}"));
+        }
+        write_lsp_message(
+            &mut client.writer,
+            serde_json::json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}),
+        )
+        .await?;
+        std::fs::write(root.path().join("ripr.toml"), "secret_marker = [\n")
+            .map_err(|err| format!("write ripr.toml failed: {err}"))?;
+        write_lsp_message(
+            &mut client.writer,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "workspace/didChangeWatchedFiles",
+                "params": {"changes": [{"uri": config_uri.as_str(), "type": 2}]}
+            }),
+        )
+        .await?;
+        let first = read_lsp_request(&mut client.reader, "window/showMessage").await?;
+        let text = first["params"]["message"].as_str().unwrap_or_default();
+        if !text.starts_with("ripr config load failed; analysis is paused:")
+            || !text.contains("invalid ripr.toml")
+            || text.contains("secret_marker")
+            || text.contains('\n')
+        {
+            return Err(format!(
+                "the reload notice must be the one-line source-free summary: {first}"
+            ));
+        }
+        let repeated = reload_show_messages_then_shutdown(&mut client, config_uri.as_str()).await?;
+        if !repeated.is_empty() {
+            return Err(format!(
+                "an unchanged error must not be shown again: {repeated:?}"
+            ));
+        }
+        write_lsp_message(
+            &mut client.writer,
+            serde_json::json!({"jsonrpc": "2.0", "method": "exit", "params": null}),
+        )
+        .await
+    })
+}
+
 #[test]
 fn workspace_folder_transitions_duplicate_and_contradictory_events_rejected_typed()
 -> Result<(), String> {

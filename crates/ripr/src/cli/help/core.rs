@@ -401,7 +401,9 @@ First-run diagnosis (printed automatically):
   - Recommended first command: ripr check (no base: the loader resolves this
     repository's own default branch). When git is not on PATH, the `!` git line
     names install git or `--diff PATH` / `--diff -`, and the recommended
-    command is `ripr check --diff PATH`.
+    command is `ripr check --diff PATH`. Outside a Git work tree it names the
+    repository-free scan, and a missing root is named in the recovery command
+    through its lossless spelling.
 
 Start-here next step:
   - open `target/ripr/reports/start-here.md` first when it exists

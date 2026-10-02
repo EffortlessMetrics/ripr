@@ -201,6 +201,49 @@ impl SpawnSite {
     }
 }
 
+/// The repair for Git's refusal of a repository another user owns
+/// (`safe.directory`, #4530), or `None` when `stderr` is not that refusal.
+///
+/// Git answers every command in such a repository with `detected dubious
+/// ownership`, so a caller that reads only the exit status mistakes it for
+/// "not a repository" and sends the user somewhere the repository already is.
+/// The path comes from Git's own message when present: it is the top-level
+/// directory Git wants trusted, which can differ from the analyzed root.
+/// `outcome` follows the ownership clause, for callers that must say what
+/// did not happen (for example " (the analysis did not run)").
+pub(crate) fn dubious_ownership_message(
+    root: &Path,
+    stderr: &[u8],
+    outcome: &str,
+) -> Option<String> {
+    let stderr = String::from_utf8_lossy(stderr);
+    let line = stderr
+        .lines()
+        .find(|line| line.contains("detected dubious ownership in repository"))?;
+    let repository = line
+        .split_once(" at '")
+        .and_then(|(_, rest)| rest.strip_suffix('\''))
+        .map_or_else(|| root.display().to_string(), str::to_string);
+    // Only a path made of shell-inert characters is rendered inside a
+    // command to paste: a space splits the `--add` value, and `$()` or a
+    // quote would run or break in the user's shell (#4606 review). Any other
+    // path names the setting instead of a command.
+    let repair = if repository
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '\\' | '.' | '_' | '-' | ':'))
+    {
+        format!("run `git config --global --add safe.directory {repository}`")
+    } else {
+        "add that exact path to Git's `safe.directory` setting (`git config --global --add \
+         safe.directory <path>`, quoted for your shell)"
+            .to_string()
+    };
+    Some(format!(
+        "Git refuses the repository at `{repository}` because another user owns it{outcome}. \
+         If you trust it, {repair} and retry."
+    ))
+}
+
 /// `NotFound` is also what a missing working directory produces, so only a
 /// missing git program with a usable cwd becomes the PATH diagnosis. A
 /// non-git program (the doctor Perl-exporter probe) keeps its own spawn text.
@@ -749,6 +792,45 @@ mod tests {
         AnalysisAbortKind, AnalysisCancellationToken, is_cancellation_error, with_token,
     };
     use serial_test::serial;
+
+    #[test]
+    fn dubious_ownership_names_the_safe_directory_repair() -> Result<(), String> {
+        // #4530: Git's own refusal text, as 2.43 prints it.
+        let stderr = b"fatal: detected dubious ownership in repository at '/srv/repo'\n\
+To add an exception for this directory, call:\n\n\tgit config --global --add safe.directory /srv/repo\n";
+        let message =
+            dubious_ownership_message(Path::new("sub"), stderr, " (the analysis did not run)")
+                .ok_or("the refusal must be recognized")?;
+        if !message.starts_with(
+            "Git refuses the repository at `/srv/repo` because another user owns it (the analysis did not run).",
+        ) || !message.contains("git config --global --add safe.directory /srv/repo")
+        {
+            return Err(format!("expected Git's path and the repair, got {message}"));
+        }
+        // A path with shell syntax is never rendered inside a pasteable
+        // command (#4606 review): a space splits the value and `$()` runs.
+        for path in ["/tmp/ripr repo", "/tmp/$(touch x)", "/tmp/it's"] {
+            let stderr = format!("fatal: detected dubious ownership in repository at '{path}'\n");
+            let message = dubious_ownership_message(Path::new("sub"), stderr.as_bytes(), "")
+                .ok_or("the refusal must be recognized")?;
+            if message.contains(&format!("safe.directory {path}"))
+                || !message.contains(&format!("repository at `{path}`"))
+                || !message.contains("quoted for your shell")
+            {
+                return Err(format!("unsafe path must not be pasteable: {message}"));
+            }
+        }
+        if dubious_ownership_message(
+            Path::new("sub"),
+            b"fatal: not a git repository (or any of the parent directories): .git\n",
+            "",
+        )
+        .is_some()
+        {
+            return Err("an ordinary non-repository must not read as an ownership refusal".into());
+        }
+        Ok(())
+    }
 
     #[test]
     fn git_timeout_tag_requires_exact_raw_error_prefix() {

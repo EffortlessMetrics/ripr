@@ -187,6 +187,9 @@ pub(crate) fn inventory_classified_seams_report_at_with_config(
     let total_started = Instant::now();
     let cache = RepoSeamFactCache::at(root);
     let store_limit = classified_seam_cache_store_limit()?;
+    // Refuse an invalid seam-limit override (#4529) before the cache lookup
+    // and the index build, not after the work it was meant to bound.
+    repo_exposure_seam_limit()?;
     let collect_started = Instant::now();
     let corpus = match scan_corpus_fingerprint(root, config) {
         Ok(scan) => scan,
@@ -769,7 +772,7 @@ fn inventory_classified_seams_from_state_with_config(
     let mut seams = inventory_seams_from_index(&production_files, &cached.index);
     cancellation::checkpoint()?;
     trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
-    let limit_info = apply_repo_exposure_seam_limit(&mut seams);
+    let limit_info = apply_repo_exposure_seam_limit(&mut seams)?;
     let evidence_started = Instant::now();
     trace_latency_phase(
         "evidence_for_seams",
@@ -1695,32 +1698,61 @@ fn normalized_inventory_path(path: &Path) -> String {
 /// Return the effective seam limit and its source.
 ///
 /// - Env var unset → `Some((DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, Default))` — always-on cap.
-/// - Env var = "0" (or parses to 0) → `None` — operator opt-out: unbounded.
+/// - Env var = "0" → `None` — operator opt-out: unbounded.
 /// - Env var = N > 0 → `Some((N, Configured))`.
-pub(crate) fn repo_exposure_seam_limit() -> Option<(usize, SeamLimitSource)> {
-    match std::env::var(REPO_EXPOSURE_SEAM_LIMIT_ENV) {
-        Ok(value) => {
-            // Explicit env: "0" means opt-out (unbounded); N>0 means configured.
-            parse_repo_exposure_seam_limit(&value).map(|n| (n, SeamLimitSource::Configured))
-        }
-        Err(_) => {
-            // Env var not set → apply the default cap.
-            Some((DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, SeamLimitSource::Default))
-        }
+/// - Anything else → `Err` naming the variable (#4529). Only an explicit `0`
+///   removes the cap, so a typo never turns the memory guard off.
+pub(crate) fn repo_exposure_seam_limit() -> Result<Option<(usize, SeamLimitSource)>, String> {
+    seam_limit_from_env(
+        REPO_EXPOSURE_SEAM_LIMIT_ENV,
+        DEFAULT_REPO_EXPOSURE_SEAM_LIMIT,
+        std::env::var(REPO_EXPOSURE_SEAM_LIMIT_ENV),
+    )
+}
+
+/// Shared parser for the seam caps whose `0` means "unbounded"
+/// (`RIPR_REPO_EXPOSURE_SEAM_LIMIT`, `RIPR_PILOT_SEAM_BUDGET`). Fails closed
+/// like `positive_limit_from_env`: an unparseable value is an error, never
+/// the opt-out.
+fn seam_limit_from_env(
+    env_name: &str,
+    default: usize,
+    value: Result<String, std::env::VarError>,
+) -> Result<Option<(usize, SeamLimitSource)>, String> {
+    match value {
+        Ok(raw) => parse_seam_limit(env_name, &raw)
+            .map(|limit| limit.map(|n| (n, SeamLimitSource::Configured))),
+        Err(std::env::VarError::NotPresent) => Ok(Some((default, SeamLimitSource::Default))),
+        Err(std::env::VarError::NotUnicode(value)) => Err(format!(
+            "{env_name} is not valid UTF-8 (got {value:?}): set a positive seam count, or 0 to \
+             remove the cap"
+        )),
     }
 }
 
-fn parse_repo_exposure_seam_limit(value: &str) -> Option<usize> {
-    value
-        .trim()
-        .parse::<usize>()
-        .ok()
-        .filter(|limit| *limit > 0)
+fn parse_seam_limit(env_name: &str, value: &str) -> Result<Option<usize>, String> {
+    let trimmed = value.trim();
+    let invalid = |value: &str| {
+        format!(
+            "{env_name} `{value}` is not a seam count: set a positive integer, or 0 to remove \
+             the cap"
+        )
+    };
+    match trimmed.parse::<usize>() {
+        // Only the exact spelling `0` is the opt-out: `+0` and `00` also parse
+        // as zero, but the documented opt-out form is `0` (#4606 review).
+        Ok(0) if trimmed == "0" => Ok(None),
+        Ok(0) => Err(invalid(value)),
+        Ok(limit) => Ok(Some(limit)),
+        Err(_) => Err(invalid(value)),
+    }
 }
 
-pub(crate) fn apply_repo_exposure_seam_limit(seams: &mut Vec<RepoSeam>) -> Option<SeamLimitInfo> {
-    let (limit, source) = repo_exposure_seam_limit()?;
-    apply_repo_exposure_seam_limit_inner(seams, limit, source)
+pub(crate) fn apply_repo_exposure_seam_limit(
+    seams: &mut Vec<RepoSeam>,
+) -> Result<Option<SeamLimitInfo>, String> {
+    Ok(repo_exposure_seam_limit()?
+        .and_then(|(limit, source)| apply_repo_exposure_seam_limit_inner(seams, limit, source)))
 }
 
 fn apply_repo_exposure_seam_limit_inner(
@@ -1764,9 +1796,9 @@ fn apply_repo_exposure_seam_limit_for_test(
 /// 3. Env var unset → `DEFAULT_PILOT_SEAM_BUDGET` (always-on default).
 pub(crate) fn apply_pilot_seam_budget(
     classified: &mut Vec<super::seam_classification::ClassifiedSeam>,
-) -> Option<SeamLimitInfo> {
-    let (limit, source) = pilot_seam_budget()?;
-    apply_pilot_seam_budget_inner(classified, limit, source)
+) -> Result<Option<SeamLimitInfo>, String> {
+    Ok(pilot_seam_budget()?
+        .and_then(|(limit, source)| apply_pilot_seam_budget_inner(classified, limit, source)))
 }
 
 fn apply_pilot_seam_budget_inner(
@@ -1791,13 +1823,13 @@ fn apply_pilot_seam_budget_inner(
 /// - Env var unset → `Some((DEFAULT_PILOT_SEAM_BUDGET, Default))`.
 /// - Env var = `"0"` → `None` (operator opt-out: unbounded).
 /// - Env var = N > 0 → `Some((N, Configured))`.
-pub(crate) fn pilot_seam_budget() -> Option<(usize, SeamLimitSource)> {
-    match std::env::var(PILOT_SEAM_BUDGET_ENV) {
-        Ok(value) => {
-            parse_repo_exposure_seam_limit(&value).map(|n| (n, SeamLimitSource::Configured))
-        }
-        Err(_) => Some((DEFAULT_PILOT_SEAM_BUDGET, SeamLimitSource::Default)),
-    }
+/// - Anything else → `Err` naming the variable (#4529).
+pub(crate) fn pilot_seam_budget() -> Result<Option<(usize, SeamLimitSource)>, String> {
+    seam_limit_from_env(
+        PILOT_SEAM_BUDGET_ENV,
+        DEFAULT_PILOT_SEAM_BUDGET,
+        std::env::var(PILOT_SEAM_BUDGET_ENV),
+    )
 }
 
 #[cfg(test)]
@@ -3107,12 +3139,98 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
     }
 
     #[test]
-    fn repo_exposure_seam_limit_parser_accepts_positive_integer_only() {
-        assert_eq!(parse_repo_exposure_seam_limit("8000"), Some(8000));
-        assert_eq!(parse_repo_exposure_seam_limit(" 12 "), Some(12));
-        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
-        assert_eq!(parse_repo_exposure_seam_limit("-1"), None);
-        assert_eq!(parse_repo_exposure_seam_limit("not-a-number"), None);
+    fn repo_exposure_seam_limit_parser_accepts_positive_integer_or_zero_opt_out() {
+        let env = REPO_EXPOSURE_SEAM_LIMIT_ENV;
+        assert_eq!(parse_seam_limit(env, "8000"), Ok(Some(8000)));
+        assert_eq!(parse_seam_limit(env, " 12 "), Ok(Some(12)));
+        assert_eq!(parse_seam_limit(env, "0"), Ok(None));
+    }
+
+    #[test]
+    fn seam_limit_parser_refuses_values_that_are_not_a_count() -> Result<(), String> {
+        // #4529: before, every unparseable value fell into the `0` opt-out
+        // and silently removed the memory guard. `+0` and `00` parse as zero
+        // too, but only the exact spelling `0` is the opt-out (#4606 review).
+        for value in ["-1", "not-a-number", "1k", "", "1.5", "+0", "00"] {
+            let Err(error) = parse_seam_limit(REPO_EXPOSURE_SEAM_LIMIT_ENV, value) else {
+                return Err(format!(
+                    "`{value}` must be refused, not read as a cap or the opt-out"
+                ));
+            };
+            if !(error.starts_with("RIPR_REPO_EXPOSURE_SEAM_LIMIT `")
+                && error.contains("or 0 to remove the cap"))
+            {
+                return Err(format!(
+                    "error must name the variable and the repair: {error}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn seam_limit_env_reader_keeps_default_and_refuses_non_unicode() -> Result<(), String> {
+        assert_eq!(
+            seam_limit_from_env(
+                PILOT_SEAM_BUDGET_ENV,
+                DEFAULT_PILOT_SEAM_BUDGET,
+                Err(std::env::VarError::NotPresent),
+            ),
+            Ok(Some((DEFAULT_PILOT_SEAM_BUDGET, SeamLimitSource::Default)))
+        );
+        assert_eq!(
+            seam_limit_from_env(
+                PILOT_SEAM_BUDGET_ENV,
+                DEFAULT_PILOT_SEAM_BUDGET,
+                Ok("7".into())
+            ),
+            Ok(Some((7, SeamLimitSource::Configured)))
+        );
+        assert!(
+            seam_limit_from_env(
+                PILOT_SEAM_BUDGET_ENV,
+                DEFAULT_PILOT_SEAM_BUDGET,
+                Ok("abc".into()),
+            )
+            .is_err_and(|error| error.starts_with("RIPR_PILOT_SEAM_BUDGET `abc`"))
+        );
+        assert!(matches!(
+            seam_limit_from_env(
+                PILOT_SEAM_BUDGET_ENV,
+                DEFAULT_PILOT_SEAM_BUDGET,
+                Err(std::env::VarError::NotUnicode(std::ffi::OsString::new())),
+            ),
+            Err(error) if error.starts_with("RIPR_PILOT_SEAM_BUDGET is not valid UTF-8 (got ")
+        ));
+        // The escaped invalid value rides in the error, like the Unicode
+        // branch's `{value}`; a value the user cannot see cannot be corrected.
+        #[cfg(windows)]
+        let non_unicode = {
+            use std::os::windows::ffi::OsStringExt;
+            std::ffi::OsString::from_wide(&[0xD800, 0x0061])
+        };
+        #[cfg(unix)]
+        let non_unicode = {
+            use std::os::unix::ffi::OsStringExt;
+            std::ffi::OsString::from_vec(vec![0xFF, 0x61])
+        };
+        let Err(error) = seam_limit_from_env(
+            PILOT_SEAM_BUDGET_ENV,
+            DEFAULT_PILOT_SEAM_BUDGET,
+            Err(std::env::VarError::NotUnicode(non_unicode)),
+        ) else {
+            return Err("a non-UTF-8 value must be refused".to_string());
+        };
+        assert!(
+            error.starts_with("RIPR_PILOT_SEAM_BUDGET is not valid UTF-8 (got ")
+                && error.ends_with("): set a positive seam count, or 0 to remove the cap"),
+            "the error names the variable and the accepted forms: {error}"
+        );
+        assert!(
+            error.contains(r"\u{") || error.contains("\\x"),
+            "the escaped invalid value must ride in the error: {error}"
+        );
+        Ok(())
     }
 
     #[test]
@@ -5143,14 +5261,20 @@ marker = "libtest_mimic::Trial"
     }
 
     #[test]
-    fn parse_repo_exposure_seam_limit_zero_returns_none() {
+    fn parse_seam_limit_zero_returns_none() {
         // "0" is the opt-out value: unbounded.
-        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
+        assert_eq!(
+            parse_seam_limit(REPO_EXPOSURE_SEAM_LIMIT_ENV, "0"),
+            Ok(None)
+        );
     }
 
     #[test]
-    fn parse_repo_exposure_seam_limit_positive_returns_some() {
-        assert_eq!(parse_repo_exposure_seam_limit("7500"), Some(7500));
+    fn parse_seam_limit_positive_returns_some() {
+        assert_eq!(
+            parse_seam_limit(REPO_EXPOSURE_SEAM_LIMIT_ENV, "7500"),
+            Ok(Some(7500))
+        );
     }
 
     #[test]
@@ -5270,10 +5394,13 @@ pub fn check_b(x: i32) -> bool { x < 0 }
 
     #[test]
     fn pilot_seam_budget_env_zero_parses_as_unbounded() {
-        // The same `parse_repo_exposure_seam_limit` helper is shared for
-        // opt-out (value "0" → None means no budget applied).
-        assert_eq!(parse_repo_exposure_seam_limit("0"), None);
-        assert_eq!(parse_repo_exposure_seam_limit("500"), Some(500));
+        // The same `parse_seam_limit` helper is shared for opt-out
+        // (value "0" → None means no budget applied).
+        assert_eq!(parse_seam_limit(PILOT_SEAM_BUDGET_ENV, "0"), Ok(None));
+        assert_eq!(
+            parse_seam_limit(PILOT_SEAM_BUDGET_ENV, "500"),
+            Ok(Some(500))
+        );
     }
 
     #[test]
