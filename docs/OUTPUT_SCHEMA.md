@@ -106,6 +106,12 @@ rejected-alternative set. It describes the work order and never marks itself
 complete; observed completion stays with the RepairAttempt/receipt
 authorities.
 
+Card readiness also requires admission by the repair-attempt edit cage for
+the canonical packet. A refusal sets `readiness.repair_ready` to false,
+appears verbatim in `readiness.missing_evidence` and `exact_blocker`, and
+prevents `next_action`. The statically selected target remains evidence,
+not edit authorization. No field shape or schema version changes.
+
 The schema is additive within `repair_card.v1`: new fields arrive with
 `#[serde(default)]`; a breaking shape change mints a new version. The CLI
 projection is `ripr agent card --seam-id ID [--json]` (RIPR-SPEC-0194,

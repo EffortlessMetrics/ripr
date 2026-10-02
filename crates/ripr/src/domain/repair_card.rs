@@ -224,11 +224,12 @@ pub struct RepairCardSubject {
     pub finding_id: Option<String>,
 }
 
-/// Verbatim readiness facts copied from the route-readiness authority. The
-/// counts and lists are never re-derived or recomputed here.
+/// Shared route-readiness facts with the repair-attempt edit-cage ceiling.
+/// A cage refusal is retained verbatim as missing evidence by the app builder;
+/// renderers do not re-derive this decision.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RepairCardReadinessFacts {
-    /// The readiness authority's own repair-ready flip, copied verbatim.
+    /// The route is ready and the packet's selected edit surface was admitted.
     pub repair_ready: bool,
     pub required_evidence: Vec<String>,
     pub present_evidence: Vec<String>,

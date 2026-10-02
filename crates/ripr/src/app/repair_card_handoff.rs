@@ -128,6 +128,18 @@ pub(crate) fn assemble_repair_card(facts: &SeamCardFacts<'_>) -> Result<RepairCa
     // card cannot promise a different edit surface than the attempt enforces.
     let actionable = task_for(entry) == TASK_WRITE_TARGETED_TEST;
     let recommended = recommended_test_for(entry);
+    // Admission is a ceiling on a statically ready route. A seam already
+    // blocked by missing/static evidence has no edit to admit; retain that
+    // more relevant diagnosis instead of replacing it with a cage error.
+    let edit_cage_refusal = if readiness.is_repair_ready() {
+        super::repair_attempt::edit_cage_policy_from_packet(
+            facts.packet_json,
+            entry.seam.id().as_str(),
+        )
+        .err()
+    } else {
+        None
+    };
     let production_file = display_path(entry.seam.file());
     let allowed_files: Vec<String> = if actionable && recommended.file != "not_applicable" {
         vec![recommended.file.clone()]
@@ -194,6 +206,7 @@ pub(crate) fn assemble_repair_card(facts: &SeamCardFacts<'_>) -> Result<RepairCa
     // The card never presents a runnable route the shared instruction
     // vocabulary and repair-route readiness gate would not expose.
     let route_exposed = eligibility.eligible()
+        && edit_cage_refusal.is_none()
         && repair_card_route_exposable(instruction.state, readiness.is_repair_ready());
     let next_command = if route_exposed {
         facts.next_command.as_ref()
@@ -224,6 +237,7 @@ pub(crate) fn assemble_repair_card(facts: &SeamCardFacts<'_>) -> Result<RepairCa
         assertion_goal_detail,
         candidate_value: None,
         packet_eligible: eligibility.eligible(),
+        edit_cage_refusal,
         next_command,
         allowed_files,
         forbidden_files,
@@ -578,6 +592,31 @@ mod tests {
                 ));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn repair_card_assembly_preserves_static_limitations_without_cage_admission()
+    -> Result<(), String> {
+        let entry = weakly_gripped_entry();
+        let readiness = repair_packet_eligibility(&entry).readiness;
+        assert!(!readiness.is_repair_ready());
+        assert!(!readiness.missing_evidence.is_empty());
+        let packet = packet_for(&entry);
+        assert_eq!(
+            super::super::repair_attempt::edit_cage_policy_from_packet(
+                &packet,
+                entry.seam.id().as_str()
+            )
+            .err()
+            .as_deref(),
+            Some("repair packet is missing allowed_edit_surface")
+        );
+        let card = assemble_repair_card(&facts_for(&entry, &packet))?;
+        assert!(!card.readiness.repair_ready);
+        assert_eq!(card.readiness.missing_evidence, readiness.missing_evidence);
+        assert!(card.exact_blocker.is_none());
+        assert!(card.next_action.is_none());
         Ok(())
     }
 

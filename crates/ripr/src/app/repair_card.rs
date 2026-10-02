@@ -44,6 +44,9 @@ pub(crate) struct RepairCardInput<'a> {
     /// route. A card must not present a runnable route the packet authority
     /// would not expose.
     pub(crate) packet_eligible: bool,
+    /// The actual repair-attempt authority's refusal for this packet. Static
+    /// target evidence alone cannot promise an executable edit surface.
+    pub(crate) edit_cage_refusal: Option<String>,
     pub(crate) next_command: Option<&'a CommandSpec>,
     pub(crate) allowed_files: Vec<String>,
     pub(crate) forbidden_files: Vec<String>,
@@ -68,6 +71,7 @@ pub(crate) fn build_repair_card(input: &RepairCardInput<'_>) -> Result<RepairCar
     let selected_target = project_target(&input.readiness.target_selection);
     if input.next_command.is_some()
         && !(input.packet_eligible
+            && input.edit_cage_refusal.is_none()
             && repair_card_route_exposable(
                 input.instruction.state,
                 input.readiness.is_repair_ready(),
@@ -106,6 +110,10 @@ pub(crate) fn build_repair_card(input: &RepairCardInput<'_>) -> Result<RepairCar
         .clone()
         .or_else(|| selected_basis_from_target(selected_target.as_ref()));
 
+    let mut missing_evidence = input.readiness.missing_evidence.clone();
+    if let Some(refusal) = &input.edit_cage_refusal {
+        missing_evidence.push(refusal.clone());
+    }
     let mut card = RepairCardV1 {
         schema_version: REPAIR_CARD_SCHEMA_VERSION.to_string(),
         repair_card_id: String::new(),
@@ -113,13 +121,16 @@ pub(crate) fn build_repair_card(input: &RepairCardInput<'_>) -> Result<RepairCar
         subject: input.subject.clone(),
         instruction: input.instruction.clone(),
         readiness: RepairCardReadinessFacts {
-            repair_ready: input.readiness.is_repair_ready(),
+            repair_ready: input.readiness.is_repair_ready() && input.edit_cage_refusal.is_none(),
             required_evidence: input.readiness.required_evidence.clone(),
             present_evidence: input.readiness.present_evidence.clone(),
-            missing_evidence: input.readiness.missing_evidence.clone(),
+            missing_evidence,
         },
         changed_behavior: input.changed_behavior.clone(),
-        exact_blocker: input.exact_blocker.clone(),
+        exact_blocker: input
+            .edit_cage_refusal
+            .clone()
+            .or_else(|| input.exact_blocker.clone()),
         selected_target,
         assertion_goal: project_assertion_goal(input),
         assertion_goal_detail: input.assertion_goal_detail.clone(),
@@ -352,6 +363,7 @@ mod tests {
             assertion_goal_detail: Some("assert_eq!(price(0), 0)".to_string()),
             candidate_value: None,
             packet_eligible: true,
+            edit_cage_refusal: None,
             next_command: None,
             allowed_files: vec!["tests/demo.rs".to_string()],
             forbidden_files: vec!["src/lib.rs".to_string()],
@@ -500,6 +512,34 @@ mod tests {
         input.next_command = Some(&command);
 
         assert!(matches!(build_repair_card(&input), Err(_message)));
+    }
+
+    #[test]
+    fn edit_cage_refusal_closes_readiness_and_route_without_erasing_target_evidence()
+    -> Result<(), String> {
+        let instruction = instruction(FixInstructionState::FixSiteReady);
+        let readiness = ready_readiness();
+        let command = verify_command();
+        let mut input = base_input(&instruction, &readiness);
+        let refusal = "repair packet has no selected edit target";
+        input.edit_cage_refusal = Some(refusal.to_string());
+        let card = build_repair_card(&input)?;
+        assert!(!card.readiness.repair_ready);
+        assert!(card.next_action.is_none());
+        assert!(card.selected_target.is_some());
+        assert_eq!(card.exact_blocker.as_deref(), Some(refusal));
+        assert!(
+            card.readiness
+                .missing_evidence
+                .iter()
+                .any(|item| item == refusal)
+        );
+        input.next_command = Some(&command);
+        assert_eq!(
+            build_repair_card(&input).err().as_deref(),
+            Some("repair card route gate is closed; the card must not present a runnable route")
+        );
+        Ok(())
     }
 
     #[test]

@@ -3717,6 +3717,102 @@ fn agent_card_hands_off_one_seam_as_the_default_repair_card()
     Ok(())
 }
 
+/// A statically admitted inline test is not an executable repair surface.
+/// The default card must disclose the same refusal as the Before phase,
+/// while a separate test file remains ready and can publish an attempt.
+#[test]
+fn agent_card_readiness_agrees_with_repair_target_admission()
+-> Result<(), Box<dyn std::error::Error>> {
+    for inline in [true, false] {
+        let root = unbuilt_repair_fixture(if inline {
+            "agent-card-inline-admission"
+        } else {
+            "agent-card-separate-admission"
+        })?;
+        if inline {
+            let tests = std::fs::read_to_string(root.join("tests/pricing.rs"))?.replace(
+                "use boundary_gap_fixture::discounted_total;",
+                "use super::discounted_total;",
+            );
+            let mut source = std::fs::read_to_string(root.join("src/lib.rs"))?;
+            source.push_str(&format!("\n#[cfg(test)]\nmod tests {{\n{tests}\n}}\n"));
+            std::fs::write(root.join("src/lib.rs"), source)?;
+            std::fs::remove_file(root.join("tests/pricing.rs"))?;
+            run_git(&root, &["add", "src/lib.rs", "tests/pricing.rs"])?;
+            commit_repair_fixture(&root, &["-qm", "inline tests"])?;
+        }
+        let root_arg = root.display().to_string();
+        let card = run_ripr(&[
+            "agent",
+            "card",
+            "--root",
+            &root_arg,
+            "--seam-id",
+            BOUNDARY_GAP_SEAM_ID,
+            "--json",
+        ]);
+        assert_success(&card);
+        let card: serde_json::Value = serde_json::from_slice(&card.stdout)?;
+        assert_eq!(card["subject"]["seam_id"], BOUNDARY_GAP_SEAM_ID);
+        assert_eq!(card["selected_target"]["kind"], "existing");
+        assert_eq!(
+            card["selected_target"]["file"],
+            if inline {
+                "src/lib.rs"
+            } else {
+                "tests/pricing.rs"
+            }
+        );
+        assert_eq!(card["readiness"]["repair_ready"], !inline, "{card:#}");
+        let before = run_repair_phase(&root, &["--seam-id", BOUNDARY_GAP_SEAM_ID], "before")?;
+        if inline {
+            assert_failure(&before);
+            let blocker = card["exact_blocker"]
+                .as_str()
+                .ok_or("missing cage blocker")?;
+            assert!(blocker.contains("no selected edit target"), "{blocker}");
+            assert!(String::from_utf8_lossy(&before.stderr).contains(blocker));
+            let human = run_ripr(&[
+                "agent",
+                "card",
+                "--root",
+                &root_arg,
+                "--seam-id",
+                BOUNDARY_GAP_SEAM_ID,
+            ]);
+            assert_success(&human);
+            let human = String::from_utf8_lossy(&human.stdout);
+            assert!(
+                human.contains("repair_ready=false") && human.contains(blocker),
+                "{human}"
+            );
+            assert!(
+                card["readiness"]["missing_evidence"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(blocker)))
+            );
+            assert_eq!(card["allowed_files"], serde_json::json!([]));
+            assert_eq!(card["forbidden_files"], serde_json::json!(["src/lib.rs"]));
+            assert!(card["next_action"].is_null());
+            assert!(before.stdout.is_empty());
+            assert!(!String::from_utf8_lossy(&before.stderr).contains("before phase complete"));
+        } else {
+            assert_success(&before);
+            assert_eq!(
+                card["allowed_files"],
+                serde_json::json!(["tests/pricing.rs"])
+            );
+            assert_eq!(card["readiness"]["missing_evidence"], serde_json::json!([]));
+            let (attempt_id, manifest) = sole_repair_attempt(&root)?;
+            let before: serde_json::Value = serde_json::from_slice(&before.stdout)?;
+            assert_eq!(before["repair_attempt"]["attempt_id"], attempt_id);
+            assert_eq!(manifest["state"], "awaiting_edit");
+        }
+        std::fs::remove_dir_all(root)?;
+    }
+    Ok(())
+}
+
 /// The `unchanged_after_attempt` route is reachable only from a promotable
 /// receipt: a live verify pair, its analysis outcome, and a receipt bound to
 /// both (#4268). The committed unchanged-after-attempt receipt is

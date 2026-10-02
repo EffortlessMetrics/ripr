@@ -51,9 +51,12 @@ authorities:
 
 - `FixInstructionSummary` is embedded verbatim; no instruction meaning is
   re-derived.
-- `RepairCardReadinessFacts` copies `RepairRouteReadiness`'s own flip and
-  required/present/missing evidence lists verbatim; readiness is never
-  recomputed.
+- `RepairCardReadinessFacts` preserves `RepairRouteReadiness`'s evidence
+  and applies the repair-attempt edit-cage admission as a further ceiling
+  on statically ready routes:
+  an exact packet refusal closes `repair_ready`, is appended to missing
+  evidence, and takes precedence as `exact_blocker`. Static selected-target
+  identity remains visible as evidence; it does not authorize an edit.
 - `RepairCardTarget` projects `RepairTargetSelection` one-to-one:
   `Existing` keeps the producer-owned symbol identity, file, line, test
   kind, relation basis and portable `workspace_identity`; `Proposed` keeps
@@ -84,11 +87,13 @@ Authority:
    `repair_card_route_exposable` requires the `FixSiteReady` instruction
    state and the readiness authority's own `is_repair_ready()` flip, and
    the builder additionally requires the producer-owned
-   `RepairPacketEligibility` flip so a cross-language or otherwise
+   `RepairPacketEligibility` flip and successful edit-cage admission so a cross-language or otherwise
    ineligible seam never receives an actionable route either. A builder
    input that carries a `next_command` while any of those gates is closed
    returns `Err`; stale, limited and unavailable cards can never present a
-   current edit or execution route.
+   current edit or execution route. The edit-cage refusal is supplied by
+   `app::repair_attempt::edit_cage_policy_from_packet`, not a second target
+   validator in the card or its renderer.
 2. Over-boundary `rejected_alternatives` returns `Err`; the card never
    silently truncates load-bearing rejection evidence.
 3. The card orders exactly one repair: the subject seam (and canonical gap,
