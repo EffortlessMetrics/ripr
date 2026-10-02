@@ -398,6 +398,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                 "active-goal-authority-audit"
                     | "actionable-gap-outcomes-corpus"
                     | "blind_journey_contract"
+                    | "blind_journey_execute"
                     | "bun-ub-cross-language-dogfood"
                     | "convergence"
                     | "cross-language-oracle-graph-corpus"

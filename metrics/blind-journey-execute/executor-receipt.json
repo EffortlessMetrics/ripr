@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "kind": "blind_journey_execute_decision_receipt",
+  "decision": "RIPR-SPEC-0205",
+  "status": "ratified_fixture_scope",
+  "governing_issues": ["#4604", "#4603", "#4600", "#3797", "#4510", "#4508", "#4516", "#4518", "#4519"],
+  "consumer_schema_versions": {
+    "journey": "blind_journey_journey.v1",
+    "execute_corpus": "blind_journey_execute_corpus.v1",
+    "execute_report": "blind_journey_execute_report.v1"
+  },
+  "corpus_scenario_count": 24,
+  "claim_boundary": "Static blind-journey execution consumer: executor success defines that one scripted journey deterministically produces one stamped, validator-accepted blind-journey receipt; it claims no installed usefulness, no candidate qualification, no blind acceptance and no release verdict.",
+  "limitations": [
+    "scripted executor success cannot qualify a candidate; the real candidate-bound run waits on the accepted #4510 harness and the frozen #1609 candidate",
+    "per-kind digest presence binds this executor consumer only; the RIPR-SPEC-0200 contract corpus stays digest-optional at its own schema version",
+    "declared observations bind to the recorded canonical execution outputs (`exit:<n>`, `static:<movement>`, `receipt:<state>`) of the last execution of each kind; the contract corpus keeps declaration-only axis evidence at its own schema version",
+    "candidate/process/artifact admission is referenced, not owned; #4510 stays the admission authority",
+    "operator classes and the human/agent first-hour observation recorded on #4604 are planning inputs for the real run, not outputs of this offline executor"
+  ],
+  "combinations_not_exercised": [
+    "a real installed candidate execution through the #4510 harness (#4604)",
+    "a real operator or model session against public docs and help (#4508, #4516/#4518/#4519)",
+    "a terminal result of instrument_failure, which requires a broken or absent packet rather than an executable script",
+    "cancellation and interrupted-write journeys, which need the process-admission surface (#4510) rather than the offline executor"
+  ]
+}

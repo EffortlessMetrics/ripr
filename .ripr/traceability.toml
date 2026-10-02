@@ -10968,6 +10968,71 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0205"
+name = "Blind journey execution consumer"
+spec = "docs/specs/RIPR-SPEC-0205-blind-journey-execute-consumer.md"
+tests = [
+  "xtask/src/blind_journey_execute.rs::tests::positive_journey_emits_a_stamped_validated_receipt",
+  "xtask/src/blind_journey_execute.rs::tests::file_edit_without_output_bytes_refuses_before_any_receipt",
+  "xtask/src/blind_journey_execute.rs::tests::verification_execution_without_input_bytes_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::command_invocation_without_argv_input_bytes_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::verification_exit_without_an_execution_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::declared_static_movement_without_an_execution_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::hidden_hint_derives_hidden_assistance_not_a_positive_row",
+  "xtask/src/blind_journey_execute.rs::tests::passing_axes_cannot_hide_a_hint",
+  "xtask/src/blind_journey_execute.rs::tests::quiet_neighbor_selection_derives_wrong_or_stale_subject",
+  "xtask/src/blind_journey_execute.rs::tests::forbidden_edit_derives_unsafe_or_wrong_edit",
+  "xtask/src/blind_journey_execute.rs::tests::failed_verification_derives_verification_failure_visible",
+  "xtask/src/blind_journey_execute.rs::tests::skipped_verification_derives_not_run_visible",
+  "xtask/src/blind_journey_execute.rs::tests::honest_limitation_requires_exact_limitations",
+  "xtask/src/blind_journey_execute.rs::tests::honest_limitation_with_limitations_emits_a_receipt",
+  "xtask/src/blind_journey_execute.rs::tests::contaminated_prompt_refuses_with_the_validator_reason",
+  "xtask/src/blind_journey_execute.rs::tests::positive_without_an_accepted_review_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::stale_review_binding_refuses_at_stamping",
+  "xtask/src/blind_journey_execute.rs::tests::unclassified_harness_action_refuses_before_any_receipt",
+  "xtask/src/blind_journey_execute.rs::tests::instrument_only_watchdog_stays_positive",
+  "xtask/src/blind_journey_execute.rs::tests::manual_plumbing_derives_its_own_terminal",
+  "xtask/src/blind_journey_execute.rs::tests::derived_terminal_is_never_script_claimable",
+  "xtask/src/blind_journey_execute.rs::tests::static_and_receipt_executions_require_both_digests",
+  "xtask/src/blind_journey_execute.rs::tests::contradictory_verification_output_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::non_canonical_verification_output_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::contradictory_static_output_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::contradictory_receipt_output_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::receipt_not_applicable_with_an_execution_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::unbound_accepted_review_refuses",
+  "xtask/src/blind_journey_execute.rs::tests::changed_answer_key_with_a_retained_binding_refuses",
+  "xtask/src/reports/blind_journey_execute.rs::tests::committed_corpus_and_receipt_validate_against_the_live_executor",
+  "xtask/src/reports/blind_journey_execute.rs::tests::receipt_with_a_drifted_schema_version_is_rejected",
+  "xtask/src/reports/blind_journey_execute.rs::tests::receipt_with_a_drifted_claim_boundary_is_rejected",
+  "xtask/src/reports/blind_journey_execute.rs::tests::receipt_without_limitations_is_rejected",
+  "xtask/src/reports/blind_journey_execute.rs::tests::receipt_with_a_blank_limitation_is_rejected",
+  "xtask/src/reports/blind_journey_execute.rs::tests::receipt_without_not_exercised_combinations_is_rejected",
+  "xtask/src/reports/blind_journey_execute.rs::tests::json_and_markdown_derive_from_one_dto_deterministically",
+  "xtask/src/reports/blind_journey_execute.rs::tests::required_scenarios_cannot_be_dropped_from_the_corpus",
+]
+fixtures = [
+  "fixtures/blind_journey_execute",
+]
+code = [
+  "xtask/src/blind_journey_execute.rs",
+  "xtask/src/reports/blind_journey_execute.rs",
+  "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "fixtures/blind_journey_execute/corpus.json",
+  "metrics/blind-journey-execute/executor-receipt.json",
+]
+metrics = [
+  "blind_journey_execute_scenarios",
+  "blind_journey_execute_emitted_scenarios",
+  "blind_journey_execute_positive_scenarios",
+  "blind_journey_execute_expectation_failures",
+  "blind_journey_execute_receipt_status",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0201"
 name = "python same-class transitive-reach limitation"
 spec = "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.md"

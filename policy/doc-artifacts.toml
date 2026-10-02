@@ -1056,6 +1056,13 @@ status = "proposed"
 owner = "test-infra"
 standalone_reason = "Issue #4603 records the blind journey contract: five versioned V1 shapes (prompt, prompt digest, intervention, transcript receipt, receipt) bind the operator-visible face (goal, public inputs, ordinary permissions, prohibited hints) before the candidate run, fail-closed stamping rejects a prompt/review divergence and any mechanical contamination finding regardless of verdict, the operator product selection must match the recorded selection event, and a 35-scenario corpus of accepted and rejected packets pins the validator independently of the future #4604 named execution consumer, which must consume this exact merged contract identity."
 [[artifact]]
+id = "RIPR-SPEC-0205"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0205-blind-journey-execute-consumer.md"
+status = "proposed"
+owner = "test-infra"
+standalone_reason = "Issue #4604 records the blind journey execution consumer: the deterministic executor turns scripted journeys (reviewed prompt surface, separately stored answer key, ordered actions with exact bytes, axis observations) into stamped, validator-accepted RIPR-SPEC-0200 receipts; it enforces the per-kind digest presence the contract receipt deferred, binds every observation to its execution event, derives the terminal in one fixed precedence so no script can claim a result, and refuses contaminated prompts, missing or stale reviews and honest terminals without exact limitations; a scripted corpus of emitted and refused journeys pins the executor while the real candidate run waits on #4510/#1609."
+[[artifact]]
 id = "RIPR-SPEC-0201"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.md"

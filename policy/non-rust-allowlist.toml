@@ -446,6 +446,15 @@ reason = "Committed blind-journey contract decision receipt (RIPR-SPEC-0200, #46
 covered_by = ["cargo xtask blind-journey-contract", "cargo xtask check-file-policy"]
 
 [[allow]]
+glob = "metrics/blind-journey-execute/*.json"
+kind = "blind_journey_execute_evidence"
+owner = "test-infra"
+surface = "repo"
+classification = "metadata"
+reason = "Committed blind-journey executor decision receipt (RIPR-SPEC-0205, #4604); ratification stays scoped to the scripted fixture corpus, drifted schema versions or receipts without limitations fail closed, and synthetic success claims no installed usefulness or candidate qualification."
+covered_by = ["cargo xtask blind-journey-execute", "cargo xtask check-file-policy"]
+
+[[allow]]
 glob = "policy/*.toml"
 kind = "policy_metadata"
 owner = "repo-policy"

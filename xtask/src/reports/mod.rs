@@ -2,6 +2,7 @@ mod annotations;
 mod back_sync;
 mod badges;
 mod blind_journey;
+mod blind_journey_execute;
 mod bun;
 mod candidate_control;
 mod ci_budget;
@@ -87,6 +88,9 @@ pub(crate) use badges::{
 };
 pub(crate) use blind_journey::{
     assess_blind_journey_fixture_corpus, blind_journey_contract_report,
+};
+pub(crate) use blind_journey_execute::{
+    assess_blind_journey_execute_corpus, blind_journey_execute_report,
 };
 pub(crate) use bun::{bun_ub_calibration, bun_ub_preview_summary, configured_bridge_inventory};
 pub(crate) use ci_budget::ci_budget;

@@ -493,7 +493,7 @@ pub(crate) fn blind_journey_answer_key_digest(
 
 /// SHA-256 hex over the canonical operator-visible prompt surface: the exact
 /// prompt bytes plus every restated operator-visible field.
-fn prompt_digest(prompt: &BlindJourneyPromptV1) -> String {
+pub(crate) fn prompt_digest(prompt: &BlindJourneyPromptV1) -> String {
     let input = BlindJourneyPromptDigestInput {
         schema_version: &prompt.schema_version,
         operator_goal: &prompt.operator_goal,
