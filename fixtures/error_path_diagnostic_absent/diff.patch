@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -2,6 +2,6 @@
+ 
+ pub fn read_all<R: Read>(mut rdr: R) -> io::Result<usize> {
+     let mut buf = [0_u8; 32];
+-    let n = rdr.read(&mut buf).unwrap_or(0);
++    let n = rdr.read(&mut buf)?;
+     Ok(n)
+ }

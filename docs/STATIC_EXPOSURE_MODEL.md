@@ -205,6 +205,13 @@ or import alias) or the changed sink (the attribute, field, or value the change
 touches). A strong-but-orthogonal oracle downgrades to `weakly_exposed` with a
 typed reason and routes a repair, rather than being silently called covered.
 
+For Rust error paths, error observation and changed-reader/variant matching use
+the known assertion macros' operands, not diagnostic formatting arguments (#4748). Neither an
+error word in a message nor an error-valued formatting expression establishes an
+error discriminator. Canonical oracle extraction applies the same boundary so a
+diagnostic cannot manufacture a trusted error kind before reveal analysis.
+The complete assertion remains visible in the report for inspection.
+
 ### Identity beats token overlap
 
 A changed owner or sink may share *words* with unrelated tests; that overlap is

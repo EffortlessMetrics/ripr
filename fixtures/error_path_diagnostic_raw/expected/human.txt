@@ -1,0 +1,33 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/error_path_diagnostic_raw/input
+
+Summary: 2 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 2 of 2 finding(s) shown
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+Start here:
+  State: a test gap to inspect or repair (top_gap)
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/error_path_diagnostic_raw/input/src/lib.rs:5
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: let n = rdr.read(&mut buf)?;
+  Missing discriminator: No exact error variant discriminator was detected
+  Related test: src/lib.rs:14 reads_successfully
+  Next step: Assert the exact error variant or payload instead of only is_err().
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
+    - reach yes: Related tests appear to reach read_all: reads_successfully
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 9 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/error_path_diagnostic_raw/input --diff fixtures/error_path_diagnostic_raw/diff.patch --mode fast probe:src_lib.rs:error_path:fedbf836
+  ripr context --root fixtures/error_path_diagnostic_raw/input --diff fixtures/error_path_diagnostic_raw/diff.patch --mode fast --at probe:src_lib.rs:error_path:fedbf836
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+    - fixtures/error_path_diagnostic_raw/input/src/lib.rs:5 (static_unknown)
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

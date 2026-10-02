@@ -3,6 +3,21 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-02: Assertion diagnostics are not error observers (#4748)
+
+`assert_eq!(rdr.len(), 10, "read error")` observes a successful length, not
+an error path. Exclude every formatting operand, including non-string arguments,
+before typing an assertion or confirming a changed reader/error variant. A
+quote-stripper alone still credits identifiers passed as diagnostic arguments;
+a reveal-only filter still trusts an error kind manufactured during extraction.
+
+Keep the argument boundary in `analysis/extract/oracles/arguments.rs`, shared
+by classification, bound-error recognition and ErrorPath matching. Preserve the
+original oracle text for rendering. The `error_path_diagnostic_*` fixtures pin
+absent, neutral, raw, escaped, formatted and typed-diagnostic controls in the
+RIPR-SPEC-0108 honesty corpus. Genuine typed and guarded Result oracles retain
+their producer-owned evidence; this is not general Rust name/dataflow resolution.
+
 ## 2026-09-29: Absent worktree files are not `no_static_path` (#4586)
 
 Rust discovery walks the disk. A changed file that is in the diff but not

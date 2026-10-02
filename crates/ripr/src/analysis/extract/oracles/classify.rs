@@ -1,6 +1,6 @@
 use crate::domain::{OracleKind, OracleStrength};
 
-use super::arguments::ensure_assertion_arguments;
+use super::arguments::{assertion_oracle_text, ensure_assertion_arguments};
 use super::patterns::{
     contains_exact_comparison, is_broad_error_assertion, is_clear_exact_custom_assertion_helper,
     is_custom_assertion_helper, is_duplicative_comparison, is_duplicative_equality_assertion,
@@ -15,6 +15,10 @@ pub(crate) struct OracleClassification {
 }
 
 pub(crate) fn classify_assertion(line: &str) -> OracleClassification {
+    // Diagnostic expressions must not manufacture a trusted error kind before
+    // reveal decides whether this oracle observes the changed error path.
+    let oracle_text = assertion_oracle_text(line);
+    let line = oracle_text.as_deref().unwrap_or(line);
     if let Some(classification) = classify_fallible_assertion(line) {
         return classification;
     }

@@ -521,8 +521,7 @@ fn assertion_observes_error(assertion: &OracleFact) -> bool {
     }
     // Split raw identifiers here: the shared token extractor drops `Err`
     // and `is_err` as assertion noise, and they are exactly the signal.
-    assertion
-        .text
+    crate::analysis::extract::mask_comments_and_strings(&assertion.text)
         .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
         .any(|token| {
             let lower = token.to_ascii_lowercase();
@@ -1223,6 +1222,19 @@ fn assertion_matches_probe_detail_with_literals(
         wrapper_seam,
         owner_callee,
     } = *context;
+    // #4748: use the same operand boundary as extraction, including token and
+    // exact-variant matching. A genuine error oracle cannot borrow its changed
+    // reader/variant identity from a diagnostic argument either. Preserve the
+    // original OracleFact for public rendering and producer-owned guarded facts.
+    let scoped_assertion = (matches!(family, ProbeFamily::ErrorPath)
+        && !matches!(assertion.kind, OracleKind::GuardedResultMatch))
+    .then(|| crate::analysis::extract::assertion_oracle_text(&assertion.text))
+    .flatten()
+    .map(|text| OracleFact {
+        text,
+        ..assertion.clone()
+    });
+    let assertion = scoped_assertion.as_ref().unwrap_or(assertion);
     let token_match = probe_tokens
         .iter()
         .any(|token| contains_as_whole_word(&assertion.text, token));
@@ -2449,6 +2461,76 @@ mod tests {
                     "error-observing assertion `{text}` lost confirmation: {discriminate:?}"
                 ));
             }
+        }
+        Ok(())
+    }
+
+    /// Diagnostic operands cannot turn a success check into an error observer,
+    /// including diagnostic expressions that the producer used to type as errors.
+    #[test]
+    fn error_path_diagnostics_do_not_confirm_observation() -> Result<(), String> {
+        let probe = probe(ProbeFamily::ErrorPath, "let n = rdr.read(&mut buf)?;");
+        for text in [
+            r#"assert_eq!(rdr.len(), 10);"#,
+            r#"assert_eq!(rdr.len(), 10, "read mismatch");"#,
+            r#"assert_eq!(rdr.len(), 10, "read error");"#,
+            r##"assert_eq!(rdr.len(), 10, r#"read "error", (Err(_))"#);"##,
+            r#"assert_eq!(rdr.len(), 10, "read \"error\", (panic)");"#,
+            r#"assert_eq!(rdr.len(), 10, "{}", read_error);"#,
+            r#"assert_eq!(rdr.len(), 10, "{:?}", Err::<(), _>(ReadError::Closed));"#,
+            r#"assert_eq!(rdr.len(), 10, "assert!(matches!(rdr, Err(ReadError::Closed)))");"#,
+            r#"assert_eq![rdr.len(), 10, "read error"];"#,
+            r#"assert!{rdr.len() == 10, "read error"};"#,
+            r#"assert_eq!(rdr.len() /* read error */, 10);"#,
+        ] {
+            let classification = crate::analysis::extract::classify_assertion(text);
+            let test = test_with_assertions(
+                "reads_successfully",
+                vec![oracle(text, classification.kind, classification.strength)],
+            );
+            let (_, discriminate, _) =
+                reveal_evidence(&probe, &[(&test, RelationReason::DirectOwnerCall)]);
+            if discriminate.state != StageState::Weak {
+                return Err(format!(
+                    "diagnostic `{text}` confirmed an error path: {discriminate:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn error_path_diagnostic_tokens_cannot_pin_the_changed_error() -> Result<(), String> {
+        // The operand observes an error, but only the message names the changed reader.
+        let read = probe(ProbeFamily::ErrorPath, "let n = rdr.read(&mut buf)?;");
+        let text = r#"assert_eq!(unrelated.unwrap_err().kind(), Other, "rdr read buf");"#;
+        let test = test_with_assertions(
+            "checks_another_error",
+            vec![oracle(text, OracleKind::ExactValue, OracleStrength::Strong)],
+        );
+        let (_, discriminate, _) =
+            reveal_evidence(&read, &[(&test, RelationReason::DirectOwnerCall)]);
+        if discriminate.state != StageState::Weak {
+            return Err(format!(
+                "diagnostic tokens pinned changed reader: {discriminate:?}"
+            ));
+        }
+        let variant = probe(ProbeFamily::ErrorPath, "return Err(ReadError::Closed);");
+        let text = r#"assert_eq!(rdr, Err(ReadError::Busy), "Closed");"#;
+        let test = test_with_assertions(
+            "checks_sibling_variant",
+            vec![oracle(
+                text,
+                OracleKind::ExactErrorVariant,
+                OracleStrength::Strong,
+            )],
+        );
+        let (_, discriminate, _) =
+            reveal_evidence(&variant, &[(&test, RelationReason::DirectOwnerCall)]);
+        if discriminate.state == StageState::Yes {
+            return Err(format!(
+                "diagnostic pinned sibling variant: {discriminate:?}"
+            ));
         }
         Ok(())
     }

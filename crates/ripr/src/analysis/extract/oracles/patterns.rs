@@ -1,5 +1,6 @@
 use super::arguments::{
-    comparable_expression, custom_assertion_arguments, equality_assertion_arguments,
+    assertion_oracle_text, comparable_expression, custom_assertion_arguments,
+    equality_assertion_arguments,
 };
 use crate::analysis::classify::{error_constructor_call_paths, rust_string_literals};
 
@@ -135,6 +136,8 @@ pub(crate) fn is_unwrap_err_bound_error_assertion(
     if bound_error_vars.is_empty() {
         return false;
     }
+    let oracle_text = assertion_oracle_text(line);
+    let line = oracle_text.as_deref().unwrap_or(line);
     // The line must be an assertion macro invocation.
     let is_assert = line.contains("assert_eq!")
         || line.contains("assert_matches!")

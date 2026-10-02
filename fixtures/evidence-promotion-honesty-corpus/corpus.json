@@ -5,6 +5,230 @@
   "description": "Cross-language pinned adversarial corpus: evidence may not promote to exposed/strong unless it structurally matches the seam.",
   "cases": [
     {
+      "id": "rust_error_path_diagnostic_absent",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_absent",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_absent",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_error_path_diagnostic_neutral",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_neutral",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_neutral",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_error_path_diagnostic_error",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_error",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_error",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_error_path_diagnostic_raw",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_raw",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_raw",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_error_path_diagnostic_escaped",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_escaped",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_escaped",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_error_path_diagnostic_format",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_format",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_format",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_error_path_diagnostic_typed_message",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_typed_message",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_typed_message",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
+      "id": "rust_error_path_diagnostic_typed_argument",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/error_path_diagnostic_typed_argument",
+      "vector": "diagnostic_operands_do_not_observe_changed_error_typed_argument",
+      "probe_family": "error_path",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "weakly_exposed"
+        },
+        {
+          "type": "maximum_class",
+          "class": "weakly_exposed"
+        }
+      ]
+    },
+    {
       "id": "rust_oracle_confirmation_mixed",
       "language": "rust",
       "tier": "pure",
