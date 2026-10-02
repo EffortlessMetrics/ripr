@@ -64,6 +64,7 @@ Updated:
 
 Reason:
 RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+RIPR-SPEC-0197 (#4478): the test's assert_eq pins the free owner's whole return value on its unconditional tail, so the return_value discriminator is confirmed
 
 Command:
 `cargo xtask goldens bless tail_comparison_boundary --reason "..."`
@@ -111,6 +112,17 @@ Updated:
 
 Reason:
 RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless tail_comparison_boundary --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+## Pending — tail_comparison_boundary (11)
+
+Reason:
+RIPR-SPEC-0197 (#4478): earns_gift(5) == true pins the changed boundary tail, so the predicate return_value finding reads exposed; ships_free has no calling test and stays weakly_exposed
 
 Command:
 `cargo xtask goldens bless tail_comparison_boundary --reason "..."`

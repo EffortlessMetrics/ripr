@@ -1728,6 +1728,79 @@ fn evidence_promotion_semantic_assertions_reject_contradictory_packet_messaging(
 }
 
 #[test]
+fn evidence_promotion_probe_family_selector_scopes_findings_and_refuses_empty_match() {
+    let assertions = vec![super::EvidencePromotionSemanticAssertion::MaximumClass {
+        class: "weakly_exposed".to_string(),
+    }];
+    let check_json = serde_json::json!({
+        "summary": {"findings": 2},
+        "findings": [
+            {
+                "id": "probe:src_lib.rs:predicate:fa1d51d0",
+                "classification": "weakly_exposed",
+                "probe": {"id": "probe:src_lib.rs:predicate:fa1d51d0", "family": "predicate"}
+            },
+            {
+                "id": "probe:src_lib.rs:return_value:c71d52af",
+                "classification": "exposed",
+                "probe": {"id": "probe:src_lib.rs:return_value:c71d52af", "family": "return_value"}
+            }
+        ]
+    });
+
+    let scoped = super::evidence_promotion_semantic_violations_scoped(
+        "scoped_predicate_control",
+        Some("fixtures/split_test_boundary_oracle"),
+        &assertions,
+        &check_json,
+        None,
+        false,
+        Some("predicate"),
+    );
+    assert!(scoped.is_empty(), "{scoped:?}");
+
+    let promoted_family = super::evidence_promotion_semantic_violations_scoped(
+        "scoped_wrong_family",
+        Some("fixtures/split_test_boundary_oracle"),
+        &assertions,
+        &check_json,
+        None,
+        false,
+        Some("return_value"),
+    );
+    assert_eq!(promoted_family.len(), 1, "{promoted_family:?}");
+    assert!(
+        promoted_family[0].contains("probe:src_lib.rs:return_value:c71d52af"),
+        "{promoted_family:?}"
+    );
+
+    let unscoped = super::evidence_promotion_semantic_violations(
+        "unscoped_fixture_wide",
+        Some("fixtures/split_test_boundary_oracle"),
+        &assertions,
+        &check_json,
+        None,
+        false,
+    );
+    assert_eq!(unscoped.len(), 1, "{unscoped:?}");
+
+    let empty_match = super::evidence_promotion_semantic_violations_scoped(
+        "scoped_empty_match",
+        Some("fixtures/split_test_boundary_oracle"),
+        &assertions,
+        &check_json,
+        None,
+        false,
+        Some("call_deletion"),
+    );
+    assert_eq!(empty_match.len(), 1, "{empty_match:?}");
+    assert!(
+        empty_match[0].contains("matched no findings"),
+        "{empty_match:?}"
+    );
+}
+
+#[test]
 fn evidence_promotion_semantic_assertions_reject_human_contradictory_packet_messaging() {
     let assertions =
         vec![super::EvidencePromotionSemanticAssertion::MustNotHaveContradictoryPacketMessaging];

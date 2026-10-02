@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/split_test_boundary_oracle/input
 
-Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) shown
+Summary: 2 probe(s), 1 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) shown
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
@@ -28,6 +28,6 @@ Next: drill into the top finding:
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
-    - fixtures/split_test_boundary_oracle/input/src/lib.rs:2 (weakly_exposed)
+    - fixtures/split_test_boundary_oracle/input/src/lib.rs:2 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

@@ -6,6 +6,7 @@ mod flow;
 mod helper_transfer;
 mod infection;
 mod match_transfer;
+mod owner_pin;
 mod owner_shape;
 mod propagation_witness;
 mod reach;
@@ -31,6 +32,7 @@ pub(in crate::analysis) use decision::{
 pub(in crate::analysis) use flow::{local_flow_sinks, propagation_evidence_with_witness};
 pub(in crate::analysis) use helper_transfer::resolve_chain;
 pub(in crate::analysis) use infection::infection_evidence;
+pub(in crate::analysis) use owner_pin::OwnerReturnPin;
 pub(in crate::analysis) use owner_shape::is_assertion_shaped_owner;
 pub(in crate::analysis) use propagation_witness::{
     PropagationWitnessV1, assertion_observes_direct_collection, current_path_witness,

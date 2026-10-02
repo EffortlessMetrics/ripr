@@ -1224,13 +1224,53 @@ pub(crate) fn evidence_promotion_semantic_violations(
     human_text: Option<&str>,
     fixture_human_required: bool,
 ) -> Vec<String> {
+    evidence_promotion_semantic_violations_scoped(
+        case_id,
+        source_fixture,
+        assertions,
+        check_json,
+        human_text,
+        fixture_human_required,
+        None,
+    )
+}
+
+/// Same contract as [`evidence_promotion_semantic_violations`], with an
+/// optional case-level `probe_family` selector. When set, only findings whose
+/// `probe.family` matches are judged, so one fixture can carry both a
+/// refused-family control and a promoted-family positive control. A selector
+/// that matches no finding is a violation, never a vacuous pass.
+pub(crate) fn evidence_promotion_semantic_violations_scoped(
+    case_id: &str,
+    source_fixture: Option<&str>,
+    assertions: &[EvidencePromotionSemanticAssertion],
+    check_json: &Value,
+    human_text: Option<&str>,
+    fixture_human_required: bool,
+    probe_family: Option<&str>,
+) -> Vec<String> {
     let mut violations = Vec::new();
     let case_label = evidence_promotion_assertion_case_label(case_id, source_fixture);
-    let findings = check_json
+    let mut findings: Vec<Value> = check_json
         .get("findings")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    if let Some(family) = probe_family {
+        findings.retain(|finding| {
+            finding
+                .get("probe")
+                .and_then(|probe| probe.get("family"))
+                .and_then(Value::as_str)
+                == Some(family)
+        });
+        if findings.is_empty() {
+            violations.push(format!(
+                "{case_label}: `probe_family` `{family}` matched no findings; \
+                 a scoped case must judge at least one finding"
+            ));
+        }
+    }
 
     for assertion in assertions {
         match assertion {
@@ -4067,6 +4107,15 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
             continue;
         }
 
+        if let Some(family) = case.get("probe_family")
+            && family.as_str().map(str::is_empty).unwrap_or(true)
+        {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: `probe_family` must be a \
+                 non-empty string naming one probe family"
+            ));
+        }
+
         let (source_artifact, check_json_path) = if source_fixture.is_empty() {
             let report_path = PathBuf::from(source_report);
             if !report_path.exists() {
@@ -4140,13 +4189,15 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
             }) {
                 control_languages.insert(language.to_string());
             }
-            violations.extend(evidence_promotion_semantic_violations(
+            let probe_family = case.get("probe_family").and_then(Value::as_str);
+            violations.extend(evidence_promotion_semantic_violations_scoped(
                 id,
                 Some(source_artifact),
                 &assertions,
                 &check_json,
                 source_human_text.as_deref(),
                 !source_fixture.is_empty(),
+                probe_family,
             ));
             continue;
         }

@@ -53,10 +53,24 @@
       "tier": "pure",
       "source_fixture": "fixtures/split_test_boundary_oracle",
       "vector": "boundary_input_and_discriminating_oracle_from_different_tests",
+      "probe_family": "predicate",
       "assertions": [
         { "type": "must_not_report_clean" },
         { "type": "must_not_promote" },
         { "type": "maximum_class", "class": "weakly_exposed" }
+      ]
+    },
+    {
+      "id": "rust_split_test_boundary_oracle_return_value_pin",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/split_test_boundary_oracle",
+      "vector": "owner_return_pin_confirms_return_value_through_owner_naming_call",
+      "probe_family": "return_value",
+      "assertions": [
+        { "type": "must_not_report_clean" },
+        { "type": "must_promote" },
+        { "type": "maximum_class", "class": "exposed" }
       ]
     },
     {

@@ -101,6 +101,14 @@ says it was re-blessed to."
     assertion types fail closed. Legacy fields such as
     `must_remain_non_promoted` and `expected_promoted` remain compatibility
     aliases, but the canonical corpus shape is the typed assertion list.
+    A case may also declare an optional case-level `probe_family` selector:
+    a non-empty string judged against each finding's `probe.family`, so one
+    fixture can carry both a refused-family control and a promoted-family
+    positive control without widening either claim to the whole fixture.
+    A selector that matches no finding is a violation, never a vacuous pass,
+    and a present-but-malformed `probe_family` (missing, empty, or not a
+    string) fails the gate. Assertions without the selector keep judging every
+    finding of the source artifact.
     Supported assertion types are:
     - `must_promote`
     - `must_not_promote`
@@ -469,6 +477,7 @@ gate-specific artifacts.
 | rust_strong_error_oracle_control | rust | strong_error_oracle |
 | rust_unwrap_err_variant_positive_control | rust | unwrap_err_variant_positive |
 | rust_same_method_owner_type_positive_control | rust | rust_same_method_owner_type_positive (`must_promote`; the after-expression return_value finding stays `exposed`, the before-expression sibling stays below `exposed`, no repair packet or receipt command) |
+| rust_split_test_boundary_oracle_return_value_pin | rust | fixtures/split_test_boundary_oracle (`probe_family=return_value`, `must_promote`, `maximum_class=exposed`; the return_value finding reads `exposed` through the RIPR-SPEC-0197 owner-return pin on `assert_eq!(gate(100), true)`, while the same fixture's `predicate` case keeps `same_test_pairing_missing` below `exposed`) |
 | ts_strong_oracle_control | typescript | typescript_strong_oracle |
 | ts_ava_t_is_exact_value | typescript | ts_runner_detect_ava_devdep (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |
 | ts_tape_equal_exact_value | typescript | typescript_tape_equal_oracle (`expected_oracle=exact_value/strong`, `expected_class=exposed`, no repair packet or receipt command) |

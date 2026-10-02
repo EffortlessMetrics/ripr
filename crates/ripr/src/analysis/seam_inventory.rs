@@ -2921,6 +2921,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
             impl_context: Default::default(),
         };
         let mut index = RustIndex::default();
@@ -2972,6 +2973,7 @@ pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
             impl_context: Default::default(),
         };
         let mut index = RustIndex::default();

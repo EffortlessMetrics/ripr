@@ -565,6 +565,7 @@ mod tests {
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
             impl_context: Default::default(),
+            item: Default::default(),
         }
     }
 

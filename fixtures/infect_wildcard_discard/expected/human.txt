@@ -17,7 +17,7 @@ Start here:
   Analyzer limit: No clear propagation path from changed behavior to an observable sink
   Related test: tests/process_tests.rs:4 process_returns_amount_unchanged
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator weak
+  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator not established
     - reach yes: Related tests appear to reach process: process_returns_amount_unchanged
     - infection yes: Reachable tests can plausibly activate this changed behavior
     - 7 more detail line(s) in --format human-full

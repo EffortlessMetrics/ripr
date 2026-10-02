@@ -1,0 +1,37 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/owner_return_pin_identity_traps/input
+
+Summary: 6 probe(s), 0 exposed, 4 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 2 static_unknown; 6 of 6 finding(s) shown
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 8 changed line(s), 4 candidate line(s), 6 probe(s), 6 finding(s).
+
+Start here:
+  State: a test gap to inspect or repair (top_gap)
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/owner_return_pin_identity_traps/input/src/lib.rs:21
+  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: self.base() * 3
+  Missing discriminator: No strong discriminator was detected
+  Related test: tests/trap_tests.rs:9 fixed_reader_overrides_next_word
+  Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
+    - reach yes: Related tests appear to reach next_word: fixed_reader_overrides_next_word
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 6 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/owner_return_pin_identity_traps/input --diff fixtures/owner_return_pin_identity_traps/diff.patch --mode fast probe:src_lib.rs:return_value:22c1d265
+  ripr context --root fixtures/owner_return_pin_identity_traps/input --diff fixtures/owner_return_pin_identity_traps/diff.patch --mode fast --at probe:src_lib.rs:return_value:22c1d265
+
+Hidden:
+  5 lower-priority finding(s) omitted from default human output.
+    - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:7 (weakly_exposed)
+    - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:7 (static_unknown)
+    - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:50 (weakly_exposed)
+    - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:55 (weakly_exposed)
+    - fixtures/owner_return_pin_identity_traps/input/src/lib.rs:55 (static_unknown)
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

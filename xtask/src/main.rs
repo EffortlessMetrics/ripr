@@ -186,7 +186,8 @@ pub(crate) use evidence_promotion::{
     evidence_promotion_external_failure_kind, evidence_promotion_external_semantic_violations,
     evidence_promotion_human_class_line_matches, evidence_promotion_human_oracle_line_matches,
     evidence_promotion_pure_failure_kind, evidence_promotion_semantic_violations,
-    validate_evidence_promotion_honesty_corpus_at, write_evidence_promotion_external_report,
+    evidence_promotion_semantic_violations_scoped, validate_evidence_promotion_honesty_corpus_at,
+    write_evidence_promotion_external_report,
 };
 pub(crate) use evidence_promotion::{
     check_evidence_promotion_honesty, validate_evidence_promotion_honesty_corpus,

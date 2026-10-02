@@ -256,7 +256,12 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `1.18` -> `1.19`: parser facts record each function's impl context
 /// (#4558), which relates sibling-crate `Type::method()` calls. Old
 /// classified entries would keep the refused relation.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.19";
+/// `1.19` -> `1.20`: an `assert_eq!` that pins the owner's whole return
+/// value through a call naming the owner confirms a changed `return_value`
+/// expression (#4478), so return-value probes can move from
+/// `weakly_exposed` to `exposed`. Old classified entries would keep serving
+/// the unconfirmed discriminator for warm workspaces.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.20";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -312,7 +317,9 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.19";
 /// compact generation remains main's `0.24`.
 /// `0.24` -> `0.25`: function impl context (#4558) — same semantic
 /// transition as the outer classified-seam cache.
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.25";
+/// `0.25` -> `0.26`: owner-return pins (#4478) — same semantic transition
+/// as the outer classified-seam cache.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.26";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -370,7 +377,9 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.25";
 /// transition as the outer classified-seam cache.
 /// `0.24` -> `0.25`: function impl context (#4558) — same semantic
 /// transition as the outer classified-seam cache.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.25";
+/// `0.25` -> `0.26`: owner-return pins (#4478) — same semantic transition
+/// as the outer classified-seam cache.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.26";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -485,7 +494,12 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// `1.12` -> `1.13`: `FunctionFact.impl_context` (#4558). A warm pre-bump
 /// hit would deserialize every function as `Unknown`, so a type-path call
 /// could never relate until the file changed.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.13";
+/// `1.13` -> `1.14`: `FunctionFact` gains the parser's item container
+/// (`item`: free, local, inherent, trait impl or trait, with the `self`
+/// receiver and body flags, #4478). A warm pre-bump hit would deserialize
+/// every function as `Unknown`, silently retiring the owner-return pin on
+/// parser-backed files.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.14";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -3510,7 +3524,9 @@ mod tests {
         // lexical fallback, so a warm pre-bump parser-backed hit must miss.
         // 1.11 -> 1.12: impl_attrs carries the cross-language FFI marker.
         // 1.12 -> 1.13: impl_context records the function's impl self type (#4558).
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.13");
+        // 1.13 -> 1.14: `FunctionFact` gains the parser's item container
+        // (#4478); a warm pre-bump hit would read every owner as `Unknown`.
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.14");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes
@@ -3553,7 +3569,9 @@ mod tests {
         // hide Proposed targets.
         // 1.18 -> 1.19: function impl context (#4558) relates sibling-crate
         // `Type::method()` calls.
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.19");
+        // 1.19 -> 1.20: owner-return pins (#4478) confirm return-value
+        // probes the token rule left unconfirmed.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.20");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
@@ -3573,8 +3591,10 @@ mod tests {
         // 0.24 (sharded) / 0.24 (compact): #4576 Integration proposals
         // persist on full classified evidence only; compact stays empty.
         // 0.25 (sharded) / 0.25 (compact): function impl context (#4558).
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.25");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.25");
+        // 0.26 (sharded) / 0.26 (compact): owner-return pins (#4478) —
+        // same semantic transition as the outer cache.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.26");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.26");
     }
 
     #[test]

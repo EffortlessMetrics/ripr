@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/tail_comparison_boundary/input
 
-Summary: 4 probe(s), 1 exposed, 3 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 4 of 4 finding(s) shown
+Summary: 4 probe(s), 2 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 4 of 4 finding(s) shown
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 4 changed line(s), 2 candidate line(s), 4 probe(s), 4 finding(s).
@@ -30,6 +30,6 @@ Hidden:
   3 lower-priority finding(s) omitted from default human output.
     - fixtures/tail_comparison_boundary/input/src/lib.rs:3 (weakly_exposed)
     - fixtures/tail_comparison_boundary/input/src/lib.rs:17 (exposed)
-    - fixtures/tail_comparison_boundary/input/src/lib.rs:17 (weakly_exposed)
+    - fixtures/tail_comparison_boundary/input/src/lib.rs:17 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

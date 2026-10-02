@@ -97,6 +97,9 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 // emptiness, is the discriminator.
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
+                // #4478: the item container is parser-only; `Unknown` makes
+                // every consumer that needs it fail closed.
+                item: crate::analysis::facts::FunctionItemFact::default(),
                 // No parser: where the `fn` sits is not established (#4558).
                 impl_context: crate::analysis::facts::FunctionImplContext::Unknown,
             };

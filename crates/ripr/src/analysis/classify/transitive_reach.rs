@@ -890,6 +890,7 @@ mod tests {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
             impl_context: Default::default(),
         }
     }

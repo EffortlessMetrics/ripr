@@ -2,32 +2,32 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/infect_value_returned/input
 
-Summary: 2 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 2 of 2 finding(s) shown
+Summary: 2 probe(s), 1 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 2 of 2 finding(s) shown
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 3 changed line(s), 2 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: a test gap to inspect or repair (top_gap)
-  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
-  File: fixtures/infect_value_returned/input/src/lib.rs:5
-  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
-  Why weak: a related test reaches this change but does not observe the exact changed value
-  Changed behavior: result + 1
-  Missing discriminator: No strong discriminator was detected
+  State: limited by static analysis (static_limited)
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/infect_value_returned/input/src/lib.rs:4
+  Static exposure: unknown (static_unknown, note, confidence 0.50)
+  Why unknown: the analysis could not determine a static exposure state
+  Changed behavior: let result = helper(amount * MULTIPLIER);
+  Analyzer limit: No strong discriminator was detected
   Related test: tests/score_tests.rs:4 score_uses_multiplier
-  Next step: Replace broad assertions with exact equality or a property that constrains the changed returned value.
-  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence: reach yes · infection unknown · propagation unknown · observation yes · discriminator unknown
     - reach yes: Related tests appear to reach score: score_uses_multiplier
-    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - infection unknown: Changed syntax is not mapped to a high-confidence probe family
     - 8 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
-  ripr explain --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast probe:src_lib.rs:return_value:d146b764
-  ripr context --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast --at probe:src_lib.rs:return_value:d146b764
+  ripr explain --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast probe:src_lib.rs:static_unknown:134382d4
+  ripr context --root fixtures/infect_value_returned/input --diff fixtures/infect_value_returned/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:134382d4
 
 Hidden:
   1 lower-priority finding(s) omitted from default human output.
-    - fixtures/infect_value_returned/input/src/lib.rs:4 (static_unknown)
+    - fixtures/infect_value_returned/input/src/lib.rs:5 (exposed)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

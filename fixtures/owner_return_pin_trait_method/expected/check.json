@@ -1,0 +1,156 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/owner_return_pin_trait_method/input",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:485eeb9ea00664b5a2b367f1cf6afe8d1bc82cb5d4d5815623500ed66da5a274","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:return_value:5e6d4294",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:5e6d4294",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/owner_return_pin_trait_method/input/src/lib.rs",
+        "line": 33,
+        "expression": "Ok(sign_extend(self.try_get_uint(nbytes)?, nbytes))"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach try_get_int: try_get_int_reports_short_input, try_get_int_sign_extends"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: Ok(sign_extend(self.try_get_uint(nbytes)?, nbytes))"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach try_get_int: try_get_int_reports_short_input, try_get_int_sign_extends", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: Ok(sign_extend(self.try_get_uint(nbytes)?, nbytes))", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: Ok(sign_extend(self.try_get_uint(nbytes)?, nbytes)) (line 33)", "related test tests/buf_tests.rs:11 try_get_int_reports_short_input uses strong exact error variant oracle: assert_eq!(\n        short.try_get_int(4),\n        Err(TryGetError {\n            requested: 4,\n            available: 3\n        })\n    );", "related test tests/buf_tests.rs:4 try_get_int_sign_extends uses strong exact value oracle: assert_eq!(a.try_get_int(3), Ok(-1));", "related test tests/buf_tests.rs:4 try_get_int_sign_extends uses strong exact value oracle: assert_eq!(a.remaining(), 0);", "observed assertion argument value -1 at line 6", "observed function argument value nbytes = 3 at line 6", "observed assertion argument value 0 at line 7", "observed assertion argument value 3 at line 13", "observed assertion argument value 4 at line 13", "observed function argument value nbytes = 4 at line 14"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Ok(sign_extend(self.try_get_uint(nbytes)?, nbytes))","line":33}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: Ok(sign_extend(self.try_get_uint(nbytes)?, nbytes))", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach try_get_int: try_get_int_reports_short_input, try_get_int_sign_extends", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "assert_eq!(a.try_get_int(3), Ok(-1));",
+        "7": "assert_eq!(a.remaining(), 0);",
+        "13": "assert_eq!(\n        short.try_get_int(4),\n        Err(TryGetError {\n            requested: 4,\n            available: 3\n        })\n    );",
+        "14": "short.try_get_int(4),"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "-1",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 6,
+            "value": "nbytes = 3",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "0",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 13,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 13,
+            "value": "4",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 14,
+            "value": "nbytes = 4",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "-1",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 6,
+          "value": "nbytes = 3",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "0",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 13,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 13,
+          "value": "4",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 14,
+          "value": "nbytes = 4",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "try_get_int_reports_short_input",
+          "file": "tests/buf_tests.rs",
+          "line": 11,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert_eq!(\n        short.try_get_int(4),\n        Err(TryGetError {\n            requested: 4,\n            available: 3\n        })\n    );",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "try_get_int_sign_extends",
+          "file": "tests/buf_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(a.try_get_int(3), Ok(-1));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "try_get_int_sign_extends",
+          "file": "tests/buf_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(a.remaining(), 0);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

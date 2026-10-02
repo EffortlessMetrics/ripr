@@ -3586,6 +3586,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
         impl_attrs: Vec::new(),
         nested_fn_names: Vec::new(),
         let_bindings: Vec::new(),
+        item: Default::default(),
         impl_context: Default::default(),
     };
     let test = TestSummary {
@@ -12495,6 +12496,7 @@ fn closure_boundary_operand_route_ignores_comment_only_closure_pattern() {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
             impl_context: Default::default(),
         };
 
@@ -13549,6 +13551,7 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 impl_attrs: Vec::new(),
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
+                item: Default::default(),
                 impl_context: Default::default(),
             }, FunctionSummary {
                 id: crate::domain::SymbolId("src/pricing.rs::case_at_threshold".to_string()),
@@ -13569,6 +13572,7 @@ fn same_file_test_helper_call_counts_as_owner_call_evidence() {
                 impl_attrs: Vec::new(),
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
+                item: Default::default(),
                 impl_context: Default::default(),
             }],
             tests: vec![TestSummary {

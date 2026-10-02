@@ -2111,6 +2111,7 @@ mod tests {
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
             impl_context: Default::default(),
         };
         let test = TestSummary {
@@ -3342,6 +3343,7 @@ assert_eq!(input.amount, 100);"#
             impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
             impl_context: Default::default(),
         }
     }

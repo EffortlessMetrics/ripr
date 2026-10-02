@@ -1,0 +1,545 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/owner_return_pin_identity_traps/input",
+  "summary": {"changed_rust_files":1,"probes":6,"findings":6,"exposed":0,"weakly_exposed":4,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":2,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:bc6abb090bba59291e0964a6bbc5720e91a29d5411c7e36af7d4a4842b1cb010","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":8,"candidate_line_count":4,"probe_count":6,"finding_count":6},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:return_value:cfda9a46",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:cfda9a46",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/owner_return_pin_identity_traps/input/src/lib.rs",
+        "line": 7,
+        "expression": "input.rotate_left(3)"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"No test is seen calling decode; tests share only its file or a name token: bare_decode_names_the_free_function, negative_input_exits_early"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: input.rotate_left(3)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach weak: No test is seen calling decode; tests share only its file or a name token: bare_decode_names_the_free_function, negative_input_exits_early", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: input.rotate_left(3)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: input.rotate_left(3) (line 7)", "related test tests/trap_tests.rs:4 bare_decode_names_the_free_function uses strong exact value oracle: assert_eq!(decode(8), 9);", "related test tests/trap_tests.rs:15 negative_input_exits_early uses strong exact error variant oracle: assert_eq!(checked_half(-4), Err(HalfError::Negative));", "observed assertion argument value 9 at line 5", "observed function argument value input = 8 at line 5", "observed assertion argument value -4 at line 16", "observed enum variant value HalfError::Negative at line 16"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"input.rotate_left(3)","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: input.rotate_left(3)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "No test is seen calling decode; tests share only its file or a name token: bare_decode_names_the_free_function, negative_input_exits_early", "Reachable tests can plausibly activate this changed behavior"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert_eq!(decode(8), 9);",
+        "16": "assert_eq!(checked_half(-4), Err(HalfError::Negative));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "9",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "input = 8",
+            "context": "function_argument"
+          },
+          {
+            "line": 16,
+            "value": "-4",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "HalfError::Negative",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "9",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "input = 8",
+          "context": "function_argument"
+        },
+        {
+          "line": 16,
+          "value": "-4",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "HalfError::Negative",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "bare_decode_names_the_free_function",
+          "file": "tests/trap_tests.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(decode(8), 9);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "negative_input_exits_early",
+          "file": "tests/trap_tests.rs",
+          "line": 15,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:68a8a480",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:68a8a480",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/owner_return_pin_identity_traps/input/src/lib.rs",
+        "line": 7,
+        "expression": "input"
+       },
+      "ripr": {
+        "reach": {"state":"weak","confidence":"low","summary":"No test is seen calling decode; tests share only its file or a name token: bare_decode_names_the_free_function, negative_input_exits_early"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach weak: No test is seen calling decode; tests share only its file or a name token: bare_decode_names_the_free_function, negative_input_exits_early", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 7)", "related test tests/trap_tests.rs:4 bare_decode_names_the_free_function uses unknown exact value oracle: assert_eq!(decode(8), 9);", "related test tests/trap_tests.rs:15 negative_input_exits_early uses unknown exact error variant oracle: assert_eq!(checked_half(-4), Err(HalfError::Negative));", "observed assertion argument value 9 at line 5", "observed function argument value input = 8 at line 5", "observed assertion argument value -4 at line 16", "observed enum variant value HalfError::Negative at line 16"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "No test is seen calling decode; tests share only its file or a name token: bare_decode_names_the_free_function, negative_input_exits_early"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "5": "assert_eq!(decode(8), 9);",
+        "16": "assert_eq!(checked_half(-4), Err(HalfError::Negative));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "9",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "input = 8",
+            "context": "function_argument"
+          },
+          {
+            "line": 16,
+            "value": "-4",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 16,
+            "value": "HalfError::Negative",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "9",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "input = 8",
+          "context": "function_argument"
+        },
+        {
+          "line": 16,
+          "value": "-4",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 16,
+          "value": "HalfError::Negative",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "bare_decode_names_the_free_function",
+          "file": "tests/trap_tests.rs",
+          "line": 4,
+          "oracle_strength": "unknown",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(decode(8), 9);",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        },
+        {
+          "name": "negative_input_exits_early",
+          "file": "tests/trap_tests.rs",
+          "line": 15,
+          "oracle_strength": "unknown",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
+          "relation_reason": "weak_token_substring",
+          "relation_confidence": "low"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "base_deleted"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:22c1d265",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:22c1d265",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/owner_return_pin_identity_traps/input/src/lib.rs",
+        "line": 21,
+        "expression": "self.base() * 3"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach next_word: fixed_reader_overrides_next_word"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: self.base() * 3"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach next_word: fixed_reader_overrides_next_word", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: self.base() * 3", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: self.base() * 3 (line 21)", "related test tests/trap_tests.rs:9 fixed_reader_overrides_next_word uses strong exact value oracle: assert_eq!(reader.next_word(), 7);", "observed assertion argument value 7 at line 11"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"self.base() * 3","line":21}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: self.base() * 3", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach next_word: fixed_reader_overrides_next_word"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "11": "assert_eq!(reader.next_word(), 7);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 11,
+            "value": "7",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 11,
+          "value": "7",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "fixed_reader_overrides_next_word",
+          "file": "tests/trap_tests.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(reader.next_word(), 7);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:256c164c",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:256c164c",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/owner_return_pin_identity_traps/input/src/lib.rs",
+        "line": 50,
+        "expression": "Ok(validate(x)? >> 1)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach checked_half: negative_input_exits_early"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: Ok(validate(x)? >> 1)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach checked_half: negative_input_exits_early", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: Ok(validate(x)? >> 1)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: Ok(validate(x)? >> 1) (line 50)", "related test tests/trap_tests.rs:15 negative_input_exits_early uses strong exact error variant oracle: assert_eq!(checked_half(-4), Err(HalfError::Negative));", "observed enum variant value HalfError::Negative at line 16", "observed function argument value x = -4 at line 16"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Ok(validate(x)? >> 1)","line":50}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: Ok(validate(x)? >> 1)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach checked_half: negative_input_exits_early"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "16": "assert_eq!(checked_half(-4), Err(HalfError::Negative));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 16,
+            "value": "HalfError::Negative",
+            "context": "enum_variant"
+          },
+          {
+            "line": 16,
+            "value": "x = -4",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 16,
+          "value": "HalfError::Negative",
+          "context": "enum_variant"
+        },
+        {
+          "line": 16,
+          "value": "x = -4",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "negative_input_exits_early",
+          "file": "tests/trap_tests.rs",
+          "line": 15,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:624e87c2",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:624e87c2",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/owner_return_pin_identity_traps/input/src/lib.rs",
+        "line": 55,
+        "expression": "x * 10"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach scaled: local_scaled_binding_shadows_the_owner"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: x * 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach scaled: local_scaled_binding_shadows_the_owner", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: x * 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: x * 10 (line 55)", "related test tests/trap_tests.rs:20 local_scaled_binding_shadows_the_owner uses strong exact value oracle: assert_eq!(scaled(3), 30);", "observed assertion argument value 30 at line 22", "observed function argument value x = 3 at line 22"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"x * 10","line":55}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: x * 10", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach scaled: local_scaled_binding_shadows_the_owner"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "22": "assert_eq!(scaled(3), 30);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 22,
+            "value": "30",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 22,
+            "value": "x = 3",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 22,
+          "value": "30",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 22,
+          "value": "x = 3",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "local_scaled_binding_shadows_the_owner",
+          "file": "tests/trap_tests.rs",
+          "line": 20,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(scaled(3), 30);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:static_unknown:958a6a2b",
+      "classification": "static_unknown",
+      "severity": "note",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:src_lib.rs:static_unknown:958a6a2b",
+        "family": "static_unknown",
+        "delta": "unknown",
+        "file": "fixtures/owner_return_pin_identity_traps/input/src/lib.rs",
+        "line": 55,
+        "expression": "x * 5"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach scaled: local_scaled_binding_shadows_the_owner"},
+        "infect": {"state":"unknown","confidence":"unknown","summary":"Changed syntax is not mapped to a high-confidence probe family"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"No propagation model is available for this changed syntax"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"unknown","confidence":"low","summary":"Assertions exist, but oracle strength is unknown"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach scaled: local_scaled_binding_shadows_the_owner", "infection unknown: Changed syntax is not mapped to a high-confidence probe family", "propagation unknown: No propagation model is available for this changed syntax", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator unknown: Assertions exist, but oracle strength is unknown", "local flow reaches unknown sink: unknown sink (line 55)", "related test tests/trap_tests.rs:20 local_scaled_binding_shadows_the_owner uses unknown exact value oracle: assert_eq!(scaled(3), 30);", "observed assertion argument value 30 at line 22", "observed function argument value x = 3 at line 22"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"unknown sink","line":55}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Assertions exist, but oracle strength is unknown", "Changed syntax is not mapped to a high-confidence probe family", "No propagation model is available for this changed syntax", "Related tests appear to reach scaled: local_scaled_binding_shadows_the_owner"],
+      "missing": ["No strong discriminator was detected", "Syntax-first analysis cannot classify this change; use deep mode or real mutation"],
+      "assertion_texts": {
+        "22": "assert_eq!(scaled(3), 30);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 22,
+            "value": "30",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 22,
+            "value": "x = 3",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 22,
+          "value": "30",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 22,
+          "value": "x = 3",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "local_scaled_binding_shadows_the_owner",
+          "file": "tests/trap_tests.rs",
+          "line": 20,
+          "oracle_strength": "unknown",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(scaled(3), 30);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["static_probe_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "unknown",
+      "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
+      "language": "rust",
+      "source_currentness": "base_deleted"
+    }
+  ]
+}
