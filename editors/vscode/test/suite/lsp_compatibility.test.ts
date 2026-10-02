@@ -3,12 +3,25 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { probeStandardLspCompatibility } from '../../src/lspCompatibility';
+import { probeStandardLspCompatibility, REQUIRED_SERVER_COMMANDS } from '../../src/lspCompatibility';
 import { probeServerVersion } from '../../src/serverResolver';
 
 suite('Standard LSP compatibility probe', () => {
   const fakeProbeTimeoutMs = 8000;
   const temporaryRoots: string[] = [];
+  let advertisedCapabilities: Readonly<Record<string, unknown>>;
+
+  suiteSetup(async () => {
+    const server = process.env.RIPR_TEST_SERVER_PATH;
+    assert.ok(server, 'LSP compatibility tests require the server built by cargo xtask vscode-test-e2e');
+    let observed: Readonly<Record<string, unknown>> | undefined;
+    const result = await probeStandardLspCompatibility(server, false, 10_000, (capabilities) => {
+      observed = capabilities;
+    });
+    assert.strictEqual(result.status, 'compatible', JSON.stringify(result));
+    assert.ok(observed, 'the real server did not provide an initialize capability result');
+    advertisedCapabilities = observed;
+  });
 
   teardown(() => {
     for (const root of temporaryRoots.splice(0)) {
@@ -42,6 +55,16 @@ suite('Standard LSP compatibility probe', () => {
     assert.ok(result.status === 'incompatible' && ['framing_failure', 'process_failure'].includes(result.kind));
   });
 
+  test('an initialize capability observer failure settles as a process failure', async () => {
+    const fake = fakeServer('valid');
+    const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs, () => {
+      throw new Error('observer fixture failure');
+    });
+    assert.strictEqual(result.status, 'incompatible');
+    assert.strictEqual(result.status === 'incompatible' ? result.kind : undefined, 'process_failure');
+    assert.match(result.status === 'incompatible' ? result.detail : '', /observer fixture failure/);
+  });
+
   test('requires the exercised baseline but records genuinely optional omissions', async () => {
     const missing = fakeServer('missing-hover');
     const rejected = await probeStandardLspCompatibility(missing.command, missing.useShell, fakeProbeTimeoutMs);
@@ -61,7 +84,7 @@ suite('Standard LSP compatibility probe', () => {
     }
   });
 
-  for (const mode of ['missing-diagnostics', 'missing-workspace-folders', 'missing-command'] as const) {
+  for (const mode of ['unsupported-sync', 'missing-diagnostics', 'missing-workspace-folders', 'missing-command'] as const) {
     test(`rejects the active-client baseline omission ${mode}`, async () => {
       const fake = fakeServer(mode);
       const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs);
@@ -125,7 +148,7 @@ suite('Standard LSP compatibility probe', () => {
   });
 
   test('rejects an advertised document sync kind the consumer does not implement', async () => {
-    const fake = fakeServer('unsupported-sync');
+    const fake = fakeServer('unknown-sync-kind');
     const result = await probeStandardLspCompatibility(fake.command, fake.useShell, fakeProbeTimeoutMs);
     assert.strictEqual(result.status, 'incompatible');
     assert.deepStrictEqual(result.status === 'incompatible' ? result.kind : undefined, 'missing_required_capability');
@@ -262,7 +285,7 @@ suite('Standard LSP compatibility probe', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ripr-lsp-probe-'));
     temporaryRoots.push(root);
     const script = path.join(root, 'server.js');
-    fs.writeFileSync(script, fakeServerSource(mode, descendantPath));
+    fs.writeFileSync(script, fakeServerSource(mode, advertisedCapabilities, descendantPath));
     if (process.platform === 'win32') {
       const command = path.join(root, 'ripr.cmd');
       fs.writeFileSync(command, `@echo off\r\n"${process.execPath}" "${script}" %*\r\nexit /b %errorlevel%\r\n`);
@@ -293,12 +316,17 @@ async function assertDescendantStopped(pidPath: string): Promise<void> {
   assert.fail(`probe descendant ${pid} remained after process-tree cleanup`);
 }
 
-function fakeServerSource(mode: string, descendantPidPath?: string): string {
+function fakeServerSource(
+  mode: string,
+  advertisedCapabilities: Readonly<Record<string, unknown>>,
+  descendantPidPath?: string
+): string {
   return `
 const cp = require('child_process');
 const fs = require('fs');
 const mode = ${JSON.stringify(mode)};
 const descendantPidPath = ${JSON.stringify(descendantPidPath)};
+const advertisedCapabilities = ${JSON.stringify(advertisedCapabilities)};
 function spawnDescendant() {
   const descendant = cp.spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
     detached: process.platform === 'win32',
@@ -338,7 +366,15 @@ function consume() {
     const length = Number(match[1]); const start = end + 4; if (input.length < start + length) return;
     const message = JSON.parse(input.subarray(start, start + length).toString()); input = input.subarray(start + length);
     if (message.method === 'initialize') {
-      const commands = ['ripr.refresh','ripr.collectContext','ripr.collectEvidenceContext','ripr.collectWorkspaceStatus','ripr.collectRepairPacket','ripr.collectTopLimitation','ripr.collectReceiptStatus'];
+      const capabilities = JSON.parse(JSON.stringify(advertisedCapabilities));
+      if (mode === 'unsupported-sync') capabilities.textDocumentSync = 0;
+      if (mode === 'utf8') capabilities.positionEncoding = 'utf-8';
+      if (mode === 'valid') {
+        // Deliberately omit optional support while retaining the real server's
+        // required fields. This is a negative fixture, not a server claim.
+        capabilities.codeActionProvider = true;
+        capabilities.hoverProvider = true;
+      }
       const syncOptions = { openClose: true, change: mode === 'sync-incremental' ? 2 : 1, save: { includeText: false }, willSave: false, willSaveWaitUntil: false };
       if (mode === 'sync-save-false') syncOptions.save = false;
       if (mode === 'sync-no-save') delete syncOptions.save;
@@ -347,13 +383,17 @@ function consume() {
       if (mode === 'sync-will-save') syncOptions.willSave = true;
       if (mode === 'sync-will-save-wait') syncOptions.willSaveWaitUntil = true;
       if (mode === 'sync-include-text') syncOptions.save.includeText = true;
-      const capabilities = { textDocumentSync: mode === 'sync-numeric-incremental' ? 2 : mode.startsWith('sync-') ? syncOptions : 1, hoverProvider: true, codeActionProvider: true, diagnosticProvider: {}, executeCommandProvider: { commands }, workspace: { workspaceFolders: { supported: true } }, positionEncoding: mode === 'utf8' ? 'utf-8' : 'utf-16' };
+      if (mode === 'sync-numeric-incremental') capabilities.textDocumentSync = 2;
+      else if (mode.startsWith('sync-')) capabilities.textDocumentSync = syncOptions;
       if (mode === 'missing-hover') delete capabilities.hoverProvider;
       if (mode === 'missing-diagnostics') delete capabilities.diagnosticProvider;
       if (mode === 'missing-workspace-folders') delete capabilities.workspace;
-      if (mode === 'missing-command') capabilities.executeCommandProvider.commands.pop();
+      if (mode === 'missing-command') {
+        const omittedCommand = ${JSON.stringify(REQUIRED_SERVER_COMMANDS[REQUIRED_SERVER_COMMANDS.length - 1])};
+        capabilities.executeCommandProvider.commands = capabilities.executeCommandProvider.commands.filter((command) => command !== omittedCommand);
+      }
       if (mode === 'incremental-sync') capabilities.textDocumentSync = { openClose: true, change: 2, willSave: false, willSaveWaitUntil: false, save: { includeText: false } };
-      if (mode === 'unsupported-sync') capabilities.textDocumentSync = { openClose: true, change: 3, willSave: false, willSaveWaitUntil: false, save: { includeText: false } };
+      if (mode === 'unknown-sync-kind') capabilities.textDocumentSync = { openClose: true, change: 3, willSave: false, willSaveWaitUntil: false, save: { includeText: false } };
       const envelope = { jsonrpc: mode === 'wrong-jsonrpc' ? '1.0' : '2.0', id: message.id, result: { capabilities, serverInfo: { name: mode === 'wrong-identity' ? 'other' : 'ripr', version: '9.9.9' } } };
       if (mode === 'missing-jsonrpc') delete envelope.jsonrpc;
       if (mode === 'missing-response-payload') delete envelope.result;

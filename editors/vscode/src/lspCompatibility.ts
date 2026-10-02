@@ -232,7 +232,8 @@ public static class RiprProbeJob {
 export async function probeStandardLspCompatibility(
   command: string,
   useShell = false,
-  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS
+  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+  onInitializeCapabilities?: (capabilities: Readonly<Record<string, unknown>>) => void
 ): Promise<LspCompatibilityResult> {
   return new Promise((resolve) => {
     let settled = false;
@@ -317,6 +318,16 @@ export async function probeStandardLspCompatibility(
         if (checked.status === 'incompatible') {
           finish(checked);
           return;
+        }
+        // The editor e2e fixture observes the real server advertisement here,
+        // after validation, instead of maintaining a second capability literal.
+        if (onInitializeCapabilities && isObject(response.result) && isObject(response.result.capabilities)) {
+          try {
+            onInitializeCapabilities(response.result.capabilities);
+          } catch (error) {
+            fail('process_failure', `LSP initialize capability observer failed: ${String(error)}`);
+            return;
+          }
         }
         evidence = checked;
         phase = 'shutdown';
