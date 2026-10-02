@@ -70,6 +70,39 @@ It retains byte-exact stdout/stderr plus typed source, build, binary, host,
 argv, config, diff, process, timeout, and analyzer-input identities below the
 ignored `target/` tree.
 
+The owned build removes inherited `CARGO_TARGET_DIR` and
+`CARGO_BUILD_BUILD_DIR` before starting Cargo. The latter matters even with a
+private `--target-dir`: Cargo can otherwise reuse a same-name/version path
+dependency from shared intermediate storage and link old behavior into a new
+application. With no `build.build-dir` configuration, Cargo places its
+intermediate artifacts in the owned target as well. Normal caller overrides
+outside this transaction, the workspace toolchain pin, and the existing
+`CARGO_HOME` registry cache remain unchanged.
+
+This is **environment-override isolation, not complete Cargo configuration
+isolation**. A `build.build-dir` setting in a workspace, ancestor, or Cargo-home
+configuration can still redirect intermediates. The separate #5038 claim
+owns explicit per-command binding and the compatibility decision for historical
+host receipts. The current receipt format records the final target command and
+binary bytes; neither a current application stamp, successful build, correct
+version nor a new binary hash establishes which dependency implementation was
+linked. This limitation does not establish that any historical RIPR receipt was
+contaminated.
+
+The regression at `host_run/build_tests.rs` calls the real `build_fresh_binary`
+owner in an isolated test subprocess. Two dependency-free, version-valid
+workspaces have different same-name/version path-dependency implementations.
+Both ordinary and inherited-shared-intermediate A → B → A sequences execute
+three distinct binaries and compare actual subject/core behavior, with source
+and binary hashes, raw build/behavior streams, and receipts under
+`target/ripr/rust-judged-panel-host-tests/`. Failed attempts retain their evidence.
+Successful test fixtures are removed by default; deliberate qualification can
+retain the complete bytes with `RIPR_HOST_BUILD_KEEP_EVIDENCE=1`:
+
+```sh
+RIPR_HOST_BUILD_KEEP_EVIDENCE=1 cargo test -p xtask rust_judged_panel::host_run::build_tests::fresh_build_ignores_inherited_intermediates -- --exact --nocapture
+```
+
 Each attempt is staged under an exclusive lock. Only a validated three-case
 generation receives `run-index.json`, is moved into the immutable `runs/`
 namespace, and advances `current.json` last. A failed, partial, or concurrent

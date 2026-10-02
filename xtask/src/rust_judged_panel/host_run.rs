@@ -18,8 +18,10 @@ use crate::run::{
 
 const DEFAULT_OUTPUT: &str = "target/ripr/rust-judged-panel";
 const RUN_TIMEOUT: Duration = Duration::from_mins(2);
-const BUILD_ENV_REMOVE: [&str; 10] = [
+const BUILD_ENV_REMOVE: [&str; 11] = [
     "CARGO_TARGET_DIR",
+    // A private final-output target does not override shared intermediates.
+    "CARGO_BUILD_BUILD_DIR",
     "CARGO_BUILD_TARGET",
     "CARGO_ENCODED_RUSTFLAGS",
     "RUSTFLAGS",
@@ -1460,6 +1462,9 @@ fn ensure_confined(root: &Path, path: &Path, label: &str) -> Result<(), String> 
 }
 
 #[cfg(test)]
+mod build_tests;
+
+#[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1479,7 +1484,7 @@ mod tests {
             .ok_or_else(|| "xtask manifest must have a repository parent".to_string())
     }
 
-    fn scratch(label: &str) -> Result<PathBuf, String> {
+    pub(super) fn scratch(label: &str) -> Result<PathBuf, String> {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?
