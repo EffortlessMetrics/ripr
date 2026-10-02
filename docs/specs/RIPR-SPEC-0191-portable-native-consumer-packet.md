@@ -112,6 +112,12 @@ A packet directory contains `manifest.json`, the native payload
   rather than accepting a zero-test enumeration. Malformed or unknown host
   declarations and empty applicable selections fail closed. The policy facade
   checks the report's real selected identities and host applicability.
+- Coverage declarations preserve TOML comments, decoded strings, and parsed
+  entry-line attribution for common and host-scoped arrays. LF and CRLF
+  fixtures retain their decoded multiline selector bytes. Numeric admission
+  remains consistent with the TOML Value reader even in ignored metadata;
+  malformed, unknown, duplicate, empty-scoped, and non-test scoped coverage
+  still refuses (#5053).
 
 ## Non-Goals
 
@@ -136,6 +142,12 @@ A packet directory contains `manifest.json`, the native payload
 
 - `xtask/src/tests.rs::file_policy_allowlist_accepts_host_scoped_coverage`
 - `xtask/src/tests.rs::file_policy_allowlist_rejects_malformed_host_coverage`
+- `xtask/src/tests.rs::file_policy_allowlist_toml_comments_preserve_coverage_commands`
+- `xtask/src/tests.rs::file_policy_allowlist_toml_strings_preserve_decoded_selectors`
+- `xtask/src/tests.rs::file_policy_allowlist_toml_spans_preserve_entry_order_and_lines`
+- `xtask/src/tests.rs::file_policy_allowlist_toml_keeps_legacy_fields_and_common_empty_array`
+- `xtask/src/tests.rs::file_policy_allowlist_toml_preserves_value_admission_for_ignored_metadata`
+- `xtask/src/tests.rs::file_policy_allowlist_toml_keeps_governed_field_refusals`
 - `xtask/src/tests.rs::policy_checker_facade_runs_current_repo_checks`
 - `xtask/src/policy/file_policy.rs::tests::test_covered_by_host_selection_retains_common_and_discloses_inapplicable`
 - `xtask/src/policy/file_policy.rs::tests::test_covered_by_empty_applicable_host_selector_is_rejected`

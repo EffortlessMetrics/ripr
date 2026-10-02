@@ -32,6 +32,13 @@ checks with `cargo test` selectors for the named host family. These scoped
 arrays must be nonempty. Unknown platform fields, duplicate keys, malformed
 TOML, and non-test commands in scoped arrays are rejected.
 
+Coverage arrays use decoded TOML string values, including multiline arrays,
+trailing and inter-item comments, quoted `#`, and escaped content. Entry-line
+attribution comes from parsed table spans, so header-like text in strings or
+comments does not create an entry. TOML value-admission checks still apply to
+ignored metadata, including numeric representability; this does not add type
+restrictions to the existing `expires` or `retired` fields.
+
 The existing file-policy validator enumerates every applicable test selector
 and rejects failed enumeration or zero selected tests. It reports the host,
 declared applicability, selected counts, and test identities in

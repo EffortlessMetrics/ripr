@@ -29430,6 +29430,407 @@ covered_by_windows = ["cargo test -p xtask windows_control"]
     })
 }
 
+fn file_policy_toml_coverage_fixture(field: &str, array: &str) -> String {
+    let common = if field == "covered_by" {
+        ""
+    } else {
+        "covered_by = [\"cargo xtask check-file-policy\"]\n"
+    };
+    format!(
+        "[[allow]]\nglob = \"policy/*.toml\"\nkind = \"policy\"\n\
+         owner = \"xtask\"\nsurface = \"policy\"\nclassification = \"config\"\n\
+         reason = \"TOML coverage control\"\n{common}{field} = {array}\n"
+    )
+}
+
+#[test]
+fn file_policy_allowlist_toml_comments_preserve_coverage_commands() -> Result<(), String> {
+    with_temp_cwd("file-policy-toml-comments", |root| {
+        let path = root.join("allowlist.toml");
+        let mut failures = Vec::new();
+        for (field, host) in [
+            ("covered_by", None),
+            ("covered_by_unix", Some(crate::FilePolicyHost::Unix)),
+            ("covered_by_windows", Some(crate::FilePolicyHost::Windows)),
+        ] {
+            let plain = r#"["cargo test -p xtask first", "cargo test -p xtask second"]"#;
+            let baseline: toml::Value =
+                toml::from_str(&file_policy_toml_coverage_fixture(field, plain))
+                    .map_err(|error| error.to_string())?;
+            for (case, array) in [
+                ("plain", plain),
+                (
+                    "multiline",
+                    "[\n  \"cargo test -p xtask first\",\n  \"cargo test -p xtask second\",\n]",
+                ),
+                (
+                    "trailing",
+                    "[\"cargo test -p xtask first\", \"cargo test -p xtask second\"] # host note",
+                ),
+                (
+                    "inter_item",
+                    "[\n  \"cargo test -p xtask first\",\n  # host note\n  \"cargo test -p xtask second\",\n]",
+                ),
+                (
+                    "item_line",
+                    "[\n  \"cargo test -p xtask first\", # first selector\n  \"cargo test -p xtask second\",\n]",
+                ),
+            ] {
+                let source = file_policy_toml_coverage_fixture(field, array);
+                let parsed: toml::Value =
+                    toml::from_str(&source).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    parsed, baseline,
+                    "{field}/{case} must keep the same TOML value"
+                );
+                write(&path, &source);
+                match crate::read_file_policy_test_commands(&path.to_string_lossy()) {
+                    Ok(commands) => {
+                        let actual = commands
+                            .iter()
+                            .map(|command| (command.line, command.command.as_str(), command.host))
+                            .collect::<Vec<_>>();
+                        let expected = [
+                            (1, "cargo test -p xtask first", host),
+                            (1, "cargo test -p xtask second", host),
+                        ];
+                        if actual != expected {
+                            failures.push(format!("{field}/{case}: {actual:?}"));
+                        }
+                    }
+                    Err(error) => failures.push(format!("{field}/{case}: {error}")),
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+        Ok(())
+    })
+}
+
+#[test]
+fn file_policy_allowlist_toml_strings_preserve_decoded_selectors() -> Result<(), String> {
+    with_temp_cwd("file-policy-toml-strings", |root| {
+        let path = root.join("allowlist.toml");
+        let mut failures = Vec::new();
+        for (field, host) in [
+            ("covered_by", None),
+            ("covered_by_unix", Some(crate::FilePolicyHost::Unix)),
+            ("covered_by_windows", Some(crate::FilePolicyHost::Windows)),
+        ] {
+            for (case, value, expected) in [
+                (
+                    "hash",
+                    r#""cargo test hash#selector""#,
+                    "cargo test hash#selector",
+                ),
+                (
+                    "quote",
+                    r#""cargo test quote\"selector""#,
+                    "cargo test quote\"selector",
+                ),
+                (
+                    "backslash",
+                    r#""cargo test path\\selector""#,
+                    "cargo test path\\selector",
+                ),
+                (
+                    "unicode",
+                    r#""cargo test unicode\u005fselector""#,
+                    "cargo test unicode_selector",
+                ),
+                (
+                    "comma",
+                    r#""cargo test comma,selector""#,
+                    "cargo test comma,selector",
+                ),
+                (
+                    "literal",
+                    "'cargo test literal#selector'",
+                    "cargo test literal#selector",
+                ),
+            ] {
+                let source = file_policy_toml_coverage_fixture(field, &format!("[{value}]"));
+                let parsed: toml::Value =
+                    toml::from_str(&source).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    parsed["allow"][0][field][0].as_str(),
+                    Some(expected),
+                    "{field}/{case} fixture must contain the expected decoded string"
+                );
+                write(&path, &source);
+                match crate::read_file_policy_test_commands(&path.to_string_lossy()) {
+                    Ok(commands)
+                        if commands.len() == 1
+                            && commands[0].line == 1
+                            && commands[0].host == host
+                            && commands[0].command == expected => {}
+                    other => failures.push(format!("{field}/{case}: {other:?}")),
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+        Ok(())
+    })
+}
+
+#[test]
+fn file_policy_allowlist_toml_spans_preserve_entry_order_and_lines() -> Result<(), String> {
+    with_temp_cwd("file-policy-toml-spans", |root| {
+        let path = root.join("allowlist.toml");
+        let source = r#"# [[allow]] is not an entry
+schema_version = "1.0"
+note = "[[allow]] is still not an entry"
+
+[[allow]]
+glob = "policy/*.toml"
+kind = "policy"
+owner = "xtask"
+surface = "policy"
+classification = "config"
+reason = "An example [[allow]] header is not a declaration"
+covered_by_windows = ["""cargo test first
+[[allow]]
+"""]
+covered_by_unix = ["cargo test unix_first"]
+covered_by = ["cargo test common_first"]
+
+# [[allow]] must not steal the following entry's attribution
+[[allow]] # the actual second entry
+glob = "docs/*.md"
+kind = "docs"
+owner = "xtask"
+surface = "docs"
+classification = "docs"
+reason = "The second governed entry"
+covered_by_windows = ["cargo test windows_second"] # keep this selector
+covered_by_unix = ["cargo test unix_second"]
+covered_by = ["cargo test common_second"]
+"#;
+        for (case, source, multiline_command) in [
+            ("lf", source.to_string(), "cargo test first\n[[allow]]\n"),
+            (
+                "crlf",
+                source.replace('\n', "\r\n"),
+                "cargo test first\r\n[[allow]]\r\n",
+            ),
+        ] {
+            // Preserve the selected TOML authority's newline bytes, rather
+            // than assuming it normalizes CRLF inside multiline strings.
+            let parsed: toml::Value = toml::from_str(&source).map_err(|error| error.to_string())?;
+            assert_eq!(parsed["allow"].as_array().map(Vec::len), Some(2));
+            assert_eq!(
+                parsed["allow"][0]["covered_by_windows"][0].as_str(),
+                Some(multiline_command),
+                "{case}: the fixture's exact decoded selector is independently checked"
+            );
+            write(&path, &source);
+            let entries = parse_file_policy_allowlist(&path.to_string_lossy())?;
+            assert_eq!(
+                entries.iter().map(|entry| entry.line).collect::<Vec<_>>(),
+                [5, 19],
+                "{case}"
+            );
+            let commands = crate::read_file_policy_test_commands(&path.to_string_lossy())?;
+            let actual = commands
+                .iter()
+                .map(|command| (command.line, command.command.as_str(), command.host))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                actual,
+                [
+                    (5, "cargo test common_first", None),
+                    (
+                        5,
+                        "cargo test unix_first",
+                        Some(crate::FilePolicyHost::Unix)
+                    ),
+                    (5, multiline_command, Some(crate::FilePolicyHost::Windows)),
+                    (19, "cargo test common_second", None),
+                    (
+                        19,
+                        "cargo test unix_second",
+                        Some(crate::FilePolicyHost::Unix)
+                    ),
+                    (
+                        19,
+                        "cargo test windows_second",
+                        Some(crate::FilePolicyHost::Windows)
+                    ),
+                ],
+                "{case}: command order and attribution must come from parsed entries"
+            );
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn file_policy_allowlist_toml_keeps_legacy_fields_and_common_empty_array() -> Result<(), String> {
+    with_temp_cwd("file-policy-toml-legacy", |root| {
+        let path = root.join("allowlist.toml");
+        let source = format!(
+            "{}generated_by = \"cargo xtask fixtures\"\nexpires = 42\nretired = \"legacy metadata\"\n",
+            file_policy_toml_coverage_fixture("covered_by", "[]")
+        );
+        write(&path, &source);
+        let entries = parse_file_policy_allowlist(&path.to_string_lossy())?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].line, 1);
+        assert!(entries[0].covered_by.as_ref().is_some_and(Vec::is_empty));
+        assert_eq!(
+            entries[0].generated_by.as_deref(),
+            Some("cargo xtask fixtures")
+        );
+        assert!(crate::read_file_policy_test_commands(&path.to_string_lossy())?.is_empty());
+        Ok(())
+    })
+}
+
+#[test]
+fn file_policy_allowlist_toml_preserves_value_admission_for_ignored_metadata() -> Result<(), String>
+{
+    with_temp_cwd("file-policy-toml-value-admission", |root| {
+        let path = root.join("allowlist.toml");
+        let entry = file_policy_toml_coverage_fixture("covered_by", "[]");
+        let mut failures = Vec::new();
+        for location in [
+            "expires",
+            "retired",
+            "root",
+            "expires_inline",
+            "retired_inline_array",
+            "root_inline",
+        ] {
+            for (value, accepted) in [
+                ("9223372036854775808", false),
+                ("1e9999", false),
+                ("42", true),
+                ("9223372036854775807", true),
+                ("-9223372036854775808", true),
+                ("1e300", true),
+            ] {
+                let declaration = match location {
+                    "expires" => format!("expires = {value}\n"),
+                    "retired" => format!("retired = {value}\n"),
+                    "root" => format!("metadata = {value}\n"),
+                    "expires_inline" => format!("expires = {{ outer = {{ value = {value} }} }}\n"),
+                    "retired_inline_array" => {
+                        format!("retired = {{ outer = [{{ value = {value} }}] }}\n")
+                    }
+                    _ => format!("metadata = {{ outer = {{ value = {value} }} }}\n"),
+                };
+                let root_metadata = location.starts_with("root");
+                let source = if root_metadata {
+                    format!("{declaration}{entry}")
+                } else {
+                    format!("{entry}{declaration}")
+                };
+                // DeTable retains numeric lexemes. The previous Value reader
+                // also enforced representable integers and finite exponents,
+                // including inside otherwise ignored metadata.
+                toml::de::DeTable::parse(&source).map_err(|error| {
+                    format!("{location}/{value}: invalid DeTable fixture: {error}")
+                })?;
+                assert_eq!(
+                    toml::from_str::<toml::Value>(&source).is_ok(),
+                    accepted,
+                    "{location}/{value}: bind this control to the existing Value authority"
+                );
+                write(&path, &source);
+                match parse_file_policy_allowlist(&path.to_string_lossy()) {
+                    Ok(entries)
+                        if accepted
+                            && entries.len() == 1
+                            && entries[0].line == if root_metadata { 2 } else { 1 }
+                            && entries[0].covered_by.as_ref().is_some_and(Vec::is_empty) => {}
+                    Err(error)
+                        if !accepted && error.contains("invalid non-Rust allowlist TOML") => {}
+                    actual => failures.push(format!("{location}/{value}: {actual:?}")),
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+        Ok(())
+    })
+}
+
+#[test]
+fn file_policy_allowlist_toml_keeps_governed_field_refusals() -> Result<(), String> {
+    with_temp_cwd("file-policy-toml-refusals", |root| {
+        let path = root.join("allowlist.toml");
+        let valid = file_policy_toml_coverage_fixture("covered_by", "[\"cargo test common\"]");
+        let mut cases = Vec::new();
+        for field in ["covered_by", "covered_by_unix", "covered_by_windows"] {
+            for invalid in [
+                "42",
+                "[42]",
+                "[\"cargo test selected\", 42]",
+                "[\"cargo test selected\",,]",
+                "{ selector = \"cargo test selected\" }",
+            ] {
+                cases.push((
+                    format!("{field}/{invalid}"),
+                    file_policy_toml_coverage_fixture(field, invalid),
+                ));
+            }
+            let declaration = file_policy_toml_coverage_fixture(field, "[\"cargo test selected\"]");
+            cases.push((
+                format!("duplicate/{field}"),
+                format!("{declaration}{field} = []\n"),
+            ));
+        }
+        for invalid in [
+            "covered_by_linux = [\"cargo test selected\"]",
+            "covered_by_Unix = [\"cargo test selected\"]",
+            "covered_by_unix = []",
+            "covered_by_windows = []",
+            "covered_by_unix = [\" \" ]",
+            "covered_by_windows = [\"cargo xtask check-file-policy\"]",
+            "mystery = \"unknown governed field\"",
+            "[allow.covered_by_unix]",
+            "[allow.covered_by_unknown]",
+            "[allow.expires]",
+            "[allow.retired]",
+            "[unknown_table]",
+            "[unknown.nested]",
+            "[[unknown.nested]]",
+        ] {
+            cases.push((invalid.to_string(), format!("{valid}{invalid}\n")));
+        }
+        cases.extend([
+            (
+                "missing common".to_string(),
+                valid.replace("covered_by = [\"cargo test common\"]\n", ""),
+            ),
+            (
+                "root coverage".to_string(),
+                format!("covered_by_windows = [\"cargo test selected\"]\n{valid}"),
+            ),
+            (
+                "missing reason".to_string(),
+                valid.replace("reason = \"TOML coverage control\"\n", ""),
+            ),
+            (
+                "non-string glob".to_string(),
+                valid.replace("glob = \"policy/*.toml\"", "glob = 42"),
+            ),
+        ]);
+        let mut failures = Vec::new();
+        for (case, source) in cases {
+            write(&path, &source);
+            if crate::read_file_policy_test_commands(&path.to_string_lossy()).is_ok() {
+                failures.push(case);
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "accepted invalid declarations: {}",
+            failures.join("\n")
+        );
+        Ok(())
+    })
+}
+
 #[test]
 fn file_policy_allowlist_rejects_malformed_host_coverage() -> Result<(), String> {
     with_temp_cwd("file-policy-invalid-host", |root| {

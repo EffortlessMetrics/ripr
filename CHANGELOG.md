@@ -203,6 +203,11 @@ are scoped or reviewed.
 
 ### Fixed
 
+- File-policy coverage arrays preserve valid TOML comments and decoded string
+  values for common, Unix, and Windows selectors. Parser-owned spans retain
+  entry attribution; numeric admission, governed-field refusals, and nonzero
+  applicable-test enumeration remain enforced (#5053).
+
 - `RIPR_REPO_EXPOSURE_SEAM_LIMIT` and `RIPR_PILOT_SEAM_BUDGET` refuse a
   value that is not a seam count. Before, `abc`, `1k` or `-1` read as the `0`
   opt-out and silently removed the cap. Now the run exits 2 and names the
