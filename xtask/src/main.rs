@@ -13454,7 +13454,7 @@ fn check_rust_source_role_authority() -> Result<(), String> {
     /// the reason it is not a role authority. New entries need the reason in
     /// the surrounding code and a review that the check stays display- or
     /// identity-scoped.
-    const ALLOWED_SITE_PATTERNS: [(&str, &str, &str); 7] = [
+    const ALLOWED_SITE_PATTERNS: [(&str, &str, &str); 8] = [
         (
             "crates/ripr/src/output/review_comments.rs",
             "starts_with(\"tests",
@@ -13484,6 +13484,11 @@ fn check_rust_source_role_authority() -> Result<(), String> {
             "crates/ripr/src/analysis/classify/related_tests.rs",
             "starts_with(\"tests",
             "package_prefix/package_scope derive package identity from paths, which the source-role contract explicitly permits; they do not classify role",
+        ),
+        (
+            "crates/ripr/src/analysis/classify/owner_pin/tests.rs",
+            "\"#[cfg(test)]\"",
+            "owner-pin collectability preservation fixture in the cfg(test)-gated tests module; source spelling is input data, while cfg_predicates owns the production availability decision (#4478)",
         ),
         (
             "crates/ripr/src/lsp/tests.rs",

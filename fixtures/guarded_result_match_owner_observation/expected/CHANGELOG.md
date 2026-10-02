@@ -106,3 +106,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — guarded_result_match_owner_observation (10)
+
+Reason:
+RIPR-SPEC-0197 (#4478): conditional bare equality cannot independently supply return-value oracle credit; preserve dedicated guarded-match and ErrorPath authority
+
+Command:
+`cargo xtask goldens bless guarded_result_match_owner_observation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

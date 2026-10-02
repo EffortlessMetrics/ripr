@@ -102,14 +102,21 @@ fn admitted(index: &RustIndex, pin: &OwnerReturnPin) -> Vec<(String, bool)> {
         !test.assertions.is_empty(),
         "the test's assertions must parse"
     );
+    let syntax = OwnerPinSyntax::default();
     test.assertions
         .iter()
         .map(|assertion| {
-            let admitted = pin.admits(test, assertion, index, &|file, name| {
-                index.files.get(file).is_some_and(|facts| {
-                    file_imports_foreign_callee_name(&facts.source, name, &index.package_names)
-                })
-            });
+            let admitted = pin.admits(
+                test,
+                assertion,
+                index,
+                &|file, name| {
+                    index.files.get(file).is_some_and(|facts| {
+                        file_imports_foreign_callee_name(&facts.source, name, &index.package_names)
+                    })
+                },
+                &syntax,
+            );
             (assertion.text.clone(), admitted)
         })
         .collect()
@@ -561,10 +568,22 @@ fn an_assertion_outside_the_test_body_is_not_its_pin() {
     let test = &index.tests[0];
     assert_eq!(test.assertions.len(), 1);
     let no_foreign_import = |_: &Path, _: &str| false;
-    assert!(pin.admits(test, &test.assertions[0], &index, &no_foreign_import));
+    assert!(pin.admits(
+        test,
+        &test.assertions[0],
+        &index,
+        &no_foreign_import,
+        &OwnerPinSyntax::default()
+    ));
     let mut helper_assertion = test.assertions[0].clone();
     helper_assertion.line = test.end_line + 3;
-    assert!(!pin.admits(test, &helper_assertion, &index, &no_foreign_import));
+    assert!(!pin.admits(
+        test,
+        &helper_assertion,
+        &index,
+        &no_foreign_import,
+        &OwnerPinSyntax::default()
+    ));
 }
 
 #[test]
@@ -659,4 +678,183 @@ fn a_receiver_name_bound_or_typed_elsewhere_is_not_established() {
     assert!(pin.is_some());
     let Some(pin) = pin else { return };
     assert!(admitted_texts(&index, &pin).is_empty());
+}
+
+#[test]
+fn owner_pin_requires_an_executed_assertion_context() {
+    for body in [
+        "let check = || assert_eq!(weight(4), 12);",
+        "let check = || assert_eq!(weight(4), 12); let _later = || check();",
+        "let check = || assert_eq!(weight(4), 12); if false { check(); }",
+        "let check = || assert_eq!(weight(4), 12); let check = || {}; check();",
+        "let mut check: fn() = || assert_eq!(weight(4), 12); check = || {}; check();",
+        "let check = || assert_eq!(weight(4), 12); let alias = check; alias();",
+        "let check = || assert_eq!(weight(4), 12); let _borrow = &check; check();",
+        "let check = || assert_eq!(weight(4), 12); false && { check(); true };",
+        "let check = || assert_eq!(weight(4), 12); #[cfg(any())] check();",
+        "#[cfg(any())] assert_eq!(weight(4), 12);",
+        "if true { return; } assert_eq!(weight(4), 12);",
+        "let _later = async { assert_eq!(weight(4), 12); };",
+        "fn later() { assert_eq!(weight(4), 12); }",
+        "if false { assert_eq!(weight(4), 12); }",
+        "return; assert_eq!(weight(4), 12);",
+        "assert_eq!(weight({ return; 4 }), 12);",
+        "macro_rules! skip { () => { return; } } skip!(); assert_eq!(weight(4), 12);",
+        "macro_rules! skip { () => { return; } } let _ = dbg!(skip!()); assert_eq!(weight(4), 12);",
+        "let _ = dbg!(other::assert!()); assert_eq!(weight(4), 12);",
+        "use other as std; std::dbg!(); assert_eq!(weight(4), 12);",
+        "macro_rules! assert { () => { return; } } assert!(); assert_eq!(weight(4), 12);",
+        "let check = || { return; assert_eq!(weight(4), 12); }; check();",
+    ] {
+        let tests = format!("use demo::weight;\n#[test]\nfn weighs() {{ {body} }}\n");
+        assert!(weight_admitted(&tests).is_empty(), "{body}");
+    }
+    for body in [
+        "assert_eq!(weight(4), 12);",
+        "{ assert_eq!(weight(4), 12); }",
+        "assert!(!false); assert_eq!(weight(4), 12);",
+        "assert!(if !(false) { true } else { false }); assert_eq!(weight(4), 12);",
+        "assert_eq!(weight(!0u32 & 4), 12);",
+        "let check = || assert_eq!(weight(4), 12); check();",
+        "let check = || { assert_eq!(weight(4), 12); }; check();",
+        "(|| assert_eq!(weight(4), 12))();",
+    ] {
+        let tests = format!("use demo::weight;\n#[test]\nfn weighs() {{ {body} }}\n");
+        assert_eq!(weight_admitted(&tests).len(), 1, "{body}");
+    }
+}
+
+#[test]
+fn owner_pin_requires_unambiguous_standard_assert_eq() {
+    for (prelude, body) in [
+        (
+            "",
+            "macro_rules! assert_eq { ($actual:expr, $expected:expr) => { std::assert_eq!(1, 1) }; } assert_eq!(weight(4), 12);",
+        ),
+        (
+            "macro_rules! assert_eq { ($actual:expr, $expected:expr) => { std::assert_eq!(1, 1) }; }",
+            "assert_eq!(weight(4), 12);",
+        ),
+        ("use other::assert_eq;", "assert_eq!(weight(4), 12);"),
+        (
+            "use other::ignore as assert_eq;",
+            "assert_eq!(weight(4), 12);",
+        ),
+        ("use other::*;", "assert_eq!(weight(4), 12);"),
+        (
+            "#[macro_use] extern crate other;",
+            "assert_eq!(weight(4), 12);",
+        ),
+    ] {
+        let tests = format!("{prelude}\nuse demo::weight;\n#[test]\nfn weighs() {{ {body} }}\n");
+        assert!(weight_admitted(&tests).is_empty(), "{tests}");
+    }
+}
+
+#[test]
+fn owner_pin_refuses_ambiguous_oracle_coordinates() {
+    let tests = "use demo::weight;\n#[test]\nfn weighs() { assert_eq!(weight(4), 12); let _later = || { assert_eq!(weight(4), 12); }; }\n";
+    assert!(weight_admitted(tests).is_empty());
+    let tests = "use demo::weight;\n#[test]\nfn weighs() {\n    assert_eq!(weight(4), 12);\n    let _later = || { assert_eq!(weight(4), 12); };\n}\n";
+    assert_eq!(weight_admitted(tests).len(), 1);
+}
+
+#[test]
+fn owner_pin_macro_ambiguity_in_other_files_and_run_memo() {
+    let tests = "use demo::weight;\n#[test]\nfn weighs() { assert_eq!(weight(4), 12); }\n";
+    for other in [
+        "macro_rules! assert_eq { ($a:expr, $b:expr) => {} }",
+        "#[macro_use] extern crate other;",
+        "use other::{nested::*};",
+        "make!(assert_eq);",
+    ] {
+        let index = index(&[(LIB, WEIGHT_LIB), (TESTS, tests), ("src/other.rs", other)]);
+        let pin = establish(&index, "weight", "x * 3");
+        assert!(pin.is_some());
+        let Some(pin) = pin else { return };
+        assert!(admitted_texts(&index, &pin).is_empty(), "{other}");
+    }
+    let tests = tests.replace("use demo::weight;", "use demo::*;\n// macro_rules! assert_eq; macro_use\nconst NOTE: &str = \"assert_eq macro_use\";\nuse std::fs::write;\nmacro_rules! helper { () => { assert_eq!(1, 1); }; }");
+    let index = index(&[(LIB, WEIGHT_LIB), (TESTS, &tests)]);
+    let Some(pin) = establish(&index, "weight", "x * 3") else {
+        return;
+    };
+    let syntax = OwnerPinSyntax::default();
+    for _ in 0..2 {
+        assert!(pin.admits(
+            &index.tests[0],
+            &index.tests[0].assertions[0],
+            &index,
+            &|_, _| false,
+            &syntax
+        ));
+    }
+    assert_eq!(
+        syntax.ambiguous_macro_bindings.borrow().as_ref(),
+        Some(&BTreeSet::from(["write".to_string()]))
+    );
+    assert_eq!(syntax.by_file.borrow().len(), 1);
+}
+
+#[test]
+fn owner_pin_closure_call_must_share_the_bindings_live_scope() {
+    for body in [
+        "{ let check = || assert_eq!(weight(4), 12); } check();",
+        "let _later = || { let check = || assert_eq!(weight(4), 12); }; check();",
+    ] {
+        let tests =
+            format!("use demo::weight;\nfn check() {{}}\n#[test]\nfn weighs() {{ {body} }}\n");
+        assert!(weight_admitted(&tests).is_empty(), "{body}");
+    }
+}
+
+#[test]
+fn shared_return_admission_uses_the_outer_invocation_identity() {
+    for assertion in [
+        "assert_eq!(weight(input), 12);",
+        "#[cfg(any())] assert_eq!(weight(input), 12);",
+        "assert_eq!(weight(input), 12, \"{}\", stringify!(value));",
+    ] {
+        assert!(is_bare_assert_eq_invocation(assertion), "{assertion}");
+    }
+    for assertion in [
+        "assert!({ assert_eq!(weight(input), 12); true });",
+        "std::assert_eq!(weight(input), 12);",
+        "matches!(value, Some(_));",
+        "match value { _ => assert_eq!(weight(input), 12) }",
+    ] {
+        assert!(!is_bare_assert_eq_invocation(assertion), "{assertion}");
+    }
+}
+
+#[test]
+fn owner_pin_requires_test_item_ancestry_and_enabled_cfg() {
+    for module in [
+        "mod nested { #![cfg(any())] BODY }",
+        "#[cfg(any())] mod nested { BODY }",
+        "#[cfg(not(test))] mod nested { BODY }",
+        "#[cfg(test)] #[cfg(any())] mod nested { BODY }",
+        "#[cfg(feature = \"unknown\")] mod nested { BODY }",
+        "#[cfg_attr(test, cfg(any()))] mod nested { BODY }",
+        "#[r#cfg(any())] mod nested { BODY }",
+        "#[cfg_attr(test, r#cfg(any()))] mod nested { BODY }",
+        "#[r#cfg(test)] mod nested { BODY }",
+        "fn outer() { BODY }",
+    ] {
+        let body = "#[test] fn check() { assert_eq!(weight(4), 12); }";
+        let tests = format!("use demo::weight;\n{}", module.replace("BODY", body));
+        assert!(weight_admitted(&tests).is_empty(), "{module}");
+    }
+    for attribute in [
+        "",
+        "#[cfg(test)]",
+        "#[cfg(all())]",
+        "#[cfg(any(test, feature = \"unknown\"))]",
+        "#[warn(dead_code)] #[doc = \"cfg(any())\"]",
+    ] {
+        let tests = format!(
+            "{attribute} mod outer {{ mod nested {{ use demo::weight; #[test] fn check() {{ assert_eq!(weight(4), 12); }} }} }}"
+        );
+        assert_eq!(weight_admitted(&tests).len(), 1, "{attribute}");
+    }
 }

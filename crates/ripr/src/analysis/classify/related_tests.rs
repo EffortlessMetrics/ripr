@@ -60,6 +60,7 @@ pub(in crate::analysis) struct RelatedTestCandidateIndex {
     file_use_statements: super::FileUseStatements,
     /// Run-scoped activation memo, keyed by slots of the same index.
     test_value_facts: super::TestValueFacts,
+    owner_pin_syntax: super::OwnerPinSyntax,
 }
 
 impl RelatedTestCandidateIndex {
@@ -124,6 +125,10 @@ impl RelatedTestCandidateIndex {
     /// against this index.
     pub(in crate::analysis) fn file_use_statements(&self) -> &super::FileUseStatements {
         &self.file_use_statements
+    }
+
+    pub(in crate::analysis) fn owner_pin_syntax(&self) -> &super::OwnerPinSyntax {
+        &self.owner_pin_syntax
     }
 
     /// The run-scoped per-(test, owner) value facts shared by every probe

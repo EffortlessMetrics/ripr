@@ -68,7 +68,6 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)
   - related test tests/protocol.rs:4 pins_the_sibling_variant_of_the_changed_owner uses strong guarded result match oracle: match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }
-  - related test tests/protocol.rs:4 pins_the_sibling_variant_of_the_changed_owner uses strong exact value oracle: assert_eq!(value, 12)
   - observed enum variant value ParseError::UnexpectedEof at line 5
   - observed function argument value kind = "busy" at line 5
   - observed function argument value len = 12 at line 5

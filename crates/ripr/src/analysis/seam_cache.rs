@@ -261,9 +261,13 @@ pub(crate) struct CachedSeamLimitInfo {
 /// expression (#4478), so return-value probes can move from
 /// `weakly_exposed` to `exposed`. Old classified entries would keep serving
 /// the unconfirmed discriminator for warm workspaces.
-/// ErrorPath diagnostic operands (#4748) and diagnostic-free oracle kinds must
-/// cold-recompute; 1.21 belongs to the preceding owner-execution admission repair.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.22";
+/// `1.21` was reserved by the unmerged owner-execution admission draft (#4478).
+/// `1.22`: diagnostic-free oracle extraction and ErrorPath matching (#4748)
+/// landed first. Preserve that generation rather than reusing it.
+/// `1.22` -> `1.23`: shared parser-backed admission precedes bare assert_eq
+/// return-value matching/observation (#4478). Deferred, uncollected, disabled
+/// or ambiguously bound assertions cannot retain warm oracle credit.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.23";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -321,8 +325,10 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.22";
 /// transition as the outer classified-seam cache.
 /// `0.25` -> `0.26`: owner-return pins (#4478) — same semantic transition
 /// as the outer classified-seam cache.
-/// Diagnostic-free oracle extraction and ErrorPath confirmation (#4748).
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.28";
+/// `0.27` was reserved by the unmerged owner-execution admission draft.
+/// `0.28`: diagnostic-free extraction/ErrorPath confirmation (#4748).
+/// `0.28` -> `0.29`: shared return-oracle admission (#4478), same outer transition.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.29";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -382,8 +388,10 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.28";
 /// transition as the outer classified-seam cache.
 /// `0.25` -> `0.26`: owner-return pins (#4478) — same semantic transition
 /// as the outer classified-seam cache.
-/// Diagnostic-free oracle extraction and ErrorPath confirmation (#4748).
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.28";
+/// `0.27` was reserved by the unmerged owner-execution admission draft.
+/// `0.28`: diagnostic-free extraction/ErrorPath confirmation (#4748).
+/// `0.28` -> `0.29`: shared return-oracle admission (#4478), same outer transition.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.29";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -3577,7 +3585,8 @@ mod tests {
         // `Type::method()` calls.
         // 1.19 -> 1.20: owner-return pins (#4478) confirm return-value
         // probes the token rule left unconfirmed.
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.22");
+        // 1.22 -> 1.23: integrate shared return-oracle admission after #4748.
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.23");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
@@ -3599,8 +3608,9 @@ mod tests {
         // 0.25 (sharded) / 0.25 (compact): function impl context (#4558).
         // 0.26 (sharded) / 0.26 (compact): owner-return pins (#4478) —
         // same semantic transition as the outer cache.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.28");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.28");
+        // 0.28 -> 0.29: same combined semantic transition as the outer cache.
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.29");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.29");
     }
 
     #[test]

@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/guarded_result_match_swallowed/input
 
-Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) shown
+Summary: 2 probe(s), 0 exposed, 1 weakly_exposed, 1 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) shown
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
@@ -61,17 +61,17 @@ Probe
   owner:  src/lib.rs::expect_ready
 
 Static exposure
-  weakly_exposed (warning, confidence 0.92)
+  reachable_unrevealed (warning, confidence 0.79)
 
 Evidence
   - reach yes: Related tests appear to reach expect_ready: logs_failures_without_discriminating, wildcard_panic_without_variant_pin
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)
-  - related test tests/messages.rs:4 logs_failures_without_discriminating uses strong exact value oracle: assert_eq!(value, 12)
-  - related test tests/messages.rs:14 wildcard_panic_without_variant_pin uses strong exact value oracle: assert_eq!(value, 12)
+  - related test tests/messages.rs:4 logs_failures_without_discriminating uses none unknown oracle
+  - related test tests/messages.rs:14 wildcard_panic_without_variant_pin uses none unknown oracle
   - observed function argument value kind = "busy" at line 5
   - observed function argument value len = 12 at line 5
   - observed assertion argument value 12 at line 9
@@ -80,11 +80,14 @@ Evidence
   - observed assertion argument value 12 at line 16
 
 Weakness
+  - No detected assertion observes the changed value, error, field, or effect
+  - No relevant oracle was detected
+  - No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - No strong discriminator was detected
   - missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData
 
 Next step
-  Add a test input that reaches the changed error path and assert the exact error variant it returns.
+  Establish that the test is collected and enabled, that the assertion runs on its executed path, and that it resolves to the intended standard macro, then check the changed returned value.
 Drill in:
   ripr explain --root fixtures/guarded_result_match_swallowed/input --diff fixtures/guarded_result_match_swallowed/diff.patch --mode fast probe:src_lib.rs:return_value:1f4cb0e7
   ripr context --root fixtures/guarded_result_match_swallowed/input --diff fixtures/guarded_result_match_swallowed/diff.patch --mode fast --at probe:src_lib.rs:return_value:1f4cb0e7

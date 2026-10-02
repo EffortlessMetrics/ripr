@@ -154,7 +154,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: guarded Result match over the changed owner's result"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach expect_response: validates_ready_response", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: Ok(build_response(expected_id, trimmed)?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (weakly_exposed); related oracle: Strong oracle found: guarded Result match over the changed owner's result", "local flow reaches returned value: Ok(build_response(expected_id, trimmed)?) (line 46)", "related test tests/protocol.rs:4 validates_ready_response uses strong guarded result match oracle: match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: assert_eq!(response.id, \"ready\");", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: assert_eq!(response.body, \"payload\");", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )", "observed enum variant value ParseError::InvalidData at line 6", "observed function argument value \"ready\" at line 6", "observed assertion argument value \"ready\" at line 8", "observed assertion argument value \"payload\" at line 9", "observed enum variant value ParseError::InvalidData at line 12"],
+      "evidence_path": ["reach yes: Related tests appear to reach expect_response: validates_ready_response", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: Ok(build_response(expected_id, trimmed)?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (weakly_exposed); related oracle: Strong oracle found: guarded Result match over the changed owner's result", "local flow reaches returned value: Ok(build_response(expected_id, trimmed)?) (line 46)", "related test tests/protocol.rs:4 validates_ready_response uses strong guarded result match oracle: match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }", "related test tests/protocol.rs:4 validates_ready_response uses strong exact value oracle: matches!(\n                error.downcast_ref::<ParseError>(),\n                Some(ParseError::InvalidData { .. })\n            )", "observed enum variant value ParseError::InvalidData at line 6", "observed function argument value \"ready\" at line 6", "observed assertion argument value \"ready\" at line 8", "observed assertion argument value \"payload\" at line 9", "observed enum variant value ParseError::InvalidData at line 12"],
       "flow_sinks": [
         {"kind":"return_value","text":"Ok(build_response(expected_id, trimmed)?)","line":46}
       ],
@@ -228,7 +228,7 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 4,
+      "related_tests_total": 2,
       "related_tests": [
         {
           "name": "validates_ready_response",
@@ -237,26 +237,6 @@
           "oracle_strength": "strong",
           "oracle_kind": "guarded_result_match",
           "oracle": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData { .. }) }",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
-        },
-        {
-          "name": "validates_ready_response",
-          "file": "tests/protocol.rs",
-          "line": 4,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(response.id, \"ready\");",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
-        },
-        {
-          "name": "validates_ready_response",
-          "file": "tests/protocol.rs",
-          "line": 4,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(response.body, \"payload\");",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
         },

@@ -31,6 +31,8 @@ pub(in crate::analysis) struct ProbeContext<'a> {
     /// Run-scoped per-(test, owner) value facts, attached by the
     /// classifier; `None` (unit-test contexts) computes them per probe.
     pub test_value_facts: Option<&'a TestValueFacts>,
+    /// Run-scoped private assertion context, shared across all probes.
+    pub owner_pin_syntax: Option<&'a super::OwnerPinSyntax>,
 }
 
 impl<'a> ProbeContext<'a> {
@@ -52,6 +54,7 @@ impl<'a> ProbeContext<'a> {
             workspace_complete,
             file_use_statements: None,
             test_value_facts: None,
+            owner_pin_syntax: None,
         }
     }
 
@@ -61,6 +64,14 @@ impl<'a> ProbeContext<'a> {
         file_use_statements: &'a FileUseStatements,
     ) -> Self {
         self.file_use_statements = Some(file_use_statements);
+        self
+    }
+
+    pub(in crate::analysis) fn with_owner_pin_syntax(
+        mut self,
+        syntax: &'a super::OwnerPinSyntax,
+    ) -> Self {
+        self.owner_pin_syntax = Some(syntax);
         self
     }
 

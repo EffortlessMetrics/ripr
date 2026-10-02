@@ -32,7 +32,7 @@ pub(in crate::analysis) use decision::{
 pub(in crate::analysis) use flow::{local_flow_sinks, propagation_evidence_with_witness};
 pub(in crate::analysis) use helper_transfer::resolve_chain;
 pub(in crate::analysis) use infection::infection_evidence;
-pub(in crate::analysis) use owner_pin::OwnerReturnPin;
+pub(in crate::analysis) use owner_pin::{OwnerPinSyntax, OwnerReturnPin};
 pub(in crate::analysis) use owner_shape::is_assertion_shaped_owner;
 pub(in crate::analysis) use propagation_witness::{
     PropagationWitnessV1, assertion_observes_direct_collection, current_path_witness,
@@ -44,10 +44,10 @@ pub(in crate::analysis) use related_tests::{
     find_related_tests_with_candidate_index, impl_self_type_name,
     method_call_resolves_to_impl_type, package_prefix,
 };
-pub(in crate::analysis) use reveal::FileUseStatements;
-pub(in crate::analysis) use reveal::contains_as_whole_word;
 pub(in crate::analysis) use reveal::reveal_evidence_with_expression;
 pub(in crate::analysis) use reveal::wrapper_error_seam_expression;
+pub(in crate::analysis) use reveal::{ASSERTION_CONTEXT_UNESTABLISHED, FileUseStatements};
+pub(in crate::analysis) use reveal::{ReturnOracleAdmission, contains_as_whole_word};
 // RIPR-SPEC-0106: re-export the variant parsers so test_grip_evidence.rs can
 // apply variant-binding without reaching into the private `text` submodule.
 pub(in crate::analysis) use text::{

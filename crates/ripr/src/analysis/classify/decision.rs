@@ -108,6 +108,9 @@ pub(in crate::analysis) fn missing_evidence(
     activation: &ActivationEvidence,
 ) -> Vec<String> {
     let mut missing = Vec::new();
+    if observe.summary == super::ASSERTION_CONTEXT_UNESTABLISHED {
+        missing.push(observe.summary.clone());
+    }
     match class {
         ExposureClass::Exposed => {}
         ExposureClass::NoStaticPath => {

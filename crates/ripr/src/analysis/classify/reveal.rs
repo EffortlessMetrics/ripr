@@ -9,6 +9,13 @@ use super::reach::is_proximity_only;
 use super::rust_string_literals;
 use crate::domain::*;
 
+/// Shared return-oracle provenance at the reveal admission boundary. The
+/// execution/macro gate applies before either token or owner-pin confirmation.
+pub(in crate::analysis) struct ReturnOracleAdmission<'a> {
+    pub(in crate::analysis) owner_return_pin: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
+    pub(in crate::analysis) assertion_admitted: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
+}
+
 #[cfg(test)]
 fn reveal_evidence(
     probe: &Probe,
@@ -21,7 +28,10 @@ fn reveal_evidence(
         &[],
         &|_, _| false,
         &|_, _| false,
-        &|_, _| false,
+        &ReturnOracleAdmission {
+            owner_return_pin: &|_, _| false,
+            assertion_admitted: &|_, _| true,
+        },
     )
 }
 
@@ -32,7 +42,7 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
     owner_local_bindings: &[String],
     same_name_import_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     cross_package_name_defeats: &dyn Fn(&TestSummary, &str) -> bool,
-    owner_return_pin: &dyn Fn(&TestSummary, &OracleFact) -> bool,
+    return_admission: &ReturnOracleAdmission<'_>,
 ) -> (StageEvidence, StageEvidence, Vec<RelatedTest>) {
     if related_tests.is_empty() {
         return (
@@ -57,11 +67,17 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
         owner_local_bindings,
         same_name_import_defeats,
         cross_package_name_defeats,
-        owner_return_pin,
+        return_admission,
     );
     let related = finalize_related_tests(analysis.related);
-    let observe = build_observe_evidence(analysis.matched_any);
-    let discriminate = if needs_token_confirmation(&probe.family)
+    let observe = build_observe_evidence(analysis.matched_any, analysis.refused_context);
+    let discriminate = if analysis.refused_context && !analysis.matched_any {
+        StageEvidence::new(
+            StageState::No,
+            Confidence::Medium,
+            "No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)",
+        )
+    } else if needs_token_confirmation(&probe.family)
         && analysis.matched_any
         && !analysis.observation_unverified
         && !analysis.strongest_observation_confirmed
@@ -92,6 +108,7 @@ struct RevealAssertionAnalysis {
     /// oracle, even when both assertions are in the same related test.
     strongest_observation_confirmed: bool,
     matched_any: bool,
+    refused_context: bool,
     /// True when this probe's family requires a `token_match` to confirm that
     /// an assertion actually references the specific changed sub-expression, and
     /// no such match has fired yet.
@@ -224,7 +241,7 @@ fn analyze_related_assertions(
     owner_local_bindings: &[String],
     same_name_import_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     cross_package_name_defeats: &dyn Fn(&TestSummary, &str) -> bool,
-    owner_return_pin: &dyn Fn(&TestSummary, &OracleFact) -> bool,
+    return_admission: &ReturnOracleAdmission<'_>,
 ) -> RevealAssertionAnalysis {
     let probe_tokens = if is_effect_family(&probe.family) {
         // An effect target rooted at a binding the owner itself introduces
@@ -328,6 +345,7 @@ fn analyze_related_assertions(
     let mut strongest_kind = OracleKind::Unknown;
     let mut strongest_observation_confirmed = false;
     let mut matched_any = false;
+    let mut refused_context = false;
     // For families that need token confirmation: start pessimistic and clear
     // once a token_match fires.
     let mut observation_unverified = false;
@@ -358,7 +376,14 @@ fn analyze_related_assertions(
         let relation_reason = Some(*reason);
         let relation_confidence = Some(reason.confidence());
         let credits_oracle = !(reach_bearing_related && name_only(*reason));
-        if test.assertions.is_empty() {
+        let assertions: Vec<_> = test
+            .assertions
+            .iter()
+            .filter(|assertion| (return_admission.assertion_admitted)(test, assertion))
+            .collect();
+        let refused_here = assertions.len() != test.assertions.len();
+        refused_context |= refused_here;
+        if assertions.is_empty() {
             related.push(RelatedTest {
                 name: test.name.clone(),
                 file: test.file.clone(),
@@ -385,7 +410,11 @@ fn analyze_related_assertions(
         let cross_package_defeats_owner = match_context
             .owner_callee
             .is_some_and(|callee| cross_package_name_defeats(test, callee));
-        for assertion in &test.assertions {
+        // Refusing credit must not manufacture the singleton-test fallback
+        // for an otherwise unrelated surviving oracle.
+        let assertion_count = test.assertions.len();
+        let related_before = related.len();
+        for assertion in assertions {
             // #4478: whether this `assert_eq!` pins the owner's whole return
             // value through a call that names the owner. The owner-side and
             // test-side identity gates live in `owner_pin`; the family and
@@ -396,11 +425,11 @@ fn analyze_related_assertions(
                     assertion.kind,
                     OracleKind::ExactValue | OracleKind::WholeObjectEquality
                 )
-                && owner_return_pin(test, assertion);
+                && (return_admission.owner_return_pin)(test, assertion);
             let (matched, has_token_match) = assertion_matches_probe_detail_with_literals(
                 &match_context,
                 assertion,
-                test.assertions.len(),
+                assertion_count,
                 import_defeats_owner,
                 cross_package_defeats_owner,
                 owner_pinned,
@@ -470,6 +499,18 @@ fn analyze_related_assertions(
                 });
             }
         }
+        if refused_here && related.len() == related_before {
+            related.push(RelatedTest {
+                name: test.name.clone(),
+                file: test.file.clone(),
+                line: test.start_line,
+                oracle: None,
+                oracle_kind: OracleKind::Unknown,
+                oracle_strength: OracleStrength::None,
+                relation_reason,
+                relation_confidence,
+            });
+        }
     }
 
     RevealAssertionAnalysis {
@@ -478,6 +519,7 @@ fn analyze_related_assertions(
         strongest_kind,
         strongest_observation_confirmed,
         matched_any,
+        refused_context,
         observation_unverified,
     }
 }
@@ -1965,7 +2007,9 @@ fn related_test_rank(test: &RelatedTest) -> u8 {
     }
 }
 
-fn build_observe_evidence(matched_any: bool) -> StageEvidence {
+pub(in crate::analysis) const ASSERTION_CONTEXT_UNESTABLISHED: &str = "No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)";
+
+fn build_observe_evidence(matched_any: bool, refused_context: bool) -> StageEvidence {
     if matched_any {
         StageEvidence::new(
             StageState::Yes,
@@ -1976,7 +2020,11 @@ fn build_observe_evidence(matched_any: bool) -> StageEvidence {
         StageEvidence::new(
             StageState::No,
             Confidence::Medium,
-            "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect",
+            if refused_context {
+                ASSERTION_CONTEXT_UNESTABLISHED
+            } else {
+                "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"
+            },
         )
     }
 }
@@ -2551,7 +2599,10 @@ mod tests {
                 &owner_locals,
                 &|_, _| false,
                 &|_, _| false,
-                &|_, _| false,
+                &ReturnOracleAdmission {
+                    owner_return_pin: &|_, _| false,
+                    assertion_admitted: &|_, _| true,
+                },
             )
             .1
         };
@@ -4334,7 +4385,10 @@ return Err(\"typed pin\".into());
             &[],
             &|_test, callee| file_imports_foreign_callee_name(test_source, callee, &crate_names),
             &|_, _| false,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
 
         assert_eq!(
@@ -4380,7 +4434,10 @@ return Err(\"typed pin\".into());
             &[],
             &|_, callee| file_imports_foreign_callee_name(without_import, callee, &own_crate_names),
             &|_, _| false,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
         assert_eq!(
             discriminate.state,
@@ -4397,7 +4454,10 @@ return Err(\"typed pin\".into());
                 file_imports_foreign_callee_name(own_crate_import, callee, &own_crate_names)
             },
             &|_, _| false,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
         assert_eq!(
             own_crate.state,
@@ -4433,7 +4493,10 @@ return Err(\"typed pin\".into());
             &[],
             &|_, callee| file_imports_foreign_callee_name(aliased_import, callee, &crate_names),
             &|_, _| false,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
         assert_eq!(
             discriminate.state,
@@ -4471,7 +4534,10 @@ return Err(\"typed pin\".into());
             &[],
             &|_test, callee| file_imports_foreign_callee_name(test_source, callee, &crate_names),
             &|_, _| false,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
 
         assert_eq!(
@@ -4634,7 +4700,10 @@ return Err(\"typed pin\".into());
             &[],
             &|_, _| false,
             &|_, _| true,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
         assert_eq!(
             defeated.state,
@@ -4654,7 +4723,10 @@ return Err(\"typed pin\".into());
             &[],
             &|_, _| false,
             &|_, _| false,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
         assert_eq!(
             confirmed.state,
@@ -5237,7 +5309,10 @@ return Err(\"typed pin\".into());
             &[],
             &|_, _| false,
             &|_, _| false,
-            &|_, _| false,
+            &ReturnOracleAdmission {
+                owner_return_pin: &|_, _| false,
+                assertion_admitted: &|_, _| true,
+            },
         );
 
         assert_eq!(

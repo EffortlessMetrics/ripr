@@ -1533,7 +1533,7 @@ pub(crate) fn slice_text(text: &str, start: TextSize, end: TextSize) -> String {
     text.get(start..end).unwrap_or("").to_string()
 }
 
-fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) -> String {
+pub(super) fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) -> String {
     let start = text_size_to_usize(start);
     let mut end = text_size_to_usize(end);
     let bytes = text.as_bytes();

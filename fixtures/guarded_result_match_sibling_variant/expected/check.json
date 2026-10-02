@@ -144,7 +144,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach expect_ready: pins_the_sibling_variant_of_the_changed_owner", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)", "related test tests/protocol.rs:4 pins_the_sibling_variant_of_the_changed_owner uses strong guarded result match oracle: match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }", "related test tests/protocol.rs:4 pins_the_sibling_variant_of_the_changed_owner uses strong exact value oracle: assert_eq!(value, 12)", "observed enum variant value ParseError::UnexpectedEof at line 5", "observed function argument value kind = \"busy\" at line 5", "observed function argument value len = 12 at line 5", "observed assertion argument value 12 at line 6", "missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData"],
+      "evidence_path": ["reach yes: Related tests appear to reach expect_ready: pins_the_sibling_variant_of_the_changed_owner", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(ParseError::InvalidData)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: Result::Err(ParseError::InvalidData) (line 9)", "related test tests/protocol.rs:4 pins_the_sibling_variant_of_the_changed_owner uses strong guarded result match oracle: match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }", "observed enum variant value ParseError::UnexpectedEof at line 5", "observed function argument value kind = \"busy\" at line 5", "observed function argument value len = 12 at line 5", "observed assertion argument value 12 at line 6", "missing discriminator ParseError::InvalidData: No exact error variant assertion for ParseError::InvalidData"],
       "flow_sinks": [
         {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
       ],
@@ -218,7 +218,7 @@
           "flow_sink": {"kind":"error_variant","text":"Result::Err(ParseError::InvalidData)","line":9}
         }
       ],
-      "related_tests_total": 2,
+      "related_tests_total": 1,
       "related_tests": [
         {
           "name": "pins_the_sibling_variant_of_the_changed_owner",
@@ -229,20 +229,10 @@
           "oracle": "match expect_ready(..) { Ok(..) => .., Err(..) => Err(ParseError::UnexpectedEof) }",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
-        },
-        {
-          "name": "pins_the_sibling_variant_of_the_changed_owner",
-          "file": "tests/protocol.rs",
-          "line": 4,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(value, 12)",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
         }
       ],
       "stop_reasons": [],
-      "oracle_kind": "exact_value",
+      "oracle_kind": "guarded_result_match",
       "oracle_strength": "strong",
       "recommended_next_step": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",
       "suggested_next_action": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",

@@ -258,7 +258,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: Ok(build_response(id, method)?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: Ok(build_response(id, method)?) (line 62)", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: expect_response(\"42|workspace/refresh\", \"42\").unwrap()", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: let response = expect_response(\"42|workspace/refresh\", \"42\").unwrap();", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses strong exact value oracle: assert_eq!(response.id, \"42\");", "related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses strong exact value oracle: assert_eq!(response.id, \"42\")", "related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses strong exact value oracle: assert_eq!(response.id, \"42\")", "observed function argument value \"42\" at line 5", "observed function argument value \"42|workspace/refresh\" at line 5", "observed assertion argument value \"42\" at line 6", "observed function argument value \"42\" at line 26", "observed function argument value \"42|workspace/refresh\" at line 26", "observed assertion argument value \"42\" at line 28", "observed function argument value \"42\" at line 36", "observed assertion argument value \"42\" at line 37"],
+      "evidence_path": ["reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: No complete owner-bound propagation witness found for returned value: Ok(build_response(id, method)?)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: Ok(build_response(id, method)?) (line 62)", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: expect_response(\"42|workspace/refresh\", \"42\").unwrap()", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: let response = expect_response(\"42|workspace/refresh\", \"42\").unwrap();", "related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses strong exact value oracle: assert_eq!(response.id, \"42\");", "related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses none unknown oracle", "related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses none unknown oracle", "observed function argument value \"42\" at line 5", "observed function argument value \"42|workspace/refresh\" at line 5", "observed assertion argument value \"42\" at line 6", "observed function argument value \"42\" at line 26", "observed function argument value \"42|workspace/refresh\" at line 26", "observed assertion argument value \"42\" at line 28", "observed function argument value \"42\" at line 36", "observed assertion argument value \"42\" at line 37"],
       "flow_sinks": [
         {"kind":"return_value","text":"Ok(build_response(id, method)?)","line":62}
       ],
@@ -462,9 +462,9 @@
           "name": "message_only_error_predicate_never_pins",
           "file": "tests/protocol.rs",
           "line": 43,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(response.id, \"42\")",
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
         },
@@ -472,9 +472,9 @@
           "name": "shadowed_callee_never_credits_the_seam",
           "file": "tests/protocol.rs",
           "line": 34,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(response.id, \"42\")",
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
         },
@@ -482,9 +482,9 @@
           "name": "swallowed_error_arm_never_credits",
           "file": "tests/protocol.rs",
           "line": 55,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(response.id, \"42\")",
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
         },
@@ -492,9 +492,9 @@
           "name": "variable_binding_scrutinee_keeps_existing_weaker_meaning",
           "file": "tests/protocol.rs",
           "line": 25,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(response.id, \"42\")",
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
         }

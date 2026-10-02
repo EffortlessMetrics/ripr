@@ -19,11 +19,13 @@ The diff flips the unready-kind rejection payload from
 
 ## Then
 
-The guarded matches carry no recognized discriminator, so the probes on
-the changed line keep their existing weaker meaning: findings stay at
-`weakly_exposed` (the `Ok`-arm value assertions remain ordinary exact
-value oracles) and `discriminate` reports the unconfirmed state with the
-missing `ParseError::InvalidData` discriminator named.
+The guarded matches carry no recognized discriminator. Under RIPR-SPEC-0197,
+the conditional `Ok`-arm bare equality assertions contribute no standalone
+`return_value` oracle credit: that probe reads `reachable_unrevealed` with
+Observe `no`, Discriminate `no`, and related tests retained with no oracle.
+The `error_path` probe keeps its existing `weakly_exposed` result and names
+the missing `ParseError::InvalidData` discriminator; its oracle authority is
+outside the return-value admission boundary.
 
 ## Must Not
 

@@ -350,8 +350,11 @@ the #13162 `expect_response` comparison shape.
   predicate, and swallowed-error arm — all non-crediting; findings stay
   at `weakly_exposed`.
 - `fixtures/guarded_result_match_swallowed`: the owner-correct harness
-  whose Err arms only log or panic through a wildcard — findings stay at
-  `weakly_exposed` with the missing discriminator named.
+  whose Err arms only log or panic through a wildcard. The error-path probe
+  stays `weakly_exposed`; RIPR-SPEC-0197 refuses standalone conditional bare
+  equality credit for the return-value probe, which reads
+  `reachable_unrevealed` with no established oracle. The guarded-match
+  authority itself is unchanged.
 - `fixtures/guarded_result_match_sibling_variant`: the owner's changed
   line constructs `Err(ParseError::InvalidData)` while the only guarded
   match pins the sibling `Err(ParseError::UnexpectedEof)` on a bare
