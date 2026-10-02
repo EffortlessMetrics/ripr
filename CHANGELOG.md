@@ -142,6 +142,15 @@ are scoped or reviewed.
 
 ### Fixed
 
+- Review guidance: admit workspace and changed-owner inputs before either
+  index build, with file/byte limits and a `review_guidance_oversized` failed
+  receipt instead of silently truncated guidance (#4388, RIPR-SPEC-0012).
+  The default file limit is 1200, matching the current diff/repo family;
+  required runner lanes no longer override it to 2000. Malformed overrides
+  still reject execution but no longer hide `review-comments --help`.
+  Admission is not an RSS/completion guarantee; large-workspace completed
+  guidance and hosted replay remain separate acceptance work.
+
 - Rust: a changed `?` error path no longer reads `exposed` because a
   success-value assertion shares a variable name with it. ripgrep's
   `rdr.read(buf)?` was credited to a test asserting `rdr.bstr()`, and the

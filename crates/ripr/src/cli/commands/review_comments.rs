@@ -8,7 +8,10 @@
 
 use crate::analysis;
 use crate::app::CheckInput;
-use crate::app::agent_brief::{AgentBriefPolicy, AgentBriefResolvedWorkingSet, BoundedAgentBrief};
+use crate::app::agent_brief::{
+    AgentBriefChangedOwner, AgentBriefLine, AgentBriefPolicy, AgentBriefResolvedWorkingSet,
+    BoundedAgentBrief,
+};
 use crate::cli::commands_agent_support::{
     agent_brief_lines_from_diff, agent_brief_owner_attribution_for_lines,
 };
@@ -26,6 +29,159 @@ use std::time::{Duration, Instant};
 use super::write_text_file;
 
 const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
+
+/// Default ceiling on the union of analyzable workspace files and changed
+/// owner-attribution inputs. Match the current diff/repo family default
+/// (raised in #4972 after this repository grew beyond 800 files), while
+/// remaining below the 1,600–1,700-file external failure shapes in #3768.
+/// This is input admission, not an RSS bound or evidence that admitted
+/// execution will complete on every runner.
+const REVIEW_GUIDANCE_MAX_INDEX_FILES_DEFAULT: usize = 1200;
+
+/// Env override for [`REVIEW_GUIDANCE_MAX_INDEX_FILES_DEFAULT`], in the
+/// `RIPR_MAX_DIFF_INDEX_FILES` family. Operators on larger, well-resourced
+/// runners raise it; CI can lower it to exercise the guard.
+const REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV: &str = "RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES";
+
+/// Default byte budget on the guidance payload: the changed diff text plus
+/// the closure corpus an admitted dispatch would load. This is the
+/// few-giant-files guard; the measured closure scale is bounded by the file
+/// count above, because source bytes alone are small next to the index
+/// structures they expand into (the #4388 measurement: a 1,700-file
+/// synthetic closure carries a ~1.3 MB payload yet ~102 MB peak working
+/// set). 256 MiB matches the shared single-input bound
+/// (`bounded_input::MAX_CLI_INPUT_BYTES`).
+const REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_DEFAULT: u64 = 256 * 1024 * 1024;
+
+/// Env override for [`REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_DEFAULT`].
+const REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV: &str = "RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES";
+
+/// Named, matchable prefix for the guidance-payload ceiling error (#4388),
+/// in the style of `diff_scope_oversized` (#1023): the xtask dispatch
+/// wrapper matches this prefix to classify the failure as an
+/// instrument-limited pass in its own receipt.
+const REVIEW_GUIDANCE_OVERSIZED_PREFIX: &str = "review_guidance_oversized";
+
+/// Per-dispatch memory ceiling over the review-guidance payload (#4388).
+/// Both axes are measured before the closure corpus is materialized, so an
+/// over-ceiling dispatch never pays the memory the ceiling exists to bound.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GuidancePayloadCeiling {
+    max_index_files: usize,
+    max_payload_bytes: u64,
+}
+
+impl GuidancePayloadCeiling {
+    fn from_env() -> Result<Self, String> {
+        Self::parse(
+            std::env::var(REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV),
+            std::env::var(REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV),
+        )
+    }
+
+    /// Parse both family overrides. Takes the raw env results as parameters
+    /// so tests exercise validation without mutating process state.
+    fn parse(
+        max_index_files: Result<String, std::env::VarError>,
+        max_payload_bytes: Result<String, std::env::VarError>,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            max_index_files: positive_usize_limit_from_env(
+                REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV,
+                REVIEW_GUIDANCE_MAX_INDEX_FILES_DEFAULT,
+                max_index_files,
+            )?,
+            max_payload_bytes: positive_u64_limit_from_env(
+                REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV,
+                REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_DEFAULT,
+                max_payload_bytes,
+            )?,
+        })
+    }
+
+    /// Fail closed with a named `review_guidance_oversized` error when the
+    /// measured payload exceeds either axis. The error names the exceeded
+    /// count or byte total, the owning environment variable, and the repair
+    /// route; nothing is truncated silently.
+    fn enforce(
+        &self,
+        corpus: analysis::CorpusPayloadSize,
+        payload_bytes: u64,
+    ) -> Result<(), String> {
+        if corpus.file_count > self.max_index_files {
+            return Err(format!(
+                "{REVIEW_GUIDANCE_OVERSIZED_PREFIX}: {count} closure input files exceed the \
+                 review-guidance ceiling ({env}={limit}); the guidance pass was not run to \
+                 protect runner memory. Repair route: raise the limit via {env}=<number> on a \
+                 runner with enough memory, or reduce the workspace input set. Narrowing only \
+                 the diff does not reduce the workspace file count.",
+                count = corpus.file_count,
+                env = REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV,
+                limit = self.max_index_files,
+            ));
+        }
+        if payload_bytes > self.max_payload_bytes {
+            return Err(format!(
+                "{REVIEW_GUIDANCE_OVERSIZED_PREFIX}: {bytes} guidance payload bytes (changed \
+                 diff plus closure corpus) exceed the review-guidance ceiling ({env}={limit}); \
+                 the guidance pass was not run to protect runner memory. Repair route: raise \
+                 the limit via {env}=<number> on a runner with enough memory, or reduce the \
+                 workspace corpus bytes and/or diff bytes.",
+                bytes = payload_bytes,
+                env = REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV,
+                limit = self.max_payload_bytes,
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn positive_usize_limit_from_env(
+    env_name: &str,
+    default: usize,
+    value: Result<String, std::env::VarError>,
+) -> Result<usize, String> {
+    let parsed = positive_u64_limit_from_env(env_name, default as u64, value)?;
+    usize::try_from(parsed).map_err(|err| {
+        format!("{env_name} must be a positive integer within the platform range: {err}")
+    })
+}
+
+fn positive_u64_limit_from_env(
+    env_name: &str,
+    default: u64,
+    value: Result<String, std::env::VarError>,
+) -> Result<u64, String> {
+    match value {
+        Ok(raw) => {
+            let parsed = raw
+                .trim()
+                .parse::<u64>()
+                .map_err(|err| format!("{env_name} must be a positive integer: {err}"))?;
+            if parsed == 0 {
+                return Err(format!("{env_name} must be a positive integer"));
+            }
+            Ok(parsed)
+        }
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
+    }
+}
+
+fn record_review_comments_oversized(
+    receipt: &mut crate::output::review_comments_receipt::ReviewCommentsRunReceipt,
+    receipt_path: &Path,
+    phase: &str,
+    error: String,
+) -> String {
+    receipt.oversized(phase, &error);
+    match receipt.write_atomic(receipt_path) {
+        Ok(()) => error,
+        Err(receipt_error) => {
+            format!("{error}; failed to persist terminal receipt: {receipt_error}")
+        }
+    }
+}
 
 fn record_review_comments_error(
     receipt: &mut crate::output::review_comments_receipt::ReviewCommentsRunReceipt,
@@ -229,10 +385,48 @@ fn review_comments_with_diff_loader_at(
     load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
     now: impl Fn() -> Instant + Send + Sync + 'static,
 ) -> Result<(), String> {
+    review_comments_with_admission(
+        args,
+        load_diff,
+        now,
+        GuidancePayloadCeiling::from_env,
+        agent_brief_owner_attribution_for_lines,
+    )
+}
+
+#[cfg(test)]
+fn review_comments_with_diff_loader_at_with_ceiling(
+    args: &[String],
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+    now: impl Fn() -> Instant + Send + Sync + 'static,
+    ceiling: GuidancePayloadCeiling,
+) -> Result<(), String> {
+    review_comments_with_admission(
+        args,
+        load_diff,
+        now,
+        || Ok(ceiling),
+        agent_brief_owner_attribution_for_lines,
+    )
+}
+
+fn review_comments_with_admission(
+    args: &[String],
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+    now: impl Fn() -> Instant + Send + Sync + 'static,
+    load_ceiling: impl FnOnce() -> Result<GuidancePayloadCeiling, String>,
+    attribute_owners: impl FnOnce(
+        &Path,
+        &[AgentBriefLine],
+    ) -> (Vec<AgentBriefChangedOwner>, Vec<AgentBriefChangedOwner>),
+) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_review_comments_help();
         return Ok(());
     }
+    // Help must stay available even when an operator needs it to repair a
+    // malformed runtime limit. Real dispatches still validate both values.
+    let ceiling = load_ceiling()?;
 
     let options = parse_review_comments_options(args)?;
     if !options.root.is_dir() {
@@ -414,8 +608,38 @@ fn review_comments_with_diff_loader_at(
     receipt.phase("diff_discovery", "language_facts");
     receipt.write_atomic(&receipt_path)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
-    let (changed_owners, enclosing_owners) =
-        agent_brief_owner_attribution_for_lines(&input.root, &changed_lines);
+    // Admit before either owner attribution or canonical inventory builds
+    // an index. Changed paths can include generated/excluded files the
+    // canonical corpus skips, so count their union without dropping owners.
+    let owner_files = changed_lines
+        .iter()
+        .map(|line| line.file.clone())
+        .collect::<Vec<_>>();
+    let corpus_payload = analysis::cancellation::with_token(&cancellation, || {
+        analysis::analyzable_corpus_payload_size(&input.root, &config, &owner_files)
+    })
+    .map_err(|error| {
+        if analysis::cancellation::is_cancellation_error(&error)
+            && cancellation.abort_kind()
+                == Some(analysis::cancellation::AnalysisAbortKind::DeadlineExceeded)
+        {
+            record_review_comments_timeout(&mut receipt, &receipt_path, "language_facts")
+        } else {
+            record_review_comments_error(&mut receipt, &receipt_path, "language_facts", error)
+        }
+    })?;
+    let payload_bytes = corpus_payload
+        .total_bytes
+        .saturating_add(diff_text.len() as u64);
+    if let Err(error) = ceiling.enforce(corpus_payload, payload_bytes) {
+        return Err(record_review_comments_oversized(
+            &mut receipt,
+            &receipt_path,
+            "language_facts",
+            error,
+        ));
+    }
+    let (changed_owners, enclosing_owners) = attribute_owners(&input.root, &changed_lines);
     enforce_review_comments_deadline(
         &mut receipt,
         &receipt_path,
@@ -1423,6 +1647,7 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let clock_calls = Arc::clone(&calls);
         let start = Instant::now();
+        let clock_receipt_path = out.with_file_name("run-receipt.json");
         let result = review_comments_with_diff_loader_at(
             &args(&[
                 "--root",
@@ -1440,17 +1665,20 @@ mod tests {
                 Ok("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub fn value() -> i32 { 0 }\n+pub fn value() -> i32 { 1 }\n".to_string())
             },
             move || {
-                let call = clock_calls.fetch_add(1, Ordering::SeqCst);
-                // start, diff, language facts, canonical admission remain
-                // unexpired; the next interior observation expires.
-                if call >= 4 {
+                let in_canonical = std::fs::read_to_string(&clock_receipt_path)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                    .is_some_and(|receipt| receipt["active_phase"] == "canonical_analysis");
+                // Census now observes the same budget. Select canonical
+                // admission explicitly instead of counting earlier probes.
+                if in_canonical && clock_calls.fetch_add(1, Ordering::SeqCst) >= 1 {
                     start + Duration::from_secs(1)
                 } else {
                     start
                 }
             },
         );
-        if calls.load(Ordering::SeqCst) != 5 {
+        if calls.load(Ordering::SeqCst) != 2 {
             return Err(
                 "canonical work did not stop at its first expired interior checkpoint".to_string(),
             );
@@ -1656,6 +1884,537 @@ mod tests {
         if receipt["status"] != "limited_timeout" || receipt["active_phase"] != "configuration" {
             return Err(format!("unexpected gap-ledger timeout receipt: {receipt}"));
         }
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
+    }
+
+    // Guidance-payload memory ceiling (#4388): the reduced-scale bound
+    // proofs. The fixture closures are tiny; the ceiling is injected at the
+    // same boundary the production env parse feeds, so the refusal path,
+    // its named error, and its receipt disclosure are exercised without
+    // materializing an oversized corpus.
+
+    fn over_ceiling_fixture(label: &str) -> Result<std::path::PathBuf, String> {
+        let root = unique_command_test_dir(label);
+        std::fs::create_dir_all(root.join("src"))
+            .map_err(|err| format!("create fixture src: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"review_ceiling_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write fixture manifest: {err}"))?;
+        for unit in 1..=3 {
+            std::fs::write(
+                root.join("src").join(format!("unit_{unit}.rs")),
+                format!("pub fn ceiling_value_{unit}(amount: i32) -> i32 {{\n    if amount >= 10 {{ amount - 1 }} else {{ amount }}\n}}\n"),
+            )
+            .map_err(|err| format!("write fixture unit {unit}: {err}"))?;
+        }
+        Ok(root)
+    }
+
+    fn ceiling_diff() -> String {
+        "diff --git a/src/unit_1.rs b/src/unit_1.rs\n--- a/src/unit_1.rs\n+++ b/src/unit_1.rs\n@@ -2 +2 @@\n-    if amount >= 10 { amount - 1 } else { amount }\n+    if amount > 10 { amount - 1 } else { amount }\n".to_string()
+    }
+
+    fn read_receipt(out: &std::path::Path) -> Result<serde_json::Value, String> {
+        let receipt_path = out.with_file_name("run-receipt.json");
+        serde_json::from_str(
+            &std::fs::read_to_string(&receipt_path)
+                .map_err(|err| format!("read ceiling receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse ceiling receipt: {err}"))
+    }
+
+    #[test]
+    fn review_comments_admission_precedes_changed_owner_indexing() -> Result<(), String> {
+        // All three files change: the old guard ran the full owner index
+        // before refusing. Observe the actual attribution call, including a
+        // successful control, rather than asserting source-code ordering.
+        for (label, ceiling, admitted) in [
+            (
+                "files",
+                GuidancePayloadCeiling {
+                    max_index_files: 2,
+                    max_payload_bytes: u64::MAX,
+                },
+                false,
+            ),
+            (
+                "bytes",
+                GuidancePayloadCeiling {
+                    max_index_files: usize::MAX,
+                    max_payload_bytes: 8,
+                },
+                false,
+            ),
+            (
+                "admitted",
+                GuidancePayloadCeiling {
+                    max_index_files: 3,
+                    max_payload_bytes: u64::MAX,
+                },
+                true,
+            ),
+        ] {
+            let root = over_ceiling_fixture(&format!("review-admission-order-{label}"))?;
+            let out = root.join("target/ripr/review/comments.json");
+            let calls = std::cell::Cell::new(0usize);
+            let diff = (1..=3)
+                .map(|unit| ceiling_diff().replace("unit_1.rs", &format!("unit_{unit}.rs")))
+                .collect::<String>();
+            let result = review_comments_with_admission(
+                &args(&[
+                    "--root",
+                    &root.display().to_string(),
+                    "--base",
+                    "BASE",
+                    "--head",
+                    "HEAD",
+                    "--out",
+                    &out.display().to_string(),
+                ]),
+                |_root, _base, _head| Ok(diff.clone()),
+                Instant::now,
+                || Ok(ceiling),
+                |root, lines| {
+                    calls.set(calls.get() + 1);
+                    assert_eq!(
+                        lines.len(),
+                        3,
+                        "all changed inputs must reach attribution when admitted"
+                    );
+                    let owners = agent_brief_owner_attribution_for_lines(root, lines);
+                    assert_eq!(
+                        owners.0.len(),
+                        3,
+                        "positive control must build a real owner index"
+                    );
+                    owners
+                },
+            );
+            assert_eq!(
+                calls.get(),
+                usize::from(admitted),
+                "{label}: refused inputs must never build the owner index"
+            );
+            let receipt = read_receipt(&out)?;
+            if admitted {
+                result?;
+                assert_eq!(receipt["status"], "complete");
+                assert!(out.exists() && out.with_extension("md").exists());
+            } else {
+                let error = result.err().ok_or("oversized inputs were admitted")?;
+                assert!(error.starts_with(REVIEW_GUIDANCE_OVERSIZED_PREFIX));
+                assert_eq!(receipt["status"], "failed");
+                assert_eq!(receipt["active_phase"], "language_facts");
+                assert_eq!(receipt["last_completed_phase"], "diff_discovery");
+                assert_eq!(
+                    receipt["limitations"][0]["category"],
+                    REVIEW_GUIDANCE_OVERSIZED_PREFIX
+                );
+                assert!(!out.exists() && !out.with_extension("md").exists());
+            }
+            std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_admission_deadline_records_timeout_before_owner_indexing()
+    -> Result<(), String> {
+        let root = over_ceiling_fixture("review-admission-deadline")?;
+        let out = root.join("target/ripr/review/comments.json");
+        let clock_receipt_path = out.with_file_name("run-receipt.json");
+        let calls = std::cell::Cell::new(0usize);
+        let start = Instant::now();
+        let result = review_comments_with_admission(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--timeout-ms",
+                "1000",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Ok(ceiling_diff()),
+            move || {
+                let in_admission = std::fs::read_to_string(&clock_receipt_path)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                    .is_some_and(|receipt| receipt["active_phase"] == "language_facts");
+                if in_admission {
+                    start + Duration::from_secs(1)
+                } else {
+                    start
+                }
+            },
+            || {
+                Ok(GuidancePayloadCeiling {
+                    max_index_files: usize::MAX,
+                    max_payload_bytes: u64::MAX,
+                })
+            },
+            |root, lines| {
+                calls.set(calls.get() + 1);
+                agent_brief_owner_attribution_for_lines(root, lines)
+            },
+        );
+        assert_eq!(
+            result,
+            Err("review-comments timed out during language_facts".to_string())
+        );
+        assert_eq!(calls.get(), 0);
+        let receipt = read_receipt(&out)?;
+        assert_eq!(receipt["status"], "limited_timeout");
+        assert_eq!(receipt["active_phase"], "language_facts");
+        assert_eq!(receipt["last_completed_phase"], "diff_discovery");
+        assert!(!out.exists() && !out.with_extension("md").exists());
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_admission_counts_changed_inputs_outside_corpus_once() -> Result<(), String> {
+        let root = over_ceiling_fixture("review-admission-generated-input")?;
+        let generated = root.join("src/bindings.rs");
+        std::fs::write(&generated, "pub fn generated() {}\n")
+            .map_err(|err| format!("write generated source: {err}"))?;
+        let config = crate::config::RiprConfig::default();
+        let corpus = analysis::analyzable_corpus_payload_size(&root, &config, &[])?;
+        assert_eq!(
+            corpus.file_count, 3,
+            "fixture must exclude the generated file from inventory"
+        );
+        let admitted = analysis::analyzable_corpus_payload_size(
+            &root,
+            &config,
+            &[
+                PathBuf::from("src/unit_1.rs"),
+                PathBuf::from("src/unit_1.rs"),
+                PathBuf::from("src/bindings.rs"),
+                PathBuf::from("src/absent.rs"),
+            ],
+        )?;
+        assert_eq!(admitted.file_count, 4);
+        assert_eq!(
+            admitted.total_bytes,
+            corpus.total_bytes
+                + std::fs::metadata(generated)
+                    .map_err(|err| err.to_string())?
+                    .len()
+        );
+        let err = GuidancePayloadCeiling {
+            max_index_files: 3,
+            max_payload_bytes: u64::MAX,
+        }
+        .enforce(admitted, admitted.total_bytes)
+        .err()
+        .ok_or("changed generated input escaped admission")?;
+        assert!(err.starts_with(REVIEW_GUIDANCE_OVERSIZED_PREFIX));
+        // Also exercise the real dispatch wiring: counting the union only
+        // in this helper would not protect a caller passing no owner files.
+        let out = root.join("target/ripr/review/comments.json");
+        let owner_calls = std::cell::Cell::new(0usize);
+        let result = review_comments_with_admission(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Ok(ceiling_diff().replace("unit_1.rs", "bindings.rs")),
+            Instant::now,
+            || {
+                Ok(GuidancePayloadCeiling {
+                    max_index_files: 3,
+                    max_payload_bytes: u64::MAX,
+                })
+            },
+            |root, lines| {
+                owner_calls.set(owner_calls.get() + 1);
+                agent_brief_owner_attribution_for_lines(root, lines)
+            },
+        );
+        assert_eq!(
+            owner_calls.get(),
+            0,
+            "generated owner input escaped dispatch admission"
+        );
+        assert!(result.is_err_and(|error| error.starts_with(REVIEW_GUIDANCE_OVERSIZED_PREFIX)));
+        assert_eq!(read_receipt(&out)?["status"], "failed");
+        assert!(!out.exists() && !out.with_extension("md").exists());
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn guidance_payload_default_admits_current_family_but_refuses_failure_scale()
+    -> Result<(), String> {
+        let ceiling = GuidancePayloadCeiling::parse(
+            Err(std::env::VarError::NotPresent),
+            Err(std::env::VarError::NotPresent),
+        )?;
+        assert_eq!(ceiling.max_index_files, 1200);
+        ceiling.enforce(
+            analysis::CorpusPayloadSize {
+                file_count: 1200,
+                total_bytes: 1200,
+            },
+            1200,
+        )?;
+        let error = ceiling
+            .enforce(
+                analysis::CorpusPayloadSize {
+                    file_count: 1700,
+                    total_bytes: 1700,
+                },
+                1700,
+            )
+            .err()
+            .ok_or("the measured external failure scale must remain refused by default")?;
+        assert!(error.contains("=1200"));
+        assert!(error.contains("Narrowing only the diff does not reduce the workspace file count"));
+        Ok(())
+    }
+
+    #[test]
+    fn guidance_payload_ceiling_defaults_and_validates_env_family_values() -> Result<(), String> {
+        let absent = Err(std::env::VarError::NotPresent);
+        let defaults = GuidancePayloadCeiling::parse(absent.clone(), absent)
+            .map_err(|err| format!("absent env must fall back to defaults: {err}"))?;
+        assert_eq!(
+            defaults,
+            GuidancePayloadCeiling {
+                max_index_files: REVIEW_GUIDANCE_MAX_INDEX_FILES_DEFAULT,
+                max_payload_bytes: REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_DEFAULT,
+            }
+        );
+
+        let parsed = GuidancePayloadCeiling::parse(Ok("1200".to_string()), Ok("4096".to_string()))
+            .map_err(|err| format!("valid values must parse: {err}"))?;
+        assert_eq!(parsed.max_index_files, 1200);
+        assert_eq!(parsed.max_payload_bytes, 4096);
+
+        for (name, value) in [
+            (REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV, Ok("0".to_string())),
+            (REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV, Ok("many".to_string())),
+            (REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV, Ok("0".to_string())),
+            (REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV, Ok("-1".to_string())),
+        ] {
+            let (files, bytes) = if name == REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV {
+                (value, Err(std::env::VarError::NotPresent))
+            } else {
+                (Err(std::env::VarError::NotPresent), value)
+            };
+            let err = match GuidancePayloadCeiling::parse(files, bytes) {
+                Ok(parsed) => {
+                    return Err(format!(
+                        "invalid ceiling values must fail closed, parsed {parsed:?}"
+                    ));
+                }
+                Err(err) => err,
+            };
+            assert!(
+                err.contains(name) && err.contains("must be a positive integer"),
+                "{name} failure must name the variable: {err}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn guidance_payload_ceiling_names_the_exceeded_axis() -> Result<(), String> {
+        let ceiling = GuidancePayloadCeiling {
+            max_index_files: 2,
+            max_payload_bytes: REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_DEFAULT,
+        };
+        let count_err = match ceiling.enforce(
+            analysis::CorpusPayloadSize {
+                file_count: 3,
+                total_bytes: 10,
+            },
+            20,
+        ) {
+            Ok(()) => return Err("an over-count payload must be refused".to_string()),
+            Err(err) => err,
+        };
+        assert!(count_err.starts_with("review_guidance_oversized"));
+        assert!(
+            count_err.contains("3 closure input files")
+                && count_err.contains(REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV)
+                && count_err.contains("=2"),
+            "count refusal must name the count and its env ceiling: {count_err}"
+        );
+
+        let byte_ceiling = GuidancePayloadCeiling {
+            max_index_files: usize::MAX,
+            max_payload_bytes: 16,
+        };
+        let byte_err = match byte_ceiling.enforce(
+            analysis::CorpusPayloadSize {
+                file_count: 1,
+                total_bytes: 4,
+            },
+            20,
+        ) {
+            Ok(()) => return Err("an over-bytes payload must be refused".to_string()),
+            Err(err) => err,
+        };
+        assert!(byte_err.starts_with("review_guidance_oversized"));
+        assert!(
+            byte_err.contains("20 guidance payload bytes")
+                && byte_err.contains(REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV)
+                && byte_err.contains("=16"),
+            "bytes refusal must name the bytes and their env ceiling: {byte_err}"
+        );
+
+        byte_ceiling
+            .enforce(
+                analysis::CorpusPayloadSize {
+                    file_count: 1,
+                    total_bytes: 4,
+                },
+                16,
+            )
+            .map_err(|err| format!("payload at exactly the ceiling must be admitted: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_refuses_over_ceiling_closure_with_named_receipt() -> Result<(), String> {
+        let root = over_ceiling_fixture("review-comments-ceiling-count")?;
+        let out = root.join("target/ripr/review/comments.json");
+        let result = review_comments_with_diff_loader_at_with_ceiling(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Ok(ceiling_diff()),
+            Instant::now,
+            GuidancePayloadCeiling {
+                max_index_files: 2,
+                max_payload_bytes: u64::MAX,
+            },
+        );
+
+        let err = match result {
+            Ok(()) => return Err("an over-ceiling closure must be refused".to_string()),
+            Err(err) => err,
+        };
+        assert!(
+            err.starts_with("review_guidance_oversized")
+                && err.contains(REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV),
+            "refusal must carry the named ceiling error: {err}"
+        );
+
+        // The refused dispatch discloses the named limitation in its receipt
+        // and publishes no review artifacts (fail closed, never truncated).
+        let receipt = read_receipt(&out)?;
+        assert_eq!(receipt["status"], "failed");
+        assert_eq!(receipt["active_phase"], "language_facts");
+        assert_eq!(receipt["last_completed_phase"], "diff_discovery");
+        assert_eq!(
+            receipt["limitations"][0]["category"],
+            "review_guidance_oversized"
+        );
+        assert!(
+            receipt["limitations"][0]["repair_route"]
+                .as_str()
+                .is_some_and(|route| route.contains(REVIEW_GUIDANCE_MAX_INDEX_FILES_ENV)),
+            "receipt repair route must name the ceiling env: {receipt}"
+        );
+        assert!(
+            !out.exists() && !out.with_extension("md").exists(),
+            "a refused dispatch must not publish review guidance artifacts"
+        );
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_refuses_over_ceiling_payload_bytes_with_named_receipt() -> Result<(), String>
+    {
+        let root = over_ceiling_fixture("review-comments-ceiling-bytes")?;
+        let out = root.join("target/ripr/review/comments.json");
+        let result = review_comments_with_diff_loader_at_with_ceiling(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Ok(ceiling_diff()),
+            Instant::now,
+            GuidancePayloadCeiling {
+                max_index_files: usize::MAX,
+                max_payload_bytes: 8,
+            },
+        );
+
+        let err = match result {
+            Ok(()) => return Err("an over-bytes payload must be refused".to_string()),
+            Err(err) => err,
+        };
+        assert!(
+            err.contains(REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES_ENV),
+            "bytes refusal must name the bytes env: {err}"
+        );
+        let receipt = read_receipt(&out)?;
+        assert_eq!(receipt["status"], "failed");
+        assert_eq!(
+            receipt["limitations"][0]["category"],
+            "review_guidance_oversized"
+        );
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_admits_the_same_closure_under_a_generous_ceiling() -> Result<(), String> {
+        // The negative control: the identical fixture and diff complete
+        // once the injected ceiling admits them, so the refusals above are
+        // caused by the ceiling and not by a broken fixture.
+        let root = over_ceiling_fixture("review-comments-ceiling-admits")?;
+        let out = root.join("target/ripr/review/comments.json");
+        review_comments_with_diff_loader_at_with_ceiling(
+            &args(&[
+                "--root",
+                &root.display().to_string(),
+                "--base",
+                "BASE",
+                "--head",
+                "HEAD",
+                "--out",
+                &out.display().to_string(),
+            ]),
+            |_root, _base, _head| Ok(ceiling_diff()),
+            Instant::now,
+            GuidancePayloadCeiling {
+                max_index_files: usize::MAX,
+                max_payload_bytes: u64::MAX,
+            },
+        )?;
+        let receipt = read_receipt(&out)?;
+        assert_eq!(receipt["status"], "complete");
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
         Ok(())
     }

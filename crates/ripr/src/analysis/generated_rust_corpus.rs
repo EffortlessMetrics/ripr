@@ -10,6 +10,7 @@ use super::language::GeneratedRustSources;
 use super::seam_cache::corpus_fingerprint;
 use super::workspace;
 use crate::config::RiprConfig;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Discovered Rust files after the generated-source predicate `ripr check`
@@ -20,6 +21,67 @@ pub(crate) struct AnalyzableRustCorpus {
     pub(crate) skipped_generated: Vec<PathBuf>,
     pub(crate) naming_only_skips: Vec<PathBuf>,
     pub(crate) fingerprint: Option<String>,
+}
+
+/// Size of admitted workspace and owner-attribution inputs. File sizes use
+/// metadata; the shared generated-source classifier may read bounded headers
+/// and vendor markers, but this census never loads or indexes the corpus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CorpusPayloadSize {
+    pub(crate) file_count: usize,
+    pub(crate) total_bytes: u64,
+}
+
+/// Use the inventory's discovery/generated-file predicate, without computing
+/// its cache fingerprint. Add changed owner inputs because attribution also
+/// reads files outside that canonical corpus. Count each present path once;
+/// absent changed paths remain available for the downstream absence warning.
+pub(crate) fn analyzable_corpus_payload_size(
+    root: &Path,
+    config: &RiprConfig,
+    owner_files: &[PathBuf],
+) -> Result<CorpusPayloadSize, String> {
+    let generated_sources = GeneratedRustSources::for_repo(root, &config.languages().rust);
+    let mut analyzable = Vec::new();
+    for path in workspace::discover_rust_files(root)? {
+        super::cancellation::checkpoint()?;
+        if !generated_sources.contains(&path) {
+            analyzable.push(path);
+        }
+    }
+    corpus_payload_size_for_paths(root, analyzable, owner_files)
+}
+
+fn corpus_payload_size_for_paths(
+    root: &Path,
+    analyzable: Vec<PathBuf>,
+    owner_files: &[PathBuf],
+) -> Result<CorpusPayloadSize, String> {
+    let mut files = analyzable
+        .into_iter()
+        .map(|path| (path, true))
+        .collect::<BTreeMap<_, _>>();
+    for path in owner_files {
+        files.entry(path.clone()).or_insert(false);
+    }
+    let mut total_bytes = 0u64;
+    let mut file_count = 0usize;
+    for (path, discovered) in &files {
+        super::cancellation::checkpoint()?;
+        let metadata = match std::fs::metadata(root.join(path)) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound && !discovered => {
+                continue;
+            }
+            Err(err) => return Err(format!("stat {} failed: {err}", path.display())),
+        };
+        file_count += 1;
+        total_bytes = total_bytes.saturating_add(metadata.len());
+    }
+    Ok(CorpusPayloadSize {
+        file_count,
+        total_bytes,
+    })
 }
 
 /// Walk `root` and keep the generated-Rust files `ripr check` skips out of
@@ -104,6 +166,129 @@ mod tests {
 
     fn portable(path: &Path) -> String {
         path.to_string_lossy().replace('\\', "/")
+    }
+
+    #[test]
+    fn payload_census_distinguishes_absent_owner_from_disappeared_corpus() -> Result<(), String> {
+        let root = std::env::temp_dir().join(format!(
+            "ripr-census-absent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| err.to_string())?
+                .as_nanos()
+        ));
+        assert!(
+            !root.exists(),
+            "missing-file control must start with an absent fixture"
+        );
+        let missing = PathBuf::from("missing.rs");
+        let absent_owner = super::corpus_payload_size_for_paths(
+            &root,
+            Vec::new(),
+            std::slice::from_ref(&missing),
+        )?;
+        assert_eq!(absent_owner.file_count, 0);
+        assert_eq!(absent_owner.total_bytes, 0);
+        // Even when the diff names it, a file already observed by discovery
+        // cannot vanish silently from the admitted workspace denominator.
+        let error = super::corpus_payload_size_for_paths(&root, vec![missing.clone()], &[missing])
+            .err()
+            .ok_or("a disappeared discovered file must fail closed")?;
+        assert!(error.starts_with("stat missing.rs failed:"));
+        Ok(())
+    }
+
+    #[test]
+    fn payload_census_observes_cancellation_before_metadata() -> Result<(), String> {
+        let token = crate::analysis::cancellation::AnalysisCancellationToken::new();
+        assert!(token.cancel(crate::analysis::cancellation::AnalysisAbortKind::Cancelled));
+        let error = crate::analysis::cancellation::with_token(&token, || {
+            super::corpus_payload_size_for_paths(
+                Path::new("unused-cancelled-root"),
+                vec![PathBuf::from("missing.rs")],
+                &[],
+            )
+        })
+        .err()
+        .ok_or("cancelled census must not complete")?;
+        assert!(
+            crate::analysis::cancellation::is_cancellation_error(&error),
+            "metadata failure must not replace cancellation: {error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn payload_census_matches_handwritten_and_stronger_exclusion_policy() -> Result<(), String> {
+        let root = std::env::temp_dir().join(format!(
+            "ripr-census-handwritten-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| err.to_string())?
+                .as_nanos()
+        ));
+        for (path, text) in [
+            ("src/plain.rs", "pub fn plain() -> i32 { 1 }\n"),
+            ("src/schema.rs", "pub fn handwritten() -> i32 { 2 }\n"),
+            (
+                "src/header.rs",
+                "// @generated\npub fn generated() -> i32 { 3 }\n",
+            ),
+            ("src/explicit.rs", "pub fn explicit() -> i32 { 4 }\n"),
+            ("deps/external/lib.rs", "pub fn vendored() -> i32 { 5 }\n"),
+            ("deps/external/.cargo-checksum.json", "{}"),
+        ] {
+            let path = root.join(path);
+            let parent = path.parent().ok_or("fixture source lacks a parent")?;
+            std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+            std::fs::write(path, text).map_err(|err| err.to_string())?;
+        }
+        let check = |config: &RiprConfig, expected: &[&str]| -> Result<(), String> {
+            let corpus = super::discover_analyzable_rust_corpus(&root, config)?;
+            assert_eq!(corpus.analyzable, paths(expected));
+            let census = super::analyzable_corpus_payload_size(&root, config, &[])?;
+            assert_eq!(census.file_count, expected.len());
+            let expected_bytes = expected.iter().try_fold(0u64, |sum, path| {
+                std::fs::metadata(root.join(path))
+                    .map(|metadata| sum + metadata.len())
+                    .map_err(|err| err.to_string())
+            })?;
+            assert_eq!(census.total_bytes, expected_bytes);
+            Ok(())
+        };
+        let explicit = "[languages.rust]\ngenerated_file_patterns = ['src/explicit.rs']\n";
+        std::fs::write(root.join("ripr.toml"), explicit).map_err(|err| err.to_string())?;
+        let default = crate::config::load_for_root(&root)?;
+        check(&default, &["src/plain.rs"])?;
+        std::fs::write(root.join("ripr.toml"), format!("{explicit}handwritten_files = ['src/schema.rs', 'src/header.rs', 'src/explicit.rs', 'deps/external/lib.rs']\n")).map_err(|err| err.to_string())?;
+        let handwritten = crate::config::load_for_root(&root)?;
+        check(&handwritten, &["src/plain.rs", "src/schema.rs"])?;
+        // Reloading/removing an opt-in changes the census as it changes the
+        // canonical corpus; stronger header, pattern and vendor signals win.
+        check(&default, &["src/plain.rs"])?;
+        std::fs::write(
+            root.join("src/schema.rs"),
+            "pub fn handwritten() -> i32 { 123456 }\n",
+        )
+        .map_err(|err| err.to_string())?;
+        check(&handwritten, &["src/plain.rs", "src/schema.rs"])?;
+        std::fs::write(root.join(".cargo-checksum.json"), "{}").map_err(|err| err.to_string())?;
+        check(&handwritten, &[])?;
+        // Owner attribution still consumes changed excluded paths. They are
+        // counted by admission even when the canonical inventory is empty.
+        let owners =
+            super::analyzable_corpus_payload_size(&root, &handwritten, &paths(&["src/header.rs"]))?;
+        assert_eq!(owners.file_count, 1);
+        assert_eq!(
+            owners.total_bytes,
+            std::fs::metadata(root.join("src/header.rs"))
+                .map_err(|err| err.to_string())?
+                .len()
+        );
+        std::fs::remove_dir_all(root).map_err(|err| err.to_string())?;
+        Ok(())
     }
 
     #[test]

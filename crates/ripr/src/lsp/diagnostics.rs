@@ -1809,15 +1809,32 @@ fn repo_scope_and_wrapped_guard_errors_do_not_convert() -> Result<(), String> {
         "repo_scope_oversized: 900 indexed files exceed the repo guard",
         "workspace analysis failed: diff_scope_oversized: wrapped must not match",
         "adiff_scope_oversized: forged prefix must not match",
+        "diff_scope_oversizedness: unrelated failure",
+        "diff_scope_oversized_metadata: unrelated failure",
+        "diff_scope_oversized",
+        "diff_scope_oversized : invalid delimiter",
+        "diff_scope_oversized\n: invalid delimiter",
+        "diff_scope_oversized\r\n: invalid delimiter",
+        " diff_scope_oversized: not raw",
+        "\ndiff_scope_oversized: not raw",
+        "ripr: diff_scope_oversized: wrapped",
+        "git_invocation_timeout: a different guard",
+        "review_guidance_oversized: a different guard",
     ] {
         if crate::analysis::is_diff_scope_oversized(lookalike) {
             return Err(format!("non-guard error matched the guard: {lookalike}"));
         }
     }
-    if !crate::analysis::is_diff_scope_oversized(
+    for error in [
         "diff_scope_oversized: 900 indexed Rust files exceed the 800-file guard",
-    ) {
-        return Err("the named guard error must match the guard".to_string());
+        "diff_scope_oversized:	900 indexed files",
+        "diff_scope_oversized:\n900 indexed files",
+    ] {
+        if !crate::analysis::is_diff_scope_oversized(error) {
+            return Err(format!(
+                "the named guard error must match the guard: {error:?}"
+            ));
+        }
     }
     Ok(())
 }

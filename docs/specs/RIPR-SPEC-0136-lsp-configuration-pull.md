@@ -165,7 +165,9 @@ Semantics:
   drains piped stdout/stderr so a verbose child cannot deadlock against the
   wait, and kills + reaps the child on deadline expiry;
 - an expired deadline yields the named, matchable error
-  `git_invocation_timeout`; a zero deadline fails before spawning;
+  `git_invocation_timeout`; a zero deadline fails before spawning. The raw
+  error recognizer requires `git_invocation_timeout:` exactly, rejecting
+  bare, lookalike, whitespace-split, and wrapped prefixes;
 - a diff load that fails with the named timeout commits a LIMITED snapshot
   — zero findings plus one typed failed `diff` component outcome
   (`kind: git_invocation_timeout`, `findings_trustworthy: false`, recovery

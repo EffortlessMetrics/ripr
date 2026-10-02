@@ -14,6 +14,11 @@ use std::time::Duration;
 
 pub(crate) const REVIEW_COMMENTS_RECEIPT_SCHEMA_VERSION: &str = "0.1";
 
+/// Named limitation category for a review-guidance dispatch refused at the
+/// memory ceiling (#4388). Consumers match this category — not error prose —
+/// when distinguishing an instrument-limited pass from a real gap.
+pub(crate) const REVIEW_GUIDANCE_OVERSIZED_LIMITATION_CATEGORY: &str = "review_guidance_oversized";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct ReviewCommentsReceiptLimitation {
     pub(crate) category: String,
@@ -125,6 +130,27 @@ impl ReviewCommentsRunReceipt {
         };
         self.limitations.push(ReviewCommentsReceiptLimitation {
             category: "analysis_failed".to_string(),
+            repair_route,
+        });
+        self.terminalize_non_claims();
+    }
+
+    /// Typed state for a dispatch refused at the guidance-payload memory
+    /// ceiling (#4388). The run is not truncated and does not build either
+    /// source index after refusal; diff capture precedes this admission.
+    /// The named limitation lets a consumer classify incomplete guidance. Status stays `failed` (the receipt
+    /// vocabulary has no third terminal failure kind), and the limitation
+    /// category carries the classification.
+    pub fn oversized(&mut self, active_phase: &str, error: &str) {
+        self.status = "failed";
+        self.active_phase = Some(active_phase.to_string());
+        let repair_route = if error.trim().is_empty() {
+            "raise the review-guidance ceiling environment variables".to_string()
+        } else {
+            error.to_string()
+        };
+        self.limitations.push(ReviewCommentsReceiptLimitation {
+            category: REVIEW_GUIDANCE_OVERSIZED_LIMITATION_CATEGORY.to_string(),
             repair_route,
         });
         self.terminalize_non_claims();
@@ -483,6 +509,44 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
         Ok(())
+    }
+
+    #[test]
+    fn oversized_records_named_limitation_while_staying_in_the_receipt_vocabulary() {
+        // #4388: a dispatch refused at the guidance-payload memory ceiling
+        // stays in the contract-valid status vocabulary (`failed`) but its
+        // limitation carries the named category consumers classify on.
+        let mut oversized = sample_receipt();
+        oversized.oversized(
+            "canonical_analysis",
+            "review_guidance_oversized: 3 closure input files exceed the review-guidance \
+             ceiling (RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES=2); the guidance pass was not run \
+             to protect runner memory.",
+        );
+        assert_eq!(oversized.status, "failed");
+        assert_eq!(
+            oversized.active_phase.as_deref(),
+            Some("canonical_analysis")
+        );
+        assert_eq!(
+            oversized.limitations[0].category,
+            REVIEW_GUIDANCE_OVERSIZED_LIMITATION_CATEGORY
+        );
+        assert!(
+            oversized.limitations[0]
+                .repair_route
+                .contains("RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES"),
+            "repair route must carry the named ceiling error: {:?}",
+            oversized.limitations[0].repair_route
+        );
+        assert_eq!(
+            oversized.non_claims,
+            vec![
+                "static review guidance is advisory evidence only",
+                "no complete route inventory",
+                "no all-clear",
+            ]
+        );
     }
 
     #[test]

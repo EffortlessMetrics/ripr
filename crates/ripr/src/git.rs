@@ -43,9 +43,12 @@ pub(crate) const GIT_NOT_FOUND_ON_PATH_MESSAGE: &str =
     "git was not found on PATH; install git, or pass a saved diff with `--diff PATH` / `--diff -`";
 
 /// True when `error` is the named git invocation timeout error (#2303).
-/// Matchable in the style of `analysis::cancellation::is_cancellation_error`.
+/// Matchable in the style of `analysis::cancellation::is_cancellation_error`:
+/// require the exact raw tag and its colon delimiter, without wrapper text.
 pub(crate) fn is_git_invocation_timeout(error: &str) -> bool {
-    error.starts_with(GIT_INVOCATION_TIMEOUT_PREFIX)
+    error
+        .strip_prefix(GIT_INVOCATION_TIMEOUT_PREFIX)
+        .is_some_and(|suffix| suffix.starts_with(':'))
 }
 
 /// True when `error` is the named missing-git spawn failure (#4735).
@@ -746,6 +749,35 @@ mod tests {
         AnalysisAbortKind, AnalysisCancellationToken, is_cancellation_error, with_token,
     };
     use serial_test::serial;
+
+    #[test]
+    fn git_timeout_tag_requires_exact_raw_error_prefix() {
+        for error in [
+            "git_invocation_timeout: git command exceeded its deadline",
+            "git_invocation_timeout:	git command exceeded its deadline",
+            "git_invocation_timeout:\ngit command exceeded its deadline",
+        ] {
+            assert!(is_git_invocation_timeout(error), "missed {error:?}");
+        }
+        for error in [
+            "git_invocation_timeout",
+            "git_invocation_timeoutness: unrelated failure",
+            "git_invocation_timeout_metadata: unrelated failure",
+            "git_invocation_timeout : invalid delimiter",
+            "git_invocation_timeout\n: invalid delimiter",
+            "git_invocation_timeout\r\n: invalid delimiter",
+            " git_invocation_timeout: not raw",
+            "\ngit_invocation_timeout: not raw",
+            "ripr: git_invocation_timeout: wrapped",
+            "outer: git_invocation_timeout: wrapped",
+            "diff_scope_oversized: a different guard",
+            "repo_scope_oversized: a different guard",
+            "review_guidance_oversized: a different guard",
+            "analysis cancelled: DeadlineExceeded",
+        ] {
+            assert!(!is_git_invocation_timeout(error), "misclassified {error:?}");
+        }
+    }
 
     /// Drive letter kept apart from its separator so the local-context gate
     /// does not read these synthetic roots as a committed machine path.

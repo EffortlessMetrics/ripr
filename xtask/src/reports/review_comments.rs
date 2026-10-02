@@ -22,6 +22,14 @@ const REVIEW_COMMENTS_SCHEMA: &str = "schemas/ripr/review-comments.schema.json";
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const STATIC_GAP_CLASSES: [&str; 3] = ["weakly_exposed", "reachable_unrevealed", "no_static_path"];
 
+/// Named prefix of the producer error raised when a review-guidance dispatch
+/// is refused at the memory ceiling (#4388). Matched here — in the style of
+/// the `diff_scope_oversized` classification — so the wrapper receipt names
+/// an instrument-limited pass instead of a generic producer failure. Pinned
+/// against the producer's actual error text by the ceiling classification
+/// tests on both sides of this boundary.
+const REVIEW_GUIDANCE_OVERSIZED_PREFIX: &str = "review_guidance_oversized";
+
 #[derive(Debug)]
 struct ReviewCommentsRunError {
     message: String,
@@ -711,7 +719,7 @@ fn error_review_comments_packet(
         "warnings": [
             {
                 "kind": "tool_error",
-                "message": first_line(error),
+                "message": named_guard_line(error).unwrap_or_else(|| first_line(error)),
                 "path": null
             }
         ],
@@ -972,19 +980,33 @@ fn review_comments_receipt(
                 serde_json::json!(["no complete route inventory", "no all-clear"]),
             );
         } else if status == "failed" {
+            let producer_error = error.unwrap_or("unknown failure");
+            let limitation_category = if is_review_guidance_oversized(producer_error) {
+                // A dispatch refused at the guidance-payload memory ceiling
+                // (#4388) is an instrument-limited pass: the receipt must
+                // name the ceiling classification, not a generic producer
+                // failure, so a consumer gate can distinguish it from a
+                // real gap.
+                "review_guidance_oversized"
+            } else {
+                "review_comments_failure"
+            };
+            let repair_route = if limitation_category == "review_guidance_oversized" {
+                "raise RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES or \
+                 RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES on a runner with enough memory"
+            } else {
+                "analysis/review-comments-error-diagnostics"
+            };
             object.insert(
                 "limitations".to_string(),
                 serde_json::json!([{
-                    "category": "review_comments_failure",
-                    "repair_route": "analysis/review-comments-error-diagnostics"
+                    "category": limitation_category,
+                    "repair_route": repair_route,
                 }]),
             );
             object.insert(
                 "non_claims".to_string(),
-                serde_json::json!([format!(
-                    "failure: {}",
-                    first_line(error.unwrap_or("unknown failure"))
-                )]),
+                serde_json::json!([format!("failure: {}", first_line(producer_error))]),
             );
         }
     }
@@ -1109,6 +1131,32 @@ fn first_line(value: &str) -> String {
         .unwrap_or("ripr review-comments failed")
         .trim()
         .to_string()
+}
+
+/// True when the producer failed at the guidance-payload memory ceiling
+/// (#4388). The wrapper's failure text embeds the producer stderr under a
+/// leading summary line, so the named prefix is matched line-wise, not on
+/// the first line. `ripr` reports the raw guard error as
+/// `ripr: review_guidance_oversized: ...`, so exactly that reporter prefix
+/// is stripped before matching. Require the category's colon delimiter so
+/// a different error with a lookalike prefix remains a generic failure.
+fn is_review_guidance_oversized(producer_error: &str) -> bool {
+    named_guard_line(producer_error).is_some()
+}
+
+/// The producer's named ceiling guard line, when its stderr carried one.
+/// The wrapper's generic first line (`ripr review-comments failed`) would
+/// otherwise hide the reason from the rendered error packet; the guard line
+/// is the disclosure that names the exceeded ceiling and its env levers.
+fn named_guard_line(producer_error: &str) -> Option<String> {
+    producer_error.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let without_reporter = trimmed.strip_prefix("ripr: ").unwrap_or(trimmed);
+        without_reporter
+            .strip_prefix(REVIEW_GUIDANCE_OVERSIZED_PREFIX)
+            .filter(|suffix| suffix.starts_with(':'))
+            .map(|_| without_reporter.to_string())
+    })
 }
 
 fn md_escape(value: &str) -> String {
@@ -1665,6 +1713,109 @@ mod tests {
         assert_eq!(standalone["status"], "limited_timeout");
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
+    }
+
+    #[test]
+    fn write_wrapper_classifies_named_guidance_ceiling_failure() -> Result<(), String> {
+        // #4388: a producer refused at the guidance-payload memory ceiling
+        // must be classified as an instrument-limited pass in the wrapper
+        // receipt — the named limitation category, not the generic producer
+        // failure — so a consumer gate can distinguish it from a real gap.
+        let producer_error = "ripr review-comments failed\nstdout:\n\nstderr:\nripr: \
+             review_guidance_oversized: 1700 closure input files exceed the review-guidance \
+             ceiling (RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES=800); the guidance pass was not run \
+             to protect runner memory.";
+        let (repo, options) = prepared_review_repo("ripr-review-comments-ceiling")?;
+        write_review_comments_with_runner(&repo, &options, move |_repo, _options| {
+            Err(ReviewCommentsRunError::from(producer_error.to_string()))
+        })?;
+
+        let packet = read_packet(&repo)?;
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["run_receipt"]["status"], "failed");
+        assert_eq!(
+            packet["run_receipt"]["limitations"][0]["category"],
+            "review_guidance_oversized"
+        );
+        assert!(
+            packet["run_receipt"]["limitations"][0]["repair_route"]
+                .as_str()
+                .is_some_and(|route| route.contains("RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES")),
+            "wrapper repair route must name the ceiling env: {packet}"
+        );
+        assert!(
+            packet["warnings"][0]["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("review_guidance_oversized")),
+            "packet warning must carry the named ceiling error: {packet}"
+        );
+        let standalone: Value = serde_json::from_str(
+            &fs::read_to_string(repo.join(REVIEW_COMMENTS_RECEIPT))
+                .map_err(|err| format!("read standalone receipt: {err}"))?,
+        )
+        .map_err(|err| format!("parse standalone receipt: {err}"))?;
+        assert_eq!(
+            standalone["limitations"][0]["category"],
+            "review_guidance_oversized"
+        );
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn producer_error_matching_distinguishes_ceiling_from_other_failures() {
+        // Raw and `ripr:`-reported guard lines match.
+        assert!(is_review_guidance_oversized(
+            "review_guidance_oversized: 3 closure input files exceed the ceiling"
+        ));
+        assert!(is_review_guidance_oversized(
+            "ripr: review_guidance_oversized: 3 closure input files exceed the ceiling"
+        ));
+        // The wrapper embeds the stderr under a leading summary line.
+        assert!(is_review_guidance_oversized(
+            "ripr review-comments failed\nstdout:\n\nstderr:\nripr: \
+             review_guidance_oversized: 3 closure input files"
+        ));
+        // A real producer warning may precede the guard on stderr.
+        assert!(is_review_guidance_oversized(
+            "ripr: warning: working tree has uncommitted changes\nripr: review_guidance_oversized: 3 closure input files"
+        ));
+        assert!(is_review_guidance_oversized(
+            " \tripr: warning: before guard\r\n\t ripr: review_guidance_oversized: 3 files \t\r\n"
+        ));
+        // The category is an exact colon-terminated tag, not a namespace
+        // prefix that can reclassify an unrelated producer failure.
+        for lookalike in [
+            "review_guidance_oversizedness: unrelated failure",
+            "ripr: review_guidance_oversized_metadata: unrelated failure",
+            "review_guidance_oversized",
+            "review_guidance_oversized without a tag delimiter",
+            "review_guidance_oversized : invalid delimiter",
+            "review_guidance_oversized\n: invalid delimiter",
+            "review_guidance_oversized\r\n: invalid delimiter",
+            "review_guidance_oversized\t: invalid delimiter",
+            "diff_scope_oversized: a different guard",
+            "repo_scope_oversized: a different guard",
+            "git_invocation_timeout: a different guard",
+            "analysis cancelled: DeadlineExceeded",
+        ] {
+            assert!(
+                !is_review_guidance_oversized(lookalike),
+                "misclassified {lookalike}"
+            );
+        }
+        // Generic failures, later-line prose, and non-line-start mentions
+        // are not the named guard error.
+        assert!(!is_review_guidance_oversized("synthetic producer failure"));
+        assert!(!is_review_guidance_oversized(
+            "a failure mentioned review_guidance_oversized in its context"
+        ));
+        assert!(!is_review_guidance_oversized(
+            "context\nthe review_guidance_oversized guard was discussed"
+        ));
+        assert!(!is_review_guidance_oversized(
+            "review-comments timed out during canonical_analysis"
+        ));
     }
 
     #[test]

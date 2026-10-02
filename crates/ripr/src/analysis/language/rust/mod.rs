@@ -98,9 +98,12 @@ pub(crate) const DIFF_SCOPE_OVERSIZED_PREFIX: &str = "diff_scope_oversized";
 /// True when `error` is the named diff-scope guard error (#2299). Matchable
 /// in the style of `git::is_git_invocation_timeout`: only the raw,
 /// unwrapped guard error matches — a wrapped error (for example
-/// `workspace analysis failed: ...`) does not.
+/// `workspace analysis failed: ...`) does not. The exact tag must be followed
+/// immediately by its colon delimiter; lookalike names are different errors.
 pub(crate) fn is_diff_scope_oversized(error: &str) -> bool {
-    error.starts_with(DIFF_SCOPE_OVERSIZED_PREFIX)
+    error
+        .strip_prefix(DIFF_SCOPE_OVERSIZED_PREFIX)
+        .is_some_and(|suffix| suffix.starts_with(':'))
 }
 const NO_TESTS_INFECTION_SUMMARY: &str =
     "No tests were found, so activation/infection cannot be estimated";

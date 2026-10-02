@@ -204,6 +204,11 @@ and the run status is limited, and the client sees one WARNING log message.
 
 ### Diff-component guard stops (timeout and oversized scope)
 
+Raw Git-timeout and diff-scope error recognizers require their exact tag
+immediately followed by `:`. Bare names, suffix lookalikes, whitespace before
+the delimiter, and wrapped or leading-whitespace errors do not convert.
+Whitespace in the payload after the delimiter does not change the tag.
+
 ```text
 Given a refresh whose diff load exceeds the cooperative git deadline
   (git_invocation_timeout, #2303),

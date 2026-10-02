@@ -1161,6 +1161,22 @@ id = "RIPR-SPEC-0012"
 name = "PR test guidance annotations"
 spec = "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md"
 tests = [
+  "crates/ripr/src/analysis/generated_rust_corpus.rs::payload_census_matches_handwritten_and_stronger_exclusion_policy",
+  "crates/ripr/src/analysis/generated_rust_corpus.rs::payload_census_distinguishes_absent_owner_from_disappeared_corpus",
+  "crates/ripr/src/analysis/generated_rust_corpus.rs::payload_census_observes_cancellation_before_metadata",
+  "crates/ripr/src/cli/commands/review_comments.rs::review_comments_admission_deadline_records_timeout_before_owner_indexing",
+  "crates/ripr/src/cli/commands/review_comments.rs::guidance_payload_ceiling_defaults_and_validates_env_family_values",
+  "crates/ripr/src/cli/commands/review_comments.rs::guidance_payload_ceiling_names_the_exceeded_axis",
+  "crates/ripr/src/cli/commands/review_comments.rs::guidance_payload_default_admits_current_family_but_refuses_failure_scale",
+  "crates/ripr/src/cli/commands/review_comments.rs::review_comments_admission_precedes_changed_owner_indexing",
+  "crates/ripr/src/cli/commands/review_comments.rs::review_comments_admission_counts_changed_inputs_outside_corpus_once",
+  "crates/ripr/src/cli/commands/review_comments.rs::review_comments_refuses_over_ceiling_closure_with_named_receipt",
+  "crates/ripr/src/cli/commands/review_comments.rs::review_comments_refuses_over_ceiling_payload_bytes_with_named_receipt",
+  "crates/ripr/src/cli/commands/review_comments.rs::review_comments_admits_the_same_closure_under_a_generous_ceiling",
+  "crates/ripr/tests/cli_smoke.rs::review_comments_help_survives_invalid_admission_environment",
+  "crates/ripr/src/output/review_comments_receipt.rs::oversized_records_named_limitation_while_staying_in_the_receipt_vocabulary",
+  "xtask/src/reports/review_comments.rs::write_wrapper_classifies_named_guidance_ceiling_failure",
+  "xtask/src/reports/review_comments.rs::producer_error_matching_distinguishes_ceiling_from_other_failures",
   "crates/ripr/src/cli/commands/review_comments.rs::review_comments_canonical_deadline_cancellation_records_timeout",
   "crates/ripr/src/cli/commands/review_comments.rs::review_comments_source_error_wins_over_later_clock_expiry",
   "crates/ripr/src/analysis/seam_inventory.rs::scoped_evidence_rejects_deadline_after_the_final_seam",
@@ -1202,6 +1218,9 @@ fixtures = [
   "fixtures/boundary_gap/expected/pr-guidance"
 ]
 code = [
+  "crates/ripr/src/analysis/generated_rust_corpus.rs",
+  "crates/ripr/src/output/review_comments_receipt.rs",
+  "xtask/src/reports/review_comments.rs",
   "crates/ripr/src/app/annotations.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/commands/review_comments.rs",
@@ -1214,6 +1233,7 @@ code = [
   "crates/ripr/src/output/review_comments.rs"
 ]
 outputs = [
+  "docs/CONFIGURATION.md",
   "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
@@ -8505,6 +8525,7 @@ id = "RIPR-SPEC-0136"
 name = "lsp configuration pull"
 spec = "docs/specs/RIPR-SPEC-0136-lsp-configuration-pull.md"
 tests = [
+  "crates/ripr/src/git.rs::tests::git_timeout_tag_requires_exact_raw_error_prefix",
   "crates/ripr/src/lsp/capabilities.rs::tests::configuration_mode_follows_workspace_capabilities",
   "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_wrong_item_count",
   "crates/ripr/src/lsp/config.rs::tests::validated_pulled_options_rejects_non_object_item_and_bad_values",

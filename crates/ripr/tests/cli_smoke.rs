@@ -20452,3 +20452,46 @@ fn review_guidance_windows_preserve_output_and_bound_retained_payloads()
     std::fs::remove_dir_all(root)?;
     Ok(())
 }
+
+#[test]
+fn review_comments_help_survives_invalid_admission_environment()
+-> Result<(), Box<dyn std::error::Error>> {
+    for variable in [
+        "RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES",
+        "RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES",
+    ] {
+        for help in ["--help", "-h"] {
+            let output = run_command_with_env(
+                env!("CARGO_BIN_EXE_ripr"),
+                &workspace_root(),
+                &["review-comments", help],
+                &[(variable, "invalid")],
+            )?;
+            assert!(
+                output.status.success(),
+                "help must bypass {variable}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stdout = String::from_utf8(output.stdout)?;
+            assert!(stdout.contains("Usage: ripr review-comments"));
+            assert!(stdout.contains(variable));
+            assert!(stdout.contains("Default: 1200"));
+        }
+        let output = run_command_with_env(
+            env!("CARGO_BIN_EXE_ripr"),
+            &workspace_root(),
+            &["review-comments"],
+            &[(variable, "invalid")],
+        )?;
+        assert!(
+            !output.status.success(),
+            "real dispatch must reject malformed {variable}"
+        );
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(
+            stderr.contains(variable) && stderr.contains("must be a positive integer"),
+            "{stderr}"
+        );
+    }
+    Ok(())
+}
