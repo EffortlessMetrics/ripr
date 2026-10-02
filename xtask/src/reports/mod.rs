@@ -36,6 +36,9 @@ mod recommendation;
 pub(crate) mod release;
 mod release_control;
 mod release_denominator;
+pub(crate) mod release_final_subjects;
+#[cfg(test)]
+mod release_final_subjects_tests;
 mod release_negative;
 mod release_scope;
 pub(crate) mod release_server;
