@@ -1,6 +1,8 @@
 use crate::domain::{OracleKind, OracleStrength};
 
-use super::arguments::{assertion_oracle_text, ensure_assertion_arguments};
+use super::arguments::{
+    assertion_oracle_text, ensure_assertion_arguments, outer_assertion_condition,
+};
 use super::patterns::{
     contains_exact_comparison, is_broad_error_assertion, is_clear_exact_custom_assertion_helper,
     is_custom_assertion_helper, is_duplicative_comparison, is_duplicative_equality_assertion,
@@ -15,6 +17,11 @@ pub(crate) struct OracleClassification {
 }
 
 pub(crate) fn classify_assertion(line: &str) -> OracleClassification {
+    // Preserve the full outer-assertion boundary before semantic operand
+    // projection removes wrappers or trailing tokens from the input.
+    let scalar_integer_relation = outer_assertion_condition(line)
+        .as_deref()
+        .is_some_and(is_scalar_integer_relation);
     // Diagnostic expressions must not manufacture a trusted error kind before
     // reveal decides whether this oracle observes the changed error path.
     let oracle_text = assertion_oracle_text(line);
@@ -62,6 +69,11 @@ pub(crate) fn classify_assertion(line: &str) -> OracleClassification {
             kind: OracleKind::SmokeOnly,
             strength: OracleStrength::Smoke,
         }
+    } else if scalar_integer_relation {
+        OracleClassification {
+            kind: OracleKind::RelationalCheck,
+            strength: OracleStrength::Weak,
+        }
     } else if is_mock_expectation_line(line) || is_side_effect_observer_assertion(line) {
         OracleClassification {
             kind: OracleKind::MockExpectation,
@@ -94,6 +106,49 @@ pub(crate) fn classify_assertion(line: &str) -> OracleClassification {
             strength: OracleStrength::Unknown,
         }
     }
+}
+
+/// Recognize only one complete path/field versus decimal integer condition.
+/// This is syntactic evidence, not integer type inference or call resolution.
+fn is_scalar_integer_relation(condition: &str) -> bool {
+    let mut expression = condition.trim();
+    while let Some(inner) = super::arguments::parenthesized_contents(expression) {
+        expression = inner.trim();
+    }
+    let mut comparator = None;
+    for (index, byte) in expression.bytes().enumerate() {
+        if matches!(byte, b'<' | b'>') {
+            if comparator.is_some() {
+                return false;
+            }
+            let width = usize::from(expression.as_bytes().get(index + 1) == Some(&b'=')) + 1;
+            comparator = Some((index, width));
+        }
+    }
+    let Some((index, width)) = comparator else {
+        return false;
+    };
+    let left = expression.get(..index).unwrap_or_default().trim();
+    let right = expression.get(index + width..).unwrap_or_default().trim();
+    (is_simple_path(left) && is_decimal_integer(right))
+        || (is_decimal_integer(left) && is_simple_path(right))
+}
+
+fn is_simple_path(text: &str) -> bool {
+    if text.is_empty() || text.starts_with('.') || text.ends_with('.') || text.ends_with(':') {
+        return false;
+    }
+    text.replace("::", ".").split('.').all(|segment| {
+        let mut bytes = segment.bytes();
+        bytes
+            .next()
+            .is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
+            && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    })
+}
+
+fn is_decimal_integer(text: &str) -> bool {
+    !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn classify_fallible_assertion(line: &str) -> Option<OracleClassification> {

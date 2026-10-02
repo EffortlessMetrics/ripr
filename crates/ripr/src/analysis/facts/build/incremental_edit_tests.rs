@@ -321,3 +321,133 @@ fn manifest_edit_refreshes_package_authority_without_source_reparse() -> TestRes
     assert_eq!(first.index.files, changed.index.files);
     Ok(())
 }
+
+#[test]
+fn observer_predicate_facts_recompute_after_build_miss_and_match_warm() -> TestResult<()> {
+    use crate::analysis::seam_cache::{CacheLoad, RepoFileFactCacheKey};
+    use crate::domain::{OracleKind, OracleStrength};
+
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let ordinal = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "ripr-4916-cache-{}-{stamp}-{ordinal}",
+        std::process::id()
+    ));
+    fs::create_dir(&root)?;
+    let result = (|| -> TestResult<()> {
+        let path = PathBuf::from("src/lib.rs");
+        let text =
+            "#[test]\nfn published_count() {\n    assert!(plan.published_payload_bytes > 0);\n}\n";
+        let bytes = text.as_bytes().to_vec();
+        let cache = RepoFileFactCache::at_dir(root.join("owned-cache"));
+        let key = RepoFileFactCacheKey::new(&path, &bytes);
+        let prior_key = key.with_test_analyzer_identity(format!(
+            "{}+4916-prior-classifier",
+            crate::build_identity::cache_identity()
+        ));
+        let mut prior_facts = RaRustSyntaxAdapter.summarize_file(&path, text)?;
+        let prior_test = prior_facts
+            .tests
+            .first_mut()
+            .ok_or("seed requires one real parsed test")?;
+        if prior_test.assertions.len() != 1 {
+            return Err("seed requires one real parsed assertion".into());
+        }
+        let prior_assertion = prior_test
+            .assertions
+            .first_mut()
+            .ok_or("seed assertion absent")?;
+        // Retained old producer observation: published-count comparison was
+        // MockExpectation/Medium. Only the cache fixture models that old kind.
+        prior_assertion.kind = OracleKind::MockExpectation;
+        prior_assertion.strength = OracleStrength::Medium;
+        cache
+            .store_file_facts(&prior_key, &prior_facts)
+            .map_err(|error| format!("store prior-build file facts: {error:?}"))?;
+        if !matches!(cache.load_file_facts(&prior_key), CacheLoad::Hit(ref facts) if facts == &prior_facts)
+        {
+            return Err("prior-build seed did not read its exact real facts".into());
+        }
+        if !matches!(cache.load_file_facts(&key), CacheLoad::Miss) {
+            return Err("new build reused prior classifier facts".into());
+        }
+        let files = [(path.clone(), bytes)];
+        let adapter = CountingSyntaxAdapter::default();
+        let cold = build_index_with_file_fact_cache(
+            &root,
+            &files,
+            &adapter,
+            &LexicalRustSyntaxAdapter,
+            &cache,
+            || cache.known_file_paths(),
+        )?;
+        if cold.file_fact_cache.misses != 1
+            || cold.file_fact_cache.hits != 0
+            || cold.file_fact_cache.stores != 1
+            || adapter.parses.load(Ordering::Relaxed) != 1
+        {
+            return Err(format!(
+                "cold recomputation did not reach real parser: {:?}",
+                cold.file_fact_cache
+            )
+            .into());
+        }
+        let cold_facts = cold
+            .index
+            .files
+            .get(&path)
+            .ok_or("cold file facts absent")?;
+        if cold_facts.used_lexical_fallback || cold_facts.source != text {
+            return Err("cold facts lost parsed source identity".into());
+        }
+        let assertions = &cold_facts
+            .tests
+            .first()
+            .ok_or("cold real test absent")?
+            .assertions;
+        if assertions.len() != 1 {
+            return Err("cold real assertion absent or duplicated".into());
+        }
+        let assertion = assertions.first().ok_or("cold assertion absent")?;
+        if assertion.kind != OracleKind::RelationalCheck
+            || assertion.strength != OracleStrength::Weak
+            || assertion.line != 3
+            || !assertion
+                .observed_tokens
+                .iter()
+                .any(|token| token == "published_payload_bytes")
+        {
+            return Err(
+                format!("cold producer did not recompute weak predicate: {assertion:?}").into(),
+            );
+        }
+        let warm = build_index_with_file_fact_cache(
+            &root,
+            &files,
+            &adapter,
+            &LexicalRustSyntaxAdapter,
+            &cache,
+            || cache.known_file_paths(),
+        )?;
+        if warm.file_fact_cache.hits != 1
+            || warm.file_fact_cache.misses != 0
+            || adapter.parses.load(Ordering::Relaxed) != 1
+        {
+            return Err(format!(
+                "warm reuse was not one real hit without parsing: {:?}",
+                warm.file_fact_cache
+            )
+            .into());
+        }
+        if warm.index.files.get(&path) != Some(cold_facts) {
+            return Err("warm whole facts differ from cold recomputation".into());
+        }
+        Ok(())
+    })();
+    let cleanup = fs::remove_dir_all(&root);
+    match (result, cleanup) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error.into()),
+        (Ok(()), Ok(())) => Ok(()),
+    }
+}

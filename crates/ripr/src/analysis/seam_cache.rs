@@ -740,6 +740,15 @@ impl RepoFileFactCacheKey {
         }
     }
 
+    /// Model a prior analyzer build without changing path, content or schema.
+    #[cfg(test)]
+    pub(crate) fn with_test_analyzer_identity(&self, analyzer_version: String) -> Self {
+        Self {
+            analyzer_version,
+            ..self.clone()
+        }
+    }
+
     fn filename(&self) -> String {
         let file_path = self.file_path.to_string_lossy();
         let parts = [

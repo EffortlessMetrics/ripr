@@ -279,3 +279,6 @@ expect_metric_recorded(counter);
         assert_eq!(oracles[0].strength, OracleStrength::Medium);
     }
 }
+
+#[cfg(test)]
+mod relational_tests;
