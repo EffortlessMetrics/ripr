@@ -2871,8 +2871,17 @@ impl Backend {
         if self.document_quarantine(uri).is_some() {
             return None;
         }
-        if let Ok(snapshot) = self.latest_analysis.lock()
-            && let Some(snapshot) = snapshot.as_ref()
+        // Clone the snapshot Arc and release the lock before rendering: the
+        // seam hover assembles the repair card (#4668), which resolves the
+        // live repository head and the attempt inventory — blocking I/O
+        // that must not hold the snapshot mutex against refresh commits
+        // and concurrent hovers.
+        let snapshot = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(Arc::clone));
+        if let Some(snapshot) = snapshot
             && let Some(diagnostics) = snapshot.diagnostics_for_uri(uri)
         {
             // Walk every diagnostic that covers the cursor, not just
@@ -2890,8 +2899,8 @@ impl Backend {
             for diagnostic in &overlapping {
                 if let Some(seam) = snapshot.classified_seam_for_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
-                        classified_seam_hover_response(seam, diagnostic, Some(snapshot)),
-                        snapshot,
+                        classified_seam_hover_response(seam, diagnostic, Some(&snapshot)),
+                        &snapshot,
                     ));
                 }
             }
@@ -2904,7 +2913,7 @@ impl Backend {
                 if is_gap_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
                         diagnostic_hover_response(diagnostic),
-                        snapshot,
+                        &snapshot,
                     ));
                 }
             }
@@ -2912,14 +2921,14 @@ impl Backend {
                 if let Some(finding) = snapshot.finding_for_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
                         finding_hover_response(finding, diagnostic),
-                        snapshot,
+                        &snapshot,
                     ));
                 }
             }
             if let Some(diagnostic) = overlapping.first() {
                 return Some(hover_with_snapshot_status(
                     diagnostic_hover_response(diagnostic),
-                    snapshot,
+                    &snapshot,
                 ));
             }
         }

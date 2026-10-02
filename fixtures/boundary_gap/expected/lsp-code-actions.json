@@ -259,6 +259,20 @@
     {
       "arguments": [
         {
+          "label": "repair_card",
+          "line": 2,
+          "packet": "<repair-card-wire-pinned-by-dedicated-tests>",
+          "seam_id": "67fc764ba37d77bd",
+          "seam_kind": "predicate_boundary",
+          "uri": "src/lib.rs"
+        }
+      ],
+      "command": "ripr.copyContext",
+      "title": "Agent handoff: copy repair card"
+    },
+    {
+      "arguments": [
+        {
           "assertion": "assert_eq!(discounted_total(/* boundary input where amount >= discount_threshold */), /* expected */)",
           "seam_id": "67fc764ba37d77bd"
         }

@@ -11,6 +11,19 @@ are scoped or reviewed.
 
 ### Added
 
+- LSP: the seam code actions and seam hover project the compact RepairCard
+  (RIPR-SPEC-0198, #4668). "Agent handoff: copy repair card" copies the same
+  versioned `repair_card.v1` document the CLI `ripr agent card` handoff
+  assembles — built from the completed snapshot's own authorities through the
+  shared `app::repair_card_handoff` projection, under the ratified default
+  budget — over the already-advertised `ripr.copyContext` command, and the
+  seam hover gains a bounded `## Repair card` section naming the canonical
+  card identity, the typed instruction state, next-action presence, and
+  per-state detail availability. Both surfaces fail closed to omission when a
+  producer fact cannot be bound and inherit the existing stale-diagnostic
+  suppression; the VS Code extension copies the `repair_card` label directly
+  without an LSP round trip. The MCP half of #4668 stays deferred on the
+  open #1898/#3089/#3090 authorities under ADR 0022.
 - Domains: RepairCard budget ratification (RIPR-SPEC-0196, #4669) measures
   the default-field card against its canonical packet on four deterministic
   synthetic corpus profiles (boundary without/with witness, witness with a

@@ -10548,6 +10548,36 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0198"
+name = "repair card lsp projection"
+spec = "docs/specs/RIPR-SPEC-0198-repair-card-lsp-projection.md"
+tests = [
+  "crates/ripr/src/lsp/repair_card.rs::tests::hover_lines_project_identity_state_next_action_and_detail_counts",
+  "crates/ripr/src/lsp/repair_card.rs::tests::unavailable_instruction_projects_no_route_and_no_next_action",
+  "crates/ripr/src/lsp/repair_card.rs::tests::limited_route_gate_projects_closed_next_action_without_strengthening",
+  "crates/ripr/src/lsp/repair_card.rs::tests::state_wire_name_serializes_without_reinterpretation",
+  "crates/ripr/src/lsp/tests.rs::tests::repair_card_action_fails_closed_outside_a_git_workspace",
+  "crates/ripr/src/lsp/tests.rs::tests::seam_code_actions_include_the_assembled_repair_card_in_a_git_workspace",
+  "crates/ripr/src/lsp/tests.rs::tests::repair_card_action_suppressed_for_stale_seam_diagnostic",
+  "crates/ripr/src/lsp/tests.rs::tests::seam_hover_projects_bounded_repair_card_section_in_a_git_workspace",
+  "crates/ripr/src/lsp/tests.rs::tests::seam_hover_omits_repair_card_section_outside_a_git_workspace",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/repair_card.rs",
+  "crates/ripr/src/lsp/actions.rs",
+  "crates/ripr/src/lsp/hover.rs",
+  "crates/ripr/src/app/repair_card_handoff.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0198-repair-card-lsp-projection.md",
+]
+metrics = [
+  "repair_card_schema_version",
+  "repair_card_budget_version",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0197"
 name = "Owner-return pins through calls that name the owner"
 spec = "docs/specs/RIPR-SPEC-0197-owner-return-pins.md"

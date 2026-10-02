@@ -19,6 +19,7 @@ mod payload_bounds;
 mod position;
 mod progress;
 mod refresh_scheduler;
+mod repair_card;
 #[cfg(test)]
 mod saved_edit_sequence;
 #[cfg(test)]

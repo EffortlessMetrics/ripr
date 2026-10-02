@@ -904,7 +904,9 @@ export class RiprClientController {
       ? 'first repair packet'
       : target?.label === 'gap_repair_packet'
         ? 'gap repair packet'
-        : undefined;
+        : target?.label === 'repair_card'
+          ? 'repair card'
+          : undefined;
     if (directPacketLabel && target && typeof target.packet === 'string') {
       const packet = target.packet.trim();
       if (!packet) {

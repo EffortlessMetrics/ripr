@@ -391,9 +391,11 @@ fn witness_for_seam(
     entry: &ClassifiedSeam,
     canonical_gap_id: Option<&str>,
 ) -> Result<Option<(String, DiagnosticWitness)>, String> {
-    let Some(gap_id) = canonical_gap_id else {
+    // The expensive workspace check only feeds the canonical-gap match; with
+    // no gap id the match cannot bind, so skip the analysis entirely.
+    if canonical_gap_id.is_none() {
         return Ok(None);
-    };
+    }
     let output = check_workspace_with_config(
         CheckInput {
             root: root.to_path_buf(),
@@ -403,8 +405,25 @@ fn witness_for_seam(
         config,
     )
     .map_err(|error| format!("agent card could not run the witness analysis: {error}"))?;
-    Ok(output
-        .findings
+    Ok(witness_from_findings(
+        &output.findings,
+        entry,
+        canonical_gap_id,
+    ))
+}
+
+/// Project the witness for the finding that names this seam's canonical gap
+/// from an already-completed finding set. The owner-match rule is the single
+/// seam↔witness binding authority: consumers that already hold a completed
+/// analysis (the LSP snapshot, #4668) bind the witness here instead of
+/// re-running the check pipeline, and no consumer may re-derive the match.
+pub(crate) fn witness_from_findings(
+    findings: &[crate::domain::Finding],
+    entry: &ClassifiedSeam,
+    canonical_gap_id: Option<&str>,
+) -> Option<(String, DiagnosticWitness)> {
+    let gap_id = canonical_gap_id?;
+    findings
         .iter()
         .find(|finding| {
             finding
@@ -414,7 +433,7 @@ fn witness_for_seam(
         })
         .and_then(|finding| {
             DiagnosticWitness::from_finding(finding).map(|witness| (finding.id.clone(), witness))
-        }))
+        })
 }
 
 /// A canonical gap id is content-derived and excludes the source location, so
@@ -428,8 +447,9 @@ fn gap_names_seam(gap: &FindingCanonicalGap, gap_id: &str, owner: &str) -> bool 
 /// The portable workspace identity is producer-owned through the admitted
 /// test-target evidence (the `TestTargetEvidence` precedent). When nothing on
 /// this seam names it, the card refuses to mint one: identity is never
-/// fabricated from a checkout path.
-fn workspace_identity_for(
+/// fabricated from a checkout path. Exposed crate-internally so the LSP
+/// editor projection (#4668) consumes the exact same derivation.
+pub(crate) fn workspace_identity_for(
     entry: &ClassifiedSeam,
     readiness: &RepairRouteReadiness,
 ) -> Result<String, String> {
@@ -450,8 +470,9 @@ fn workspace_identity_for(
 
 /// The most recently created recorded attempt for this seam, if any. Attempt
 /// ids are content hashes (not time-ordered), so recency is the manifest's
-/// own `created_unix_ms`.
-fn latest_attempt_for_seam(
+/// own `created_unix_ms`. Exposed crate-internally so the LSP editor
+/// projection (#4668) binds attempt state through the same inventory.
+pub(crate) fn latest_attempt_for_seam(
     root: &Path,
     seam_id: &str,
 ) -> Result<Option<RepairAttemptManifest>, String> {
