@@ -2055,6 +2055,16 @@ mod tests {
                 "tests/eligible.test.ts",
                 "import { eligible } from '../src/eligible';\ntest('positive value is eligible', () => { expect(eligible(2)).toBe(true); });\n",
             )?;
+            write_repo_file(
+                &repo,
+                "src/eligible.py",
+                "def eligible(value):\n    return value > 0\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "tests/test_eligible.py",
+                "from eligible import eligible\ndef test_positive_value():\n    assert eligible(2)\n",
+            )?;
             run_git(&repo, &["add", "."])?;
             run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
             let base = run_git_output(&repo, &["rev-parse", "HEAD"])?;
@@ -2068,9 +2078,15 @@ mod tests {
                 "src/eligible.ts",
                 "export function eligible(value: number): boolean { return value > 1; }\n",
             )?;
+            write_repo_file(
+                &repo,
+                "src/eligible.py",
+                "def eligible(value):\n    return value > 1\n",
+            )?;
             for (config, complete) in [
                 (policy.as_str(), true),
                 ("[languages]\nenabled = [\"rust\"]\n", false),
+                ("[languages]\nenabled = [\"rust\", \"typescript\"]\n", false),
             ] {
                 write_repo_file(&repo, "ripr.toml", config)?;
                 run_git(&repo, &["add", "."])?;
@@ -2129,6 +2145,15 @@ mod tests {
                     })
                 {
                     return Err("real preview TypeScript finding missing".into());
+                }
+                if complete
+                    && !findings.iter().any(|finding| {
+                        finding.get("language").and_then(Value::as_str) == Some("python")
+                            && finding.get("language_status").and_then(Value::as_str)
+                                == Some("preview")
+                    })
+                {
+                    return Err("real preview Python finding missing".into());
                 }
                 write_pr_evidence_from_check_json(&repo, &options, &check)?;
                 check_pr_evidence(&repo, &options)?;

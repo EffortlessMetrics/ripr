@@ -113,7 +113,12 @@ export function parseDistributionDescriptor(serialized: string): DistributionDes
   if (!isChannel(channel)) {
     throw new Error(`unsupported release descriptor channel: ${channel}`);
   }
-  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(productVersion)) {
+  // Development packages share Cargo's supported prerelease version. This does
+  // not turn a development descriptor into a public release placement.
+  const productVersionPattern = channel === 'development'
+    ? /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:alpha|beta|rc)\.(0|[1-9]\d*))?$/
+    : /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  if (!productVersionPattern.test(productVersion)) {
     throw new Error('release descriptor product version is not semantic');
   }
   if (manifestFile !== `ripr-server-manifest-v${productVersion}.json`) {

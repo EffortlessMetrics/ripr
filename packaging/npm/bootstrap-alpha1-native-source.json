@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "repository": "EffortlessMetrics/ripr",
+  "product_source_sha": "b1955d098cb628925801976bf1642dbf9329e07e",
+  "product_source_tree": "dfaf5d00ff9dafcdff007baa4787eecc5e3c8721",
+  "cargo_lock_sha256": "7af41e852571a1c154ae5172b151111918d22a27bc0ded5c30b87533a2f77119",
+  "native_version": "0.11.0-alpha.1",
+  "python_version": "0.11.0a1",
+  "target": "x86_64-unknown-linux-gnu",
+  "minimum_glibc": "2.34",
+  "wheel_filename": "ripr_rs-0.11.0a1-py3-none-manylinux_2_34_x86_64.whl",
+  "wheel_url": "https://files.pythonhosted.org/packages/0f/b7/6d6b325a781dc98d856a3e251bcbb46f82673d6e02d16f4769b9bbbb853d/ripr_rs-0.11.0a1-py3-none-manylinux_2_34_x86_64.whl",
+  "wheel_sha256": "de881aa3512d10b79b48ef55233afdd133ff37b845a054b037185522d0e0c0bd",
+  "payload_sha256": "6e72eef24c3533f91edcc96a10c4c485bd3f77e684b628cf3a76185111447a1c",
+  "qualification_run_id": 36670382270,
+  "qualification_run_attempt": 1,
+  "native_qualification_url": "https://github.com/EffortlessMetrics/ripr/actions/runs/36670382270",
+  "rust_toolchain": "1.95.0",
+  "features": [
+    "lang-python",
+    "lang-rust",
+    "lang-typescript"
+  ]
+}
