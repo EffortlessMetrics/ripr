@@ -23,7 +23,7 @@ pub(crate) fn release_upload_vsix(args: &[String]) -> Result<(), String> {
         crate::run::run_output_owned_with_timeout(
             "gh",
             arguments,
-            Duration::from_secs(120),
+            Duration::from_mins(2),
             "exact VSIX attachment",
         )
     })
