@@ -82,6 +82,7 @@ and uploads these assets to the matching GitHub Release:
 ```text
 ripr-server-v<VERSION>-<target>.zip
 ripr-server-v<VERSION>-<target>.tar.gz
+ripr-server-v<VERSION>-<target>.<zip-or-tar.gz>.sha256
 ripr-server-manifest-v<VERSION>.json
 SHA256SUMS
 ```
@@ -93,9 +94,71 @@ and `SHA256SUMS` digests. It is excluded from `SHA256SUMS` and is not a
 release asset; downstream provenance and placement-independent subject
 selection consume this evidence.
 
+## Final server subject preparation (nonpublishing)
+
+After accepted archive/manifest assembly, prepare the exact current upload set:
+
+```bash
+cargo xtask release-final-server-subjects \
+  --version <product-version> --repository EffortlessMetrics/ripr \
+  --candidate-sha <40-lowercase-hex-sha> --candidate-tree <40-lowercase-hex-tree> \
+  --dist dist --out target/ripr/final-server-subjects
+```
+
+The output parent must exist and the output directory must be fresh and outside
+staging. This command reads staged bytes and writes local preparation evidence;
+it never invokes a signer, verifier, publication tool, or credential request.
+Its receipt always states `provenance_verified=false` and
+`release_upload_eligible=false`. It does not gate or authorize the existing live
+publisher yet, and a prepared JSON file cannot unlock publication.
+
+The command reuses the canonical assembler's read-only rendering to validate
+the receipt set and compare the final manifest, `SHA256SUMS`, and assembly receipt
+byte-for-byte. It independently hashes the files, requires the expected source
+SHA/tree/repository and locked release build contract, and binds every path from
+the existing uploader allowlist to an accepted role. Observed unknown, missing,
+changed, nonregular, symlinked, or aliased inputs reject with bounded JSON/Markdown
+observations retained before the command fails. Metadata inputs are bounded at
+4 MiB each and staging at 64 entries. The stable single-link/file-identity
+controls currently require a Unix assembly host, matching the Ubuntu manifest
+runner; other hosts reject rather than claim an unavailable alias check. All
+five configured artifact target platforms remain in the subject set.
+
+Input consistency is limited to observed snapshots. The command takes its
+initial directory snapshot before the canonical assembler reads, then takes and
+compares a final snapshot after those reads and before writing any preparation
+packet. These checks do not provide an atomic filesystem snapshot or resistance
+to hostile concurrent filesystem mutation: paths are reopened, staging is not
+locked, and changes can occur and revert between observations or occur after the
+final check. Run against exclusively controlled, quiescent staging. A later
+signer or uploader must independently bind the bytes it actually consumes.
+
+The current uploader selects **twelve** public files: five archives, five
+per-archive `.sha256` sidecars, one manifest, and `SHA256SUMS`. Issue #1502's
+seven-subject description omits the legacy sidecars. Preparation preserves and
+explicitly inventories those five additional current upload paths. Removing
+them would require a separately reviewed public-subject contract change.
+Build/assembly receipts and the preparation outputs remain nonpublic.
+
+The fresh output contains `final-server-subjects.json`,
+`final-server-provenance-inputs.json`, `final-server-subjects.sha256`, and
+`final-server-subjects.receipt.{json,md}`. The external subject-checksum list
+includes the digest of the public `SHA256SUMS` bytes without modifying or making
+that public file self-referential. A rejected packet has only its diagnostic
+receipt, never a successful inventory from a prior generation.
+
+This is the inventory/rehearsal portion of #1502, which remains open. The next
+transition must select a reviewed full-SHA producer action, separately establish
+the narrow signing/OIDC permission boundary, execute and genuinely verify every
+final subject with exact repository/workflow/ref/SHA/name/digest constraints,
+and make live upload require that terminal admission. Synthetic fixtures and
+these preparation receipts cannot substitute for it. Replay the producer on the
+eventual history-preserving #1768 integrated source head before candidate-bound
+qualification; this command does not freeze or qualify that candidate.
+
 The release-server evidence contracts are versioned independently of release
 placement: per-target build receipts use schema `0.2`, the assembled manifest
-uses schema `0.1`, and the internal assembly receipt uses schema `0.1`.
+uses schema `2`, and the internal assembly receipt uses schema `0.2`.
 Manifest assembly accepts only per-target receipts with schema `0.2`, validates
 the platform-neutral compiler release/commit identity across runner hosts, and
 retains host-specific `rustc -vV` text only as per-target evidence. The

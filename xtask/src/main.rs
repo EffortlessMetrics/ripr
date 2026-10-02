@@ -15218,6 +15218,18 @@ fn check_output_contracts() -> Result<(), String> {
                     &mut violations,
                 );
             }
+            "release_final_server_schema" => {
+                let path = "xtask/src/reports/release_final_subjects.rs";
+                let source = read_text_lossy(Path::new(path))?;
+                require_contract_value(path, &source, value, kind, &mut violations);
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
             other => violations.push(format!(
                 "policy/output_contracts.txt uses unsupported kind `{other}`"
             )),

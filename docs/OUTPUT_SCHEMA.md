@@ -16259,3 +16259,40 @@ disagreement. The immutable admission packet uploads first, is downloaded to a
 fresh runner-owned path, verified, and enforced before constructor dry-run is
 reachable. The available final normalized packet uploads separately, so a
 terminal-red state still retains all evidence produced before the stop.
+
+## Final server subject preparation
+
+`release-final-server-subjects` emits three versioned local preparation objects:
+
+- `ripr.release_final_server_subject_inventory.v1`: exact accepted build identity,
+  product version, target-set digest, assembly receipt digest, and canonically
+  ordered subjects with relative name, role, target where applicable, mode,
+  read-only state, size, SHA-256, and originating receipt identity
+- `ripr.release_final_server_provenance_inputs.v1`: inventory and external
+  subject-checksum-list digests, exact repository/candidate SHA/tree, and the
+  complete named SHA-256 subject set; `execution_state=not_requested`, no action
+  identity, and `verification_observed=false`
+- `ripr.release_final_server_subject_receipt.v1`: `inventoried | rejected`, expected
+  source identity and targets, bounded per-file observations and failure reasons,
+  and an inventory digest only for successful preparation
+
+All three objects retain `release_upload_eligible=false`. The receipt also
+retains `credential_requested=false`, `attestation_attempted=false`,
+`provenance_verified=false`, and `publication_mutation_attempted=false`.
+These are observations of a command with no signing or publication route, not
+owner authorization or verification results that another command may trust.
+
+An `inventoried` receipt means the observed directory snapshots agreed before
+and after the canonical assembler reads; the final comparison precedes local
+packet writes. It does not establish an atomic snapshot, resistance to hostile
+concurrent filesystem mutation, or custody of bytes after the final check.
+Staging must remain exclusively controlled and quiescent, and future consumers
+must independently bind the bytes they use.
+
+The subject-set contract is the existing uploader allowlist including its five
+archive checksum sidecars: twelve files for the configured five-target set.
+The preparation checksum list covers all twelve subjects, including the public
+`SHA256SUMS` file itself, and lives outside public staging. It does not alter the
+public checksum construction rule. See [Server Binary Release](RELEASE_BINARIES.md)
+for host/path bounds, rejected-state handling, and the remaining live-provenance
+transition under #1502.
