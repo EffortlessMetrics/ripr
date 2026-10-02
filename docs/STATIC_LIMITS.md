@@ -37,6 +37,7 @@ rust_macro_wrapped_assertion_unresolved
 rust_value_propagation_unresolved
 rust_subprocess_binary_reach_unresolved
 wrapper_error_binding_unresolved
+python_transitive_reach_unresolved
 ```
 
 When `static_limit_kind` is absent but stable static-limit text is present,
@@ -65,6 +66,7 @@ action.
 | `rust_value_propagation_unresolved` | A changed Rust `let` binding uses a bounded `find`/`rfind` or `len_utf8` operation normalized through `map_or`, but syntax-first analysis cannot carry that value into a same-owner equality predicate. | Treat this as a named `static_unknown` analyzer limitation. Do not add a duplicate discriminator test or infer coverage, repair readiness, or a runtime result. |
 | `rust_subprocess_binary_reach_unresolved` | An integration test invokes a Cargo-built binary, but ripr does not yet map that executable back to the changed owner. | Treat this as a named `no_static_path` limitation. Inspect the subprocess test and binary target manually; do not infer reach, receipt validity, coverage, or repair readiness. |
 | `wrapper_error_binding_unresolved` | A wrapper error conversion (`callee(..).map_err(..)`) takes its error-variant identity from the converted callee, and RIPR cannot establish that the boxed conversion preserves that variant. | Keep the seam below `exposed`; verify the variant through the wrapper directly. This names the unresolved conversion binding, not a coverage or repair claim. |
+| `python_transitive_reach_unresolved` | A Python test constructs or calls into the owner's class, and a bounded same-class method path may lead toward the changed method. | Treat this as a named `no_static_path` limitation. Inspect the candidate class/method path before adding or delegating repair work. It is not a related-test or coverage claim. |
 
 ## External-Language Related-Test Inventory
 

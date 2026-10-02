@@ -146,6 +146,11 @@ fn owner_from_function(
     if is_async {
         decorators.push("async_def".to_string());
     }
+    let parameters = function_parameters(context.source, args);
+    let same_class_callees = super::same_class_callees::same_class_callees_from_body(
+        body,
+        super::same_class_callees::method_receiver_name(&parameters, &decorators),
+    );
     PythonOwner {
         name: name.to_string(),
         qualified_name,
@@ -158,7 +163,7 @@ fn owner_from_function(
         cli_receiver_names: collect_static_cli_receiver_names(context.source, context.imports),
         route_paths,
         dynamic_route_decorators,
-        parameters: function_parameters(context.source, args),
+        parameters,
         reexport_modules: Vec::new(),
         ambiguous_src_modules: Vec::new(),
         module_constants: constants_visible_in_function(
@@ -167,6 +172,7 @@ fn owner_from_function(
             body,
             &text_for_range(context.source, range),
         ),
+        same_class_callees,
         class_path: context.class_context.unwrap_or_default().to_string(),
     }
 }
@@ -222,6 +228,7 @@ fn owner_from_class(
         reexport_modules: Vec::new(),
         ambiguous_src_modules: Vec::new(),
         module_constants: Vec::new(),
+        same_class_callees: Vec::new(),
         class_path: String::new(),
     }
 }
@@ -248,6 +255,7 @@ pub(super) fn module_owner(
         reexport_modules: Vec::new(),
         ambiguous_src_modules: Vec::new(),
         module_constants: Vec::new(),
+        same_class_callees: Vec::new(),
         class_path: String::new(),
     }
 }

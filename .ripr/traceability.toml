@@ -10916,3 +10916,52 @@ metrics = [
   "blind_journey_contract_expectation_failures",
   "blind_journey_contract_receipt_status",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0201"
+name = "python same-class transitive-reach limitation"
+spec = "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.md"
+tests = [
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::construction_plus_self_path_names_limitation",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::import_alias_construction_names_limitation",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::module_import_construction_names_limitation",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::bound_method_alias_inside_class_is_an_edge",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::classmethod_cls_call_is_an_edge",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::import_without_construct_or_call_stays_silent",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::same_named_other_module_class_stays_silent",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::construction_without_self_path_stays_silent",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::getattr_and_foreign_receiver_are_not_edges",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::nested_inner_function_self_call_is_not_an_edge",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::lambda_self_call_is_not_an_edge",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::depth_five_names_limitation_and_depth_six_stays_silent",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::direct_owner_call_stays_related_not_this_limitation",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::cross_module_function_facade_without_class_construction_stays_silent",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::no_tests_stay_silent",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::staticmethod_does_not_contribute_self_edges",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::wire_message_uses_may_language_and_not_coverage",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::limitation_detail_names_edges_route_and_non_claim",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs::tests::extract_same_class_callees_from_control_flow_and_skips_staticmethod",
+  "crates/ripr/src/domain/language.rs::tests::static_limit_kind_wire_strings_are_stable",
+  "crates/ripr/src/domain/language.rs::tests::python_transitive_reach_description_is_named_limitation_not_coverage",
+  "crates/ripr/src/lsp/gap_artifacts.rs::tests::validation_accepts_python_transitive_reach_static_limit_kind",
+]
+fixtures = [
+  "fixtures/python_transitive_reach_positive",
+  "fixtures/python_transitive_reach_negative",
+]
+code = [
+  "crates/ripr/src/domain/language.rs",
+  "crates/ripr/src/analysis/language/python/same_class_callees.rs",
+  "crates/ripr/src/analysis/language/python/transitive_reach.rs",
+  "crates/ripr/src/analysis/language/python/classify.rs",
+  "crates/ripr/src/analysis/language/python.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/STATIC_LIMITS.md",
+]
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

@@ -325,6 +325,13 @@ pub enum StaticLimitKind {
     /// This label names the unresolved conversion binding, not a coverage
     /// claim. See #3700.
     WrapperErrorBindingUnresolved,
+    /// A Python test constructs or calls into the owner's class, and a
+    /// bounded same-class `self.` / `cls.` path may reach the changed
+    /// method, but the preview adapter does not relate that path. The
+    /// classification stays `no_static_path`; this label names the
+    /// unresolved method-to-method edge, not a coverage claim. See
+    /// RIPR-SPEC-0201 / #4765.
+    PythonTransitiveReachUnresolved,
 }
 
 impl StaticLimitKind {
@@ -360,6 +367,9 @@ impl StaticLimitKind {
                 "rust_subprocess_binary_reach_unresolved"
             }
             StaticLimitKind::WrapperErrorBindingUnresolved => "wrapper_error_binding_unresolved",
+            StaticLimitKind::PythonTransitiveReachUnresolved => {
+                "python_transitive_reach_unresolved"
+            }
         }
     }
 
@@ -451,6 +461,11 @@ impl StaticLimitKind {
                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the \
                  callee's error variant is not statically established; ripr cannot credit \
                  a downcast witness to this conversion."
+            }
+            StaticLimitKind::PythonTransitiveReachUnresolved => {
+                "A Python test may reach this change through another method on the owner's \
+                 class, a bound-method alias, or a protocol entry point that ripr does not \
+                 fully trace. This is a named limitation, not a coverage claim."
             }
         }
     }
@@ -647,6 +662,10 @@ mod tests {
             "rust_subprocess_binary_reach_unresolved"
         );
         assert_eq!(
+            StaticLimitKind::WrapperErrorBindingUnresolved.as_str(),
+            "wrapper_error_binding_unresolved"
+        );
+        assert_eq!(
             StaticLimitKind::RustMacroReachUnresolved.as_str(),
             "rust_macro_reach_unresolved"
         );
@@ -657,6 +676,10 @@ mod tests {
         assert_eq!(
             StaticLimitKind::RustMacroWrappedAssertionUnresolved.as_str(),
             "rust_macro_wrapped_assertion_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::PythonTransitiveReachUnresolved.as_str(),
+            "python_transitive_reach_unresolved"
         );
     }
 
@@ -680,6 +703,8 @@ mod tests {
             StaticLimitKind::RustMacroWrappedAssertionUnresolved,
             StaticLimitKind::RustValuePropagationUnresolved,
             StaticLimitKind::RustSubprocessBinaryReachUnresolved,
+            StaticLimitKind::WrapperErrorBindingUnresolved,
+            StaticLimitKind::PythonTransitiveReachUnresolved,
         ];
         // Every variant has a non-empty, distinct explanation. Conservative
         // static-language vocabulary is enforced repo-wide by
@@ -704,6 +729,15 @@ mod tests {
                 .contains("depth greater than 5"),
             "transitive-reach limitation text must match RIPR-SPEC-0114's depth-5 bound"
         );
+    }
+
+    #[test]
+    fn python_transitive_reach_description_is_named_limitation_not_coverage() {
+        let described = StaticLimitKind::PythonTransitiveReachUnresolved.describe();
+        assert!(described.contains("may"));
+        assert!(described.contains("named limitation"));
+        assert!(!described.contains("covers"));
+        assert!(!described.contains("tested"));
     }
 
     #[test]

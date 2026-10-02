@@ -92,7 +92,8 @@ Additive optional fields:
   `cross_language_oracle_visibility_unresolved`,
   `rust_transitive_reach_unresolved`,
   `rust_integration_public_api_path_unresolved`,
-  `rust_macro_reach_unresolved`).
+  `rust_macro_reach_unresolved`,
+  `python_transitive_reach_unresolved`).
 
 Reports gaining these fields:
 

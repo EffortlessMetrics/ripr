@@ -1,0 +1,100 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/python_transitive_reach_positive/input",
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:0a90dc1c4cfb7cc9d9017c576aa4a0afcf9d717307b01a15eb3e9c729270418e","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_table.py:python_preview:6c6d80d7",
+      "canonical_gap_id": "gap:python:src/table.py:Table._get_padding_width:predicate_boundary:predicate:column_index>=len_self.columns-1",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:python:src/table.py:Table._get_padding_width:predicate_boundary:predicate:column_index>=len_self.columns-1",
+        "language": "python",
+        "file": "src/table.py",
+        "owner": "Table._get_padding_width",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "column_index>=len_self.columns-1"
+
+      },
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.40,
+      "probe": {
+        "id": "probe:src_table.py:python_preview:6c6d80d7",
+        "family": "predicate",
+        "delta": "control",
+        "file": "src/table.py",
+        "line": 12,
+        "expression": "        if column_index >= len(self.columns) - 1:",
+        "owner": "python:src/table.py::Table._get_padding_width"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"low","summary":"0 related Python test(s) found for owner `_get_padding_width`"},
+        "infect": {"state":"yes","confidence":"low","summary":"Changed Python predicate can alter branch selection: `if column_index >= len(self.columns) - 1:`"},
+        "propagate": {"state":"weak","confidence":"low","summary":"Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink."},
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
+       },
+      "evidence_path": ["reach no: 0 related Python test(s) found for owner `_get_padding_width`", "infection yes: Changed Python predicate can alter branch selection: `if column_index >= len(self.columns) - 1:`", "propagation weak: Changed Python control flow can propagate by selecting a different branch; preview evidence does not prove the concrete downstream sink.", "observation no: Strongest extracted Python oracle kind: `unknown` (rank 0)", "discriminator no: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches unknown sink: if column_index >= len(self.columns) - 1: (line 12)"],
+      "flow_sinks": [
+        {"kind":"unknown","text":"if column_index >= len(self.columns) - 1:","line":12}
+      ],
+      "evidence": ["owner: Table._get_padding_width", "owner_kind: method", "ripr saw a Python test that constructs or calls into this owner's class; a bounded same-class method path may lead here, but the preview adapter does not fully trace it. This is not a coverage assessment — ripr cannot confirm or deny that the change is observed.", "For example, the test `test_print_table` (tests/test_table.py:4) calls `Table`, an entry point that may lead here. Inspect it to judge whether this change is observed.", "limitation_last_established_edge: test `test_print_table` (tests/test_table.py:4) -> entry `Table`", "limitation_first_unresolved_edge: entry `Table` -> owner `_get_padding_width` through a bounded same-class Python method path", "limitation_analyzer_route: analysis/python-same-class-transitive-reach", "limitation_non_claim: named limitation only; ripr cannot confirm or deny that this path observes the change"],
+      "missing": ["No statically reachable Python test path was found; a test may construct or call into the owner's class through a method path ripr does not fully trace."],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": ["transitive_reach_unresolved"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "python",
+      "language_status": "preview",
+      "owner_kind": "method",
+      "static_limit_kind": "python_transitive_reach_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/python-same-class-transitive-reach",
+        "first_unresolved_edge": "entry `Table` -> owner `_get_padding_width` through a bounded same-class Python method path",
+        "kind": "python_transitive_reach_unresolved",
+        "last_established_edge": "test `test_print_table` (tests/test_table.py:4) -> entry `Table`",
+        "non_claim": "named limitation only; ripr cannot confirm or deny that this path observes the change"
+      },
+      "changed_sink": "column_index, len, columns",
+      "oracle_alignment": "unknown",
+      "alignment_reason": "no_strong_oracle",
+      "source_currentness": "candidate_current"
+    }
+  ],
+  "preview_languages": [
+    {
+      "language": "python",
+      "file_count": 1,
+      "sample_paths": ["src/table.py"],
+      "enabled": true,
+      "analyzed": true,
+      "category": "preview_language_advisory",
+      "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
+    }
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/table.py","digest":"sha256:572574ffc518ee7737034909f848b6278203828723656fe341d9c36012112884"}]}
+}

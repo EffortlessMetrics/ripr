@@ -1,0 +1,43 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_transitive_reach_negative/input
+
+Summary: 1 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 1 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) shown
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview language, advisory only (preview_limited)
+  Safe next action: this Python preview finding has no repair card (no Python test reaches this code), so `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add a test that calls it by hand, then rerun `ripr check`.
+  File: src/table.py:12
+  Language: python
+  Language status: preview
+  Static exposure: no path (no_static_path, warning, confidence 0.40)
+  Why no path: no related test was found that reaches this change
+  Canonical gap: gap:python:src/table.py:Table._get_padding_width:predicate_boundary:predicate:column_index>=len_self.columns-1
+  Changed behavior: if column_index >= len(self.columns) - 1:
+  Missing discriminator: No Python test references `_get_padding_width(`; add a pytest or unittest test that calls the changed owner.
+  Evidence: reach no · infection yes · propagation weak · observation no · discriminator no
+    - reach no: 0 related Python test(s) found for owner `_get_padding_width`
+    - infection yes: Changed Python predicate can alter branch selection: `if column_index >= len(self.columns) - 1:`
+    - 4 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_transitive_reach_negative/input --diff fixtures/python_transitive_reach_negative/diff.patch --mode fast probe:src_table.py:python_preview:6c6d80d7
+  ripr context --root fixtures/python_transitive_reach_negative/input --diff fixtures/python_transitive_reach_negative/diff.patch --mode fast --at probe:src_table.py:python_preview:6c6d80d7
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope
+  analyzed: 1 changed expression(s) and 0 statically linked related test(s). This is not a coverage
+  assessment. A test may already exercise these changes through macros, helper-call chains, or
+  integration tests that ripr's static model does not yet trace; if none does, add co-located tests
+  that observe the changed behavior.
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

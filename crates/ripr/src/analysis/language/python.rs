@@ -127,11 +127,13 @@ use source_facts::parse_module;
 use source_facts::{extract_source_facts, source_fact_snapshot_observation};
 mod source_utils;
 use source_utils::{is_test_file, normalized_path};
+mod same_class_callees;
 mod static_limits;
 use static_limits::{
     PythonStaticLimit, has_identifier_boundary, line_prefix_before,
     python_callee_start_has_boundary, python_prefix_hides_code,
 };
+mod transitive_reach;
 #[cfg(test)]
 use static_limits::{
     contains_dynamic_dispatch, contains_dynamic_import, contains_metaprogramming,
@@ -193,6 +195,11 @@ struct PythonOwner {
     /// (not shadowed locally). Empty for class and module owners. Used only
     /// to resolve named predicate boundary operands (`boundary.rs`, #4227).
     module_constants: Vec<module_constants::PythonModuleConstant>,
+    /// Same-class methods this method may call through its receiver
+    /// (`self.` / `cls.`) or a bound-method alias (`f = self.x`). Empty for
+    /// non-methods and `@staticmethod`. Used only to name a Python
+    /// transitive-reach limitation on silent `no_static_path` findings (#4765).
+    same_class_callees: Vec<String>,
     /// Dotted path of the enclosing classes of a method owner, outermost
     /// first (`Outer.Inner` for `Outer.Inner.__init__`). Empty for other
     /// owners. `qualified_name` keeps only the innermost class.
@@ -337,6 +344,7 @@ fn expr_full_name(expr: &Expr) -> Option<String> {
 fn stop_reason_for_python_static_limit(limit: &PythonStaticLimit) -> StopReason {
     match limit.kind {
         StaticLimitKind::DynamicDispatch => StopReason::DynamicDispatchUnresolved,
+        StaticLimitKind::PythonTransitiveReachUnresolved => StopReason::TransitiveReachUnresolved,
         _ => StopReason::StaticProbeUnknown,
     }
 }

@@ -1285,7 +1285,7 @@ pub(super) fn first_parenthesized_string_argument(text: &str) -> Option<String> 
         .flatten()
 }
 
-fn contains_call_name(body_text: &str, call_name: &str) -> bool {
+pub(super) fn contains_call_name(body_text: &str, call_name: &str) -> bool {
     let needle = format!("{call_name}(");
     body_text.match_indices(&needle).any(|(idx, _)| {
         python_callee_start_has_boundary(body_text, idx)
@@ -1379,7 +1379,11 @@ fn owner_class_locals(test: &PythonTest, owner: &PythonOwner, class: &str) -> Ve
 /// A bare `.method(` on an unrelated or unresolved receiver is NOT matched: that
 /// is the false-`exposed` guard — importing or merely mentioning the owner class
 /// is not evidence the asserted method ran on an instance of it.
-fn body_calls_method_on_owner_bound_receiver(body: &str, local: &str, method: &str) -> bool {
+pub(super) fn body_calls_method_on_owner_bound_receiver(
+    body: &str,
+    local: &str,
+    method: &str,
+) -> bool {
     // Pattern 1: `Local.method(` — classmethod / direct call on the class itself.
     if contains_attribute_call(body, local, method) {
         return true;

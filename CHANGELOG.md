@@ -31,6 +31,10 @@ are scoped or reviewed.
 
 ### Added
 
+- Python same-class method owners that tests reach only through construction
+  or another method on that class now keep `no_static_path` but name
+  `static_limit_kind: python_transitive_reach_unresolved` (RIPR-SPEC-0201,
+  #4765). This is a named limitation, not a related-test or coverage claim.
 - LSP: the seam code actions and seam hover project the compact RepairCard
   (RIPR-SPEC-0198, #4668). "Agent handoff: copy repair card" copies the same
   versioned `repair_card.v1` document the CLI `ripr agent card` handoff
