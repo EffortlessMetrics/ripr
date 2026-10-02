@@ -59,3 +59,14 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — python_transitive_reach_positive (4)
+
+Reason:
+RIPR-SPEC-0202: inherited repair blessing. Main's digest-header denominator reconciliation (#5017, #5021, landed as 66b67c62d / #5049) renamed the summary denominator vocabulary from "finding(s) shown" to "finding(s) unsuppressed" without re-blessing this fixture, leaving main's own goldens check red. This PR re-blesses the affected human.txt line so the required hosted gate can pass again; no renderer or behavior change in this PR.
+
+Command:
+`cargo xtask goldens bless python_transitive_reach_positive --reason "..."`
+
+Updated:
+- `expected/human.txt`

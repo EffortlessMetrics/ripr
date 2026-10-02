@@ -60,9 +60,12 @@ pub(in crate::cli) fn agent(args: &[String]) -> Result<(), CommandError> {
         AgentCommand::Start(options) => run_agent_start(options).map_err(CommandError::from),
         AgentCommand::Brief(options) => run_agent_brief(options).map_err(CommandError::from),
         AgentCommand::Packet(options) => run_agent_packet(options).map_err(CommandError::from),
-        AgentCommand::Card(options) => {
-            super::agent_card::run_agent_card(options).map_err(CommandError::from)
-        }
+        // #5007: `agent card` refusals are typed like its siblings: the
+        // adapter classifies deliberate named refusals (rendering the
+        // versioned `agent_card_refusal` envelope on stderr under `--json`)
+        // and maps them to the decision exit code 3; operational failures
+        // stay exit 2.
+        AgentCommand::Card(options) => super::agent_card::run_agent_card(options),
         // A deliberate named refusal (drifted analysis inputs, no movement)
         // maps to exit code 3, as it does inside `repair --phase after`.
         // Stdout stays empty on every refusal: the release negative corpus

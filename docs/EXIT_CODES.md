@@ -31,7 +31,9 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
   (standalone `ripr agent verify` is the exception: its refusal is named on
   stderr and stdout stays empty; see below. `ripr agent repair` prints its
   refusal document only with `--json`; without it stdout stays empty and
-  stderr names the cause).
+  stderr names the cause. `ripr agent card` prints its
+  `agent_card_refusal` envelope on stderr with `--json` and the prose
+  rendering after it; stdout stays empty on every refusal).
 - `2`: the invocation or operation failed; retrying differently is
   appropriate.
 
@@ -85,6 +87,24 @@ verify-execute` declining a packet (the refusal JSON document is on stdout)
   renders nothing to it (RIPR-SPEC-0134). The named cause is on stderr.
   Other verify rejections (unreadable or invalid artifacts, lineage or
   metadata mismatches) exit `2`.
+- **Typed agent card refusal**: `ripr agent card` reached a deliberate named
+  refusal of the default handoff — the seam id names no seam
+  (`seam_not_found`: re-list seams or correct the id), the seam's grip class
+  is policy-omitted (`policy_omitted`: check the `agent brief` policy config;
+  re-listing cannot fix it), the witness analysis produced no witness
+  (`witness_unavailable`: rerun the analysis or pick another seam), no
+  admitted evidence names a portable workspace identity
+  (`identity_unnameable`: retrieve the full packet instead), or the card
+  builder, route gate, or budget refused to mint the card
+  (`budget_overflow`: fall back to the canonical packet). With `--json` the
+  versioned `agent_card_refusal` envelope (`schema_version` `0.1`) renders
+  on stderr with the typed `error.kind`, `seam_id`, verbatim `message`, and
+  `remedy_route`; stdout stays empty because it is the card-artifact stream.
+  Without `--json` stderr carries the prose rendering only. The kinds are
+  closed and pinned by `cargo xtask check-output-contracts`
+  (RIPR-SPEC-0202). Operational failures of the command (an unreadable
+  config, a failed git probe, a detail-source serialization failure) still
+  exit `2`.
 
 These are findings- and policy-driven exits, not operational failures; a
 monitoring system should page on `2`, not on `3`.

@@ -80,6 +80,43 @@ impl RepairCardBudget {
     }
 }
 
+/// The typed refusal kinds of the `ripr agent card` handoff failure envelope
+/// (#5007, RIPR-SPEC-0202). Each kind names one deliberate machine state a
+/// loop driver branches on — never a severity — and carries the same remedy
+/// family on every surface. The wire spelling is pinned against
+/// `policy/output_contracts.txt` and `docs/OUTPUT_SCHEMA.md` by
+/// `cargo xtask check-output-contracts`.
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentCardRefusalKind {
+    /// The requested seam id names no seam in the current inventory.
+    SeamNotFound,
+    /// The seam's grip class is omitted from agent results by policy.
+    PolicyOmitted,
+    /// The witness analysis could not produce this seam's witness.
+    WitnessUnavailable,
+    /// Nothing on this seam names a portable workspace identity.
+    IdentityUnnameable,
+    /// The card builder, route gate, or budget refused to mint the card.
+    BudgetOverflow,
+}
+
+impl AgentCardRefusalKind {
+    /// The wire spelling of the refusal kind, exactly as it appears in the
+    /// envelope's `error.kind` field.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SeamNotFound => "seam_not_found",
+            Self::PolicyOmitted => "policy_omitted",
+            Self::WitnessUnavailable => "witness_unavailable",
+            Self::IdentityUnnameable => "identity_unnameable",
+            Self::BudgetOverflow => "budget_overflow",
+        }
+    }
+}
+
 /// One load-bearing evidence family the compact card routes to instead of
 /// embedding. The families name the authorities #4666 keeps explicitly
 /// reachable from a finite card.

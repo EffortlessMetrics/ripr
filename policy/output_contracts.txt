@@ -1,5 +1,10 @@
 # kind|value|reason
 
+agent_card_refusal_kind|budget_overflow|ripr agent card typed refusal kind: the card builder, route gate, or budget refused to mint the card; fall back to the canonical packet.
+agent_card_refusal_kind|identity_unnameable|ripr agent card typed refusal kind: nothing on the seam names a portable workspace identity; retrieve the full packet instead.
+agent_card_refusal_kind|policy_omitted|ripr agent card typed refusal kind: the seam's grip class is omitted from agent results by policy; check the agent brief policy config.
+agent_card_refusal_kind|seam_not_found|ripr agent card typed refusal kind: the requested seam id names no seam in the current inventory; re-list seams or correct the id.
+agent_card_refusal_kind|witness_unavailable|ripr agent card typed refusal kind: the witness analysis could not produce the seam's witness; rerun the analysis or pick another seam.
 confidence_label|ambiguous_runtime_join|Mutation calibration confidence label.
 confidence_label|contradicts_static_clean|Mutation calibration confidence label.
 confidence_label|contradicts_static_gap|Mutation calibration confidence label.
@@ -39,6 +44,7 @@ ingest_reason|forbidden_edit|Swarm-ingest classifier reason: forbidden-file edit
 ingest_reason|missing_verify|Swarm-ingest classifier reason: verify evidence absent or failing.
 ingest_reason|movement_without_snapshot_provenance|Swarm-ingest classifier reason: movement claimed without before/after sha256 artifact provenance.
 ingest_reason|stale_packet|Swarm-ingest classifier reason: packet marked stale; movement claim discarded.
+kind|agent_card_refusal|Typed refusal envelope of the ripr agent card handoff failure states (#5007, schema 0.1).
 kind|python_repair_driver_binding|Prepare binding and apply record for the governed Python repair driver (schema 0.1).
 kind|python_repair_verification_check_report|Structural check report for Python repair verification receipts (schema 0.1).
 kind|python_repair_verification_receipt|Immutable Python repair verification candidate receipt (schema 0.1).

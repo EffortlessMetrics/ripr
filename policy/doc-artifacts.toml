@@ -1062,3 +1062,10 @@ path = "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.
 status = "proposed"
 owner = "product-analysis"
 standalone_reason = "Issue #4765 records the Python same-class transitive-reach limitation: when a no_static_path finding has no related tests but a test constructs or calls into the owner's class and a bounded self/cls walk (depth<=5) may reach the changed method, name static_limit_kind=python_transitive_reach_unresolved; fail-closed (classification NEVER promoted, witness is not related_tests, message uses 'may' language); additive static_limit_kind value only; unit tests in python/transitive_reach.rs; 2 pure-example fixtures. Renumbered from RIPR-SPEC-0180 after main landed the LSP saved-edit sequence spec under that number first."
+[[artifact]]
+id = "RIPR-SPEC-0202"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0202-agent-card-typed-refusals.md"
+status = "proposed"
+owner = "product-agent"
+standalone_reason = "Issue #5007 records the agent card typed refusal envelope: every deliberate named refusal of the ripr agent card default handoff — seam_not_found, policy_omitted, witness_unavailable, identity_unnameable, budget_overflow — maps to exit code 3 and renders one versioned agent_card_refusal envelope (schema_version 0.1) on stderr under --json with the typed error.kind, the asked-for seam_id, the verbatim human prose as the non-authority message, and one typed remedy_route, reusing the existing 2/3 exit-code contract and the verify/verify-execute/repair typed-refusal precedent; operational failures stay exit 2, stdout stays empty on refusals, the no-witness card render stays a success path per RIPR-SPEC-0194 acceptance, and the closed kind set is pinned three ways by check-output-contracts. Renumbered from RIPR-SPEC-0201 after main landed the Python same-class transitive-reach limitation spec under that number first."

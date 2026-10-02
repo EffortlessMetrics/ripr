@@ -114,6 +114,16 @@ complete canonical packet stays behind the card's explicit packet route
 (`ripr agent packet --seam-id ID --json`), which remains the compatibility
 path. It remains advisory and static; it does not run mutation testing,
 generate tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+
+Refusal contract (#5007): a deliberate named refusal — seam id not found,
+policy-omitted seam, witness analysis unavailable, unnameable portable
+workspace identity, or builder/budget refusal — exits `3`. Under `--json`
+stderr carries one versioned `agent_card_refusal` envelope (`schema_version`
+`0.1`) naming the typed `error.kind`, the asked-for `seam_id`, the verbatim
+human prose, and one typed `remedy_route`; without `--json` stderr carries the
+prose rendering only. Stdout stays empty on every refusal. Operational
+failures (an unreadable config or a failed probe) stay exit `2` with human
+prose only, like the sibling verify and repair commands.
 "#;
 
 pub(super) const AGENT_VERIFY_HELP: &str = r#"Verify static-evidence movement between a before and after snapshot.

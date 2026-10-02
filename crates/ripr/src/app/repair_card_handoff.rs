@@ -9,6 +9,12 @@
 //! The complete canonical packet stays behind the card's explicit
 //! `canonical_packet` detail route (`ripr agent packet --seam-id ... --json`);
 //! the packet render is unchanged and remains the compatibility path.
+//!
+//! #5007 (RIPR-SPEC-0202): producer failures are split at their origin into
+//! [`AgentCardError::Refusal`] — a deliberate named refusal the CLI types
+//! into the versioned `agent_card_refusal` envelope (exit code 3) — and
+//! [`AgentCardError::Operational`] — a could-not-complete that stays exit 2.
+//! The human prose is unchanged in both cases; only the machine state is new.
 
 use std::path::Path;
 
@@ -20,11 +26,11 @@ use crate::analysis::repair_route::{
 };
 use crate::config::RiprConfig;
 use crate::domain::{
-    CardCurrentnessGoal, CommandSpec, DiagnosticWitness, EditCageGoal, FindingCanonicalGap,
-    FixInstructionSummary, FocusedExecutionGoal, MutationConfirmationGoal, RepairCardBudget,
-    RepairCardDetailFamily, RepairCardDetailState, RepairCardDoneWhen, RepairCardSnapshot,
-    RepairCardSnapshotCurrentness, RepairCardSubject, RepairCardV1, StaticMovementGoal,
-    repair_card_route_exposable,
+    AgentCardRefusalKind, CardCurrentnessGoal, CommandSpec, DiagnosticWitness, EditCageGoal,
+    FindingCanonicalGap, FixInstructionSummary, FocusedExecutionGoal, MutationConfirmationGoal,
+    RepairCardBudget, RepairCardDetailFamily, RepairCardDetailState, RepairCardDoneWhen,
+    RepairCardSnapshot, RepairCardSnapshotCurrentness, RepairCardSubject, RepairCardV1,
+    StaticMovementGoal, repair_card_route_exposable,
 };
 use crate::output::agent_seam_packets::{
     EDIT_CAGE_PRODUCTION_STATEMENT, EDIT_CAGE_TERMINALITY_WARNING, PacketCommandContext,
@@ -39,6 +45,69 @@ use super::repair_attempt::{
 };
 use super::repair_card::{RepairCardInput, build_repair_card};
 use super::{CheckInput, check_workspace_with_config};
+
+/// Producer failure of the `ripr agent card` handoff, split into the two
+/// machine states an orchestrator branches on (#5007, RIPR-SPEC-0202):
+/// a deliberate named refusal (exit code 3; the CLI renders the versioned
+/// typed envelope naming the kind and the remedy) and an operational
+/// could-not-complete (exit code 2; human prose only, retrying differently
+/// is appropriate). The human message is the non-authority rendering in both
+/// cases: the kind is the contract, the prose stays free to change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AgentCardError {
+    /// A deliberate named refusal: the command ran to a blocking answer.
+    Refusal {
+        /// The typed refusal kind; the envelope's `error.kind` wire spelling.
+        kind: AgentCardRefusalKind,
+        /// The exact human prose this refusal rendered before typing, kept
+        /// verbatim so stderr stays unchanged for humans.
+        message: String,
+    },
+    /// The command could not complete (operational, usage, or internal).
+    Operational(String),
+}
+
+impl AgentCardError {
+    /// A deliberate named refusal with the typed kind the CLI envelope pins.
+    pub(crate) fn refusal(kind: AgentCardRefusalKind, message: String) -> Self {
+        Self::Refusal { kind, message }
+    }
+
+    fn witness_unavailable(message: String) -> Self {
+        Self::refusal(AgentCardRefusalKind::WitnessUnavailable, message)
+    }
+
+    fn identity_unnameable(message: String) -> Self {
+        Self::refusal(AgentCardRefusalKind::IdentityUnnameable, message)
+    }
+
+    fn budget_overflow(message: String) -> Self {
+        Self::refusal(AgentCardRefusalKind::BudgetOverflow, message)
+    }
+
+    pub(crate) fn operational(message: String) -> Self {
+        Self::Operational(message)
+    }
+
+    /// The human-readable message, reported on stderr unchanged.
+    fn message(&self) -> &str {
+        match self {
+            Self::Refusal { message, .. } | Self::Operational(message) => message,
+        }
+    }
+}
+
+impl std::fmt::Display for AgentCardError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
+impl From<AgentCardError> for String {
+    fn from(error: AgentCardError) -> Self {
+        error.to_string()
+    }
+}
 
 /// Producer-gathered facts for one seam's repair card. The pure assembly
 /// [`assemble_repair_card`] takes these directly so the projection contract is
@@ -73,26 +142,35 @@ pub(crate) fn repair_card_for_entry(
     entry: &ClassifiedSeam,
     root: &Path,
     config: &RiprConfig,
-) -> Result<RepairCardV1, String> {
+) -> Result<RepairCardV1, AgentCardError> {
     let eligibility = repair_packet_eligibility(entry);
     let witness_pack = witness_for_seam(
         root,
         config,
         entry,
         eligibility.readiness.canonical_gap_id.as_deref(),
-    )?;
+    )
+    .map_err(AgentCardError::witness_unavailable)?;
     let (finding_id, witness) = match witness_pack {
         Some((id, witness)) => (Some(id), Some(witness)),
         None => (None, None),
     };
     let repository_head = git_output(root, &["rev-parse", "HEAD"])
-        .map_err(|error| format!("agent card could not resolve the repository head: {error}"))?
+        .map_err(|error| {
+            AgentCardError::operational(format!(
+                "agent card could not resolve the repository head: {error}"
+            ))
+        })?
         .trim()
         .to_string();
-    let workspace_identity = workspace_identity_for(entry, &eligibility.readiness)?;
+    // #5007: an unnameable portable identity is a deliberate named refusal
+    // (the remedy is the full packet route), not an operational failure.
+    let workspace_identity = workspace_identity_for(entry, &eligibility.readiness)
+        .map_err(AgentCardError::identity_unnameable)?;
     let seam_id = entry.seam.id().as_str().to_string();
-    let attempt = latest_attempt_for_seam(root, &seam_id)?;
-    let currentness = evidence_tree_currentness(root, entry)?;
+    let attempt = latest_attempt_for_seam(root, &seam_id).map_err(AgentCardError::operational)?;
+    let currentness =
+        evidence_tree_currentness(root, entry).map_err(AgentCardError::operational)?;
     let packet_json = card_packet_json(entry);
     let next_command = agent_inspection_command_spec(
         AgentArtifactRoute::Packet,
@@ -192,7 +270,12 @@ fn evidence_probe_paths(entry: &ClassifiedSeam) -> Vec<std::path::PathBuf> {
 /// Assemble one [`RepairCardV1`] from producer-owned facts. Pure projection:
 /// every field names the authority it was copied from, the route gate stays
 /// fail-closed, and the complete packet rides behind its detail reference.
-pub(crate) fn assemble_repair_card(facts: &SeamCardFacts<'_>) -> Result<RepairCardV1, String> {
+/// Builder, route-gate, and budget refusals surface as the
+/// [`AgentCardRefusalKind::BudgetOverflow`] refusal kind; detail-source
+/// serialization failures stay operational (#5007).
+pub(crate) fn assemble_repair_card(
+    facts: &SeamCardFacts<'_>,
+) -> Result<RepairCardV1, AgentCardError> {
     let entry = facts.entry;
     let eligibility = repair_packet_eligibility(entry);
     let readiness = &eligibility.readiness;
@@ -301,8 +384,12 @@ pub(crate) fn assemble_repair_card(facts: &SeamCardFacts<'_>) -> Result<RepairCa
 
     let seam_id = entry.seam.id().as_str().to_string();
     let packet_route = format!("ripr agent packet --seam-id {seam_id} --json");
-    let detail_sources = detail_sources_for(facts, &packet_route, &done_when)?;
+    let detail_sources = detail_sources_for(facts, &packet_route, &done_when)
+        .map_err(AgentCardError::operational)?;
 
+    // #5007: a builder, route-gate, or budget refusal is a deliberate named
+    // refusal (the remedy is the canonical packet route), never an internal
+    // error; the builder's prose travels verbatim as the human rendering.
     build_repair_card(&RepairCardInput {
         snapshot: RepairCardSnapshot {
             workspace_identity: facts.workspace_identity.to_string(),
@@ -335,6 +422,7 @@ pub(crate) fn assemble_repair_card(facts: &SeamCardFacts<'_>) -> Result<RepairCa
         detail_sources,
         budget: RepairCardBudget::default(),
     })
+    .map_err(AgentCardError::budget_overflow)
 }
 
 /// Whether the rendered packet envelope actually surfaces this seam. The
@@ -1024,6 +1112,53 @@ mod tests {
                 "a dirty-state probe failure must fail closed, not default to current".to_string(),
             );
         };
+        Ok(())
+    }
+
+    /// #5007: the producer split keeps the typed kind and the verbatim human
+    /// prose together on every path, and the `String` conversion (what LSP
+    /// omission and the usability measurement consume) preserves the prose.
+    #[test]
+    fn agent_card_error_split_carries_kind_and_prose() -> Result<(), String> {
+        let refusal = AgentCardError::witness_unavailable("witness prose".to_string());
+        match &refusal {
+            AgentCardError::Refusal { kind, message } => {
+                if *kind != AgentCardRefusalKind::WitnessUnavailable {
+                    return Err("the witness failure must carry the witness kind".to_string());
+                }
+                if message != "witness prose" {
+                    return Err("the refusal must keep the verbatim human prose".to_string());
+                }
+            }
+            AgentCardError::Operational(_) => {
+                return Err("the witness failure is a refusal, not operational".to_string());
+            }
+        }
+        if refusal.message() != "witness prose" {
+            return Err("message() must render the verbatim human prose".to_string());
+        }
+        let rendered: String = refusal.into();
+        if rendered != "witness prose" {
+            return Err("the String rendering must stay the human prose".to_string());
+        }
+        match AgentCardError::identity_unnameable("identity prose".to_string()) {
+            AgentCardError::Refusal {
+                kind: AgentCardRefusalKind::IdentityUnnameable,
+                ..
+            } => {}
+            _ => return Err("identity failure must carry the identity kind".to_string()),
+        }
+        match AgentCardError::budget_overflow("budget prose".to_string()) {
+            AgentCardError::Refusal {
+                kind: AgentCardRefusalKind::BudgetOverflow,
+                ..
+            } => {}
+            _ => return Err("builder failure must carry the budget kind".to_string()),
+        }
+        match AgentCardError::operational("ops prose".to_string()) {
+            AgentCardError::Operational(message) if message == "ops prose" => {}
+            _ => return Err("operational failures must stay operational".to_string()),
+        }
         Ok(())
     }
 }

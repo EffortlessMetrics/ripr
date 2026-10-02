@@ -248,6 +248,7 @@ pub use ripr::config::TestHarnessKind
 pub use ripr::config::TestHarnessRegistration
 pub use ripr::config::TypescriptConfig
 pub use ripr::domain::ActivationEvidence
+pub use ripr::domain::AgentCardRefusalKind
 pub use ripr::domain::AttributionBasis
 pub use ripr::domain::CancellationPolicy
 pub use ripr::domain::CandidateRelation

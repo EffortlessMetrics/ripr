@@ -3744,7 +3744,10 @@ fn agent_card_hands_off_one_seam_as_the_default_repair_card()
     assert_eq!(clean_json["done_when"]["currentness"], "current");
 
     // A cold agent's `probe:...` finding ID is refused with the same seam-ID
-    // source hint the packet surface names.
+    // source hint the packet surface names. #5007: the refusal is typed —
+    // exit code 3, not an operational failure — and under `--json` stderr
+    // carries one parseable `agent_card_refusal` envelope with the prose
+    // rendering after it, while stdout stays empty.
     let unknown = run_ripr(&[
         "agent",
         "card",
@@ -3753,11 +3756,62 @@ fn agent_card_hands_off_one_seam_as_the_default_repair_card()
         "--seam-id",
         "probe:src_lib.rs:predicate:566edf6b",
     ]);
-    assert!(!unknown.status.success());
+    assert_eq!(
+        unknown.status.code(),
+        Some(3),
+        "a named refusal takes the decision exit code: {unknown:?}"
+    );
     let stderr = String::from_utf8_lossy(&unknown.stderr);
     assert!(
         stderr.contains("is a `ripr check` finding ID, not a seam ID"),
         "{stderr}"
+    );
+    let typed = run_ripr(&[
+        "agent",
+        "card",
+        "--root",
+        &root_arg,
+        "--seam-id",
+        "probe:src_lib.rs:predicate:566edf6b",
+        "--json",
+    ]);
+    assert_eq!(
+        typed.status.code(),
+        Some(3),
+        "a named refusal takes the decision exit code: {typed:?}"
+    );
+    assert!(
+        typed.stdout.is_empty(),
+        "the card-artifact stdout stays empty on a refusal: {typed:?}"
+    );
+    let typed_stderr = String::from_utf8_lossy(&typed.stderr);
+    let envelope_end = typed_stderr
+        .find("\n}\n")
+        .ok_or("the refusal envelope did not terminate on stderr")?
+        + 3;
+    let envelope: serde_json::Value = serde_json::from_str(&typed_stderr[..envelope_end])?;
+    assert_eq!(envelope["schema_version"], "0.1", "{envelope}");
+    assert_eq!(envelope["kind"], "agent_card_refusal", "{envelope}");
+    assert_eq!(envelope["error"]["kind"], "seam_not_found", "{envelope}");
+    assert_eq!(
+        envelope["error"]["seam_id"], "probe:src_lib.rs:predicate:566edf6b",
+        "{envelope}"
+    );
+    assert!(
+        envelope["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("was not found")),
+        "{envelope}"
+    );
+    assert!(
+        envelope["error"]["remedy_route"]
+            .as_str()
+            .is_some_and(|route| route.starts_with("ripr pilot --root ")),
+        "{envelope}"
+    );
+    assert!(
+        typed_stderr[envelope_end..].contains("is a `ripr check` finding ID, not a seam ID"),
+        "the human prose rendering stays on stderr after the envelope: {typed_stderr}"
     );
     std::fs::remove_dir_all(root)?;
     Ok(())
