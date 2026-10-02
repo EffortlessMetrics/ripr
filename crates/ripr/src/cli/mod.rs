@@ -195,7 +195,13 @@ fn persist_before_repair_attempt(
         .map_err(|error| format!("read {} failed: {error}", agent_packet.display()))?;
     let packet_text = String::from_utf8(packet_bytes.clone())
         .map_err(|error| format!("agent packet is not UTF-8: {error}"))?;
-    let policy = crate::app::repair_attempt::edit_cage_policy_from_packet(&packet_text, seam_id)?;
+    let mut policy =
+        crate::app::repair_attempt::edit_cage_policy_from_packet(&packet_text, seam_id)?;
+    crate::app::repair_attempt::include_explicit_store_operational_write(
+        &mut policy,
+        root,
+        options.store.as_deref(),
+    )?;
     // Recheck immediately before baseline capture so ignore-rule drift observed
     // during preparation refuses attempt publication.
     crate::edit_cage::validate_build_output_precondition(root, &policy)
@@ -271,6 +277,7 @@ fn persist_before_repair_attempt(
             next_command_suffix: binding
                 .as_ref()
                 .map(|_| crate::agent::PYTHON_REPAIR_AUTHORIZATION_SUFFIX),
+            store: options.store.as_deref(),
         },
         identity,
     )?;

@@ -105,6 +105,9 @@ pub(super) struct AgentStatusOptions {
     pub(super) out_dir: Option<PathBuf>,
     pub(super) root: PathBuf,
     pub(super) json: bool,
+    /// Explicit repair-attempt store locator, resolved against `root`.
+    /// `None` is the repository-local default.
+    pub(super) store: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,6 +137,10 @@ pub(super) struct AgentRepairOptions {
     pub(super) verify_authorization: crate::app::python_repair_verification::VerifyAuthorization,
     /// Request the rollback proof as part of the verify phase (#3570).
     pub(super) verify_rollback: bool,
+    /// Explicit repair-attempt store locator, resolved against `root`.
+    /// `None` is the repository-local default and keeps next-command bytes
+    /// compatible.
+    pub(super) store: Option<PathBuf>,
     /// Print the phase's JSON document on stdout. Without it stdout carries
     /// a short human summary and the documents stay in their artifact files,
     /// the same split `ripr agent status` uses.
@@ -271,6 +278,7 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
     let mut verify_authorized = false;
     let mut verify_authority: Option<String> = None;
     let mut verify_rollback = false;
+    let mut store: Option<PathBuf> = None;
     let mut json = false;
     let mut i = 0usize;
     while i < args.len() {
@@ -348,6 +356,14 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
             }
             "--verify-rollback" => {
                 verify_rollback = true;
+            }
+            "--store" => {
+                i += 1;
+                let value = expect_value(args, i, "--store")?;
+                if value.trim().is_empty() {
+                    return Err("agent repair --store requires a non-empty path".to_string());
+                }
+                store = Some(PathBuf::from(value));
             }
             "--phase" => {
                 i += 1;
@@ -528,6 +544,7 @@ fn parse_agent_repair_command(args: &[String]) -> Result<AgentCommand, String> {
         edit_authorization,
         verify_authorization,
         verify_rollback,
+        store,
         json,
     }))
 }
@@ -960,6 +977,7 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
     let mut root = PathBuf::from(".");
     let mut json = false;
     let mut out_dir = None;
+    let mut store: Option<PathBuf> = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -973,6 +991,14 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
                 i += 1;
                 out_dir = Some(PathBuf::from(expect_value(args, i, "--out")?));
             }
+            "--store" => {
+                i += 1;
+                let value = expect_value(args, i, "--store")?;
+                if value.trim().is_empty() {
+                    return Err("agent status --store requires a non-empty path".to_string());
+                }
+                store = Some(PathBuf::from(value));
+            }
             other => return Err(unknown_argument("agent status", other)),
         }
         i += 1;
@@ -982,6 +1008,7 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
         root,
         json,
         out_dir,
+        store,
     })
 }
 
@@ -1221,6 +1248,7 @@ mod tests {
                         authority: None,
                     },
                 verify_rollback: false,
+                store: None,
                 json: false,
             }))
         );
@@ -1251,8 +1279,58 @@ mod tests {
                         authority: None,
                     },
                 verify_rollback: false,
+                store: None,
                 json: false,
             }))
+        );
+    }
+
+    #[test]
+    fn agent_repair_parses_explicit_store_and_rejects_empty() {
+        assert_eq!(
+            parse_agent_args(&args(&[
+                "repair",
+                "--root",
+                "repo",
+                "--store",
+                "target/ripr/alt-attempts",
+                "--seam-id",
+                "seam:sample",
+                "--phase",
+                "before",
+            ])),
+            Ok(AgentCommand::Repair(AgentRepairOptions {
+                root: PathBuf::from("repo"),
+                seam_id: Some("seam:sample".to_string()),
+                attempt_id: None,
+                phase: AgentRepairPhase::Before,
+                python_repair_trust: None,
+                edit_authorization:
+                    super::super::super::app::python_repair_binding::EditAuthorization {
+                        authorized: false,
+                        authority: None,
+                    },
+                verify_authorization:
+                    super::super::super::app::python_repair_verification::VerifyAuthorization {
+                        authorized: false,
+                        authority: None,
+                    },
+                verify_rollback: false,
+                store: Some(PathBuf::from("target/ripr/alt-attempts")),
+                json: false,
+            }))
+        );
+        assert_eq!(
+            parse_agent_args(&args(&[
+                "repair",
+                "--store",
+                "",
+                "--seam-id",
+                "seam:sample",
+                "--phase",
+                "before",
+            ])),
+            Err("agent repair --store requires a non-empty path".to_string())
         );
     }
 
@@ -1372,6 +1450,7 @@ mod tests {
                     authority: None,
                 },
                 verify_rollback: false,
+                store: None,
                 json: false,
             }))
         );
@@ -2157,6 +2236,7 @@ mod tests {
                 root: PathBuf::from("repo"),
                 json: true,
                 out_dir: None,
+                store: None,
             })
         );
         assert_eq!(
@@ -2165,7 +2245,31 @@ mod tests {
                 root: PathBuf::from("repo"),
                 json: true,
                 out_dir: None,
+                store: None,
             }))
+        );
+    }
+
+    #[test]
+    fn agent_status_parses_explicit_store_and_rejects_empty() {
+        assert_eq!(
+            parse_agent_status_options(&args(&[
+                "--root",
+                "repo",
+                "--store",
+                "target/ripr/alt-attempts",
+                "--json",
+            ])),
+            Ok(AgentStatusOptions {
+                root: PathBuf::from("repo"),
+                json: true,
+                out_dir: None,
+                store: Some(PathBuf::from("target/ripr/alt-attempts")),
+            })
+        );
+        assert_eq!(
+            parse_agent_status_options(&args(&["--store", ""])),
+            Err("agent status --store requires a non-empty path".to_string())
         );
     }
 
@@ -2177,6 +2281,7 @@ mod tests {
                 root: PathBuf::from("."),
                 json: false,
                 out_dir: None,
+                store: None,
             })
         );
         assert_eq!(

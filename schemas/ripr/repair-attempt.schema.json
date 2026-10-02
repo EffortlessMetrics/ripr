@@ -62,6 +62,10 @@
       "description": "After-phase static-result artifacts retained under this attempt (`agent_receipt` and the `agent_verify` document it was built from). Absent or empty on legacy manifests. Compatibility projections under target/ripr/reports and target/ripr/workflow are not the sole surviving copy.",
       "type": "array",
       "items": { "$ref": "#/$defs/artifact" }
+    },
+    "store": {
+      "description": "Portable store identity. Absent on default-store and legacy manifests so ordinary before → after bytes stay compatible. Explicit stores record the repository-relative locator; absolute checkout spelling is not identity.",
+      "$ref": "#/$defs/store_identity"
     }
   },
   "allOf": [
@@ -137,6 +141,16 @@
             }
           }
         }
+      }
+    },
+    "store_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "location_class", "locator"],
+      "properties": {
+        "schema_version": { "const": "0.1" },
+        "location_class": { "enum": ["default_repository", "explicit_repository"] },
+        "locator": { "type": "string", "minLength": 1 }
       }
     }
   }

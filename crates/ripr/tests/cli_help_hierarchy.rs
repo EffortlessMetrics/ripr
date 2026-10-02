@@ -424,11 +424,37 @@ fn agent_repair_help_names_the_primary_transaction_and_its_limits() -> Result<()
         "--verify-authorized",
         "--verify-authority ID",
         "--verify-rollback",
-        "ripr agent repair [--root PATH] --attempt ID --phase verify",
+        "ripr agent repair [--root PATH] [--store PATH] --seam-id ID --phase before",
+        "ripr agent repair [--root PATH] [--store PATH] (--attempt ID|--seam-id ID) --phase after",
+        "ripr agent repair [--root PATH] [--store PATH] --attempt ID --phase verify",
+        "--store PATH Explicit repair-attempt store, resolved against --root.",
         "The repair command does not generate or apply tests, execute mutation testing, or declare the repository safe to merge.",
     ] {
         assert_contains(
             "agent repair help (`ripr agent repair --help`)",
+            &stdout,
+            needle,
+        )?;
+    }
+    if stdout.contains("ripr agent repair [--root PATH] --attempt ID --phase verify") {
+        return Err(
+            "agent repair help still prints verify usage without optional [--store PATH]"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn agent_status_help_names_the_selected_store() -> Result<(), String> {
+    let stdout = normalized(&rendered_help(&["agent", "status", "--help"])?);
+    for needle in [
+        "Usage: ripr agent status [--root PATH] [--store PATH] [--json] [--out PATH]",
+        "--store PATH Explicit repair-attempt store, resolved against --root.",
+        "Missing explicit stores do not fall back to the default.",
+    ] {
+        assert_contains(
+            "agent status help (`ripr agent status --help`)",
             &stdout,
             needle,
         )?;

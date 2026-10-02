@@ -1071,11 +1071,13 @@ pub(crate) fn prepare_binding(
 /// Loads the retained prepare-phase binding artifact of a durable attempt, if
 /// the attempt carries one. The attempt loader has already re-verified the
 /// artifact digest against the attempt manifest.
-pub(crate) fn load_retained_binding(
+pub(crate) fn load_retained_binding_from(
     root: &Path,
+    store: Option<&Path>,
     attempt_id: &crate::app::repair_attempt::RepairAttemptId,
 ) -> Result<Option<RetainedBinding>, String> {
-    let manifest = crate::app::repair_attempt::load_repair_attempt_manifest(root, attempt_id)?;
+    let manifest =
+        crate::app::repair_attempt::load_repair_attempt_manifest_from(root, store, attempt_id)?;
     let Some(artifact) = crate::app::repair_attempt::find_manifest_artifact_by_role(
         &manifest,
         BINDING_ARTIFACT_ROLE,
@@ -1452,16 +1454,18 @@ pub(crate) fn confirm_manifest_unchanged(
 /// and no verification, movement, or closure claim. The identities are read
 /// from the durable attempt's own retained artifacts, so the record restates
 /// the authority instead of re-deriving it.
-pub(crate) fn write_apply_record(
+pub(crate) fn write_apply_record_from(
     root: &Path,
+    store: Option<&Path>,
     attempt_id: &crate::app::repair_attempt::RepairAttemptId,
     retained_artifact_sha256: &str,
     verified: &VerifiedSelection,
     authority: &str,
     after: &crate::app::repair_attempt::RepairAttemptAfter,
 ) -> Result<PathBuf, String> {
-    let manifest = crate::app::repair_attempt::load_repair_attempt_manifest(root, attempt_id)?;
-    let policy = crate::app::repair_attempt::load_edit_cage_policy(root, attempt_id)?;
+    let manifest =
+        crate::app::repair_attempt::load_repair_attempt_manifest_from(root, store, attempt_id)?;
+    let policy = crate::app::repair_attempt::load_edit_cage_policy_from(root, store, attempt_id)?;
     // The digest chain is verified against the staged prepare artifact before
     // anything is rendered: a claimed digest that leaves the retained binding
     // fails here instead of being published into the record.

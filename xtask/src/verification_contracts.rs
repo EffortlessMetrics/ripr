@@ -98,7 +98,7 @@ const VERSION_AUTHORITIES: &[(&str, &[VersionProducer])] = &[
     (
         "repair-attempt",
         &[producer(
-            "crates/ripr/src/app/repair_attempt.rs",
+            "crates/ripr/src/app/repair_attempt/mod.rs",
             "const REPAIR_ATTEMPT_SCHEMA_VERSION: &str = \"",
             1,
         )],

@@ -26,8 +26,8 @@
 use crate::app::python_repair_binding::APPLY_RECORD_COMPAT_PATH;
 use crate::app::python_repair_binding::{self, RetainedBinding, VerifiedSelection};
 use crate::app::repair_attempt::{
-    RepairAttemptId, RepairAttemptState, find_manifest_artifact_by_role, load_edit_cage_policy,
-    load_repair_attempt_manifest, replace_file_atomically,
+    RepairAttemptId, RepairAttemptState, find_manifest_artifact_by_role,
+    load_edit_cage_policy_from, load_repair_attempt_manifest_from, replace_file_atomically,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -131,6 +131,7 @@ pub(crate) struct VerificationOptions<'a> {
     pub(crate) attempt_id: &'a str,
     pub(crate) authorization: VerifyAuthorization,
     pub(crate) rollback: bool,
+    pub(crate) store: Option<&'a Path>,
 }
 
 /// SHA-256 over bytes, lowercase hex (no prefix) — the binding digest shape.
@@ -226,10 +227,11 @@ struct RevalidatedAttempt {
 /// naming the drifted identity.
 fn revalidate_for_verification(
     root: &Path,
+    store: Option<&Path>,
     attempt_id: &RepairAttemptId,
     authority: &str,
 ) -> Result<RevalidatedAttempt, String> {
-    let manifest = load_repair_attempt_manifest(root, attempt_id)?;
+    let manifest = load_repair_attempt_manifest_from(root, store, attempt_id)?;
 
     // Durable state gate: only an applied, current, compliant attempt
     // carries a post-edit state a verification could observe.
@@ -296,7 +298,7 @@ fn revalidate_for_verification(
     // phases keep writing between finish and verification) are not the edit
     // and are excluded from the identity on both sides.
     let baseline = load_baseline(root, &manifest, attempt_id)?;
-    let policy = load_edit_cage_policy(root, attempt_id)?;
+    let policy = load_edit_cage_policy_from(root, store, attempt_id)?;
     let (_, verdict) = crate::edit_cage::evaluate_repository_edit_cage_with_delta(&baseline)?;
     if verdict.status != crate::edit_cage::EditCageVerdictStatus::Compliant {
         return Err(format!(
@@ -376,7 +378,7 @@ fn revalidate_for_verification(
     // alignment with the packet's selected edit target, the packet digest,
     // and the authorization authority. The verify invocation must re-affirm
     // the SAME authority that authorized the edit.
-    let binding = python_repair_binding::load_retained_binding(root, attempt_id)?.ok_or_else(
+    let binding = python_repair_binding::load_retained_binding_from(root, store, attempt_id)?.ok_or_else(
         || {
             format!(
                 "python repair verification refuses attempt `{}`: the attempt records no python repair-trust binding; the verification phase runs only for trust-bound attempts",
@@ -1577,7 +1579,7 @@ pub(crate) fn run_verification_phase(options: VerificationOptions<'_>) -> Result
     }
 
     // 1. Revalidate every identity BEFORE anything runs.
-    let revalidated = revalidate_for_verification(&root, &attempt_id, &authority)?;
+    let revalidated = revalidate_for_verification(&root, options.store, &attempt_id, &authority)?;
 
     // 2-4. Execute the producer-owned typed route through the bounded rails
     // (cwd/root confinement, environment floor, timeout, bounded output,
@@ -1632,7 +1634,7 @@ pub(crate) fn run_verification_phase(options: VerificationOptions<'_>) -> Result
     let rollback = if options.rollback {
         let baseline = load_baseline(
             &root,
-            &load_repair_attempt_manifest(&root, &attempt_id)?,
+            &load_repair_attempt_manifest_from(&root, options.store, &attempt_id)?,
             &attempt_id,
         )?;
         run_rollback(

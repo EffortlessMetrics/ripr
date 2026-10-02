@@ -107,6 +107,20 @@ target/ripr/repair-attempts/<repair-attempt-id>/
     └── agent-verify.json    # verify document that produced that receipt
 ```
 
+`--store PATH` selects a different repository-contained directory with the
+same layout. Relative paths resolve against `--root`, never process CWD
+independently of that root. An explicit store does not fall back to the
+default if it is missing. Before, after, verify, and `ripr agent status`
+consume the same resolver. An attempt ID from one store cannot resolve
+through another. Equivalent supported spellings of the default locator stay
+one identity; traversal, symlink/junction escape, a missing child under an
+escaping or in-tree alias parent, UNC, and drive-relative paths fail closed.
+Nested `store.schema_version` must be `0.1`. Recovery and status follow-up
+commands for an explicit store repeat `--store` so the attempt ID cannot
+resolve through the default directory. An explicit store outside
+`target/ripr` is an expected operational write; stores already under
+`target/ripr` stay covered by that subtree.
+
 The exact filenames follow the command-owned source artifacts. `attempt.json` identifies them by semantic role and binds each retained file by path, byte count, and SHA-256 digest. After-phase `agent_receipt` / `agent_verify` files are recorded in `terminal_artifacts` and are excluded from the before commitment.
 
 Repository-global files under `target/ripr/workflow/` and `target/ripr/reports/agent-receipt.json` remain compatibility projections for existing cockpit and review consumers. They are not repair-attempt identity, and they are not the sole surviving copy of a finished attempt's result.
@@ -126,7 +140,10 @@ The manifest schema is `schemas/ripr/repair-attempt.schema.json` (`schema_versio
 - creation time;
 - retained before artifacts and content commitments;
 - the exact next command;
-- limitations and explicit non-claims.
+- limitations and explicit non-claims;
+- optional portable `store` identity on explicit stores (omitted on
+  default-store and legacy manifests so ordinary before → after bytes stay
+  compatible).
 
 The before commitment is derived from the prepared manifest. Terminal updates may add after-phase evidence (`after`, `last_after_refusal`, `terminal_artifacts`), but they cannot silently rewrite the retained before identity or artifacts. `terminal_artifacts` is omitted from the before commitment, same as `after` and `last_after_refusal`.
 

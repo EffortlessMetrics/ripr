@@ -709,6 +709,7 @@ mod tests {
             after: None,
             last_after_refusal: None,
             terminal_artifacts: Vec::new(),
+            store: None,
         };
         let instruction = instruction(FixInstructionState::FixSiteReady);
         let readiness = ready_readiness();

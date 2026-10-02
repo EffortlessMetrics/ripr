@@ -685,6 +685,7 @@ mod tests {
             after: None,
             last_after_refusal: None,
             terminal_artifacts: Vec::new(),
+            store: None,
         })
     }
 

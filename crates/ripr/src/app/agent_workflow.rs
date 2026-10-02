@@ -899,6 +899,7 @@ mod tests {
             ],
             expected_repository_head: None,
             next_command_suffix: None,
+            store: None,
         })?;
         Ok(())
     }

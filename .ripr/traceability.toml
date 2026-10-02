@@ -1027,11 +1027,11 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::agent_status_selects_nothing_past_an_unreadable_attempt",
   "crates/ripr/tests/cli_smoke.rs::agent_status_retains_an_earlier_attempt_outcome_after_a_later_finish",
   "crates/ripr/tests/cli_smoke.rs::agent_status_does_not_fall_back_to_another_attempt_when_local_receipt_is_unusable",
-  "crates/ripr/src/app/repair_attempt.rs::tests::terminal_retention_survives_a_later_compatibility_receipt",
-  "crates/ripr/src/app/repair_attempt.rs::tests::terminal_receipt_path_escape_is_unavailable",
-  "crates/ripr/src/app/repair_attempt.rs::tests::pending_terminal_retention_completes_from_a_matching_projection",
-  "crates/ripr/src/app/repair_attempt.rs::tests::pending_terminal_retention_refuses_a_replaced_verify_projection",
-  "crates/ripr/src/app/repair_attempt.rs::tests::restored_attempt_may_replace_unpublished_terminal_files",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::terminal_retention_survives_a_later_compatibility_receipt",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::terminal_receipt_path_escape_is_unavailable",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::pending_terminal_retention_completes_from_a_matching_projection",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::pending_terminal_retention_refuses_a_replaced_verify_projection",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::restored_attempt_may_replace_unpublished_terminal_files",
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_legacy_manifest_does_not_reconstruct_a_superseded_receipt",
   "crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_extracts_seam_and_commands",
   "crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_errors_when_brief_does_not_return_seam",
@@ -9677,7 +9677,7 @@ code = [
   "xtask/src/reports/python_repair_verification.rs",
   "crates/ripr/src/app/python_repair_binding.rs",
   "crates/ripr/src/app/python_repair_verification.rs",
-  "crates/ripr/src/app/repair_attempt.rs",
+  "crates/ripr/src/app/repair_attempt/mod.rs",
 ]
 outputs = [
 ]
@@ -10432,4 +10432,60 @@ metrics = [
   "repair_card_schema_version",
   "repair_card_budget_version",
   "repair_card_violations",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0195"
+name = "Repair-attempt store identity and resolver"
+spec = "docs/specs/RIPR-SPEC-0195-repair-attempt-store-identity.md"
+tests = [
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::default_store_is_the_repository_local_directory",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::equivalent_default_spellings_share_one_identity",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::explicit_store_prepares_and_reopens_without_falling_back",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::missing_explicit_store_does_not_fall_back_to_default",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::two_explicit_stores_stay_isolated",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::two_repositories_cannot_cross_resolve_the_same_locator",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::foreign_cwd_still_resolves_against_the_selected_root",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::traversal_and_absolute_outside_root_reject",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::spaces_and_non_ascii_round_trip",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::windows_backslash_locator_is_one_identity",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::unc_and_drive_relative_locators_fail_closed",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::empty_explicit_locator_is_rejected",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::symlink_escape_rejects",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::default_manifest_identity_is_omitted",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::a_file_is_not_a_store_directory",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::the_repository_root_is_not_a_store",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::case_fold_spelling_does_not_silently_share_identity",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::in_tree_symlink_alias_rejects",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::missing_child_under_escaping_symlink_parent_is_refused_without_external_mutation",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::missing_child_under_in_tree_symlink_parent_is_refused",
+  "crates/ripr/src/app/repair_attempt/store.rs::tests::nested_store_schema_version_mismatch_is_refused",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::explicit_store_before_and_after_share_identity_and_stay_isolated",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::cage_policy_includes_explicit_store_outside_target_ripr",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::diverged_head_recovery_repeats_explicit_store_on_follow_up_commands",
+  "crates/ripr/src/app/repair_attempt/mod.rs::tests::after_phase_not_awaiting_error_names_explicit_store",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_status_reads_only_the_selected_store",
+  "crates/ripr/src/cli/commands/agent.rs::tests::repair_after_cage_recovery_repeats_explicit_store",
+  "crates/ripr/src/cli/agent.rs::tests::agent_repair_parses_explicit_store_and_rejects_empty",
+  "crates/ripr/src/cli/agent.rs::tests::agent_status_parses_explicit_store_and_rejects_empty",
+]
+fixtures = [
+]
+code = [
+  "crates/ripr/src/app/repair_attempt/store.rs",
+  "crates/ripr/src/app/repair_attempt/mod.rs",
+  "crates/ripr/src/app/agent_status.rs",
+  "crates/ripr/src/cli/agent.rs",
+  "crates/ripr/src/cli/help/agent.rs",
+  "crates/ripr/src/cli/commands/agent.rs",
+]
+outputs = [
+  "docs/REPAIR_ATTEMPT.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "schemas/ripr/repair-attempt.schema.json",
+]
+metrics = [
+  "repair_attempt_store_default_resolutions",
+  "repair_attempt_store_explicit_resolutions",
+  "repair_attempt_store_containment_refusals",
 ]
