@@ -764,6 +764,24 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn rooted_bash_withholds_unquoted_tildes_in_equals_arguments() {
+        // A failed guarded `~` arm still reaches the scanner's final rejection.
+        // Keep these as parser data: no shell invocation is needed to pin it.
+        for command in ["tool KEY=~", "tool KEY=before:~", "tool MODE=~/fixture"] {
+            let forms = rooted_command_forms(Some("/selected"), command);
+            assert!(forms["bash"].is_null(), "must withhold {command:?}");
+        }
+        for command in [
+            "tool --test-threads=1",
+            "tool 'KEY=~'",
+            "tool KEY='~'",
+            "tool \"KEY=~\"",
+        ] {
+            assert!(rooted_command_forms(Some("/selected"), command)["bash"].is_string());
+        }
+    }
+
     /// Every case must read back unchanged, and its span must hold no
     /// backtick run as long as its fence (else the span closes early).
     fn assert_code_span(text: &str, expected: &str) {

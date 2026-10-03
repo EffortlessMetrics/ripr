@@ -513,6 +513,7 @@ Likely implementation surfaces:
 The #5119 Bash syntax boundary is exercised by
 `output::markdown::tests::rooted_bash_accepts_literal_argument_equals_without_powershell_translation`,
 `output::markdown::tests::rooted_bash_withholds_unbounded_or_malformed_commands`,
+`output::markdown::tests::rooted_bash_withholds_unquoted_tildes_in_equals_arguments`,
 and (Unix)
 `output::markdown::tests::rooted_bash_executes_from_selected_directory_preserving_arguments_and_status`.
 The runtime fixture uses a ten-second owned-process deadline and checks selected
