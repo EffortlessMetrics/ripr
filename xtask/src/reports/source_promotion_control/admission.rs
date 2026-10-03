@@ -338,9 +338,10 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
         }
     };
 
-    let integration_root = options.integration_index.parent().ok_or_else(|| {
-        "integration receipt index has no protected parent directory".to_string()
-    })?;
+    let integration_root = options
+        .integration_index
+        .parent()
+        .ok_or_else(|| "integration receipt index has no protected parent directory".to_string())?;
     let protected_roots: [(&Path, &str); 6] = [
         (
             options.validation_packet.as_path(),
@@ -363,7 +364,7 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
     ];
     reject_control_packet_output_overlap(&options.repo, &options.out, &protected_roots)?;
 
-    match validate_admission(&options) {
+    match validate_current_admission(&options) {
         Ok(evidence) => {
             let report = admission_success_report(&evidence);
             write_control_packet_protected(
@@ -400,6 +401,24 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
 
 fn validate_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, String> {
     validate_admission_with_snapshot_reader(options, admission_snapshot)
+}
+
+fn validate_current_admission(options: &AdmissionOptions) -> Result<AdmissionEvidence, String> {
+    let bytes = super::source_promotion_verify::revalidate_bound_preflight(
+        &options.preflight,
+        &options.identity.preflight_sha256,
+        &options.repo,
+    )?;
+    let evidence = validate_admission(options)?;
+    let final_bytes = super::source_promotion_verify::revalidate_bound_preflight(
+        &options.preflight,
+        &options.identity.preflight_sha256,
+        &options.repo,
+    )?;
+    if bytes != final_bytes {
+        return Err("native acceptance preflight changed during admission".into());
+    }
+    Ok(evidence)
 }
 
 fn validate_admission_with_snapshot_reader<F>(

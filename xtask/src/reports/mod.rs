@@ -50,6 +50,7 @@ mod review_comments;
 mod rust_repair_trust;
 mod sarif;
 mod source_promotion;
+mod source_promotion_acceptance;
 mod source_promotion_admission_fixture;
 mod source_promotion_admission_workflow;
 mod source_promotion_control;

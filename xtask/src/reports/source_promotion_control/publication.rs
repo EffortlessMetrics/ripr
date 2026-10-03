@@ -250,6 +250,8 @@ fn publish_candidate_ref_inner(
     options: &PublicationOptions,
     expected_reconciliation_context: Option<&Value>,
 ) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure> {
+    let state = Box::<PublicationState>::default();
+    revalidate_publication_acceptance(options).map_err(|reason| (reason, None, state))?;
     publish_candidate_ref_inner_with_publication_runners(
         options,
         expected_reconciliation_context,
@@ -257,6 +259,48 @@ fn publish_candidate_ref_inner(
         read_remote_ref,
         read_optional_local_ref,
     )
+}
+
+#[cfg(test)]
+fn publish_historical_candidate_ref_for_fixture(
+    options: &PublicationOptions,
+    expected_reconciliation_context: Option<&Value>,
+) -> Result<(ConstructionEvidence, PublicationState), PublicationFailure> {
+    publish_candidate_ref_inner_with_publication_runners(
+        options,
+        expected_reconciliation_context,
+        run_candidate_push_process,
+        read_remote_ref,
+        read_optional_local_ref,
+    )
+}
+
+fn revalidate_publication_acceptance(options: &PublicationOptions) -> Result<(), String> {
+    let packet = read_indexed_packet(
+        &options.construction_packet,
+        CONTROL_PACKET_SCHEMA,
+        Some("exact_join_construction"),
+        Some("constructed"),
+        CONSTRUCTION_REPORT,
+    )?;
+    let receipt = packet_json(&packet, CONSTRUCTION_REPORT, "current construction receipt")?;
+    let identity = construction_evidence_from_receipt(&receipt)?.identity;
+    let bytes = receipt
+        .get("native_acceptance_preflight_bytes")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            "current publication requires retained UTF-8 native acceptance preflight bytes"
+                .to_string()
+        })?
+        .as_bytes();
+    if bytes.len() > 320 * 1024 * 1024 || digest_bytes(bytes) != identity.preflight_sha256 {
+        return Err("publication native acceptance preflight digest differs".into());
+    }
+    let preflight: Value = serde_json::from_slice(bytes)
+        .map_err(|error| format!("decode publication native preflight: {error}"))?;
+    validate_preflight(&preflight, &identity.source_parent)?;
+    validate_preflight_identity(&preflight, &identity)?;
+    super::source_promotion_acceptance::revalidate(&preflight, &options.repo)
 }
 
 #[cfg(test)]
@@ -271,13 +315,22 @@ where
     publish_candidate_ref_inner_with_publication_runners(
         options,
         expected_reconciliation_context,
-        run_guarded_candidate_push,
+        run_candidate_push_process,
         final_remote_reader,
         read_optional_local_ref,
     )
 }
 
 fn run_guarded_candidate_push(
+    options: &PublicationOptions,
+    lease: &str,
+    refspec: &str,
+) -> Result<(bool, Option<bool>, String), String> {
+    revalidate_publication_acceptance(options)?;
+    run_candidate_push_process(options, lease, refspec)
+}
+
+fn run_candidate_push_process(
     options: &PublicationOptions,
     lease: &str,
     refspec: &str,
@@ -908,7 +961,7 @@ fn validate_construction_receipt(
             "ref_mutation_attempted", "push_attempted", "merge_command", "failure_reasons",
             "invalidation_rules",
         ],
-        &["non_claims"],
+        &["non_claims", "native_acceptance_preflight_bytes"],
     )?;
     let expected_message_sha256 = digest_bytes(JOIN_MESSAGE.as_bytes());
     if json_string(receipt, "schema") != Some(CONSTRUCTION_SCHEMA)

@@ -625,13 +625,18 @@ fn enforce_command(args: &[String]) -> Result<(), String> {
     if expected != "admitted" {
         return Err("--expected-status must be admitted".to_string());
     }
-    let report = verify_packet(Path::new(required(&values, "--packet")?))?;
+    let root = Path::new(required(&values, "--packet")?);
+    let report = verify_packet(root)?;
     if json_string(&report, "status") != Some(expected) {
         return Err(format!(
             "source-promotion admission workflow disposition is {}; expected {expected}",
             json_string(&report, "status").unwrap_or("missing")
         ));
     }
+    let preflight = root.join("evidence/locators/preflight/input");
+    let expected_digest = required_json_string(&report["locators"]["preflight"], "sha256")?;
+    let repo = std::env::current_dir().map_err(|error| format!("current source repo: {error}"))?;
+    super::source_promotion_verify::revalidate_bound_preflight(&preflight, expected_digest, &repo)?;
     Ok(())
 }
 

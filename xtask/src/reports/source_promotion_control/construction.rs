@@ -104,9 +104,10 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
             );
         }
     };
-    let integration_root = options.integration_index.parent().ok_or_else(|| {
-        "integration receipt index has no protected parent directory".to_string()
-    })?;
+    let integration_root = options
+        .integration_index
+        .parent()
+        .ok_or_else(|| "integration receipt index has no protected parent directory".to_string())?;
     let protected_roots: [(&Path, &str); 7] = [
         (
             options.admission_packet.as_path(),
@@ -179,9 +180,29 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
         );
     }
 
-    match construct_exact_join_inner(&options, Some(&reconciliation_context)) {
+    match construct_exact_join_with_acceptance(
+        &options,
+        Some(&reconciliation_context),
+        |options, identity| {
+            super::source_promotion_verify::revalidate_bound_preflight(
+                &options.preflight,
+                &identity.preflight_sha256,
+                &options.repo,
+            )
+            .map(|_| ())
+        },
+    ) {
         Ok(evidence) => {
-            let report = construction_success_report(&evidence);
+            let mut report = construction_success_report(&evidence);
+            let bytes = super::source_promotion_verify::revalidate_bound_preflight(
+                &options.preflight,
+                &evidence.identity.preflight_sha256,
+                &options.repo,
+            )?;
+            report["native_acceptance_preflight_bytes"] =
+                Value::String(String::from_utf8(bytes).map_err(|error| {
+                    format!("native acceptance preflight is not UTF-8: {error}")
+                })?);
             write_reserved_control_packet(
                 &reservation,
                 "exact_join_construction",
@@ -316,9 +337,18 @@ fn construction_reconciliation_value(
     }))
 }
 
+#[cfg(test)]
 fn construct_exact_join_inner(
     options: &ConstructionOptions,
     expected_reconciliation_context: Option<&Value>,
+) -> Result<ConstructionEvidence, ConstructionFailure> {
+    construct_exact_join_with_acceptance(options, expected_reconciliation_context, |_, _| Ok(()))
+}
+
+fn construct_exact_join_with_acceptance(
+    options: &ConstructionOptions,
+    expected_reconciliation_context: Option<&Value>,
+    mut acceptance: impl FnMut(&ConstructionOptions, &PromotionIdentity) -> Result<(), String>,
 ) -> Result<ConstructionEvidence, ConstructionFailure> {
     let admission_packet = read_indexed_packet(
         &options.admission_packet,
@@ -393,6 +423,7 @@ fn construct_exact_join_inner(
     validate_preflight(&preflight, &identity.source_parent)
         .and_then(|()| validate_preflight_identity(&preflight, &identity))
         .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    acceptance(options, &identity).map_err(|reason| (reason, Some(identity.clone()), false))?;
     let (manifest, _) = read_bound_json(
         &options.resolution_manifest,
         &identity.resolution_sha256,
@@ -477,7 +508,7 @@ fn construct_exact_join_inner(
             false,
         ));
     }
-    construct_validated_join(
+    construct_validated_join_with_acceptance(
         options,
         ValidatedConstructionInputs {
             identity,
@@ -488,6 +519,7 @@ fn construct_exact_join_inner(
             qualification_sha256,
         },
         expected_reconciliation_context,
+        acceptance,
     )
 }
 
@@ -500,10 +532,25 @@ struct ValidatedConstructionInputs {
     qualification_sha256: String,
 }
 
+#[cfg(test)]
 fn construct_validated_join(
     options: &ConstructionOptions,
     inputs: ValidatedConstructionInputs,
     expected_reconciliation_context: Option<&Value>,
+) -> Result<ConstructionEvidence, ConstructionFailure> {
+    construct_validated_join_with_acceptance(
+        options,
+        inputs,
+        expected_reconciliation_context,
+        |_, _| Ok(()),
+    )
+}
+
+fn construct_validated_join_with_acceptance(
+    options: &ConstructionOptions,
+    inputs: ValidatedConstructionInputs,
+    expected_reconciliation_context: Option<&Value>,
+    mut acceptance: impl FnMut(&ConstructionOptions, &PromotionIdentity) -> Result<(), String>,
 ) -> Result<ConstructionEvidence, ConstructionFailure> {
     let ValidatedConstructionInputs {
         identity,
@@ -568,6 +615,7 @@ fn construct_validated_join(
     .map_err(|reason| (reason, Some(identity.clone()), false))?;
     validate_construction_snapshot(options, &identity, &final_snapshot)
         .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    acceptance(options, &identity).map_err(|reason| (reason, Some(identity.clone()), false))?;
     let join_commit = create_exact_join_object(&options.repo, &identity)
         .map_err(|reason| (reason, Some(identity.clone()), true))?;
     verify_constructed_join(&options.repo, &join_commit, &identity)
@@ -954,9 +1002,9 @@ fn create_exact_join_object(repo: &Path, identity: &PromotionIdentity) -> Result
     if lines.len() != 1 {
         return Err("git commit-tree did not return exactly one object identity".to_string());
     }
-    let join_commit = lines
-        .first()
-        .ok_or_else(|| "commit-tree identity disappeared after cardinality validation".to_string())?;
+    let join_commit = lines.first().ok_or_else(|| {
+        "commit-tree identity disappeared after cardinality validation".to_string()
+    })?;
     validate_exact_hex("constructed join commit", join_commit, 40)?;
     Ok((*join_commit).to_string())
 }

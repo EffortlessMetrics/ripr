@@ -15,6 +15,45 @@ mod version_identity;
 use version_identity::{RELEASE_METADATA_SURFACES, verify_release_metadata_identity};
 
 const PREFLIGHT_SCHEMA: &str = "ripr.source_promotion_preflight.v1";
+// Raw byte arrays in portable v2 receipts expand the 64 MiB decoded budget.
+const MAX_PREFLIGHT_BYTES: u64 = 320 * 1024 * 1024;
+
+pub(crate) fn read_preflight_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|error| format!("inspect current preflight: {error}"))?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() > MAX_PREFLIGHT_BYTES
+    {
+        return Err("current preflight must be a bounded regular file".into());
+    }
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .map_err(|error| format!("open current preflight: {error}"))?
+        .take(MAX_PREFLIGHT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("read current preflight: {error}"))?;
+    if bytes.len() as u64 > MAX_PREFLIGHT_BYTES {
+        return Err("current preflight exceeds serialized-byte budget".into());
+    }
+    Ok(bytes)
+}
+
+pub(crate) fn revalidate_bound_preflight(
+    path: &Path,
+    expected: &str,
+    root: &Path,
+) -> Result<Vec<u8>, String> {
+    let bytes = read_preflight_bytes(path)?;
+    if digest_bytes(&bytes) != expected {
+        return Err("current preflight raw digest moved".into());
+    }
+    let preflight: Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("decode current preflight: {error}"))?;
+    super::source_promotion_acceptance::revalidate(&preflight, root)?;
+    Ok(bytes)
+}
 const RESOLUTION_SCHEMA: &str = "ripr.source_promotion_resolution.v1";
 const REPORT_JSON: &str = "source-promotion-verification.json";
 const REPORT_MD: &str = "source-promotion-verification.md";
@@ -72,6 +111,29 @@ fn output_path_from_args(args: &[String]) -> Option<PathBuf> {
 }
 
 fn verify(options: &Options) -> Result<Value, String> {
+    verify_with_acceptance(options, super::source_promotion_acceptance::revalidate)
+}
+
+fn verify_with_acceptance(
+    options: &Options,
+    mut acceptance: impl FnMut(&Value, &Path) -> Result<(), String>,
+) -> Result<Value, String> {
+    let bytes = read_preflight_bytes(&options.preflight)?;
+    let preflight: Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("malformed current preflight: {error}"))?;
+    acceptance(&preflight, &options.repo)?;
+    let mut report = verify_geometry(options)?;
+    if read_preflight_bytes(&options.preflight)? != bytes {
+        return Err("preflight moved during source verification".into());
+    }
+    acceptance(&preflight, &options.repo)?;
+    report["checks"]["native_selection_acceptance_current"] = Value::Bool(true);
+    report["checks"]["native_qualification_acceptance_current"] = Value::Bool(true);
+    Ok(report)
+}
+
+// Geometry replay alone grants no current selection or qualification authority.
+fn verify_geometry(options: &Options) -> Result<Value, String> {
     let preflight_bytes = fs::read(&options.preflight)
         .map_err(|error| format!("failed to read preflight receipt: {error}"))?;
     let preflight: Value = serde_json::from_slice(&preflight_bytes)
@@ -303,8 +365,11 @@ fn validate_identity(name: &str, value: &str) -> Result<(), String> {
 
 pub(crate) fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String> {
     let schema = string_field(preflight, "schema")?;
-    if schema != PREFLIGHT_SCHEMA {
+    if schema != PREFLIGHT_SCHEMA && schema != "ripr.source_promotion_preflight.v2" {
         return Err(format!("unsupported preflight schema {schema:?}"));
+    }
+    if schema == "ripr.source_promotion_preflight.v2" {
+        super::source_promotion_acceptance::validate(preflight)?;
     }
     if string_field(preflight, "mode")? != "two_parent_join" {
         return Err("preflight mode must be two_parent_join".to_string());
@@ -1402,7 +1467,7 @@ mod tests {
                 main: None,
                 out: end_to_end_out.clone(),
             };
-            let rejected_reason = match verify(&rejected_options) {
+            let rejected_reason = match verify_geometry(&rejected_options) {
                 Ok(_) => return Err("end-to-end appended repair was accepted".into()),
                 Err(reason) => reason,
             };
@@ -1425,7 +1490,79 @@ mod tests {
                 main: None,
                 out: valid_out.clone(),
             };
-            let valid_report = verify(&valid_receipt_options)?;
+            let valid_report = verify_geometry(&valid_receipt_options)?;
+            let refusal = verify(&valid_receipt_options)
+                .err()
+                .ok_or_else(|| "live verifier accepted historical v1 geometry".to_string())?;
+            if !refusal.contains("requires preflight v2") {
+                return Err(format!(
+                    "live v1 refusal failed for wrong reason: {refusal}"
+                ));
+            }
+            let candidate_tree =
+                test_git_output(&root, &["rev-parse", &format!("{swarm}^{{tree}}")])?;
+            let portable = super::super::source_promotion_acceptance::tests::fixture_for_candidate(
+                &swarm,
+                candidate_tree.trim(),
+                &format!("refs/tags/ripr-release-0.11.0-{swarm}"),
+            )?;
+            let mut current_preflight = preflight.clone();
+            current_preflight["schema"] =
+                Value::String("ripr.source_promotion_preflight.v2".into());
+            current_preflight["acceptance"] = portable["acceptance"].clone();
+            let current_bytes =
+                serde_json::to_vec(&current_preflight).map_err(|error| error.to_string())?;
+            fs::write(root.join("preflight.json"), &current_bytes)
+                .map_err(|error| error.to_string())?;
+            let mut current_manifest = manifest.clone();
+            current_manifest["preflight_sha256"] = Value::String(digest_bytes(&current_bytes));
+            fs::write(
+                root.join("manifest.json"),
+                serde_json::to_vec(&current_manifest).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let mut native_reads = 0;
+            let current_report = verify_with_acceptance(&valid_receipt_options, |value, repo| {
+                super::super::source_promotion_acceptance::revalidate_with_reader_and_tree(
+                    value,
+                    repo,
+                    |reference, owner| {
+                        native_reads += 1;
+                        super::super::source_promotion_acceptance::tests::responses(
+                            value, reference, owner,
+                        )
+                    },
+                )
+            })?;
+            if native_reads != 6 || current_report["status"] != "verified" {
+                return Err(
+                    "live v2 verifier did not consume both native snapshots and exact join".into(),
+                );
+            }
+            let drift = verify_with_acceptance(&valid_receipt_options, |value, repo| {
+                super::super::source_promotion_acceptance::revalidate_with_reader_and_tree(
+                    value,
+                    repo,
+                    |reference, owner| {
+                        let bytes = super::super::source_promotion_acceptance::tests::responses(
+                            value, reference, owner,
+                        )?;
+                        let mut response: Value =
+                            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+                        if owner == 2769 {
+                            response["body"] = Value::String("stale owner decision".into());
+                        }
+                        serde_json::to_vec(&response).map_err(|error| error.to_string())
+                    },
+                )
+            });
+            if !drift.is_err_and(|reason| reason.contains("changed since preflight")) {
+                return Err("live source verifier did not refuse native #2769 drift".into());
+            }
+            fs::write(root.join("preflight.json"), &preflight_bytes)
+                .map_err(|error| error.to_string())?;
+            fs::write(root.join("manifest.json"), &manifest_bytes)
+                .map_err(|error| error.to_string())?;
             if valid_report.get("preflight_sha256").and_then(Value::as_str)
                 != Some(digest_bytes(&preflight_bytes).as_str())
                 || valid_report
@@ -1455,7 +1592,7 @@ mod tests {
                 serde_json::to_vec(&prefixed_manifest).map_err(|error| error.to_string())?,
             )
             .map_err(|error| error.to_string())?;
-            let prefixed_error = verify(&valid_receipt_options)
+            let prefixed_error = verify_geometry(&valid_receipt_options)
                 .err()
                 .ok_or_else(|| "prefixed preflight digest was accepted".to_string())?;
             if !prefixed_error.contains("different preflight digest") {

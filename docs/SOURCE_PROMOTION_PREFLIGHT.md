@@ -8,6 +8,29 @@ The disposable merge probe requires Git 2.38 or newer because it uses
 `git merge-tree --write-tree --name-only -z`. The command fails closed on an
 older or malformed Git version rather than falling back to localized prose.
 
+## Current native acceptance
+
+Current source verification, resolved-tree validation, admission, construction,
+workflow enforcement and candidate-ref publication require
+`ripr.source_promotion_preflight.v2` with
+`ripr.source_handoff_acceptance.v2`. Historical v1 geometry remains readable;
+it grants no current selection or qualification authority.
+
+The handoff retains exact original manifest, qualification-bundle and evidence
+packet bytes as lowercase hex strings. Source validates their raw digests,
+candidate/ref/tree identities, applicable owner roster, exclusions and complete
+positive execution rows. The decoded limits are 16 MiB per input and 64 MiB
+aggregate; the serialized preflight limit is 320 MiB.
+
+Native #1609 selection, #2766 selected-claims and #2769 bundle decisions are
+independently reread through authenticated `gh api` GETs, bounded to 30 seconds,
+1 MiB stdout and 64 KiB stderr. Missing, changed, untrusted or mismatched
+decisions reject current authority. Parsing normalizes CRLF only in a copy;
+digests bind the original body bytes. These are observed trusted-operator
+snapshots, not signatures or atomic GitHub provenance. Construction retains the
+original UTF-8 preflight in its packet; publication rechecks its raw digest and
+native decisions before attempting a push. No command creates acceptance.
+
 ## Command
 
 Run it from a clean operator checkout with both repositories available locally:

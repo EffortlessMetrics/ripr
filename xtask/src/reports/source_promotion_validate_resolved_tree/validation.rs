@@ -11,6 +11,7 @@ fn validate(
     )?;
     state.inputs.preflight_path = Some(preflight_path);
     validate_preflight(&preflight, &options.source_parent)?;
+    super::source_promotion_acceptance::revalidate(&preflight, &options.repo)?;
     if string_field(&preflight, "swarm_parent")? != options.swarm_parent {
         return Err("preflight swarm parent does not match exact input".to_string());
     }
@@ -81,13 +82,23 @@ fn validate(
     state.materialized_tree = Some(options.reviewed_tree.clone());
     state.disposable_commit = Some(materialized.commit.clone());
 
-    let execution_result = validate_materialized_tree(
-        options,
-        state,
-        &checker,
-        &materialized.root,
-        evidence_root,
-    );
+    let execution_result =
+        validate_materialized_tree(options, state, &checker, &materialized.root, evidence_root);
+    let execution_result = execution_result.and_then(|()| {
+        let final_bytes = super::source_promotion_verify::revalidate_bound_preflight(
+            &options.preflight,
+            &options.preflight_sha256,
+            &options.repo,
+        )?;
+        let final_preflight: Value = serde_json::from_slice(&final_bytes)
+            .map_err(|error| format!("decode final acceptance preflight: {error}"))?;
+        if final_preflight != preflight {
+            return Err(
+                "native acceptance preflight changed during resolved-tree validation".into(),
+            );
+        }
+        Ok(())
+    });
 
     let cleanup = materialized.cleanup();
     state.worktree_remove_succeeded = cleanup.worktree_remove_succeeded;
@@ -222,8 +233,9 @@ fn validate_materialized_tree(
     state.materialization_clean_before = true;
 
     let logs_dir = evidence_root.join("commands");
-    fs::create_dir(&logs_dir)
-        .map_err(|error| format!("failed to create exclusive command evidence directory: {error}"))?;
+    fs::create_dir(&logs_dir).map_err(|error| {
+        format!("failed to create exclusive command evidence directory: {error}")
+    })?;
 
     let mut prior_failure: Option<String> = None;
     for (index, command) in REQUIRED_COMMANDS.iter().enumerate() {
