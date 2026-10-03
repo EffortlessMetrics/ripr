@@ -14,6 +14,10 @@ import {
 } from '../../src/client';
 import { explicitSetting } from '../../src/config';
 import { hasUnsafeShellMetacharacter, redirectStaysInWorkspace, redirectTargetMatches, serverShellArg } from '../../src/packetJson';
+import {
+  NO_RUNNING_SERVER_MESSAGE,
+  messageClaimsHungServer
+} from '../../src/cockpitRequest';
 import { compatibleLspEvidence } from './testCompatibility';
 
 suite('Extension Smoke', () => {
@@ -4495,20 +4499,6 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('showReceiptStatus shows info message when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.showReceiptStatus();
-
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard');
-    } finally {
-      await context.dispose();
-    }
-  });
-
   test('copyReceiptCommand writes real command to clipboard when LSP returns a real value', async () => {
     const context = createControllerTestContext({
       lspResult: {
@@ -4568,20 +4558,6 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('copyReceiptCommand shows info message and does NOT write to clipboard when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.copyReceiptCommand();
-
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
-    } finally {
-      await context.dispose();
-    }
-  });
-
   test('openAttemptLedger shows info message when LSP returns not_available', async () => {
     const context = createControllerTestContext({
       lspResult: {
@@ -4596,20 +4572,6 @@ suite('Extension Smoke', () => {
       assert.deepStrictEqual(context.clipboardWrites, [], 'openAttemptLedger must not write to clipboard');
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
       assert.ok(context.infoMessages.at(-1)?.includes('No attempt ledger is available'), context.infoMessages.at(-1));
-    } finally {
-      await context.dispose();
-    }
-  });
-
-  test('openAttemptLedger shows info message when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.openAttemptLedger();
-
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
     } finally {
       await context.dispose();
     }
@@ -4688,26 +4650,149 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('showRouteQuality shows info message when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.showRouteQuality();
-
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
-    } finally {
-      await context.dispose();
-    }
-  });
-
   test('receipt inspection commands are registered', async () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('ripr.showReceiptStatus'));
     assert.ok(commands.includes('ripr.copyReceiptCommand'));
     assert.ok(commands.includes('ripr.openAttemptLedger'));
     assert.ok(commands.includes('ripr.showRouteQuality'));
+  });
+
+  // Replaces the four no-client tests that previously asserted hung-server
+  // wording (`not responding`) for showReceiptStatus, copyReceiptCommand,
+  // openAttemptLedger, and showRouteQuality. Those assertions encoded #5099.
+  const cockpitAbsenceCommands: Array<{
+    name: string;
+    run: (controller: RiprClientController) => Promise<void>;
+    unavailableIncludes: string;
+  }> = [
+    {
+      name: 'copyTopRepairPacket',
+      run: (controller) => controller.copyTopRepairPacket(),
+      unavailableIncludes: 'did not respond'
+    },
+    {
+      name: 'copyTopVerifyCommand',
+      run: (controller) => controller.copyTopVerifyCommand(),
+      unavailableIncludes: 'No verify command available'
+    },
+    {
+      name: 'copyTopReceiptCommand',
+      run: (controller) => controller.copyTopReceiptCommand(),
+      unavailableIncludes: 'No receipt command available'
+    },
+    {
+      name: 'showReceiptStatus',
+      run: (controller) => controller.showReceiptStatus(),
+      unavailableIncludes: 'not responding'
+    },
+    {
+      name: 'copyReceiptCommand',
+      run: (controller) => controller.copyReceiptCommand(),
+      unavailableIncludes: 'not responding'
+    },
+    {
+      name: 'openAttemptLedger',
+      run: (controller) => controller.openAttemptLedger(),
+      unavailableIncludes: 'not responding'
+    },
+    {
+      name: 'showRouteQuality',
+      run: (controller) => controller.showRouteQuality(),
+      unavailableIncludes: 'not responding'
+    }
+  ];
+
+  for (const command of cockpitAbsenceCommands) {
+    test(`${command.name} does not claim a hung server when no client was started`, async () => {
+      const context = createControllerTestContext({});
+      try {
+        await command.run(context.controller);
+
+        assert.strictEqual(context.infoMessages.at(-1), NO_RUNNING_SERVER_MESSAGE);
+        assert.strictEqual(messageClaimsHungServer(context.infoMessages.at(-1) ?? ''), false);
+        assert.ok(
+          !context.infoMessages.at(-1)?.includes(command.unavailableIncludes),
+          context.infoMessages.at(-1)
+        );
+        assert.deepStrictEqual(context.client.requests, []);
+        assert.deepStrictEqual(context.clipboardWrites, []);
+      } finally {
+        await context.dispose();
+      }
+    });
+
+    test(`${command.name} keeps the request-failed wording when a live client returns null`, async () => {
+      const context = createControllerTestContext({ lspResult: null });
+      try {
+        await context.controller.start();
+        await command.run(context.controller);
+
+        const message = context.infoMessages.at(-1) ?? '';
+        assert.ok(message.includes(command.unavailableIncludes), message);
+        assert.notStrictEqual(message, NO_RUNNING_SERVER_MESSAGE);
+        assert.strictEqual(context.client.requests.length, 1);
+        assert.deepStrictEqual(context.clipboardWrites, []);
+      } finally {
+        await context.dispose();
+      }
+    });
+
+    test(`${command.name} keeps the request-failed wording when a live client throws`, async () => {
+      const context = createControllerTestContext({
+        lspError: new Error(`${command.name} request failed`)
+      });
+      try {
+        await context.controller.start();
+        await command.run(context.controller);
+
+        const message = context.infoMessages.at(-1) ?? '';
+        assert.ok(message.includes(command.unavailableIncludes), message);
+        assert.notStrictEqual(message, NO_RUNNING_SERVER_MESSAGE);
+        assert.strictEqual(context.client.requests.length, 1);
+        assert.ok(
+          context.outputLines.some((line) => line.includes('failed')),
+          context.outputLines.join('\n')
+        );
+        assert.deepStrictEqual(context.clipboardWrites, []);
+      } finally {
+        await context.dispose();
+      }
+    });
+  }
+
+  test('an array LSP response still shows a user-visible toast and does not crash', async () => {
+    const cases: Array<{
+      name: string;
+      run: (controller: RiprClientController) => Promise<void>;
+      includes: string;
+    }> = [
+      {
+        name: 'copyTopRepairPacket',
+        run: (controller) => controller.copyTopRepairPacket(),
+        includes: 'No complete repair packet available'
+      },
+      {
+        name: 'showReceiptStatus',
+        run: (controller) => controller.showReceiptStatus(),
+        includes: 'not_available'
+      }
+    ];
+    for (const command of cases) {
+      const context = createControllerTestContext({ lspResult: ['not', 'a', 'packet'] });
+      try {
+        await context.controller.start();
+        await command.run(context.controller);
+
+        const message = context.infoMessages.at(-1) ?? '';
+        assert.ok(message.includes(command.includes), `${command.name}: ${message}`);
+        assert.notStrictEqual(message, NO_RUNNING_SERVER_MESSAGE, command.name);
+        assert.strictEqual(messageClaimsHungServer(message), false, command.name);
+        assert.deepStrictEqual(context.clipboardWrites, [], command.name);
+      } finally {
+        await context.dispose();
+      }
+    }
   });
 });
 

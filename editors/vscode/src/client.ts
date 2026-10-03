@@ -38,6 +38,12 @@ import {
   RiprClientLifecycleTimeoutError,
   waitForLifecyclePromise
 } from './lifecycleCoordinator';
+import {
+  cockpitUnavailableMessage,
+  interpretCockpitObjectResponse,
+  type CockpitRequestAbsence,
+  type CockpitRequestResult
+} from './cockpitRequest';
 
 // Re-export for backward compatibility: the picker test imports these symbols
 // from '../../src/client'. They now live in workspaceHelpers.ts (#2553).
@@ -1717,45 +1723,54 @@ export class RiprClientController {
   // Cockpit commands (ripr.collectRepairPacket / collectTopLimitation)
   // ---------------------------------------------------------------------------
 
-  /** Shared helper: calls ripr.collectRepairPacket (top packet, no args) once. */
-  private async fetchTopRepairPacket(): Promise<Record<string, unknown> | null> {
+  private async fetchWorkspaceCommand(
+    command: string,
+    failedLogLabel: string
+  ): Promise<CockpitRequestResult<Record<string, unknown>>> {
     const client = this.client;
     if (!client) {
-      return null;
+      return { kind: 'no_client' };
     }
     try {
       const response = await client.sendRequest('workspace/executeCommand', {
-        command: 'ripr.collectRepairPacket',
+        command,
         arguments: []
       });
-      if (response === null || response === undefined) {
-        return null;
-      }
-      if (typeof response === 'object') {
-        return response as Record<string, unknown>;
-      }
-      return null;
+      return interpretCockpitObjectResponse(response);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.output.appendLine(`ripr collectRepairPacket failed: ${message}`);
-      return null;
+      this.output.appendLine(`ripr ${failedLogLabel} failed: ${message}`);
+      return { kind: 'unavailable' };
     }
+  }
+
+  private showCockpitUnavailable(
+    result: CockpitRequestAbsence,
+    unavailableMessage: string
+  ): void {
+    this.runtime.showInformationMessage(cockpitUnavailableMessage(result, unavailableMessage));
+  }
+
+  /** Shared helper: calls ripr.collectRepairPacket (top packet, no args) once. */
+  private async fetchTopRepairPacket(): Promise<CockpitRequestResult<Record<string, unknown>>> {
+    return this.fetchWorkspaceCommand('ripr.collectRepairPacket', 'collectRepairPacket');
   }
 
   async copyTopRepairPacket(): Promise<void> {
     const response = await this.fetchTopRepairPacket();
-    if (response === null) {
-      this.runtime.showInformationMessage('ripr server did not respond — no repair packet available.');
+    if (response.kind !== 'ok') {
+      this.showCockpitUnavailable(response, 'ripr server did not respond — no repair packet available.');
       return;
     }
-    const status = typeof response['status'] === 'string' ? response['status'] : undefined;
-    if (status === 'not_actionable_or_incomplete' || response['kind'] !== 'repair_packet') {
-      const reason = typeof response['reason'] === 'string' ? response['reason'] : undefined;
+    const packet = response.value;
+    const status = typeof packet['status'] === 'string' ? packet['status'] : undefined;
+    if (status === 'not_actionable_or_incomplete' || packet['kind'] !== 'repair_packet') {
+      const reason = typeof packet['reason'] === 'string' ? packet['reason'] : undefined;
       this.runtime.showInformationMessage(reason ?? 'No complete repair packet available.');
       return;
     }
     try {
-      await this.runtime.writeClipboard(JSON.stringify(response, null, 2));
+      await this.runtime.writeClipboard(JSON.stringify(packet, null, 2));
       this.runtime.showInformationMessage('Copied top repair packet to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1766,17 +1781,18 @@ export class RiprClientController {
 
   async copyTopVerifyCommand(): Promise<void> {
     const response = await this.fetchTopRepairPacket();
-    if (response === null) {
+    if (response.kind !== 'ok') {
+      this.showCockpitUnavailable(response, 'No verify command available.');
+      return;
+    }
+    const packet = response.value;
+    const status = typeof packet['status'] === 'string' ? packet['status'] : undefined;
+    if (status === 'not_actionable_or_incomplete' || packet['kind'] !== 'repair_packet') {
       this.runtime.showInformationMessage('No verify command available.');
       return;
     }
-    const status = typeof response['status'] === 'string' ? response['status'] : undefined;
-    if (status === 'not_actionable_or_incomplete' || response['kind'] !== 'repair_packet') {
-      this.runtime.showInformationMessage('No verify command available.');
-      return;
-    }
-    const verifyCommand = typeof response['verify_command'] === 'string'
-      ? response['verify_command'].trim()
+    const verifyCommand = typeof packet['verify_command'] === 'string'
+      ? packet['verify_command'].trim()
       : '';
     if (!verifyCommand) {
       this.runtime.showInformationMessage('No verify command available.');
@@ -1794,17 +1810,18 @@ export class RiprClientController {
 
   async copyTopReceiptCommand(): Promise<void> {
     const response = await this.fetchTopRepairPacket();
-    if (response === null) {
+    if (response.kind !== 'ok') {
+      this.showCockpitUnavailable(response, 'No receipt command available.');
+      return;
+    }
+    const packet = response.value;
+    const status = typeof packet['status'] === 'string' ? packet['status'] : undefined;
+    if (status === 'not_actionable_or_incomplete' || packet['kind'] !== 'repair_packet') {
       this.runtime.showInformationMessage('No receipt command available.');
       return;
     }
-    const status = typeof response['status'] === 'string' ? response['status'] : undefined;
-    if (status === 'not_actionable_or_incomplete' || response['kind'] !== 'repair_packet') {
-      this.runtime.showInformationMessage('No receipt command available.');
-      return;
-    }
-    const receiptCommand = typeof response['receipt_command'] === 'string'
-      ? response['receipt_command'].trim()
+    const receiptCommand = typeof packet['receipt_command'] === 'string'
+      ? packet['receipt_command'].trim()
       : '';
     if (!receiptCommand) {
       this.runtime.showInformationMessage('No receipt command available.');
@@ -1910,44 +1927,25 @@ export class RiprClientController {
   // ---------------------------------------------------------------------------
 
   /** Shared helper: calls ripr.collectReceiptStatus once and returns the response. */
-  private async fetchReceiptStatus(): Promise<Record<string, unknown> | null> {
-    const client = this.client;
-    if (!client) {
-      return null;
-    }
-    try {
-      const response = await client.sendRequest('workspace/executeCommand', {
-        command: 'ripr.collectReceiptStatus',
-        arguments: []
-      });
-      if (response === null || response === undefined) {
-        return null;
-      }
-      if (typeof response === 'object') {
-        return response as Record<string, unknown>;
-      }
-      return null;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.output.appendLine(`ripr collectReceiptStatus failed: ${message}`);
-      return null;
-    }
+  private async fetchReceiptStatus(): Promise<CockpitRequestResult<Record<string, unknown>>> {
+    return this.fetchWorkspaceCommand('ripr.collectReceiptStatus', 'collectReceiptStatus');
   }
 
   async showReceiptStatus(): Promise<void> {
     const response = await this.fetchReceiptStatus();
-    if (response === null) {
-      this.runtime.showInformationMessage('No receipt status available — server not responding.');
+    if (response.kind !== 'ok') {
+      this.showCockpitUnavailable(response, 'No receipt status available — server not responding.');
       return;
     }
-    const receiptStatus = typeof response['receipt_status'] === 'string'
-      ? response['receipt_status']
+    const packet = response.value;
+    const receiptStatus = typeof packet['receipt_status'] === 'string'
+      ? packet['receipt_status']
       : 'not_available';
-    const latestOutcome = typeof response['latest_attempt_outcome'] === 'string'
-      ? response['latest_attempt_outcome']
+    const latestOutcome = typeof packet['latest_attempt_outcome'] === 'string'
+      ? packet['latest_attempt_outcome']
       : 'not_available';
-    const missingReason = typeof response['missing_receipt_reason'] === 'string'
-      ? response['missing_receipt_reason']
+    const missingReason = typeof packet['missing_receipt_reason'] === 'string'
+      ? packet['missing_receipt_reason']
       : 'not_available';
 
     this.output.appendLine('ripr receipt status:');
@@ -1968,12 +1966,12 @@ export class RiprClientController {
 
   async copyReceiptCommand(): Promise<void> {
     const response = await this.fetchReceiptStatus();
-    if (response === null) {
-      this.runtime.showInformationMessage('No receipt command is available — server not responding.');
+    if (response.kind !== 'ok') {
+      this.showCockpitUnavailable(response, 'No receipt command is available — server not responding.');
       return;
     }
-    const copyReceiptCommand = typeof response['copy_receipt_command'] === 'string'
-      ? response['copy_receipt_command'].trim()
+    const copyReceiptCommand = typeof response.value['copy_receipt_command'] === 'string'
+      ? response.value['copy_receipt_command'].trim()
       : '';
     if (!copyReceiptCommand || copyReceiptCommand === 'not_available') {
       this.runtime.showInformationMessage('No receipt command is available for the current state.');
@@ -1991,12 +1989,12 @@ export class RiprClientController {
 
   async openAttemptLedger(): Promise<void> {
     const response = await this.fetchReceiptStatus();
-    if (response === null) {
-      this.runtime.showInformationMessage('No attempt ledger available — server not responding.');
+    if (response.kind !== 'ok') {
+      this.showCockpitUnavailable(response, 'No attempt ledger available — server not responding.');
       return;
     }
-    const openAttemptLedger = typeof response['open_attempt_ledger'] === 'string'
-      ? response['open_attempt_ledger'].trim()
+    const openAttemptLedger = typeof response.value['open_attempt_ledger'] === 'string'
+      ? response.value['open_attempt_ledger'].trim()
       : '';
     if (!openAttemptLedger || openAttemptLedger === 'not_available') {
       this.runtime.showInformationMessage('No attempt ledger is available — run an agent loop first.');
@@ -2016,11 +2014,11 @@ export class RiprClientController {
 
   async showRouteQuality(): Promise<void> {
     const response = await this.fetchReceiptStatus();
-    if (response === null) {
-      this.runtime.showInformationMessage('No route quality available — server not responding.');
+    if (response.kind !== 'ok') {
+      this.showCockpitUnavailable(response, 'No route quality available — server not responding.');
       return;
     }
-    const routeQualitySummary = formatRouteQualitySummary(response['route_quality_summary']) ?? 'not_available';
+    const routeQualitySummary = formatRouteQualitySummary(response.value['route_quality_summary']) ?? 'not_available';
 
     this.output.appendLine(`ripr route quality: ${routeQualitySummary}`);
     this.output.show();
