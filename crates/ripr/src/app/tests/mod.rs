@@ -54,6 +54,7 @@ fn sample_finding(file: &str, line: usize) -> Finding {
         flow_sinks: Vec::new(),
         activation: ActivationEvidence::default(),
         stop_reasons: vec![StopReason::NoChangedRustLine],
+        related_tests_matched_total: None,
         related_tests: vec![RelatedTest {
             name: "sample_test".to_string(),
             file: "tests/sample.rs".into(),

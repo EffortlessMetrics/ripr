@@ -1440,6 +1440,7 @@ mod tests {
                 }],
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "applyDiscount applies discount".to_string(),
                 file: PathBuf::from("tests/discount.test.ts"),

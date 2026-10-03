@@ -601,8 +601,11 @@ fn finding_json_with_config_and_counts(
         indent + 1,
     );
     out.push_str(",\n");
-    let related_total = finding.related_tests.len();
-    let related_rendered = related_total.min(MAX_RELATED_TESTS_PER_FINDING_JSON);
+    let related_total = finding.related_tests_total();
+    let related_rendered = finding
+        .related_tests
+        .len()
+        .min(MAX_RELATED_TESTS_PER_FINDING_JSON);
     number_field(out, indent + 1, "related_tests_total", related_total, true);
     out.push_str(&format!(
         "{}\"related_tests\": [\n",
@@ -1671,6 +1674,7 @@ mod evidence_path_separator_tests {
             flow_sinks: vec![],
             activation: ActivationEvidence::default(),
             stop_reasons: vec![],
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "applies the discount".to_string(),
                 file: PathBuf::from(file),

@@ -4191,6 +4191,7 @@ mod tests {
                 }],
             },
             stop_reasons: vec![],
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "test_handles_disabled".to_string(),
                 file: PathBuf::from("tests/sample.rs"),
@@ -4246,6 +4247,7 @@ mod tests {
             flow_sinks: vec![],
             activation: ActivationEvidence::default(),
             stop_reasons: vec![],
+            related_tests_matched_total: None,
             related_tests: vec![],
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
             language: None,

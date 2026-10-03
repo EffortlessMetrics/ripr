@@ -163,6 +163,7 @@ impl FindingSpec {
                     .collect(),
             },
             stop_reasons: self.stop_reasons,
+            related_tests_matched_total: None,
             related_tests: self.related,
             recommended_next_step: None,
             language: self.language,

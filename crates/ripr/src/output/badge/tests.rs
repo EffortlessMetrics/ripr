@@ -62,6 +62,7 @@ fn finding(class: ExposureClass, related: Vec<RelatedTest>) -> Finding {
         flow_sinks: Vec::new(),
         activation: ActivationEvidence::default(),
         stop_reasons: Vec::new(),
+        related_tests_matched_total: None,
         related_tests: related,
         recommended_next_step: None,
         language: None,

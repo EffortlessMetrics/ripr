@@ -23,6 +23,7 @@ pub(in crate::analysis) struct ClassifiedProbeEvidence {
     pub(in crate::analysis) propagation_witness: Option<PropagationWitnessDiagnostic>,
     pub(in crate::analysis) activation: ActivationEvidence,
     pub(in crate::analysis) related_tests: Vec<RelatedTest>,
+    pub(in crate::analysis) related_tests_matched_total: usize,
     pub(in crate::analysis) reach: StageEvidence,
     pub(in crate::analysis) infect: StageEvidence,
     pub(in crate::analysis) propagate: StageEvidence,
@@ -98,7 +99,7 @@ impl ClassifiedProbeEvidence {
             .owner_fn
             .map(owner_local_binding_names)
             .unwrap_or_default();
-        let (observe, discriminate, related_tests) = reveal_evidence_with_expression(
+        let (observe, discriminate, related_tests, matched_total) = reveal_evidence_with_expression(
             context.probe,
             reveal_expression,
             &context.related_tests,
@@ -244,6 +245,7 @@ impl ClassifiedProbeEvidence {
             propagation_witness,
             activation,
             related_tests,
+            related_tests_matched_total: matched_total,
             reach,
             infect,
             propagate,

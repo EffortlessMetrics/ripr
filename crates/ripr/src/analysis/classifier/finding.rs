@@ -92,6 +92,7 @@ pub(in crate::analysis) fn build_finding(
         flow_sinks: evidence.flow_sinks,
         activation: evidence.activation,
         stop_reasons,
+        related_tests_matched_total: Some(evidence.related_tests_matched_total),
         related_tests: evidence.related_tests,
         recommended_next_step,
         // Language metadata is populated by the per-language adapter
@@ -411,6 +412,7 @@ mod tests {
             flow_sinks: sinks,
             propagation_witness: None,
             activation: ActivationEvidence::default(),
+            related_tests_matched_total: related_tests.len(),
             related_tests,
             reach: yes.clone(),
             infect: yes.clone(),

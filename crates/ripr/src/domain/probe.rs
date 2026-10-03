@@ -348,6 +348,13 @@ pub struct Finding {
     pub flow_sinks: Vec<FlowSinkFact>,
     pub activation: ActivationEvidence,
     pub stop_reasons: Vec<StopReason>,
+    /// Number of matched related-test/oracle rows after the existing dedup,
+    /// before bounded unique-first packing. Metadata only: the retained
+    /// related_tests vector remains the semantic/selection input.
+    /// Older producers and artifacts omit this field and retain their known
+    /// vector count; absence cannot establish how many rows were discarded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related_tests_matched_total: Option<usize>,
     pub related_tests: Vec<RelatedTest>,
     pub recommended_next_step: Option<String>,
     /// Source language the adapter that produced this finding identifies as.
@@ -479,6 +486,13 @@ pub const ORACLE_ALIGNMENT_VALUES: [&str; 5] = [
 ];
 
 impl Finding {
+    /// Public count projection without changing retained evidence or selection.
+    pub fn related_tests_total(&self) -> usize {
+        self.related_tests_matched_total
+            .unwrap_or(self.related_tests.len())
+            .max(self.related_tests.len())
+    }
+
     pub fn unknown_has_stop_reason(&self) -> bool {
         !self.class.requires_stop_reason() || !self.stop_reasons.is_empty()
     }

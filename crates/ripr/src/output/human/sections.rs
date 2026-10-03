@@ -107,7 +107,7 @@ pub(crate) fn render_finding_digest_with_config(finding: &Finding, config: &Ripr
         // #4320: the digest shows only the first related test; carry the total
         // so the reader knows how much reaching-test evidence exists (the
         // evidence window in the full form discloses the same bound).
-        let related_tests_total = finding.related_tests.len();
+        let related_tests_total = finding.related_tests_total();
         let label = if related_tests_total > 1 {
             format!("Related test (1 of {related_tests_total})")
         } else {

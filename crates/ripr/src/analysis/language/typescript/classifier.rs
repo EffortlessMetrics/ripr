@@ -2901,6 +2901,7 @@ pub(crate) fn classify_change_with_alias_state(
             missing_discriminators,
         },
         stop_reasons: Vec::new(),
+        related_tests_matched_total: None,
         related_tests: related,
         recommended_next_step: Some(recommended),
         language: Some(output_language_for(file)),

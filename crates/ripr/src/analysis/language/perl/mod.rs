@@ -688,6 +688,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                 missing_discriminators,
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: related,
             recommended_next_step: Some(if static_limit_projection.missing_test_runner {
                 if is_already_observed {

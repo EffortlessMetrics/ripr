@@ -971,6 +971,13 @@ The evidence-first fields are additive in schema `0.2`:
   `oracle_kind`/`oracle_strength` summary — those use the full pre-cap vector.
   Mirrors the `related_tests_total` + cap pattern already in
   `seams[].related_tests_total` for the `repo-exposure.json` format.
+  For Rust diff findings this preserves the existing post-dedup test/oracle
+  row count before unique-first packing, rather than counting the eight
+  retained rows or introducing a new distinct-test count unit. The packed
+  evidence vector, ranking, exposure and repair selection are unchanged.
+  Finding-level human and SARIF totals project the same count. Older internal
+  Finding artifacts without producer count metadata preserve their known
+  retained-vector count; an omitted field cannot recover discarded matches.
 - `related_tests[].relation_reason` — (optional, additive, no `schema_version`
   bump) the highest-priority static signal that caused this test to be
   included. Values: `direct_owner_call`, `helper_owner_call`,

@@ -585,6 +585,7 @@ mod raw_path_tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: vec![StopReason::NoChangedRustLine],
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "nearby".to_string(),
                 file: raw,

@@ -9,6 +9,13 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::related_test_total_retains_six_eight_nine_matches_without_changing_packed_prefix",
+  "crates/ripr/src/analysis/classify/reveal.rs::tests::related_test_total_uses_existing_post_dedup_oracle_row_unit",
+  "crates/ripr/src/output/json/mod.rs::tests::finding_matched_total_preserves_legacy_serde_and_retained_count_floor",
+  "crates/ripr/src/output/json/mod.rs::tests::finding_json_and_human_preserve_prepack_total_for_bounded_metadata",
+  "crates/ripr/src/output/json/mod.rs::tests::finding_json_sparse_retained_rows_preserve_high_total_without_trailing_comma",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_preserves_matched_total_for_sparse_retained_rows",
+  "crates/ripr/tests/cli_smoke/related_test_count.rs::direct_owner_related_total_survives_packing_in_json_and_human",
   "crates/ripr/src/analysis/facts/build.rs::tests::build_index_from_loaded_files_misses_when_content_changes",
   "crates/ripr/src/analysis/facts/build.rs::tests::build_index_preserves_input_order_across_parallel_batches",
   "crates/ripr/src/analysis/facts/build.rs::tests::build_index_is_byte_identical_across_repeated_parallel_runs",

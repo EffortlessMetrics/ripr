@@ -412,7 +412,7 @@ fn finding_properties(finding: &Finding, severity: ConfigSeverity) -> Value {
     );
     properties.insert(
         "related_tests_total".to_string(),
-        json!(finding.related_tests.len()),
+        json!(finding.related_tests_total()),
     );
     properties.insert(
         "related_tests".to_string(),
@@ -933,6 +933,38 @@ mod tests {
     };
     use serde_json::Value;
     use std::path::PathBuf;
+
+    #[test]
+    fn sarif_preserves_matched_total_for_sparse_retained_rows() -> Result<(), String> {
+        let mut output = sample_output();
+        let finding = output
+            .findings
+            .first_mut()
+            .ok_or("missing sample finding")?;
+        let retained = finding.related_tests.clone();
+        assert!(!retained.is_empty());
+        finding.related_tests_matched_total = Some(9);
+        let rendered = render_findings_sarif(&output, &RiprConfig::default(), &[]);
+        let sarif = parse_json(&rendered)?;
+        let result = first_result(&sarif)?;
+        assert_eq!(result["properties"]["related_tests_total"], 9);
+        assert_eq!(
+            result["properties"]["related_tests"]
+                .as_array()
+                .ok_or("missing rows")?
+                .len(),
+            retained.len().min(5)
+        );
+        assert_eq!(
+            output
+                .findings
+                .first()
+                .ok_or("missing finding")?
+                .related_tests,
+            retained
+        );
+        Ok(())
+    }
 
     #[test]
     fn sarif_renders_findings_with_stable_rule_ids() -> Result<(), String> {
@@ -1913,6 +1945,7 @@ weakly_gripped = "note"
                 }],
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "below_threshold_has_no_discount".to_string(),
                 file: PathBuf::from("tests/pricing.rs"),

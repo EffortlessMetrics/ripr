@@ -181,6 +181,7 @@ pub(crate) fn unsupported_syntax_finding(
         flow_sinks: Vec::new(),
         activation: Default::default(),
         stop_reasons: vec![StopReason::StaticProbeUnknown],
+        related_tests_matched_total: None,
         related_tests: Vec::new(),
         recommended_next_step: Some(recommended),
         language: Some(output_language_for(file)),

@@ -940,6 +940,7 @@ fn backend_code_lens_handler_delegates_to_lens_helper() -> Result<(), String> {
         flow_sinks: Vec::new(),
         activation: ActivationEvidence::default(),
         stop_reasons: Vec::new(),
+        related_tests_matched_total: None,
         related_tests: vec![RelatedTest {
             name: "test_discounts".to_string(),
             file: std::path::PathBuf::from("tests/lib.rs"),
@@ -13361,6 +13362,7 @@ pub(super) fn sample_finding() -> Finding {
         flow_sinks: Vec::new(),
         activation: crate::domain::ActivationEvidence::default(),
         stop_reasons: Vec::new(),
+        related_tests_matched_total: None,
         related_tests: Vec::new(),
         recommended_next_step: Some("Add an exact boundary assertion.".to_string()),
         language: None,

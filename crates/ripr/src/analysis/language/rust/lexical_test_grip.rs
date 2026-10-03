@@ -473,6 +473,7 @@ mod tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: related_file
                 .map(|file| RelatedTest {
                     name: "p".to_string(),

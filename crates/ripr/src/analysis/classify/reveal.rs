@@ -22,7 +22,7 @@ fn reveal_evidence(
     probe: &Probe,
     related_tests: &[(&TestSummary, RelationReason)],
 ) -> (StageEvidence, StageEvidence, Vec<RelatedTest>) {
-    reveal_evidence_with_expression(
+    let (observe, discriminate, related, _) = reveal_evidence_with_expression(
         probe,
         &probe.expression,
         related_tests,
@@ -33,7 +33,8 @@ fn reveal_evidence(
             owner_return_pin: &|_, _| false,
             assertion_admitted: &|_, _| true,
         },
-    )
+    );
+    (observe, discriminate, related)
 }
 
 pub(in crate::analysis) fn reveal_evidence_with_expression(
@@ -44,7 +45,7 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
     same_name_import_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     cross_package_name_defeats: &dyn Fn(&TestSummary, &str) -> bool,
     return_admission: &ReturnOracleAdmission<'_>,
-) -> (StageEvidence, StageEvidence, Vec<RelatedTest>) {
+) -> (StageEvidence, StageEvidence, Vec<RelatedTest>, usize) {
     if related_tests.is_empty() {
         return (
             StageEvidence::new(
@@ -58,6 +59,7 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
                 "No assertion can discriminate the changed behavior without a reachable test",
             ),
             Vec::new(),
+            0,
         );
     }
 
@@ -70,7 +72,7 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
         cross_package_name_defeats,
         return_admission,
     );
-    let related = finalize_related_tests(analysis.related);
+    let (related, related_tests_total) = finalize_related_tests(analysis.related);
     let observe = build_observe_evidence(analysis.matched_any, analysis.refused_context);
     let discriminate = if analysis.refused_context && !analysis.matched_any {
         StageEvidence::new(
@@ -97,7 +99,7 @@ pub(in crate::analysis) fn reveal_evidence_with_expression(
         )
     };
 
-    (observe, discriminate, related)
+    (observe, discriminate, related, related_tests_total)
 }
 
 struct RevealAssertionAnalysis {
@@ -1950,20 +1952,23 @@ pub(in crate::analysis) fn contains_as_whole_word(text: &str, token: &str) -> bo
     false
 }
 
-fn finalize_related_tests(mut related: Vec<RelatedTest>) -> Vec<RelatedTest> {
+fn finalize_related_tests(mut related: Vec<RelatedTest>) -> (Vec<RelatedTest>, usize) {
     related.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
     related.dedup_by(|a, b| a.name == b.name && a.oracle == b.oracle);
     // Renderers present the first entry as the primary related test, so the
     // strongest relation leads. The sort is stable: name and line order holds
     // within one confidence tier, and the dedup above is unchanged.
     related.sort_by_key(|test| std::cmp::Reverse(related_test_rank(test)));
+    // Same post-dedup row unit as before; retain the total separately without
+    // exposing discarded rows to downstream evidence/target selection.
+    let matched_total = related.len();
     // JSON/human renderers cap at eight rows. When one test's assertions would
     // fill that window, unique tests go first (#4760). Under the cap, keep
     // per-assertion rows so existing goldens and #1728 witnesses stay intact.
     if related.len() > RELATED_TESTS_RENDER_CAP {
         related = pack_unique_tests_first(related, RELATED_TESTS_RENDER_CAP);
     }
-    related
+    (related, matched_total)
 }
 
 const RELATED_TESTS_RENDER_CAP: usize = 8;
@@ -2389,7 +2394,7 @@ mod tests {
     /// the alphabetically first name.
     #[test]
     fn finalized_related_tests_lead_with_the_strongest_relation() {
-        let finalized = finalize_related_tests(vec![
+        let (finalized, _) = finalize_related_tests(vec![
             related(
                 "a_same_file_neighbor",
                 3,
@@ -2420,6 +2425,60 @@ mod tests {
         assert_eq!(names.first(), Some(&"c_direct_owner_call"));
         assert_eq!(names.last(), Some(&"b_unknown_origin"));
         assert_eq!(names.len(), 4, "duplicate entries still dedup: {names:?}");
+    }
+
+    #[test]
+    fn related_test_total_retains_six_eight_nine_matches_without_changing_packed_prefix() {
+        for count in [6, 8, 9] {
+            let input: Vec<_> = (0..count)
+                .map(|index| {
+                    related(
+                        &format!("case_{index:02}"),
+                        index + 1,
+                        Some(RelationReason::DirectOwnerCall),
+                    )
+                })
+                .collect();
+            let (packed, total) = finalize_related_tests(input.clone());
+            assert_eq!(total, count);
+            assert_eq!(packed.len(), count.min(RELATED_TESTS_RENDER_CAP));
+            let previous_prefix = if count > RELATED_TESTS_RENDER_CAP {
+                pack_unique_tests_first(input, RELATED_TESTS_RENDER_CAP)
+            } else {
+                input
+            };
+            assert_eq!(packed, previous_prefix);
+        }
+    }
+
+    #[test]
+    fn related_test_total_uses_existing_post_dedup_oracle_row_unit() {
+        let mut input: Vec<_> = (0..9)
+            .map(|index| {
+                related(
+                    &format!("case_{index:02}"),
+                    index + 1,
+                    Some(RelationReason::DirectOwnerCall),
+                )
+            })
+            .collect();
+        let first = related("case_00", 1, Some(RelationReason::DirectOwnerCall));
+        input.push(first.clone()); // Existing name/oracle dedup removes this.
+        let mut second_oracle = first;
+        second_oracle.oracle = Some("assert_eq!(different_observer, 2);".to_string());
+        input.push(second_oracle); // A distinct oracle row remains the count unit.
+        let (packed, total) = finalize_related_tests(input);
+        assert_eq!(total, 10);
+        assert_eq!(packed.len(), 8);
+        assert_eq!(
+            packed
+                .iter()
+                .map(|test| test.name.as_str())
+                .collect::<Vec<_>>(),
+            (0..8)
+                .map(|index| format!("case_{index:02}"))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -4379,7 +4438,7 @@ return Err(\"typed pin\".into());
         );
         let test_source = "use other_crate::expect_response;\n";
         let crate_names = std::collections::BTreeSet::new();
-        let (_, discriminate, _) = reveal_evidence_with_expression(
+        let (_, discriminate, _, _) = reveal_evidence_with_expression(
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
@@ -4428,7 +4487,7 @@ return Err(\"typed pin\".into());
             .map(str::to_string)
             .collect();
 
-        let (_, discriminate, _) = reveal_evidence_with_expression(
+        let (_, discriminate, _, _) = reveal_evidence_with_expression(
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
@@ -4446,7 +4505,7 @@ return Err(\"typed pin\".into());
             "no import means no ambiguity: {discriminate:?}"
         );
 
-        let (_, own_crate, _) = reveal_evidence_with_expression(
+        let (_, own_crate, _, _) = reveal_evidence_with_expression(
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
@@ -4487,7 +4546,7 @@ return Err(\"typed pin\".into());
         );
         let aliased_import = "use other_crate::expect_response as respond;\n";
         let crate_names = std::collections::BTreeSet::new();
-        let (_, discriminate, _) = reveal_evidence_with_expression(
+        let (_, discriminate, _, _) = reveal_evidence_with_expression(
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
@@ -4528,7 +4587,7 @@ return Err(\"typed pin\".into());
         );
         let test_source = "mod tests {\n    use other_crate::expect_response;\n\n    #[test]\n    fn guards_the_result() {}\n}\n";
         let crate_names = std::collections::BTreeSet::new();
-        let (_, discriminate, _) = reveal_evidence_with_expression(
+        let (_, discriminate, _, _) = reveal_evidence_with_expression(
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
@@ -4694,7 +4753,7 @@ return Err(\"typed pin\".into());
                 true,
             )],
         );
-        let (_, defeated, _) = reveal_evidence_with_expression(
+        let (_, defeated, _, _) = reveal_evidence_with_expression(
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
@@ -4717,7 +4776,7 @@ return Err(\"typed pin\".into());
             "the ambiguous binding leaves observation unverified: {defeated:?}"
         );
 
-        let (_, confirmed, _) = reveal_evidence_with_expression(
+        let (_, confirmed, _, _) = reveal_evidence_with_expression(
             &probe,
             &probe.expression,
             &[(&test, RelationReason::DirectOwnerCall)],
@@ -5303,7 +5362,7 @@ return Err(\"typed pin\".into());
             )],
         );
 
-        let (_observe, discriminate, _related) = reveal_evidence_with_expression(
+        let (_observe, discriminate, _related, _) = reveal_evidence_with_expression(
             &probe,
             "Err(ParseError::SiblingVariant)",
             &[(&test, RelationReason::DirectOwnerCall)],

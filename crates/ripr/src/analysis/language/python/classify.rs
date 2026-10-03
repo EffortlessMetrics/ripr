@@ -690,6 +690,7 @@ pub(super) fn classify_change_with_context(
             .map(stop_reason_for_python_static_limit)
             .into_iter()
             .collect(),
+        related_tests_matched_total: None,
         related_tests: related,
         recommended_next_step: recommended,
         language: Some(DomainLanguageId::Python),

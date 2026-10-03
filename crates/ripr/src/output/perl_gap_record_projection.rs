@@ -435,6 +435,7 @@ mod tests {
                 }],
             },
             stop_reasons: vec![],
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "discount_smoke".to_string(),
                 file: PathBuf::from("t/app.t"),

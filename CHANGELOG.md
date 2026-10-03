@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Rust finding output preserves the matched related-test/oracle count before
+  bounded packing. JSON, SARIF, and human totals agree while retained rows and
+  exposure classification remain unchanged. (#5146)
+
 - Evidence output: retained lexical and statically derived values are described
   as source values in both human and JSON evidence paths, including values in
   refused assertions. Typed facts, provenance, classes and admitted oracle
