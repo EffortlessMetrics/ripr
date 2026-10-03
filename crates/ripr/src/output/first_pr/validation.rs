@@ -41,9 +41,23 @@ pub(super) fn validate_selected_command_root(packet: &Value, root: &Path) -> Res
         "selected command context has no available repository directory".to_string()
     })?;
     let carried_root = Path::new(cwd);
-    if !carried_root.is_absolute() || cwd.contains(['\r', '\n']) {
+    if !carried_root.is_absolute() {
         return Err(
             "selected command context directory is not a bounded absolute path".to_string(),
+        );
+    }
+    // A multiline physical root is valid data, but its producer withholds
+    // shell forms. Accept that roundtrip without admitting displayed commands.
+    if cwd.contains(['\r', '\n'])
+        && ["verify", "receipt"].iter().any(|step| {
+            ["bash", "powershell"]
+                .iter()
+                .any(|field| !context[*step][*field].is_null())
+        })
+    {
+        return Err(
+            "selected command context multiline directory requires withheld shell forms"
+                .to_string(),
         );
     }
     let current = root

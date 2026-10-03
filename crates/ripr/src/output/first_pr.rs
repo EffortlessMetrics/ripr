@@ -1,7 +1,5 @@
 use crate::agent::command_specs::report_regeneration_command_spec_from_display;
-use crate::agent::loop_commands::{
-    anchored_redirect_target, check_repo_exposure_command, display_path, shell_arg,
-};
+use crate::agent::loop_commands::{check_repo_exposure_command, display_path, shell_arg};
 use crate::app::agent_status::pilot_select_command;
 use crate::config::detect_python_project;
 use crate::domain::CommandSpec;
@@ -150,6 +148,8 @@ use rendering::{render_start_here_markdown, start_here_cli_summary};
 pub(crate) fn first_pr_start_here_markdown(packet: &Value) -> String {
     render_start_here_markdown(packet)
 }
+#[cfg(test)]
+use crate::agent::loop_commands::anchored_redirect_target;
 #[cfg(test)]
 use validation::validate_selected_state;
 use validation::{validate_selected_command_root, validate_start_here_packet};
@@ -1975,10 +1975,7 @@ fn top_gap_from_record(
             // other funnel redirect, so the pasted packet command reproduces
             // the validated write location from any working directory (and
             // the derived PowerShell WriteAllText form inherits the anchor).
-            shell_arg(&anchored_redirect_target(
-                &options.command_root(),
-                &options.agent_packet
-            ))
+            options.anchored_arg(&options.agent_packet)
         )),
     }
 }
@@ -3930,6 +3927,154 @@ mod tests {
         cleanup(&parent)
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn first_pr_refresh_preserves_symlink_parent_selected_root() -> Result<(), String> {
+        let parent = write_temp_root(&env::temp_dir(), "first-pr-refresh-alias")?;
+        let selected = write_temp_cargo_root(&parent, "selected")?;
+        let decoy = write_temp_cargo_root(&parent, "decoy")?;
+        init_git_repo(&selected)?;
+        init_git_repo(&decoy)?;
+        fs::create_dir(selected.join("child")).map_err(|error| error.to_string())?;
+        std::os::unix::fs::symlink(selected.join("child"), decoy.join("alias"))
+            .map_err(|error| error.to_string())?;
+        let alias = decoy.join("alias/..");
+        let physical = selected.canonicalize().map_err(|error| error.to_string())?;
+        assert_eq!(
+            alias.canonicalize().map_err(|error| error.to_string())?,
+            physical
+        );
+        assert_ne!(
+            decoy.canonicalize().map_err(|error| error.to_string())?,
+            physical
+        );
+        write_json(
+            &selected.join(DEFAULT_GAP_LEDGER),
+            ledger_with_repairable_gap(),
+        )?;
+        fs::write(decoy.join("sentinel"), b"decoy must remain unchanged")
+            .map_err(|error| error.to_string())?;
+        let mut args = first_pr_args(&crate::output::path::human_path(&alias), "proof packet");
+        first_pr(&args)?;
+        let path = selected.join("proof packet").join(START_HERE_JSON);
+        let markdown = selected.join("proof packet").join(START_HERE_MD);
+        let mut stale = read_packet(&path)?;
+        stale["selected"]["command_context"]["cwd"] =
+            json!(crate::output::path::human_path(&decoy));
+        write_json(&path, stale)?;
+        let before = fs::read(&path).map_err(|error| error.to_string())?;
+        let before_md = fs::read(&markdown).map_err(|error| error.to_string())?;
+        args.push("--check".into());
+        let error = first_pr(&args)
+            .err()
+            .ok_or("accepted stale decoy context")?;
+        assert!(error.contains("different repository directory"), "{error}");
+        let expected_root = crate::output::path::human_path(&physical);
+        let alias_options = FirstPrOptions {
+            root: crate::output::path::human_path(&alias),
+            ..FirstPrOptions::default()
+        };
+        assert_eq!(
+            alias_options.anchored_arg("artifact.json"),
+            shell_arg(&crate::output::path::human_path(
+                &physical.join("artifact.json")
+            ))
+        );
+        let generated = check_output_gap_ledger_command(&alias_options, true, true);
+        assert!(
+            generated.contains(&format!("--root {}", shell_arg(&expected_root))),
+            "{generated}"
+        );
+        for artifact in [DEFAULT_CHECK_OUTPUT, DEFAULT_GAP_LEDGER] {
+            assert!(
+                generated.contains(&shell_arg(&crate::output::path::human_path(
+                    &physical.join(artifact)
+                ))),
+                "{generated}"
+            );
+        }
+        assert!(
+            !generated.contains(&crate::output::path::human_path(&decoy)),
+            "{generated}"
+        );
+        assert_eq!(
+            alias_options.anchored_arg(&expected_root),
+            shell_arg(&expected_root)
+        );
+        let refresh = first_pr_write_command(
+            &FirstPrOptions {
+                root: expected_root.clone(),
+                base: "HEAD".into(),
+                base_explicit: true,
+                ..FirstPrOptions::default()
+            },
+            &alias.join("proof packet"),
+            false,
+        );
+        assert!(error.contains(&format!("rerun `{refresh}`")), "{error}");
+        assert_eq!(fs::read(&path).map_err(|error| error.to_string())?, before);
+        assert_eq!(
+            fs::read(&markdown).map_err(|error| error.to_string())?,
+            before_md
+        );
+        // Exercise the public write/check consumer with the exact emitted root
+        // and output arguments; this is not a shell replay of the recovery text.
+        args = first_pr_args(
+            &expected_root,
+            &crate::output::path::human_path(&alias.join("proof packet")),
+        );
+        first_pr(&args)?;
+        args.push("--check".into());
+        first_pr(&args)?;
+        assert_eq!(
+            read_packet(&path)?["selected"]["command_context"]["cwd"],
+            json!(expected_root)
+        );
+        assert_eq!(
+            fs::read(decoy.join("sentinel")).map_err(|error| error.to_string())?,
+            b"decoy must remain unchanged"
+        );
+        assert!(!decoy.join("proof packet").exists());
+        cleanup(&parent)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn first_pr_check_accepts_existing_newline_root_with_withheld_forms() -> Result<(), String> {
+        let parent = write_temp_root(&env::temp_dir(), "first-pr-newline")?;
+        let repo = write_temp_cargo_root(&parent, "selected\nroot")?;
+        init_git_repo(&repo)?;
+        write_json(&repo.join(DEFAULT_GAP_LEDGER), ledger_with_repairable_gap())?;
+        let mut args = first_pr_args(&crate::output::path::human_path(&repo), "proof packet");
+        first_pr(&args)?;
+        let path = repo.join("proof packet").join(START_HERE_JSON);
+        let packet = read_packet(&path)?;
+        let context = &packet["selected"]["command_context"];
+        assert!(context["cwd"].as_str().ok_or("missing cwd")?.contains('\n'));
+        for step in ["verify", "receipt"] {
+            assert!(context[step]["bash"].is_null());
+            assert!(context[step]["powershell"].is_null());
+            assert!(
+                context[step]["recovery"]
+                    .as_str()
+                    .ok_or("missing recovery")?
+                    .contains("multiline")
+            );
+        }
+        args.push("--check".into());
+        first_pr(&args)?;
+        assert_eq!(read_packet(&path)?, packet);
+        let mut invalid = packet.clone();
+        invalid["selected"]["command_context"]["verify"]["bash"] = json!("git status");
+        write_json(&path, invalid.clone())?;
+        let error = first_pr(&args)
+            .err()
+            .ok_or("accepted multiline root with shell form")?;
+        assert!(error.contains("requires withheld shell forms"), "{error}");
+        assert_eq!(read_packet(&path)?, invalid);
+        cleanup(&parent)
+    }
+
     #[test]
     fn first_pr_check_refuses_invalid_context_and_preserves_legacy() -> Result<(), String> {
         let repo = temp_repo("first-pr-context-legacy")?;
@@ -3945,7 +4090,7 @@ mod tests {
             (
                 "cwd",
                 json!(format!("{}\n", crate::output::path::human_path(&repo))),
-                "not a bounded absolute path",
+                "multiline directory requires withheld shell forms",
             ),
             (
                 "cwd",
@@ -5278,6 +5423,20 @@ mod tests {
         assert_eq!(
             root.canonicalize().map_err(|error| error.to_string())?,
             physical
+        );
+        let alias_options = FirstPrOptions {
+            root: root.to_str().ok_or("alias is not UTF-8")?.to_string(),
+            ..FirstPrOptions::default()
+        };
+        assert_eq!(
+            alias_options.command_root(),
+            crate::output::path::human_path(&root)
+        );
+        assert_eq!(
+            alias_options.anchored_arg("artifact.json"),
+            shell_arg(&crate::output::path::human_path(
+                &root.join("artifact.json")
+            ))
         );
         let mut ledger = ledger_with_python_repairable_gap();
         ledger["records"][0]["verification_commands"] =

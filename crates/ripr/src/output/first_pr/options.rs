@@ -1,4 +1,4 @@
-use crate::agent::loop_commands::{anchored_redirect_target, bound_root, shell_arg};
+use crate::agent::loop_commands::{bound_root, shell_arg};
 use crate::cli::unknown_argument;
 use std::path::PathBuf;
 
@@ -33,11 +33,16 @@ pub(super) struct FirstPrOptions {
 
 impl FirstPrOptions {
     /// The selected root bound once for product-generated commands (#3999):
-    /// a relative `--root` resolves against this process's working directory,
+    /// an existing root follows filesystem traversal, including symlink/`..`.
+    /// A relative `--root` resolves against this process's working directory,
     /// the same directory `repo_root` resolved it against, so a pasted command
     /// analyzes and writes the selected repository from any directory.
     pub(super) fn command_root(&self) -> String {
-        bound_root(&self.root)
+        let root = std::path::Path::new(&self.root);
+        root.canonicalize()
+            .ok()
+            .and_then(|resolved| crate::output::path::command_root_display(root, &resolved).ok())
+            .unwrap_or_else(|| bound_root(&self.root))
     }
 
     /// A first-pr artifact path rendered as a generated command argument,
@@ -48,7 +53,13 @@ impl FirstPrOptions {
     /// keeps `--root` and every path naming the same repository when a command
     /// is pasted elsewhere (#3948, #4287); an absolute path passes through.
     pub(super) fn anchored_arg(&self, path: &str) -> String {
-        shell_arg(&anchored_redirect_target(&self.root, path))
+        let path = std::path::Path::new(path);
+        let anchored = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            PathBuf::from(self.command_root()).join(path)
+        };
+        shell_arg(&crate::output::path::human_path(&anchored))
     }
 }
 
