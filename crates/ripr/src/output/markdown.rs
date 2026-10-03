@@ -759,9 +759,8 @@ fn main() -> ExitCode {
 
         let root = native_proof_root("argv")?;
         let recorder = compile_native_proof_recorder(&root)?;
-        resolve_pwsh("pwsh").map_err(|_| {
-            "pwsh is required for the native proof and was not found: failing closed instead of skipping"
-                .to_string()
+        resolve_pwsh("pwsh").map_err(|error| {
+            format!("pwsh is required for the native proof and was not found: failing closed instead of skipping: {error}")
         })?;
         let recorder_arg = shell_arg(
             recorder

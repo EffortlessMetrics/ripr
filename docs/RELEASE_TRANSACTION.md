@@ -7,6 +7,13 @@ This document is the canonical lifecycle from the release boundary through
 reopened swarm development. It sequences existing verifier contracts; it does
 not replace their semantics or make publication implicit.
 
+Before P0, merge the source control repair that consumes preflight v2 / handoff
+acceptance v2, then drain the source-writing queue under #1814. A green producer
+gate or historical v1 receipt does not qualify the selected candidate. Native
+selection (#1609) and complete-bundle acceptance (#2769) must bind that exact
+candidate, manifest, owner roster and retained packet bytes. No acceptance
+record is manufactured by the controller or inferred from CI.
+
 ## Authority and command labels
 
 `EffortlessMetrics/ripr-swarm` is development authority and preserves every

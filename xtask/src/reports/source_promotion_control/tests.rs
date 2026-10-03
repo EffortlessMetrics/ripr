@@ -1,5 +1,13 @@
 #[cfg(test)]
 pub(crate) mod source_promotion_control_tests {
+    #[test]
+    fn live_admission_requires_native_v2_before_authority() -> Result<(), String> {
+        let _guard = crate::acquire_test_cwd_read_guard();
+        let fixture = admission_snapshot_fixture("live-v1-refusal")?;
+        let reason = validate_current_admission(&fixture.options).err()
+            .ok_or_else(|| "live admission accepted historical v1 geometry".to_string())?;
+        require(reason.contains("requires preflight v2"), "live admission refused the wrong boundary")
+    }
     // #1613: each test owns one shared CWD guard through its full invocation
     // and cleanup. Controller entry points may capture ambient repository
     // paths; locking only current_repo or a fixture helper ends too early.
@@ -839,9 +847,9 @@ pub(crate) mod source_promotion_control_tests {
             Value::String(identity.preflight_sha256.clone()),
             "admission validation preflight digest",
         )?;
-        let validation_resolution = validation
-            .get_mut("resolution_manifest")
-            .ok_or_else(|| "admission validation fixture is missing resolution manifest".to_string())?;
+        let validation_resolution = validation.get_mut("resolution_manifest").ok_or_else(|| {
+            "admission validation fixture is missing resolution manifest".to_string()
+        })?;
         replace_object_field(
             validation_resolution,
             "sha256",
@@ -1629,14 +1637,16 @@ pub(crate) mod source_promotion_control_tests {
             .integration
             .receipt_digests
             .get("network_policy_integration")
-            .ok_or_else(|| "validated integration evidence is missing network policy".to_string())?;
+            .ok_or_else(|| {
+                "validated integration evidence is missing network policy".to_string()
+            })?;
         require(
             actual_network_digest != forged_network_digest,
             "forged network-policy digest must differ from validated integration evidence",
         )?;
-        let admission_receipts = admission
-            .get_mut("integration_receipts")
-            .ok_or_else(|| "admission success fixture is missing integration receipts".to_string())?;
+        let admission_receipts = admission.get_mut("integration_receipts").ok_or_else(|| {
+            "admission success fixture is missing integration receipts".to_string()
+        })?;
         replace_object_field(
             admission_receipts,
             "network_policy_integration",
@@ -1685,7 +1695,9 @@ pub(crate) mod source_promotion_control_tests {
         let refs_before = refs_digest(&fixture.repo)?;
         let failure = construct_exact_join_inner(&options, None)
             .err()
-            .ok_or_else(|| "forged admission integration digest unexpectedly constructed".to_string())?;
+            .ok_or_else(|| {
+                "forged admission integration digest unexpectedly constructed".to_string()
+            })?;
         require(
             failure.0.contains("integration") && failure.0.contains("receipt"),
             "construction must reject at the actual integration-receipt binding",
@@ -2045,7 +2057,9 @@ pub(crate) mod source_promotion_control_tests {
             &fixture.qualification_sha256,
         )
         .err()
-        .ok_or_else(|| "changed validation packet member unexpectedly passed snapshot".to_string())?;
+        .ok_or_else(|| {
+            "changed validation packet member unexpectedly passed snapshot".to_string()
+        })?;
         require(
             reason.contains("packet digest mismatch"),
             "production snapshot must reject the changed indexed member",
@@ -2072,9 +2086,8 @@ pub(crate) mod source_promotion_control_tests {
         fs::write(&report_path, changed_report)
             .map_err(|error| format!("failed to mutate admission validation member: {error}"))?;
         require_equal(
-            fs::read(fixture.options.validation_packet.join(PACKET_INDEX)).map_err(|error| {
-                format!("failed to reread admission validation index: {error}")
-            })?,
+            fs::read(fixture.options.validation_packet.join(PACKET_INDEX))
+                .map_err(|error| format!("failed to reread admission validation index: {error}"))?,
             index_before,
             "admission validation index bytes remain unchanged",
         )?;
@@ -2088,7 +2101,9 @@ pub(crate) mod source_promotion_control_tests {
             &fixture.executable_sha256,
         )
         .err()
-        .ok_or_else(|| "changed admission packet member unexpectedly passed snapshot".to_string())?;
+        .ok_or_else(|| {
+            "changed admission packet member unexpectedly passed snapshot".to_string()
+        })?;
         require(
             reason.contains("packet digest mismatch"),
             "admission snapshot must reject the changed indexed member",
@@ -2272,7 +2287,9 @@ pub(crate) mod source_promotion_control_tests {
             &fixture.qualification_sha256,
         )
         .err()
-        .ok_or_else(|| "changed typed integration receipt unexpectedly passed snapshot".to_string())?;
+        .ok_or_else(|| {
+            "changed typed integration receipt unexpectedly passed snapshot".to_string()
+        })?;
         require(
             reason.contains("integration receipt digest mismatch"),
             "production snapshot must reject the changed typed integration receipt",
@@ -2786,7 +2803,12 @@ pub(crate) mod source_promotion_control_tests {
             Some(identity.source_parent.as_str()),
             None,
         )?;
-        let mismatched_local = publish_candidate_ref_inner(&options, None);
+        let (native_reason, _, native_state) = publish_candidate_ref_inner(&options, None)
+            .err().ok_or_else(|| "live publication accepted historical construction packet".to_string())?;
+        require(native_reason.contains("requires retained UTF-8 native acceptance"), "live publication refused the wrong boundary")?;
+        require(native_state.local_ref_attempts == 0 && native_state.remote_push_attempts == 0,
+            "missing native acceptance must refuse before any publication attempt")?;
+        let mismatched_local = publish_historical_candidate_ref_for_fixture(&options, None);
         require(
             mismatched_local.as_ref().is_err_and(|failure| {
                 failure.2.local_ref_attempts == 0 && failure.2.remote_push_attempts == 0
@@ -2836,7 +2858,8 @@ pub(crate) mod source_promotion_control_tests {
             .is_err(),
             "reconciliation must reject an unrelated observed join identity",
         )?;
-        let mismatched_journal = publish_candidate_ref_inner(&options, Some(&unrelated_context));
+        let mismatched_journal =
+            publish_historical_candidate_ref_for_fixture(&options, Some(&unrelated_context));
         require(
             mismatched_journal.as_ref().is_err_and(|failure| {
                 failure.2.local_ref_attempts == 0 && failure.2.remote_push_attempts == 0
@@ -3048,13 +3071,15 @@ pub(crate) mod source_promotion_control_tests {
                         &format!("{raced_join}:{raced_target}"),
                     ],
                 )?;
-                run_guarded_candidate_push(runner_options, lease, refspec)
+                run_candidate_push_process(runner_options, lease, refspec)
             },
             read_remote_ref,
             read_optional_local_ref,
         )
         .err()
-        .ok_or_else(|| "up-to-date race unexpectedly received publication attribution".to_string())?;
+        .ok_or_else(|| {
+            "up-to-date race unexpectedly received publication attribution".to_string()
+        })?;
         require(
             no_op_race
                 .0
@@ -3219,7 +3244,7 @@ pub(crate) mod source_promotion_control_tests {
             &options,
             Some(&context),
             move |runner_options, lease, refspec| {
-                let attributed = run_guarded_candidate_push(runner_options, lease, refspec)?;
+                let attributed = run_candidate_push_process(runner_options, lease, refspec)?;
                 require_equal(
                     (attributed.0, attributed.1),
                     (true, Some(true)),
@@ -3240,7 +3265,9 @@ pub(crate) mod source_promotion_control_tests {
             read_optional_local_ref,
         )
         .err()
-        .ok_or_else(|| "attributed update followed by remote movement unexpectedly published".to_string())?;
+        .ok_or_else(|| {
+            "attributed update followed by remote movement unexpectedly published".to_string()
+        })?;
         require_equal(
             attributed_then_moved.2.push_process_succeeded,
             Some(true),
@@ -3306,7 +3333,7 @@ pub(crate) mod source_promotion_control_tests {
         let unavailable_local = publish_candidate_ref_inner_with_publication_runners(
             &options,
             Some(&context),
-            run_guarded_candidate_push,
+            run_candidate_push_process,
             read_remote_ref,
             |_repo, _reference| Err("injected post-push local observation failure".to_string()),
         )
@@ -3400,7 +3427,7 @@ pub(crate) mod source_promotion_control_tests {
                     Some(&raced_commit),
                     Some(&raced_join),
                 )?;
-                run_guarded_candidate_push(runner_options, lease, refspec)
+                run_candidate_push_process(runner_options, lease, refspec)
             },
             read_remote_ref,
             read_optional_local_ref,
@@ -3432,7 +3459,8 @@ pub(crate) mod source_promotion_control_tests {
             &["push", "origin", &format!(":{}", evidence.candidate_ref)],
         )?;
         let (published, publication_state) =
-            publish_candidate_ref_inner(&options, Some(&context)).map_err(|failure| failure.0)?;
+            publish_historical_candidate_ref_for_fixture(&options, Some(&context))
+                .map_err(|failure| failure.0)?;
         require_equal(
             published.join_commit.as_str(),
             join.as_str(),
@@ -3476,7 +3504,7 @@ pub(crate) mod source_promotion_control_tests {
             expected_absent: false,
             ..options.clone()
         };
-        let moved_main = publish_candidate_ref_inner(&moved_main_options, None);
+        let moved_main = publish_historical_candidate_ref_for_fixture(&moved_main_options, None);
         require(
             moved_main.as_ref().is_err_and(|failure| {
                 failure.0.contains("source main moved")
@@ -3486,7 +3514,7 @@ pub(crate) mod source_promotion_control_tests {
             "actual refs/heads/main movement must reject before publication mutation",
         )?;
 
-        let second = publish_candidate_ref_inner(&options, None);
+        let second = publish_historical_candidate_ref_for_fixture(&options, None);
         require(
             second
                 .as_ref()
@@ -3567,7 +3595,7 @@ pub(crate) mod source_promotion_control_tests {
             expected_absent: false,
             out: repo.join("publication-output"),
         };
-        let failure = publish_candidate_ref_inner(&options, None)
+        let failure = publish_historical_candidate_ref_for_fixture(&options, None)
             .err()
             .ok_or_else(|| "non-fast-forward fixture unexpectedly published".to_string())?;
         let (reason, rejected_evidence, state) = failure;
@@ -4144,17 +4172,15 @@ pub(crate) mod source_promotion_control_tests {
                 out.to_string_lossy().into_owned(),
             ];
             let result = match subcommand {
-                SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND => {
-                    write_trusted_builder_receipt(&args)
-                }
+                SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND => write_trusted_builder_receipt(&args),
                 SOURCE_PROMOTION_ADMIT_RESOLVED_TREE_SUBCOMMAND => admit_resolved_tree(&args),
                 SOURCE_PROMOTION_CONSTRUCT_EXACT_JOIN_SUBCOMMAND => construct_exact_join(&args),
                 SOURCE_PROMOTION_PUBLISH_CANDIDATE_REF_SUBCOMMAND => publish_candidate_ref(&args),
                 _ => return Err("test command table contains an unknown subcommand".to_string()),
             };
-            let error = result.err().ok_or_else(|| {
-                format!("malformed {subcommand} command unexpectedly succeeded")
-            })?;
+            let error = result
+                .err()
+                .ok_or_else(|| format!("malformed {subcommand} command unexpectedly succeeded"))?;
             require(
                 error.contains("overlaps protected"),
                 format!("malformed {subcommand} must fail on protected output: {error}"),
@@ -4192,8 +4218,9 @@ pub(crate) mod source_promotion_control_tests {
             )?;
         }
         #[cfg(unix)]
-        std::os::unix::fs::symlink(&real, &alias)
-            .map_err(|error| format!("failed to create protected input directory alias: {error}"))?;
+        std::os::unix::fs::symlink(&real, &alias).map_err(|error| {
+            format!("failed to create protected input directory alias: {error}")
+        })?;
         #[cfg(not(any(windows, unix)))]
         return root.cleanup();
 

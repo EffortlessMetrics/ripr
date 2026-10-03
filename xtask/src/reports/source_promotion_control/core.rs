@@ -340,6 +340,24 @@ pub(crate) fn source_promotion_control(args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(super) fn run_source_owned_fixture(
+    context: &super::source_promotion_admission_fixture::OwnedFixtureContext,
+    args: &[String],
+) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some(SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND) => {
+            write_trusted_builder_receipt_in(args, Some(context))
+        }
+        Some(SOURCE_PROMOTION_ADMIT_RESOLVED_TREE_SUBCOMMAND) => {
+            admit_resolved_tree_in(args, Some(context))
+        }
+        Some(SOURCE_PROMOTION_CONSTRUCT_EXACT_JOIN_SUBCOMMAND) => {
+            construct_exact_join_in(args, Some(context))
+        }
+        _ => Err("source-owned synthetic context cannot dispatch publication".into()),
+    }
+}
+
 fn control_usage() -> String {
     [
         "usage:",

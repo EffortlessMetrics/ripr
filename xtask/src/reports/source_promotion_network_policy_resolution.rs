@@ -161,6 +161,7 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
     let preflight: Value = serde_json::from_slice(&preflight_bytes)
         .map_err(|error| format!("failed to parse preflight JSON: {error}"))?;
     validate_preflight(inputs, &preflight)?;
+    super::source_promotion_acceptance::revalidate(&preflight, Path::new("."))?;
     validate_git_identity("source", &inputs.source, "commit")?;
     validate_git_identity("swarm", &inputs.swarm, "commit")?;
     validate_git_identity("preview tree", &inputs.preview_tree, "tree")?;
@@ -405,7 +406,13 @@ fn generate(inputs: &Inputs) -> Result<(), String> {
 }
 
 fn validate_preflight(inputs: &Inputs, preflight: &Value) -> Result<(), String> {
-    expect_json_string(preflight, "schema", "ripr.source_promotion_preflight.v1")?;
+    match preflight.get("schema").and_then(Value::as_str) {
+        Some("ripr.source_promotion_preflight.v1") => {} // historical geometry only
+        Some("ripr.source_promotion_preflight.v2") => {
+            super::source_promotion_acceptance::validate(preflight)?
+        }
+        _ => return Err("unsupported P0 preflight schema".into()),
+    }
     expect_json_string(preflight, "source_parent", &inputs.source)?;
     expect_json_string(preflight, "source_main", &inputs.source)?;
     expect_json_string(preflight, "swarm_parent", &inputs.swarm)?;

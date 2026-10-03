@@ -280,6 +280,15 @@ authority. The live profile rejects synthetic fixture selection. The bounded
 their `fixture_identity` is emitted by the production harness and cannot be
 chosen as an arbitrary command or path.
 
+An admitted `positive_synthetic` packet proves source-owned fixture geometry
+only. Its private in-process controller uses the generated fixture identity,
+the verified indexed input closure, and the canonically contained fixture
+repository. It grants no current native acceptance authority. Synthetic
+construction omits retained native acceptance bytes; public live validation,
+admission, construction, and publication continue to require genuine v2 native
+acceptance. Public live controller commands expose no geometry override; only
+the closed source-owned positive fixture workflow can invoke it.
+
 The live harness fetches the exact carrier commit into its runner-owned clone
 and validates the commit header before invoking the controller. Possession of
 either parent alone is insufficient to materialize or admit a combined
@@ -325,7 +334,7 @@ produces the final normalized `workflow-disposition.json`,
 `workflow-disposition.md`, and `packet-index.json`; its available final packet
 also uploads with `if: always()`. `source-promotion
 verify-admission-workflow` checks the packet,
-and `source-promotion enforce-admission-workflow --expected-status admitted`
+and `source-promotion enforce-admission-workflow --workspace-root <runner-owned-root> --expected-status admitted`
 is the sole terminal green predicate. The normalized disposition schema is
 `ripr.source_promotion_admission_workflow.v1`, the packet schema is
 `ripr.source_promotion_admission_workflow_packet.v1`, and the only statuses are

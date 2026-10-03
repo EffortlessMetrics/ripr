@@ -6633,6 +6633,10 @@ id = "RIPR-SPEC-0148"
 name = "exact source-promotion preflight and verification receipt"
 spec = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
 tests = [
+  "xtask/src/reports/source_promotion_acceptance/tests.rs::complete_v2_replays_and_refetches_all_three_native_owners",
+  "xtask/src/reports/source_promotion_acceptance/tests.rs::retained_raw_inputs_discriminate_complete_projection_tampering",
+  "xtask/src/reports/source_promotion_acceptance/tests.rs::fresh_native_response_cannot_substitute_body_issuer_location_or_author",
+  "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
   "xtask/src/reports/source_promotion_verify.rs::tests::producer_receipt_and_empty_ancestry_serialization_are_stable",
   "xtask/src/reports/source_promotion.rs::tests::requires_an_immutable_swarm_ref",
   "xtask/src/reports/source_promotion.rs::tests::rejects_a_branch_or_wrongly_named_swarm_ref",
@@ -6652,6 +6656,9 @@ fixtures = [
   "fixtures/source_promotion/SPEC.md",
 ]
 code = [
+  "xtask/src/reports/source_promotion_acceptance.rs",
+  "xtask/src/reports/source_promotion_acceptance/native.rs",
+  "xtask/src/reports/source_promotion_acceptance/material.rs",
   "xtask/src/reports/source_promotion_verify.rs",
   "xtask/src/reports/source_promotion.rs",
   "xtask/src/command.rs",

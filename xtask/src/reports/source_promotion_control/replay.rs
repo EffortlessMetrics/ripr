@@ -424,6 +424,8 @@ fn validate_rejected_admission_prefix(
     Ok(())
 }
 
+// Historical packet replay verifies retained geometry. Current authority is
+// separately revalidated by the workflow's enforce transition.
 pub(super) fn replay_admitted_closure(
     input: &AdmissionClosureReplayInput<'_>,
 ) -> Result<ReplayedControllerReceipts, String> {

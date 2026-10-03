@@ -275,6 +275,7 @@ jobs:
         id: verify
         if: steps.inputs.outcome == 'success' && steps.live-governance.outcome == 'success'
         env:
+          GH_TOKEN: ${{ github.token }}
           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.inputs.outputs.resolution_manifest }}
           LIVE_TAG: ${{ steps.live-governance.outputs.tag }}
@@ -595,6 +596,7 @@ jobs:
 
       - name: Verify exact J reaches merged source main
         env:
+          GH_TOKEN: ${{ github.token }}
           PREFLIGHT: ${{ steps.control.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.control.outputs.resolution_manifest }}
           JOIN_HEAD: ${{ inputs.join_head }}

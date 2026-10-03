@@ -10,6 +10,17 @@ merged `ripr-swarm#3102` contract.
 
 ## Behavior
 
+Current source consumers require preflight v2 and handoff acceptance v2. The
+handoff includes lowercase-hex exact original manifest, complete bundle and
+referenced packet bytes. Their raw digests and typed projections must agree
+with fresh native #1609/#2766/#2769 decisions and the actual candidate tree.
+Historical v1 geometry replay cannot supply current native acceptance. The
+resolved-tree validator may run disposable v1 geometry diagnostics to retain
+the J5 negative control, but an all-green diagnostic run must still pass the
+final native v2 gate before it can receive a validated result. Current v2
+inputs require native rereads before diagnostics and before that result. See
+`docs/SOURCE_PROMOTION_PREFLIGHT.md` for bounds and transition behavior.
+
 The `ripr.source_promotion_preflight.v1` receipt binds exact source and swarm
 parents, the merge base, immutable swarm-ref resolution, repository identity,
 separately named all-reachable and first-parent ancestry counts and ordered
