@@ -10826,6 +10826,38 @@ fn routed_rust_workflow_contract_rejects_missing_receipt_or_route_assertion() ->
 }
 
 #[test]
+fn source_routed_rust_ignored_labels_cannot_replace_proof() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    for (snippet, expected) in [
+        (
+            "if: github.event_name != 'pull_request' || contains(fromJSON",
+            "proof-event guard",
+        ),
+        ("'-label-ignore'", "concurrency isolation"),
+        (
+            "'Ripr Rust Small Ignored Label Event'",
+            "required result name",
+        ),
+        (
+            "if: always() && (github.event_name != 'pull_request'",
+            "proof-event guard",
+        ),
+    ] {
+        let mutated = workflow.replacen(snippet, "REMOVED_CONTROL", 1);
+        let violations = routed_rust_workflow_contract_violations(&mutated, None, None);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains(expected))
+        {
+            return Err(format!(
+                "removal of {snippet} was not rejected: {violations:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn routed_rust_workflow_contract_rejects_self_hosted_reintroduction() {
     // ripr#1446: self-hosted runner authority belongs to ripr-swarm. The source
     // contract must reject any attempt to bring it back, including a lane that is

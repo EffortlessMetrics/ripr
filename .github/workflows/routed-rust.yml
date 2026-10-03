@@ -26,7 +26,7 @@ permissions:
 # Cancelling on `synchronize` would destroy a nearly finished proof every time a
 # branch is pushed, which is the opposite of the repository's CI economics rule.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci')) && '-label-ignore' || '' }}
   cancel-in-progress: false
 
 env:
@@ -34,6 +34,8 @@ env:
 
 jobs:
   route:
+    # Unrelated label events cannot launch proof or replace pending proof.
+    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')
     name: Route Ripr Rust Small
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -119,6 +121,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   detect-docs-only:
+    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')
     name: Detect Docs-Only Surface
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -553,9 +556,10 @@ jobs:
           retention-days: 5
 
   result:
-    name: Ripr Rust Small Result
+    # Even a skipped job must never use the required context on ignored events.
+    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci')) && 'Ripr Rust Small Ignored Label Event' || 'Ripr Rust Small Result' }}
     needs: [route, detect-docs-only, rust-github, docs-gate]
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -716,3 +720,13 @@ jobs:
           name: ripr-routed-rust-result-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/ripr/reports/routed-rust-result.json
           if-no-files-found: error
+
+  ignored-label:
+    name: Summarize Ignored Rust Label Event
+    if: github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Retain the non-proof disposition
+        run: |
+          echo "Unrelated label event: no Rust proof started; required result not posted." >> "$GITHUB_STEP_SUMMARY"

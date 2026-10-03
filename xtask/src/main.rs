@@ -7680,6 +7680,9 @@ fn routed_rust_workflow_contract_violations(
     routed_rust_workflow_contract_violations_with_reusable(workflow, None, settings, lane_whitelist)
 }
 
+const SOURCE_RUST_EVENT_GUARD: &str = r#"github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')"#;
+const SOURCE_RUST_IGNORED_EVENT: &str = "github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci'))";
+
 fn routed_rust_workflow_contract_violations_with_reusable(
     workflow: &str,
     _reusable_workflow: Option<&str>,
@@ -7687,6 +7690,36 @@ fn routed_rust_workflow_contract_violations_with_reusable(
     lane_whitelist: Option<&str>,
 ) -> Vec<String> {
     let mut violations = Vec::new();
+
+    for job in ["route", "detect-docs-only"] {
+        if !routed_rust_job_block_any(workflow, job, |line| {
+            line.trim() == format!("if: {SOURCE_RUST_EVENT_GUARD}")
+        }) {
+            violations.push(format!(
+                "source routed Rust job `{job}` lacks the exact proof-event guard"
+            ));
+        }
+    }
+    if !routed_rust_job_block_any(workflow, "result", |line| {
+        line.trim() == format!("if: always() && ({SOURCE_RUST_EVENT_GUARD})")
+    }) {
+        violations.push("source routed Rust result lacks the exact proof-event guard".to_string());
+    }
+    let result_name = format!(
+        "name: ${{{{ {SOURCE_RUST_IGNORED_EVENT} && 'Ripr Rust Small Ignored Label Event' || 'Ripr Rust Small Result' }}}}"
+    );
+    if !routed_rust_job_block_any(workflow, "result", |line| line.trim() == result_name) {
+        violations.push(
+            "source ignored label event must not occupy the required result name".to_string(),
+        );
+    }
+    let isolation = format!("${{{{ {SOURCE_RUST_IGNORED_EVENT} && '-label-ignore' || '' }}}}");
+    if !workflow
+        .lines()
+        .any(|line| line.trim_start().starts_with("group:") && line.ends_with(&isolation))
+    {
+        violations.push("source ignored label event lacks concurrency isolation".to_string());
+    }
 
     // ripr#1446: the source repository proves its own pull requests on
     // GitHub-hosted runners. Self-hosted capacity is `ripr-swarm` authority. This
@@ -7707,7 +7740,7 @@ fn routed_rust_workflow_contract_violations_with_reusable(
             "org runner query negative assertion",
             "org_runner_query_attempted=false",
         ),
-        ("normalized result job", "name: Ripr Rust Small Result"),
+        ("normalized result job", "Ripr Rust Small Result"),
         (
             "hosted rust route predicate",
             "needs.route.outputs.route == 'github_hosted_rust'",
