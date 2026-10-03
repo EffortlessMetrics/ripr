@@ -9,8 +9,16 @@ const { spawn } = require("node:child_process");
 const LAUNCHER_NAME = "@effortlessmetrics/ripr";
 const NATIVE_SCHEMA_VERSION = 1;
 const PRODUCT_NAME = "ripr";
-const DISALLOWED_LIFECYCLE_SCRIPTS = ["preinstall", "install", "postinstall", "prepare"];
-const SIGNALS_TO_FORWARD = ["SIGINT", "SIGTERM", "SIGHUP"];
+const DISALLOWED_LIFECYCLE_SCRIPTS = [
+  "preinstall",
+  "install",
+  "postinstall",
+  "preprepare",
+  "prepare",
+  "postprepare",
+];
+const SIGNALS_TO_FORWARD = ["SIGTERM"];
+const SIGNALS_TO_OBSERVE = ["SIGINT", "SIGHUP"];
 
 class LauncherError extends Error {
   constructor(code, message, cause) {
@@ -266,20 +274,34 @@ function runNative(executablePath, argv, options = {}) {
     windowsHide: false,
   });
 
-  const forwarded = new Map();
+  const signalHandlers = new Map();
+  let receivedSignal = null;
+  const rememberSignal = (signal) => {
+    if (receivedSignal === null) {
+      receivedSignal = signal;
+    }
+  };
   if (options.forwardSignals !== false && process.platform !== "win32") {
     for (const signal of SIGNALS_TO_FORWARD) {
       const handler = () => {
+        rememberSignal(signal);
         if (!child.killed) {
           child.kill(signal);
         }
       };
-      forwarded.set(signal, handler);
+      signalHandlers.set(signal, handler);
+      process.on(signal, handler);
+    }
+    for (const signal of SIGNALS_TO_OBSERVE) {
+      const handler = () => {
+        rememberSignal(signal);
+      };
+      signalHandlers.set(signal, handler);
       process.on(signal, handler);
     }
   }
   const cleanup = () => {
-    for (const [signal, handler] of forwarded) {
+    for (const [signal, handler] of signalHandlers) {
       process.removeListener(signal, handler);
     }
   };
@@ -291,8 +313,9 @@ function runNative(executablePath, argv, options = {}) {
     });
     child.once("exit", (code, signal) => {
       cleanup();
-      if (signal) {
-        resolve({ code: null, signal });
+      const effectiveSignal = receivedSignal || signal;
+      if (effectiveSignal) {
+        resolve({ code: null, signal: effectiveSignal });
       } else {
         resolve({ code: typeof code === "number" ? code : 1, signal: null });
       }

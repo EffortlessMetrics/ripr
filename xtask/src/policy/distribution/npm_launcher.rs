@@ -8,6 +8,9 @@ pub(super) const MANIFEST_PATH: &str = "packaging/npm/launcher/package.json";
 pub(super) const BIN_PATH: &str = "packaging/npm/launcher/bin/ripr.cjs";
 pub(super) const LIBRARY_PATH: &str = "packaging/npm/launcher/lib/launcher.cjs";
 pub(super) const TEST_PATH: &str = "packaging/npm/launcher/test/launcher.test.cjs";
+pub(super) const TEST_RUNNER_PATH: &str = "packaging/npm/launcher/test/run-tests.test.cjs";
+pub(super) const TEST_RUNNER_TEXT: &str =
+    include_str!("../../../../packaging/npm/launcher/test/run-tests.test.cjs");
 pub(super) const LICENSE_APACHE_PATH: &str = "packaging/npm/launcher/LICENSE-APACHE";
 pub(super) const LICENSE_MIT_PATH: &str = "packaging/npm/launcher/LICENSE-MIT";
 
@@ -18,7 +21,14 @@ const EXPECTED_FILES: &[&str] = &[
     "bin/ripr.cjs",
     "lib/launcher.cjs",
 ];
-const FORBIDDEN_LIFECYCLE_SCRIPTS: &[&str] = &["preinstall", "install", "postinstall", "prepare"];
+const FORBIDDEN_LIFECYCLE_SCRIPTS: &[&str] = &[
+    "preinstall",
+    "install",
+    "postinstall",
+    "preprepare",
+    "prepare",
+    "postprepare",
+];
 
 #[derive(Debug, Deserialize)]
 struct LauncherManifest {
@@ -164,6 +174,17 @@ pub(super) fn validate_launcher(
             ));
         }
     }
+    check_equal(
+        path,
+        "scripts.test",
+        manifest
+            .scripts
+            .get("test")
+            .map(String::as_str)
+            .unwrap_or_default(),
+        "node test/run-tests.test.cjs",
+        violations,
+    );
 
     if manifest.ripr.schema_version != 1 {
         violations.push(format!(
@@ -271,6 +292,14 @@ pub(super) fn validate_launcher_sources(
             "process.exitCode = signalExitCode",
             "a consumed child signal must still produce a nonzero launcher exit",
         ),
+        (
+            "SIGNALS_TO_OBSERVE",
+            "terminal process-group signals must be observed without duplicate forwarding",
+        ),
+        (
+            "const effectiveSignal = receivedSignal || signal",
+            "the first observed termination signal must survive a graceful child exit",
+        ),
     ] {
         if !library_text.contains(needle) {
             violations.push(format!("{library_path}: {explanation}; missing `{needle}`"));
@@ -285,17 +314,64 @@ pub(super) fn validate_launcher_sources(
             }
         }
     }
-    for required_test in [
-        "native_dependency_version_mismatch",
-        "native_executable_symlink",
-        "native_executable_not_executable",
-        "PATH-FALLBACK",
-        "RIPR_UNKNOWN_SIGNAL",
-        "npm package contents are explicit",
+    validate_test_runner(
+        TEST_RUNNER_PATH,
+        TEST_RUNNER_TEXT,
+        test_path,
+        test_text,
+        violations,
+    );
+}
+
+const REQUIRED_EXECUTED_TESTS: &[&str] = &[
+    "rejects lifecycle scripts, version ranges, and dependency drift",
+    "rejects missing, wrong-version, wrong-target, traversal, symlink, directory, and non-executable payloads",
+    "forwards direct SIGTERM to native child exactly once and re-emits signal",
+    "retains the first observed signal when a supervisor escalates SIGINT to SIGTERM",
+    "observes terminal SIGINT and SIGHUP without forwarding duplicates to the native child",
+    "source bin missing-package failure never falls back to PATH or writes stdout",
+    "npm package contents are explicit and exclude tests and build residue",
+];
+
+pub(super) fn validate_test_runner(
+    runner_path: &str,
+    runner_text: &str,
+    test_path: &str,
+    test_text: &str,
+    violations: &mut Vec<String>,
+) {
+    for (needle, explanation) in [
+        (
+            "--test-reporter=tap",
+            "runner must consume a machine-readable test report",
+        ),
+        (
+            "result.status !== 0",
+            "runner must propagate the Node test process failure",
+        ),
+        (
+            "missing.length > 0",
+            "runner must fail when a required named control did not pass",
+        ),
+        (
+            "SKIP|TODO",
+            "runner must not count skipped or todo controls as passed",
+        ),
     ] {
+        if !runner_text.contains(needle) {
+            violations.push(format!("{runner_path}: {explanation}; missing `{needle}`"));
+        }
+    }
+    for required_test in REQUIRED_EXECUTED_TESTS {
+        let quoted = format!("\"{required_test}\"");
+        if !runner_text.contains(&quoted) {
+            violations.push(format!(
+                "{runner_path}: required executed-control admission is missing `{required_test}`"
+            ));
+        }
         if !test_text.contains(required_test) {
             violations.push(format!(
-                "{test_path}: launcher negative proof is missing `{required_test}`"
+                "{test_path}: required launcher control is missing `{required_test}`"
             ));
         }
     }

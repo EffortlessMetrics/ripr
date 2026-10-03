@@ -418,8 +418,8 @@ fn npm_launcher_platform_and_install_script_drift_are_rejected() -> Result<(), S
     );
 
     let with_install = NPM_MANIFEST_TEXT.replace(
-        "\"test\": \"node --test test/*.test.cjs\"",
-        "\"test\": \"node --test test/*.test.cjs\",\n    \"install\": \"curl example.invalid\"",
+        "\"test\": \"node test/run-tests.test.cjs\"",
+        "\"test\": \"node test/run-tests.test.cjs\",\n    \"install\": \"curl example.invalid\"",
     );
     let violations = evaluated(CONTRACT_TEXT, WORKSPACE_TEXT, CRATE_TEXT, &with_install)?;
     assert!(
@@ -440,11 +440,14 @@ fn npm_launcher_source_guards_reject_removed_safety_rails() -> Result<(), String
         npm_launcher::LIBRARY_PATH,
         &NPM_LIBRARY_TEXT
             .replace("shell: false", "shell: true")
-            .replace("process.exitCode = signalExitCode", "process.exitCode = 0"),
+            .replace("process.exitCode = signalExitCode", "process.exitCode = 0")
+            .replace("SIGNALS_TO_OBSERVE", "removed-observer")
+            .replace(
+                "const effectiveSignal = receivedSignal || signal",
+                "const effectiveSignal = signal",
+            ),
         npm_launcher::TEST_PATH,
-        &NPM_TEST_TEXT
-            .replace("PATH-FALLBACK", "removed-control")
-            .replace("RIPR_UNKNOWN_SIGNAL", "removed-signal-control"),
+        NPM_TEST_TEXT,
         &mut violations,
     );
     assert!(
@@ -455,18 +458,61 @@ fn npm_launcher_source_guards_reject_removed_safety_rails() -> Result<(), String
     assert!(
         violations
             .iter()
-            .any(|violation| violation.contains("PATH-FALLBACK"))
-    );
-    assert!(
-        violations
-            .iter()
             .any(|violation| violation.contains("signalExitCode"))
     );
     assert!(
         violations
             .iter()
-            .any(|violation| violation.contains("RIPR_UNKNOWN_SIGNAL"))
+            .any(|violation| violation.contains("terminal process-group signals"))
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|violation| violation.contains("first observed termination signal"))
     );
     assert!(!contract.npm.install_scripts);
     Ok(())
+}
+
+#[test]
+fn npm_launcher_rejects_all_install_time_lifecycle_hooks() -> Result<(), String> {
+    for script in [
+        "preinstall",
+        "install",
+        "postinstall",
+        "preprepare",
+        "prepare",
+        "postprepare",
+    ] {
+        let anchor = "\"test\": \"node test/run-tests.test.cjs\"";
+        let replacement = format!("{anchor},\n    \"{script}\": \"node should-not-run.cjs\"");
+        let mutated = NPM_MANIFEST_TEXT.replace(anchor, &replacement);
+        let violations = evaluated(CONTRACT_TEXT, WORKSPACE_TEXT, CRATE_TEXT, &mutated)?;
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains(&format!("scripts.{script} is forbidden")) }),
+            "{script}: {violations:#?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn npm_launcher_guarded_runner_rejects_missing_controls() {
+    let mut violations = Vec::new();
+    npm_launcher::validate_test_runner(
+        npm_launcher::TEST_RUNNER_PATH,
+        &npm_launcher::TEST_RUNNER_TEXT.replace(
+            "source bin missing-package failure never falls back to PATH or writes stdout",
+            "removed required control",
+        ),
+        npm_launcher::TEST_PATH,
+        NPM_TEST_TEXT,
+        &mut violations,
+    );
+    assert!(violations.iter().any(|violation| {
+        violation.contains("required executed-control admission")
+            && violation.contains("source bin missing-package")
+    }));
 }

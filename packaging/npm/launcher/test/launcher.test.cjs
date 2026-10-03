@@ -5,7 +5,7 @@ const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { createRequire } = require("node:module");
 
@@ -72,6 +72,99 @@ function cleanup(root) {
   fs.rmSync(root, { recursive: true, force: true });
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForFile(filePath, timeoutMilliseconds = 5000) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, "utf8");
+    }
+    await delay(20);
+  }
+  throw new Error(`timed out waiting for ${filePath}`);
+}
+
+function waitForExit(child, timeoutMilliseconds = 10000) {
+  return new Promise((resolve, reject) => {
+    const stdout = [];
+    const stderr = [];
+    child.stdout?.on("data", (chunk) => stdout.push(chunk));
+    child.stderr?.on("data", (chunk) => stderr.push(chunk));
+    const timer = setTimeout(() => {
+      reject(new Error(`timed out waiting for launcher process ${child.pid}`));
+    }, timeoutMilliseconds);
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      resolve({
+        code,
+        signal,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+      });
+    });
+  });
+}
+
+function signalProbe(root, signalName) {
+  const script = path.join(root, `${signalName}-signal-probe.cjs`);
+  fs.writeFileSync(
+    script,
+    `"use strict";\nconst fs = require("node:fs");\nconst signal = process.env.RIPR_SIGNAL_NAME;\nconst ready = process.env.RIPR_SIGNAL_READY;\nconst receipt = process.env.RIPR_SIGNAL_RECEIPT;\nlet count = 0;\nprocess.on(signal, () => {\n  count += 1;\n  fs.writeFileSync(receipt, JSON.stringify({ signal, count, pid: process.pid }));\n  if (count === 1) {\n    setTimeout(() => process.exit(0), 150);\n  }\n});\nfs.writeFileSync(ready, String(process.pid));\nsetInterval(() => {}, 1000);\n`,
+  );
+  return script;
+}
+
+function spawnSignalLauncher(fixture, signalName) {
+  const ready = path.join(fixture.root, `${signalName}-ready.txt`);
+  const receipt = path.join(fixture.root, `${signalName}-receipt.json`);
+  const bin = path.join(fixture.launcherRoot, "bin", "ripr.cjs");
+  const child = spawn(process.execPath, [bin, signalProbe(fixture.root, signalName)], {
+    cwd: fixture.root,
+    detached: true,
+    env: {
+      ...process.env,
+      RIPR_SIGNAL_NAME: signalName,
+      RIPR_SIGNAL_READY: ready,
+      RIPR_SIGNAL_RECEIPT: receipt,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return { child, ready, receipt };
+}
+
+function killProcessGroup(pid, signal = "SIGKILL") {
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    if (error.code !== "ESRCH") {
+      throw error;
+    }
+  }
+}
+
+async function assertProcessGone(pid, timeoutMilliseconds = 3000) {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") {
+        return;
+      }
+      throw error;
+    }
+    await delay(20);
+  }
+  throw new Error(`process ${pid} remained alive after launcher termination`);
+}
+
 function hostPlatformOrSkip(t) {
   try {
     return launcher.selectPlatform(launcher.validateLauncherManifest(manifest).platforms);
@@ -95,8 +188,21 @@ test("validates the exact five-target contract", () => {
 });
 
 test("rejects lifecycle scripts, version ranges, and dependency drift", () => {
-  const withInstall = launcherManifest({ scripts: { ...manifest.scripts, install: "curl example.invalid" } });
-  assert.throws(() => launcher.validateLauncherManifest(withInstall), { code: "install_script_forbidden" });
+  for (const scriptName of [
+    "preinstall",
+    "install",
+    "postinstall",
+    "preprepare",
+    "prepare",
+    "postprepare",
+  ]) {
+    const mutated = launcherManifest({
+      scripts: { ...manifest.scripts, [scriptName]: "node should-not-run.cjs" },
+    });
+    assert.throws(() => launcher.validateLauncherManifest(mutated), {
+      code: "install_script_forbidden",
+    });
+  }
 
   const ranged = launcherManifest({
     optionalDependencies: { ...manifest.optionalDependencies, [platformRow().package]: "^0.11.0" },
@@ -257,6 +363,104 @@ test("launch sets a nonzero exit code before forwarding a child signal", async (
     cleanup(fixture.root);
   }
 });
+
+test(
+  "forwards direct SIGTERM to native child exactly once and re-emits signal",
+  { skip: process.platform === "win32", timeout: 15000 },
+  async () => {
+    const fixture = nativeFixture();
+    const { child, ready, receipt } = spawnSignalLauncher(fixture, "SIGTERM");
+    let nativePid;
+    try {
+      nativePid = Number.parseInt(await waitForFile(ready), 10);
+      assert.ok(Number.isInteger(nativePid));
+      const exitPromise = waitForExit(child);
+      process.kill(child.pid, "SIGTERM");
+      const exit = await exitPromise;
+      await waitForFile(receipt);
+      await delay(250);
+      assert.deepEqual(JSON.parse(fs.readFileSync(receipt, "utf8")), {
+        signal: "SIGTERM",
+        count: 1,
+        pid: nativePid,
+      });
+      assert.equal(exit.signal, "SIGTERM");
+      assert.equal(exit.stdout, "");
+      assert.equal(exit.stderr, "");
+      await assertProcessGone(nativePid);
+    } finally {
+      killProcessGroup(child.pid);
+      cleanup(fixture.root);
+    }
+  },
+);
+
+test(
+  "retains the first observed signal when a supervisor escalates SIGINT to SIGTERM",
+  { skip: process.platform === "win32", timeout: 15000 },
+  async () => {
+    const fixture = nativeFixture();
+    const { child, ready, receipt } = spawnSignalLauncher(fixture, "SIGTERM");
+    let nativePid;
+    try {
+      nativePid = Number.parseInt(await waitForFile(ready), 10);
+      assert.ok(Number.isInteger(nativePid));
+      const exitPromise = waitForExit(child);
+      process.kill(child.pid, "SIGINT");
+      await delay(300);
+      assert.ok(!fs.existsSync(receipt), "observed SIGINT must not be forwarded to the native child");
+      process.kill(child.pid, "SIGTERM");
+      const exit = await exitPromise;
+      await waitForFile(receipt);
+      await delay(250);
+      assert.deepEqual(JSON.parse(fs.readFileSync(receipt, "utf8")), {
+        signal: "SIGTERM",
+        count: 1,
+        pid: nativePid,
+      });
+      assert.equal(exit.signal, "SIGINT");
+      assert.equal(exit.stdout, "");
+      assert.equal(exit.stderr, "");
+      await assertProcessGone(nativePid);
+    } finally {
+      killProcessGroup(child.pid);
+      cleanup(fixture.root);
+    }
+  },
+);
+
+test(
+  "observes terminal SIGINT and SIGHUP without forwarding duplicates to the native child",
+  { skip: process.platform === "win32", timeout: 30000 },
+  async () => {
+    for (const signalName of ["SIGINT", "SIGHUP"]) {
+      const fixture = nativeFixture();
+      const { child, ready, receipt } = spawnSignalLauncher(fixture, signalName);
+      let nativePid;
+      try {
+        nativePid = Number.parseInt(await waitForFile(ready), 10);
+        assert.ok(Number.isInteger(nativePid));
+        const exitPromise = waitForExit(child);
+        process.kill(-child.pid, signalName);
+        const exit = await exitPromise;
+        await waitForFile(receipt);
+        await delay(250);
+        assert.deepEqual(JSON.parse(fs.readFileSync(receipt, "utf8")), {
+          signal: signalName,
+          count: 1,
+          pid: nativePid,
+        });
+        assert.equal(exit.signal, signalName);
+        assert.equal(exit.stdout, "");
+        assert.equal(exit.stderr, "");
+        await assertProcessGone(nativePid);
+      } finally {
+        killProcessGroup(child.pid);
+        cleanup(fixture.root);
+      }
+    }
+  },
+);
 
 test("runs a real synthetic executable and preserves argv, cwd, env, stdout, stderr, and exit status", (t) => {
   const selected = hostPlatformOrSkip(t);

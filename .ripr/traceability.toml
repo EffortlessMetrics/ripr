@@ -11574,3 +11574,28 @@ outputs = []
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0212"
+name = "npm native launcher boundary"
+spec = "docs/specs/RIPR-SPEC-0212-npm-native-launcher-boundary.md"
+tests = [
+  "packaging/npm/launcher/test/run-tests.test.cjs",
+  "packaging/npm/launcher/test/launcher.test.cjs",
+  "xtask/src/policy/distribution/tests.rs"
+]
+code = [
+  "packaging/npm/launcher/package.json",
+  "packaging/npm/launcher/bin/ripr.cjs",
+  "packaging/npm/launcher/lib/launcher.cjs",
+  "xtask/src/policy/distribution/npm_launcher.rs"
+]
+outputs = [
+  "packaging/npm/launcher/README.md",
+  "docs/PYPI_NPM_DISTRIBUTION.md"
+]
+metrics = [
+  "npm_launcher_required_control_pass_rate",
+  "npm_launcher_package_inventory_drift_count",
+  "npm_launcher_signal_delivery_regression_count",
+]

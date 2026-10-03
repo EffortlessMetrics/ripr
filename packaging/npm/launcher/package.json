@@ -31,7 +31,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "node --test test/*.test.cjs",
+    "test": "node test/run-tests.test.cjs",
     "pack:check": "npm pack --dry-run --json"
   },
   "optionalDependencies": {
