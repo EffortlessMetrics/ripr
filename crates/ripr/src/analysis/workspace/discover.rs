@@ -19,7 +19,7 @@ const DEFAULT_IGNORED_DIRS: &[&str] = &[
 
 /// Changed source files that are not regular files in the working tree.
 ///
-/// Sparse checkout and local deletes drop these from disk walks, so the
+/// Sparse checkout, local deletes and symlinks drop these from disk walks, so the
 /// owner never enters the index. Callers must disclose that as a named
 /// limitation instead of classifying the missing owner as
 /// `no_static_path` (#4586). Non-source paths (docs, manifests) are
@@ -56,13 +56,13 @@ pub(crate) fn limitations_for_absent_changed_files(
                 AnalysisStage::LanguageAdapter,
                 AnalysisRecovery::new(
                     AnalysisRecoveryKind::Retry,
-                    "Check out the missing file, or disable sparse checkout for it, then re-run the analysis.",
+                    "Check out the missing file, disable sparse checkout for it, or restore a regular source file under real directories below the selected root, then re-run the analysis.",
                 )?,
             )
             .with_path(&display)?
             .with_affected_items(1)?
             .with_detail(
-                "changed file is absent from the working tree (sparse checkout or local delete); probes for this file were withheld",
+                "changed file is absent from the working tree or is not a discoverable regular source file (sparse checkout, local delete, or symlink); probes for this file were withheld",
             )
         })
         .collect()
@@ -76,7 +76,7 @@ fn worktree_contains_regular_source_file(root: &Path, relative: &Path) -> bool {
     {
         return false;
     }
-    if is_regular_file(&root.join(relative)) {
+    if is_regular_source_below_root(root, relative) {
         return true;
     }
     // Git diffs keep the repository-relative path. `--root` is often a
@@ -96,15 +96,38 @@ fn worktree_contains_regular_source_file(root: &Path, relative: &Path) -> bool {
         if !prefix.contains('/') || !root_ends_with_prefix(&root_norm, prefix) {
             continue;
         }
-        if is_regular_file(&root.join(suffix)) {
+        if is_regular_source_below_root(root, Path::new(suffix)) {
             return true;
         }
     }
     false
 }
 
-fn is_regular_file(path: &Path) -> bool {
-    std::fs::metadata(path).is_ok_and(|meta| meta.is_file())
+fn is_regular_source_below_root(root: &Path, relative: &Path) -> bool {
+    // The selected root may itself be an alias. Below that boundary, match
+    // discovery's no-follow semantics for both directory and source entries.
+    // Inspecting only the leaf would still follow a symlinked parent directory.
+    let mut components = relative
+        .components()
+        .filter(|component| !matches!(component, std::path::Component::CurDir))
+        .peekable();
+    let mut path = root.to_path_buf();
+    while let Some(component) = components.next() {
+        let std::path::Component::Normal(name) = component else {
+            return false;
+        };
+        path.push(name);
+        let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+            return false;
+        };
+        if components.peek().is_none() {
+            return metadata.is_file();
+        }
+        if !metadata.is_dir() {
+            return false;
+        }
+    }
+    false
 }
 
 fn path_prefix_suffix_pairs(normalized: &str) -> impl Iterator<Item = (&str, &str)> {
@@ -428,6 +451,66 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    /// Both direct and validated repository-prefix paths use discovery's
+    /// no-follow boundary, while the selected root itself may be an alias.
+    #[cfg(unix)]
+    #[test]
+    fn source_admission_refuses_links_below_root_and_preserves_root_alias()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-source-admission-links-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let root = dir.join("crates/ripr/examples/sample");
+        fs::create_dir_all(root.join("src"))?;
+        let source = root.join("src/lib.rs");
+        fs::write(&source, "pub fn one() -> i32 { 1 }\n")?;
+        let alias = dir.join("alias/crates/ripr/examples/sample");
+        fs::create_dir_all(alias.parent().ok_or("alias parent missing")?)?;
+        std::os::unix::fs::symlink(&root, &alias)?;
+        let paths = [
+            Path::new("src/lib.rs"),
+            Path::new("crates/ripr/examples/sample/src/lib.rs"),
+        ];
+        for selected in [&root, &alias] {
+            assert!(changed_source_files_absent_from_worktree(selected, paths).is_empty());
+        }
+
+        let held_file = root.join("held-source.txt");
+        fs::rename(&source, &held_file)?;
+        std::os::unix::fs::symlink(&held_file, &source)?;
+        for selected in [&root, &alias] {
+            assert_eq!(
+                changed_source_files_absent_from_worktree(selected, paths).len(),
+                2
+            );
+        }
+        fs::remove_file(&source)?;
+        fs::rename(&held_file, &source)?;
+
+        let held_dir = root.join("target/held-src");
+        fs::create_dir_all(root.join("target"))?;
+        fs::rename(root.join("src"), &held_dir)?;
+        std::os::unix::fs::symlink(&held_dir, root.join("src"))?;
+        for selected in [&root, &alias] {
+            assert_eq!(
+                changed_source_files_absent_from_worktree(selected, paths).len(),
+                2
+            );
+        }
+        fs::remove_file(root.join("src"))?;
+        fs::rename(&held_dir, root.join("src"))?;
+        for selected in [&root, &alias] {
+            assert!(changed_source_files_absent_from_worktree(selected, paths).is_empty());
+        }
+        fs::remove_file(&alias)?;
+        fs::remove_dir_all(&dir)?;
         Ok(())
     }
 

@@ -5892,6 +5892,8 @@ name = "preview-language disclosure"
 spec = "docs/specs/RIPR-SPEC-0082-preview-language-disclosure.md"
 tests = [
   "crates/ripr/tests/cli_smoke/python_source_admission.rs::missing_changed_python_source_is_incomplete_and_restorable",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::changed_python_symlink_source_is_incomplete_across_root_routes",
+  "crates/ripr/src/analysis/workspace/discover.rs::tests::source_admission_refuses_links_below_root_and_preserves_root_alias",
   "crates/ripr/tests/cli_smoke/python_source_admission.rs::git_generated_python_paths_preserve_whitespace_and_restore",
   "crates/ripr/tests/cli_smoke/python_source_admission.rs::git_quoted_python_path_preserves_tab_identity",
   "crates/ripr/tests/cli_smoke/python_source_admission.rs::mixed_python_paths_keep_whitespace_distinct_from_available_sibling",
@@ -5926,6 +5928,7 @@ code = [
   "crates/ripr/src/analysis/mod.rs",
   "crates/ripr/src/analysis/pipeline.rs",
   "crates/ripr/src/analysis/workspace/discover.rs",
+  ".github/workflows/rust-gates.yml",
   "crates/ripr/src/app.rs",
   "crates/ripr/src/app/check.rs",
   "crates/ripr/src/app/check/output_builder.rs",

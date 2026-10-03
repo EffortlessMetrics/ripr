@@ -127,7 +127,7 @@ adapter is not enabled, no skip limitation is emitted: the not-enabled
 advisory already discloses every routed file with its raw count. No new JSON
 field is introduced.
 
-### Missing changed Python source
+### Unavailable changed Python source
 
 A new-side changed Python path absent from the selected source root is not an
 analyzed file (#5110). Python reuses the shared regular-source-file admission
@@ -144,6 +144,25 @@ UTF-8 retains its existing read-failure limitation, while a readable comment-onl
 diff can still be a complete zero. Generated/excluded paths keep the skipped-scope
 rule above; genuine Git deletions are omitted by the parser's new-side selection
 and do not require a nonexistent new-side file to be restored.
+
+Admission matches source discovery's no-follow boundary below the selected root
+(#5141): a changed source whose final entry is a symlink, or whose relative
+ancestor is a symlink or non-directory, is unavailable for this analysis and
+uses the same typed limitation. The selected root itself may be a legitimate
+alias. Direct relative paths and valid repository-prefix suffix paths apply the
+same rule. This is source-availability disclosure, not a filesystem race or
+authentication guarantee. Public CLI controls hold a Git-generated diff fixed
+across regular source, owned file and directory links, and restoration, covering
+explicit roots, implicit repository/nested roots, and a selected-root alias.
+The public control retains one bounded observational text transcript in the
+required test artifact, alongside unchanged JUnit and run context. It does not
+change test selection or retries and is not typed acceptance or release proof.
+Its exact filename binds the current run and attempt, so a skipped or unobserved
+test cannot reuse a cached transcript from another run. The bounded header and
+each collected receipt are persisted before later outcome assertions; a partial
+transcript remains observational evidence, not proof that all controls ran.
+Outside GitHub Actions, absent GitHub identifiers use a unique fixture filename,
+including in other CI environments; this does not create a GitHub artifact receipt.
 
 ### Three honesty cases
 

@@ -67,6 +67,217 @@ fn python_count(report: &Value) -> Option<u64> {
         .as_u64()
 }
 
+/// Hold Git's real behavioral diff fixed while changing only the worktree
+/// source's admission. All link targets are inert data inside this fixture.
+#[cfg(unix)]
+#[test]
+fn changed_python_symlink_source_is_incomplete_across_root_routes() -> TestResult {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let root = git_path_fixture("python-symlink-admission", &["src/discount.py"], SOURCE)?;
+    let (run_id, run_attempt) = match (
+        std::env::var("GITHUB_RUN_ID").ok(),
+        std::env::var("GITHUB_RUN_ATTEMPT").ok(),
+    ) {
+        (Some(run_id), Some(run_attempt)) => {
+            for value in [&run_id, &run_attempt] {
+                assert!(
+                    !value.is_empty()
+                        && value.len() <= 20
+                        && value.bytes().all(|byte| byte.is_ascii_digit()),
+                    "observational transcript requires bounded ASCII run identifiers"
+                );
+            }
+            (run_id, run_attempt)
+        }
+        (None, None) if std::env::var_os("GITHUB_ACTIONS").is_none() => (
+            format!(
+                "local-{}",
+                root.file_name()
+                    .and_then(|name| name.to_str())
+                    .ok_or("local fixture name is not UTF-8")?
+            ),
+            "0".to_string(),
+        ),
+        _ => {
+            return Err("GitHub transcript requires actual run and attempt identifiers".into());
+        }
+    };
+    let nested = root.join("nested/inner");
+    fs::create_dir_all(&nested)?;
+    let patch = fs::read(root.join("change.patch"))?;
+    eprintln!("retained Git diff: {}", String::from_utf8_lossy(&patch));
+    eprintln!("Git diff SHA256: {:x}", Sha256::digest(&patch));
+    let binary = env!("CARGO_BIN_EXE_ripr");
+    let mut binary_file = fs::File::open(binary)?;
+    let mut binary_digest = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = binary_file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        binary_digest.update(&buffer[..read]);
+    }
+    let binary_sha256 = format!("{:x}", binary_digest.finalize());
+    eprintln!("actual CLI binary: {binary}; SHA256: {binary_sha256}");
+    let version = run_command(binary, Some(&root), &["--version"])?;
+    assert!(version.status.success());
+    let version = String::from_utf8(version.stdout)?;
+    eprintln!("actual CLI producing identity: {}", version.trim_end());
+    assert_eq!(version, super::expected_version_line());
+    let mut transcript = format!(
+        "Observational public CLI test transcript; not a typed receipt, native owner acceptance, or release qualification.\nRun ID: {run_id}\nRun attempt: {run_attempt}\nGit diff SHA256: {:x}\nretained Git diff: {}\nactual CLI binary: {binary}; SHA256: {binary_sha256}\nactual CLI producing identity: {version}\n",
+        Sha256::digest(&patch),
+        String::from_utf8_lossy(&patch),
+    );
+    // The existing always-uploaded test artifact retains this one observational
+    // file without a profile override or broad successful-output capture. Its
+    // per-test name is isolated from typed product/native acceptance receipts.
+    let transcript_path = super::workspace_root().join(format!(
+        "target/nextest/ci/python-symlink-source-admission-cli-{run_id}-{run_attempt}.txt"
+    ));
+    fs::create_dir_all(
+        transcript_path
+            .parent()
+            .ok_or("transcript parent missing")?,
+    )?;
+    assert!(
+        transcript.len() <= 1024 * 1024,
+        "observational CLI transcript exceeds its 1 MiB artifact bound"
+    );
+    fs::write(&transcript_path, &transcript)?;
+    let root_arg = root.to_str().ok_or("fixture root is not UTF-8")?;
+    let root_alias = root.join("selected-root-alias");
+    std::os::unix::fs::symlink(&root, &root_alias)?;
+    assert!(fs::symlink_metadata(&root_alias)?.file_type().is_symlink());
+    let alias_arg = root_alias.to_str().ok_or("fixture alias is not UTF-8")?;
+    let diff = root.join("change.patch");
+    let diff_arg = diff.to_str().ok_or("fixture diff is not UTF-8")?;
+    let mut collect = |state: &str| -> TestResult<Vec<(Value, String, Value)>> {
+        let mut reports = Vec::new();
+        for (route, cwd, selected) in [
+            ("explicit-root", nested.as_path(), Some(root_arg)),
+            ("implicit-repo-root", root.as_path(), None),
+            ("implicit-nested-cwd", nested.as_path(), None),
+            ("explicit-root-alias", nested.as_path(), Some(alias_arg)),
+        ] {
+            let mut outputs = Vec::new();
+            for format in ["json", "human", "badge-json"] {
+                let mut args = vec![
+                    "check", "--diff", diff_arg, "--mode", "fast", "--format", format,
+                ];
+                if let Some(selected) = selected {
+                    args.extend(["--root", selected]);
+                }
+                let output = run_command(binary, Some(cwd), &args)?;
+                let receipt = format!(
+                    "CLI receipt state={state} route={route} format={format} cwd={} args={args:?} status={}\nstdout={}\nstderr={}",
+                    cwd.display(),
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                eprintln!("{receipt}");
+                transcript.push_str(&receipt);
+                transcript.push('\n');
+                assert!(
+                    transcript.len() <= 1024 * 1024,
+                    "observational CLI transcript exceeds its 1 MiB artifact bound"
+                );
+                fs::write(&transcript_path, &transcript)?;
+                assert!(
+                    output.status.success(),
+                    "CLI invocation failed before outcome discrimination"
+                );
+                outputs.push(String::from_utf8(output.stdout)?);
+            }
+            reports.push((
+                serde_json::from_str(&outputs[0])?,
+                outputs[1].clone(),
+                serde_json::from_str(&outputs[2])?,
+            ));
+        }
+        Ok(reports)
+    };
+    let present = collect("regular")?;
+    let source = root.join("src/discount.py");
+    let target = root.join("held-source.txt");
+    fs::rename(&source, &target)?;
+    std::os::unix::fs::symlink(&target, &source)?;
+    assert!(fs::symlink_metadata(&source)?.file_type().is_symlink());
+    assert!(fs::metadata(&source)?.is_file());
+    assert_eq!(fs::read(&source)?, SOURCE.as_bytes());
+    let linked = collect("owned-regular-target-symlink")?;
+    fs::remove_file(&source)?;
+    fs::rename(&target, &source)?;
+    let restored = collect("restored-regular")?;
+    let source_dir = root.join("src");
+    let held_dir = root.join("target/held-src");
+    fs::create_dir_all(root.join("target"))?;
+    fs::rename(&source_dir, &held_dir)?;
+    std::os::unix::fs::symlink(&held_dir, &source_dir)?;
+    assert!(fs::symlink_metadata(&source_dir)?.file_type().is_symlink());
+    assert!(fs::metadata(&source_dir)?.is_dir());
+    assert_eq!(fs::read(&source)?, SOURCE.as_bytes());
+    let directory_linked = collect("owned-ignored-target-directory-symlink")?;
+    fs::remove_file(&source_dir)?;
+    fs::rename(&held_dir, &source_dir)?;
+    let directory_restored = collect("restored-regular-after-directory-link")?;
+    eprintln!(
+        "observational CLI transcript: {}",
+        transcript_path.display()
+    );
+    assert_eq!(
+        fs::read(&diff)?,
+        patch,
+        "the Git diff must remain byte-identical"
+    );
+    fs::remove_file(&root_alias)?;
+    fs::remove_dir_all(&root)?;
+    // Gather every route and format before evaluating the disputed predicate:
+    // a first-route failure must not hide the remaining actual CLI receipts.
+    assert_eq!(present.len(), 4);
+    assert_eq!(linked.len(), 4);
+    assert_eq!(restored.len(), 4);
+    assert_eq!(directory_linked.len(), 4);
+    assert_eq!(directory_restored.len(), 4);
+    for (index, (report, human, badge)) in present.iter().enumerate() {
+        assert_eq!(
+            report["summary"]["findings"], 1,
+            "regular positive route {index}: {report}"
+        );
+        assert_eq!(python_count(report), Some(1));
+        assert_eq!(report["analysis_outcome"]["analysis_complete"], true);
+        assert!(human.contains("1 Python file analyzed"));
+        assert_eq!(badge["analysis_complete"], true);
+        for restored in [&restored[index], &directory_restored[index]] {
+            assert_eq!(&restored.0, report, "restoration JSON route {index}");
+            assert_eq!(&restored.1, human, "restoration human route {index}");
+            assert_eq!(&restored.2, badge, "restoration badge route {index}");
+        }
+        for (refused, refused_human, refused_badge) in [&linked[index], &directory_linked[index]] {
+            assert_missing(refused, "src/discount.py");
+            assert_eq!(refused["summary"]["findings"], 0);
+            assert_eq!(python_count(refused), Some(0));
+            assert!(refused.get("preview_languages").is_none(), "{refused}");
+            assert!(!refused_human.contains("1 Python file analyzed"));
+            assert!(
+                refused_human.lines().any(|line| {
+                    line.trim_start().starts_with("Limitation:")
+                        && line.contains("file: src/discount.py;")
+                }),
+                "{refused_human}"
+            );
+            assert_eq!(refused_badge["analysis_complete"], false);
+            assert_eq!(refused_badge["analysis_outcome"], *outcome(refused));
+            assert_ne!(refused_badge["color"], "brightgreen");
+            assert_ne!(refused_badge["status"], "pass");
+        }
+    }
+    Ok(())
+}
+
 fn assert_missing(report: &Value, path: &str) {
     assert_eq!(
         report["analysis_outcome"]["analysis_complete"], false,
