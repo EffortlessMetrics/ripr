@@ -644,8 +644,11 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
 
     out.push_str("## Local Reproduction Commands\n\n");
     out.push_str(COMMAND_SHELL_DISCLOSURE);
-    for cmd in &s.local_reproduction_commands {
+    for (index, cmd) in s.local_reproduction_commands.iter().enumerate() {
         if let Some(repair) = &s.top_repair
+            // The producer appends verification last. Earlier identical text
+            // still belongs to the repair-start or reproduction-check role.
+            && index + 1 == s.local_reproduction_commands.len()
             && cmd == &repair.verify_command
             && push_context_command(
                 &mut out,
@@ -688,6 +691,77 @@ mod tests {
         MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL,
         VERIFY_AFTER_EDIT_LABEL,
     };
+
+    #[test]
+    fn verification_collision_preserves_reproduction_roles() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let repair_start = "ripr agent start --root .";
+        for verify in [
+            "ripr check",
+            repair_start,
+            "cargo test boundary",
+            "not_available",
+        ] {
+            let context = crate::output::markdown::selected_command_context(
+                &root,
+                verify,
+                "ripr receipt write --gap example --status not_run",
+            );
+            let packet = serde_json::json!({"status": "actionable", "selected": {
+                "state": "top_gap", "verify_command": verify,
+                "repair_command": repair_start, "command_context": context,
+            }});
+            let summary = super::super::json::build_pr_evidence_summary(
+                Some(&packet),
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+            let markdown = render_evidence_summary_md(&summary);
+            let local = markdown
+                .split("## Local Reproduction Commands\n\n")
+                .nth(1)
+                .ok_or("local reproduction section missing")?;
+            assert_eq!(
+                local.matches("```bash\nripr check\n```").count(),
+                1,
+                "{local}"
+            );
+            assert_eq!(
+                local
+                    .matches(&format!("```bash\n{repair_start}\n```"))
+                    .count(),
+                1,
+                "{local}"
+            );
+            assert!(
+                local.contains("```bash\nripr first-pr --root . --head HEAD\n```"),
+                "{local}"
+            );
+            let expected_verify_count = usize::from(verify != "not_available");
+            assert_eq!(
+                local.matches("Verify after the test edit:").count(),
+                expected_verify_count,
+                "{local}"
+            );
+            if expected_verify_count == 1 {
+                let rooted = context["verify"]["bash"]
+                    .as_str()
+                    .ok_or("verify context missing")?;
+                assert_eq!(local.matches(&code_span(rooted)).count(), 1, "{local}");
+                assert_eq!(
+                    summary
+                        .local_reproduction_commands
+                        .last()
+                        .map(String::as_str),
+                    Some(verify)
+                );
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn selected_context_is_shared_by_summary_surfaces_without_changing_raw_json()

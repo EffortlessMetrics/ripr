@@ -5588,6 +5588,7 @@ id = "RIPR-SPEC-0075"
 name = "pr evidence summary"
 spec = "docs/specs/RIPR-SPEC-0075-pr-evidence-summary.md"
 tests = [
+  "crates/ripr/src/app/pr_summary/render.rs::tests::verification_collision_preserves_reproduction_roles",
   "crates/ripr/src/app/pr_summary/json.rs::tests::missing_all_artifacts_yields_unknown_run_status",
   "crates/ripr/src/app/pr_summary/json.rs::tests::present_top_gap_populates_top_repair",
   "crates/ripr/src/app/pr_summary/json.rs::tests::typed_incomplete_diff_outcome_is_preserved_and_not_reported_complete",

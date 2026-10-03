@@ -79,6 +79,12 @@ when no baseline is available.
 
 ### Input artifacts
 
+In the human Local Reproduction Commands section, selected verification context
+applies only to the final verification command appended by the producer.
+Earlier repair-start and reproduction-check entries retain their roles even
+when their text equals the verification command (#5118). Raw command JSON is
+unchanged; legacy packets without command context retain ordinary command forms.
+
 | Artifact | Field sourced |
 | --- | --- |
 | `target/ripr/reports/diff-report.json` | `run_status`, `changed_surfaces`, `local_reproduction_commands` base/head |
