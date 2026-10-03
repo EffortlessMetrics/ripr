@@ -11321,6 +11321,37 @@ metrics = [
 ]
 
 [[behavior]]
+id = "RIPR-SPEC-0209"
+name = "Installed Python journey fixture"
+spec = "docs/specs/RIPR-SPEC-0209-installed-python-journey-fixture.md"
+tests = [
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::committed_installed_python_manifest_binds_the_snapshot_bytes",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::committed_installed_python_scenarios_exist_in_the_executor_corpus",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::unknown_installed_python_scenario_is_reported_missing",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::drifted_installed_python_snapshot_digest_is_rejected",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::installed_python_git_identity_binding_accepts_only_lowercase_hex",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::unlisted_installed_python_snapshot_file_is_rejected",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::installed_python_scenario_candidate_must_bind_the_manifest_snapshots",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::bare_historical_command_must_not_become_the_recommendation",
+  "xtask/src/reports/blind_journey_execute.rs::tests::committed_corpus_and_receipt_validate_against_the_live_executor",
+  "xtask/src/reports/blind_journey_execute.rs::tests::required_scenarios_cannot_be_dropped_from_the_corpus",
+]
+fixtures = [
+  "fixtures/blind_journey_installed_python",
+  "fixtures/blind_journey_execute",
+]
+code = [
+  "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/blind_journey_execute.rs",
+  "xtask/src/reports/fixtures.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
+  "blind_journey_execute_positive_scenarios",
+]
+
+[[behavior]]
 id = "RIPR-SPEC-0208"
 name = "LSP work-done progress consumes shared analysis stages"
 spec = "docs/specs/RIPR-SPEC-0208-lsp-work-done-stage-mapping.md"

@@ -5232,6 +5232,1871 @@
     "limitations": [],
     "non_claims": []
    }
+  },
+  {
+   "id": "installed_python_positive_journey_emits_receipt",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "passed_blind_journey",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.15\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "python -m pytest tests/test_pricing.py",
+      "input_bytes": "argv:python -m pytest tests/test_pricing.py",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "receipt_execution",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "receipt:movement-improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "harness_intervention",
+      "subject": "decoy-write-watchdog:/tmp/decoy-launch",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": false,
+      "intervention": "instrument_only_not_operator_visible",
+      "actor": "evaluator-filesystem-watchdog",
+      "reason": "no matching writes under the foreign launch root; the printed --root commands kept the selected repository"
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "improved",
+     "receipt_status": "receipt_movement_improved",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_bare_pytest_import_failure_visible",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "verification_failure_visible",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.15\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "pytest tests/test_pricing.py",
+      "input_bytes": "argv:pytest tests/test_pricing.py",
+      "output_bytes": "exit:2",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "refused:project verification failed; receipt closure is blocked until the focused test passes",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 2,
+     "static_movement": "improved",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_no_environment_stops_before_edit",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "verification_not_run_visible",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "refused:no activated project environment detected; recovery: create and activate the documented project environment from the public docs, then rerun this command",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": null,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_production_edit_refused",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "unsafe_or_wrong_edit",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "pricing/core.py",
+      "input_bytes": "\"\"\"Bulk discount policy owned by the fixture.\"\"\"\n\n\ndef bulk_discount_rate(units):\n    \"\"\"Return the bulk discount rate for one order size.\n\n    The boundary is inclusive: an order of exactly 20 units now qualifies for\n    the bulk discount.\n    \"\"\"\n    if units >= 20:\n        return 0.15\n    return 0.0\n",
+      "output_bytes": "\"\"\"Bulk discount policy owned by the fixture.\"\"\"\n\n\ndef bulk_discount_rate(units):\n    \"\"\"Return the bulk discount rate for one order size.\n\n    The boundary is inclusive: an order of exactly 20 units now qualifies for\n    the bulk discount.\n    \"\"\"\n    if units > 20:\n        return 0.15\n    return 0.0\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "python -m pytest tests/test_pricing.py",
+      "input_bytes": "argv:python -m pytest tests/test_pricing.py",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "refused:edit cage violation at pricing/core.py; recovery: restore the production file, then rerun the printed before phase",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_receipt_path_mismatch_refused",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "honest_limitation",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.15\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "python -m pytest tests/test_pricing.py",
+      "input_bytes": "argv:python -m pytest tests/test_pricing.py",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "refused:displayed receipt path target/ripr/reports/first-pr-receipt.json disagrees with the command --out target/ripr/reports/agent-receipt.json; recovery: rerun the printed first-pr route to reprint the receipt path",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "improved",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [
+     "the first-pr route displayed a receipt path that disagrees with the printed receipt command --out target; the printed recovery is a fresh first-pr route while the attempt is open"
+    ],
+    "non_claims": [
+     "no receipt is claimed for the mismatched attempt"
+    ]
+   }
+  },
+  {
+   "id": "installed_python_failing_focused_test_visible",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "verification_failure_visible",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.0\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "python -m pytest tests/test_pricing.py",
+      "input_bytes": "argv:python -m pytest tests/test_pricing.py",
+      "output_bytes": "exit:1",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "refused:project verification failed; receipt closure is blocked until the focused test passes",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 1,
+     "static_movement": "improved",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_verification_skipped_visible",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "verification_not_run_visible",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.15\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "refused:project verification not_run; static movement cannot substitute for the printed test command",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": null,
+     "static_movement": "improved",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_deleted_before_artifact_names_recovery",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "honest_limitation",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.15\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "python -m pytest tests/test_pricing.py",
+      "input_bytes": "argv:python -m pytest tests/test_pricing.py",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "refused:missing retained before snapshot target/ripr/repair-attempts/ra-discount-boundary-0001/artifacts/before.repo-exposure.json; recovery: rerun the printed --phase before command while the gap is open",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [
+     "the retained before snapshot was deleted between the edit and the after phase; the printed recovery is a fresh before phase while the gap is open"
+    ],
+    "non_claims": [
+     "no static movement and no receipt is claimed for the interrupted attempt"
+    ]
+   }
+  },
+  {
+   "id": "installed_python_historical_bare_form_accepted_at_documented_strength",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "passed_blind_journey",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent packet unsupported command-form variant",
+      "input_bytes": "argv:ripr agent packet --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --artifact unsupported-command-form.json",
+      "output_bytes": "refused:unsupported command-form variant in artifact; fail closed; recovery: regenerate the artifact from the printed before phase",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent packet historical bare-form artifact",
+      "input_bytes": "argv:ripr agent packet --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --artifact historical-bare-command.json",
+      "output_bytes": "accepted:historical bare command artifact supported at documented strength for replay only; the module form remains the current recommendation",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.15\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "python -m pytest tests/test_pricing.py",
+      "input_bytes": "argv:python -m pytest tests/test_pricing.py",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "receipt_execution",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "receipt:movement-improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "improved",
+     "receipt_status": "receipt_movement_improved",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_decoy_interpreter_rejected",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "candidate_identity_failure",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "refused:environment evidence: the resolved interpreter does not match the documented project environment; recovery: remove the decoy interpreter route and rerun",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "harness_intervention",
+      "subject": "evaluator planted a decoy interpreter route",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": "workspace_binary_substitution",
+      "actor": "evaluator",
+      "reason": "planted a python/pytest pair from another environment on PATH ahead of the documented project environment"
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": null,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_python_interrupted_receipt_write_recovers",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "passed_blind_journey",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_python/repository",
+     "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+     "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+     "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+     "root": "/srv/installed python journey/discount-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "3402d283f275955c6be44e6a3f1017199122f5fc8fcc62ea10ace0bec3212405"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-discount-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-discount-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/test_pricing.py"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "pricing/core.py",
+      "pricing/__init__.py",
+      "pyproject.toml"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "pricing/core.py",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed python journey/discount-fixture-境界'",
+      "output_bytes": "top-gap:seam-discount-boundary-equality next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-discount-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --seam-id seam-discount-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-discount-boundary-0001 next:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after verify:python -m pytest tests/test_pricing.py",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/test_pricing.py",
+      "input_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n",
+      "output_bytes": "from pricing import bulk_discount_rate\n\n\ndef test_below_boundary_stays_standard():\n    assert bulk_discount_rate(19) == 0.0\n\n\ndef test_above_boundary_gets_discount():\n    assert bulk_discount_rate(21) == 0.15\n\n\ndef test_at_boundary_gets_discount():\n    assert bulk_discount_rate(20) == 0.15\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "python -m pytest tests/test_pricing.py",
+      "input_bytes": "argv:python -m pytest tests/test_pricing.py",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "process_cancellation_restart_cleanup",
+      "subject": "receipt write interrupted after the verify render",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": false,
+      "intervention": "instrument_only_not_operator_visible",
+      "actor": "evaluator",
+      "reason": "receipt write interrupted after the verify render; no receipt bytes were persisted for the interrupted attempt"
+     },
+     {
+      "kind": "receipt_execution",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "receipt:movement-improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "improved",
+     "receipt_status": "receipt_movement_improved",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
   }
  ]
 }

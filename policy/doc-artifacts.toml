@@ -1077,6 +1077,13 @@ status = "proposed"
 owner = "test-infra"
 standalone_reason = "Issue #4516 records the installed Rust journey fixture: fixtures/blind_journey_installed_rust retains a digest-bound two-source Cargo repository (committed inclusive equality-boundary change, related test missing exactly the boundary, no-ignore variant, reproducible git identities) whose ten scripted installed_rust_* journeys execute through the unchanged RIPR-SPEC-0205 executor — positive row from a foreign CWD with decoy, second-root portable-identity repeat, and the no-ignore / cage / failing-test / skipped-verification / deleted-artifact / workspace-binary / interrupted-receipt controls each keeping its own derived non-positive terminal — while a dedicated check-fixture-contracts validator recomputes snapshot digests and cross-references the corpus; the real candidate-bound run stays residual on the frozen #1609 candidate and the #4510 harness."
 [[artifact]]
+id = "RIPR-SPEC-0209"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0209-installed-python-journey-fixture.md"
+status = "proposed"
+owner = "test-infra"
+standalone_reason = "Issue #4518 records the installed Python journey fixture: fixtures/blind_journey_installed_python retains a digest-bound flat-layout package (pyproject.toml, pricing/__init__.py, pricing/core.py, tests/test_pricing.py; committed inclusive equality-boundary change, related test missing exactly the boundary, reproducible git identities) whose module-form python -m pytest verify command discriminates the bare-command import defect in the clean shape, and whose eleven scripted installed_python_* journeys execute through the unchanged RIPR-SPEC-0205 executor — positive row from a foreign CWD with decoy, and the bare-command / no-environment / cage / receipt-path-parity / failing-test / skipped-verification / deleted-artifact / historical-form / decoy-interpreter / interrupted-receipt controls each keeping its own derived non-positive terminal — while a dedicated check-fixture-contracts validator recomputes snapshot digests, pins the environment-binding invariant and cross-references the corpus; the real candidate-bound run stays residual on the frozen #1609 candidate and the #4510 harness."
+[[artifact]]
 id = "RIPR-SPEC-0201"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.md"

@@ -2511,3 +2511,777 @@ mod installed_rust_fixture_tests {
         Ok(())
     }
 }
+
+pub(crate) const INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION: &str =
+    "blind_journey_installed_python_fixture.v1";
+
+/// The installed-Python journey fixture (#4518, RIPR-SPEC-0209) is a
+/// manifest-only fixture directory: `manifest.json` binds the retained
+/// flat-layout package snapshots by per-file SHA-256, records the
+/// reproducible git identities, and pins the environment-binding contract
+/// (the module-form verify command is the documented recommendation while
+/// the bare form stays a historical artifact at documented strength). This
+/// validator owns that contract so a hand-edited snapshot or manifest cannot
+/// make a scripted journey claim a fixture it does not bind.
+pub(crate) fn validate_blind_journey_installed_python_fixture(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/blind_journey_installed_python");
+    for required in ["SPEC.md", "manifest.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "blind journey installed python fixture is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0209") {
+            violations.push(
+                "blind journey installed python SPEC.md must name its RIPR-SPEC-0209 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "blind journey installed python SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    let manifest_path = root.join("manifest.json");
+    if !manifest_path.exists() {
+        return Ok(());
+    }
+    let manifest = match read_json_value(&manifest_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(format!(
+                "blind journey installed python manifest is invalid: {err}"
+            ));
+            return Ok(());
+        }
+    };
+    for violation in installed_python_manifest_violations(root, &manifest) {
+        violations.push(violation);
+    }
+    let corpus_path = Path::new("fixtures/blind_journey_execute/corpus.json");
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    for missing in installed_python_missing_scenarios(&manifest, &corpus) {
+        violations.push(missing);
+    }
+    for violation in installed_python_scenario_binding_violations(&manifest, &corpus) {
+        violations.push(violation);
+    }
+    Ok(())
+}
+
+fn installed_python_sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// One recorded git identity is a lowercase 40-hex SHA-1 object id; anything
+/// else cannot be the reproducible commit or tree identity the fixture claims.
+fn installed_python_git_identity_wellformed(value: Option<&Value>) -> bool {
+    value.and_then(Value::as_str).is_some_and(|identity| {
+        identity.len() == 40
+            && identity
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    })
+}
+
+/// Every snapshot file binding recomputed against the bytes on disk, plus the
+/// edit-cage invariants and the environment-binding contract the scripted
+/// journeys rely on.
+fn installed_python_manifest_violations(root: &Path, manifest: &Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    let fixture_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            violations.push(format!(
+                "blind journey installed python fixture root cannot be resolved: {error}"
+            ));
+            return violations;
+        }
+    };
+    if json_string_field(manifest, "schema_version").as_deref()
+        != Some(INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION)
+    {
+        violations.push(format!(
+            "blind journey installed python manifest schema_version must be \
+             {INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION}"
+        ));
+    }
+    let Some(snapshots) = manifest
+        .get("repository")
+        .and_then(|repository| repository.get("snapshots"))
+        .and_then(Value::as_object)
+    else {
+        violations.push(
+            "blind journey installed python manifest is missing repository.snapshots".to_string(),
+        );
+        return violations;
+    };
+    for (name, snapshot) in snapshots {
+        let snapshot_dir = root.join("repository").join(name);
+        let confined_dir = match snapshot_dir.canonicalize() {
+            Ok(resolved) if resolved.starts_with(&fixture_root) => resolved,
+            Ok(_) => {
+                violations.push(format!(
+                    "blind journey installed python snapshot `{name}` escapes the fixture root"
+                ));
+                continue;
+            }
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed python snapshot `{name}` directory cannot be \
+                     resolved: {error}"
+                ));
+                continue;
+            }
+        };
+        if !installed_python_git_identity_wellformed(snapshot.get("commit"))
+            || !installed_python_git_identity_wellformed(snapshot.get("tree"))
+        {
+            violations.push(format!(
+                "blind journey installed python snapshot `{name}` must record well-formed \
+                 commit and tree identities"
+            ));
+        }
+        let Some(files) = snapshot.get("files").and_then(Value::as_object) else {
+            violations.push(format!(
+                "blind journey installed python snapshot `{name}` is missing its file digest \
+                 bindings"
+            ));
+            continue;
+        };
+        for (relative, digest) in files {
+            let Some(expected) = digest.as_str() else {
+                violations.push(format!(
+                    "blind journey installed python snapshot `{name}` file `{relative}` records \
+                     a non-string digest"
+                ));
+                continue;
+            };
+            let path = confined_dir.join(relative);
+            let path = match path.canonicalize() {
+                Ok(resolved) if resolved.starts_with(&fixture_root) => resolved,
+                Ok(_) => {
+                    violations.push(format!(
+                        "blind journey installed python snapshot `{name}` file `{relative}` \
+                         escapes the fixture root"
+                    ));
+                    continue;
+                }
+                Err(error) => {
+                    violations.push(format!(
+                        "blind journey installed python snapshot `{name}` file `{relative}` \
+                         cannot be read: {error}"
+                    ));
+                    continue;
+                }
+            };
+            let body = match std::fs::read(&path) {
+                Ok(body) => body,
+                Err(error) => {
+                    violations.push(format!(
+                        "blind journey installed python snapshot `{name}` file `{relative}` \
+                         cannot be read: {error}"
+                    ));
+                    continue;
+                }
+            };
+            if installed_python_sha256_hex(&body) != expected {
+                violations.push(format!(
+                    "blind journey installed python snapshot `{name}` file `{relative}` drifted \
+                     from its recorded digest"
+                ));
+            }
+        }
+        let mut on_disk = Vec::new();
+        installed_python_collect_snapshot_files(
+            &confined_dir,
+            Path::new(""),
+            &mut on_disk,
+            &mut violations,
+            name,
+        );
+        for relative in on_disk {
+            if !files.contains_key(relative.as_str()) {
+                violations.push(format!(
+                    "blind journey installed python snapshot `{name}` file `{relative}` is not \
+                     bound in the manifest"
+                ));
+            }
+        }
+    }
+    let journey = manifest.get("journey");
+    let string_list = |key: &str| {
+        journey
+            .and_then(|journey| journey.get(key))
+            .and_then(Value::as_array)
+            .map(|entries| entries.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let cage = string_list("expected_edit_cage");
+    let forbidden = string_list("forbidden_edits");
+    let edit_target = journey
+        .and_then(|journey| journey.get("selected_repair"))
+        .and_then(|repair| repair.get("edit_target"))
+        .and_then(Value::as_str);
+    match edit_target {
+        Some(target) if cage.contains(&target) => {}
+        Some(_) => {
+            violations.push(
+                "blind journey installed python selected repair edit target must lie inside \
+                 the expected edit cage"
+                    .to_string(),
+            );
+        }
+        None => {
+            violations.push(
+                "blind journey installed python manifest is missing \
+                 journey.selected_repair.edit_target"
+                    .to_string(),
+            );
+        }
+    }
+    if cage.iter().any(|entry| forbidden.contains(entry)) {
+        violations.push(
+            "blind journey installed python expected edit cage and forbidden edits must not \
+             overlap"
+                .to_string(),
+        );
+    }
+    // Environment-binding contract: the focused verification command must be
+    // the documented module form, and the bare form must stay a recorded
+    // historical artifact at documented strength, never the recommendation.
+    let binding = journey.and_then(|journey| journey.get("environment_binding"));
+    let current = binding
+        .and_then(|binding| binding.get("current_verify_command"))
+        .and_then(Value::as_str);
+    let historical = binding
+        .and_then(|binding| binding.get("historical_bare_command"))
+        .and_then(Value::as_str);
+    let focused = journey
+        .and_then(|journey| journey.get("selected_repair"))
+        .and_then(|repair| repair.get("focused_verification_command"))
+        .and_then(Value::as_str);
+    match (current, focused) {
+        (Some(current), Some(focused)) if current == focused => {}
+        (Some(_), Some(_)) => {
+            violations.push(
+                "blind journey installed python focused verification command must equal the \
+                 documented current module form"
+                    .to_string(),
+            );
+        }
+        _ => {
+            violations.push(
+                "blind journey installed python manifest must record both \
+                 journey.environment_binding.current_verify_command and \
+                 journey.selected_repair.focused_verification_command"
+                    .to_string(),
+            );
+        }
+    }
+    match (current, historical) {
+        (Some(current), Some(historical))
+            if current.starts_with("python -m pytest ") && historical.starts_with("pytest ") =>
+        {
+            if historical == current {
+                violations.push(
+                    "blind journey installed python historical bare command must differ from \
+                     the current module form"
+                        .to_string(),
+                );
+            }
+        }
+        _ => {
+            violations.push(
+                "blind journey installed python manifest must record the module-form current \
+                 command and the bare-form historical command"
+                    .to_string(),
+            );
+        }
+    }
+    violations
+}
+
+/// Fail-closed inventory of one retained snapshot directory: every regular
+/// file is reported with its manifest-relative `/`-separated path so a
+/// behavior-affecting snapshot file cannot stay unbound from the manifest.
+fn installed_python_collect_snapshot_files(
+    dir: &Path,
+    prefix: &Path,
+    files: &mut Vec<String>,
+    violations: &mut Vec<String>,
+    snapshot: &str,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!(
+                "blind journey installed python snapshot `{snapshot}` directory {} cannot be \
+                 read: {error}",
+                normalize_path(dir)
+            ));
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed python snapshot `{snapshot}` directory {} cannot \
+                     be enumerated: {error}",
+                    normalize_path(dir)
+                ));
+                continue;
+            }
+        };
+        let relative = prefix.join(entry.file_name());
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed python snapshot `{snapshot}` path {} cannot be \
+                     inspected: {error}",
+                    normalize_path(&relative)
+                ));
+                continue;
+            }
+        };
+        if file_type.is_dir() {
+            installed_python_collect_snapshot_files(
+                &entry.path(),
+                &relative,
+                files,
+                violations,
+                snapshot,
+            );
+        } else if file_type.is_file() {
+            files.push(normalize_path(&relative));
+        } else {
+            violations.push(format!(
+                "blind journey installed python snapshot `{snapshot}` path {} is not a regular \
+                 file, so it is not digest-bound",
+                normalize_path(&relative)
+            ));
+        }
+    }
+}
+
+/// Every scripted scenario the manifest names must bind its recorded
+/// candidate identities to the same manifest snapshots, so a renamed row
+/// cannot claim an unrelated repository while this gate stays green.
+fn installed_python_scenario_binding_violations(manifest: &Value, corpus: &Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    let Some(ids) = manifest
+        .get("journey_scenario_ids")
+        .and_then(Value::as_array)
+    else {
+        return violations;
+    };
+    let named: BTreeSet<&str> = ids.iter().filter_map(Value::as_str).collect();
+    if named.is_empty() {
+        return violations;
+    }
+    let Some(snapshots) = manifest
+        .get("repository")
+        .and_then(|repository| repository.get("snapshots"))
+        .and_then(Value::as_object)
+    else {
+        return violations;
+    };
+    let Some(base_commit) = snapshots
+        .get("base")
+        .and_then(|snapshot| snapshot.get("commit"))
+        .and_then(Value::as_str)
+    else {
+        violations.push(
+            "blind journey installed python manifest is missing the base snapshot commit"
+                .to_string(),
+        );
+        return violations;
+    };
+    let Some(scenarios) = corpus.get("scenarios").and_then(Value::as_array) else {
+        return violations;
+    };
+    for scenario in scenarios {
+        let Some(id) = scenario.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if !named.contains(id) {
+            continue;
+        }
+        let candidate = scenario
+            .get("journey")
+            .and_then(|journey| journey.get("candidate"));
+        let candidate_base = candidate
+            .and_then(|candidate| candidate.get("base"))
+            .and_then(Value::as_str);
+        if candidate_base != Some(base_commit) {
+            violations.push(format!(
+                "blind journey installed python scenario `{id}` candidate base must bind the \
+                 base snapshot commit"
+            ));
+        }
+        let head = candidate
+            .and_then(|candidate| candidate.get("head"))
+            .and_then(Value::as_str);
+        let tree = candidate
+            .and_then(|candidate| candidate.get("tree"))
+            .and_then(Value::as_str);
+        let head_binds_a_snapshot = snapshots.values().any(|snapshot| {
+            snapshot.get("commit").and_then(Value::as_str) == head
+                && snapshot.get("tree").and_then(Value::as_str) == tree
+        });
+        if !head_binds_a_snapshot {
+            violations.push(format!(
+                "blind journey installed python scenario `{id}` candidate head and tree must \
+                 bind one manifest snapshot"
+            ));
+        }
+    }
+    violations
+}
+
+/// Every scripted scenario the manifest names must exist in the committed
+/// RIPR-SPEC-0205 executor corpus, so the fixture cannot claim journey rows
+/// the gate does not execute.
+fn installed_python_missing_scenarios(manifest: &Value, corpus: &Value) -> Vec<String> {
+    let mut missing = Vec::new();
+    let Some(ids) = manifest
+        .get("journey_scenario_ids")
+        .and_then(Value::as_array)
+    else {
+        missing.push(
+            "blind journey installed python manifest is missing journey_scenario_ids".to_string(),
+        );
+        return missing;
+    };
+    if ids.is_empty() {
+        missing.push(
+            "blind journey installed python journey_scenario_ids must name at least one \
+             scenario"
+                .to_string(),
+        );
+        return missing;
+    }
+    let corpus_ids: BTreeSet<String> = corpus
+        .get("scenarios")
+        .and_then(Value::as_array)
+        .map(|scenarios| {
+            scenarios
+                .iter()
+                .filter_map(|scenario| json_string_field(scenario, "id"))
+                .collect()
+        })
+        .unwrap_or_default();
+    for id in ids {
+        let Some(id) = id.as_str() else {
+            missing.push(
+                "blind journey installed python journey_scenario_ids must be strings".to_string(),
+            );
+            continue;
+        };
+        if !corpus_ids.contains(id) {
+            missing.push(format!(
+                "blind journey installed python scenario `{id}` is missing from the blind \
+                 journey execute corpus"
+            ));
+        }
+    }
+    missing
+}
+
+#[cfg(test)]
+mod installed_python_fixture_tests {
+    use super::*;
+
+    #[test]
+    fn committed_installed_python_manifest_binds_the_snapshot_bytes() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures/blind_journey_installed_python");
+        let manifest = read_json_value(&root.join("manifest.json"))?;
+        let violations = installed_python_manifest_violations(&root, &manifest);
+        if !violations.is_empty() {
+            return Err(format!(
+                "committed installed python manifest drifted: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn committed_installed_python_scenarios_exist_in_the_executor_corpus() -> Result<(), String> {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let manifest = read_json_value(
+            &workspace.join("fixtures/blind_journey_installed_python/manifest.json"),
+        )?;
+        let corpus =
+            read_json_value(&workspace.join("fixtures/blind_journey_execute/corpus.json"))?;
+        let missing = installed_python_missing_scenarios(&manifest, &corpus);
+        if !missing.is_empty() {
+            return Err(format!(
+                "committed installed python fixture names missing corpus scenarios: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_installed_python_scenario_is_reported_missing() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_python_not_a_real_scenario"]
+        });
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_python_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("installed_python_not_a_real_scenario"))
+        {
+            return Err(format!(
+                "an unknown installed python scenario must be reported, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn empty_installed_python_scenario_inventory_is_rejected() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": []
+        });
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_python_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("must name at least one scenario"))
+        {
+            return Err(format!(
+                "an empty installed python scenario inventory must be rejected, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn drifted_installed_python_snapshot_digest_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-python-fixture-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("pricing"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("pricing/core.py"),
+            b"def drifted():\n    pass\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "tree": "3b633ff09d7fca5e33f9ba5e15a5afe025c26b30",
+                "files": {"pricing/core.py":
+                    "0000000000000000000000000000000000000000000000000000000000000000"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/test_pricing.py"],
+                "forbidden_edits": ["pricing/core.py"],
+                "selected_repair": {"edit_target": "tests/test_pricing.py"},
+                "environment_binding": {
+                    "current_verify_command": "python -m pytest tests/test_pricing.py",
+                    "historical_bare_command": "pytest tests/test_pricing.py"
+                }
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_python_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("drifted"))
+        {
+            return Err(format!(
+                "a drifted snapshot digest must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn installed_python_git_identity_binding_accepts_only_lowercase_hex() -> Result<(), String> {
+        let valid: Value = serde_json::json!("9e62e8091324eb65e214be59a45cd596a8192219");
+        if !installed_python_git_identity_wellformed(Some(&valid)) {
+            return Err("a lowercase 40-hex git identity must be accepted".to_string());
+        }
+        for invalid in [
+            serde_json::json!("9E62E8091324EB65E214BE59A45CD596A8192219"),
+            serde_json::json!("9e62e809"),
+            serde_json::json!("zz62e8091324eb65e214be59a45cd596a8192219"),
+            serde_json::json!(
+                "9e62e8091324eb65e214be59a45cd596a81922199e62e8091324eb65e214be59a45cd596a8192219"
+            ),
+            serde_json::json!(40),
+        ] {
+            if installed_python_git_identity_wellformed(Some(&invalid)) {
+                return Err(format!(
+                    "an ill-formed git identity must be rejected: {invalid}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unlisted_installed_python_snapshot_file_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-python-extra-file-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("pricing"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("pricing/core.py"), b"def kept():\n    pass\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("conftest.py"), b"def extra():\n    pass\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "tree": "3b633ff09d7fca5e33f9ba5e15a5afe025c26b30",
+                "files": {"pricing/core.py":
+                    "f70d3ed93649e7ee0271d38008eb4427cc0f3006fc1770462aafec2ee834bfcf"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/test_pricing.py"],
+                "forbidden_edits": ["pricing/core.py"],
+                "selected_repair": {"edit_target": "tests/test_pricing.py"},
+                "environment_binding": {
+                    "current_verify_command": "python -m pytest tests/test_pricing.py",
+                    "historical_bare_command": "pytest tests/test_pricing.py"
+                }
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_python_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("not bound in the manifest"))
+        {
+            return Err(format!(
+                "an unlisted snapshot file must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn installed_python_scenario_candidate_must_bind_the_manifest_snapshots() -> Result<(), String>
+    {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_python_positive_journey_emits_receipt"],
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "9e62e8091324eb65e214be59a45cd596a8192219",
+                    "tree": "3b633ff09d7fca5e33f9ba5e15a5afe025c26b30",
+                    "files": {}
+                },
+                "head": {
+                    "commit": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+                    "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+                    "files": {}
+                }
+            }}
+        });
+        let bound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_python_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+                "tree": "453b32d284b9a120f92dbe254825f8d581e79369"
+            }}
+        }]});
+        if !installed_python_scenario_binding_violations(&manifest, &bound).is_empty() {
+            return Err("a snapshot-bound scenario candidate must be accepted".to_string());
+        }
+        let unbound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_python_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "head": "0000000000000000000000000000000000000000",
+                "tree": "453b32d284b9a120f92dbe254825f8d581e79369"
+            }}
+        }]});
+        let violations = installed_python_scenario_binding_violations(&manifest, &unbound);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind one manifest snapshot"))
+        {
+            return Err(format!(
+                "an unbound scenario candidate head must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bare_historical_command_must_not_become_the_recommendation() -> Result<(), String> {
+        let journey: Value = serde_json::json!({
+            "expected_edit_cage": ["tests/test_pricing.py"],
+            "forbidden_edits": ["pricing/core.py"],
+            "selected_repair": {
+                "edit_target": "tests/test_pricing.py",
+                "focused_verification_command": "pytest tests/test_pricing.py"
+            },
+            "environment_binding": {
+                "current_verify_command": "python -m pytest tests/test_pricing.py",
+                "historical_bare_command": "pytest tests/test_pricing.py"
+            }
+        });
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {}},
+            "journey": journey,
+            "journey_scenario_ids": []
+        });
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let violations = installed_python_manifest_violations(&root, &manifest);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must equal the documented current module form"))
+        {
+            return Err(format!(
+                "a bare-form focused command must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+}

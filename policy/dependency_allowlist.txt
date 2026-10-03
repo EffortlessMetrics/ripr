@@ -37,6 +37,7 @@ fixtures/**/Cargo.toml|fixture_input|analysis-fixtures|Fixture workspaces may co
 fixtures/**/package-lock.json|fixture_input|analysis-fixtures|TypeScript adapter runner-detection fixtures: npm lockfile is intentional discovery input.
 fixtures/**/package.json|fixture_input|analysis-fixtures|TypeScript adapter package-discovery fixtures: package.json is intentional discovery input.
 fixtures/**/pnpm-lock.yaml|fixture_input|analysis-fixtures|TypeScript adapter runner-detection fixtures: pnpm lockfile is intentional discovery input.
+fixtures/blind_journey_installed_python/**/pyproject.toml|fixture_input|analysis-fixtures|Installed-Python blind journey fixture needs a project marker as analyzed input (#4518).
 fixtures/first_successful_pr/python-preview-gap/pyproject.toml|fixture_input|analysis-fixtures|First successful PR Python preview fixture needs a project marker as analyzed input.
 fixtures/python/basic/pyproject.toml|fixture_input|analysis-fixtures|Python project detection fixture needs a project marker as analyzed input.
 fixtures/python_no_config_repair_gap/input/pyproject.toml|fixture_input|analysis-fixtures|Python no-config repair-routing fixture needs a project marker as analyzed input.

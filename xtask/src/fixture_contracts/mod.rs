@@ -85,6 +85,7 @@ pub(crate) fn check_fixture_contracts() -> Result<(), String> {
     validate_blind_journey_contract_fixture_corpus(&mut violations)?;
     validate_blind_journey_execute_fixture_corpus(&mut violations)?;
     validate_blind_journey_installed_rust_fixture(&mut violations)?;
+    validate_blind_journey_installed_python_fixture(&mut violations)?;
     for entry in
         fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
     {
