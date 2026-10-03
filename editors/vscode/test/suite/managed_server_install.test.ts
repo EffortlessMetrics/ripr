@@ -43,16 +43,39 @@ suite('Managed Server Installation', () => {
     const digest = 'a'.repeat(64);
     const request: ManagedServerInstallRequest = { ...installRequest(root, '1.2.3'), expectedManifestSha256: digest };
     const admitted = operations('binary-v1', '1.2.3');
+    const selectedManifestUrl =
+      'https://github.com/EffortlessMetrics/ripr/releases/download/v1.2.3-rc.1/ripr-server-manifest-v1.2.3.json';
     const withStamp: ManagedServerInstallOperations = {
       ...admitted,
-      resolveArchive: async () => ({ ...(await admitted.resolveArchive()), admittedManifestSha256: digest })
+      resolveArchive: async () => ({
+        ...(await admitted.resolveArchive()),
+        admittedManifestSha256: digest,
+        selectedManifestUrl,
+        manifestSelection: 'fallback_exact_after_preferred_absent',
+        preferredManifestObservation: 'direct_not_found',
+        fallbackManifestObservation: 'accepted'
+      })
     };
     const installed = await installManagedServer(request, withStamp);
     assert.strictEqual(installed.receipt.manifestSha256, digest);
+    assert.strictEqual(installed.receipt.selectedManifestUrl, selectedManifestUrl);
+    assert.strictEqual(installed.receipt.manifestSelection, 'fallback_exact_after_preferred_absent');
+    assert.strictEqual(installed.receipt.preferredManifestObservation, 'direct_not_found');
+    assert.strictEqual(installed.receipt.fallbackManifestObservation, 'accepted');
 
     const cached = await readManagedServerInstallation(request);
     assert.notStrictEqual(cached, undefined);
     assert.strictEqual(cached?.receipt.manifestSha256, digest);
+    assert.strictEqual(cached?.receipt.selectedManifestUrl, selectedManifestUrl);
+    assert.strictEqual(cached?.receipt.manifestSelection, 'fallback_exact_after_preferred_absent');
+    assert.strictEqual(cached?.receipt.preferredManifestObservation, 'direct_not_found');
+    assert.strictEqual(cached?.receipt.fallbackManifestObservation, 'accepted');
+
+    const combined = combineActiveManagedServerIdentity({ binaryVersion: 'ripr active' }, installed);
+    assert.strictEqual(combined.selectedManifestUrl, selectedManifestUrl);
+    assert.strictEqual(combined.manifestSelection, 'fallback_exact_after_preferred_absent');
+    assert.strictEqual(combined.preferredManifestObservation, 'direct_not_found');
+    assert.strictEqual(combined.fallbackManifestObservation, 'accepted');
   });
 
   test('bound requests reject unstamped and mismatched receipts', async () => {

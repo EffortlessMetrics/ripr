@@ -269,7 +269,7 @@ implement and validate the lane-selection logic.
 | --- | --- |
 | `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
 | `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
-| `vscode` | Run editor extension lanes even when no editor path changed. |
+| `vscode` | Run the existing hosted editor compile, admitted VSIX package, and editor-host test job without opting into the other `full-ci` jobs. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
 | `ci-budget-ack` | Acknowledge that this PR intentionally exceeds the expected LEM band. |
@@ -281,7 +281,7 @@ budget/risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. Today, `release-check` and
 `full-ci` activate the Rust workflow's package list, publish dry-run, and
-release-readiness steps on pull requests. Other label effects remain target vocabulary until a later PR
+release-readiness steps on pull requests. `vscode` now activates only the CI editor job. Other label effects remain target vocabulary until a later PR
 wires them into a PR plan or workflow condition. The GitHub Settings App
 contract in `.github/settings.yml` codifies these label names, descriptions,
 and colors so the reviewable vocabulary does not drift in the GitHub UI.
@@ -2516,3 +2516,17 @@ A branch is ready to merge when:
 Local `--allow-dirty` packaging checks are useful during review but are not a
 substitute for plain package and publish dry-run checks on the final committed
 branch.
+
+### Scoped source editor qualification
+
+Use the existing `vscode` label for a selected source editor candidate. The
+`ci.yml` editor job runs its existing compile, admitted-package and editor-host
+commands. Rust, MSRV and release-check conditions are unchanged; the label is
+not an integrated release qualification or publication decision.
+
+In Routed Rust, opened/synchronize/reopened, `full-ci` label additions, pushes
+and manual dispatches retain the existing typed receipt/aggregate path. Other
+label additions and removals use a separate concurrency group, skip proof
+selection, and never post `Ripr Rust Small Result`, including as a skipped job.
+Their cheap ignored-event summary proves no Rust subject. Existing proof for an
+exact head remains its own evidence and cannot be replaced by a label event.
