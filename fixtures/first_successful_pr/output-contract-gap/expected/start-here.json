@@ -103,7 +103,21 @@
     "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "static_limit_kind": null,
     "verify_command": "cargo xtask goldens check",
-    "why": "User-facing output changed, but the gap ledger did not find checked output or golden evidence for the changed text."
+    "why": "User-facing output changed, but the gap ledger did not find checked output or golden evidence for the changed text.",
+    "command_context": {
+      "authority": "advisory_display_only",
+      "cwd": "<root>",
+      "receipt": {
+        "bash": "(cd -P -- <root> && ripr receipt write --gap gap:rust:output:device-label --verify-command 'cargo xtask goldens check' --status not_run --out target/ripr/receipts/gap-pr-output-device-label.targeted-test-outcome.json)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      },
+      "verify": {
+        "bash": "(cd -P -- <root> && cargo xtask goldens check)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      }
+    }
   },
   "status": "actionable",
   "tool": "ripr",

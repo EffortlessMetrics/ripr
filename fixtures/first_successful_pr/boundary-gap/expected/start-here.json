@@ -103,7 +103,21 @@
     "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
     "static_limit_kind": null,
     "verify_command": "cargo xtask fixtures boundary_gap",
-    "why": "A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
+    "why": "A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior.",
+    "command_context": {
+      "authority": "advisory_display_only",
+      "cwd": "<root>",
+      "receipt": {
+        "bash": "(cd -P -- <root> && ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command 'cargo xtask fixtures boundary_gap' --status not_run --out target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      },
+      "verify": {
+        "bash": "(cd -P -- <root> && cargo xtask fixtures boundary_gap)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      }
+    }
   },
   "status": "actionable",
   "tool": "ripr",

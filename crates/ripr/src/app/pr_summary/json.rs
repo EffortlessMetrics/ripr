@@ -409,6 +409,7 @@ fn derive_top_repair(start_here_value: Option<&Value>) -> (Option<TopRepair>, Op
             repair_command,
             verify_command,
             receipt_command,
+            command_context: value_path(sel, &["command_context"]).cloned(),
             receipt_state,
         }),
         None,
@@ -510,6 +511,9 @@ pub fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> String {
                 "receipt_command": r.receipt_command,
                 "receipt_state": r.receipt_state
             });
+            if let Some(context) = &r.command_context {
+                value["command_context"] = context.clone();
+            }
             // Present only when start-here carried it, like its source field.
             if let Some(command) = &r.repair_command {
                 value["repair_command"] = json!(command);

@@ -4,7 +4,9 @@ use super::{
     STATIC_RECHECK_LABEL, receipt_status_step, string_path,
 };
 use crate::agent::loop_commands::display_path;
-use crate::output::markdown::{PowershellForm, powershell_command, powershell_form};
+use crate::output::markdown::{
+    PowershellForm, powershell_command, powershell_form, push_context_command,
+};
 use crate::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED, normalize_start_here_output_state,
 };
@@ -115,11 +117,24 @@ pub(super) fn start_here_cli_summary(
                     "{REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
                 ));
             }
-            if let Some(command) = string_path(selected, &["verify_command"]) {
+            if !push_context_command(
+                &mut out,
+                selected.get("command_context"),
+                "verify",
+                labels.verify,
+            ) && let Some(command) = string_path(selected, &["verify_command"])
+            {
                 out.push_str(&format!("{}: `{command}`\n", labels.verify));
             }
             if let Some(command) = string_path(selected, &["receipt_command"]) {
-                out.push_str(&format!("{}: `{command}`\n", labels.receipt));
+                if !push_context_command(
+                    &mut out,
+                    selected.get("command_context"),
+                    "receipt",
+                    labels.receipt,
+                ) {
+                    out.push_str(&format!("{}: `{command}`\n", labels.receipt));
+                }
                 if let Some(step) = receipt_status_step(&command) {
                     out.push_str(&format!("{RECEIPT_STATUS_LABEL}: {step}\n"));
                 }
@@ -372,11 +387,24 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
             "- Analysis outcome for the receipt: `{command}`\n"
         ));
     }
-    if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
+    if !push_context_command(
+        out,
+        selected.get("command_context"),
+        "verify",
+        &format!("- {}", labels.verify),
+    ) && let Some(command) = selected.get("verify_command").and_then(Value::as_str)
+    {
         out.push_str(&format!("- {}: `{command}`\n", labels.verify));
     }
     if let Some(command) = selected.get("receipt_command").and_then(Value::as_str) {
-        out.push_str(&format!("- {}: `{command}`\n", labels.receipt));
+        if !push_context_command(
+            out,
+            selected.get("command_context"),
+            "receipt",
+            &format!("- {}", labels.receipt),
+        ) {
+            out.push_str(&format!("- {}: `{command}`\n", labels.receipt));
+        }
         if let Some(step) = receipt_status_step(command) {
             out.push_str(&format!("- {RECEIPT_STATUS_LABEL}: {step}\n"));
         }
@@ -451,14 +479,33 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
     {
         push_shell_command_pair(out, "Analysis outcome for the receipt", command, true);
     }
-    if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
+    if push_context_command(
+        out,
+        selected.get("command_context"),
+        "verify",
+        labels.verify,
+    ) {
+        out.push_str("The first form is written for Bash; cmd.exe is not supported.\n\n");
+    } else if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
         push_shell_command_pair(out, labels.verify, command, true);
     }
     let agent_packet_command = selected.get("agent_packet_command").and_then(Value::as_str);
     if let Some(command) = selected.get("receipt_command").and_then(Value::as_str) {
         // A review-card selection has no agent packet block, so the receipt
         // block closes the section without a trailing blank line.
-        push_shell_command_pair(out, labels.receipt, command, agent_packet_command.is_some());
+        if push_context_command(
+            out,
+            selected.get("command_context"),
+            "receipt",
+            labels.receipt,
+        ) {
+            out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
+            if agent_packet_command.is_some() {
+                out.push('\n');
+            }
+        } else {
+            push_shell_command_pair(out, labels.receipt, command, agent_packet_command.is_some());
+        }
     }
     if let Some(command) = agent_packet_command {
         push_shell_command_pair(out, "Agent packet command", command, false);

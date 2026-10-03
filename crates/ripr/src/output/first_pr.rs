@@ -13,7 +13,7 @@ use crate::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED, normalize_start_here_output_state, start_here_output_state_is_known,
 };
 #[cfg(test)]
-use crate::testing::cwd_placeholder::{project_cwd_text, project_renderer_cwd};
+use crate::testing::cwd_placeholder::{project_cwd_text, project_renderer_cwd, project_root_text};
 use serde_json::{Map, Value, json};
 use std::env;
 use std::fs;
@@ -1083,6 +1083,8 @@ struct TopGapSelection {
     analysis_outcome_command: Option<String>,
     verify_command: String,
     receipt_command: String,
+    /// Human-only shell forms; never execution or receipt identity authority.
+    command_context: Option<Value>,
     /// `None` for a review-card selection: its carried receipt command names
     /// its own output, and first-pr does not parse commands for paths.
     receipt_path: Option<String>,
@@ -1142,6 +1144,9 @@ impl TopGapSelection {
             "static_evidence_boundary": STATIC_EVIDENCE_BOUNDARY,
             "agent_packet_command": self.agent_packet_command
         });
+        if let Some(context) = &self.command_context {
+            value["command_context"] = context.clone();
+        }
         // Present only when carried, like the card field it projects; ledger
         // selections keep their existing shape.
         if let Some(command) = &self.repair_command {
@@ -1517,6 +1522,7 @@ fn top_gap_from_review_card(card: &Value, options: &FirstPrOptions) -> Option<To
         analysis_outcome_command: string_path(card, &["llm_guidance", "analysis_outcome_command"]),
         verify_command,
         receipt_command,
+        command_context: None,
         receipt_path: None,
         receipt_command_source: "review_comments.receipt_command".to_string(),
         receipt_state: None,
@@ -1895,6 +1901,8 @@ fn top_gap_from_record(
             "first_pr.default_receipt_write_command".to_string(),
         ),
     };
+    let command_context =
+        crate::output::markdown::selected_command_context(root, &verify_command, &receipt_command);
     let static_recheck_command = if is_receipt_write_command(&receipt_command) {
         static_recheck_command(gap_ledger, root, options)
     } else {
@@ -1942,6 +1950,7 @@ fn top_gap_from_record(
         analysis_outcome_command: None,
         verify_command,
         receipt_command,
+        command_context: Some(command_context),
         receipt_path: Some(receipt_path),
         receipt_command_source,
         receipt_state: string_path(record, &["receipt", "state"])
@@ -4852,6 +4861,287 @@ mod tests {
         Ok(())
     }
 
+    /// The emitted human command, rather than a test-only rooted rewrite,
+    /// must keep the selected repository when pasted beside a real decoy.
+    #[cfg(unix)]
+    #[test]
+    fn ledger_command_context_runs_from_foreign_cwd() -> Result<(), String> {
+        let repo = temp_python_repo("selected café's project")?;
+        let foreign = temp_python_repo("foreign decoy")?;
+        let mut ledger = ledger_with_python_repairable_gap();
+        ledger["records"][0]["verification_commands"] = json!(["git rev-parse --show-toplevel"]);
+        let selected = top_gap_from_record(
+            &ledger["records"][0],
+            &ledger,
+            &repo,
+            &FirstPrOptions::default(),
+        );
+        let packet = json!({"status": "actionable", "selected": selected.to_json()});
+        let summary = start_here_cli_summary(
+            &packet,
+            Path::new("start-here.json"),
+            Path::new("start-here.md"),
+        );
+        let prefix = format!("{VERIFY_AFTER_EDIT_LABEL}: `");
+        let command = summary
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix(&prefix)
+                    .and_then(|line| line.strip_suffix('`'))
+            })
+            .ok_or_else(|| format!("missing displayed verification command: {summary}"))?;
+        let output = std::process::Command::new("bash")
+            .args(["--noprofile", "--norc", "-c", command])
+            .current_dir(&foreign)
+            .output()
+            .map_err(|error| format!("replay displayed command: {error}"))?;
+        let expected = repo.canonicalize().map_err(|error| error.to_string())?;
+        let observed = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        cleanup(&repo)?;
+        cleanup(&foreign)?;
+        if !output.status.success() || observed != expected.to_string_lossy() {
+            return Err(format!(
+                "displayed verification selected wrong CWD: expected {}, observed {observed}, status {}, command {command}",
+                expected.display(),
+                output.status
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ledger_command_context_preserves_receipt_identity_status_and_caller() -> Result<(), String> {
+        let repo = temp_python_repo("receipt café's selected")?;
+        let foreign = temp_python_repo("receipt decoy")?;
+        let mut ledger = ledger_with_python_repairable_gap();
+        let verify = "git rev-parse --verify refs/heads/does-not-exist";
+        let receipt = "git config --local ripr.context selected";
+        ledger["records"][0]["verification_commands"] = json!([verify]);
+        ledger["records"][0]["receipt_command"] = json!(receipt);
+        let selected = top_gap_from_record(
+            &ledger["records"][0],
+            &ledger,
+            &repo,
+            &FirstPrOptions::default(),
+        )
+        .to_json();
+        assert_eq!(selected["verify_command"], verify);
+        assert_eq!(selected["receipt_command"], receipt);
+        assert_eq!(
+            selected["receipt_command_source"],
+            "gap_ledger.receipt_command"
+        );
+        assert_eq!(
+            selected["command_context"]["authority"],
+            "advisory_display_only"
+        );
+        let packet = json!({"status": "actionable", "selected": selected});
+        let summary =
+            start_here_cli_summary(&packet, Path::new("packet.json"), Path::new("packet.md"));
+        let markdown = render_start_here_markdown(&packet);
+        for (step, label) in [
+            ("verify", VERIFY_AFTER_EDIT_LABEL),
+            ("receipt", RECEIPT_AFTER_VERIFY_LABEL),
+        ] {
+            let prefix = format!("{label}: ");
+            let command = summary
+                .lines()
+                .find_map(|line| line.strip_prefix(&prefix))
+                .and_then(crate::output::markdown::code_span_content)
+                .ok_or_else(|| format!("missing displayed {step}: {summary}"))?;
+            assert!(markdown.contains(&crate::output::markdown::code_span(&command)));
+            // Print the native result and caller directory after the literal
+            // displayed command. Wrapping must preserve both, even on failure.
+            let replay = format!("{command}\nstatus=$?\nprintf '%s\\n' \"$status\"\npwd -P");
+            let output = std::process::Command::new("bash")
+                .args(["--noprofile", "--norc", "-c", &replay])
+                .current_dir(&foreign)
+                .output()
+                .map_err(|error| error.to_string())?;
+            let text = String::from_utf8_lossy(&output.stdout);
+            let expected_status = if step == "verify" { "128" } else { "0" };
+            assert_eq!(text.lines().next(), Some(expected_status), "{text}");
+            assert_eq!(
+                text.lines().nth(1),
+                foreign.to_str(),
+                "caller CWD changed: {text}"
+            );
+        }
+        let value = std::process::Command::new("git")
+            .args(["config", "--local", "--get", "ripr.context"])
+            .current_dir(&repo)
+            .output()
+            .map_err(|error| error.to_string())?;
+        assert!(value.status.success());
+        assert_eq!(String::from_utf8_lossy(&value.stdout).trim(), "selected");
+        let decoy = std::process::Command::new("git")
+            .args(["config", "--local", "--get", "ripr.context"])
+            .current_dir(&foreign)
+            .output()
+            .map_err(|error| error.to_string())?;
+        assert_eq!(decoy.status.code(), Some(1), "receipt wrote in the decoy");
+        cleanup(&repo)?;
+        cleanup(&foreign)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ledger_command_context_follows_physical_root_and_refuses_missing_root() -> Result<(), String>
+    {
+        let physical = temp_python_repo("physical")?;
+        let decoy = temp_python_repo("lexical decoy")?;
+        fs::create_dir(physical.join("child")).map_err(|error| error.to_string())?;
+        std::os::unix::fs::symlink(physical.join("child"), decoy.join("alias"))
+            .map_err(|error| error.to_string())?;
+        let selected_root = decoy.join("alias/..");
+        let mut ledger = ledger_with_python_repairable_gap();
+        ledger["records"][0]["verification_commands"] = json!(["git rev-parse --show-toplevel"]);
+        let make = |root: &Path| {
+            top_gap_from_record(
+                &ledger["records"][0],
+                &ledger,
+                root,
+                &FirstPrOptions::default(),
+            )
+            .to_json()
+        };
+        let selected = make(&selected_root);
+        assert_eq!(
+            selected["command_context"]["cwd"].as_str(),
+            physical.to_str()
+        );
+        let command = selected["command_context"]["verify"]["bash"]
+            .as_str()
+            .ok_or("missing Bash")?;
+        let run = |command: &str| {
+            std::process::Command::new("bash")
+                .args(["--noprofile", "--norc", "-c", command])
+                .current_dir(&decoy)
+                .output()
+                .map_err(|error| error.to_string())
+        };
+        let output = run(command)?;
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            physical.to_string_lossy()
+        );
+        // A directory disappearing after generation also fails closed: the
+        // printed command cannot fall through and run in the decoy.
+        cleanup(&physical)?;
+        let output = run(command)?;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let unavailable = make(&selected_root);
+        assert!(unavailable["command_context"]["cwd"].is_null());
+        assert!(unavailable["command_context"]["verify"]["bash"].is_null());
+        assert!(unavailable["command_context"]["receipt"]["bash"].is_null());
+        let packet = json!({"status": "actionable", "selected": unavailable});
+        let summary =
+            start_here_cli_summary(&packet, Path::new("packet.json"), Path::new("packet.md"));
+        assert!(summary.contains("Verify after the test edit unavailable:"));
+        assert!(!summary.contains("`git rev-parse --show-toplevel`"));
+        cleanup(&decoy)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ledger_command_context_preserves_non_utf8_alias_parent_traversal() -> Result<(), String> {
+        use std::os::unix::ffi::OsStringExt;
+        let original = temp_python_repo("non-utf8 physical")?;
+        let mut bytes = original.as_os_str().as_encoded_bytes().to_vec();
+        bytes.push(0xff);
+        let physical = PathBuf::from(std::ffi::OsString::from_vec(bytes));
+        fs::rename(&original, &physical).map_err(|error| error.to_string())?;
+        let decoy = temp_python_repo("non-utf8 alias decoy")?;
+        run_git_setup(
+            &physical,
+            &["config", "--local", "ripr.context", "physical"],
+        )?;
+        run_git_setup(&decoy, &["config", "--local", "ripr.context", "decoy"])?;
+        fs::create_dir(physical.join("child")).map_err(|error| error.to_string())?;
+        std::os::unix::fs::symlink(physical.join("child"), decoy.join("alias"))
+            .map_err(|error| error.to_string())?;
+        let root = decoy.join("alias/..");
+        assert_eq!(
+            root.canonicalize().map_err(|error| error.to_string())?,
+            physical
+        );
+        let mut ledger = ledger_with_python_repairable_gap();
+        ledger["records"][0]["verification_commands"] =
+            json!(["git config --local --get ripr.context"]);
+        let selected = top_gap_from_record(
+            &ledger["records"][0],
+            &ledger,
+            &root,
+            &FirstPrOptions::default(),
+        )
+        .to_json();
+        assert_eq!(
+            selected["command_context"]["cwd"].as_str(),
+            root.to_str(),
+            "the lossless alias fallback must be reached"
+        );
+        let packet = json!({"status": "actionable", "selected": selected});
+        let summary =
+            start_here_cli_summary(&packet, Path::new("packet.json"), Path::new("packet.md"));
+        let prefix = format!("{VERIFY_AFTER_EDIT_LABEL}: ");
+        let command = summary
+            .lines()
+            .find_map(|line| line.strip_prefix(&prefix))
+            .and_then(crate::output::markdown::code_span_content)
+            .ok_or("missing displayed verification")?;
+        let output = std::process::Command::new("bash")
+            .args(["--noprofile", "--norc", "-c", &command])
+            .current_dir(&decoy)
+            .output()
+            .map_err(|error| error.to_string())?;
+        cleanup(&physical)?;
+        cleanup(&decoy)?;
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "physical",
+            "logical cd selected the alias parent instead of its physical target"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ledger_command_context_underemits_unsupported_forms_without_rewriting_raw_commands()
+    -> Result<(), String> {
+        let root = temp_python_repo("unsupported context")?;
+        for command in [
+            "cargo test && cargo test nearby",
+            "cargo test > log",
+            "cargo test $FILTER",
+            "cargo test '*.rs'\ncargo test",
+            "cargo test --filter $(whoami)",
+            "cargo test \\",
+        ] {
+            let mut ledger = ledger_with_python_repairable_gap();
+            ledger["records"][0]["verification_commands"] = json!([command]);
+            let selected = top_gap_from_record(
+                &ledger["records"][0],
+                &ledger,
+                &root,
+                &FirstPrOptions::default(),
+            )
+            .to_json();
+            assert_eq!(selected["verify_command"], command);
+            assert!(
+                selected["command_context"]["verify"]["bash"].is_null(),
+                "{command}"
+            );
+            assert!(
+                selected["command_context"]["verify"]["powershell"].is_null(),
+                "{command}"
+            );
+            assert!(selected["command_context"]["verify"]["recovery"].is_string());
+        }
+        cleanup(&root)
+    }
     #[test]
     fn python_preview_gap_ledger_is_selected_for_start_here() -> Result<(), String> {
         let repo = temp_python_repo("first-pr-python-preview")?;
@@ -4907,9 +5197,14 @@ mod tests {
             Path::new("target/ripr/reports/start-here.md"),
         );
         assert!(summary.contains("Safe next action: repair one named gap `gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold`"));
-        assert!(summary.contains(
-            "Verify after the test edit: `pytest tests/test_pricing.py::test_calculate_discount_smoke`"
-        ));
+        let bash = packet["selected"]["command_context"]["verify"]["bash"]
+            .as_str()
+            .ok_or("missing Python context")?;
+        assert!(summary.contains(&format!(
+            "Verify after the test edit: {}",
+            crate::output::markdown::code_span(bash)
+        )));
+        assert!(bash.ends_with(" && pytest tests/test_pricing.py::test_calculate_discount_smoke)"));
         check_first_pr(&repo, &options)?;
         cleanup(&repo)
     }
@@ -5475,7 +5770,14 @@ mod tests {
         assert!(summary.contains(
             "Safe next action: repair one named gap `gap:typescript:typescript_preview:2396aec1`"
         ));
-        assert!(summary.contains("Verify after the test edit: `jest tests/discount.test.ts`"));
+        let bash = packet["selected"]["command_context"]["verify"]["bash"]
+            .as_str()
+            .ok_or("missing TypeScript context")?;
+        assert!(summary.contains(&format!(
+            "Verify after the test edit: {}",
+            crate::output::markdown::code_span(bash)
+        )));
+        assert!(bash.ends_with(" && jest tests/discount.test.ts)"));
         check_first_pr(&repo, &options)?;
         cleanup(&repo)
     }
@@ -5882,7 +6184,16 @@ mod tests {
             .open(&ledger)
             .and_then(|file| file.set_modified(std::time::SystemTime::now()))
             .map_err(|err| format!("refresh ledger mtime {}: {err}", ledger.display()))?;
-        let actual_json = render_start_here_packet(&case, &options);
+        let mut actual_json = render_start_here_packet(&case, &options);
+        // The new context names the physical selected fixture root, which
+        // can differ from the renderer CWD used by historical output paths.
+        // Normalize only that advisory context before rendering; raw command
+        // identity and the existing projection remain unchanged.
+        if let Some(context) = actual_json.pointer_mut("/selected/command_context") {
+            let text = serde_json::to_string(context).map_err(|error| error.to_string())?;
+            *context = serde_json::from_str(&project_root_text(&text, &case))
+                .map_err(|error| error.to_string())?;
+        }
         let actual_md = render_start_here_markdown(&actual_json);
         // Issue #3872: funnel redirect targets anchor at the resolved --root,
         // so the machine prefix projects to `<cwd>/` before comparing against

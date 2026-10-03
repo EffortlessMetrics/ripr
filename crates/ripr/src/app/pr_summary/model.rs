@@ -177,6 +177,7 @@ pub(super) struct TopRepair {
     pub(super) repair_command: Option<String>,
     pub(super) verify_command: String,
     pub(super) receipt_command: String,
+    pub(super) command_context: Option<serde_json::Value>,
     pub(super) receipt_state: String,
 }
 

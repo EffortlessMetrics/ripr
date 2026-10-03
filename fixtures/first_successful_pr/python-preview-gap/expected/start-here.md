@@ -14,8 +14,10 @@ State: actionable
 - Current evidence strength: Static evidence found related Python test context, but the current proof is weak because the discriminator is missing.
 - Missing discriminator: amount == threshold
 - Focused proof intent: Strengthen the existing related test in `tests/test_pricing.py`: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`.
-- Verify after the test edit: `pytest tests/test_pricing.py::test_calculate_discount_smoke`
-- Receipt after verify: `ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`
+- Verify after the test edit: `(cd -P -- <root> && pytest tests/test_pricing.py::test_calculate_discount_smoke)`
+- Verify after the test edit (PowerShell) unavailable: PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt.
+- Receipt after verify: `(cd -P -- <root> && ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json)`
+- Receipt after verify (PowerShell) unavailable: PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt.
 - Receipt path: `.ripr/receipts/python-threshold.json`
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 
@@ -34,15 +36,13 @@ Repair:
 - Target: `tests/test_pricing.py`
 - Assertion: `assert calculate_discount(amount=threshold, threshold=threshold) == expected_discount`
 
-Verify after the test edit:
-`pytest tests/test_pricing.py::test_calculate_discount_smoke`
+Verify after the test edit: `(cd -P -- <root> && pytest tests/test_pricing.py::test_calculate_discount_smoke)`
+Verify after the test edit (PowerShell) unavailable: PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt.
+The first form is written for Bash; cmd.exe is not supported.
 
-It runs unchanged in Bash and PowerShell; cmd.exe is not supported.
-
-Receipt after verify:
-`ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json`
-
-It runs unchanged in Bash and PowerShell; cmd.exe is not supported.
+Receipt after verify: `(cd -P -- <root> && ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json)`
+Receipt after verify (PowerShell) unavailable: PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt.
+The first form is written for Bash; cmd.exe is not supported.
 
 Agent packet command:
 `ripr agent packet --root <cwd>/fixtures/first_successful_pr/python-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/python-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id 'gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold' --json > <cwd>/fixtures/first_successful_pr/python-preview-gap/target/ripr/workflow/agent-packet.json`

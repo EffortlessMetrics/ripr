@@ -50,7 +50,21 @@
     "static_limit_kind": "python_preview",
     "static_limit_detail": "Python repair cards are preview advisory evidence.",
     "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
-    "agent_packet_command": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/python-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/python-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id 'gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold' --json > <cwd>/fixtures/first_successful_pr/python-preview-gap/target/ripr/workflow/agent-packet.json"
+    "agent_packet_command": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/python-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/python-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id 'gap:pr:gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold' --json > <cwd>/fixtures/first_successful_pr/python-preview-gap/target/ripr/workflow/agent-packet.json",
+    "command_context": {
+      "authority": "advisory_display_only",
+      "cwd": "<root>",
+      "receipt": {
+        "bash": "(cd -P -- <root> && ripr outcome --before .ripr/before.json --after .ripr/after.json --format json --out .ripr/receipts/python-threshold.json)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      },
+      "verify": {
+        "bash": "(cd -P -- <root> && pytest tests/test_pricing.py::test_calculate_discount_smoke)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      }
+    }
   },
   "commands": {
     "regenerate_gap_ledger": "ripr check --root <cwd>/fixtures/first_successful_pr/python-preview-gap --base origin/main --json > <cwd>/fixtures/first_successful_pr/python-preview-gap/target/ripr/reports/check.json && ripr reports gap-ledger --check-output <cwd>/fixtures/first_successful_pr/python-preview-gap/target/ripr/reports/check.json --root <cwd>/fixtures/first_successful_pr/python-preview-gap --out <cwd>/fixtures/first_successful_pr/python-preview-gap/inputs/reports/gap-decision-ledger.json --out-md <cwd>/fixtures/first_successful_pr/python-preview-gap/inputs/reports/gap-decision-ledger.md",

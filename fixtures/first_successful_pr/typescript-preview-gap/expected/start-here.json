@@ -50,7 +50,21 @@
     "static_limit_kind": "typescript_preview",
     "static_limit_detail": "TypeScript repair packets are preview advisory evidence.",
     "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
-    "agent_packet_command": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json > <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/workflow/agent-packet.json"
+    "agent_packet_command": "ripr agent packet --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --gap-ledger <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.json --gap-id gap:pr:gap:typescript:typescript_preview:2396aec1 --json > <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/workflow/agent-packet.json",
+    "command_context": {
+      "authority": "advisory_display_only",
+      "cwd": "<root>",
+      "receipt": {
+        "bash": "(cd -P -- <root> && ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command \"jest tests/discount.test.ts\" --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      },
+      "verify": {
+        "bash": "(cd -P -- <root> && jest tests/discount.test.ts)",
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt."
+      }
+    }
   },
   "commands": {
     "regenerate_gap_ledger": "ripr check --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --base origin/main --json > <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/reports/check.json && ripr reports gap-ledger --check-output <cwd>/fixtures/first_successful_pr/typescript-preview-gap/target/ripr/reports/check.json --root <cwd>/fixtures/first_successful_pr/typescript-preview-gap --out <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.json --out-md <cwd>/fixtures/first_successful_pr/typescript-preview-gap/inputs/reports/gap-decision-ledger.md",

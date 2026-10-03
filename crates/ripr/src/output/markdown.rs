@@ -255,6 +255,104 @@ pub(crate) fn powershell_form(command: &str) -> PowershellForm {
     }
 }
 
+/// Advisory human forms for the current ledger selection. Raw verification
+/// and receipt strings retain their identity; this is not a CommandSpec and
+/// grants no execution, eligibility, or receipt authority.
+pub(crate) fn selected_command_context(
+    root: &std::path::Path,
+    verify: &str,
+    receipt: &str,
+) -> serde_json::Value {
+    let cwd = root
+        .canonicalize()
+        .ok()
+        .filter(|path| path.is_dir())
+        .and_then(|path| crate::output::path::command_root_display(root, &path).ok());
+    serde_json::json!({
+        "authority": "advisory_display_only",
+        "cwd": cwd,
+        "verify": rooted_command_forms(cwd.as_deref(), verify),
+        "receipt": rooted_command_forms(cwd.as_deref(), receipt),
+    })
+}
+
+fn rooted_command_forms(cwd: Option<&str>, command: &str) -> serde_json::Value {
+    let unavailable = |recovery: &str| {
+        serde_json::json!({
+            "bash": null, "powershell": null, "recovery": recovery,
+        })
+    };
+    let Some(cwd) = cwd else {
+        return unavailable(
+            "Selected root is unavailable or cannot be represented losslessly; restore access or use a UTF-8 alias and rerun first-pr with --root naming the existing repository.",
+        );
+    };
+    if cwd.contains(['\r', '\n']) || command.contains(['\r', '\n']) {
+        return unavailable(
+            "Selected-root command form is unavailable for multiline paths or commands; use a single-line alias or command and regenerate the packet.",
+        );
+    }
+    // Use the existing bounded translation decision, and reject even its
+    // supported redirect: these forms wrap only one bounded invocation.
+    let Some(_) = powershell_command(command).filter(|_| {
+        !command.trim().is_empty()
+            && powershell_redirect_offset(&command.replace("'\\''", "''")).is_none()
+    }) else {
+        return unavailable(
+            "Selected-root command form is unavailable for unsupported shell syntax; inspect the raw command in JSON, run it from the selected repository, and preserve its exit status before recording a receipt.",
+        );
+    };
+    let root = crate::agent::loop_commands::shell_arg(cwd);
+    serde_json::json!({
+        "bash": format!("(cd -P -- {root} && {command})"),
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt.",
+    })
+}
+
+/// Consume a carried presentation context, without interpreting raw command
+/// strings again. Returning false preserves the explicit legacy no-context
+/// route. A present but incomplete context under-emits instead of falling back
+/// to an unrooted command.
+pub(crate) fn push_context_command(
+    out: &mut String,
+    context: Option<&serde_json::Value>,
+    step: &str,
+    label: &str,
+) -> bool {
+    let Some(context) = context else {
+        return false;
+    };
+    let forms = context.get(step);
+    let bash = forms
+        .and_then(|value| value.get("bash"))
+        .and_then(serde_json::Value::as_str);
+    let powershell = forms
+        .and_then(|value| value.get("powershell"))
+        .and_then(serde_json::Value::as_str);
+    if let Some(command) = bash {
+        out.push_str(&format!("{label}: {}\n", code_span(command)));
+    }
+    if let Some(command) = powershell {
+        out.push_str(&format!("{label} (PowerShell): {}\n", code_span(command)));
+    }
+    if bash.is_none() || powershell.is_none() {
+        let recovery = forms.and_then(|value| value.get("recovery"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("Command context is unavailable; rerun first-pr with --root naming the existing repository.");
+        let unavailable_label = if bash.is_some() {
+            format!("{label} (PowerShell)")
+        } else {
+            label.to_string()
+        };
+        out.push_str(&format!(
+            "{unavailable_label} unavailable: {}\n",
+            inline_prose(recovery)
+        ));
+    }
+    true
+}
+
 /// Statement that makes PowerShell decode the captured producer stdout as
 /// UTF-8. PowerShell decodes native stdout with `[Console]::OutputEncoding`,
 /// which is the OEM code page (437, 850, ...) in Windows PowerShell 5.1 and
@@ -489,7 +587,7 @@ fn is_compound_bash_command(command: &str) -> bool {
                     // Any other escape (`\;`, `\&`, `\ `, `\\`...) changes
                     // how the shells tokenize the line.
                     Some(_) => return true,
-                    None => index += 1,
+                    None => return true,
                 },
                 ';' | '\n' | '\r' => return true,
                 '>' => {

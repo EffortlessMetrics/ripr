@@ -81,6 +81,34 @@ pub(crate) fn human_path_text(text: &str, windows: bool) -> String {
     plain.replace('\\', "/")
 }
 
+/// A valid user-supplied alias can resolve to non-UTF-8 filesystem bytes.
+/// Keep a lossless absolute alias in that case, without collapsing `..`:
+/// its filesystem traversal still selects the diagnosed physical directory.
+pub(crate) fn command_root_display(root: &Path, resolved: &Path) -> Result<String, String> {
+    if resolved.to_str().is_some() {
+        return Ok(human_path(resolved));
+    }
+    absolute_command_root_display(root)
+}
+
+pub(crate) fn absolute_command_root_display(root: &Path) -> Result<String, String> {
+    let path = if root.is_absolute() {
+        std::borrow::Cow::Borrowed(root)
+    } else {
+        let cwd = std::env::current_dir()
+            .map_err(|error| format!("cannot bind the selected root to its directory: {error}"))?;
+        std::borrow::Cow::Owned(cwd.join(root))
+    };
+    require_lossless_command_path(&path)?;
+    Ok(human_path(&path))
+}
+
+fn require_lossless_command_path(path: &Path) -> Result<(), String> {
+    path.to_str().map(|_| ()).ok_or_else(|| {
+        "selected root cannot be represented losslessly in a command; rerun doctor from a UTF-8 parent using a UTF-8 alias".to_string()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;

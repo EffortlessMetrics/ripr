@@ -3123,9 +3123,6 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
     assert!(stdout.contains(
         "Why this matters: A related Rust test reaches this change, but no equality-boundary assertion was found for the changed behavior."
     ));
-    assert!(stdout.contains("Verify after the test edit: `cargo xtask fixtures boundary_gap`"));
-    assert!(stdout.contains("Receipt after verify: `ripr receipt write --gap "));
-    assert!(stdout.contains("Receipt path: `target/ripr/receipts/"));
     assert!(stdout.contains("Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval."));
 
     let json_path = reports.join("start-here.json");
@@ -3163,12 +3160,77 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
             .pointer("/preflight/checks")
             .is_some_and(|value| value.is_array())
     );
-    assert_eq!(
-        json_pointer_str(&report, "/commands/verify")?,
-        "cargo xtask fixtures boundary_gap"
-    );
-
     let markdown = std::fs::read_to_string(&md_path)?;
+    let verify = "cargo xtask fixtures boundary_gap";
+    let receipt_path =
+        "target/ripr/receipts/gap-pr-pricing-threshold-boundary.targeted-test-outcome.json";
+    let receipt = format!(
+        "ripr receipt write --gap gap:rust:pricing:discount:threshold-boundary --verify-command '{verify}' --status not_run --out {receipt_path}"
+    );
+    let cwd = json_pointer_str(&report, "/selected/command_context/cwd")?;
+    assert_eq!(
+        Path::new(cwd).canonicalize()?,
+        workspace_root().canonicalize()?
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/command_context/authority")?,
+        "advisory_display_only"
+    );
+    for (step, raw, label) in [
+        ("verify", verify, "Verify after the test edit"),
+        ("receipt", receipt.as_str(), "Receipt after verify"),
+    ] {
+        // Raw command identity, including the nested receipt verification and
+        // supplied status, must not acquire the human display's CWD wrapper.
+        assert_eq!(
+            json_pointer_str(&report, &format!("/commands/{step}"))?,
+            raw
+        );
+        assert_eq!(
+            json_pointer_str(&report, &format!("/selected/{step}_command"))?,
+            raw
+        );
+        let context = &report["selected"]["command_context"][step];
+        let bash = json_pointer_str(context, "/bash")?;
+        // Inspect the complete wrapper and decode its root independently of
+        // production rendering. Literal Bash/exit/CWD controls live in the
+        // owning first_pr tests; this is the real CLI's projection contract.
+        let root_token = bash
+            .strip_prefix("(cd -P -- ")
+            .and_then(|rest| rest.strip_suffix(&format!(" && {raw})")))
+            .ok_or_else(|| format!("invalid rooted {step} command: {bash}"))?;
+        assert_eq!(decode_shell_token(root_token).as_deref(), Some(cwd));
+        let line = format!("{label}: `{bash}`");
+        assert!(stdout.lines().any(|actual| actual == line), "{stdout}");
+        assert!(markdown.lines().any(|actual| actual == line), "{markdown}");
+        assert!(
+            markdown.lines().any(|actual| actual == format!("- {line}")),
+            "{markdown}"
+        );
+        assert_eq!(context.get("powershell"), Some(&serde_json::Value::Null));
+        let recovery = json_pointer_str(context, "/recovery")?;
+        assert!(recovery.contains("native exit-status semantics"));
+        assert!(recovery.contains("run it from the selected repository"));
+        let unavailable = format!("{label} (PowerShell) unavailable: {recovery}");
+        assert!(stdout.lines().any(|actual| actual == unavailable));
+        assert!(markdown.lines().any(|actual| actual == unavailable));
+    }
+    assert_eq!(
+        json_pointer_str(&report, "/selected/receipt_command_source")?,
+        "first_pr.default_receipt_write_command"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/receipt_path")?,
+        receipt_path
+    );
+    assert_eq!(
+        report.pointer("/selected/receipt_state"),
+        Some(&serde_json::Value::Null)
+    );
+    assert!(stdout.contains(&format!("Receipt path: `{receipt_path}`")));
+    assert!(markdown.contains(&format!("- Receipt path: `{receipt_path}`")));
+    assert!(stdout.contains("Receipt status: the command records `--status not_run` as printed"));
+    assert!(markdown.contains("Receipt status: the command records `--status not_run` as printed"));
     assert!(markdown.contains("# RIPR First PR Start Here"));
     assert!(markdown.contains("Status: advisory"));
     assert!(markdown.contains("## Preflight"));
@@ -3179,8 +3241,6 @@ fn first_pr_cli_writes_start_here_packet() -> Result<(), Box<dyn std::error::Err
         )
     );
     assert!(markdown.contains("- Missing discriminator: Equality-boundary assertion"));
-    assert!(markdown.contains("- Receipt after verify: `ripr receipt write --gap "));
-    assert!(markdown.contains("- Receipt path: `target/ripr/receipts/"));
     assert!(markdown.contains("Pass/fail authority remains with explicit gate-decision artifacts"));
     let check_output = run_ripr_in_workspace(&[
         "start-here",

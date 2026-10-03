@@ -4,7 +4,7 @@ use super::util::{string_field, summary_bool, summary_string_or_null, summary_u6
 use crate::output::first_pr::{ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
 use crate::output::markdown::{
     COMMAND_SHELL_DISCLOSURE, PowershellForm, code_span, inline_prose, powershell_form,
-    table_code_span,
+    push_context_command, table_code_span,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -137,16 +137,30 @@ fn render_start_here_top_gap(out: &mut String, start_here_value: Option<&Value>)
         .and_then(Value::as_str)
         .filter(|command| !command.trim().is_empty());
     let labels = push_repair_transaction(out, repair_command);
-    out.push_str(&format!(
-        "- {}: {}\n",
-        labels.verify,
-        value_code(start_here_value, &["selected", "verify_command"])
-    ));
-    out.push_str(&format!(
-        "- {}: {}\n",
-        labels.receipt,
-        value_code(start_here_value, &["selected", "receipt_command"])
-    ));
+    if !push_context_command(
+        out,
+        start_here_value.and_then(|v| v.pointer("/selected/command_context")),
+        "verify",
+        &format!("- {}", labels.verify),
+    ) {
+        out.push_str(&format!(
+            "- {}: {}\n",
+            labels.verify,
+            value_code(start_here_value, &["selected", "verify_command"])
+        ));
+    }
+    if !push_context_command(
+        out,
+        start_here_value.and_then(|v| v.pointer("/selected/command_context")),
+        "receipt",
+        &format!("- {}", labels.receipt),
+    ) {
+        out.push_str(&format!(
+            "- {}: {}\n",
+            labels.receipt,
+            value_code(start_here_value, &["selected", "receipt_command"])
+        ));
+    }
     out.push_str(&format!(
         "- receipt state: {}\n",
         value_code(start_here_value, &["selected", "receipt_state"])
@@ -575,16 +589,30 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
         ));
         out.push_str(&format!("- target: {}\n", code_span(&repair.target)));
         let labels = push_repair_transaction(&mut out, repair.repair_command.as_deref());
-        out.push_str(&format!(
-            "- {}: {}\n",
-            labels.verify,
-            code_span(&repair.verify_command)
-        ));
-        out.push_str(&format!(
-            "- {}: {}\n",
-            labels.receipt,
-            code_span(&repair.receipt_command)
-        ));
+        if !push_context_command(
+            &mut out,
+            repair.command_context.as_ref(),
+            "verify",
+            &format!("- {}", labels.verify),
+        ) {
+            out.push_str(&format!(
+                "- {}: {}\n",
+                labels.verify,
+                code_span(&repair.verify_command)
+            ));
+        }
+        if !push_context_command(
+            &mut out,
+            repair.command_context.as_ref(),
+            "receipt",
+            &format!("- {}", labels.receipt),
+        ) {
+            out.push_str(&format!(
+                "- {}: {}\n",
+                labels.receipt,
+                code_span(&repair.receipt_command)
+            ));
+        }
         out.push_str(&format!(
             "- receipt state: {}\n",
             code_span(&repair.receipt_state)
@@ -617,6 +645,18 @@ pub fn render_evidence_summary_md(s: &super::model::PrEvidenceSummaryJson) -> St
     out.push_str("## Local Reproduction Commands\n\n");
     out.push_str(COMMAND_SHELL_DISCLOSURE);
     for cmd in &s.local_reproduction_commands {
+        if let Some(repair) = &s.top_repair
+            && cmd == &repair.verify_command
+            && push_context_command(
+                &mut out,
+                repair.command_context.as_ref(),
+                "verify",
+                "Verify after the test edit",
+            )
+        {
+            out.push('\n');
+            continue;
+        }
         out.push_str(&format!("```bash\n{cmd}\n```\n\n"));
         match powershell_form(cmd) {
             PowershellForm::Translated(line) => {
@@ -648,6 +688,64 @@ mod tests {
         MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, RECEIPT_AFTER_VERIFY_LABEL,
         VERIFY_AFTER_EDIT_LABEL,
     };
+
+    #[test]
+    fn selected_context_is_shared_by_summary_surfaces_without_changing_raw_json()
+    -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        for verify in [
+            "python -m pytest tests/test_pricing.py",
+            "cargo test a && cargo test b",
+        ] {
+            let receipt = "ripr receipt write --gap example --verify-command 'python -m pytest tests/test_pricing.py' --status not_run";
+            let context = crate::output::markdown::selected_command_context(&root, verify, receipt);
+            let packet = serde_json::json!({"status": "actionable", "selected": {
+                "state": "top_gap", "verify_command": verify, "receipt_command": receipt,
+                "command_context": context,
+            }});
+            let mut legacy_summary = String::new();
+            render_start_here_top_gap(&mut legacy_summary, Some(&packet));
+            let summary = super::super::json::build_pr_evidence_summary(
+                Some(&packet),
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+            let markdown = render_evidence_summary_md(&summary);
+            let start_here = crate::output::first_pr::first_pr_start_here_markdown(&packet);
+            let json: Value = serde_json::from_str(
+                &super::super::json::render_pr_evidence_summary_json(&summary),
+            )
+            .map_err(|error| error.to_string())?;
+            assert_eq!(json["top_repair"]["verify_command"], verify);
+            assert_eq!(json["top_repair"]["receipt_command"], receipt);
+            assert_eq!(json["top_repair"]["command_context"], context);
+            assert!(
+                summary
+                    .local_reproduction_commands
+                    .iter()
+                    .any(|command| command == verify)
+            );
+            for output in [&legacy_summary, &markdown, &start_here] {
+                assert!(
+                    !output.contains(&format!("`{verify}`")),
+                    "unrooted displayed command: {output}"
+                );
+                if let Some(bash) = context["verify"]["bash"].as_str() {
+                    assert!(output.contains(&code_span(bash)), "{output}");
+                } else {
+                    assert!(output.contains("unavailable:"), "{output}");
+                }
+                let receipt_bash = context["receipt"]["bash"]
+                    .as_str()
+                    .ok_or("receipt context absent")?;
+                assert!(output.contains(&code_span(receipt_bash)), "{output}");
+            }
+        }
+        Ok(())
+    }
 
     /// #3906: the legacy start-here section shows the carried repair start
     /// before verify, and nothing when start-here carries none.
