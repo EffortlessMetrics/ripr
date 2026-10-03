@@ -11144,3 +11144,28 @@ outputs = [
 metrics = [
   "unit_test_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0206"
+name = "Batched candidate-tree materialization"
+spec = "docs/specs/RIPR-SPEC-0206-batched-candidate-materialization.md"
+tests = [
+  "crates/ripr/src/git.rs::tests::cat_file_batch_stream_reads_across_chunk_boundaries",
+  "crates/ripr/src/git.rs::tests::cat_file_batch_stream_fails_closed_on_truncated_blob",
+  "crates/ripr/src/git.rs::tests::cat_file_batch_stream_times_out_when_budget_is_spent",
+  "crates/ripr/src/git.rs::tests::cat_file_batch_stream_enforces_the_absolute_deadline",
+  "crates/ripr/src/git.rs::tests::cat_file_batch_stream_rejects_ready_bytes_past_the_deadline",
+  "crates/ripr/src/git.rs::tests::cat_file_batch_session_round_trips_blobs_and_reports_missing",
+  "crates/ripr/src/git.rs::tests::cat_file_batch_session_enforces_the_overall_budget",
+  "crates/ripr/src/analysis/git_candidate_execution.rs::tests::batched_materialization_preserves_bytes_at_scale",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/git.rs",
+  "crates/ripr/src/analysis/git_candidate_execution.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
+  "golden_fixture_pass_rate",
+]

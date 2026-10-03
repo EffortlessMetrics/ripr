@@ -1063,6 +1063,13 @@ status = "proposed"
 owner = "test-infra"
 standalone_reason = "Issue #4604 records the blind journey execution consumer: the deterministic executor turns scripted journeys (reviewed prompt surface, separately stored answer key, ordered actions with exact bytes, axis observations) into stamped, validator-accepted RIPR-SPEC-0200 receipts; it enforces the per-kind digest presence the contract receipt deferred, binds every observation to its execution event, derives the terminal in one fixed precedence so no script can claim a result, and refuses contaminated prompts, missing or stale reviews and honest terminals without exact limitations; a scripted corpus of emitted and refused journeys pins the executor while the real candidate run waits on #4510/#1609."
 [[artifact]]
+id = "RIPR-SPEC-0206"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0206-batched-candidate-materialization.md"
+status = "proposed"
+owner = "product-analysis"
+standalone_reason = "Issue #5015 records the batched candidate-tree materialization: one streaming git cat-file --batch session materializes an arbitrary-size candidate tree (two git spawns total with the ls-tree listing, O(1) in tree size, down from one spawn per file), a single overall deadline bounds the whole phase incrementally through the shared named git_invocation_timeout classification instead of N x git_timeout, blob bytes stream to disk in bounded chunks under a whole-tree byte cap, fail-closed behavior and raw blob-byte identity (#3548) are preserved, and the spawn-count delta is structural while wall-clock magnitude stays a measurement-pending design_question."
+[[artifact]]
 id = "RIPR-SPEC-0201"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.md"

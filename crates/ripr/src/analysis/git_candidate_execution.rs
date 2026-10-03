@@ -11,10 +11,10 @@
 //!   (read-only plumbing; no ref, index, or worktree mutation);
 //! - the diff is `git diff-tree` between the two **trees**, preserving
 //!   add/delete/rename/type-change information;
-//! - the candidate root is materialized blob-by-blob (`ls-tree` +
-//!   `cat-file`) from the
-//!   candidate tree alone into a fresh temp directory, so every byte
-//!   comes from the bound tree;
+//! - the candidate root is materialized from the candidate tree alone
+//!   through one streaming `git cat-file --batch` process (two git spawns
+//!   total with the `ls-tree` listing, regardless of tree size; #5015)
+//!   into a fresh temp directory, so every byte comes from the bound tree;
 //! - any failure (missing base/candidate, unsupported object mode,
 //!   traversal, materialization error) fails closed naming the exact
 //!   identity — never an empty analysis.
@@ -22,15 +22,16 @@
 use crate::domain::{
     GitCandidateBase, GitCandidateSubject, GitCandidateSubjectError as SubjectError,
 };
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Bounded invocation deadline for each plumbing call.
 const GIT_DEADLINE: Option<Duration> = Some(Duration::from_mins(1));
 
-/// Upper bound on the candidate archive size. A tree whose archive
-/// exceeds it fails closed with a named limit instead of an unbounded
-/// allocation.
+/// Upper bound on the total materialized candidate tree size. A tree whose
+/// materialized bytes exceed it fails closed with a named limit instead of
+/// an unbounded disk write.
 const MAX_ARCHIVE_BYTES: usize = 512 * 1024 * 1024;
 /// The resolved, analyzed form of one immutable subject: the derived
 /// unified diff, the materialized candidate root (owned temp directory
@@ -226,9 +227,12 @@ fn derive_diff(
     )
 }
 
-/// Materialize the candidate tree into a fresh temp directory. Every
-/// byte comes from `git cat-file` of the bound blob; the worktree and index
-/// are never consulted.
+/// Materialize the candidate tree into a fresh temp directory through ONE
+/// streaming `git cat-file --batch` process (#5015; before this, one
+/// sequential `git cat-file` subprocess per file, each carrying the full
+/// per-invocation deadline, multiplied the worst case to N × git_timeout and
+/// paid a process spawn per file). Every byte still comes from the bound
+/// blobs; the worktree and index are never consulted.
 fn materialize(
     root: &Path,
     candidate_tree: &str,
@@ -250,10 +254,10 @@ fn materialize(
     // Arm cleanup BEFORE any fallible work. Every `?` below returns early,
     // and until this guard exists those paths leave `base_dir` — which by
     // then holds an extracted copy of the candidate tree — on disk forever.
-    // A fail-closed subject (an unsupported entry mode, a git failure
-    // failure, a bounded-read overrun) must not cost a permanent temp
-    // directory; only the success path hands the guard to the caller, who
-    // holds it for as long as the materialization is in use.
+    // A fail-closed subject (an unsupported entry mode, a git failure, a
+    // bounded-read overrun) must not cost a permanent temp directory; only
+    // the success path hands the guard to the caller, who holds it for as
+    // long as the materialization is in use.
     let cleanup = TempRootGuard(base_dir.clone());
     if target.exists() {
         // A stale directory from a crashed run must not be reused: its
@@ -269,12 +273,19 @@ fn materialize(
     // Materialize straight from blob identities. `git archive` honors
     // `.gitattributes` (e.g. `*.rs text eol=crlf`) even with
     // `core.autocrlf=false`, so extracted bytes could silently differ from
-    // the bound blob identity (#3548 review); `ls-tree` + `cat-file` emit
-    // raw blob bytes only.
+    // the bound blob identity (#3548 review); `ls-tree` + `cat-file --batch`
+    // emit raw blob bytes only.
+    // ONE overall deadline bounds the whole materialization phase, both git
+    // processes included: the clock starts here, `ls-tree` runs inside
+    // whatever remains, and the batch session receives only what is left
+    // after listing and validation — so a slow listing followed by a slow
+    // batch stream still cannot exceed one deadline.
+    let budget = deadline.unwrap_or(Duration::from_mins(1));
+    let budget_started = std::time::Instant::now();
     let listing = crate::git::run_git_output_with_deadline_and_limit(
         root,
         &["ls-tree", "-r", "-z", candidate_tree],
-        deadline.unwrap_or(Duration::from_mins(1)),
+        budget.saturating_sub(budget_started.elapsed()),
         MAX_ARCHIVE_BYTES,
     )
     .map_err(|error| failed(format!("git ls-tree failed: {error}")))?;
@@ -283,6 +294,11 @@ fn materialize(
             "git ls-tree of the candidate tree failed".to_string(),
         ));
     }
+    // Validate every entry up front — non-UTF-8 paths, unsupported modes,
+    // and traversal attempts fail closed with the existing named errors
+    // before any byte is materialized, so a partially written tree can
+    // never be mistaken for a complete one.
+    let mut entries: Vec<(String, String)> = Vec::new();
     for entry in listing.stdout.split(|byte| *byte == 0) {
         if entry.is_empty() {
             continue;
@@ -310,24 +326,66 @@ fn materialize(
                 "unsupported tree entry mode `{mode}` (`{kind}`) for `{path}`: the candidate tree contains a non-file object ripr cannot faithfully materialize"
             )));
         }
+        // Validate the join up front so a traversal attempt fails before
+        // any byte is materialized.
+        let _destination = safe_join(&target, path)?;
+        entries.push((path.to_string(), object.to_string()));
+    }
+    if entries.is_empty() {
+        return Ok((target.clone(), cleanup));
+    }
+    // The batch session gets only the budget left after listing and
+    // validation.
+    let session_budget = budget.saturating_sub(budget_started.elapsed());
+    let mut session = crate::git::CatFileBatch::spawn(root, session_budget)
+        .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
+    let mut total_bytes: u64 = 0;
+    let mut chunk = vec![0_u8; 64 * 1024];
+    for (path, object) in &entries {
         let destination = safe_join(&target, path)?;
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|error| failed(format!("materialization mkdir failed: {error}")))?;
         }
-        let blob = crate::git::run_git_output_with_deadline_and_limit(
-            root,
-            &["cat-file", "blob", object],
-            deadline.unwrap_or(Duration::from_mins(1)),
-            MAX_ARCHIVE_BYTES,
-        )
-        .map_err(|error| failed(format!("git cat-file blob failed: {error}")))?;
-        if !blob.status.success() {
-            return Err(failed(format!("git cat-file blob {object} failed")));
+        let Some(size) = session
+            .request_blob(object)
+            .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?
+        else {
+            return Err(failed(format!("git cat-file blob {object} is missing")));
+        };
+        total_bytes = total_bytes.checked_add(size).ok_or_else(|| {
+            failed("candidate tree materialization byte total overflowed".to_string())
+        })?;
+        if total_bytes > MAX_ARCHIVE_BYTES as u64 {
+            return Err(failed(format!(
+                "candidate tree materialization exceeded the {MAX_ARCHIVE_BYTES}-byte total limit"
+            )));
         }
-        std::fs::write(&destination, &blob.stdout)
+        let mut file = std::fs::File::create(&destination)
             .map_err(|error| failed(format!("materialization write failed: {error}")))?;
+        let mut remaining = size;
+        while remaining > 0 {
+            let take = (remaining as usize).min(chunk.len()) as u64;
+            session
+                .read_blob_bytes(&mut chunk[..take as usize])
+                .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+            // The budget is enforced on every git stream read above and by
+            // `finish` below. One residual limitation, unchanged from the
+            // per-blob path: a single stalled OS-level `write_all` is
+            // outside the deadline's reach (std file I/O has no timed
+            // wait); the next stream read fails closed once the budget is
+            // spent.
+            file.write_all(&chunk[..take as usize])
+                .map_err(|error| failed(format!("materialization write failed: {error}")))?;
+            remaining -= take;
+        }
+        session
+            .end_blob()
+            .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
     }
+    session
+        .finish()
+        .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
     Ok((target.clone(), cleanup))
 }
 
@@ -936,6 +994,76 @@ mod tests {
 
         let _ = std::fs::remove_file(&unremovable);
         let _ = std::fs::remove_dir_all(&base);
+        Ok(())
+    }
+
+    // #5015: one streaming `cat-file --batch` process materializes a whole
+    // large tree. Every file — nested paths, an empty file, and a multi-chunk
+    // binary blob whose framing bytes (NULs, interior newlines) could corrupt
+    // a naive stream parser — must arrive byte-identical to the `git show`
+    // oracle, which is exactly what the previous per-blob `cat-file` path was
+    // pinned to.
+    #[test]
+    fn batched_materialization_preserves_bytes_at_scale() -> Result<(), String> {
+        let (guard, base, _fixture_candidate) = fixture_repo("batchscale")?;
+        let run = |args: &[&str]| -> Result<String, String> {
+            let out = crate::git::run_git_output_with_deadline(&guard.0, args, GIT_DEADLINE)
+                .map_err(|e| e.to_string())?;
+            if !out.status.success() {
+                return Err(format!(
+                    "git {} failed: {}",
+                    args[0],
+                    String::from_utf8_lossy(&out.stderr)
+                ));
+            }
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        };
+        let mut expected: Vec<(String, Vec<u8>)> = Vec::new();
+        // 300 small files spread over nested directories: enough sequential
+        // responses to exercise the batch protocol far beyond one pipe buffer
+        // of framing, at a test-acceptable cost.
+        for index in 0..300 {
+            let deep = format!("wide/deep-{}/file-{}.rs", index % 17, index);
+            let content = format!("pub fn f{index}() -> u8 {{ {index} }}\n").into_bytes();
+            let path = guard.0.join(&deep);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            std::fs::write(&path, &content).map_err(|e| e.to_string())?;
+            expected.push((deep, content));
+        }
+        // A binary blob larger than the 64 KiB read chunk: the stream parser
+        // must not confuse content bytes with framing bytes. Every byte
+        // value cycles through (NULs and interior newlines included).
+        let binary: Vec<u8> = (0u8..=255).cycle().take(1024 * 1024 + 13).collect();
+        std::fs::write(guard.0.join("binary.bin"), &binary).map_err(|e| e.to_string())?;
+        expected.push(("binary.bin".to_string(), binary));
+        // An empty file: zero content bytes followed only by the framing
+        // newline.
+        std::fs::write(guard.0.join("empty.rs"), b"").map_err(|e| e.to_string())?;
+        expected.push(("empty.rs".to_string(), Vec::new()));
+        run(&["add", "."])?;
+        run(&["commit", "-m", "wide tree"])?;
+        let candidate = run(&["rev-parse", "HEAD"])?;
+        let s = subject(
+            &guard.0,
+            GitCandidateBase::Treeish(GitTreeish::new(&base).map_err(|e| e.to_string())?),
+            &candidate,
+        )?;
+        let resolved = resolve(&s, None).map_err(|e| e.to_string())?;
+        for (path, oracle) in &expected {
+            let materialized =
+                std::fs::read(resolved.root.join(path)).map_err(|e| e.to_string())?;
+            let blob_oracle = candidate_blob(&guard.0, &candidate, path)?;
+            assert_eq!(
+                materialized, blob_oracle,
+                "batch materialization must equal the bound blob bytes for {path}"
+            );
+            assert_eq!(
+                materialized, *oracle,
+                "batch materialization must equal the written fixture bytes for {path}"
+            );
+        }
         Ok(())
     }
 }
