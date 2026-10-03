@@ -1,0 +1,42 @@
+[
+  {
+    "variant": "effective",
+    "argv": [
+      "/workspace/shared/ripr-merged-python-replay-qa/install/bin/ripr",
+      "check",
+      "--root",
+      "/workspace/shared/ripr-werkzeug-case-evidence/analysis-effective",
+      "--diff",
+      "/workspace/shared/ripr-werkzeug-case-qa/fixtures/python-real-repo-evals/werkzeug-multiple-cookie/production.patch",
+      "--mode",
+      "fast",
+      "--format",
+      "json"
+    ],
+    "cwd": "/workspace/shared/ripr-werkzeug-case-qa",
+    "exit_code": 0,
+    "runtime_ms": 563,
+    "stdout": "effective-check.json",
+    "stderr": "effective-check.stderr"
+  },
+  {
+    "variant": "ineffective",
+    "argv": [
+      "/workspace/shared/ripr-merged-python-replay-qa/install/bin/ripr",
+      "check",
+      "--root",
+      "/workspace/shared/ripr-werkzeug-case-evidence/analysis-ineffective",
+      "--diff",
+      "/workspace/shared/ripr-werkzeug-case-qa/fixtures/python-real-repo-evals/werkzeug-multiple-cookie/production.patch",
+      "--mode",
+      "fast",
+      "--format",
+      "json"
+    ],
+    "cwd": "/workspace/shared/ripr-werkzeug-case-qa",
+    "exit_code": 0,
+    "runtime_ms": 510,
+    "stdout": "ineffective-check.json",
+    "stderr": "ineffective-check.stderr"
+  }
+]

@@ -886,7 +886,13 @@ pub(crate) fn validate_python_real_repo_eval_fixture_corpus(
     validate_python_real_repo_eval_fixture_corpus_at(
         Path::new(PYTHON_REAL_REPO_EVAL_CORPUS),
         violations,
-    )
+    )?;
+    if let Err(error) = super::upstream_python::validate_werkzeug_upstream_evidence(Path::new(
+        PYTHON_REAL_REPO_EVAL_CORPUS,
+    )) {
+        violations.push(error);
+    }
+    Ok(())
 }
 
 fn validate_python_real_repo_eval_fixture_corpus_at(

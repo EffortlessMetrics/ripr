@@ -1,0 +1,45 @@
+{
+  "variant": "fixed_full",
+  "argv": [
+    "/workspace/shared/ripr-werkzeug-case-evidence/venv/bin/python",
+    "-m",
+    "pytest",
+    "tests/sansio/test_request.py::test_cookies",
+    "-q",
+    "--junitxml",
+    "/workspace/shared/ripr-werkzeug-case-evidence/original-oracle-v2/test_upstream_cookie_oracle_fi0/junit.xml"
+  ],
+  "cwd": "/workspace/shared/ripr-werkzeug-case-evidence/original-oracle-v2/test_upstream_cookie_oracle_fi0/subject",
+  "source_root": "/workspace/shared/ripr-werkzeug-case-evidence/upstream-fixed/werkzeug-57acc4236044803956686c3f0f6ae0cacd2986b0",
+  "pythonpath": "/workspace/shared/ripr-werkzeug-case-evidence/original-oracle-v2/test_upstream_cookie_oracle_fi0/subject/src",
+  "interpreter": "/workspace/shared/ripr-werkzeug-case-evidence/venv/bin/python",
+  "import_identity": [
+    "/workspace/shared/ripr-werkzeug-case-evidence/original-oracle-v2/test_upstream_cookie_oracle_fi0/subject/src/werkzeug/__init__.py",
+    "/workspace/shared/ripr-werkzeug-case-evidence/venv/bin/python"
+  ],
+  "exit_code": 0,
+  "selected_and_executed": 1,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "test_ids": [
+    {
+      "classname": "tests.sansio.test_request",
+      "name": "test_cookies",
+      "time": "0.000"
+    }
+  ],
+  "production_sha256": "512bc748f992dbdf0bdb2b6cdd123f860e10496dd984af18b0cb416d0093cca6",
+  "test_sha256": "a01fd4143765472584fae6e3896676502e7bbff8de7ac7558eb8ec4ca3c0b736",
+  "conftest_sha256": "a48591fe82ccac87c7c73fdfb36028b8b7418bb22d449aca75680a434b00eb58",
+  "driver_sha256": "3e0a7d804743c510fc450df91aea5c264996db95612d37095f8270c32ae3d918",
+  "requirements_lock_sha256": "d57609095c57bc971b174a20f546c378aef8473b55ab82c8a87a9fa034b0f57d",
+  "runtime_versions": {
+    "pytest": "9.1.1",
+    "pytest-xprocess": "1.0.2"
+  },
+  "python_version": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "stdout": ".                                                                        [100%]\n1 passed in 0.01s\n",
+  "stderr": "",
+  "junit_xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites name=\"pytest tests\"><testsuite name=\"pytest\" errors=\"0\" failures=\"0\" skipped=\"0\" tests=\"1\" time=\"0.013\" timestamp=\"2026-10-03T00:06:33.013120-04:00\" hostname=\"20a53836e48c\"><testcase classname=\"tests.sansio.test_request\" name=\"test_cookies\" time=\"0.000\" /></testsuite></testsuites>"
+}

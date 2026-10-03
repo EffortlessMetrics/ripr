@@ -1,0 +1,42 @@
+From 57acc4236044803956686c3f0f6ae0cacd2986b0 Mon Sep 17 00:00:00 2001
+From: pgjones <philip.graham.jones@googlemail.com>
+Date: Sun, 14 Mar 2021 19:20:47 +0000
+Subject: [PATCH] Fix sansio request cookies
+
+The expectation for cookie parsing is that any multiple cookies
+headers are joined with a semicolon separator as WSGI does.
+---
+ src/werkzeug/sansio/request.py | 3 ++-
+ tests/sansio/test_request.py   | 7 +++++++
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/werkzeug/sansio/request.py b/src/werkzeug/sansio/request.py
+index 8c22d4e2c..be3cdc9a8 100644
+--- a/src/werkzeug/sansio/request.py
++++ b/src/werkzeug/sansio/request.py
+@@ -237,8 +237,9 @@ def host(self) -> str:
+     def cookies(self) -> "ImmutableMultiDict[str, str]":
+         """A :class:`dict` with the contents of all cookies transmitted with
+         the request."""
++        wsgi_combined_cookie = ";".join(self.headers.getlist("Cookie"))
+         return parse_cookie(  # type: ignore
+-            self.headers.get("Cookie"),
++            wsgi_combined_cookie,
+             self.charset,
+             self.encoding_errors,
+             cls=self.dict_storage_class,
+diff --git a/tests/sansio/test_request.py b/tests/sansio/test_request.py
+index e34b2c626..310b24480 100644
+--- a/tests/sansio/test_request.py
++++ b/tests/sansio/test_request.py
+@@ -18,3 +18,10 @@
+ def test_content_length(headers: Headers, expected: t.Optional[int]) -> None:
+     req = Request("POST", "http", None, "", "", b"", headers, None)
+     assert req.content_length == expected
++
++
++def test_cookies() -> None:
++    headers = Headers([("Cookie", "a=b"), ("Content-Type", "text"), ("Cookie", "a=c")])
++    req = Request("GET", "http", None, "", "", b"", headers, None)
++    assert req.cookies.get("a") == "b"
++    assert req.cookies.getlist("a") == ["b", "c"]

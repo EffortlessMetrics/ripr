@@ -20,6 +20,7 @@ mod editor_validators;
 mod gap_validators;
 mod general_validators;
 mod report_validators;
+mod upstream_python;
 
 pub(crate) use editor_validators::*;
 pub(crate) use gap_validators::*;
@@ -1695,6 +1696,10 @@ pub(crate) const PYTHON_REAL_REPO_EVAL_REQUIRED_CASES: &[(&str, &str)] = &[
 
 pub(crate) const PYTHON_REAL_REPO_EVAL_REQUIRED_STATIC_LIMIT_CASES: &[(&str, &str)] = &[
     ("dynamic_dispatch_no_packet_eval", "dynamic_dispatch"),
+    (
+        "werkzeug_multiple_cookie_headers_2065_historical_limit",
+        "decorator_indirection",
+    ),
     (
         "decorator_indirection_no_packet_eval",
         "decorator_indirection",

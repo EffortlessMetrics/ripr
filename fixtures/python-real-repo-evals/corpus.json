@@ -9,7 +9,7 @@
     "advisory dogfood receipts only",
     "no provider calls",
     "no generated tests",
-    "no mutation execution",
+    "RIPR executes no mutations; separately identified upstream broken/fixed controls are run explicitly with pytest",
     "no CI gate or support-tier promotion"
   ],
   "cases": [
@@ -2060,6 +2060,46 @@
         "No arbitrary imports or tests were run by RIPR"
       ],
       "reason": "The run records another fail-closed Python repair-routing shape: unsupported lambda-return syntax stays visible as a static limitation while excluded from repair-card, packet, verify, and receipt success metrics."
+    },
+    {
+      "id": "werkzeug_multiple_cookie_headers_2065_historical_limit",
+      "repo_shape": "upstream_werkzeug_src_layout_cached_property",
+      "source_kind": "external_repo",
+      "source_ref": "fixtures/python-real-repo-evals/werkzeug-multiple-cookie",
+      "command": "ripr check --root <owned copy of werkzeug-multiple-cookie/input> --diff fixtures/python-real-repo-evals/werkzeug-multiple-cookie/production.patch --mode fast --format json",
+      "runtime_ms": 563,
+      "finding_id": "probe:src_werkzeug_sansio_request.py:python_preview:b3a84bb3",
+      "changed_owner": "python:src/werkzeug/sansio/request.py::Request.cookies",
+      "static_limit_kind": "decorator_indirection",
+      "classification": "static_unknown",
+      "stop_reasons": [
+        "static_probe_unknown"
+      ],
+      "related_test_file": "tests/sansio/test_request.py",
+      "related_test_name": "test_cookies",
+      "why_not_actionable": "The historical exact-3e900f analyzer reports decorator_indirection for cached_property and only an uncertain same-stem test link; no valid actionable target is established.",
+      "repair_card_present": false,
+      "agent_packet_present": false,
+      "verify_command": "not_applicable_static_limit",
+      "verify_result": "not_applicable",
+      "receipt_command": "not_applicable_static_limit",
+      "receipt_result": "not_applicable",
+      "gap_movement": "no_receipt",
+      "false_positive_notes": "none observed",
+      "limitation_notes": "Historical 3e900f source-built CLI emits two static_unknown probes with either effective or weakened tests. Separate native original/retained replay proves the actual list discriminator. This observation is not a permanent desired product outcome or current-main qualification.",
+      "claim_boundary": [
+        "Broader Python static facts remain preview/advisory",
+        "No repair packet emitted",
+        "No support-tier promotion",
+        "No arbitrary imports or tests were run by RIPR",
+        "Independent pytest execution is evidence about this historical upstream bug only",
+        "Curated upstream regression; no blind operator, real-opportunity denominator, package, installed journey or release credit"
+      ],
+      "reason": "Retain a genuine upstream production/test/license/provenance case and a native oracle before assessing static output. Future capability work must distinguish the effective getlist assertion from the retained ineffective first-value assertion, with established descriptor identity and negative rebound/unknown-decorator controls.",
+      "upstream_evidence": {
+        "manifest": "werkzeug-multiple-cookie/manifest.json",
+        "sha256": "28bca009452fee508860fda5f50a1db303cda5c7731dcde40c005e5aff7f5fb3"
+      }
     }
   ],
   "no_action_cases": [

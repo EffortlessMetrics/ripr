@@ -699,6 +699,17 @@ or conditionally rebinds it, and an `__all__` replaced by an import), a
 binding of another name that keeps the re-export, and a docstring that
 mentions `__all__` without binding it.
 
+The curated upstream Werkzeug #2065 case lives under
+`fixtures/python-real-repo-evals/werkzeug-multiple-cookie/` and is referenced by
+the existing Python eval corpus. Its native broken/fixed and assertion-removal
+controls establish the `getlist("a") == ["b", "c"]` answer key independently
+of analyzer output. Fixture-contract checks bind retained bytes and execution
+records; the documented pytest replay executes the native controls separately.
+The recorded historical `cached_property` limitation is not a permanent
+expected capability boundary. Future promotion requires resolved descriptor
+reach, effective-versus-weakened observer separation, and conservative
+unknown/rebound-decorator controls before actionable guidance.
+
 ## Implementation Mapping
 
 Follow-up implementation belongs to Campaign 27 work item

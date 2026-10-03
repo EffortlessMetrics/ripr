@@ -1,0 +1,5 @@
+ripr: mode fast is currently identical to mode draft; there is no behavioral difference. Use draft or deep (--mode on the command line, or [analysis] mode in ripr.toml).
+ripr progress: loading_input [diff]
+ripr progress: analyzing [diff]
+ripr progress: building_output [diff]
+ripr progress: completed [diff]
