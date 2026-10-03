@@ -9,6 +9,46 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
+
+- Add `xtask release-final-server-subjects` to prepare the exact twelve existing
+  server upload subjects from canonical assembler output. The nonpublishing
+  inventory, provenance inputs and checksum list are bound by the terminal
+  preparation receipt; rejection retains diagnostics without successful files.
+  This does not attest, verify provenance, authorize uploads or close #1502.
+
+- Fix npm staging's tarball argument to use an explicit local `./dist/` path.
+  The real CLI transport test now runs the workflow's shell command from the
+  same relative directory layout and refuses Git transports during rehearsal.
+
+- Prepare native/npm `0.11.0-alpha.2` with fresh same-source wheel, pip/uv and
+  npm qualification. Reuse the native builder, bind all seven executed jobs
+  and the exact native artifact, and preserve independent PyPI publication
+  authority. This preparation does not publish either registry or add platforms.
+
+- Add manual, existing-package npm staging from exact source-main qualification
+  artifacts. Read-only admission checks native bytes, all four qualification
+  artifacts and installed-use denominators before an isolated stage-only OIDC
+  job. A real npm CLI loopback test checks unchanged tar transport; live trust,
+  staging, maintainer approval and public readback remain separate operations.
+
+- Prepare a single native `@effortlessmetrics/ripr` npm alpha for Linux x86-64/glibc 2.34+,
+  preserving the exact published PyPI executable with separate product and
+  packaging provenance. Qualification covers local/global/npm exec/npx installs
+  without lifecycle scripts; this does not itself publish npm or add platforms.
+  Use the scoped package after npm's unscoped-name rejection, retaining the
+  installed `ripr` command and verifying scoped package paths during reinstall.
+
+- Prepare the first `ripr-rs` PyPI prerelease (`0.11.0a1`, native
+  `0.11.0-alpha.1`) as a native CLI wheel for Linux x86-64 with glibc 2.34 or
+  newer. Qualification checks audited wheel contents and isolated pip/uv
+  installation, Python preview use, and removal; other platforms are not
+  included in this initial scope.
+- Add source-owned qualification and explicitly requested publication of the
+  exact admitted wheel, binding its source, successful run, version and digest.
+  Publication uses the registered PyPI trusted publisher without rebuilding;
+  qualification alone does not publish a release.
+
 ## 0.11.0 - Swarm promotion and fail-closed output hardening
 
 Release date: staged (unreleased).

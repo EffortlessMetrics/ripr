@@ -44,6 +44,32 @@ suite('distribution descriptor', () => {
     ]
   };
 
+  test('admits supported prerelease versions only in development catalogs', () => {
+    for (const version of ['0.11.0-alpha.1', '0.11.0-beta.2', '0.11.0-rc.1']) {
+      const development = {
+        ...stable,
+        productVersion: version,
+        channel: 'development',
+        releaseTag: `v${version}`,
+        releaseRef: `refs/tags/v${version}`,
+        manifestFile: `ripr-server-manifest-v${version}.json`
+      };
+      const parsed = parseDistributionDescriptor(JSON.stringify(development));
+      assert.strictEqual(resolveDistributionRequest(version, parsed, 'development_fixture').productVersion, version);
+      assert.throws(() => resolveDistributionRequest(version, parsed), /not eligible for managed resolution/);
+      for (const channel of ['stable', 'rc']) {
+        assert.throws(() => parseDistributionDescriptor(JSON.stringify({
+          ...development, channel
+        })), /product version is not semantic/);
+      }
+    }
+    for (const productVersion of ['0.11.0-alpha.01', '0.11.0-alpha', '0.11.0-dev.1', '0.11.0+build']) {
+      assert.throws(() => parseDistributionDescriptor(JSON.stringify({
+        ...stable, channel: 'development', productVersion
+      })), /product version is not semantic/);
+    }
+  });
+
   test('keeps package version distinct from an RC release placement', () => {
     const request = resolveDistributionRequest('0.11.0', rc);
     assert.strictEqual(request.productVersion, '0.11.0');
@@ -284,6 +310,10 @@ suite('distribution descriptor schema 2', () => {
     releaseRef: 'refs/tags/v0.11.0',
     manifestFile: 'ripr-server-manifest-v0.11.0.json',
     sourceRepository: 'https://github.com/EffortlessMetrics/ripr',
+    producer: {
+      tool: 'xtask release-distribution-catalog',
+      schema: 'distribution-catalog/1'
+    },
     ...releaseIdentity
   };
   const catalog2: DistributionDescriptor = {
@@ -324,7 +354,7 @@ suite('distribution descriptor schema 2', () => {
   });
 
   test('keeps absent release identity out of development descriptor identity', () => {
-    const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, ...bareDevelopment2 } = {
+    const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, producer: _producer, ...bareDevelopment2 } = {
       ...stable2,
       channel: 'development' as const
     };
@@ -351,8 +381,16 @@ suite('distribution descriptor schema 2', () => {
       channel: 'development'
     };
     assert.throws(() => parseDistributionDescriptor(JSON.stringify(development2)), /development catalog must not carry release identity/);
-    const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, ...bareDevelopment2 } = development2;
+    const { distributionGeneration: _generation, manifestSha256: _manifest, targetSetDigest: _targets, producer: _producer, ...bareDevelopment2 } = development2;
     assert.strictEqual(parseDistributionDescriptor(JSON.stringify(bareDevelopment2)).schema, 2);
+    assert.throws(
+      () => parseDistributionDescriptor(JSON.stringify({ ...bareDevelopment2, producer: stable2.producer })),
+      /development\/schema 1 catalog must not carry producer identity/
+    );
+    assert.throws(
+      () => parseDistributionDescriptor(JSON.stringify({ ...bareDevelopment2, schema: 1, producer: stable2.producer })),
+      /development\/schema 1 catalog must not carry producer identity/
+    );
     assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, schema: 1 })), /requires schema 2/);
     assert.throws(() => parseDistributionDescriptor(JSON.stringify({ ...stable2, schema: 3 })), /unsupported schema/);
   });

@@ -1,0 +1,166 @@
+name: Qualify native Linux npm prerelease (read-only)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/scripts/npm_*.py'
+      - '.github/scripts/test_npm_package.py'
+      - '.github/workflows/npm-package-qualification.yml'
+      - '.github/workflows/publish-npm.yml'
+      - '.github/workflows/python-wheel-qualification.yml'
+      - '.github/scripts/pypi_admission.py'
+      - '.github/scripts/test_pypi_admission.py'
+      - 'packaging/npm/**'
+      - 'packaging/python/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/ripr/**'
+      - 'rust-toolchain.toml'
+      - 'LICENSE-*'
+      - 'fixtures/python/basic/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  native:
+    name: native
+    uses: ./.github/workflows/python-wheel-qualification.yml
+    permissions:
+      contents: read
+
+  package:
+    needs: native
+    if: >-
+      github.repository == 'EffortlessMetrics/ripr' &&
+      (github.event_name == 'pull_request' ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      attempt: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Select exact npm packaging implementation
+        run: npm install --global --ignore-scripts npm@11.9.0
+      - name: Validate package byte admission
+        run: python3 -m unittest discover -s .github/scripts -p test_npm_package.py
+      - name: Bind exact packaging source
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - name: Package the same-source qualified native bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/npm_package.py target/ripr/npm-qualified
+      - name: Include the source-independent consumer harness
+        run: cp .github/scripts/npm_consumer.py target/ripr/npm-qualified/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-prepared-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/ripr/npm-qualified/tarballs/
+            target/ripr/npm-qualified/package-receipt.json
+            target/ripr/npm-qualified/npm-pack.json
+            target/ripr/npm-qualified/fixture/
+            target/ripr/npm-qualified/npm_consumer.py
+          retention-days: 5
+          if-no-files-found: error
+
+  consumer:
+    needs: package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: '20.20.1'
+            npm: '10.8.2'
+          - node: '24.19.0'
+            npm: '11.9.0'
+    steps:
+      - name: Require whole-run retry
+        env:
+          BUILD_ATTEMPT: ${{ needs.package.outputs.attempt }}
+        run: test "$BUILD_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Select exact npm consumer implementation
+        env:
+          NPM_VERSION: ${{ matrix.npm }}
+        run: npm install --global --ignore-scripts "npm@$NPM_VERSION"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: npm-prepared-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence
+      - name: Verify checkout-free installs and useful native journeys
+        run: python3 evidence/npm_consumer.py evidence consumer-proof
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-consumer-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: consumer-proof/
+          if-no-files-found: error
+          retention-days: 5
+
+  publisher-controls:
+    name: publisher-controls
+    needs: package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Require whole-run retry
+        env:
+          BUILD_ATTEMPT: ${{ needs.package.outputs.attempt }}
+        run: test "$BUILD_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Validate workflow syntax and expression contexts
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
+          printf '%s\n' "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" > "$RUNNER_TEMP/actionlint.sha256"
+          sha256sum --check "$RUNNER_TEMP/actionlint.sha256"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Select exact staging client
+        run: npm install --global --ignore-scripts npm@11.15.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: npm-prepared-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence
+      - name: Exercise real staging transport on a loopback mock registry
+        env:
+          RIPR_NPM_STAGE_ARTIFACT: evidence
+          RIPR_NPM_STAGE_PROOF: stage-cli-proof
+        run: python3 -m unittest discover -s .github/scripts -p test_npm_package.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-publisher-controls-${{ github.run_id }}-${{ github.run_attempt }}
+          path: stage-cli-proof/
+          if-no-files-found: error
+          retention-days: 5

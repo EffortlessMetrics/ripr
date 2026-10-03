@@ -1,0 +1,42 @@
+{
+  "name": "@effortlessmetrics/ripr",
+  "description": "Native ripr static mutation-exposure analyzer (Linux x64 alpha).",
+  "license": "MIT OR Apache-2.0",
+  "author": "Effortless Metrics",
+  "homepage": "https://github.com/EffortlessMetrics/ripr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EffortlessMetrics/ripr.git",
+    "directory": "packaging/npm"
+  },
+  "bugs": {
+    "url": "https://github.com/EffortlessMetrics/ripr/issues"
+  },
+  "bin": {
+    "ripr": "bin/ripr"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "engines": {
+    "npm": ">=10"
+  },
+  "files": [
+    "bin/ripr",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "README.md",
+    "provenance.json",
+    "sbom.cyclonedx.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  }
+}
