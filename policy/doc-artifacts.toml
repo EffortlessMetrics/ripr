@@ -1070,6 +1070,13 @@ status = "proposed"
 owner = "product-analysis"
 standalone_reason = "Issue #5015 records the batched candidate-tree materialization: one streaming git cat-file --batch session materializes an arbitrary-size candidate tree (two git spawns total with the ls-tree listing, O(1) in tree size, down from one spawn per file), a single overall deadline bounds the whole phase incrementally through the shared named git_invocation_timeout classification instead of N x git_timeout, blob bytes stream to disk in bounded chunks under a whole-tree byte cap, fail-closed behavior and raw blob-byte identity (#3548) are preserved, and the spawn-count delta is structural while wall-clock magnitude stays a measurement-pending design_question."
 [[artifact]]
+id = "RIPR-SPEC-0207"
+kind = "spec"
+path = "docs/specs/RIPR-SPEC-0207-installed-rust-journey-fixture.md"
+status = "proposed"
+owner = "test-infra"
+standalone_reason = "Issue #4516 records the installed Rust journey fixture: fixtures/blind_journey_installed_rust retains a digest-bound two-source Cargo repository (committed inclusive equality-boundary change, related test missing exactly the boundary, no-ignore variant, reproducible git identities) whose ten scripted installed_rust_* journeys execute through the unchanged RIPR-SPEC-0205 executor — positive row from a foreign CWD with decoy, second-root portable-identity repeat, and the no-ignore / cage / failing-test / skipped-verification / deleted-artifact / workspace-binary / interrupted-receipt controls each keeping its own derived non-positive terminal — while a dedicated check-fixture-contracts validator recomputes snapshot digests and cross-references the corpus; the real candidate-bound run stays residual on the frozen #1609 candidate and the #4510 harness."
+[[artifact]]
 id = "RIPR-SPEC-0201"
 kind = "spec"
 path = "docs/specs/RIPR-SPEC-0201-python-same-class-transitive-reach-limitation.md"

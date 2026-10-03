@@ -1,0 +1,111 @@
+{
+ "schema_version": "blind_journey_installed_rust_fixture.v1",
+ "spec": "RIPR-SPEC-0207",
+ "issues": ["#4516", "#4508", "#4600", "#3797", "#4510", "#4604", "#4603"],
+ "fixture": {
+  "name": "installed-rust-tier-boundary",
+  "language": "rust",
+  "summary": "Bounded two-source Cargo repository whose committed production change moves one equality boundary from exclusive to inclusive while the related test only covers below/above; the expected repair adds one equality test and no production edit."
+ },
+ "repository": {
+  "identity": "fixtures/blind_journey_installed_rust/repository",
+  "default_base_ref": "main",
+  "snapshots": {
+   "base": {
+    "commit": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+    "tree": "8c3a6ff250d34675386567f37ccf05d8a0dd6d6e",
+    "files": {
+     "Cargo.toml": "fe2217ea6b4f2cc34ca43a7b8e2b277a417fed51a0a4912333f9bbe2a1e5a89d",
+     "src/lib.rs": "b5947bc9f7ef4744d9e01afc26a9f4cf1eae4898f79c46d384218217b0c1fb06",
+     "tests/tier_boundary.rs": "4b1668c747a01d41d0aa2fd04154adf50b5376fc42b237c7f9a60353663d3710"
+    }
+   },
+   "head": {
+    "commit": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+    "tree": "60374952915a027947d4e1654bd6e945834114c3",
+    "files": {
+     ".gitignore": "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368",
+     "Cargo.toml": "fe2217ea6b4f2cc34ca43a7b8e2b277a417fed51a0a4912333f9bbe2a1e5a89d",
+     "src/lib.rs": "2a4d714339c8828b606e6284570ac0f3a94ad92767cb8e0870e5d8f069698cd4",
+     "tests/tier_boundary.rs": "4b1668c747a01d41d0aa2fd04154adf50b5376fc42b237c7f9a60353663d3710"
+    }
+   },
+   "head-no-ignore": {
+    "commit": "7831d6f6e31fe47fad83d204f8644bd9618f2bb4",
+    "tree": "36e9bee8d075276b344af3389b3ad76510b2f930",
+    "files": {
+     "Cargo.toml": "fe2217ea6b4f2cc34ca43a7b8e2b277a417fed51a0a4912333f9bbe2a1e5a89d",
+     "src/lib.rs": "2a4d714339c8828b606e6284570ac0f3a94ad92767cb8e0870e5d8f069698cd4",
+     "tests/tier_boundary.rs": "4b1668c747a01d41d0aa2fd04154adf50b5376fc42b237c7f9a60353663d3710"
+    }
+   }
+  },
+  "construction_recipe": [
+   "git init -b main . && git config core.autocrlf false && git config user.name 'ripr fixture' && git config user.email 'fixture@example.invalid'",
+   "write the base snapshot files (repository/base/*) and `git add -A`",
+   "GIT_AUTHOR_DATE=2026-10-01T00:00:00Z GIT_COMMITTER_DATE=2026-10-01T00:00:00Z git commit -m 'base: exclusive gold-tier boundary with below/above tests'",
+   "write the head snapshot files (repository/head/*) and `git add -A`",
+   "GIT_AUTHOR_DATE=2026-10-01T00:01:00Z GIT_COMMITTER_DATE=2026-10-01T00:01:00Z git commit -m 'head: move gold-tier boundary to include exactly 20; ignore cargo build output'",
+   "branch variant/no-ignore at the base commit, check out the head src/lib.rs without .gitignore, and commit with the same fixed dates to reproduce the variant commit"
+  ],
+  "recipe_note": "Pinned author/committer identity, fixed timestamps and core.autocrlf=false make every commit and tree object reproducible; the recorded commit and tree identities were reproduced from this recipe before being committed."
+ },
+ "journey": {
+  "eligible_items": ["seam-tier-boundary-equality"],
+  "quiet_neighbors": ["seam-tier-standard-branch"],
+  "expected_edit_cage": ["tests/tier_boundary.rs"],
+  "forbidden_edits": ["src/lib.rs", "Cargo.toml", "target/notes.rs"],
+  "discriminator_family": "boundary-constant",
+  "known_product_limitations": ["no-network"],
+  "selected_repair": {
+   "edit_target": "tests/tier_boundary.rs",
+   "added_test": "at_boundary_is_gold",
+   "focused_verification_command": "cargo test --test tier_boundary",
+   "expected_verification_exit": 0,
+   "independent_understanding": "head makes tier(20) return gold; the retained test only asserts quantities 19 and 21, so one equality assertion at 20 is the complete bounded repair"
+  },
+  "printed_command_templates": {
+   "doctor": "ripr doctor --root <selected-root>",
+   "pilot": "ripr pilot --root <selected-root>",
+   "repair_before": "ripr agent repair --root <selected-root> --seam-id seam-tier-boundary-equality --phase before",
+   "repair_after": "ripr agent repair --root <selected-root> --attempt <repair-attempt-id> --phase after",
+   "agent_receipt": "ripr agent receipt --root <selected-root> --attempt <repair-attempt-id> --out target/ripr/reports/agent-receipt.json"
+  },
+  "substitution_contract": "<selected-root> and <repair-attempt-id> are the only placeholders; the product prints concrete values and the scripted transcript records the printed bytes literally, executed from a foreign launch directory against the selected root."
+ },
+ "journey_scenario_ids": [
+  "installed_rust_positive_journey_emits_receipt",
+  "installed_rust_no_ignore_rule_stops_before_edit",
+  "installed_rust_notes_file_edit_refused",
+  "installed_rust_production_edit_refused",
+  "installed_rust_failing_focused_test_visible",
+  "installed_rust_verification_skipped_visible",
+  "installed_rust_deleted_before_artifact_names_recovery",
+  "installed_rust_workspace_binary_rejected",
+  "installed_rust_interrupted_receipt_write_recovers",
+  "installed_rust_second_root_portable_identity"
+ ],
+ "control_mapping": {
+  "repository_without_target_ignore_rule_stops_before_edit": "installed_rust_no_ignore_rule_stops_before_edit",
+  "non_artifact_target_file_refused": "installed_rust_notes_file_edit_refused",
+  "production_source_edit_refused": "installed_rust_production_edit_refused",
+  "failed_focused_test_keeps_axes_separate": "installed_rust_failing_focused_test_visible",
+  "skipped_project_verification_stays_not_run": "installed_rust_verification_skipped_visible",
+  "deleted_before_artifact_names_recovery": "installed_rust_deleted_before_artifact_names_recovery",
+  "foreign_cwd_decoy_keeps_selected_root": "installed_rust_positive_journey_emits_receipt",
+  "workspace_binary_substitution_rejected": "installed_rust_workspace_binary_rejected",
+  "interrupted_receipt_write_stays_blocked_until_rerun": "installed_rust_interrupted_receipt_write_recovers",
+  "second_root_repeat_shares_portable_identity": "installed_rust_second_root_portable_identity"
+ },
+ "claims": {
+  "limitations": [
+   "the scripted rows bind the retained fixture snapshots by content digest and recorded git identity; the frozen-candidate run through the #4510 harness rebinds live process and package identities",
+   "recorded command output bytes are the retained literal observations of the printed route; the real installed run may print equivalent concrete roots and attempt ids"
+  ],
+  "non_claims": [
+   "no installed usefulness, candidate qualification or blind acceptance is claimed",
+   "no claim that every Cargo repository shape is supported",
+   "no mutation-adequacy or runtime-mutation result is claimed anywhere in the rows"
+  ]
+ }
+}

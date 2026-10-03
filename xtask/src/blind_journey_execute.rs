@@ -171,7 +171,7 @@ pub(crate) struct BlindJourneyExecuteCorpusV1 {
 /// The executor fixture scenarios RIPR-SPEC-0205 requires; the committed
 /// corpus must cover all of them and the live executor decides each outcome
 /// independently of the committed expectation.
-pub(crate) const REQUIRED_BLIND_JOURNEY_EXECUTE_SCENARIO_IDS: [&str; 24] = [
+pub(crate) const REQUIRED_BLIND_JOURNEY_EXECUTE_SCENARIO_IDS: [&str; 34] = [
     "executor_positive_journey_emits_receipt",
     "executor_positive_second_eligible_item_selects_b",
     "executor_instrument_watchdog_stays_positive",
@@ -196,6 +196,16 @@ pub(crate) const REQUIRED_BLIND_JOURNEY_EXECUTE_SCENARIO_IDS: [&str; 24] = [
     "executor_refuses_contradictory_static_output",
     "executor_refuses_receipt_not_applicable_with_execution",
     "executor_refuses_unbound_accepted_review",
+    "installed_rust_positive_journey_emits_receipt",
+    "installed_rust_no_ignore_rule_stops_before_edit",
+    "installed_rust_notes_file_edit_refused",
+    "installed_rust_production_edit_refused",
+    "installed_rust_failing_focused_test_visible",
+    "installed_rust_verification_skipped_visible",
+    "installed_rust_deleted_before_artifact_names_recovery",
+    "installed_rust_workspace_binary_rejected",
+    "installed_rust_interrupted_receipt_write_recovers",
+    "installed_rust_second_root_portable_identity",
 ];
 
 /// Required scenario ids absent from one committed executor corpus id set.

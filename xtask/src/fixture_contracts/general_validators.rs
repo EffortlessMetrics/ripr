@@ -11,6 +11,7 @@
 //! `dogfood.rs`, and `tests.rs`) compile unchanged.
 
 use super::*;
+use sha2::{Digest, Sha256};
 
 pub(crate) fn validate_evidence_record_contract_fixture_corpus(
     violations: &mut Vec<String>,
@@ -1857,4 +1858,650 @@ fn validate_blind_journey_execute_fixture_corpus_at(
         violations.push(format!("blind journey execute corpus drifted: {failure}"));
     }
     Ok(())
+}
+
+pub(crate) const INSTALLED_RUST_FIXTURE_SCHEMA_VERSION: &str =
+    "blind_journey_installed_rust_fixture.v1";
+
+/// The installed-Rust journey fixture (#4516, RIPR-SPEC-0207) is a
+/// manifest-only fixture directory: `manifest.json` binds the retained Cargo
+/// repository snapshots by per-file SHA-256 and records the reproducible git
+/// identities, and this validator owns that contract so a hand-edited
+/// snapshot or manifest cannot make a scripted journey claim a fixture it
+/// does not bind.
+pub(crate) fn validate_blind_journey_installed_rust_fixture(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/blind_journey_installed_rust");
+    for required in ["SPEC.md", "manifest.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "blind journey installed rust fixture is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0207") {
+            violations.push(
+                "blind journey installed rust SPEC.md must name its RIPR-SPEC-0207 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "blind journey installed rust SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    let manifest_path = root.join("manifest.json");
+    if !manifest_path.exists() {
+        return Ok(());
+    }
+    let manifest = match read_json_value(&manifest_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(format!(
+                "blind journey installed rust manifest is invalid: {err}"
+            ));
+            return Ok(());
+        }
+    };
+    for violation in installed_rust_manifest_violations(root, &manifest) {
+        violations.push(violation);
+    }
+    let corpus_path = Path::new("fixtures/blind_journey_execute/corpus.json");
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    for missing in installed_rust_missing_scenarios(&manifest, &corpus) {
+        violations.push(missing);
+    }
+    for violation in installed_rust_scenario_binding_violations(&manifest, &corpus) {
+        violations.push(violation);
+    }
+    Ok(())
+}
+
+fn installed_rust_sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// One recorded git identity is a lowercase 40-hex SHA-1 object id; anything
+/// else cannot be the reproducible commit or tree identity the fixture claims.
+fn installed_rust_git_identity_wellformed(value: Option<&Value>) -> bool {
+    value.and_then(Value::as_str).is_some_and(|identity| {
+        identity.len() == 40
+            && identity
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    })
+}
+
+/// Every snapshot file binding recomputed against the bytes on disk, plus the
+/// edit-cage invariants the scripted journeys rely on.
+fn installed_rust_manifest_violations(root: &Path, manifest: &Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    let fixture_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            violations.push(format!(
+                "blind journey installed rust fixture root cannot be resolved: {error}"
+            ));
+            return violations;
+        }
+    };
+    if json_string_field(manifest, "schema_version").as_deref()
+        != Some(INSTALLED_RUST_FIXTURE_SCHEMA_VERSION)
+    {
+        violations.push(format!(
+            "blind journey installed rust manifest schema_version must be \
+             {INSTALLED_RUST_FIXTURE_SCHEMA_VERSION}"
+        ));
+    }
+    let Some(snapshots) = manifest
+        .get("repository")
+        .and_then(|repository| repository.get("snapshots"))
+        .and_then(Value::as_object)
+    else {
+        violations.push(
+            "blind journey installed rust manifest is missing repository.snapshots".to_string(),
+        );
+        return violations;
+    };
+    for (name, snapshot) in snapshots {
+        let snapshot_dir = root.join("repository").join(name);
+        let confined_dir = match snapshot_dir.canonicalize() {
+            Ok(resolved) if resolved.starts_with(&fixture_root) => resolved,
+            Ok(_) => {
+                violations.push(format!(
+                    "blind journey installed rust snapshot `{name}` escapes the fixture root"
+                ));
+                continue;
+            }
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed rust snapshot `{name}` directory cannot be \
+                     resolved: {error}"
+                ));
+                continue;
+            }
+        };
+        if !installed_rust_git_identity_wellformed(snapshot.get("commit"))
+            || !installed_rust_git_identity_wellformed(snapshot.get("tree"))
+        {
+            violations.push(format!(
+                "blind journey installed rust snapshot `{name}` must record well-formed commit \
+                 and tree identities"
+            ));
+        }
+        let Some(files) = snapshot.get("files").and_then(Value::as_object) else {
+            violations.push(format!(
+                "blind journey installed rust snapshot `{name}` is missing its file digest \
+                 bindings"
+            ));
+            continue;
+        };
+        for (relative, digest) in files {
+            let Some(expected) = digest.as_str() else {
+                violations.push(format!(
+                    "blind journey installed rust snapshot `{name}` file `{relative}` records a \
+                     non-string digest"
+                ));
+                continue;
+            };
+            let path = confined_dir.join(relative);
+            let path = match path.canonicalize() {
+                Ok(resolved) if resolved.starts_with(&fixture_root) => resolved,
+                Ok(_) => {
+                    violations.push(format!(
+                        "blind journey installed rust snapshot `{name}` file `{relative}` escapes \
+                         the fixture root"
+                    ));
+                    continue;
+                }
+                Err(error) => {
+                    violations.push(format!(
+                        "blind journey installed rust snapshot `{name}` file `{relative}` cannot \
+                         be read: {error}"
+                    ));
+                    continue;
+                }
+            };
+            let body = match std::fs::read(&path) {
+                Ok(body) => body,
+                Err(error) => {
+                    violations.push(format!(
+                        "blind journey installed rust snapshot `{name}` file `{relative}` cannot \
+                         be read: {error}"
+                    ));
+                    continue;
+                }
+            };
+            if installed_rust_sha256_hex(&body) != expected {
+                violations.push(format!(
+                    "blind journey installed rust snapshot `{name}` file `{relative}` drifted \
+                     from its recorded digest"
+                ));
+            }
+        }
+        let mut on_disk = Vec::new();
+        installed_rust_collect_snapshot_files(
+            &confined_dir,
+            Path::new(""),
+            &mut on_disk,
+            &mut violations,
+            name,
+        );
+        for relative in on_disk {
+            if !files.contains_key(relative.as_str()) {
+                violations.push(format!(
+                    "blind journey installed rust snapshot `{name}` file `{relative}` is not \
+                     bound in the manifest"
+                ));
+            }
+        }
+    }
+    let journey = manifest.get("journey");
+    let string_list = |key: &str| {
+        journey
+            .and_then(|journey| journey.get(key))
+            .and_then(Value::as_array)
+            .map(|entries| entries.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let cage = string_list("expected_edit_cage");
+    let forbidden = string_list("forbidden_edits");
+    let edit_target = journey
+        .and_then(|journey| journey.get("selected_repair"))
+        .and_then(|repair| repair.get("edit_target"))
+        .and_then(Value::as_str);
+    match edit_target {
+        Some(target) if cage.contains(&target) => {}
+        Some(_) => {
+            violations.push(
+                "blind journey installed rust selected repair edit target must lie inside the \
+                 expected edit cage"
+                    .to_string(),
+            );
+        }
+        None => {
+            violations.push(
+                "blind journey installed rust manifest is missing \
+                 journey.selected_repair.edit_target"
+                    .to_string(),
+            );
+        }
+    }
+    if cage.iter().any(|entry| forbidden.contains(entry)) {
+        violations.push(
+            "blind journey installed rust expected edit cage and forbidden edits must not \
+             overlap"
+                .to_string(),
+        );
+    }
+    violations
+}
+
+/// Fail-closed inventory of one retained snapshot directory: every regular
+/// file is reported with its manifest-relative `/`-separated path so a
+/// behavior-affecting snapshot file cannot stay unbound from the manifest.
+fn installed_rust_collect_snapshot_files(
+    dir: &Path,
+    prefix: &Path,
+    files: &mut Vec<String>,
+    violations: &mut Vec<String>,
+    snapshot: &str,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!(
+                "blind journey installed rust snapshot `{snapshot}` directory {} cannot be \
+                 read: {error}",
+                normalize_path(dir)
+            ));
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed rust snapshot `{snapshot}` directory {} cannot be \
+                     enumerated: {error}",
+                    normalize_path(dir)
+                ));
+                continue;
+            }
+        };
+        let relative = prefix.join(entry.file_name());
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed rust snapshot `{snapshot}` path {} cannot be \
+                     inspected: {error}",
+                    normalize_path(&relative)
+                ));
+                continue;
+            }
+        };
+        if file_type.is_dir() {
+            installed_rust_collect_snapshot_files(
+                &entry.path(),
+                &relative,
+                files,
+                violations,
+                snapshot,
+            );
+        } else if file_type.is_file() {
+            files.push(normalize_path(&relative));
+        } else {
+            violations.push(format!(
+                "blind journey installed rust snapshot `{snapshot}` path {} is not a regular \
+                 file, so it is not digest-bound",
+                normalize_path(&relative)
+            ));
+        }
+    }
+}
+
+/// Every scripted scenario the manifest names must bind its recorded
+/// candidate identities to the same manifest snapshots, so a renamed row
+/// cannot claim an unrelated repository while this gate stays green.
+fn installed_rust_scenario_binding_violations(manifest: &Value, corpus: &Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    let Some(ids) = manifest
+        .get("journey_scenario_ids")
+        .and_then(Value::as_array)
+    else {
+        return violations;
+    };
+    let named: BTreeSet<&str> = ids.iter().filter_map(Value::as_str).collect();
+    if named.is_empty() {
+        return violations;
+    }
+    let Some(snapshots) = manifest
+        .get("repository")
+        .and_then(|repository| repository.get("snapshots"))
+        .and_then(Value::as_object)
+    else {
+        return violations;
+    };
+    let Some(base_commit) = snapshots
+        .get("base")
+        .and_then(|snapshot| snapshot.get("commit"))
+        .and_then(Value::as_str)
+    else {
+        violations.push(
+            "blind journey installed rust manifest is missing the base snapshot commit".to_string(),
+        );
+        return violations;
+    };
+    let Some(scenarios) = corpus.get("scenarios").and_then(Value::as_array) else {
+        return violations;
+    };
+    for scenario in scenarios {
+        let Some(id) = scenario.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if !named.contains(id) {
+            continue;
+        }
+        let candidate = scenario
+            .get("journey")
+            .and_then(|journey| journey.get("candidate"));
+        let candidate_base = candidate
+            .and_then(|candidate| candidate.get("base"))
+            .and_then(Value::as_str);
+        if candidate_base != Some(base_commit) {
+            violations.push(format!(
+                "blind journey installed rust scenario `{id}` candidate base must bind the base \
+                 snapshot commit"
+            ));
+        }
+        let head = candidate
+            .and_then(|candidate| candidate.get("head"))
+            .and_then(Value::as_str);
+        let tree = candidate
+            .and_then(|candidate| candidate.get("tree"))
+            .and_then(Value::as_str);
+        let head_binds_a_snapshot = snapshots.values().any(|snapshot| {
+            snapshot.get("commit").and_then(Value::as_str) == head
+                && snapshot.get("tree").and_then(Value::as_str) == tree
+        });
+        if !head_binds_a_snapshot {
+            violations.push(format!(
+                "blind journey installed rust scenario `{id}` candidate head and tree must bind \
+                 one manifest snapshot"
+            ));
+        }
+    }
+    violations
+}
+
+/// Every scripted scenario the manifest names must exist in the committed
+/// RIPR-SPEC-0205 executor corpus, so the fixture cannot claim journey rows
+/// the gate does not execute.
+fn installed_rust_missing_scenarios(manifest: &Value, corpus: &Value) -> Vec<String> {
+    let mut missing = Vec::new();
+    let Some(ids) = manifest
+        .get("journey_scenario_ids")
+        .and_then(Value::as_array)
+    else {
+        missing.push(
+            "blind journey installed rust manifest is missing journey_scenario_ids".to_string(),
+        );
+        return missing;
+    };
+    let corpus_ids: BTreeSet<String> = corpus
+        .get("scenarios")
+        .and_then(Value::as_array)
+        .map(|scenarios| {
+            scenarios
+                .iter()
+                .filter_map(|scenario| json_string_field(scenario, "id"))
+                .collect()
+        })
+        .unwrap_or_default();
+    for id in ids {
+        let Some(id) = id.as_str() else {
+            missing.push(
+                "blind journey installed rust journey_scenario_ids must be strings".to_string(),
+            );
+            continue;
+        };
+        if !corpus_ids.contains(id) {
+            missing.push(format!(
+                "blind journey installed rust scenario `{id}` is missing from the blind journey \
+                 execute corpus"
+            ));
+        }
+    }
+    missing
+}
+
+#[cfg(test)]
+mod installed_rust_fixture_tests {
+    use super::*;
+
+    #[test]
+    fn committed_installed_rust_manifest_binds_the_snapshot_bytes() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures/blind_journey_installed_rust");
+        let manifest = read_json_value(&root.join("manifest.json"))?;
+        let violations = installed_rust_manifest_violations(&root, &manifest);
+        if !violations.is_empty() {
+            return Err(format!(
+                "committed installed rust manifest drifted: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn committed_installed_rust_scenarios_exist_in_the_executor_corpus() -> Result<(), String> {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let manifest = read_json_value(
+            &workspace.join("fixtures/blind_journey_installed_rust/manifest.json"),
+        )?;
+        let corpus =
+            read_json_value(&workspace.join("fixtures/blind_journey_execute/corpus.json"))?;
+        let missing = installed_rust_missing_scenarios(&manifest, &corpus);
+        if !missing.is_empty() {
+            return Err(format!(
+                "committed installed rust fixture names missing corpus scenarios: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_installed_rust_scenario_is_reported_missing() -> Result<(), String> {
+        let manifest: Value =
+            serde_json::json!({"journey_scenario_ids": ["installed_rust_not_a_real_scenario"]});
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_rust_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("installed_rust_not_a_real_scenario"))
+        {
+            return Err(format!(
+                "an unknown installed rust scenario must be reported, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn drifted_snapshot_digest_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-rust-fixture-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("src/lib.rs"), b"fn drifted() {}\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_RUST_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "tree": "8c3a6ff250d34675386567f37ccf05d8a0dd6d6e",
+                "files": {"src/lib.rs":
+                    "0000000000000000000000000000000000000000000000000000000000000000"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/tier_boundary.rs"],
+                "forbidden_edits": ["src/lib.rs"],
+                "selected_repair": {"edit_target": "tests/tier_boundary.rs"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_rust_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("drifted"))
+        {
+            return Err(format!(
+                "a drifted snapshot digest must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_identity_binding_accepts_only_lowercase_hex() -> Result<(), String> {
+        let valid: Value = serde_json::json!("01821f774cb2cc2bc745b7506a3941312456fb4e");
+        if !installed_rust_git_identity_wellformed(Some(&valid)) {
+            return Err("a lowercase 40-hex git identity must be accepted".to_string());
+        }
+        for invalid in [
+            serde_json::json!("01821F774CB2CC2BC745B7506A3941312456FB4E"),
+            serde_json::json!("01821f77"),
+            serde_json::json!("zz821f774cb2cc2bc745b7506a3941312456fb4e"),
+            serde_json::json!(
+                "01821f774cb2cc2bc745b7506a3941312456fb4e01821f774cb2cc2bc745b7506a3941312456fb4e"
+            ),
+            serde_json::json!(40),
+        ] {
+            if installed_rust_git_identity_wellformed(Some(&invalid)) {
+                return Err(format!(
+                    "an ill-formed git identity must be rejected: {invalid}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unlisted_snapshot_file_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-rust-extra-file-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("src/lib.rs"), b"fn extra() {}\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("build.rs"), b"fn main() {}\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_RUST_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "tree": "8c3a6ff250d34675386567f37ccf05d8a0dd6d6e",
+                "files": {"src/lib.rs":
+                    "f70d3ed93649e7ee0271d38008eb4427cc0f3006fc1770462aafec2ee834bfcf"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/tier_boundary.rs"],
+                "forbidden_edits": ["src/lib.rs"],
+                "selected_repair": {"edit_target": "tests/tier_boundary.rs"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_rust_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("not bound in the manifest"))
+        {
+            return Err(format!(
+                "an unlisted snapshot file must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scenario_candidate_must_bind_the_manifest_snapshots() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_rust_positive_journey_emits_receipt"],
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                    "tree": "8c3a6ff250d34675386567f37ccf05d8a0dd6d6e",
+                    "files": {}
+                },
+                "head": {
+                    "commit": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+                    "tree": "60374952915a027947d4e1654bd6e945834114c3",
+                    "files": {}
+                }
+            }}
+        });
+        let bound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_rust_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+                "tree": "60374952915a027947d4e1654bd6e945834114c3"
+            }}
+        }]});
+        if !installed_rust_scenario_binding_violations(&manifest, &bound).is_empty() {
+            return Err("a snapshot-bound scenario candidate must be accepted".to_string());
+        }
+        let unbound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_rust_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "head": "0000000000000000000000000000000000000000",
+                "tree": "60374952915a027947d4e1654bd6e945834114c3"
+            }}
+        }]});
+        let violations = installed_rust_scenario_binding_violations(&manifest, &unbound);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind one manifest snapshot"))
+        {
+            return Err(format!(
+                "an unbound scenario candidate head must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
 }

@@ -11195,3 +11195,33 @@ metrics = [
   "unit_test_pass_rate",
   "golden_fixture_pass_rate",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0207"
+name = "Installed Rust journey fixture"
+spec = "docs/specs/RIPR-SPEC-0207-installed-rust-journey-fixture.md"
+tests = [
+  "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::committed_installed_rust_manifest_binds_the_snapshot_bytes",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::committed_installed_rust_scenarios_exist_in_the_executor_corpus",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::unknown_installed_rust_scenario_is_reported_missing",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::drifted_snapshot_digest_is_rejected",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::unlisted_snapshot_file_is_rejected",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::scenario_candidate_must_bind_the_manifest_snapshots",
+  "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::git_identity_binding_accepts_only_lowercase_hex",
+  "xtask/src/reports/blind_journey_execute.rs::tests::committed_corpus_and_receipt_validate_against_the_live_executor",
+  "xtask/src/reports/blind_journey_execute.rs::tests::required_scenarios_cannot_be_dropped_from_the_corpus",
+]
+fixtures = [
+  "fixtures/blind_journey_installed_rust",
+  "fixtures/blind_journey_execute",
+]
+code = [
+  "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/blind_journey_execute.rs",
+  "xtask/src/reports/fixtures.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
+  "blind_journey_execute_positive_scenarios",
+]

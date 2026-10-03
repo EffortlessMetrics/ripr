@@ -22,6 +22,14 @@ deterministic executor in `xtask/src/blind_journey_execute.rs`; the executor
 stamps every emitted packet through the RIPR-SPEC-0200 producer, so a
 hand-edited expectation cannot make a wrong journey emit.
 
+The `installed_rust_*` scenarios are the retained literal installed Rust
+repair journey of #4516 (fixture authority RIPR-SPEC-0207,
+`fixtures/blind_journey_installed_rust/`): the positive row and its ten
+failure controls script only public docs/help and literal product-emitted
+commands over the bounded tier-boundary Cargo fixture, recorded from a
+foreign launch directory against the selected root. They exist alongside the
+generic executor scenarios and obey the same derived-terminal law.
+
 ## When
 
 An offline executor run loads `corpus.json`, builds the event chain (sequence

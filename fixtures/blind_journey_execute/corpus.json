@@ -3568,6 +3568,1670 @@
     "limitations": [],
     "non_claims": []
    }
+  },
+  {
+   "id": "installed_rust_positive_journey_emits_receipt",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "passed_blind_journey",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/tier_boundary.rs",
+      "input_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n",
+      "output_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n\n#[test]\nfn at_boundary_is_gold() {\n    assert_eq!(tier(20), \"gold\");\n}\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "cargo test --test tier_boundary",
+      "input_bytes": "argv:cargo test --test tier_boundary",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "receipt_execution",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "receipt:movement-improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "harness_intervention",
+      "subject": "decoy-write-watchdog:/tmp/decoy-launch",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": false,
+      "intervention": "instrument_only_not_operator_visible",
+      "actor": "evaluator-filesystem-watchdog",
+      "reason": "no matching writes under the foreign launch root; the printed --root commands kept the selected repository"
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "improved",
+     "receipt_status": "receipt_movement_improved",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_no_ignore_rule_stops_before_edit",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "verification_not_run_visible",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "7831d6f6e31fe47fad83d204f8644bd9618f2bb4",
+     "tree": "36e9bee8d075276b344af3389b3ad76510b2f930",
+     "root": "/srv/installed rust journey/tier-fixture-no-ignore",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-no-ignore'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-no-ignore'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-no-ignore' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-no-ignore' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "refused:missing effective `target/` ignore rule; recovery: add `/target/` to .gitignore, then rerun this command",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": null,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_notes_file_edit_refused",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "unsafe_or_wrong_edit",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "target/notes.rs",
+      "input_bytes": "",
+      "output_bytes": "operator scratch notes\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "cargo test --test tier_boundary",
+      "input_bytes": "argv:cargo test --test tier_boundary",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "refused:edit cage violation at target/notes.rs; recovery: remove the file, restore the selected test surface, rerun the printed before phase",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_production_edit_refused",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "unsafe_or_wrong_edit",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "src/lib.rs",
+      "input_bytes": "//! Loyalty tier for one order quantity.\n//!\n//! The boundary is inclusive: an order of exactly 20 now qualifies for gold.\n\n/// Return the loyalty tier for one order quantity.\npub fn tier(quantity: u64) -> &'static str {\n    if quantity >= 20 {\n        \"gold\"\n    } else {\n        \"standard\"\n    }\n}\n",
+      "output_bytes": "//! Loyalty tier for one order quantity.\n//!\n//! The boundary is exclusive: an order of exactly 20 stays standard.\n\n/// Return the loyalty tier for one order quantity.\npub fn tier(quantity: u64) -> &'static str {\n    if quantity > 20 {\n        \"gold\"\n    } else {\n        \"standard\"\n    }\n}\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "cargo test --test tier_boundary",
+      "input_bytes": "argv:cargo test --test tier_boundary",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "refused:edit cage violation at src/lib.rs; recovery: restore the production file, then rerun the printed before phase",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_failing_focused_test_visible",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "verification_failure_visible",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/tier_boundary.rs",
+      "input_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n",
+      "output_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n\n#[test]\nfn at_boundary_is_gold() {\n    assert_eq!(tier(20), \"gold\");\n}\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "cargo test --test tier_boundary",
+      "input_bytes": "argv:cargo test --test tier_boundary",
+      "output_bytes": "exit:101",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "refused:project verification failed; receipt closure is blocked until the focused test passes",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 101,
+     "static_movement": "improved",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_verification_skipped_visible",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "verification_not_run_visible",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/tier_boundary.rs",
+      "input_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n",
+      "output_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n\n#[test]\nfn at_boundary_is_gold() {\n    assert_eq!(tier(20), \"gold\");\n}\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "refused:project verification not_run; static movement cannot substitute for the printed test command",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": null,
+     "static_movement": "improved",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_deleted_before_artifact_names_recovery",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "honest_limitation",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/tier_boundary.rs",
+      "input_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n",
+      "output_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n\n#[test]\nfn at_boundary_is_gold() {\n    assert_eq!(tier(20), \"gold\");\n}\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "cargo test --test tier_boundary",
+      "input_bytes": "argv:cargo test --test tier_boundary",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "refused:missing retained before snapshot target/ripr/repair-attempts/ra-tier-boundary-0001/artifacts/before.repo-exposure.json; recovery: rerun the printed --phase before command while the gap is open",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [
+     "the retained before snapshot was deleted between the edit and the after phase; the printed recovery is a fresh before phase while the gap is open"
+    ],
+    "non_claims": [
+     "no static movement and no receipt is claimed for the interrupted attempt"
+    ]
+   }
+  },
+  {
+   "id": "installed_rust_workspace_binary_rejected",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "candidate_identity_failure",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "refused:workspace ripr binary detected ahead of the installed candidate; recovery: remove the planted binary and rerun",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "harness_intervention",
+      "subject": "evaluator planted a workspace binary",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": false,
+      "intervention": "workspace_binary_substitution",
+      "actor": "evaluator",
+      "reason": "planted a workspace-built ripr binary on PATH ahead of the installed candidate"
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": null,
+     "static_movement": "unknown",
+     "receipt_status": "unknown",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_interrupted_receipt_write_recovers",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "passed_blind_journey",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/tier_boundary.rs",
+      "input_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n",
+      "output_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n\n#[test]\nfn at_boundary_is_gold() {\n    assert_eq!(tier(20), \"gold\");\n}\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "cargo test --test tier_boundary",
+      "input_bytes": "argv:cargo test --test tier_boundary",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "process_cancellation_restart_cleanup",
+      "subject": "receipt write interrupted after the verify render",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": false,
+      "intervention": "instrument_only_not_operator_visible",
+      "actor": "evaluator",
+      "reason": "receipt write interrupted after the verify render; no receipt bytes were persisted for the interrupted attempt"
+     },
+     {
+      "kind": "receipt_execution",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "receipt:movement-improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "improved",
+     "receipt_status": "receipt_movement_improved",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
+  },
+  {
+   "id": "installed_rust_second_root_portable_identity",
+   "expected": {
+    "outcome": "accepted",
+    "terminal": "passed_blind_journey",
+    "reason_contains": null
+   },
+   "journey": {
+    "schema_version": "blind_journey_journey.v1",
+    "candidate": {
+     "repository": "fixtures/blind_journey_installed_rust/repository",
+     "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+     "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+     "tree": "60374952915a027947d4e1654bd6e945834114c3",
+     "root": "/srv/installed rust journey/nested/../tier-fixture-境界",
+     "package": "ripr",
+     "binary": "ripr",
+     "binary_digest": "abababababababababababababababababababababababababababababababab"
+    },
+    "operator_goal": "improve one test through the installed product",
+    "public_inputs": [
+     "docs/cli.md",
+     "docs/FIRST_PR_WORKFLOW.md",
+     "docs/REPAIR_ATTEMPT.md"
+    ],
+    "ordinary_permissions": [
+     "run public product entrypoints",
+     "run the printed project verification command",
+     "read ordinary target source"
+    ],
+    "prohibited_hints": [
+     "no intended change hints",
+     "no internal issue or artifact references",
+     "no hidden command sequences"
+    ],
+    "prompt_bytes": "You are given an installed analysis tool and a target repository checked out on disk. Improve the tests for one behavior you can reach through the product. You may read the public docs, run the printed commands and inspect the ordinary target source. Do not ask anyone for the intended change. Do not modify production source. Do not create files outside the selected repository.",
+    "review": {
+     "reviewer": "reviewer-1",
+     "verdict": "accepted",
+     "prompt_digest": "1d0c0a34cdce7989d7280ecd5af5eaad19bc5facb1fe9b1fde0748b16f321e94",
+     "answer_key_digest": "043c1e708961bcd5a095ba2198939fd103d69b14e61f7c1e324b8a8c504b8a4f"
+    },
+    "answer_key": {
+     "schema_version": "blind_journey_answer_key.v1",
+     "eligible_items": [
+      "seam-tier-boundary-equality"
+     ],
+     "quiet_neighbors": [
+      "seam-tier-standard-branch"
+     ],
+     "expected_edit_cage": [
+      "tests/tier_boundary.rs"
+     ],
+     "discriminator_family": "boundary-constant",
+     "known_product_limitations": [
+      "no-network"
+     ],
+     "forbidden_edits": [
+      "src/lib.rs",
+      "Cargo.toml",
+      "target/notes.rs"
+     ],
+     "answer_key_digest": ""
+    },
+    "actions": [
+     {
+      "kind": "public_documentation_lookup",
+      "subject": "docs:cli-first-pr-workflow",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "ordinary_target_source_read",
+      "subject": "src/lib.rs",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr doctor",
+      "input_bytes": "argv:ripr doctor --root '/srv/installed rust journey/nested/../tier-fixture-境界'",
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr pilot",
+      "input_bytes": "argv:ripr pilot --root '/srv/installed rust journey/nested/../tier-fixture-境界'",
+      "output_bytes": "top-gap:seam-tier-boundary-equality next:ripr agent repair --root '/srv/installed rust journey/nested/../tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "operator_product_option_selection",
+      "subject": "seam-tier-boundary-equality",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "product_command_invocation",
+      "subject": "ripr agent repair before",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/nested/../tier-fixture-境界' --seam-id seam-tier-boundary-equality --phase before",
+      "output_bytes": "attempt:ra-tier-boundary-0001 next:ripr agent repair --root '/srv/installed rust journey/nested/../tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after verify:cargo test --test tier_boundary",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "file_edit",
+      "subject": "tests/tier_boundary.rs",
+      "input_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n",
+      "output_bytes": "use tier_fixture::tier;\n\n#[test]\nfn below_boundary_stays_standard() {\n    assert_eq!(tier(19), \"standard\");\n}\n\n#[test]\nfn above_boundary_is_gold() {\n    assert_eq!(tier(21), \"gold\");\n}\n\n#[test]\nfn at_boundary_is_gold() {\n    assert_eq!(tier(20), \"gold\");\n}\n",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "project_verification_execution",
+      "subject": "cargo test --test tier_boundary",
+      "input_bytes": "argv:cargo test --test tier_boundary",
+      "output_bytes": "exit:0",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "static_analysis_execution",
+      "subject": "ripr agent repair after",
+      "input_bytes": "argv:ripr agent repair --root '/srv/installed rust journey/nested/../tier-fixture-境界' --attempt ra-tier-boundary-0001 --phase after",
+      "output_bytes": "static:improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "receipt_execution",
+      "subject": "ripr agent receipt",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/nested/../tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "output_bytes": "receipt:movement-improved",
+      "operator_visible": true,
+      "intervention": null,
+      "actor": null,
+      "reason": null
+     },
+     {
+      "kind": "harness_intervention",
+      "subject": "decoy-write-watchdog:/tmp/decoy-launch",
+      "input_bytes": null,
+      "output_bytes": null,
+      "operator_visible": false,
+      "intervention": "instrument_only_not_operator_visible",
+      "actor": "evaluator-filesystem-watchdog",
+      "reason": "no matching writes under the foreign launch root; the printed --root commands kept the selected repository"
+     }
+    ],
+    "observations": {
+     "candidate_currentness": "current",
+     "verification_exit": 0,
+     "static_movement": "improved",
+     "receipt_status": "receipt_movement_improved",
+     "external_runtime_mutation_evidence": null
+    },
+    "limitations": [],
+    "non_claims": []
+   }
   }
  ]
 }
