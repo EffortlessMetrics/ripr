@@ -18,6 +18,7 @@ mod lens;
 mod payload_bounds;
 mod position;
 mod progress;
+mod progress_stages;
 mod refresh_scheduler;
 mod repair_card;
 #[cfg(test)]

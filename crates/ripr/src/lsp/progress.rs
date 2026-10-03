@@ -44,8 +44,11 @@ use tower_lsp_server::ls_types::{
     notification::Progress as ProgressNotification,
 };
 
+use super::progress_stages::stage_report_message;
 use super::refresh_scheduler::RefreshRequest;
 use super::state::AnalysisFailureKind;
+
+use crate::app::AnalysisProgressStage;
 
 /// Lifecycle phase of an accepted analysis request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -109,17 +112,17 @@ impl AnalysisProgressEnd {
 }
 
 /// One `$/progress` notification payload.
-enum ProgressNotificationValue {
+pub(super) enum ProgressNotificationValue {
     Begin { title: String, message: String },
     Report { message: String },
     End { message: String },
 }
 
-type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+pub(super) type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Transport for progress traffic. Abstracted so unit tests can record the
 /// wire sequence without a live client.
-trait ProgressSink: Send + Sync {
+pub(super) trait ProgressSink: Send + Sync {
     fn create(&self, token: String) -> BoxFuture<'_, Result<(), String>>;
     fn notify(&self, token: String, value: ProgressNotificationValue) -> BoxFuture<'_, ()>;
 }
@@ -177,6 +180,10 @@ struct TokenRecord {
     /// spec no progress notifications may precede a begin, and none may follow
     /// a failed create.
     started: bool,
+    /// Last producer stage forwarded as a report on this token (#4811).
+    /// Consecutive duplicate stage events are suppressed so repeated
+    /// equivalent events stay within the declared record ceiling.
+    last_stage: Option<AnalysisProgressStage>,
 }
 
 fn progress_token(generation: u64) -> String {
@@ -230,6 +237,15 @@ impl AnalysisProgressTracker {
         self.set_supported(true);
     }
 
+    /// Install an arbitrary test transport (for example a sink whose sends
+    /// never resolve) so bounded-drain guarantees can be exercised without a
+    /// live client.
+    #[cfg(test)]
+    pub(super) fn install_test_sink(&self, sink: Arc<dyn ProgressSink>) {
+        self.set_sink(sink);
+        self.set_supported(true);
+    }
+
     fn sink(&self) -> Option<Arc<dyn ProgressSink>> {
         self.sink.lock().ok().map(|sink| Arc::clone(&sink))
     }
@@ -258,6 +274,7 @@ impl AnalysisProgressTracker {
                     token: progress_token(request.generation),
                     phase,
                     started: false,
+                    last_stage: None,
                 },
             );
         }
@@ -345,6 +362,56 @@ impl AnalysisProgressTracker {
             token,
             ProgressNotificationValue::Report {
                 message: "publishing diagnostics".to_string(),
+            },
+        )
+        .await;
+    }
+
+    /// Bounded report carrying one shared producer stage identity (#4811).
+    ///
+    /// This is the standard work-done consumption of the same
+    /// `AnalysisProgressStage` vocabulary the CLI projects onto stderr:
+    /// `loading_input`, `analyzing`, and `building_output` each become one
+    /// client-appropriate bounded report on the accepted generation's token.
+    /// Terminal stages are never reported here — the terminal disposition
+    /// stays derived from the attempt outcome so cancellation, timeout,
+    /// supersession, failure, and limited/deferred states keep their typed
+    /// honesty and can never publish a fake completed stage.
+    ///
+    /// Reports are message-only: no percentage is ever attached, so unknown
+    /// totals stay unknown. No-ops (never an error, never analysis-relevant):
+    /// unsupported clients, unknown generations, unstarted tokens, tokens
+    /// still queued, terminal stages, and consecutive duplicate stages.
+    pub(super) async fn report_stage(&self, generation: u64, stage: AnalysisProgressStage) {
+        if !self.supported.load(Ordering::SeqCst) {
+            return;
+        }
+        let Some(message) = stage_report_message(stage) else {
+            return;
+        };
+        let token = {
+            let Ok(mut tokens) = self.tokens.lock() else {
+                return;
+            };
+            let Some(record) = tokens.get_mut(&generation) else {
+                return;
+            };
+            if !record.started || record.phase != AnalysisProgressPhase::Analyzing {
+                return;
+            }
+            if record.last_stage == Some(stage) {
+                return;
+            }
+            record.last_stage = Some(stage);
+            record.token.clone()
+        };
+        let Some(sink) = self.sink() else {
+            return;
+        };
+        sink.notify(
+            token,
+            ProgressNotificationValue::Report {
+                message: message.to_string(),
             },
         )
         .await;
@@ -713,6 +780,7 @@ mod tests {
                         token: progress_token(7),
                         phase: AnalysisProgressPhase::Queued,
                         started: false,
+                        last_stage: None,
                     },
                 );
             }
@@ -915,6 +983,178 @@ mod tests {
             if !sink.events().is_empty() {
                 return Err(format!(
                     "unknown generations must not emit traffic: {:?}",
+                    sink.events()
+                ));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn report_stage_emits_one_bounded_report_per_stage_in_producer_order() -> Result<(), String> {
+        runtime()?.block_on(async {
+            let (tracker, sink) = tracker_with_recorder();
+            let request = test_request(1);
+            tracker
+                .begin(&request, AnalysisProgressPhase::Analyzing)
+                .await;
+            for stage in [
+                AnalysisProgressStage::LoadingInput,
+                AnalysisProgressStage::Analyzing,
+                AnalysisProgressStage::BuildingOutput,
+            ] {
+                tracker.report_stage(1, stage).await;
+            }
+            tracker.end(1, AnalysisProgressEnd::Complete).await;
+
+            let events = sink.events();
+            let token = "ripr-analysis-1".to_string();
+            let expected = vec![
+                ProgressEvent::Create {
+                    token: token.clone(),
+                },
+                ProgressEvent::Begin {
+                    token: token.clone(),
+                    title: "ripr analysis".to_string(),
+                    message: "analyzing workspace (did_save)".to_string(),
+                },
+                ProgressEvent::Report {
+                    token: token.clone(),
+                    message: "loading input".to_string(),
+                },
+                ProgressEvent::Report {
+                    token: token.clone(),
+                    message: "analyzing workspace".to_string(),
+                },
+                ProgressEvent::Report {
+                    token: token.clone(),
+                    message: "building output".to_string(),
+                },
+                ProgressEvent::End {
+                    token: token.clone(),
+                    message: "analysis complete".to_string(),
+                },
+            ];
+            if events != expected {
+                return Err(format!("stage-mapped reports drifted: {events:?}"));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn report_stage_suppresses_consecutive_duplicate_stages() -> Result<(), String> {
+        // Control 7: repeated equivalent stage events stay within the
+        // declared record ceiling — one report per distinct stage.
+        runtime()?.block_on(async {
+            let (tracker, sink) = tracker_with_recorder();
+            let request = test_request(1);
+            tracker
+                .begin(&request, AnalysisProgressPhase::Analyzing)
+                .await;
+            for stage in [
+                AnalysisProgressStage::LoadingInput,
+                AnalysisProgressStage::LoadingInput,
+                AnalysisProgressStage::Analyzing,
+                AnalysisProgressStage::Analyzing,
+            ] {
+                tracker.report_stage(1, stage).await;
+            }
+            tracker.end(1, AnalysisProgressEnd::Complete).await;
+
+            let reports = sink
+                .events()
+                .iter()
+                .filter(|event| matches!(event, ProgressEvent::Report { .. }))
+                .count();
+            if reports != 2 {
+                return Err(format!(
+                    "duplicate stage events must collapse to one report each: {:?}",
+                    sink.events()
+                ));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn report_stage_is_silent_for_terminals_queued_unstarted_and_unknown() -> Result<(), String> {
+        runtime()?.block_on(async {
+            // Terminal stages never become reports: the outcome-derived end
+            // owns the terminal disposition.
+            let (tracker, sink) = tracker_with_recorder();
+            let request = test_request(1);
+            tracker
+                .begin(&request, AnalysisProgressPhase::Analyzing)
+                .await;
+            for stage in [
+                AnalysisProgressStage::Completed,
+                AnalysisProgressStage::Cancelled,
+                AnalysisProgressStage::Failed,
+            ] {
+                tracker.report_stage(1, stage).await;
+            }
+            let mut reports = sink
+                .events()
+                .iter()
+                .filter(|event| matches!(event, ProgressEvent::Report { .. }))
+                .count();
+            if reports != 0 {
+                return Err(format!(
+                    "terminal stages must never be reported: {:?}",
+                    sink.events()
+                ));
+            }
+
+            // Unknown generation is a no-op.
+            tracker
+                .report_stage(99, AnalysisProgressStage::LoadingInput)
+                .await;
+
+            // A queued (started) token must not carry stage reports: only
+            // the active analyzing attempt may.
+            let queued = test_request(2);
+            tracker.begin(&queued, AnalysisProgressPhase::Queued).await;
+            tracker
+                .report_stage(2, AnalysisProgressStage::LoadingInput)
+                .await;
+
+            reports = sink
+                .events()
+                .iter()
+                .filter(|event| matches!(event, ProgressEvent::Report { .. }))
+                .count();
+            if reports != 0 {
+                return Err(format!(
+                    "queued/unknown generations must not receive stage reports: {:?}",
+                    sink.events()
+                ));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn report_stage_is_silent_without_client_capability() -> Result<(), String> {
+        runtime()?.block_on(async {
+            let (service, _socket) = LspService::new(ClientOnly);
+            let tracker = AnalysisProgressTracker::new(service.inner().0.clone());
+            let sink = Arc::new(RecordingSink::default());
+            tracker.set_sink(sink.clone());
+            // `supported` stays false: no stage traffic may reach the client.
+            let request = test_request(1);
+            tracker
+                .begin(&request, AnalysisProgressPhase::Analyzing)
+                .await;
+            tracker
+                .report_stage(1, AnalysisProgressStage::LoadingInput)
+                .await;
+            tracker
+                .report_stage(1, AnalysisProgressStage::BuildingOutput)
+                .await;
+            if !sink.events().is_empty() {
+                return Err(format!(
+                    "capability-absent client received stage reports: {:?}",
                     sink.events()
                 ));
             }

@@ -65,24 +65,15 @@ pub(crate) fn check_workspace_worktree_with_origins(
         .map(|(output, origins, _)| (output, origins))
 }
 
-pub(crate) fn check_workspace_worktree_with_sources(
-    input: CheckInput,
-    config: &RiprConfig,
-) -> Result<
-    (
-        CheckOutput,
-        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
-        crate::analysis::consumed_source::ConsumedRustSources,
-    ),
-    String,
-> {
-    check_with_progress_and_origins(input, config, AnalysisProgressScope::Worktree, None)
-}
-
-pub(crate) fn check_workspace_worktree_with_sources_and_open_rust_paths(
+/// Sink-bearing variant of the worktree+sources+open-paths check entry
+/// point. Projections (the LSP work-done bridge, #4811) observe the same
+/// producer-owned boundaries through this path without changing analysis
+/// identity; `sink: None` reproduces the legacy behavior exactly.
+pub(crate) fn check_workspace_worktree_with_sources_open_rust_paths_and_progress(
     input: CheckInput,
     config: &RiprConfig,
     open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+    sink: Option<&dyn AnalysisProgressSink>,
 ) -> Result<
     (
         CheckOutput,
@@ -92,13 +83,18 @@ pub(crate) fn check_workspace_worktree_with_sources_and_open_rust_paths(
     String,
 > {
     if open_rust_index_paths.is_empty() {
-        return check_workspace_worktree_with_sources(input, config);
+        return check_with_progress_and_origins(
+            input,
+            config,
+            AnalysisProgressScope::Worktree,
+            sink,
+        );
     }
     check_with_progress_and_origins_with_open_rust_paths(
         input,
         config,
         AnalysisProgressScope::Worktree,
-        None,
+        sink,
         open_rust_index_paths,
     )
 }

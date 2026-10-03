@@ -77,7 +77,7 @@ pub(crate) use check::check_with_progress;
 pub(crate) use check::check_workspace_repo_with_origins;
 #[cfg(test)]
 pub(crate) use check::check_workspace_worktree_with_origins;
-pub(crate) use check::check_workspace_worktree_with_sources_and_open_rust_paths;
+pub(crate) use check::check_workspace_worktree_with_sources_open_rust_paths_and_progress;
 pub(crate) use check::is_managed_perl_producer;
 pub use check::{
     check_workspace_repo_with_config, check_workspace_with_config,

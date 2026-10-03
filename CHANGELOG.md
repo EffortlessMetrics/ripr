@@ -94,6 +94,20 @@ are scoped or reviewed.
 
 ### Added
 
+- LSP: the accepted refresh's work-done progress now consumes the shared
+  producer stage vocabulary — the blocking analysis runs through the shared
+  progress-bearing entry point and a best-effort bridge forwards
+  `loading input`, `analyzing workspace`, and `building output` as bounded
+  message-only `$/progress` reports on the existing
+  `ripr-analysis-{generation}` token. Reports never carry percentages or
+  terminal stages; cancellation, deadline, supersession, failure, and
+  disclosed limited/deferred states keep their outcome-derived terminal
+  messages, and clients without `window/workDoneProgress` see no traffic.
+  The post-analysis stage drain is bounded, so a stalled client can delay
+  diagnostics handling by at most twice the drain budget, never block it. A
+  cross-surface parity oracle pins CLI and LSP stage identity, ordering,
+  denominator honesty, and terminal disposition against one normalized
+  producer trace (RIPR-SPEC-0208, #4811).
 - CLI: `ripr pilot` now projects the shared analysis progress stream on
   stderr — `ripr progress: <stage> [repo]` stage lines and throttled
   `still active after <elapsed class>` heartbeats, exactly as `ripr check`

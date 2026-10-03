@@ -12,7 +12,7 @@ mod execute;
 mod help;
 mod help_json;
 mod parse;
-mod progress;
+pub(crate) mod progress;
 mod rerun;
 mod suggest;
 mod workflow_catalog;

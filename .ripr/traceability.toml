@@ -11274,3 +11274,38 @@ metrics = [
   "unit_test_pass_rate",
   "blind_journey_execute_positive_scenarios",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0208"
+name = "LSP work-done progress consumes shared analysis stages"
+spec = "docs/specs/RIPR-SPEC-0208-lsp-work-done-stage-mapping.md"
+tests = [
+  "crates/ripr/src/lsp/progress.rs::tests::report_stage_emits_one_bounded_report_per_stage_in_producer_order",
+  "crates/ripr/src/lsp/progress.rs::tests::report_stage_suppresses_consecutive_duplicate_stages",
+  "crates/ripr/src/lsp/progress.rs::tests::report_stage_is_silent_for_terminals_queued_unstarted_and_unknown",
+  "crates/ripr/src/lsp/progress.rs::tests::report_stage_is_silent_without_client_capability",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::stage_mapping_covers_every_non_terminal_producer_stage",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::cli_and_lsp_project_one_success_trace_with_identical_stage_identity",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::disclosed_limitation_stays_limited_on_the_lsp_surface",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::cancelled_and_failed_traces_stay_non_successful_on_both_surfaces",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::known_and_unknown_denominators_never_become_percentages",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::removing_the_shared_mapping_breaks_parity_even_with_legacy_progress",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::bridge_forwards_events_without_blocking_the_producer",
+  "crates/ripr/src/lsp/progress_stages.rs::tests::stalled_progress_sink_cannot_block_the_bounded_stage_drain",
+  "crates/ripr/src/lsp/tests.rs::work_done_progress_stage_reports_through_real_refresh_journey",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/lsp/progress_stages.rs",
+  "crates/ripr/src/lsp/progress.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/app/check.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0208-lsp-work-done-stage-mapping.md",
+]
+metrics = [
+  "lsp_progress_stage_reports",
+  "lsp_progress_records_per_token",
+]

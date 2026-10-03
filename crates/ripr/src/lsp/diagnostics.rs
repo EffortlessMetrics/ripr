@@ -16,7 +16,7 @@ use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
-use crate::app::check_workspace_worktree_with_sources_and_open_rust_paths;
+use crate::app::check_workspace_worktree_with_sources_open_rust_paths_and_progress;
 use crate::config::{ConfigSeverity, LspDiagnosticProfile, SeverityConfig};
 #[cfg(test)]
 use crate::domain::RelatedTest;
@@ -770,6 +770,27 @@ pub(super) fn workspace_diagnostics_with_config_and_open_rust_paths(
     defer_seam_inventory: bool,
     open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
 ) -> Result<WorkspaceDiagnostics, String> {
+    workspace_diagnostics_with_config_and_open_rust_paths_and_progress(
+        root,
+        config,
+        defer_seam_inventory,
+        open_rust_index_paths,
+        None,
+    )
+}
+
+/// Progress-sink-bearing variant of
+/// [`workspace_diagnostics_with_config_and_open_rust_paths`]. The LSP
+/// work-done bridge (#4811) observes the same producer-owned stage
+/// boundaries through this path; the sink is advisory and cannot change
+/// the diagnostics result.
+pub(super) fn workspace_diagnostics_with_config_and_open_rust_paths_and_progress(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    progress_sink: Option<&dyn crate::app::AnalysisProgressSink>,
+) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
     // Saved-workspace authority (#3183): editor refreshes analyze the live
     // tracked working tree, including staged and unstaged bytes that the
@@ -777,10 +798,11 @@ pub(super) fn workspace_diagnostics_with_config_and_open_rust_paths(
     // `ripr check --worktree`. Document quarantine remains the independent
     // authority that prevents unsaved buffers from being served as current.
     let (output, origins, consumed_sources) =
-        match check_workspace_worktree_with_sources_and_open_rust_paths(
+        match check_workspace_worktree_with_sources_open_rust_paths_and_progress(
             input,
             config.repo_config(),
             open_rust_index_paths,
+            progress_sink,
         ) {
             Ok(pair) => pair,
             // #2303: a git invocation that exceeded the configured cooperative
@@ -1130,21 +1152,24 @@ fn should_project_gap_records(
 }
 
 /// Run workspace diagnostics with a token installed for synchronous analysis
-/// checkpoints. The ordinary entry point remains token-free for CLI and test
-/// callers that are not owned by an LSP refresh.
+/// checkpoints and an optional producer progress sink for the work-done
+/// stage bridge (#4811). The ordinary entry point remains token-free for
+/// CLI and test callers that are not owned by an LSP refresh.
 pub(super) fn workspace_diagnostics_with_config_and_cancellation(
     root: &Path,
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
     cancellation: &AnalysisCancellationToken,
     open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    progress_sink: Option<&dyn crate::app::AnalysisProgressSink>,
 ) -> Result<WorkspaceDiagnostics, String> {
     crate::analysis::cancellation::with_token(cancellation, || {
-        workspace_diagnostics_with_config_and_open_rust_paths(
+        workspace_diagnostics_with_config_and_open_rust_paths_and_progress(
             root,
             config,
             defer_seam_inventory,
             open_rust_index_paths,
+            progress_sink,
         )
     })
 }
