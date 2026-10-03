@@ -4241,6 +4241,9 @@ id = "RIPR-SPEC-0051"
 name = "First successful PR UX"
 spec = "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md"
 tests = [
+  "crates/ripr/src/output/first_pr.rs::tests::first_pr_check_refuses_relocated_context_with_old_root_decoy",
+  "crates/ripr/src/output/first_pr.rs::tests::first_pr_check_refuses_invalid_context_and_preserves_legacy",
+  "crates/ripr/src/output/first_pr.rs::tests::first_pr_check_accepts_context_for_same_physical_root_alias",
   "crates/ripr/src/output/first_pr.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/execute.rs",

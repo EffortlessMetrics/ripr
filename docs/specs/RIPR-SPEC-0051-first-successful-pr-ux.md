@@ -203,6 +203,14 @@ historical raw lines, which do not carry a selected-root guarantee. Regenerate
 with `ripr first-pr --root <path>` to obtain current ledger presentation context;
 review-card fallback commands remain outside this repair.
 
+Before displaying a carried context, `first-pr --check` requires its absolute
+directory to resolve to the current selected physical root (#5117). A relocated
+packet, missing directory, invalid authority or unavailable context is refused
+with a root-bound packet refresh command. A symlink alias to the same physical
+root is accepted. Check mode does not rebind, rewrite or execute raw commands;
+the explicit absent-context legacy path remains readable without a selected-root
+guarantee. This directory comparison is not repository authentication.
+
 This is presentation only. Raw `selected.verify_command`,
 `selected.receipt_command`, `commands.verify`, `commands.receipt`, receipt
 source/path/state, and the receipt's nested `--verify-command` stay unchanged.
