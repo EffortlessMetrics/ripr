@@ -22,6 +22,7 @@ pub(crate) struct PilotOptions {
     pub(crate) explicit: CheckInputExplicit,
     pub(crate) max_seams: usize,
     pub(crate) timeout_ms: u64,
+    pub(crate) quiet: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct OutcomeOptions {

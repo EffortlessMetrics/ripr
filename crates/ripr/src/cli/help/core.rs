@@ -45,7 +45,7 @@ defaults into a file.
 "#;
 pub(super) const PILOT_HELP: &str = r#"Find the top test gap in this repo and write a packet you can act on.
 
-Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS]
+Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS] [--quiet]
 
 Options:
   --root PATH       Workspace root to analyze. Defaults to current directory.
@@ -53,6 +53,17 @@ Options:
   --mode MODE       instant, draft, fast, deep, or ready. Defaults to draft unless ripr.toml sets one.
   --max-seams N     Maximum ranked seams in the pilot summary. Defaults to 5.
   --timeout-ms MS   Maximum analysis budget before writing a partial summary. Defaults to 30000.
+  --quiet           Suppress analysis progress and heartbeats on stderr. Does not
+                    change the pilot packet, exit codes, or error reporting.
+
+Progress:
+  Long-running pilot analysis writes producer stages to stderr as
+  `ripr progress: <stage> [repo]` and, while a stage stays active, throttled
+  `still active after <elapsed class>` heartbeats, exactly as `ripr check`
+  reports them. Non-TTY / CI output is newline-delimited with no control
+  sequences; stdout and the pilot packet stay byte-clean. When the default
+  timeout fires, the cold-cache retry continues under the same progress
+  stream. `--quiet` turns this stream off.
 
 Environment variables:
   RIPR_PILOT_SEAM_BUDGET   Maximum seams written to pilot artifacts (repo-exposure.json,

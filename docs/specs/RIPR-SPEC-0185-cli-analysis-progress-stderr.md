@@ -16,6 +16,7 @@ Linked issues:
 
 - #4810 — CLI stderr stages and bounded heartbeats (this slice)
 - #4957 — time-based heartbeat cadence so long walks never go silent
+- #5019 — pilot (primary first-run command) joins the same stderr stream
 - #2608 — parent shared progress contract (not closed here)
 - #4829 — live producer-owned progress events (PR A; this slice consumes that
   contract and does not replace it)
@@ -52,6 +53,10 @@ second stage vocabulary.
 2. The CLI projects those events onto stderr only:
    `ripr progress: <stage> [<scope>]` and, while a stage stays active,
    `ripr progress: <stage> still active after <elapsed class>`.
+   `ripr pilot` projects the same producer-owned stream at repo scope while
+   its repo inventory runs, including the cold-cache auto-retry, so the
+   primary first-run command is never minutes of unexplained silence
+   (#5019). Pilot adds no stage vocabulary of its own.
 3. Non-TTY / CI lines are newline-delimited and contain no ANSI or carriage
    returns. A TTY may reuse one line, pads overwrites to the longest prior
    progress line, and stays silent below a 250ms minimum-duration threshold.
@@ -86,6 +91,10 @@ second stage vocabulary.
 - A missing diff projects `failed` and never `completed`.
 - `ripr check --help` documents stderr, `--quiet`, unknown totals, and the
   no-speed-claim boundary, and does not emit progress.
+- A long-running `ripr pilot` fixture emits stage and heartbeat evidence on
+  stderr while `pilot-summary.json` stays byte-identical with `--quiet`;
+  a pilot deadline closes the progress run as `cancelled`, never
+  `completed` (#5019).
 - Unit tests reject path-like, percent, and ETA progress lines; throttle
   heartbeats and show no 10s window of a minutes-long stage stays silent;
   isolate a broken writer; and show that omitting the producer
@@ -116,6 +125,10 @@ second stage vocabulary.
    seconds of stage time; no 10s window of a minutes-long stage is silent.
    The STANDARD policy places no per-run count ceiling, so the former
    16-line cap is gone (#4957).
+7. `ripr pilot` on a cold workspace projects `loading_input [repo]`,
+   `analyzing [repo]`, and heartbeats on stderr; `pilot --quiet` drops the
+   whole stream while `pilot-summary.json` and terminal stdout stay
+   byte-identical (#5019).
 
 ## Test Mapping
 
@@ -152,6 +165,9 @@ second stage vocabulary.
 - `crates/ripr/tests/cli_progress.rs::check_quiet_failure_keeps_errors_and_drops_progress`
 - `crates/ripr/tests/cli_progress.rs::check_unwritable_artifact_projects_failed_not_completed`
 - `crates/ripr/tests/cli_progress.rs::check_help_does_not_spray_progress`
+- `crates/ripr/src/cli/commands/pilot.rs::tests::pilot_progress_run_emits_stage_heartbeat_and_cancelled_on_timeout`
+- `crates/ripr/src/cli/commands/pilot.rs::tests::pilot_progress_stream_absent_when_quiet_or_sink_removed`
+- `crates/ripr/tests/cli_progress.rs::pilot_projects_repo_stages_on_stderr_and_keeps_packet_bytes_unchanged`
 
 ## Implementation Mapping
 
@@ -159,6 +175,8 @@ second stage vocabulary.
 - `crates/ripr/src/app/check.rs` — producer boundaries on the check path
 - `crates/ripr/src/cli/progress.rs` — stderr projection, heartbeat, TTY policy
 - `crates/ripr/src/cli/commands/check.rs` — `--quiet` and sink wiring
+- `crates/ripr/src/cli/commands/pilot.rs` — `--quiet` and sink wiring on the
+  pilot repo inventory, including the cold-cache retry (#5019)
 - `crates/ripr/src/cli/help/core.rs` — user-facing contract
 
 ## Metrics

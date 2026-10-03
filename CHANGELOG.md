@@ -80,6 +80,13 @@ are scoped or reviewed.
 
 ### Added
 
+- CLI: `ripr pilot` now projects the shared analysis progress stream on
+  stderr — `ripr progress: <stage> [repo]` stage lines and throttled
+  `still active after <elapsed class>` heartbeats, exactly as `ripr check`
+  reports them — while its repo inventory runs, including the cold-cache
+  auto-retry, so the primary first-run command no longer sits silent for
+  minutes. Stdout and every pilot packet byte stay unchanged; `--quiet`
+  suppresses the stream (RIPR-SPEC-0185, #5019).
 - Python same-class method owners that tests reach only through construction
   or another method on that class now keep `no_static_path` but name
   `static_limit_kind: python_transitive_reach_unresolved` (RIPR-SPEC-0201,

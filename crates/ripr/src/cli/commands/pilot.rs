@@ -4,10 +4,13 @@ use crate::cli::commands_numeric::{parse_positive_u64, parse_positive_usize};
 use crate::cli::commands_options::PilotOptions;
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_mode};
+use crate::cli::progress::{CliProgressSink, ProgressPolicy};
 use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -114,10 +117,19 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
 
     let analysis_root = input.root.clone();
     let analysis_config = config.clone();
+    // #5019: pilot's repo inventory is the same multi-minute walk `ripr
+    // check` projects progress for, so route it through the shared
+    // app-layer progress-bearing entry point instead of calling the
+    // analyzer directly. Each attempt gets a fresh sink: a timed-out
+    // attempt ends its run as a `cancelled` terminal, which is terminal
+    // for the projection, and the #2424 cold-cache retry is a new run
+    // with its own stage clock.
+    let mut progress = pilot_progress_sink(options.quiet);
     let mut analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, {
         let root = analysis_root.clone();
         let cfg = analysis_config.clone();
-        move || analysis::inventory_classified_seams_report_at_with_config(&root, &cfg)
+        let sink = progress.as_ref().map(Arc::clone);
+        move || run_pilot_inventory(&root, &cfg, sink.as_ref())
     })?;
 
     // Auto-retry at a higher budget when the default timeout fires and the
@@ -132,10 +144,12 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
             "ripr: pilot timed out at {}ms; retrying at {}ms (cold cache needs more time)...",
             DEFAULT_PILOT_TIMEOUT_MS, PILOT_RETRY_TIMEOUT_MS
         );
+        progress = pilot_progress_sink(options.quiet);
         analysis_result = run_pilot_analysis_with_timeout(PILOT_RETRY_TIMEOUT_MS, {
             let root = analysis_root.clone();
             let cfg = analysis_config.clone();
-            move || analysis::inventory_classified_seams_report_at_with_config(&root, &cfg)
+            let sink = progress.as_ref().map(Arc::clone);
+            move || run_pilot_inventory(&root, &cfg, sink.as_ref())
         })?;
         // Update timeout_ms so the retry hint (if it times out again) uses the
         // retry budget, not the original default.
@@ -252,7 +266,48 @@ pub(in crate::cli) fn pilot(args: &[String]) -> Result<(), String> {
         "{}",
         output::pilot::render_pilot_terminal(&classified, context)
     );
+    // #5019: producer `completed` was held until every artifact write and
+    // the terminal render succeeded; commit it now. An earlier failure
+    // already dropped the sink, which projected `failed` instead.
+    if let Some(sink) = progress.as_ref() {
+        sink.commit_success();
+    }
     Ok(())
+}
+
+/// Build the stderr progress sink for one pilot analysis attempt (#5019).
+///
+/// `--quiet` opts out of the progress stream per the #2608 contract; the
+/// one-shot timeout notice and command errors still reach stderr. The
+/// sink is terminal-once, so a timed-out attempt (or its #2424 retry)
+/// needs a fresh one from `pilot_progress_sink`.
+fn pilot_progress_sink(quiet: bool) -> Option<Arc<CliProgressSink>> {
+    if quiet {
+        return None;
+    }
+    Some(Arc::new(CliProgressSink::for_stderr(
+        std::io::stderr().is_terminal(),
+        ProgressPolicy::STANDARD,
+    )))
+}
+
+/// Run the pilot repo inventory through the shared app-layer
+/// progress-bearing entry point (#5019): the same producer-owned
+/// `loading_input`/`analyzing`/`building_output`/`completed` boundaries
+/// `ripr check` projects, at repo scope, so a cold multi-minute first
+/// run shows bounded stage lines and throttled heartbeats instead of
+/// minutes of silence. Stage identity stays producer-owned; pilot adds
+/// no stage vocabulary of its own.
+fn run_pilot_inventory(
+    root: &Path,
+    config: &RiprConfig,
+    sink: Option<&Arc<CliProgressSink>>,
+) -> Result<analysis::ClassifiedSeamsReport, String> {
+    app::repo_inventory_with_progress(
+        sink.map(|sink| &**sink as &dyn crate::app::AnalysisProgressSink),
+        || analysis::inventory_classified_seams_report_at_with_config(root, config),
+        Ok,
+    )
 }
 
 fn collect_pilot_python_first_use(
@@ -285,6 +340,7 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
         explicit: CheckInputExplicit::default(),
         max_seams: 5,
         timeout_ms: DEFAULT_PILOT_TIMEOUT_MS,
+        quiet: false,
     };
     let mut i = 0usize;
     while i < args.len() {
@@ -311,6 +367,9 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
                 i += 1;
                 options.timeout_ms =
                     parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
+            }
+            "--quiet" => {
+                options.quiet = true;
             }
             other => return Err(unknown_argument("pilot", other)),
         }
@@ -344,6 +403,15 @@ where
         Err(mpsc::RecvTimeoutError::Timeout) => {
             cancellation_token
                 .cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+            // #5019: the detached worker owns its progress run's terminal
+            // (`cancelled`), and the caller opens a retry run or exits soon
+            // after this return. Give the worker a bounded window to reach a
+            // cancellation checkpoint and finish, so the attempt's progress
+            // stream closes before the next one starts instead of
+            // heartbeating into it, and the terminal is not lost to process
+            // exit. A worker stuck past the window cannot be forced (it is
+            // a detached thread): a known, bounded limitation.
+            let _ignored = rx.recv_timeout(Duration::from_secs(5));
             Ok(PilotAnalysisResult::TimedOut)
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -426,7 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn pilot_parses_root_out_mode_max_seams_and_timeout() {
+    fn pilot_parses_root_out_mode_max_seams_quiet_and_timeout() {
         let options = parse_pilot_options(&args(&[
             "--root",
             "repo",
@@ -438,6 +506,7 @@ mod tests {
             "3",
             "--timeout-ms",
             "120000",
+            "--quiet",
         ]));
 
         assert_eq!(
@@ -452,6 +521,7 @@ mod tests {
                 },
                 max_seams: 3,
                 timeout_ms: 120_000,
+                quiet: true,
             })
         );
     }
@@ -471,6 +541,132 @@ mod tests {
 
         assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
         assert_eq!(cancelled_rx.recv_timeout(Duration::from_secs(1)), Ok(()));
+    }
+
+    #[derive(Clone)]
+    struct ProgressBuffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl ProgressBuffer {
+        fn new() -> Self {
+            Self(std::sync::Arc::new(std::sync::Mutex::new(Vec::new())))
+        }
+
+        fn text(&self) -> String {
+            match self.0.lock() {
+                Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                Err(poisoned) => String::from_utf8_lossy(&poisoned.into_inner()).into_owned(),
+            }
+        }
+    }
+
+    impl std::io::Write for ProgressBuffer {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            match self.0.lock() {
+                Ok(mut bytes) => bytes.extend_from_slice(buf),
+                Err(poisoned) => poisoned.into_inner().extend_from_slice(buf),
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn pilot_progress_run_emits_stage_heartbeat_and_cancelled_on_timeout() {
+        // #5019: a long-running pilot analysis (a deliberately blocked
+        // inventory stands in for a cold-cache multi-minute repo walk) must
+        // project the same repo-scope stage lines and throttled heartbeat
+        // evidence `ripr check` emits, and the deadline must close the run
+        // as `cancelled`, never `completed`.
+        let buffer = ProgressBuffer::new();
+        let sink = std::sync::Arc::new(CliProgressSink::with_writer(
+            Box::new(buffer.clone()),
+            false,
+            ProgressPolicy::STANDARD,
+        ));
+        let (done_tx, done_rx) = mpsc::channel();
+        let result = run_pilot_analysis_with_timeout(3_000, move || {
+            let result = app::repo_inventory_with_progress(
+                Some(&*sink),
+                || -> Result<analysis::ClassifiedSeamsReport, String> {
+                    loop {
+                        if crate::analysis::cancellation::checkpoint().is_err() {
+                            return Err("analysis cancelled".to_string());
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                },
+                Ok,
+            );
+            let _ignored = done_tx.send(());
+            result
+        });
+
+        assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
+        // The bounded handoff joins the cancelled worker before returning,
+        // so the run's terminal must already be projected; no waiting on
+        // the worker is needed to observe it.
+        let text = buffer.text();
+        assert!(
+            text.contains("ripr progress: cancelled [repo]"),
+            "deadline must close the run as cancelled: {text}"
+        );
+        assert_eq!(done_rx.recv_timeout(Duration::from_secs(5)), Ok(()));
+        let text = buffer.text();
+        assert!(
+            text.contains("ripr progress: loading_input [repo]"),
+            "missing repo-scope loading_input: {text}"
+        );
+        assert!(
+            text.contains("ripr progress: analyzing [repo]"),
+            "missing repo-scope analyzing: {text}"
+        );
+        assert!(
+            text.contains("still active after 2s"),
+            "a stage held past first_heartbeat must heartbeat: {text}"
+        );
+        assert!(
+            !text.contains("completed"),
+            "a timed-out run must never project completed: {text}"
+        );
+        assert!(
+            !text.contains("[diff]"),
+            "pilot must project repo scope, not diff scope: {text}"
+        );
+    }
+
+    #[test]
+    fn pilot_progress_stream_absent_when_quiet_or_sink_removed() {
+        // #5019 removal experiment per #2608's closure rule: disabling the
+        // producer-side progress stream (--quiet, or no sink at all) removes
+        // every stage and heartbeat line while the timeout machinery still
+        // behaves identically.
+        assert!(
+            pilot_progress_sink(true).is_none(),
+            "--quiet must suppress the pilot progress sink"
+        );
+        assert!(pilot_progress_sink(false).is_some());
+
+        let result = run_pilot_analysis_with_timeout(50, || {
+            app::repo_inventory_with_progress(
+                None,
+                || -> Result<analysis::ClassifiedSeamsReport, String> {
+                    loop {
+                        if crate::analysis::cancellation::checkpoint().is_err() {
+                            return Err("analysis cancelled".to_string());
+                        }
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                },
+                Ok,
+            )
+        });
+        assert!(
+            matches!(result, Ok(PilotAnalysisResult::TimedOut)),
+            "removing the sink must not change the timeout behavior"
+        );
     }
 
     #[cfg(unix)]

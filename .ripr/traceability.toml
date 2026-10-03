@@ -10185,6 +10185,9 @@ tests = [
   "crates/ripr/tests/cli_progress.rs::check_quiet_failure_keeps_errors_and_drops_progress",
   "crates/ripr/tests/cli_progress.rs::check_unwritable_artifact_projects_failed_not_completed",
   "crates/ripr/tests/cli_progress.rs::check_help_does_not_spray_progress",
+  "crates/ripr/src/cli/commands/pilot.rs::tests::pilot_progress_run_emits_stage_heartbeat_and_cancelled_on_timeout",
+  "crates/ripr/src/cli/commands/pilot.rs::tests::pilot_progress_stream_absent_when_quiet_or_sink_removed",
+  "crates/ripr/tests/cli_progress.rs::pilot_projects_repo_stages_on_stderr_and_keeps_packet_bytes_unchanged",
 ]
 fixtures = [
 ]
@@ -10193,6 +10196,7 @@ code = [
   "crates/ripr/src/app/check.rs",
   "crates/ripr/src/cli/progress.rs",
   "crates/ripr/src/cli/commands/check.rs",
+  "crates/ripr/src/cli/commands/pilot.rs",
   "crates/ripr/src/cli/help/core.rs",
 ]
 outputs = [

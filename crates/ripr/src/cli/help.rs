@@ -1691,7 +1691,7 @@ mod tests {
             (
                 "pilot",
                 PILOT_HELP,
-                &["--root", "--out", "--mode", "--max-seams"],
+                &["--root", "--out", "--mode", "--max-seams", "--quiet"],
             ),
         ];
 

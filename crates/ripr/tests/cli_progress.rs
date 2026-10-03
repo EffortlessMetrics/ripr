@@ -470,3 +470,100 @@ fn repo_format_disclosure_is_absent_outside_the_audit_path_group() -> Result<(),
     ignore_remove_dir_all(&root);
     Ok(())
 }
+
+// --- #5019: pilot projects the same producer-owned repo-scope progress ---
+
+fn run_pilot(root: &Path, out: &Path, extra: &[&str]) -> Result<Output, String> {
+    let root_arg = root.display().to_string();
+    let out_arg = out.display().to_string();
+    let mut args = vec![
+        "pilot",
+        "--root",
+        root_arg.as_str(),
+        "--out",
+        out_arg.as_str(),
+    ];
+    args.extend_from_slice(extra);
+    ripr()
+        .args(&args)
+        .output()
+        .map_err(|error| format!("run ripr pilot: {error}"))
+}
+
+#[test]
+fn pilot_projects_repo_stages_on_stderr_and_keeps_packet_bytes_unchanged() -> Result<(), String> {
+    let root = repo_fixture_root("pilot-progress")?;
+    let out = root.join("pilot-out");
+    let loud = run_pilot(&root, &out, &[])?;
+    assert!(
+        loud.status.success(),
+        "pilot must succeed on the fixture: {}",
+        stderr_text(&loud)
+    );
+    let loud_err = stderr_text(&loud);
+    // Pilot analyzes the whole repo inventory, so the progress scope is
+    // repo, exactly as on the check repo-format audit path.
+    assert!(
+        loud_err.contains("ripr progress: loading_input [repo]"),
+        "missing repo-scope loading_input on stderr: {loud_err}"
+    );
+    assert!(
+        loud_err.contains("ripr progress: analyzing [repo]"),
+        "missing repo-scope analyzing on stderr: {loud_err}"
+    );
+    assert!(
+        loud_err.contains("ripr progress: completed [repo]"),
+        "missing repo-scope completed on stderr: {loud_err}"
+    );
+    assert!(
+        !loud_err.contains("[diff]"),
+        "pilot must not project the diff scope: {loud_err}"
+    );
+    assert!(
+        !loud_err.contains('\u{1b}'),
+        "non-TTY pilot stderr has ANSI: {loud_err}"
+    );
+    assert!(
+        !loud_err.contains('\r'),
+        "non-TTY pilot stderr has CR: {loud_err}"
+    );
+    let loud_stdout = String::from_utf8_lossy(&loud.stdout);
+    assert!(
+        !loud_stdout.contains("ripr progress:"),
+        "progress leaked onto pilot stdout: {loud_stdout}"
+    );
+
+    // Machine contract pin: the progress stream must not move the packet.
+    let summary_path = out.join("pilot-summary.json");
+    let loud_summary = std::fs::read(&summary_path)
+        .map_err(|error| format!("read loud pilot-summary.json: {error}"))?;
+    let parsed: serde_json::Value = serde_json::from_slice(&loud_summary)
+        .map_err(|error| format!("pilot-summary.json is not JSON: {error}"))?;
+    assert_eq!(parsed["schema_version"], "0.2");
+
+    // Removal experiment (#2608 closure rule): --quiet drops every progress
+    // line while the emitted packet stays byte-identical.
+    let quiet = run_pilot(&root, &out, &["--quiet"])?;
+    assert!(
+        quiet.status.success(),
+        "quiet pilot must succeed on the fixture: {}",
+        stderr_text(&quiet)
+    );
+    let quiet_err = stderr_text(&quiet);
+    assert!(
+        !quiet_err.contains("ripr progress:"),
+        "--quiet must suppress pilot progress: {quiet_err}"
+    );
+    assert_eq!(
+        loud.stdout, quiet.stdout,
+        "--quiet must not change pilot terminal stdout"
+    );
+    let quiet_summary = std::fs::read(&summary_path)
+        .map_err(|error| format!("read quiet pilot-summary.json: {error}"))?;
+    assert_eq!(
+        loud_summary, quiet_summary,
+        "progress wiring must not change pilot-summary.json bytes"
+    );
+    ignore_remove_dir_all(&root);
+    Ok(())
+}
