@@ -41,6 +41,7 @@ mod fixture_contracts;
 mod gap_source_subject_shared;
 mod identity_registry;
 mod no_panic;
+mod orchestration_attempt;
 mod output_enum_contracts;
 mod package_qualification;
 mod policy;

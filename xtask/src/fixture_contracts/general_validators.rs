@@ -1799,6 +1799,80 @@ fn validate_blind_journey_contract_fixture_corpus_at(
     Ok(())
 }
 
+pub(crate) fn validate_orchestration_attempt_receipts_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/orchestration_attempt_receipts");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "orchestration attempt receipts fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0213") {
+            violations.push(
+                "orchestration attempt receipts SPEC.md must name its RIPR-SPEC-0213 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "orchestration attempt receipts SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    validate_orchestration_attempt_receipts_fixture_corpus_at(&root.join("corpus.json"), violations)
+}
+
+fn validate_orchestration_attempt_receipts_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "orchestration attempt receipts corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let body = read_text_lossy(path)?;
+    let corpus = match crate::orchestration_attempt::load_orchestration_fixture_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!(
+                "orchestration attempt receipts corpus is invalid: {error}"
+            ));
+            return Ok(());
+        }
+    };
+    let missing = crate::orchestration_attempt::missing_orchestration_required_scenarios(
+        corpus.scenarios.iter().map(|scenario| scenario.id.as_str()),
+    );
+    for id in missing {
+        violations.push(format!(
+            "orchestration attempt receipts corpus is missing required scenario {id}"
+        ));
+    }
+    let (_scorecard, failures) = crate::reports::assess_orchestration_fixture_corpus(
+        &corpus,
+        "fixtures/orchestration_attempt_receipts/corpus.json",
+    );
+    for failure in &failures {
+        violations.push(format!(
+            "orchestration attempt receipts corpus drifted: {failure}"
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_blind_journey_execute_fixture_corpus(
     violations: &mut Vec<String>,
 ) -> Result<(), String> {

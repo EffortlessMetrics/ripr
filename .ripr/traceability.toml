@@ -11574,7 +11574,6 @@ outputs = []
 metrics = [
   "unit_test_pass_rate",
 ]
-
 [[behavior]]
 id = "RIPR-SPEC-0212"
 name = "npm native launcher boundary"
@@ -11598,4 +11597,69 @@ metrics = [
   "npm_launcher_required_control_pass_rate",
   "npm_launcher_package_inventory_drift_count",
   "npm_launcher_signal_delivery_regression_count",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0213"
+name = "Orchestration attempt receipts contract and scorecard projection"
+spec = "docs/specs/RIPR-SPEC-0213-orchestration-attempt-receipts.md"
+tests = [
+  "xtask/src/orchestration_attempt.rs::tests::complete_single_agent_row_counts_as_completed",
+  "xtask/src/orchestration_attempt.rs::tests::schema_drift_rejects_the_row",
+  "xtask/src/orchestration_attempt.rs::tests::altered_row_bytes_reject_the_digest_binding",
+  "xtask/src/orchestration_attempt.rs::tests::equivalent_worktree_roots_share_portable_identity",
+  "xtask/src/orchestration_attempt.rs::tests::zero_subject_passing_command_is_not_verification",
+  "xtask/src/orchestration_attempt.rs::tests::failed_verification_command_is_not_completed",
+  "xtask/src/orchestration_attempt.rs::tests::builder_claim_cannot_become_verified_fact_without_independent_receipt",
+  "xtask/src/orchestration_attempt.rs::tests::missing_required_overflow_blocks_completion",
+  "xtask/src/orchestration_attempt.rs::tests::forbidden_path_change_forces_boundary_violation",
+  "xtask/src/orchestration_attempt.rs::tests::unresolved_contradiction_forces_contradicted",
+  "xtask/src/orchestration_attempt.rs::tests::stale_verification_binding_forces_stale",
+  "xtask/src/orchestration_attempt.rs::tests::rejected_claims_block_completed",
+  "xtask/src/orchestration_attempt.rs::tests::cleanup_residue_downgrades_completed_to_partial",
+  "xtask/src/orchestration_attempt.rs::tests::over_budget_result_rejects_the_row",
+  "xtask/src/orchestration_attempt.rs::tests::malformed_zero_byte_result_rejects_the_row",
+  "xtask/src/orchestration_attempt.rs::tests::missing_independent_verification_blocks_completed",
+  "xtask/src/orchestration_attempt.rs::tests::non_completed_dispositions_pass_through_and_stay_visible",
+  "xtask/src/orchestration_attempt.rs::tests::synthetic_flag_does_not_change_row_assessment",
+  "xtask/src/orchestration_attempt.rs::tests::fixture_corpus_loader_rejects_duplicates_and_drifted_schemas",
+  "xtask/src/orchestration_attempt.rs::tests::missing_required_scenarios_are_reported",
+  "xtask/src/orchestration_attempt.rs::tests::blank_result_identity_rejects_the_row",
+  "xtask/src/orchestration_attempt.rs::tests::blank_synthesis_identity_rejects_the_row",
+  "xtask/src/orchestration_attempt.rs::tests::blank_claim_id_rejects_the_row",
+  "xtask/src/orchestration_attempt.rs::tests::blank_source_identity_rejects_the_row",
+  "xtask/src/orchestration_attempt.rs::tests::non_matched_comparison_blocks_completed",
+  "xtask/src/orchestration_attempt.rs::tests::forbidden_path_survives_a_failed_verification_command",
+  "xtask/src/orchestration_attempt.rs::tests::contradiction_survives_a_stale_verification_binding",
+  "xtask/src/reports/orchestration.rs::tests::empty_corpus_reports_no_success_rate",
+  "xtask/src/reports/orchestration.rs::tests::synthetic_rows_never_enter_real_denominators",
+  "xtask/src/reports/orchestration.rs::tests::real_completed_row_enters_the_completion_rate",
+  "xtask/src/reports/orchestration.rs::tests::duplicate_observations_of_one_attempt_deduplicate",
+  "xtask/src/reports/orchestration.rs::tests::conflicting_duplicate_observations_reject_both",
+  "xtask/src/reports/orchestration.rs::tests::rejected_rows_stay_visible_without_denominators",
+  "xtask/src/reports/orchestration.rs::tests::reordered_inputs_preserve_the_corpus_identity",
+  "xtask/src/reports/orchestration.rs::tests::equivalent_roots_preserve_the_portable_corpus_digest",
+  "xtask/src/reports/orchestration.rs::tests::json_and_markdown_derive_from_one_dto_deterministically",
+  "xtask/src/reports/orchestration.rs::tests::parse_captured_accepts_at_most_one_path",
+  "xtask/src/reports/orchestration.rs::tests::digest_corrupted_duplicate_conflicts_in_either_input_order",
+]
+fixtures = [
+  "fixtures/orchestration_attempt_receipts",
+]
+code = [
+  "xtask/src/orchestration_attempt.rs",
+  "xtask/src/reports/orchestration.rs",
+  "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+]
+outputs = [
+  "fixtures/orchestration_attempt_receipts/corpus.json",
+]
+metrics = [
+  "orchestration_fixture_scenarios",
+  "orchestration_scorecard_synthetic_attempts",
+  "orchestration_scorecard_rejected_rows",
+  "orchestration_scorecard_real_attempts",
+  "orchestration_scorecard_completion_rate_state",
 ]
