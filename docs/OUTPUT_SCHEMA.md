@@ -1691,15 +1691,19 @@ Enabled example carries `"enabled": true`, `"analyzed": true`, and a
 `"why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"`.
 
 - `language` — stable wire string; one of `typescript`, `javascript`, `python`
-- `file_count` — number of files in scope routed to this adapter (real, never fabricated)
+- `file_count` — enabled adapters count admitted files; generated/excluded paths
+  and Python paths carrying `changed_file_absent_from_worktree` are omitted.
+  Disabled adapters retain the raw routed count (RIPR-SPEC-0082).
 - `sample_paths` — up to three normalized (forward-slash) file paths
 - `enabled` — whether the preview adapter was enabled (ran) for this analysis
-- `analyzed` — whether the files were analyzed (mirrors `enabled`)
+- `analyzed` — whether the admitted files reached adapter completion; requires
+  an enabled adapter, a nonzero count and no non-success `language_runs` entry
 - `category` — always `"preview_language_advisory"` for machine filtering
 - `why` — advisory rationale string (case-specific)
 
-An empty or absent `preview_languages` array means only stable (Rust) content
-was in scope. A non-empty array is an honesty signal: either the listed
+An empty or absent `preview_languages` array can also mean every enabled
+preview path was withheld. Consult `analysis_outcome` for skipped or missing
+source limitations; absence of an advisory is not a completeness claim. A non-empty array is an honesty signal: either the listed
 preview-language files were not analyzed at all (`enabled == false`) or were
 analyzed under advisory preview support that may be incomplete
 (`enabled == true`). In neither case is an empty result a Rust-grade clean

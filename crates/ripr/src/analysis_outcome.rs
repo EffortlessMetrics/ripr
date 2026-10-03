@@ -290,7 +290,8 @@ pub(crate) struct AnalysisLimitation {
     pub(crate) kind: AnalysisLimitationKind,
     pub(crate) producer_stage: AnalysisStage,
     /// Repository-relative portable path. Absolute paths and parent traversal
-    /// are rejected before serialization.
+    /// are rejected before serialization. Whitespace belongs to the filename
+    /// and is preserved, including at the beginning or end.
     pub(crate) path: Option<String>,
     pub(crate) affected_items: Option<u64>,
     pub(crate) bounded_detail: Option<String>,
@@ -429,7 +430,9 @@ impl AnalysisOutcome {
 }
 
 pub(crate) fn normalize_portable_analysis_path(path: &str) -> Result<String, String> {
-    let normalized = path.trim().replace('\\', "/");
+    // Paths are filesystem identities, not prose: trimming can name a different
+    // existing file and disconnect a limitation from its admitted diff path.
+    let normalized = path.replace('\\', "/");
     let without_current = normalized.trim_start_matches("./");
     let bytes = without_current.as_bytes();
     let has_drive_prefix = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
@@ -928,6 +931,64 @@ mod tests {
         )?;
         let normalized = normalize_portable_analysis_path("src\\module\\file.rs")?;
         assert_eq!(normalized, "src/module/file.rs");
+        Ok(())
+    }
+
+    #[test]
+    fn limitation_paths_preserve_whitespace_identity_through_round_trip() -> Result<(), String> {
+        let paths = [
+            "leading.py",
+            " leading.py",
+            "trailing.py ",
+            " spaced/discount.py",
+            "\tfile.rs",
+            " ",
+        ];
+        let limitations = paths
+            .iter()
+            .map(|path| {
+                limitation(AnalysisLimitationKind::ChangedFileAbsentFromWorktree)?.with_path(path)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        for (path, limitation) in paths.iter().zip(&limitations) {
+            assert_eq!(limitation.path.as_deref(), Some(*path));
+        }
+        let value = outcome(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisOutcomeCounts::default(),
+            limitations,
+        )?;
+        assert_eq!(
+            value.limitations.len(),
+            paths.len(),
+            "different file names must not deduplicate"
+        );
+        let json = serde_json::to_string(&value).map_err(|error| error.to_string())?;
+        let restored: AnalysisOutcome =
+            serde_json::from_str(&json).map_err(|error| error.to_string())?;
+        assert_eq!(restored, value);
+        assert_eq!(restored.semantic_digest()?, value.semantic_digest()?);
+        let spaced = outcome(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisOutcomeCounts::default(),
+            vec![
+                limitation(AnalysisLimitationKind::ChangedFileAbsentFromWorktree)?
+                    .with_path(" leading.py")?,
+            ],
+        )?;
+        let plain = outcome(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisOutcomeCounts::default(),
+            vec![
+                limitation(AnalysisLimitationKind::ChangedFileAbsentFromWorktree)?
+                    .with_path("leading.py")?,
+            ],
+        )?;
+        assert_ne!(spaced.semantic_digest()?, plain.semantic_digest()?);
+        assert_eq!(
+            normalize_portable_analysis_path("./ spaced\\file.rs ")?,
+            " spaced/file.rs "
+        );
         Ok(())
     }
 

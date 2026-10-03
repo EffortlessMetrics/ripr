@@ -5854,6 +5854,13 @@ id = "RIPR-SPEC-0082"
 name = "preview-language disclosure"
 spec = "docs/specs/RIPR-SPEC-0082-preview-language-disclosure.md"
 tests = [
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::missing_changed_python_source_is_incomplete_and_restorable",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::git_generated_python_paths_preserve_whitespace_and_restore",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::git_quoted_python_path_preserves_tab_identity",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::mixed_python_paths_keep_whitespace_distinct_from_available_sibling",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::mixed_missing_python_source_preserves_available_findings_and_counts",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::python_source_admission_preserves_read_failure_and_honest_comment_zero",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::python_source_admission_preserves_exclusions_and_genuine_git_deletions",
   "crates/ripr/src/output/human.rs::tests::render_emits_preview_disclosure_when_typescript_files_in_scope",
   "crates/ripr/src/output/human.rs::tests::preview_disclosure_counts_files_with_language_display_names",
   "crates/ripr/src/domain/language.rs::tests::display_names_use_product_casing_and_round_trip_wire_strings",
@@ -7334,6 +7341,8 @@ id = "RIPR-SPEC-0147"
 name = "typed analysis outcome projection"
 spec = "docs/specs/RIPR-SPEC-0147-analysis-outcome-projection.md"
 tests = [
+  "crates/ripr/src/analysis_outcome.rs::tests::limitation_paths_preserve_whitespace_identity_through_round_trip",
+  "crates/ripr/tests/cli_smoke/python_source_admission.rs::shared_absence_disclosure_preserves_rust_path_identity",
   "crates/ripr/src/analysis/pipeline.rs::tests::changed_file_absent_from_worktree_is_a_partial_limitation",
   "crates/ripr/src/analysis/language/rust/mod.rs::tests::analyze_diff_discloses_changed_file_absent_from_worktree",
   "crates/ripr/src/analysis/language/rust/mod.rs::tests::analyze_diff_does_not_name_absent_worktree_when_the_file_is_present",

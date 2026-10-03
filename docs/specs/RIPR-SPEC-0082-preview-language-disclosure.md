@@ -127,6 +127,24 @@ adapter is not enabled, no skip limitation is emitted: the not-enabled
 advisory already discloses every routed file with its raw count. No new JSON
 field is introduced.
 
+### Missing changed Python source
+
+A new-side changed Python path absent from the selected source root is not an
+analyzed file (#5110). Python reuses the shared regular-source-file admission
+check and emits `changed_file_absent_from_worktree` with the exact path and
+checkout recovery. The path is withheld from probes, summary analyzed counts,
+and the enabled advisory's count/sample paths. The raw changed-input count
+still includes it. Available files in the same diff retain their findings.
+
+The shared outcome is `partial_with_limitations`, `analysis_complete: false`;
+human, JSON and badge projections consume that outcome. A missing-source-only
+badge cannot become a complete green zero. Restoring identical bytes under the
+same root with the same retained diff restores the original findings. Invalid
+UTF-8 retains its existing read-failure limitation, while a readable comment-only
+diff can still be a complete zero. Generated/excluded paths keep the skipped-scope
+rule above; genuine Git deletions are omitted by the parser's new-side selection
+and do not require a nonexistent new-side file to be restored.
+
 ### Three honesty cases
 
 1. **Adapter ENABLED + completed + preview files in scope** (`enabled == true`,
@@ -355,3 +373,7 @@ enabled adapter with a matching non-success `language_runs` entry carries
 - Promote to accepted when an external TypeScript repo exercises the default
   (no-config) disclosure path end-to-end and the silent empty-result gap is
   confirmed closed.
+
+Git-generated paths with filename whitespace retain their exact identity in
+missing-source limitations and preview admission. An available `leading.py`
+remains counted and sampled when the distinct ` leading.py` is missing.

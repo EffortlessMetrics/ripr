@@ -2,6 +2,10 @@ use crate::analysis::cancellation;
 use crate::analysis::language::{
     LanguageAdapter, LanguageId, RustAdapter, route, unanalyzed_source_language,
 };
+use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+    AnalysisStage,
+};
 use std::path::{Path, PathBuf};
 
 const DEFAULT_IGNORED_DIRS: &[&str] = &[
@@ -37,6 +41,31 @@ pub(crate) fn changed_source_files_absent_from_worktree<'a>(
     absent.sort();
     absent.dedup();
     absent
+}
+
+/// Shared admission disclosure for a changed source path with no regular worktree file.
+pub(crate) fn limitations_for_absent_changed_files(
+    paths: &[PathBuf],
+) -> Result<Vec<AnalysisLimitation>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            let display = super::classify::normalize_path(path);
+            AnalysisLimitation::new(
+                AnalysisLimitationKind::ChangedFileAbsentFromWorktree,
+                AnalysisStage::LanguageAdapter,
+                AnalysisRecovery::new(
+                    AnalysisRecoveryKind::Retry,
+                    "Check out the missing file, or disable sparse checkout for it, then re-run the analysis.",
+                )?,
+            )
+            .with_path(&display)?
+            .with_affected_items(1)?
+            .with_detail(
+                "changed file is absent from the working tree (sparse checkout or local delete); probes for this file were withheld",
+            )
+        })
+        .collect()
 }
 
 fn worktree_contains_regular_source_file(root: &Path, relative: &Path) -> bool {

@@ -779,7 +779,22 @@ fn run_pipeline_for_diff_text(
     // clean Rust-grade result for a TypeScript/JavaScript/Python change
     // (RIPR-SPEC-0082, #1111). Detection is pure path routing — it does not
     // require the adapter to be enabled.
-    let preview_paths: Vec<&diff::ChangedFile> = analysis_changed_files.iter().collect();
+    // Adapter admission has already withheld missing changed source. Use its
+    // typed result for the analyzed-file disclosure too, without another
+    // filesystem check in the pipeline or any renderer (#5110).
+    let absent_changed_paths = limitations
+        .iter()
+        .filter(|limitation| {
+            limitation.kind == AnalysisLimitationKind::ChangedFileAbsentFromWorktree
+        })
+        .filter_map(|limitation| limitation.path.as_deref())
+        .collect::<BTreeSet<_>>();
+    let preview_paths: Vec<&diff::ChangedFile> = analysis_changed_files
+        .iter()
+        .filter(|changed| {
+            !absent_changed_paths.contains(super::workspace::normalize_path(&changed.path).as_str())
+        })
+        .collect();
     let preview_advisories = detect_preview_advisories(languages, preview_paths.into_iter());
     for advisory in &preview_advisories {
         if !advisory.enabled {
@@ -4127,6 +4142,8 @@ mod tests {
     #[test]
     fn diff_pipeline_dispatches_enabled_preview_feature_adapters() -> Result<(), String> {
         let root = temp_root("preview-diff")?;
+        // An analyzed-file count requires a real admitted Python subject.
+        write(&root.join("app/main.py"), "# Python dispatch control\n")?;
         let diff_file = root.join("preview.diff");
         write(
             &diff_file,
@@ -4141,7 +4158,7 @@ index 0000000..1111111 100644
 --- a/app/main.py
 +++ b/app/main.py
 @@ -1,0 +1,1 @@
-+def price(): return 1
++# Python dispatch control
 "#,
         )?;
 
@@ -4185,6 +4202,7 @@ index 0000000..1111111 100644
     #[test]
     fn diff_pipeline_attributes_changed_files_per_language() -> Result<(), String> {
         let root = temp_root("mixed-rust-python")?;
+        write(&root.join("app/main.py"), "def price(): return 1\n")?;
         let src = root.join("src/lib.rs");
         write(&src, "pub fn discount(price: u32) -> u32 { price / 2 }\n")?;
         let diff_file = root.join("mixed.diff");
@@ -4551,6 +4569,7 @@ index 0000000..1111111 100644
     #[test]
     fn enabled_python_advisory_excludes_detectable_excluded_paths() -> Result<(), String> {
         let root = temp_root("issue-4372-py-excluded-advisory")?;
+        write(&root.join("src/pricing.py"), "LIMIT = 1\n")?;
         let diff_file = root.join("py.diff");
         let diff = [
             "src/pricing.py",

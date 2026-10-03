@@ -30,10 +30,7 @@ use crate::analysis::committed_source::{self, CommittedSourceRead};
 use crate::analysis::diagnostic_origin::{OriginBuildContext, origins_for_rust_findings};
 use crate::analysis::facts::RustIndex;
 use crate::analysis::path_glob::{path_glob_matches, segment_glob_matches};
-use crate::analysis_outcome::{
-    AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
-    AnalysisStage,
-};
+use crate::analysis::workspace::limitations_for_absent_changed_files;
 use crate::config::OraclePolicy;
 use crate::domain::{
     ExposureClass, Finding, Probe, SourceCurrentness, StaticLimitKind, StopReason,
@@ -1657,30 +1654,6 @@ impl RustAdapter {
             rust_consumed_sources,
         })
     }
-}
-
-fn limitations_for_absent_changed_files(
-    paths: &[std::path::PathBuf],
-) -> Result<Vec<AnalysisLimitation>, String> {
-    paths
-        .iter()
-        .map(|path| {
-            let display = workspace::normalize_path(path);
-            AnalysisLimitation::new(
-                AnalysisLimitationKind::ChangedFileAbsentFromWorktree,
-                AnalysisStage::LanguageAdapter,
-                AnalysisRecovery::new(
-                    AnalysisRecoveryKind::Retry,
-                    "Check out the missing file, or disable sparse checkout for it, then re-run the analysis.",
-                )?,
-            )
-            .with_path(&display)?
-            .with_affected_items(1)?
-            .with_detail(
-                "changed file is absent from the working tree (sparse checkout or local delete); probes for this file were withheld",
-            )
-        })
-        .collect()
 }
 
 /// Bounds a path to `max_chars` for a recovery sentence, whose length is

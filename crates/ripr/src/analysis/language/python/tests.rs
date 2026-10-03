@@ -4476,9 +4476,17 @@ fn classify_change_ignores_unrelated_text_mentions() -> Result<(), String> {
 
 #[test]
 fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), String> {
+    let root = unique_test_root("accepted-changed-files");
+    for path in ["scripts/run.py", "src/util.py"] {
+        let file = root.join(path);
+        let parent = file.parent().ok_or("fixture file must have a parent")?;
+        std::fs::create_dir_all(parent).map_err(|err| format!("create parent: {err}"))?;
+        std::fs::write(&file, "# Readable non-behavioral source\n")
+            .map_err(|err| format!("write source: {err}"))?;
+    }
     let adapter = PythonAdapter;
     let options = AnalysisOptions {
-        root: PathBuf::from("."),
+        root: root.clone(),
         base: None,
         diff_file: None,
         mode: crate::analysis::AnalysisMode::Draft,
@@ -4503,6 +4511,8 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
     let result = adapter.analyze_diff(&options, &policy, &changed_files)?;
     assert!(result.findings.is_empty());
     assert_eq!(result.changed_files, 2);
+    assert!(result.limitations.is_empty());
+    std::fs::remove_dir_all(root).map_err(|err| format!("remove root: {err}"))?;
     Ok(())
 }
 

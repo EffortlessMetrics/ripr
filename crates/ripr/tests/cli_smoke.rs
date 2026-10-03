@@ -15,6 +15,9 @@ mod advisory_write_safety;
 mod build_commit_record;
 #[path = "common/mod.rs"]
 mod common;
+#[cfg(feature = "lang-python")]
+#[path = "cli_smoke/python_source_admission.rs"]
+mod python_source_admission;
 
 // All plain fixture-setup git invocations below route through the shared
 // hardened helper (deadline + one idempotent retry + commit reconcile,
