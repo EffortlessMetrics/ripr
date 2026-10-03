@@ -1,4 +1,9 @@
 import * as assert from 'assert';
+import * as crypto from 'crypto';
+import { EventEmitter } from 'events';
+import { ClientRequest, IncomingMessage } from 'http';
+import https = require('https');
+import { PassThrough } from 'stream';
 import {
   DistributionDescriptor,
   resolveDistributionRequest
@@ -42,7 +47,121 @@ function notFound(url: string, redirected: boolean): ManifestFetchError {
   return new ManifestFetchError(`GET ${url} failed with HTTP 404.`, { statusCode: 404, redirected });
 }
 
+function producerManifest(overrides: Record<string, unknown> = {}): Buffer {
+  const manifest = {
+    schema_version: '2',
+    product_version: '0.11.0',
+    distribution_generation: 'a'.repeat(64),
+    source_repository: 'EffortlessMetrics/ripr',
+    target_set: {
+      targets: ['x86_64-unknown-linux-gnu'],
+      digest: 'b'.repeat(64)
+    },
+    producer: { tool: 'xtask release-server-manifest', schema: 'server-manifest/2' },
+    build_identity: {
+      repository: 'EffortlessMetrics/ripr',
+      candidate_sha: 'c'.repeat(40),
+      candidate_tree: 'd'.repeat(40),
+      toolchain: '1.95.0',
+      toolchain_file_sha256: 'e'.repeat(64),
+      cargo_lock_sha256: 'f'.repeat(64),
+      profile: 'release',
+      features: '',
+      locked: true
+    },
+    assets: {
+      'x86_64-unknown-linux-gnu': {
+        subject: 'ripr-server-v0.11.0-x86_64-unknown-linux-gnu.tar.gz',
+        archive_format: 'tar.gz',
+        archive_size: 1234,
+        sha256: '1'.repeat(64),
+        executable: { path: 'ripr', size: 56, sha256: '2'.repeat(64) },
+        receipt: {
+          path: 'ripr-server-v0.11.0-x86_64-unknown-linux-gnu.receipt.json',
+          sha256: '3'.repeat(64),
+          schema_version: '0.2',
+          target: 'x86_64-unknown-linux-gnu'
+        }
+      }
+    },
+    ...overrides
+  };
+  return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+}
+
+async function withManifestResponses(
+  responses: Array<{ status: number; body: Buffer }>,
+  run: (requested: string[]) => Promise<void>
+): Promise<void> {
+  const original = https.get;
+  const requested: string[] = [];
+  https.get = ((url: string, callback: (response: IncomingMessage) => void) => {
+    requested.push(url);
+    const selected = responses[requested.length - 1];
+    assert.ok(selected, `unexpected request ${url}`);
+    const request = new EventEmitter() as ClientRequest;
+    request.setTimeout = () => request;
+    request.destroy = (error?: Error) => {
+      if (error) { request.emit('error', error); }
+      return request;
+    };
+    process.nextTick(() => {
+      const stream = new PassThrough();
+      const response = stream as unknown as IncomingMessage;
+      response.statusCode = selected.status;
+      response.headers = {};
+      callback(response);
+      stream.end(selected.body);
+    });
+    return request;
+  }) as typeof https.get;
+  try {
+    await run(requested);
+  } finally {
+    https.get = original;
+  }
+}
+
 suite('Distribution manifest fallback', () => {
+  test('real admitted RC bytes pass and changed bytes fail against the same catalog digest', async () => {
+    const bytes = producerManifest();
+    const digest = crypto.createHash('sha256').update(bytes).digest('hex');
+    const distribution = resolveDistributionRequest('0.11.0', {
+      ...catalog,
+      schema: 2,
+      distributionGeneration: 'a'.repeat(64),
+      manifestSha256: digest,
+      targetSetDigest: 'b'.repeat(64)
+    });
+    await withManifestResponses([
+      { status: 404, body: Buffer.alloc(0) },
+      { status: 200, body: bytes }
+    ], async (requested) => {
+      // No admitted-fetcher injection: run selection, HTTP status handling,
+      // raw-byte digest admission and typed parsing through the default path.
+      const admitted = await fetchAdmittedManifestForDistribution('', distribution, '0.11.0', digest);
+      assert.strictEqual(admitted.manifest.productVersion, '0.11.0');
+      assert.strictEqual(admitted.manifest.assets['x86_64-unknown-linux-gnu'].sha256, '1'.repeat(64));
+      assert.strictEqual(admitted.manifestSelection, 'fallback_exact_after_preferred_absent');
+      assert.deepStrictEqual(requested, [
+        'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0/ripr-server-manifest-v0.11.0.json',
+        'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json'
+      ]);
+    });
+    // Valid JSON with different bytes isolates the digest oracle from parsing.
+    const changed = Buffer.concat([bytes, Buffer.from(' ')]);
+    await withManifestResponses([
+      { status: 404, body: Buffer.alloc(0) },
+      { status: 200, body: changed }
+    ], async (requested) => {
+      await assert.rejects(
+        fetchAdmittedManifestForDistribution('', distribution, '0.11.0', digest),
+        /digest/i
+      );
+      assert.strictEqual(requested.length, 2);
+    });
+  });
+
   test('falls back to the RC placement on a direct 404 of the preferred manifest', async () => {
     const distribution = resolveDistributionRequest('0.11.0', catalog);
     const requested: string[] = [];
