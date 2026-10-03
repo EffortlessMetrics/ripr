@@ -346,6 +346,22 @@ and single-platform CI was the root cause enabling both.
   test rows are `incomplete_evidence` with actionable provenance reasons.
   Recollect both complete logs from one build rather than mixing histories.
   The summary still counts observed subjects rather than failure-section echoes.
+- **Completion evidence (#5107).** Every owning harness needs an announcement
+  and a well-formed completion. The completion's verdict and passed, failed,
+  ignored and measured counts must agree with the observed rows and announced
+  subjects. Filtered-out counts do not represent executed subjects. Malformed,
+  contradictory or orphan completions are `incomplete_evidence`; a captured
+  zero exit status cannot override observed test failures. Measured benchmark
+  rows are outside this lane's supported Cargo-test text and remain incomplete
+  evidence. Valid empty harnesses, ignored rows, filtered runs and multiple
+  doctest batches retain their existing semantics.
+- **Unavailable samples.** Cross-run verdicts require two usable runs. A
+  missing log/status or incomplete evidence is never translated into ordinary
+  test absence to produce `masked_unknown`. Observed counts, target provenance
+  and bounded failure reasons remain available even when no verdict can be
+  derived. Genuine subject absence in a usable run still produces
+  `masked_unknown`, and the existing compile/harness-failure distinction and
+  advisory failing-test policy remain unchanged.
 - **Diagnostic presentation.** Provenance errors, reached targets and raw
   headers each show at most 20 entries per run. Each verdict category shows at
   most 20 subjects; the failure-reason section shows at most 20 distinct
@@ -371,7 +387,8 @@ and single-platform CI was the root cause enabling both.
   structured producer evidence, which this change neither adds nor claims.
 
 The production-command corpus in `xtask/tests/windows_advisory_identity.rs`
-checks colliding names, cross-target pass/failure substitution, independent
+checks completion/exit consistency, unavailable samples, colliding names,
+cross-target pass/failure substitution, independent
 failure reasons, same-source executables, hash/path boundaries, owning-control
 absence/ambiguity, ANSI logs and doctest transitions. These synthetic text
 controls qualify the parser; they do not claim native Windows test execution.

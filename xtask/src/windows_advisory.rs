@@ -764,6 +764,11 @@ fn load_run(log: &Path, status: &Path) -> RunOutcome {
     };
     let mut outcome = parse_log(&text);
     outcome.exit_status = Some(exit_status);
+    if exit_status == 0 && !outcome.failed.is_empty() {
+        outcome
+            .provenance_errors
+            .push("zero cargo exit status contradicts observed test failures".to_string());
+    }
     // A zero status is not, by itself, evidence that tests ran. Require the log
     // to show at least one test target and at least one `test result:` summary
     // before calling a run clean; otherwise an empty, truncated, or non-test log
@@ -823,6 +828,8 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
     let mut doc_context: Option<TargetIdentity> = None;
     let mut announced = None;
     let mut observed_rows = 0usize;
+    let mut observed = CompletionCounts::default();
+    let mut subjects = BTreeSet::new();
     let mut nested: Option<usize> = None;
     for raw_line in text.lines() {
         let line = strip_ansi(raw_line);
@@ -855,7 +862,7 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
             close_failure_block(&mut outcome, block.take());
         }
         if boundary {
-            if current.is_some() && announced.is_some() {
+            if current.is_some() {
                 outcome
                     .provenance_errors
                     .push("target transition before the owning harness completed".to_string());
@@ -868,6 +875,7 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
                 .cloned();
             announced = None;
             observed_rows = 0;
+            observed = CompletionCounts::default();
             nested = None;
             if let Some(target) = &current {
                 if outcome.targets.contains(target) {
@@ -928,6 +936,7 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
             } else {
                 announced = Some(count);
                 observed_rows = 0;
+                observed = CompletionCounts::default();
             }
             continue;
         }
@@ -951,6 +960,20 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
                         .push("unproven nested harness result".to_string());
                 }
             } else {
+                if current.is_none() || announced.is_none() {
+                    outcome
+                        .provenance_errors
+                        .push("completion summary without an announced owning harness".to_string());
+                }
+                match completion_counts(trimmed) {
+                    Some(summary) if summary == observed => {}
+                    Some(summary) => outcome.provenance_errors.push(format!(
+                        "completion totals {summary:?} contradict observed outcomes {observed:?}"
+                    )),
+                    None => outcome.provenance_errors.push(format!(
+                        "malformed or contradictory completion summary: {trimmed}"
+                    )),
+                }
                 if let Some(expected) = announced
                     && expected != observed_rows
                 {
@@ -959,6 +982,7 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
                 current = None;
                 announced = None;
                 observed_rows = 0;
+                observed = CompletionCounts::default();
             }
             continue;
         }
@@ -968,9 +992,28 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
                 .push("test row inside an unowned nested harness".to_string());
             continue;
         }
-        if ignored_result_line(trimmed) {
-            if current.is_some() {
+        if current.is_some()
+            && announced.is_none()
+            && trimmed.starts_with("test ")
+            && trimmed.contains(" ... ")
+        {
+            outcome
+                .provenance_errors
+                .push("test row before its owning harness announcement".to_string());
+        }
+        if let Some(name) = ignored_result_line(trimmed) {
+            if let Some(target) = &current {
                 observed_rows += 1;
+                observed.ignored += 1;
+                let subject = TestIdentity {
+                    target: target.clone(),
+                    name: name.to_string(),
+                };
+                if !subjects.insert(subject.clone()) {
+                    outcome
+                        .provenance_errors
+                        .push(format!("duplicate test observation: {subject}"));
+                }
             } else {
                 outcome
                     .provenance_errors
@@ -985,14 +1028,16 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
                     target: target.clone(),
                     name,
                 };
-                if outcome.failed.contains(&subject) || outcome.passed.contains(&subject) {
+                if !subjects.insert(subject.clone()) {
                     outcome
                         .provenance_errors
                         .push(format!("duplicate test observation: {subject}"));
                 }
                 if failed {
+                    observed.failed += 1;
                     outcome.failed.insert(subject);
                 } else {
+                    observed.passed += 1;
                     outcome.passed.insert(subject);
                 }
             } else {
@@ -1000,6 +1045,12 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
                     .provenance_errors
                     .push(format!("test without an admitted target: {name}"));
             }
+        } else if trimmed.starts_with("test ") && trimmed.contains(" ... ") {
+            // Libtest's long-running progress notice also begins with `test`,
+            // but has no outcome separator and supplies no additional subject.
+            outcome
+                .provenance_errors
+                .push(format!("unrecognized test outcome: {trimmed}"));
         }
     }
     close_failure_block(&mut outcome, block.take());
@@ -1008,7 +1059,7 @@ pub(crate) fn parse_log(text: &str) -> RunOutcome {
             .provenance_errors
             .push("unterminated nested harness".to_string());
     }
-    if current.is_some() && announced.is_some() {
+    if current.is_some() {
         outcome
             .provenance_errors
             .push("owning harness has no completion summary".to_string());
@@ -1027,18 +1078,56 @@ fn harness_announcement(line: &str) -> Option<usize> {
     count.parse().ok()
 }
 
-fn ignored_result_line(line: &str) -> bool {
+fn ignored_result_line(line: &str) -> Option<&str> {
     line.strip_prefix("test ")
         .and_then(|rest| rest.split_once(" ... "))
-        .is_some_and(|(name, result)| {
-            !name.is_empty() && (result == "ignored" || result.starts_with("ignored, "))
+        .and_then(|(name, result)| {
+            (!name.is_empty() && (result == "ignored" || result.starts_with("ignored, ")))
+                .then_some(name)
         })
 }
 
+/// A completion must account for each admitted outcome. Measured rows are not
+/// part of this cargo-test lane's supported text, so a nonzero measured total
+/// cannot match the observed counts and is explicitly incomplete evidence.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CompletionCounts {
+    passed: usize,
+    failed: usize,
+    ignored: usize,
+    measured: usize,
+}
+
+fn completion_counts(line: &str) -> Option<CompletionCounts> {
+    let rest = line.strip_prefix("test result: ")?;
+    let (verdict, mut rest) = rest.split_once(". ")?;
+    let mut counts = [0; 4];
+    for (value, label) in
+        counts
+            .iter_mut()
+            .zip([" passed; ", " failed; ", " ignored; ", " measured; "])
+    {
+        let (count, remaining) = rest.split_once(label)?;
+        if count.is_empty() || !count.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        *value = count.parse::<usize>().ok()?;
+        rest = remaining;
+    }
+    if !valid_result_tail(rest) || !matches!((verdict, counts[1]), ("ok", 0) | ("FAILED", 1..)) {
+        return None;
+    }
+    let [passed, failed, ignored, measured] = counts;
+    Some(CompletionCounts {
+        passed,
+        failed,
+        ignored,
+        measured,
+    })
+}
+
 fn exact_empty_result(result: &str) -> bool {
-    result
-        .strip_prefix("test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; ")
-        .is_some_and(valid_result_tail)
+    completion_counts(result).is_some_and(|counts| counts == CompletionCounts::default())
 }
 
 /// Longest failure reason carried into the verdict. The reason exists so a
@@ -1217,13 +1306,11 @@ fn valid_target_name(name: &str) -> bool {
 /// Why each reported test failed, per run, so the verdict stays readable
 /// when the job log is truncated or its artifacts are unreachable. A failed
 /// test with no captured block is said to have none, never left blank.
-fn render_failure_reasons(
-    out: &mut String,
-    first: &RunOutcome,
-    second: &RunOutcome,
-    verdicts: &BTreeMap<&'static str, Vec<TestIdentity>>,
-) {
-    let reported: BTreeSet<&TestIdentity> = verdicts.values().flatten().collect();
+fn render_failure_reasons(out: &mut String, first: &RunOutcome, second: &RunOutcome) {
+    // Observations remain diagnostic evidence even when the pair is unusable
+    // for a cross-run verdict. Do not lose the reason with the verdict gate.
+    let reported: BTreeSet<&TestIdentity> =
+        first.failed.iter().chain(second.failed.iter()).collect();
     if reported.is_empty() {
         return;
     }
@@ -1317,21 +1404,16 @@ fn render(first: &RunOutcome, second: &RunOutcome) -> String {
     }
     out.push_str("### Verdicts\n\n");
     let mut verdicts: BTreeMap<&'static str, Vec<TestIdentity>> = BTreeMap::new();
-    let candidates: BTreeSet<&TestIdentity> =
-        first.failed.iter().chain(second.failed.iter()).collect();
-    for name in candidates {
-        let observed = |outcome: &RunOutcome| {
-            if outcome.state.is_usable() {
-                outcome.observe(name)
-            } else {
-                TestObservation::NotObserved
+    if first.state.is_usable() && second.state.is_usable() {
+        let candidates: BTreeSet<&TestIdentity> =
+            first.failed.iter().chain(second.failed.iter()).collect();
+        for name in candidates {
+            if let Some(verdict) = classify(first.observe(name), second.observe(name)) {
+                verdicts
+                    .entry(verdict.label())
+                    .or_default()
+                    .push(name.clone());
             }
-        };
-        if let Some(verdict) = classify(observed(first), observed(second)) {
-            verdicts
-                .entry(verdict.label())
-                .or_default()
-                .push(name.clone());
         }
     }
 
@@ -1377,7 +1459,7 @@ fn render(first: &RunOutcome, second: &RunOutcome) -> String {
         out.push('\n');
     }
 
-    render_failure_reasons(&mut out, first, second, &verdicts);
+    render_failure_reasons(&mut out, first, second);
 
     out.push_str("### Release-seam controls (#3922)\n\n");
     out.push_str("Native Windows proof for release seams. A failure here is advisory like any test; an unobserved control fails this lane.\n\n");
@@ -1473,7 +1555,7 @@ mod tests {
 
     fn isolated_log(row: &str, result: &str) -> String {
         format!(
-            "Running unittests src/lib.rs (target/debug/deps/ripr-0000000000000001.exe)\ntest {NESTED_ALIAS_TEST} ... {row}\n{result}\n"
+            "Running unittests src/lib.rs (target/debug/deps/ripr-0000000000000001.exe)\nrunning 1 test\ntest {NESTED_ALIAS_TEST} ... {row}\n{result}\n"
         )
     }
 
@@ -1653,7 +1735,9 @@ mod tests {
         log.push_str("test result: ok. 1000 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n");
         let parsed = load_synthetic(&log)?;
         assert_eq!(parsed.state, RunState::IncompleteEvidence);
-        assert_eq!(parsed.provenance_errors.len(), 2000);
+        // Each header and row is invalid; the orphan completion additionally
+        // lacks an owner and contradicts the zero admitted outcomes.
+        assert_eq!(parsed.provenance_errors.len(), 2002);
         assert_eq!(parsed.raw_headers.len(), 1000);
         assert_eq!(parsed.raw_headers[999], "Running malformed_999");
         assert_eq!(
@@ -1670,7 +1754,7 @@ mod tests {
                 20
             );
             assert!(rendered.contains(&format!(
-                "- {label}: 1980 additional provenance errors omitted (2000 total)."
+                "- {label}: 1982 additional provenance errors omitted (2002 total)."
             )));
         }
         assert_eq!(rendered.matches("  - Header text:").count(), 40);
@@ -2307,9 +2391,14 @@ mod tests {
             );
         }
 
-        // A real log with targets and result lines is clean.
+        // This historical excerpt omits almost all rows and announcements. It
+        // preserves parser shapes, but cannot qualify as a complete clean run.
         let real = dir.join("real.log");
         if std::fs::write(&real, REAL_RUNNER_LOG).is_ok() {
+            assert_eq!(load_run(&real, &status).state, RunState::IncompleteEvidence);
+        }
+        let complete = format!("{XTASK_HEADER}running 1 test\ntest example ... ok\n{ONE_PASS}");
+        if std::fs::write(&real, complete).is_ok() {
             assert_eq!(load_run(&real, &status).state, RunState::CompletedClean);
         }
 

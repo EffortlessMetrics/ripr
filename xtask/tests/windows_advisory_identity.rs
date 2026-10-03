@@ -1,4 +1,4 @@
-//! Production-command discriminators for #5043. The Cargo-shaped logs are
+//! Production-command discriminators for #5043 and #5107. The Cargo-shaped logs are
 //! synthetic; they establish parser identity, not native Windows execution.
 //! The control inventory is deliberately independent of the implementation.
 use std::collections::BTreeMap;
@@ -186,20 +186,29 @@ fn corpus_root(nonce: u128) -> PathBuf {
 }
 
 fn invoke_with_missing(first: &str, second: &str, missing: Option<&str>) -> Result<Output, String> {
+    invoke_artifacts(first, second, missing, None)
+}
+
+fn invoke_artifacts(
+    first: &str,
+    second: &str,
+    missing: Option<&str>,
+    statuses: Option<[i32; 2]>,
+) -> Result<Output, String> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_nanos();
     let root = TempRoot::create(corpus_root(nonce)).map_err(|e| e.to_string())?;
-    for (label, log) in [("run1", first), ("run2", second)] {
+    for (index, (label, log)) in [("run1", first), ("run2", second)].into_iter().enumerate() {
         fs::write(root.0.join(format!("{label}.log")), log).map_err(|e| e.to_string())?;
+        let status = statuses.map_or_else(
+            || if log.contains(" ... FAILED") { 101 } else { 0 },
+            |values| values[index],
+        );
         fs::write(
             root.0.join(format!("{label}.status")),
-            if log.contains(" ... FAILED") {
-                "101\n"
-            } else {
-                "0\n"
-            },
+            format!("{status}\n"),
         )
         .map_err(|e| e.to_string())?;
     }
@@ -228,6 +237,15 @@ fn verify(
     forbidden: &[&str],
 ) -> Result<(), String> {
     let output = invoke(&first, &second)?;
+    verify_output(output, exit, required, forbidden)
+}
+
+fn verify_output(
+    output: Output,
+    exit: i32,
+    required: &[&str],
+    forbidden: &[&str],
+) -> Result<(), String> {
     let text = format!(
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
@@ -250,6 +268,296 @@ fn verify(
         }
     }
     Ok(())
+}
+
+fn replace_first_completion(log: &str, replacement: &str) -> Result<String, String> {
+    let original = log
+        .lines()
+        .find(|line| line.starts_with("test result:"))
+        .ok_or_else(|| "fixture has no completion to replace".to_string())?;
+    Ok(log.replacen(original, replacement, 1))
+}
+
+#[test]
+fn consistent_completion_preserves_all_required_controls() -> Result<(), String> {
+    let log = controls(None);
+    verify(
+        log.clone(),
+        log,
+        0,
+        &[
+            "Run 1: `completed_clean`",
+            "Run 2: `completed_clean`",
+            "observed 15 pass, 0 fail",
+            "No test failed in either run.",
+        ],
+        &["Evidence failure", "not_observed"],
+    )
+}
+
+#[test]
+fn contradictory_completion_cannot_credit_passing_rows() -> Result<(), String> {
+    let clean = controls(None);
+    // The first target is lsp_lifecycle with two passing control rows. Keep
+    // target identity, announcement, rows and captured exit zero unchanged.
+    assert!(clean.starts_with("Running tests/lsp_lifecycle.rs"));
+    let contradictory = replace_first_completion(
+        &clean,
+        "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+    )?;
+    verify(
+        contradictory,
+        clean,
+        1,
+        &[
+            "Run 1: `incomplete_evidence`",
+            "provenance:",
+            "observed 15 pass, 0 fail",
+        ],
+        &["Run 1: `completed_clean`", "No test failed in either run."],
+    )
+}
+
+#[test]
+fn malformed_completion_is_not_completion_evidence() -> Result<(), String> {
+    let clean = controls(None);
+    verify(
+        replace_first_completion(&clean, "test result: not a libtest summary")?,
+        clean,
+        1,
+        &["Run 1: `incomplete_evidence`", "provenance:"],
+        &["Run 1: `completed_clean`", "No test failed in either run."],
+    )
+}
+
+#[test]
+fn an_orphan_completion_cannot_complete_a_run() -> Result<(), String> {
+    let clean = controls(None);
+    let orphan = "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n";
+    verify(
+        clean.clone() + orphan,
+        clean,
+        1,
+        &["Run 1: `incomplete_evidence`", "provenance:"],
+        &["Run 1: `completed_clean`", "No test failed in either run."],
+    )
+}
+
+#[test]
+fn missing_peer_evidence_cannot_issue_a_cross_run_verdict() -> Result<(), String> {
+    let first = controls(None) + &alpha("FAILED");
+    let output = invoke_with_missing(&first, &controls(None), Some("run2.log"))?;
+    verify_output(
+        output,
+        1,
+        &[
+            "Run 1: `nonzero_with_observed_test_failures`",
+            "Run 2: `log_missing`",
+            "No verdict: see the evidence failure above.",
+            "observed 15 pass, 1 fail",
+            "Run 1: Error: alpha reason",
+        ],
+        &["masked_unknown (", "unstable (", "repeated_failure ("],
+    )
+}
+
+#[test]
+fn a_zero_status_cannot_hide_a_consistent_failed_completion() -> Result<(), String> {
+    let failure = controls(None) + &alpha("FAILED");
+    verify_output(
+        invoke_artifacts(&failure, &controls(None), None, Some([0, 0]))?,
+        1,
+        &[
+            "Run 1: `incomplete_evidence` (cargo exit 0)",
+            "zero cargo exit status contradicts observed test failures",
+            "No verdict: see the evidence failure above.",
+            "observed 15 pass, 1 fail",
+            "Run 1: Error: alpha reason",
+        ],
+        &["masked_unknown (", "unstable (", "repeated_failure ("],
+    )
+}
+
+#[test]
+fn a_nonzero_status_after_passing_targets_retains_the_infrastructure_distinction()
+-> Result<(), String> {
+    let failure = controls(None) + &alpha("FAILED");
+    verify_output(
+        invoke_artifacts(&failure, &controls(None), None, Some([101, 101]))?,
+        0,
+        &[
+            "Run 2: `compile_or_harness_failure` (cargo exit 101)",
+            "Infrastructure failure",
+            "masked_unknown (1)",
+        ],
+        &[
+            "Evidence failure",
+            "incomplete_evidence",
+            "repeated_failure (",
+        ],
+    )
+}
+
+#[test]
+fn unusable_observed_failures_keep_diagnostics_without_any_verdict() -> Result<(), String> {
+    let failure = controls(None) + &alpha("FAILED");
+    for missing in ["run1.status", "run2.status"] {
+        verify_output(
+            invoke_with_missing(&failure, &failure, Some(missing))?,
+            1,
+            &[
+                "status_missing",
+                "No verdict: see the evidence failure above.",
+                "Run 1: Error: alpha reason",
+                "Run 2: Error: alpha reason",
+            ],
+            &["masked_unknown (", "unstable (", "repeated_failure ("],
+        )?;
+    }
+    let incomplete = replace_first_completion(&failure, "test result: incomplete")?;
+    for (first, second) in [
+        (&incomplete, &failure),
+        (&failure, &incomplete),
+        (&incomplete, &incomplete),
+    ] {
+        verify(
+            first.clone(),
+            second.clone(),
+            1,
+            &[
+                "incomplete_evidence",
+                "No verdict: see the evidence failure above.",
+                "Run 1: Error: alpha reason",
+                "Run 2: Error: alpha reason",
+            ],
+            &["masked_unknown (", "unstable (", "repeated_failure ("],
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn completion_requires_matching_each_outcome_and_an_announced_owner() -> Result<(), String> {
+    let clean = controls(None);
+    let valid = "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s";
+    for summary in [
+        valid.replace("ok.", "FAILED."),
+        valid.replace("2 passed; 0 failed", "1 passed; 1 failed"),
+        valid.replace(
+            "2 passed; 0 failed; 0 ignored",
+            "1 passed; 0 failed; 1 ignored",
+        ),
+        valid.replace("2 passed", "1 passed"),
+        valid.replace("0 measured", "1 measured"),
+        valid.replace("2 passed", "many passed"),
+        valid.replace("2 passed", "9999999999999999999999999999999999999 passed"),
+        valid.replace("0 ignored; ", ""),
+        valid.replace("0 filtered out", "-1 filtered out"),
+        valid.replace("0.01s", "NaNs"),
+        valid.replace("0.01s", "-1s"),
+        valid.replace("0.01s", "later"),
+        format!("{valid} trailing evidence"),
+    ] {
+        verify(
+            replace_first_completion(&clean, &summary)?,
+            clean.clone(),
+            1,
+            &["incomplete_evidence", "provenance:"],
+            &["No test failed in either run."],
+        )?;
+    }
+    let unannounced = clean.replacen("running 2 tests\n", "", 1);
+    verify(
+        unannounced,
+        clean,
+        1,
+        &[
+            "incomplete_evidence",
+            "completion summary without an announced owning harness",
+        ],
+        &["No test failed in either run."],
+    )
+}
+
+#[test]
+fn completion_preserves_ignored_filtered_empty_and_doctest_batches() -> Result<(), String> {
+    let log = controls(None)
+        + "Running tests/mixed.rs (target/debug/deps/mixed-1111111111111111.exe)\nrunning 3 tests\ntest success ... ok\ntest deferred ... ignored, requires a device\ntest other ... ignored\ntest result: ok. 1 passed; 0 failed; 2 ignored; 0 measured; 12 filtered out; finished in 0.00s\n"
+        + "Running tests/empty.rs (target/debug/deps/empty-1111111111111111.exe)\nrunning 0 tests\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s\n"
+        + "Doc-tests ripr\nrunning 1 test\ntest src/lib.rs - example (line 1) ... ignored\ntest result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s\nrunning 1 test\ntest src/lib.rs - example (line 5) ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\nall doctests ran in 0.01s; merged doctests compilation took 0.01s\n";
+    verify(
+        log.clone(),
+        log,
+        0,
+        &["completed_clean", "observed 17 pass, 0 fail"],
+        &["Evidence failure", "incomplete_evidence"],
+    )
+}
+
+#[test]
+fn incomplete_or_duplicate_ignored_subjects_cannot_supply_completion() -> Result<(), String> {
+    let clean = controls(None);
+    let header = "Running tests/extra.rs (target/debug/deps/extra-1111111111111111.exe)\n";
+    for tail in [
+        header.to_string(),
+        format!(
+            "{header}running 0 tests\ntest unknown ... unsupported\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n"
+        ),
+        format!(
+            "{header}running 2 tests\ntest duplicate ... ignored\ntest duplicate ... ignored\ntest result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s\n"
+        ),
+        format!(
+            "{header}running 2 tests\ntest duplicate ... ignored\ntest duplicate ... ok\ntest result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s\n"
+        ),
+    ] {
+        verify(
+            clean.clone() + &tail,
+            clean.clone(),
+            1,
+            &["incomplete_evidence", "provenance:"],
+            &["No test failed in either run."],
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn rows_before_the_announcement_cannot_escape_completion_totals() -> Result<(), String> {
+    let clean = controls(None);
+    for result in ["ok", "FAILED", "ignored"] {
+        let log = clean.clone()
+            + &format!(
+                "Running tests/extra.rs (target/debug/deps/extra-1111111111111111.exe)\ntest unannounced ... {result}\nrunning 1 test\ntest announced ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n"
+            );
+        verify(
+            log,
+            clean.clone(),
+            1,
+            &[
+                "incomplete_evidence",
+                "before its owning harness announcement",
+            ],
+            &["No test failed in either run.", "masked_unknown ("],
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn native_long_running_progress_is_not_an_extra_outcome() -> Result<(), String> {
+    // Retained native logs contain this libtest notice before the final row.
+    let progress = alpha("ok").replace(
+        "test same_name ... ok",
+        "test same_name has been running for over 60 seconds\ntest same_name ... ok",
+    );
+    let log = controls(None) + &progress;
+    verify(
+        log.clone(),
+        log,
+        0,
+        &["completed_clean", "observed 16 pass, 0 fail"],
+        &["incomplete_evidence", "provenance:"],
+    )
 }
 
 #[test]
@@ -438,7 +746,7 @@ fn doctest_transition_cannot_borrow_a_unit_pass() -> Result<(), String> {
     let name = "src/lib.rs - example (line 1)";
     let first = controls(None)
         + &format!(
-            "Doc-tests ripr\ntest {name} ... FAILED\ntest result: FAILED. 0 passed; 1 failed\n"
+            "Doc-tests ripr\nrunning 1 test\ntest {name} ... FAILED\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n"
         );
     let second = controls_adjusted(
         None,
@@ -456,9 +764,9 @@ fn doctest_transition_cannot_borrow_a_unit_pass() -> Result<(), String> {
 #[test]
 fn explicit_doctest_transitions_preserve_names_with_spaces() -> Result<(), String> {
     let first = controls(None)
-        + "Doc-tests ripr\ntest src/lib.rs - example (line 1) ... FAILED\ntest result: FAILED. 0 passed; 1 failed\n";
+        + "Doc-tests ripr\nrunning 1 test\ntest src/lib.rs - example (line 1) ... FAILED\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n";
     let second = controls(None)
-        + "Doc-tests ripr\ntest src/lib.rs - example (line 1) ... ok\ntest result: ok. 1 passed; 0 failed\n";
+        + "Doc-tests ripr\nrunning 1 test\ntest src/lib.rs - example (line 1) ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n";
     verify(
         first,
         second,
@@ -472,7 +780,7 @@ fn explicit_doctest_transitions_preserve_names_with_spaces() -> Result<(), Strin
 }
 #[test]
 fn duplicate_doctest_transitions_are_unproven() -> Result<(), String> {
-    let doc = "Doc-tests ripr\ntest src/lib.rs - example (line 1) ... ok\ntest result: ok. 1 passed; 0 failed\n";
+    let doc = "Doc-tests ripr\nrunning 1 test\ntest src/lib.rs - example (line 1) ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n";
     let log = controls(None) + doc + doc;
     verify(
         log.clone(),
@@ -799,7 +1107,7 @@ fn provenance_report_caps_legacy_rows_and_counts_omissions() -> Result<(), Strin
             20
         );
         assert!(report.contains(&format!(
-            "- {label}: 980 additional provenance errors omitted (1000 total)."
+            "- {label}: 982 additional provenance errors omitted (1002 total)."
         )));
     }
     assert!(!report.contains("orphan_20"));
@@ -924,7 +1232,7 @@ fn provenance_report_caps_repeated_admitted_targets() -> Result<(), String> {
     );
     assert_eq!(
         report
-            .matches("979 additional provenance errors omitted (999 total).")
+            .matches("1979 additional provenance errors omitted (1999 total).")
             .count(),
         2
     );
