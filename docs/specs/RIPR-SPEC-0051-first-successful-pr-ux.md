@@ -175,6 +175,12 @@ supporting context.
 
 ### Selected-root command presentation
 
+Rooted Bash eligibility is independent of PowerShell translation eligibility.
+Literal argument equals signs (for example `--test-threads=1`) are admitted
+after the program token. This bounded form withholds pre-program assignments,
+multiline commands, unbalanced quotes, expansions, compound commands and
+redirection. PowerShell selected-root unavailability remains explicit (#5119).
+
 Current ledger selections add `selected.command_context` with authority
 `advisory_display_only`, a lossless existing-directory `cwd` (or null), and
 `verify` / `receipt` objects containing `bash`, `powershell`, and `recovery`
@@ -187,7 +193,7 @@ directory and exact native exit status. Physical `cd -P` also preserves a
 lossless UTF-8 alias containing symlink/`..` traversal when its canonical target
 has non-UTF-8 bytes. Unsupported compound, redirecting,
 expanding, or multiline forms are withheld with recovery guidance. The shared
-simple-command translator bounds accepted syntax without introducing a parser.
+simple-command scanner bounds accepted syntax without introducing a parser.
 
 Rooted PowerShell forms are withheld with explicit recovery: the existing
 translator cannot establish native exit-status authority for generic shell
@@ -495,6 +501,14 @@ Likely implementation surfaces:
 - `README.md`;
 - `.ripr/traceability.toml`;
 - `metrics/capabilities.toml`.
+
+The #5119 Bash syntax boundary is exercised by
+`output::markdown::tests::rooted_bash_accepts_literal_argument_equals_without_powershell_translation`,
+`output::markdown::tests::rooted_bash_withholds_unbounded_or_malformed_commands`,
+and (Unix)
+`output::markdown::tests::rooted_bash_executes_from_selected_directory_preserving_arguments_and_status`.
+The runtime fixture uses a ten-second owned-process deadline and checks selected
+directory, literal argument bytes and nonzero status from a foreign directory.
 
 ## Metrics
 

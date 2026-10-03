@@ -292,16 +292,13 @@ fn rooted_command_forms(cwd: Option<&str>, command: &str) -> serde_json::Value {
             "Selected-root command form is unavailable for multiline paths or commands; use a single-line alias or command and regenerate the packet.",
         );
     }
-    // Use the existing bounded translation decision, and reject even its
-    // supported redirect: these forms wrap only one bounded invocation.
-    let Some(_) = powershell_command(command).filter(|_| {
-        !command.trim().is_empty()
-            && powershell_redirect_offset(&command.replace("'\\''", "''")).is_none()
-    }) else {
+    // Bash argument syntax has its own bounded decision: PowerShell
+    // translation eligibility must not suppress valid Bash arguments.
+    if command.trim().is_empty() || has_unsupported_shell_syntax(command.trim(), true) {
         return unavailable(
             "Selected-root command form is unavailable for unsupported shell syntax; inspect the raw command in JSON, run it from the selected repository, and preserve its exit status before recording a receipt.",
         );
-    };
+    }
     let root = crate::agent::loop_commands::shell_arg(cwd);
     serde_json::json!({
         "bash": format!("(cd -P -- {root} && {command})"),
@@ -539,10 +536,18 @@ fn powershell_redirect_offset(command: &str) -> Option<usize> {
 /// mistaken for part of an artifact path. Quoted line separators are argument
 /// data and keep the normal translation path.
 fn is_compound_bash_command(command: &str) -> bool {
+    has_unsupported_shell_syntax(command, false)
+}
+
+/// Share the quote/expansion boundary while allowing literal `=` in Bash
+/// arguments only. Rooted Bash forms never admit redirection or assignments
+/// before the program; PowerShell retains its existing translation boundary.
+fn has_unsupported_shell_syntax(command: &str, rooted_bash: bool) -> bool {
     let chars: Vec<char> = command.chars().collect();
     let mut index = 0;
     let mut in_single_quote = false;
     let mut in_double_quote = false;
+    let mut argument_position = false;
     while index < chars.len() {
         let ch = chars[index];
         let next = chars.get(index + 1).copied();
@@ -568,6 +573,9 @@ fn is_compound_bash_command(command: &str) -> bool {
             }
             index += 1;
         } else {
+            if ch.is_ascii_whitespace() && index > 0 {
+                argument_position = true;
+            }
             match ch {
                 '\'' => in_single_quote = true,
                 '"' => in_double_quote = true,
@@ -591,6 +599,9 @@ fn is_compound_bash_command(command: &str) -> bool {
                 },
                 ';' | '\n' | '\r' => return true,
                 '>' => {
+                    if rooted_bash {
+                        return true;
+                    }
                     // Only the spaced ` > ` operator translates (detected by
                     // `powershell_redirect_offset`); any other `>` form
                     // (`2>err`, `>&2`, `>>`, `a>b`) tokenizes differently
@@ -616,6 +627,7 @@ fn is_compound_bash_command(command: &str) -> bool {
                 '{' | '}' => return true,
                 '(' | ')' => return true,
                 '@' => return true,
+                '=' if rooted_bash && argument_position => {}
                 '~' if index == 0
                     || chars
                         .get(index - 1)
@@ -651,6 +663,106 @@ fn powershell_literal(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rooted_bash_accepts_literal_argument_equals_without_powershell_translation() {
+        let command = "cargo test example -- --test-threads=1";
+        assert!(powershell_command(command).is_none());
+        let forms = rooted_command_forms(Some("/selected repo"), command);
+        assert_eq!(
+            forms["bash"],
+            "(cd -P -- '/selected repo' && cargo test example -- --test-threads=1)"
+        );
+        assert!(forms["powershell"].is_null());
+        assert!(
+            forms["recovery"]
+                .as_str()
+                .is_some_and(|text| text.contains("exit-status"))
+        );
+    }
+
+    #[test]
+    fn rooted_bash_withholds_unbounded_or_malformed_commands() {
+        for command in [
+            "",
+            "   ",
+            "cargo test\nexample",
+            "cargo test\rexample",
+            "cargo test && true",
+            "cargo test || true",
+            "cargo test; true",
+            "cargo test &",
+            "cargo test | cat",
+            "cargo test > out",
+            "cargo test 2>out",
+            "cargo test < input",
+            "cargo test $(true)",
+            "cargo test `true`",
+            "cargo test $HOME",
+            "cargo test *.rs",
+            "cargo test 'unterminated",
+            "cargo test \"unterminated",
+            "cargo test # comment",
+            "MODE=1 cargo test",
+            " MODE=1 cargo test",
+        ] {
+            let forms = rooted_command_forms(Some("/selected"), command);
+            assert!(forms["bash"].is_null(), "must withhold {command:?}");
+            assert!(forms["powershell"].is_null());
+        }
+        for command in [
+            "cargo test -- --test-threads=1",
+            "cargo test 'literal=two words'",
+            "cargo test 'it'\\''s=value'",
+            "cargo test \"literal=two words\"",
+        ] {
+            assert!(rooted_command_forms(Some("/selected"), command)["bash"].is_string());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rooted_bash_executes_from_selected_directory_preserving_arguments_and_status()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let selected = native_proof_root("rooted-bash-selected").map_err(std::io::Error::other)?;
+        let _selected_guard = RemoveOnDrop(selected.clone());
+        let foreign = native_proof_root("rooted-bash-foreign").map_err(std::io::Error::other)?;
+        let _foreign_guard = RemoveOnDrop(foreign.clone());
+        std::fs::write(
+            selected.join("verify"),
+            "printf '%s\\n' \"$PWD\" \"$1\" \"$2\"\nexit 23\n",
+        )?;
+        let command = "bash ./verify --test-threads=1 'literal=two words'";
+        let root = selected.canonicalize()?;
+        let forms = rooted_command_forms(root.to_str(), command);
+        let bash = forms["bash"].as_str().ok_or("missing Bash form")?;
+        let stdout_path = foreign.join("stdout");
+        let mut command = std::process::Command::new("bash");
+        command
+            .args(["-c", bash])
+            .current_dir(&foreign)
+            .stdout(std::fs::File::create(&stdout_path)?)
+            .stderr(std::fs::File::create(foreign.join("stderr"))?);
+        let mut child = crate::process_owner::OwnedProcess::spawn(command)?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if std::time::Instant::now() >= deadline {
+                child.terminate_tree().map_err(std::io::Error::other)?;
+                return Err("rooted Bash fixture exceeded its deadline".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert_eq!(status.code(), Some(23));
+        assert_eq!(
+            std::fs::read_to_string(stdout_path)?,
+            format!("{}\n--test-threads=1\nliteral=two words\n", root.display())
+        );
+        assert!(forms["powershell"].is_null());
+        Ok(())
+    }
 
     /// Every case must read back unchanged, and its span must hold no
     /// backtick run as long as its fence (else the span closes early).
