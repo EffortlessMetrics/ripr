@@ -7678,8 +7678,24 @@ fn routed_rust_concurrency_group_has_isolation(workflow: &str, isolation: &str) 
             in_concurrency = line.trim() == "concurrency:";
             continue;
         }
-        if in_concurrency && line.starts_with("  group:") && line.ends_with(isolation) {
-            return true;
+        if in_concurrency && let Some(value) = line.strip_prefix("  group: ") {
+            let value = value.trim_start();
+            // Only the workflow's plain scalar style is supported. Text in
+            // a YAML comment must never satisfy the isolation contract.
+            if value.starts_with(['\'', '"', '|', '>']) {
+                return false;
+            }
+            let comment = value.char_indices().find_map(|(index, character)| {
+                (character == '#'
+                    && (index == 0
+                        || value[..index]
+                            .chars()
+                            .next_back()
+                            .is_some_and(char::is_whitespace)))
+                .then_some(index)
+            });
+            let value = &value[..comment.unwrap_or(value.len())];
+            return value.trim_end().ends_with(isolation);
         }
     }
     false

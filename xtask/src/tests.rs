@@ -10918,6 +10918,7 @@ fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
         without_group.replacen("env:\n", &format!("env:\n{group}\n"), 1),
         without_group.replacen("    steps:\n", &format!("    steps:\n      - name: Scope control\n        env:\n        {group}\n        run: echo scope-control\n"), 1),
     ] {
+        assert_ne!(relocated, workflow);
         assert!(
             routed_rust_workflow_contract_violations(&relocated, None, None)
                 .iter()
@@ -10946,6 +10947,41 @@ fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
             "route",
             |line| line.trim() == "if: exact"
         ));
+    }
+    let isolation = format!(
+        "${{{{ {} && '-label-ignore' || '' }}}}",
+        crate::SOURCE_RUST_IGNORED_EVENT
+    );
+    for value in [
+        format!("shared # {isolation}"),
+        format!("shared\t# {isolation}"),
+        format!("\"shared{isolation}\""),
+        format!("'shared{isolation}'"),
+        format!(">-\n    shared{isolation}"),
+    ] {
+        let mutated = workflow.replacen(group, &format!("  group: {value}"), 1);
+        assert_ne!(mutated, workflow);
+        assert!(
+            !crate::routed_rust_concurrency_group_has_isolation(&mutated, &isolation),
+            "inline comment or unsupported scalar must not establish isolation"
+        );
+        assert!(
+            routed_rust_workflow_contract_violations(&mutated, None, None)
+                .iter()
+                .any(|violation| violation.contains("concurrency isolation"))
+        );
+    }
+    for comment in [" # retained explanation", "\t# retained explanation"] {
+        let annotated = workflow.replacen(group, &format!("{group}{comment}"), 1);
+        assert_ne!(annotated, workflow);
+        assert!(
+            crate::routed_rust_concurrency_group_has_isolation(&annotated, &isolation),
+            "a real plain group value retains isolation before a trailing comment"
+        );
+        assert_eq!(
+            routed_rust_workflow_contract_violations(&annotated, None, None).len(),
+            0
+        );
     }
     Ok(())
 }
