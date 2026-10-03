@@ -166,3 +166,38 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+## Pending — source_role_harness_suppression (10)
+
+Reason:
+RIPR-SPEC-0197 #5027: statement-prefix proof preserves the earlier exact Result-harness assertion and original class/confidence; only the equality after a possible return is omitted. Executed removal control proves the retained assertion detects 51 versus 50.
+
+Command:
+`cargo xtask goldens bless source_role_harness_suppression --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — source_role_harness_suppression (11)
+
+Reason:
+RIPR-SPEC-0197 #5027: statement-prefix proof preserves the earlier exact Result-harness assertion and original class/confidence; only the equality after a possible return is omitted. Executed removal control proves the retained assertion detects 51 versus 50.
+
+Command:
+`cargo xtask goldens bless source_role_harness_suppression --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — source_role_harness_suppression (12)
+
+Reason:
+RIPR-SPEC-0197/#5027: preserve the admitted earlier exact oracle and propagation_unknown/0.66, but refuse boundary-pairing credit from the later equality after a possible return. The Err guard retains weak static meaning and really detects the executed boundary mutant; the propagation limitation remains distinct.
+
+Command:
+`cargo xtask goldens bless source_role_harness_suppression --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

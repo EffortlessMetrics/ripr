@@ -14,7 +14,7 @@ Start here:
   Static exposure: weak (weakly_exposed, warning, confidence 0.92)
   Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: input >= 10
-  Missing discriminator: Discriminator unconfirmed: boundary input and discriminating oracle come from different tests (same_test_pairing_missing); no test both feeds a boundary input to the owner and…
+  Missing discriminator: Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do…
   Related test (1 of 2): tests/split.rs:4 boundary
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
   Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak

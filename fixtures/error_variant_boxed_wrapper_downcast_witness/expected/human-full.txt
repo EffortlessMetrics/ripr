@@ -33,9 +33,9 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
 Drill in:
   ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117
@@ -66,9 +66,9 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
 Drill in:
   ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:f573bd5d
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d
@@ -99,9 +99,9 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
 Drill in:
   ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:error_path:5c979117.2
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:error_path:5c979117.2
@@ -132,9 +132,9 @@ Evidence
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed function argument value raw = "@bad;" at line 10
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 10
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
 Drill in:
   ripr explain --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast probe:src_lib.rs:return_value:f573bd5d.2
   ripr context --root fixtures/error_variant_boxed_wrapper_downcast_witness/input --diff fixtures/error_variant_boxed_wrapper_downcast_witness/diff.patch --mode fast --at probe:src_lib.rs:return_value:f573bd5d.2
@@ -175,11 +175,11 @@ return Err("boxed variant must preserve ParseSummaryError::MalformedSource".into
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed function argument value raw = "@bad;" at line 20
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 20
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -234,11 +234,11 @@ return Err("boxed variant must preserve ParseSummaryError::MalformedSource".into
   - related test tests/errors.rs:8 parse_summary_fails_closed_on_malformed_source uses strong exact error variant oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {
 return Err("malformed source should produce ParseSummaryError::MalformedSource".into());
 }
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed enum variant value ParseSummaryError::MalformedSource at line 11
-  - observed function argument value raw = "@bad;" at line 20
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
-  - observed enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source enum variant value ParseSummaryError::MalformedSource at line 11
+  - source function argument value raw = "@bad;" at line 20
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
+  - source enum variant value ParseSummaryError::MalformedSource at line 23
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -290,9 +290,9 @@ return Err("checksum witness pinned the malformed-payload sibling".into());
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
     )
-  - observed function argument value payload = "payload?" at line 34
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
+  - source function argument value payload = "payload?" at line 34
+  - source enum variant value ChecksumError::MalformedPayload at line 37
+  - source enum variant value ChecksumError::MalformedPayload at line 37
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -344,9 +344,9 @@ return Err("checksum witness pinned the malformed-payload sibling".into());
         error.downcast_ref::<ChecksumError>(),
         Some(ChecksumError::MalformedPayload)
     )
-  - observed function argument value payload = "payload?" at line 34
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
-  - observed enum variant value ChecksumError::MalformedPayload at line 37
+  - source function argument value payload = "payload?" at line 34
+  - source enum variant value ChecksumError::MalformedPayload at line 37
+  - source enum variant value ChecksumError::MalformedPayload at line 37
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -398,9 +398,9 @@ return Err("render witness pinned the parse-summary variant instead".into());
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
     )
-  - observed function argument value raw = "zhex" at line 48
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
+  - source function argument value raw = "zhex" at line 48
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -452,9 +452,9 @@ return Err("render witness pinned the parse-summary variant instead".into());
         error.downcast_ref::<ParseSummaryError>(),
         Some(ParseSummaryError::MalformedSource)
     )
-  - observed function argument value raw = "zhex" at line 48
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
-  - observed enum variant value ParseSummaryError::MalformedSource at line 51
+  - source function argument value raw = "zhex" at line 48
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
+  - source enum variant value ParseSummaryError::MalformedSource at line 51
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -497,7 +497,7 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: try_length_summary(raw).map_err(Into::into) (line 95)
   - related test tests/errors.rs:61 length_summary_only_checks_is_err uses weak broad error oracle: assert!(result.is_err());
-  - observed function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
+  - source function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -540,7 +540,7 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches returned value: try_length_summary(raw).map_err(Into::into) (line 95)
   - related test tests/errors.rs:61 length_summary_only_checks_is_err uses weak broad error oracle: assert!(result.is_err());
-  - observed function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
+  - source function argument value raw = "way-too-long-input-that-exceeds-the-forty-char-limit!!" at line 62
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -592,9 +592,9 @@ return Err("glyph variant witness requires the typed conversion".into());
         error.downcast_ref::<GlyphError>(),
         Some(GlyphError::MalformedGlyph)
     )
-  - observed function argument value raw = "#glyph" at line 69
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
+  - source function argument value raw = "#glyph" at line 69
+  - source enum variant value GlyphError::MalformedGlyph at line 72
+  - source enum variant value GlyphError::MalformedGlyph at line 72
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -646,9 +646,9 @@ return Err("glyph variant witness requires the typed conversion".into());
         error.downcast_ref::<GlyphError>(),
         Some(GlyphError::MalformedGlyph)
     )
-  - observed function argument value raw = "#glyph" at line 69
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
-  - observed enum variant value GlyphError::MalformedGlyph at line 72
+  - source function argument value raw = "#glyph" at line 69
+  - source enum variant value GlyphError::MalformedGlyph at line 72
+  - source enum variant value GlyphError::MalformedGlyph at line 72
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -694,8 +694,8 @@ Evidence
         error.downcast_ref::<ThemeError>(),
         Some(ThemeError::DuplicateTheme)
     );
-  - observed function argument value raw = "&theme" at line 83
-  - observed enum variant value ThemeError::DuplicateTheme at line 86
+  - source function argument value raw = "&theme" at line 83
+  - source enum variant value ThemeError::DuplicateTheme at line 86
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
@@ -741,8 +741,8 @@ Evidence
         error.downcast_ref::<ThemeError>(),
         Some(ThemeError::DuplicateTheme)
     );
-  - observed function argument value raw = "&theme" at line 83
-  - observed enum variant value ThemeError::DuplicateTheme at line 86
+  - source function argument value raw = "&theme" at line 83
+  - source enum variant value ThemeError::DuplicateTheme at line 86
 
 Weakness
   - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established

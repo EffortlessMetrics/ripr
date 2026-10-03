@@ -32,7 +32,7 @@ Evidence
   - related test src/lib.rs:12 calls_owner_without_observing_effect uses none unknown oracle
   - related test src/lib.rs:17 unrelated_exact_oracle uses strong exact value oracle: assert_eq!(store, expected);
   - related test src/lib.rs:17 unrelated_exact_oracle uses weak relational check oracle: assert!(label.contains("record_effect"));
-  - observed assertion argument value "record_effect" at line 22
+  - source assertion argument value "record_effect" at line 22
 
 Weakness
   - No strong discriminator was detected

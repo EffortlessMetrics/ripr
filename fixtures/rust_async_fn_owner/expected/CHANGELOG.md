@@ -274,3 +274,28 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+## Pending — rust_async_fn_owner (10)
+
+Reason:
+RIPR-SPEC-0197 #5040: explicit conservative async-provenance non-claim; actual Tokio runtime/removal controls show a useful equality, but static macro-binding/polling provenance is absent. Discovery and propagation_unknown remain; this is documented usefulness loss, not an ineffective-test claim.
+
+Command:
+`cargo xtask goldens bless rust_async_fn_owner --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — rust_async_fn_owner (11)
+
+Reason:
+RIPR-SPEC-0197 #5040: explicit conservative async-provenance non-claim; actual Tokio runtime/removal controls show a useful equality, but static macro-binding/polling provenance is absent. Discovery and propagation_unknown remain; this is documented usefulness loss, not an ineffective-test claim.
+
+Command:
+`cargo xtask goldens bless rust_async_fn_owner --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

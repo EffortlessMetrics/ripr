@@ -80,10 +80,8 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
         .iter()
         .take(MAX_OBSERVED_VALUES_SHOWN)
     {
-        let context = display_label(value.context.as_str());
-        lines.push(format!(
-            "observed {} value {} at line {}",
-            context, value.value, value.line
+        lines.push(crate::output::observed_values::source_value_evidence_line(
+            value,
         ));
     }
     if observed_values_total > MAX_OBSERVED_VALUES_SHOWN {
@@ -98,7 +96,7 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
             "full list in --format json".to_string()
         };
         lines.push(format!(
-            "observed values (showing {MAX_OBSERVED_VALUES_SHOWN} of {observed_values_total}; {json_window})"
+            "source values (showing {MAX_OBSERVED_VALUES_SHOWN} of {observed_values_total}; {json_window})"
         ));
     }
 

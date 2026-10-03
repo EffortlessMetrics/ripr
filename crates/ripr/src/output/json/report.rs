@@ -884,13 +884,7 @@ fn evidence_path_values(finding: &Finding) -> Vec<String> {
         )
         .into_iter()
         .take(8)
-        .map(|fact| {
-            let context = display_label(fact.context.as_str());
-            format!(
-                "observed {} value {} at line {}",
-                context, fact.value, fact.line
-            )
-        }),
+        .map(crate::output::observed_values::source_value_evidence_line),
     );
 
     values.extend(

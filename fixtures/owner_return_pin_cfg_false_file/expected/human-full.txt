@@ -31,9 +31,9 @@ Evidence
   - local flow reaches returned value: input * 3 (line 2)
   - related test tests/support/dormant.rs:3 dormant uses none unknown oracle
   - related test tests/weight_tests.rs:3 smoke uses none unknown oracle
-  - observed assertion argument value 12 at line 3
-  - observed function argument value input = 4 at line 3
-  - observed function argument value input = 4 at line 3
+  - source assertion argument value 12 at line 3
+  - source function argument value input = 4 at line 3
+  - source function argument value input = 4 at line 3
 
 Weakness
   - No detected assertion observes the changed value, error, field, or effect

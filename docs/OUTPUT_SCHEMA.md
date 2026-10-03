@@ -908,7 +908,14 @@ The evidence-first fields are additive in schema `0.2`:
 
 - `evidence_path` is an ordered, human-readable summary of reachability,
   infection, propagation, observation, discrimination, local flow, related test
-  oracles, observed values, and missing discriminator evidence.
+  oracles, source values, and missing discriminator evidence.
+- `observed_values` retains its historical field name for values found or
+  statically derived from test source. A value, its `context`, and retained
+  provenance do not establish assertion execution or an admitted oracle. Facts
+  from refused assertions can remain useful source evidence. Human and JSON
+  evidence-path prose therefore says `source ... value`; the separate admitted
+  `ripr.observe` and `ripr.discriminate` stages retain their own meaning. Field
+  names, typed values, provenance, ordering and caps are unchanged.
 - `identity.git_candidate_subject` (additive, no `schema_version` bump,
   #3278) appears in the `analysis_outcome.outcome.identity` object
   as a non-null object exactly when the run analyzed an immutable Git

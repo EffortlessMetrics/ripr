@@ -9,8 +9,9 @@ use super::reach::is_proximity_only;
 use super::rust_string_literals;
 use crate::domain::*;
 
-/// Shared return-oracle provenance at the reveal admission boundary. The
-/// execution/macro gate applies before either token or owner-pin confirmation.
+/// Shared oracle provenance at the reveal admission boundary. The same
+/// execution/macro decision also gates predicate boundary pairing; it applies
+/// before token, strength, observation, or owner-pin confirmation.
 pub(in crate::analysis) struct ReturnOracleAdmission<'a> {
     pub(in crate::analysis) owner_return_pin: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,
     pub(in crate::analysis) assertion_admitted: &'a dyn Fn(&TestSummary, &OracleFact) -> bool,

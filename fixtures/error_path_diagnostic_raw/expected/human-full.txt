@@ -30,10 +30,10 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: let n = rdr.read(&mut buf)? (line 5)
   - related test src/lib.rs:14 reads_successfully uses strong exact value oracle: assert_eq!(rdr.len(), 10, r#"read "error", (Err(_))"#);
-  - observed assertion argument value 10 at line 17
-  - observed assertion argument value ", (Err(_))" at line 18
-  - observed assertion argument value "read " at line 18
-  - observed assertion argument value 10 at line 18
+  - source assertion argument value 10 at line 17
+  - source assertion argument value ", (Err(_))" at line 18
+  - source assertion argument value "read " at line 18
+  - source assertion argument value 10 at line 18
 
 Weakness
   - No exact error variant discriminator was detected
@@ -68,10 +68,10 @@ Evidence
   - discriminator unknown: Assertions exist, but oracle strength is unknown
   - local flow reaches unknown sink: unknown sink (line 5)
   - related test src/lib.rs:14 reads_successfully uses unknown exact value oracle: assert_eq!(rdr.len(), 10, r#"read "error", (Err(_))"#);
-  - observed assertion argument value 10 at line 17
-  - observed assertion argument value ", (Err(_))" at line 18
-  - observed assertion argument value "read " at line 18
-  - observed assertion argument value 10 at line 18
+  - source assertion argument value 10 at line 17
+  - source assertion argument value ", (Err(_))" at line 18
+  - source assertion argument value "read " at line 18
+  - source assertion argument value 10 at line 18
 
 Weakness
   - No strong discriminator was detected

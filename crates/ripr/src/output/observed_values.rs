@@ -14,6 +14,18 @@
 
 use crate::domain::{ValueContext, ValueFact};
 
+/// Describe a retained source value without claiming assertion execution or
+/// admitted observation. ValueFact also represents refused assertion source
+/// and bounded static value transfer; its presence is not an oracle witness.
+pub(crate) fn source_value_evidence_line(fact: &ValueFact) -> String {
+    format!(
+        "source {} value {} at line {}",
+        fact.context.as_str().replace('_', " "),
+        fact.value,
+        fact.line
+    )
+}
+
 /// Cap on observed values rendered per finding in check JSON and SARIF.
 /// The pre-cap count is disclosed as `observed_values_total` whenever the cap
 /// drops a value. Mirrors `MAX_RELATED_TESTS_PER_FINDING_JSON`.

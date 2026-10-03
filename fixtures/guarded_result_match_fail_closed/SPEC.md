@@ -29,8 +29,10 @@ ripr check --root fixtures/guarded_result_match_fail_closed/input --diff fixture
 
 No `guarded_result_match` oracle is emitted for any of these shapes, no
 probe of `expect_response` is credited through them, and every finding
-stays at `weakly_exposed` or below (the existing weaker meaning of broad
-assertions and bare Result plumbing). The wrong-owner match produces no
+stays at `weakly_exposed` or below. The ErrorPath probe is
+`reachable_unrevealed`: #5027 refuses conditional Ok equalities before oracle
+credit. The ReturnValue probe retains its existing `weakly_exposed` meaning
+from the direct owner-call evidence and bare Result plumbing. The wrong-owner match produces no
 oracle at all even though its own Err arm pins an exact variant.
 
 ## Must Not

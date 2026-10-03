@@ -30,9 +30,9 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches match arm result: "sensor" => (line 3)
   - related test tests/route.rs:7 sibling_assertion_mentions_sensor_only_in_its_message uses strong exact value oracle: assert_eq!(route("focused-test"), "proof", "sensor");
-  - observed assertion argument value "proof" at line 8
-  - observed assertion argument value "sensor" at line 8
-  - observed function argument value kind = "focused-test" at line 8
+  - source assertion argument value "proof" at line 8
+  - source assertion argument value "sensor" at line 8
+  - source function argument value kind = "focused-test" at line 8
 
 Weakness
   - No strong discriminator was detected

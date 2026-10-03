@@ -30,8 +30,8 @@ Evidence
   - discriminator no: No assertion found on related tests
   - local flow reaches returned value: a - b (line 3)
   - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle
-  - observed function argument value a = 10 at line 9
-  - observed function argument value b = 3 at line 9
+  - source function argument value a = 10 at line 9
+  - source function argument value b = 3 at line 9
 
 Weakness
   - No detected assertion observes the changed value, error, field, or effect
@@ -84,8 +84,8 @@ Evidence
   - discriminator no: No assertion found on related tests
   - local flow reaches returned value: a - b (line 3)
   - related test tests/it.rs:8 test_inner_with_custom_assertion_macro uses none unknown oracle
-  - observed function argument value a = 10 at line 9
-  - observed function argument value b = 3 at line 9
+  - source function argument value a = 10 at line 9
+  - source function argument value b = 3 at line 9
 
 Weakness
   - No detected assertion observes the changed value, error, field, or effect

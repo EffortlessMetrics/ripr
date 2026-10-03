@@ -14,17 +14,17 @@ use super::text::delimited_contents_at;
 use crate::domain::*;
 
 /// Token carried in the discriminate summary when a predicate would otherwise
-/// read `exposed` from a split: boundary input in one test, oracle in another.
+/// read `exposed` without an admitted oracle on the boundary call.
 pub(in crate::analysis) const SAME_TEST_PAIRING_MISSING: &str = "same_test_pairing_missing";
 
 pub(in crate::analysis) fn same_test_pairing_missing_summary() -> String {
     format!(
-        "Discriminator unconfirmed: boundary input and discriminating oracle come from different tests ({SAME_TEST_PAIRING_MISSING}); no test both feeds a boundary input to the owner and holds a discriminating oracle on that call's result"
+        "Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call ({SAME_TEST_PAIRING_MISSING}); a boundary input and a separate exact oracle do not establish that discriminator"
     )
 }
 
 /// True when some related test both feeds a boundary input to the owner and
-/// holds a discriminating oracle on that call's result.
+/// holds an admitted discriminating oracle on that call's result.
 ///
 /// Boundary credit is the activation authority's `==` facts (named constants,
 /// helper hops, local bindings), not a second matcher. Call-argument matching
@@ -37,6 +37,7 @@ pub(in crate::analysis) fn has_same_test_boundary_oracle_pairing(
     owner_fn: Option<&FunctionSummary>,
     related_tests: &[&TestSummary],
     activation: &ActivationEvidence,
+    assertion_admitted: &dyn Fn(&TestSummary, &OracleFact) -> bool,
 ) -> bool {
     if !matches!(probe.family, ProbeFamily::Predicate) {
         return false;
@@ -44,9 +45,9 @@ pub(in crate::analysis) fn has_same_test_boundary_oracle_pairing(
     let Some(owner) = owner_fn else {
         return false;
     };
-    related_tests
-        .iter()
-        .any(|test| test_pairs_boundary_input_with_oracle(probe, owner, test, activation))
+    related_tests.iter().any(|test| {
+        test_pairs_boundary_input_with_oracle(probe, owner, test, activation, assertion_admitted)
+    })
 }
 
 fn test_pairs_boundary_input_with_oracle(
@@ -54,10 +55,11 @@ fn test_pairs_boundary_input_with_oracle(
     owner: &FunctionSummary,
     test: &TestSummary,
     activation: &ActivationEvidence,
+    assertion_admitted: &dyn Fn(&TestSummary, &OracleFact) -> bool,
 ) -> bool {
     let bound_names = boundary_bound_locals(probe, owner, test, activation);
     test.assertions.iter().any(|assertion| {
-        if !assertion_is_discriminating(assertion) {
+        if !assertion_admitted(test, assertion) || !assertion_is_discriminating(assertion) {
             return false;
         }
         assertion_observes_boundary_owner_call(probe, owner, test, assertion, activation)
@@ -341,6 +343,17 @@ mod tests {
     };
     use std::path::PathBuf;
 
+    // These units isolate semantic pairing of already-admitted oracle facts.
+    // Public API/runtime controls exercise the real parser-backed admission.
+    fn pairing_with_admitted_oracles(
+        probe: &Probe,
+        owner: Option<&FunctionSummary>,
+        tests: &[&TestSummary],
+        activation: &ActivationEvidence,
+    ) -> bool {
+        has_same_test_boundary_oracle_pairing(probe, owner, tests, activation, &|_, _| true)
+    }
+
     #[test]
     fn split_tests_do_not_pair() {
         let probe = predicate_probe("input >= 10");
@@ -363,7 +376,7 @@ mod tests {
             &["100"],
         );
         assert!(
-            !has_same_test_boundary_oracle_pairing(
+            !pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&boundary, &far],
@@ -385,7 +398,7 @@ mod tests {
             &["10"],
         );
         assert!(
-            has_same_test_boundary_oracle_pairing(
+            pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&paired],
@@ -410,7 +423,7 @@ mod tests {
             &["10", "100"],
         );
         assert!(
-            !has_same_test_boundary_oracle_pairing(
+            !pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&mixed],
@@ -435,7 +448,7 @@ mod tests {
             &["10", "100"],
         );
         assert!(
-            !has_same_test_boundary_oracle_pairing(
+            !pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&mixed],
@@ -474,7 +487,7 @@ mod tests {
             &["100", "10"],
         );
         assert!(
-            !has_same_test_boundary_oracle_pairing(
+            !pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&far],
@@ -503,7 +516,7 @@ mod tests {
         shadowed.assertions[0].line = 3;
         shadowed.end_line = 4;
         assert!(
-            !has_same_test_boundary_oracle_pairing(
+            !pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&shadowed],
@@ -528,7 +541,7 @@ mod tests {
         bound.assertions[0].line = 2;
         bound.end_line = 3;
         assert!(
-            has_same_test_boundary_oracle_pairing(
+            pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&bound],
@@ -553,7 +566,7 @@ mod tests {
         bound.assertions[0].line = 2;
         bound.end_line = 3;
         assert!(
-            has_same_test_boundary_oracle_pairing(
+            pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&bound],
@@ -578,7 +591,7 @@ mod tests {
         bound.assertions[0].line = 2;
         bound.end_line = 3;
         assert!(
-            has_same_test_boundary_oracle_pairing(
+            pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&bound],
@@ -644,7 +657,7 @@ mod tests {
             &["100", "90"],
         );
         assert!(
-            has_same_test_boundary_oracle_pairing(
+            pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&paired],
@@ -673,7 +686,7 @@ mod tests {
             &["10"],
         );
         assert!(
-            !has_same_test_boundary_oracle_pairing(
+            !pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&weak],
@@ -724,11 +737,11 @@ mod tests {
             missing_discriminators: Vec::new(),
         };
         assert!(
-            has_same_test_boundary_oracle_pairing(&probe, Some(&owner), &[&paired], &activation),
+            pairing_with_admitted_oracles(&probe, Some(&owner), &[&paired], &activation),
             "an activation == fact on the asserted owner call must pair even when the call args are not the probe literals"
         );
         assert!(
-            !has_same_test_boundary_oracle_pairing(
+            !pairing_with_admitted_oracles(
                 &probe,
                 Some(&owner),
                 &[&paired],

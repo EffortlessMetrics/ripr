@@ -13,7 +13,7 @@
       "id": "probe:src_lib.rs:predicate:736b22b0",
       "classification": "propagation_unknown",
       "severity": "note",
-      "confidence": 0.66,
+      "confidence": 0.43,
       "probe": {
         "id": "probe:src_lib.rs:predicate:736b22b0",
         "family": "predicate",
@@ -26,14 +26,14 @@
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach fetch_limit: above_threshold_gets_reduced"},
         "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
         "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
-        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+        "observe": {"state":"no","confidence":"medium","summary":"No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach fetch_limit: above_threshold_gets_reduced", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator missing: `capacity == threshold`; related oracle: Strong oracle found: exact value or pattern assertion", "related test src/lib.rs:10 above_threshold_gets_reduced uses strong exact value oracle: assert_eq!(result, 90);", "observed function argument value capacity = 100 at line 11", "observed function argument value threshold = 50 at line 11", "observed assertion argument value 90 at line 12", "missing discriminator capacity == threshold: No related test call uses capacity equal to threshold; observed capacity values: 100; observed threshold values: 50"],
+      "evidence_path": ["reach yes: Related tests appear to reach fetch_limit: above_threshold_gets_reduced", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)", "related test src/lib.rs:10 above_threshold_gets_reduced uses none unknown oracle", "source function argument value capacity = 100 at line 11", "source function argument value threshold = 50 at line 11", "source assertion argument value 90 at line 12", "missing discriminator capacity == threshold: No related test call uses capacity equal to threshold; observed capacity values: 100; observed threshold values: 50"],
       "flow_sinks": [
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach fetch_limit: above_threshold_gets_reduced", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
-      "missing": ["Missing discriminator value: capacity == threshold", "No clear propagation path from changed behavior to an observable sink"],
+      "evidence": ["No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)", "No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach fetch_limit: above_threshold_gets_reduced", "Related tests contain input values, but the equality-boundary discriminator is missing"],
+      "missing": ["Missing discriminator value: capacity == threshold", "No clear propagation path from changed behavior to an observable sink", "No relevant oracle was detected", "No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)", "No strong discriminator was detected"],
       "assertion_texts": {
         "11": "let result = fetch_limit(100, 50).await;",
         "12": "assert_eq!(result, 90);"
@@ -94,16 +94,16 @@
           "name": "above_threshold_gets_reduced",
           "file": "src/lib.rs",
           "line": 10,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(result, 90);",
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
         }
       ],
       "stop_reasons": ["propagation_evidence_unknown"],
-      "oracle_kind": "exact_value",
-      "oracle_strength": "strong",
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
       "recommended_next_step": "Escalate to real mutation testing or deep static analysis for this probe.",
       "suggested_next_action": "Escalate to real mutation testing or deep static analysis for this probe.",
       "language": "rust",

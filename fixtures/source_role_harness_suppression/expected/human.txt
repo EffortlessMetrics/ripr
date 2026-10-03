@@ -14,13 +14,13 @@ Start here:
   Static exposure: unknown (propagation_unknown, note, confidence 0.66)
   Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: amount >= threshold
-  Analyzer limit: No clear propagation path from changed behavior to an observable sink
-  Related test (1 of 3): tests/contract.rs:19 contract_journey
+  Analyzer limit: Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do…
+  Related test (1 of 2): tests/contract.rs:19 contract_journey
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator not established
+  Evidence: reach yes · infection yes · propagation unknown · observation yes · discriminator weak
     - reach yes: Related tests appear to reach price: contract_journey
     - infection yes: Detected related test input at the changed boundary
-    - 15 more detail line(s) in --format human-full
+    - 14 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/source_role_harness_suppression/input --diff fixtures/source_role_harness_suppression/diff.patch --mode fast probe:src_lib.rs:predicate:34000fd8

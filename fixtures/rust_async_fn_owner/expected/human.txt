@@ -11,13 +11,13 @@ Start here:
   State: limited by static analysis (static_limited)
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/rust_async_fn_owner/input/src/lib.rs:2
-  Static exposure: unknown (propagation_unknown, note, confidence 0.66)
+  Static exposure: unknown (propagation_unknown, note, confidence 0.43)
   Why unknown: the path from the changed behavior to an observable sink is not statically clear
   Changed behavior: capacity > threshold
-  Missing discriminator (1 of 2): capacity == threshold
+  Missing discriminator (1 of 5): capacity == threshold
   Related test: src/lib.rs:10 above_threshold_gets_reduced
   Next step: Escalate to real mutation testing or deep static analysis for this probe.
-  Evidence: reach yes · infection weak · propagation unknown · observation yes · discriminator missing
+  Evidence: reach yes · infection weak · propagation unknown · observation no · discriminator no
     - reach yes: Related tests appear to reach fetch_limit: above_threshold_gets_reduced
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
     - 7 more detail line(s) in --format human-full

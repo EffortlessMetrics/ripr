@@ -15,6 +15,7 @@ Linked plan:
 Linked issues:
 
 - #4828
+- #5027 (shared execution admission before pairing)
 
 Linked PRs:
 
@@ -58,7 +59,12 @@ tests or different calls.
 For a `predicate` probe, `exposed` requires one related test that both:
 
 1. feeds a boundary input to the changed owner, and
-2. holds a discriminating oracle on that call's result.
+2. holds an admitted discriminating oracle on that call's result.
+
+For the bare equality subset in RIPR-SPEC-0197, pairing uses the same parser-backed
+execution admission as reveal. A refused boundary equality cannot pair with an
+admitted far-input oracle, within one test or across tests. Original assertion
+cardinality is retained; a filtered clone cannot create a singleton fallback.
 
 Otherwise the finding reads at most `weakly_exposed`. The discriminate stage
 is `weak` and its summary names `same_test_pairing_missing`.
@@ -111,6 +117,9 @@ relation are out of scope.
 
 - `crates/ripr/src/analysis/classify/boundary_pairing.rs`
 - `fixtures/split_test_boundary_oracle`
+- `fixtures/predicate_boundary_oracle_refused`
+- `fixtures/predicate_boundary_oracle_admitted`
+- `crates/ripr/tests/owner_pin_execution.rs::predicate_pairing_cannot_reuse_refused_boundary_equalities`
 
 ## Implementation Mapping
 

@@ -841,7 +841,7 @@ mod tests {
         let mut out = String::new();
         finding_json(&mut out, &finding, 0);
 
-        assert!(out.contains("observed assertion argument value actual = 10 at line 33"));
+        assert!(out.contains("source assertion argument value actual = 10 at line 33"));
     }
 
     #[test]

@@ -117,15 +117,29 @@ pub(crate) fn outside_property_macros<'a>(
 /// refusing every token inside an opaque property invocation. The original
 /// function/file bytes remain the source and ownership authority.
 pub(crate) fn property_safe_scanner_text(text: &str) -> std::borrow::Cow<'_, str> {
-    let opaque = opaque_property_macros(text);
-    if opaque.is_empty() {
+    mask_evidence_ranges(
+        text,
+        opaque_property_macros(text)
+            .into_iter()
+            .map(|item| item.range),
+    )
+}
+
+/// A deny-only view for sorted, disjoint ranges supplied by a syntax owner.
+/// This preserves original byte/line coordinates; it grants no evidence.
+pub(crate) fn mask_evidence_ranges(
+    text: &str,
+    ranges: impl IntoIterator<Item = Range<usize>>,
+) -> std::borrow::Cow<'_, str> {
+    let mut ranges = ranges.into_iter().peekable();
+    if ranges.peek().is_none() {
         return std::borrow::Cow::Borrowed(text);
     }
     let mut safe = String::with_capacity(text.len());
     let mut start = 0;
-    for item in opaque {
-        safe.push_str(&text[start..item.range.start]);
-        safe.extend(text[item.range.clone()].bytes().map(|byte| {
+    for range in ranges {
+        safe.push_str(&text[start..range.start]);
+        safe.extend(text[range.clone()].bytes().map(|byte| {
             if byte == b'\n' {
                 '\n'
             } else if byte == b'\r' {
@@ -134,7 +148,7 @@ pub(crate) fn property_safe_scanner_text(text: &str) -> std::borrow::Cow<'_, str
                 ' '
             }
         }));
-        start = item.range.end;
+        start = range.end;
     }
     safe.push_str(&text[start..]);
     std::borrow::Cow::Owned(safe)

@@ -6,7 +6,7 @@ use crate::analysis::classify::{
     propagation_evidence_with_witness, reach_evidence, reveal_evidence_with_expression,
     same_test_pairing_missing_summary,
 };
-use crate::analysis::facts::FunctionSummary;
+use crate::analysis::facts::{FunctionSummary, OracleFact, TestSummary};
 use crate::domain::*;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -84,6 +84,12 @@ impl ClassifiedProbeEvidence {
         // once per probe; `None` keeps every assertion on the token rule.
         let fallback_pin_syntax = OwnerPinSyntax::default();
         let pin_syntax = context.owner_pin_syntax.unwrap_or(&fallback_pin_syntax);
+        // Every diff-classifier consumer of a covered equality uses this same
+        // decision. Keep the original TestSummary and assertion cardinality;
+        // filtering a clone would manufacture singleton matching fallbacks.
+        let assertion_admitted = |test: &TestSummary, assertion: &OracleFact| {
+            pin_syntax.admits_equality_assertion(context.probe, test, assertion, context.index)
+        };
         let owner_return_pin = context
             .owner_fn
             .and_then(|owner| OwnerReturnPin::establish(context.probe, owner, context.index));
@@ -153,14 +159,7 @@ impl ClassifiedProbeEvidence {
                         )
                     })
                 },
-                assertion_admitted: &|test, assertion| {
-                    pin_syntax.admits_return_assertion(
-                        context.probe,
-                        test,
-                        assertion,
-                        context.index,
-                    )
-                },
+                assertion_admitted: &assertion_admitted,
             },
         );
 
@@ -181,6 +180,7 @@ impl ClassifiedProbeEvidence {
                 context.owner_fn,
                 &test_summaries,
                 &activation,
+                &assertion_admitted,
             ) {
             StageEvidence::new(
                 StageState::Weak,

@@ -259,14 +259,18 @@ impl ValueContext {
     }
 }
 
-/// A single observed value extracted from a test assertion.
+/// A value found or statically derived from test source.
 ///
-/// The `text` field holds the full assertion source text; it is used by the
-/// human renderer.  The JSON renderer (schema 0.2+) **deduplicates** it into a
-/// finding-level `assertion_texts` map keyed by line number, so `text` does
-/// **not** appear in per-value objects in the JSON output.  Downstream JSON
-/// consumers should recover the assertion source via
-/// `finding.assertion_texts[line.to_string()]`.
+/// This fact does not establish assertion execution, oracle admission or
+/// observation of the changed behavior. It can retain values from refused
+/// assertions and bounded static value-transfer expressions. `context` records
+/// the source/value origin, not an execution state.
+///
+/// The `text` field holds retained source or value-transfer provenance. The
+/// JSON renderer deduplicates shared text into the finding-level
+/// `assertion_texts` map keyed by line number. Per-value objects retain optional
+/// `provenance` when their text differs from that shared entry; otherwise
+/// consumers recover it via `finding.assertion_texts[line.to_string()]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValueFact {
     pub line: usize,
@@ -308,6 +312,8 @@ pub struct FindingCanonicalGap {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivationEvidence {
+    /// Historical field name for source values; see ValueFact's non-execution
+    /// contract. Oracle observation remains a separate admitted stage.
     pub observed_values: Vec<ValueFact>,
     pub missing_discriminators: Vec<MissingDiscriminatorFact>,
 }

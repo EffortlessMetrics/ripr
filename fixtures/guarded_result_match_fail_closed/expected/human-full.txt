@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/guarded_result_match_fail_closed/input
 
-Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
+Summary: 2 probe(s), 0 exposed, 1 weakly_exposed, 1 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
@@ -20,33 +20,37 @@ Probe
   owner:  src/lib.rs::expect_response
 
 Static exposure
-  weakly_exposed (warning, confidence 0.92)
+  reachable_unrevealed (warning, confidence 0.79)
 
 Evidence
   - reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam
   - infection yes: Reachable tests can plausibly activate this changed behavior
   - propagation yes: Complete propagation witness reaches error variant: Ok(build_response(id.trim(), method)?)
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - local flow reaches error variant: Ok(build_response(id.trim(), method)?) (line 62)
-  - related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses strong exact value oracle: assert_eq!(response.id, "42")
-  - related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses strong exact value oracle: assert_eq!(response.id, "42")
-  - related test tests/protocol.rs:55 swallowed_error_arm_never_credits uses strong exact value oracle: assert_eq!(response.id, "42")
-  - observed function argument value "42" at line 5
-  - observed function argument value "42|workspace/refresh" at line 5
-  - observed assertion argument value "42" at line 6
-  - observed function argument value "42" at line 26
-  - observed function argument value "42|workspace/refresh" at line 26
-  - observed assertion argument value "42" at line 28
-  - observed function argument value "42" at line 36
-  - observed assertion argument value "42" at line 37
-  - observed values (showing 8 of 14; full list in --format json)
+  - related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses none unknown oracle
+  - related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses none unknown oracle
+  - related test tests/protocol.rs:55 swallowed_error_arm_never_credits uses none unknown oracle
+  - related test tests/protocol.rs:25 variable_binding_scrutinee_keeps_existing_weaker_meaning uses none unknown oracle
+  - source function argument value "42" at line 5
+  - source function argument value "42|workspace/refresh" at line 5
+  - source assertion argument value "42" at line 6
+  - source function argument value "42" at line 26
+  - source function argument value "42|workspace/refresh" at line 26
+  - source assertion argument value "42" at line 28
+  - source function argument value "42" at line 36
+  - source assertion argument value "42" at line 37
+  - source values (showing 8 of 14; full list in --format json)
 
 Weakness
+  - No detected assertion observes the changed value, error, field, or effect
   - No exact error variant discriminator was detected
+  - No relevant oracle was detected
+  - No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
 
 Next step
-  Assert the exact error variant or payload instead of only is_err().
+  Establish that the test is collected and enabled, that the assertion runs on its executed path, and that it resolves to the intended standard macro, then check the changed returned value.
 Drill in:
   ripr explain --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast probe:src_lib.rs:error_path:09b3885a
   ripr context --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:error_path:09b3885a
@@ -79,15 +83,15 @@ Evidence
   - related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses none unknown oracle
   - related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses none unknown oracle
   - related tests (showing 5 of 7; more in --format json)
-  - observed function argument value "42" at line 5
-  - observed function argument value "42|workspace/refresh" at line 5
-  - observed assertion argument value "42" at line 6
-  - observed function argument value "42" at line 26
-  - observed function argument value "42|workspace/refresh" at line 26
-  - observed assertion argument value "42" at line 28
-  - observed function argument value "42" at line 36
-  - observed assertion argument value "42" at line 37
-  - observed values (showing 8 of 14; full list in --format json)
+  - source function argument value "42" at line 5
+  - source function argument value "42|workspace/refresh" at line 5
+  - source assertion argument value "42" at line 6
+  - source function argument value "42" at line 26
+  - source function argument value "42|workspace/refresh" at line 26
+  - source assertion argument value "42" at line 28
+  - source function argument value "42" at line 36
+  - source assertion argument value "42" at line 37
+  - source values (showing 8 of 14; full list in --format json)
 
 Weakness
   - No strong discriminator was detected

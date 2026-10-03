@@ -149,3 +149,29 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## Pending — guarded_result_match_swallowed (12)
+
+Reason:
+RIPR-SPEC-0197 #5027: conditional Ok equalities cannot provide a standalone ErrorPath oracle for swallowed/wildcard Err arms; both selected families now require unrevealed with no oracle.
+
+Command:
+`cargo xtask goldens bless guarded_result_match_swallowed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`
+
+## Pending — guarded_result_match_swallowed (13)
+
+Reason:
+RIPR-SPEC-0197 #5027: conditional Ok equalities cannot provide a standalone ErrorPath oracle for swallowed/wildcard Err arms; both selected families now require unrevealed with no oracle.
+
+Command:
+`cargo xtask goldens bless guarded_result_match_swallowed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

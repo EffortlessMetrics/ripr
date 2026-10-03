@@ -31,12 +31,12 @@ Evidence
   - local flow reaches returned value: amount - 10 (line 3)
   - related test tests/pricing.rs:4 below_threshold_has_no_discount uses strong exact value oracle: assert_eq!(discounted_total(50, 100), 50);
   - related test tests/pricing.rs:9 far_above_threshold_discounts uses strong exact value oracle: assert_eq!(discounted_total(10_000, 100), 9_990);
-  - observed assertion argument value 50 at line 5
-  - observed function argument value amount = 50 at line 5
-  - observed function argument value discount_threshold = 100 at line 5
-  - observed assertion argument value 9_990 at line 10
-  - observed function argument value amount = 10_000 at line 10
-  - observed function argument value discount_threshold = 100 at line 10
+  - source assertion argument value 50 at line 5
+  - source function argument value amount = 50 at line 5
+  - source function argument value discount_threshold = 100 at line 5
+  - source assertion argument value 9_990 at line 10
+  - source function argument value amount = 10_000 at line 10
+  - source function argument value discount_threshold = 100 at line 10
 
 Weakness
   - missing discriminator amount == discount_threshold: No related test call uses amount equal to discount_threshold; observed amount values: 10_000, 50; observed discount_threshold values: 100

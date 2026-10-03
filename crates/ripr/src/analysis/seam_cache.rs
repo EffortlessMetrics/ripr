@@ -267,8 +267,10 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `1.22` -> `1.23`: shared parser-backed admission precedes bare assert_eq
 /// return-value matching/observation (#4478). Deferred, uncollected, disabled
 /// or ambiguously bound assertions cannot retain warm oracle credit.
-/// `1.24` is reserved by the existing #5027 execution-admission candidate.
-/// `1.25` is reserved by #5027's same-test pairing repair.
+/// `1.24`: ErrorPath/Predicate bare equality oracles share execution admission (#5027).
+/// `1.25`: pairing consumes admitted equalities; nested-function/async-block returns
+/// cannot suppress outer assertions (#5027 review). Both transitions are preserved
+/// when combined with the later property-macro generations below.
 /// `1.26`: quarantine unproven property-macro evidence after #4835.
 /// Old favorable property-macro classifications and absent-limit results miss.
 /// `1.27`: deny property-only call reach and opaque lexical-fallback tests;
@@ -337,7 +339,8 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.29";
 /// `0.27` was reserved by the unmerged owner-execution admission draft.
 /// `0.28`: diagnostic-free extraction/ErrorPath confirmation (#4748).
 /// `0.28` -> `0.29`: shared return-oracle admission (#4478), same outer transition.
-/// `0.30`/`0.31` are reserved by #5027 admission/pairing; `0.32` quarantines property macros.
+/// `0.30`/`0.31`: #5027 execution/pairing admission, preserved in this combination.
+/// `0.32`: quarantine unresolved property macros.
 /// `0.33`: property-only call/fallback admission and package-scoped mentions.
 /// `0.35`: same postmerge opaque-boundary transition as full `1.29` (#5131).
 /// `0.34` remains a separate, unaccepted integration proposal.
@@ -404,7 +407,8 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.35";
 /// `0.27` was reserved by the unmerged owner-execution admission draft.
 /// `0.28`: diagnostic-free extraction/ErrorPath confirmation (#4748).
 /// `0.28` -> `0.29`: shared return-oracle admission (#4478), same outer transition.
-/// `0.30`/`0.31` are reserved by #5027 admission/pairing; `0.32` quarantines property macros.
+/// `0.30`/`0.31`: #5027 execution/pairing admission, preserved in this combination.
+/// `0.32`: quarantine unresolved property macros.
 /// `0.33`: property-only call/fallback admission and package-scoped mentions.
 /// `0.35`: same postmerge opaque-boundary transition as full `1.29` (#5131).
 /// `0.34` remains a separate, unaccepted integration proposal.
@@ -3683,6 +3687,76 @@ mod tests {
             CacheLoad::Hit(facts) => assert_eq!(facts, current_facts),
             other => return Err(format!("quarantined facts did not round trip: {other:?}")),
         }
+        Ok(())
+    }
+
+    #[test]
+    fn empty_macro_call_predecessor_from_another_build_misses_and_current_reuses()
+    -> Result<(), String> {
+        use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+        let scratch = integrity_scratch("empty-macro-call-producer")?;
+        let cache = RepoFileFactCache::at_dir(scratch.0.clone());
+        let file = Path::new("src/lib.rs");
+        let source =
+            include_str!("../../../../fixtures/predicate_empty_macro_boundary/input/src/lib.rs");
+        let current = RaRustSyntaxAdapter.summarize_file(file, source)?;
+        assert_eq!(current.tests.len(), 1);
+        let owner_call = |facts: &FileFacts| {
+            facts.tests[0]
+                .calls
+                .iter()
+                .find(|call| call.name == "discounted_total")
+                .map(|call| call.text.clone())
+        };
+        let current_call = owner_call(&current).ok_or("missing independent real call")?;
+        assert!(current_call.contains("assert_eq!(discounted_total(90, 100), 90)"));
+        assert!(!current_call.contains("discounted_total(100, 100)"));
+        let (old_offset, old_line) = source
+            .lines()
+            .enumerate()
+            .find(|(_, line)| line.contains("discard_tokens!(discounted_total"))
+            .ok_or("missing mixed-line predecessor stimulus")?;
+        let old_line = old_line.trim().to_string();
+        // Explicit synthesized e290-shaped predecessor, not an execution of
+        // an old parser. The separate retained CLI receipt owns that capture.
+        let mut favorable = current.clone();
+        let restore_old_text = |calls: &mut Vec<crate::analysis::facts::CallFact>| {
+            for call in calls
+                .iter_mut()
+                .filter(|call| call.name == "discounted_total" && call.line == old_offset + 1)
+            {
+                call.text = old_line.clone();
+            }
+        };
+        restore_old_text(&mut favorable.calls);
+        for function in &mut favorable.functions {
+            restore_old_text(&mut function.calls);
+        }
+        for test in &mut favorable.tests {
+            restore_old_text(&mut test.calls);
+        }
+        let current_key = RepoFileFactCacheKey::new(file, source.as_bytes());
+        let old_key = RepoFileFactCacheKey {
+            analyzer_version: format!(
+                "{}+e29014500f09e284f88d19bcd68b99aa1496d3a5",
+                env!("CARGO_PKG_VERSION")
+            ),
+            ..current_key.clone()
+        };
+        assert_eq!(old_key.schema_version, current_key.schema_version);
+        assert_ne!(old_key.analyzer_version, current_key.analyzer_version);
+        cache.store_file_facts(&old_key, &favorable)?;
+        assert!(
+            matches!(cache.load_file_facts(&old_key), CacheLoad::Hit(ref facts) if owner_call(facts) == Some(old_line.clone()))
+        );
+        assert!(matches!(
+            cache.load_file_facts(&current_key),
+            CacheLoad::Miss
+        ));
+        cache.store_file_facts(&current_key, &current)?;
+        assert!(
+            matches!(cache.load_file_facts(&current_key), CacheLoad::Hit(ref facts) if facts == &current)
+        );
         Ok(())
     }
 

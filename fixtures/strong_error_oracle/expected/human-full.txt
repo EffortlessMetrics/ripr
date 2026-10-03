@@ -30,8 +30,8 @@ Evidence
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
   - related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses strong exact error variant oracle: assert!(matches!(authenticate(""), Err(AuthError::RevokedToken)));
-  - observed enum variant value AuthError::RevokedToken at line 5
-  - observed function argument value token = "" at line 5
+  - source enum variant value AuthError::RevokedToken at line 5
+  - source function argument value token = "" at line 5
 Drill in:
   ripr explain --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast probe:src_lib.rs:error_path:99b06ce7
   ripr context --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast --at probe:src_lib.rs:error_path:99b06ce7
@@ -59,8 +59,8 @@ Evidence
   - discriminator yes: Strong oracle found: exact error variant assertion
   - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
   - related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses strong exact error variant oracle: assert!(matches!(authenticate(""), Err(AuthError::RevokedToken)));
-  - observed enum variant value AuthError::RevokedToken at line 5
-  - observed function argument value token = "" at line 5
+  - source enum variant value AuthError::RevokedToken at line 5
+  - source function argument value token = "" at line 5
 Drill in:
   ripr explain --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast probe:src_lib.rs:return_value:e21dcccc
   ripr context --root fixtures/strong_error_oracle/input --diff fixtures/strong_error_oracle/diff.patch --mode fast --at probe:src_lib.rs:return_value:e21dcccc

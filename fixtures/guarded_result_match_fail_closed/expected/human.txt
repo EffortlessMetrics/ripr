@@ -2,7 +2,7 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/guarded_result_match_fail_closed/input
 
-Summary: 2 probe(s), 0 exposed, 2 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
+Summary: 2 probe(s), 0 exposed, 1 weakly_exposed, 1 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 2 of 2 finding(s) unsuppressed
 
 Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
@@ -11,16 +11,18 @@ Start here:
   State: a test gap to inspect or repair (top_gap)
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/guarded_result_match_fail_closed/input/src/lib.rs:62
-  Static exposure: weak (weakly_exposed, warning, confidence 0.92)
-  Why weak: a related test reaches this change but does not observe the exact changed value
+  Static exposure: unrevealed (reachable_unrevealed, warning, confidence 0.79)
+  Why unrevealed: a related test reaches this change, but no assertion observes the changed behavior
   Changed behavior: Ok(build_response(id.trim(), method)?)
-  Missing discriminator: No exact error variant discriminator was detected
-  Related test (1 of 3): tests/protocol.rs:43 message_only_error_predicate_never_pins
-  Next step: Assert the exact error variant or payload instead of only is_err().
-  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator weak
+  Missing discriminator (1 of 4): No detected assertion observes the changed value, error, field, or effect
+  Related test (1 of 4): tests/protocol.rs:43 message_only_error_predicate_never_pins
+  Next step: Establish that the test is collected and enabled, that the assertion runs on its
+    executed path, and that it resolves to the intended standard macro, then check the changed
+    returned value.
+  Evidence: reach yes · infection yes · propagation yes · observation no · discriminator no
     - reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 16 more detail line(s) in --format human-full
+    - 17 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/guarded_result_match_fail_closed/input --diff fixtures/guarded_result_match_fail_closed/diff.patch --mode fast probe:src_lib.rs:error_path:09b3885a

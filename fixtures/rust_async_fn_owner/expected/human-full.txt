@@ -20,21 +20,24 @@ Probe
   owner:  src/lib.rs::fetch_limit
 
 Static exposure
-  propagation_unknown (note, confidence 0.66)
+  propagation_unknown (note, confidence 0.43)
 
 Evidence
   - reach yes: Related tests appear to reach fetch_limit: above_threshold_gets_reduced
   - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
   - propagation unknown: Propagation is not statically obvious from syntax-first analysis
-  - observation yes: A related test observes a value or effect near the changed behavior
-  - discriminator missing: `capacity == threshold`; related oracle: Strong oracle found: exact value or pattern assertion
-  - related test src/lib.rs:10 above_threshold_gets_reduced uses strong exact value oracle: assert_eq!(result, 90);
-  - observed function argument value capacity = 100 at line 11
-  - observed function argument value threshold = 50 at line 11
-  - observed assertion argument value 90 at line 12
+  - observation no: No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - related test src/lib.rs:10 above_threshold_gets_reduced uses none unknown oracle
+  - source function argument value capacity = 100 at line 11
+  - source function argument value threshold = 50 at line 11
+  - source assertion argument value 90 at line 12
 
 Weakness
   - No clear propagation path from changed behavior to an observable sink
+  - No relevant oracle was detected
+  - No statically established oracle: assertion execution or macro binding is unestablished (rust_assertion_context_unestablished)
+  - No strong discriminator was detected
   - missing discriminator capacity == threshold: No related test call uses capacity equal to threshold; observed capacity values: 100; observed threshold values: 50
 
 Stop reasons:

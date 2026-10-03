@@ -1,0 +1,49 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/predicate_boundary_oracle_refused/input
+
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+WARNING fixtures/predicate_boundary_oracle_refused/input/src/lib.rs:2
+  id: probe:src_lib.rs:predicate:c80557eb
+
+Changed
+  before: if amount > discount_threshold {
+  after:  amount >= discount_threshold
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::discounted_total
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach discounted_total: boundary, far
+  - infection yes: Detected related test input at the changed boundary
+  - propagation yes: Changed behavior appears to influence returned value: amount - 10
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator
+  - local flow reaches returned value: amount - 10 (line 3)
+  - related test src/lib.rs:13 boundary uses none unknown oracle
+  - related test src/lib.rs:15 far uses strong exact value oracle: assert_eq!(discounted_total(101, 100), 91);
+  - source assertion argument value 90 at line 13
+  - source function argument value amount = 100 at line 13
+  - source function argument value amount == discount_threshold at line 13
+  - source function argument value discount_threshold = 100 at line 13
+  - source assertion argument value 91 at line 15
+  - source function argument value amount = 101 at line 15
+  - source function argument value discount_threshold = 100 at line 15
+
+Weakness
+  - Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator
+
+Next step
+  Add boundary tests for below, equal, and above the changed threshold with exact assertions.
+Drill in:
+  ripr explain --root fixtures/predicate_boundary_oracle_refused/input --diff fixtures/predicate_boundary_oracle_refused/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root fixtures/predicate_boundary_oracle_refused/input --diff fixtures/predicate_boundary_oracle_refused/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb

@@ -422,6 +422,7 @@
       }
     },
     "value_fact": {
+      "description": "A value found or statically derived from test source. This does not establish assertion execution, oracle admission or observation of the changed behavior; source facts from refused assertions may be retained.",
       "type": "object",
       "additionalProperties": true,
       "required": ["line", "value", "context"],

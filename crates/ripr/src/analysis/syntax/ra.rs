@@ -203,6 +203,7 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
 
     let source = parse.tree();
     let line_index = LineIndex::new(text);
+    let empty_invocations = super::owner_pin::empty_local_macro_invocation_ranges(source.syntax());
     let module_declarations = module_declaration_facts(&source, &line_index);
     let mut functions = Vec::new();
     let mut tests = Vec::new();
@@ -224,7 +225,19 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
         let start_line = line_index.line(fn_start);
         let end_line = line_index.line_for_range_end(fn_end);
         let body = slice_text(text, fn_start, fn_end);
-        let calls = extract_call_facts(&body, start_line);
+        // Keep the original function body as source authority. Only call
+        // evidence excludes known-empty invocations, including their bytes on
+        // a mixed line that later argument/activation readers consume.
+        let call_offset = u32::from(fn_start) as usize;
+        let call_end = u32::from(fn_end) as usize;
+        let call_body = crate::analysis::extract::property_macros::mask_evidence_ranges(
+            &body,
+            empty_invocations
+                .iter()
+                .filter(|range| range.start >= call_offset && range.end <= call_end)
+                .map(|range| range.start - call_offset..range.end - call_offset),
+        );
+        let calls = extract_call_facts(&call_body, start_line);
         let returns = extract_return_facts(&body, start_line);
         let literals = extract_literal_facts(&body, start_line);
         let probe_shapes = extract_parser_probe_shapes(&function, text, &line_index);

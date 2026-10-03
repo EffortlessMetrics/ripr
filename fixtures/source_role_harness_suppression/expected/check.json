@@ -27,13 +27,13 @@
         "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
         "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach price: contract_journey", "infection yes: Detected related test input at the changed boundary", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator not established (propagation_unknown); related oracle: Strong oracle found: exact value or pattern assertion", "related test tests/contract.rs:19 contract_journey uses strong exact value oracle: assert_eq!(value, 50);", "related test tests/contract.rs:19 contract_journey uses weak relational check oracle: if price(100, 100) != 90 {\nreturn Err(\"boundary mismatch\".to_string());\n}", "related test tests/contract.rs:19 contract_journey uses strong exact value oracle: assert_eq!(price(100, 100), 90);", "observed function argument value amount = 50 at line 21", "observed function argument value threshold = 100 at line 21", "observed assertion argument value 50 at line 22", "observed function argument value amount = 100 at line 23", "observed function argument value amount == threshold at line 23", "observed function argument value threshold = 100 at line 23", "observed assertion argument value 90 at line 26", "observed function argument value amount = 100 at line 26"],
+      "evidence_path": ["reach yes: Related tests appear to reach price: contract_journey", "infection yes: Detected related test input at the changed boundary", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator", "related test tests/contract.rs:19 contract_journey uses strong exact value oracle: assert_eq!(value, 50);", "related test tests/contract.rs:19 contract_journey uses weak relational check oracle: if price(100, 100) != 90 {\nreturn Err(\"boundary mismatch\".to_string());\n}", "source function argument value amount = 50 at line 21", "source function argument value threshold = 100 at line 21", "source assertion argument value 50 at line 22", "source function argument value amount = 100 at line 23", "source function argument value amount == threshold at line 23", "source function argument value threshold = 100 at line 23", "source assertion argument value 90 at line 26", "source function argument value amount = 100 at line 26"],
       "flow_sinks": [
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Detected related test input at the changed boundary", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach price: contract_journey", "Strong oracle found: exact value or pattern assertion"],
-      "missing": ["No clear propagation path from changed behavior to an observable sink"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Detected related test input at the changed boundary", "Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator", "Propagation is not statically obvious from syntax-first analysis", "Related tests appear to reach price: contract_journey"],
+      "missing": ["Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator", "No clear propagation path from changed behavior to an observable sink"],
       "assertion_texts": {
         "21": "let value = checked(price(50, 100)).map_err(|error| format!(\"checked: {error}\"))?;",
         "22": "assert_eq!(value, 50);",
@@ -154,7 +154,7 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 3,
+      "related_tests_total": 2,
       "related_tests": [
         {
           "name": "contract_journey",
@@ -173,16 +173,6 @@
           "oracle_strength": "weak",
           "oracle_kind": "relational_check",
           "oracle": "if price(100, 100) != 90 {\nreturn Err(\"boundary mismatch\".to_string());\n}",
-          "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
-        },
-        {
-          "name": "contract_journey",
-          "file": "tests/contract.rs",
-          "line": 19,
-          "oracle_strength": "strong",
-          "oracle_kind": "exact_value",
-          "oracle": "assert_eq!(price(100, 100), 90);",
           "relation_reason": "direct_owner_call",
           "relation_confidence": "high"
         }

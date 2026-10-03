@@ -29,7 +29,7 @@
         "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
         "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach weight: checks_weight", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: input * 3", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: input * 3 (line 2)", "related test tests/weight_tests.rs:4 checks_weight uses none unknown oracle", "observed function argument value input = 4 at line 5"],
+      "evidence_path": ["reach yes: Related tests appear to reach weight: checks_weight", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: input * 3", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches returned value: input * 3 (line 2)", "related test tests/weight_tests.rs:4 checks_weight uses none unknown oracle", "source function argument value input = 4 at line 5"],
       "flow_sinks": [
         {"kind":"return_value","text":"input * 3","line":2}
       ],

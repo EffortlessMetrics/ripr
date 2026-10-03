@@ -30,8 +30,8 @@ Evidence
   - discriminator no: No statically established assertion can discriminate the changed behavior; execution or macro binding is unestablished (rust_assertion_context_unestablished)
   - local flow reaches returned value: input * 3 (line 2)
   - related test tests/weight_tests.rs:5 checks_weight uses none unknown oracle
-  - observed assertion argument value 12 at line 7
-  - observed function argument value input = 4 at line 7
+  - source assertion argument value 12 at line 7
+  - source function argument value input = 4 at line 7
 
 Weakness
   - No detected assertion observes the changed value, error, field, or effect

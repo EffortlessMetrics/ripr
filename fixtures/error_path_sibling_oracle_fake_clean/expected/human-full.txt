@@ -30,8 +30,8 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
   - related test tests/validation.rs:8 valid_input_returns_valid uses strong exact value oracle: assert_eq!(validate_or_default("hello"), Ok("valid"));
-  - observed assertion argument value "valid" at line 9
-  - observed function argument value input = "hello" at line 9
+  - source assertion argument value "valid" at line 9
+  - source function argument value input = "hello" at line 9
 
 Weakness
   - No exact error variant discriminator was detected
@@ -66,8 +66,8 @@ Evidence
   - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
   - local flow reaches error variant: Result::Err(ParseError::TooLong) (line 10)
   - related test tests/validation.rs:8 valid_input_returns_valid uses strong exact value oracle: assert_eq!(validate_or_default("hello"), Ok("valid"));
-  - observed assertion argument value "valid" at line 9
-  - observed function argument value input = "hello" at line 9
+  - source assertion argument value "valid" at line 9
+  - source function argument value input = "hello" at line 9
 
 Weakness
   - No strong discriminator was detected

@@ -11,6 +11,15 @@ are scoped or reviewed.
 
 ### Changed
 
+- Evidence output: retained lexical and statically derived values are described
+  as source values in both human and JSON evidence paths, including values in
+  refused assertions. Typed facts, provenance, classes and admitted oracle
+  stages stay unchanged. (#5027)
+- Rust analysis: a proved-empty local macro cannot contribute discarded owner
+  calls or boundary arguments through a mixed-line call fact. A genuine far
+  assertion retains its strength and observation, while a real boundary test
+  still discriminates. Original source bytes remain authoritative; producer
+  build identity separates predecessor caches without reusing their facts. (#5027)
 - Rust analysis: ordinary turbofish calls remain eligible beside unresolved
   property macros. Opaque declarations cannot supply owner reach, and discarded
   property bodies cannot supply raw-scanned assertion oracles. These boundaries
@@ -245,6 +254,23 @@ are scoped or reviewed.
   (#4796).
 
 ### Fixed
+
+- Rust: bare equality oracles for error-path and predicate probes now share the
+  existing execution/collectability/macro-binding admission (#5027). Uncalled,
+  false-branch and shadowed assertions retain their test relation without
+  observation or oracle credit; direct and invoked positives remain supported.
+  Family-selected runtime/honesty controls preserve static-only confidence.
+  Boundary pairing now consumes that same admission decision, so refused
+  boundary assertions cannot borrow a far oracle to restore exposure.
+  A bounded statement-prefix refinement preserves earlier synchronous equality
+  before a later return and ignores returns owned by nested helpers/futures.
+  Independent ordinary equality also survives a uniquely bound local empty
+  catch-all macro; imported, shadowed and nonempty expansions remain unsupported.
+  Updated inherited human denominator/base-side labels and precise boundary
+  guidance without changing classification, oracle strength or stage states.
+  Async/test-macro execution remains unsupported: the
+  real Tokio fixture keeps discovery but loses strong static oracle credit, an
+  explicit conservative usefulness tradeoff tracked by #5040.
 
 - File-policy coverage arrays preserve valid TOML comments and decoded string
   values for common, Unix, and Windows selectors. Parser-owned spans retain

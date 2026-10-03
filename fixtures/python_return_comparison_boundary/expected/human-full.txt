@@ -37,7 +37,7 @@ Evidence
   - discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.
   - local flow reaches unknown sink: return total > 100 (line 2)
   - related test tests/test_pricing.py:4 test_large_order uses strong exact value oracle: assert is_large(500) == True
-  - observed function argument value total = 500 at line 5
+  - source function argument value total = 500 at line 5
 
 Weakness
   - A strong Python oracle reaches `is_large`, but static evidence does not place a related test input at the changed predicate boundary `total == 100`. No strong related test call places total equal to 100; observed total values: 500.

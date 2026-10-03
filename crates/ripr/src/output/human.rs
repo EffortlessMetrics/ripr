@@ -3227,7 +3227,7 @@ mod tests {
         assert!(rendered.contains(&format!(
             "{related_path}:22 test_handles_disabled uses strong exact value oracle: assert_eq!(actual, expected)"
         )));
-        assert!(rendered.contains("observed function argument value enabled = false at line 22"));
+        assert!(rendered.contains("source function argument value enabled = false at line 22"));
         assert!(rendered.contains("Weakness\n"));
         assert!(rendered.contains("missing strong oracle"));
         assert!(rendered.contains(
@@ -3290,14 +3290,12 @@ mod tests {
         let rendered = render_finding(&finding);
 
         assert_eq!(
-            rendered
-                .matches("observed function argument value ")
-                .count(),
+            rendered.matches("source function argument value ").count(),
             8,
             "only the windowed observed values render:\n{rendered}"
         );
         assert!(
-            rendered.contains("observed values (showing 8 of 14; full list in --format json)"),
+            rendered.contains("source values (showing 8 of 14; full list in --format json)"),
             "expected the observed-values window disclosure; got:\n{rendered}"
         );
     }
@@ -3323,7 +3321,7 @@ mod tests {
         let rendered = render_finding(&finding);
 
         assert!(
-            rendered.contains("observed values (showing 8 of 42; --format json keeps a ranked 32)"),
+            rendered.contains("source values (showing 8 of 42; --format json keeps a ranked 32)"),
             "the pointer must disclose JSON's ranked cap; got:\n{rendered}"
         );
         assert!(

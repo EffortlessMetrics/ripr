@@ -1,0 +1,4 @@
+[package]
+name = "predicate_oracle_execution_shadowed"
+version = "0.1.0"
+edition = "2024"

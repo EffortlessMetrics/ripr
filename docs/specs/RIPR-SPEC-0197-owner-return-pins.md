@@ -15,6 +15,8 @@ Linked plan:
 Linked issues:
 
 - #4478 (confirm a return value pinned by `assert_eq!` on the owner's own call)
+- #5027 (share bounded equality execution admission with ErrorPath and Predicate)
+- #5040 (typed async-harness execution provenance; explicit unsupported boundary)
 - #3727 (parser-backed call identity; this spec adds the owner's item
   container fact, not parser-derived `CallFact`)
 
@@ -90,7 +92,10 @@ rule only for an assertion whose context was admitted.
    missing, unresolved or include-only provenance cannot establish that context.
    The assertion must lie on an ordinary statement/block/initializer path,
    without conditional, async, const, labeled, nested-item, attributed-node
-   or early-return context. A non-async zero-argument closure is supported
+   or prior root-return context. Root returns after the actual assertion execution
+   point do not defeat it. For a bound closure, use the invocation position, not
+   its earlier definition; any closure return remains conservatively refused.
+   A non-async zero-argument closure is supported
    only when immediately invoked, or when its immutable simple binding has
    exactly one reference in the entire function: a subsequent zero-argument
    call in the binding's same live statement block. Both the binding and call
@@ -260,11 +265,13 @@ new matching signal for an unrelated survivor. The bot's initial `assert!(ready)
 example is a `RelationalCheck` and already family-matches; the separate-line
 `assert_ready(true)` helper is the discriminating Unknown control.
 
-The full fixture scan changes five older guarded-result fixtures: conditional
+The initial return-only slice changed five older guarded-result fixtures: conditional
 bare equality rows lose standalone return-value oracle credit. The dedicated
 `guarded_result_match` authority remains intact, including its positive control.
 Four fixture class outcomes are unchanged; `guarded_result_match_swallowed`'s
-return-value probe becomes unrevealed while its error-path probe stays weak.
+return-value probe became unrevealed while its error-path probe initially stayed
+weak. The #5027 extension now refuses the same conditional bare equalities as
+standalone ErrorPath evidence, so both selected families are unrevealed.
 Separate family-filtered honesty cases pin exactly one return-value finding
 and exactly one error-path finding, preserving both distinct class contracts.
 The original-cardinality repair also prevents an existing lexical
@@ -273,12 +280,147 @@ singleton match in `guarded_result_match_fail_closed`; other retained evidence
 keeps its stages and class unchanged. This is bounded admission, not a claim
 to resolve match-arm execution or every other oracle family's provenance.
 
+### Shared error and predicate equality admission
+
+The private execution/collectability/macro-binding witness also gates bare
+`assert_eq!` evidence for `error_path` and `predicate` probes (#5027). This is
+independent of the owner-return pin: error operands still use RIPR-SPEC-0106,
+and predicate activation/boundary pairing retain their own semantic authorities.
+Neither a valid error operand nor a boundary-valued call proves that an assertion
+executes. Admission precedes matching, observation and oracle-strength selection
+for all three named families; refusal preserves the original assertion count so
+an unrelated Unknown helper cannot gain singleton credit.
+
+An independent ordinary equality also remains eligible after a uniquely bound,
+local empty macro. The syntax witness recognizes only one unannotated
+`macro_rules!` declaration with the sole catch-all `($($name:tt)*) => {}` rule,
+declared before the invocation in the same or an enclosing lexical module.
+The existing workspace binding authority rejects competing definitions,
+imports and opaque binding-producing calls. This is not a property-macro name
+allowlist or a macro evaluator: other matchers, nonempty/returning expansions,
+qualified, imported, shadowed and ambiguous bindings remain unsupported.
+The same parser-backed local resolver also removes these empty invocations
+from the shared call-fact view. Both call discovery and retained mixed-line
+text exclude their arguments; a discarded 100/100 call cannot lend boundary
+activation to a real far equality on the same line. Original function/file
+source and AST coordinates remain intact. The far equality retains strong
+oracle strength and Observe/Discriminate=yes, with weak infection and
+`weakly_exposed`, just as when the empty invocation is removed. The real
+boundary positive remains exposed and rejects the wrong implementation.
+This does not govern arbitrary non-equality raw-oracle consumers or resolve
+general macro expansion. The same closure, CFG, collection and statement-prefix
+requirements still govern the independent equality. Calls after an assertion
+receive no new prefix exception.
+
+The repair changes extracted call facts, so predecessor facts are not
+interchangeable. Persisted file-fact/classified keys retain their existing
+build identity: an e290 predecessor uses a distinct producer from the repaired
+commit even when generations remain file facts 1.18/full 1.29/compact and
+sharded 0.35. Favorable predecessor self-hit, repaired-producer refusal and
+current reuse are separate controls; no cross-build cache bypass is inferred.
+
+Fourteen family fixtures pair direct and invoked-closure positives with uncalled,
+false-branch, macro-shadowed and no-assertion controls. Each family also has an
+unconditional owner call before an uncalled assertion: real reach alone cannot
+create an observer. Public-API tests compile the correct and deliberately wrong
+version of each fixture and require exactly one executed test per subject.
+The four effective tests fail against the wrong implementation; the ten
+ineffective/removal tests pass it. These independent runtime outcomes calibrate
+the fixtures only and are not imported into production classification.
+
+The eight ineffective assertion cells and two removal cells require
+`reachable_unrevealed`, Observe `no`, Discriminate `no` and oracle strength `none`.
+Four positive cells retain `exposed` and strong exact-value evidence. Mixed
+strong/weak/refused assertions are checked in both orders; a refused exact
+assertion cannot lend strength to an admitted weak oracle or turn an Unknown
+helper into a singleton. Ten related tests exercise the eight-row JSON projection
+cap without crowding out admitted evidence. All cells are independently guarded
+by family-selected RIPR-SPEC-0108 corpus assertions.
+
+A separate ninety-subject compiled matrix covers all three admitted families:
+a direct assertion before/after a root return, a bound closure invoked before/after
+a root return, a closure that returns before its assertion, and unrelated ordinary
+or CFG-disabled nested helpers before direct/invoked assertions, and unrelated
+`async`/`async move` return contexts. Effective direct
+and invoked positives are admitted; prior outer returns and closure escapes are
+refused. The statement-prefix query retains
+all macro, CFG, collection and closure-escape gates; it does not evaluate arbitrary
+branch conditions. The existing Result harness retains its earlier strong equality
+and its class/confidence; a possible return still refuses a later equality.
+Only returns owned by the collected function enter its statement-prefix boundary.
+A return in an unrelated async block belongs to that future, even before it is
+polled; it cannot hide a later executed outer assertion. Assertions inside an
+unpolled future remain refused, and an actual outer return still defeats a later
+assertion. This is return-scope information, not an async-harness execution claim.
+An ordinary or CFG-disabled nested helper's return cannot escape the outer test;
+direct and invoked-closure positives remain admitted with either helper present.
+This does not admit an assertion inside an uncalled nested helper, and the earlier
+closure-return refusal remains unchanged.
+The ReturnValue helper controls use the existing token-direct assertion shape;
+the separate owner-return pin still conservatively refuses a test body containing
+multiple function declarations. Execution admission does not broaden that binding
+proof or turn it into an exact owner-return pin.
+
+The full scan also exposes a deliberate usefulness tradeoff: the existing real
+`#[tokio::test]` fixture catches an inverted predicate at runtime, but the bounded
+query cannot establish its macro binding and async polling path. It retains owner
+and test discovery and `propagation_unknown`, while oracle strength becomes None
+and advisory confidence moves 0.66 to 0.43. Its 100/50 input still cannot distinguish
+`>` from `>=`; that activation limitation is separate. #5040 owns producer-backed
+async-harness execution provenance and the real positive/removal controls. No
+Tokio-name exception or claim that the actual test is ineffective is made here.
+
+The same existing human/JSON/context projections explain a refused invocation
+and keep confidence advisory and `static_only`. This change does not assert
+that all oracle families, assertion macros or arbitrary Rust control flow have
+execution provenance.
+
+### Admission consumers and cross-test pairing
+
+Predicate boundary pairing consumes the exact same admission callback as reveal.
+A false-branch, uncalled-closure or unpolled-future boundary equality cannot regain
+credit after reveal refuses it by borrowing a strong far-input oracle. Matched
+same-test and separate-test layouts retain that far oracle's strong evidence and
+Observe=yes, while Discriminate stays weak with `same_test_pairing_missing`.
+Direct and invoked boundary positives remain exposed. Twelve paired layouts
+compile correct/wrong implementations and execute exactly one or two tests per
+program, rather than treating a zero-subject or compile failure as a control.
+The summary describes an absent admitted boundary-call discriminator without
+falsely claiming that every failure involves different tests.
+
+The covered route is Rust diff classification. Its consumer inventory is:
+
+| Consumer | Authority and boundary |
+| --- | --- |
+| `OwnerPinSyntax` / `OwnerReturnPin` | One parser-backed admission decision; owner-return binding remains a separate narrower proof. |
+| `classify/reveal.rs` | Filters before kind, strength, token matching, observation and owner-pin credit. Original assertion cardinality remains separate and unchanged. |
+| `classify/boundary_pairing.rs` | Uses the same callback before strength or boundary-subject pairing; raw refused assertions cannot restore exposure. |
+| `classifier/evidence.rs` / `classify/decision.rs` | Compose admitted stages; the tuple-specific witness is MatchArm-only and outside these covered families. |
+| `classifier/finding.rs` | Strong sink guidance starts from the already-filtered `evidence.related_tests`, not raw assertions. |
+| `classify/activation.rs` / `classify/related_tests.rs` | Raw source value/missing-fact and relationship scans remain their own static authorities. They are not oracle admission or runtime execution proof and cannot bypass the final admitted pairing requirement. |
+| `test_grip_evidence.rs` | Repository grip has a separate raw-oracle consumer. This diff-path repair does not claim repository-grip execution parity; #4793 owns the shared-witness migration. |
+
+The `observed_values` field retains lexical and bounded statically derived
+source facts independently of oracle admission, including enum tokens in
+refused assertions. Its historical name and structured fields remain stable;
+it does not establish execution or observation. Human and JSON evidence paths
+share neutral `source ... value` wording, including source-value cap disclosure.
+Direct/invoked error oracles retain strong observation, while uncalled, disabled
+or shadowed assertions retain source facts without contradicting Observe=no.
+This presentation repair changes no class, stage, score or admission decision.
+
+The two executed bypasses, family dispatch before reveal and raw boundary pairing
+after reveal, motivate an admitted-oracle iteration contract under #4793. That
+follow-up must carry original cardinality separately and preserve source facts
+for diagnosis; it must not introduce another execution checker or globally erase
+assertions. This repair shares the existing callback without that larger migration.
+
 ## Non-Goals
 
-- This repair's shared admission covers Rust `return_value` evidence from
-  bare `assert_eq!` invocations. Qualified assertion macros, other oracle
-  kinds/families, and general control-flow or macro resolution retain their
-  existing authorities; this is not a general execution-proof system.
+- Shared admission covers Rust `return_value`, `error_path` and `predicate`
+  evidence from bare `assert_eq!` invocations. Qualified assertion macros, other
+  oracle kinds/families and general control-flow or macro resolution retain
+  their existing authorities; this is not a general execution-proof system.
 
 - Name resolution or type inference. The receiver typing reads a binding's
   syntax only; a receiver returned by an arbitrary function call stays
@@ -344,6 +486,10 @@ to resolve match-arm execution or every other oracle family's provenance.
   `owner_pin_shared_admission_keeps_credit_on_one_admitted_oracle` (six mixed cases), and
   `owner_pin_refused_rows_do_not_crowd_out_admitted_oracles` (eight related tests),
   and `owner_pin_review_admission_controls` (six public-API review regressions).
+  `local_empty_macro_preserves_independent_equality_execution` compares static
+  admission with compiled correct/wrong subjects for local empty, returning,
+  imported, ambiguous, shadowed and disabled declarations. The property
+  quarantine integration retains its named/direct/helper mixed positives.
   The execution fixtures and their JSON/human outputs are mapped in `.ripr/traceability.toml`.
 - Fixtures: `fixtures/owner_return_pin_trait_method`,
   `fixtures/owner_return_pin_identity_traps`; re-blessed
@@ -359,7 +505,7 @@ to resolve match-arm execution or every other oracle family's provenance.
   `FunctionItemFact`.
 - `crates/ripr/src/analysis/classify/owner_pin.rs`: `OwnerReturnPin`
   (`establish` for the owner-side gates, `admits` for the test-side gates;
-  `OwnerPinSyntax::admits_return_assertion` applies shared context independently
+  `OwnerPinSyntax::admits_equality_assertion` applies shared context independently
   of whether an owner-return pin can be established).
 - `crates/ripr/src/analysis/classify/reveal.rs`: the pin joins the
   confirmation signals behind the family, oracle-kind and owner-binding
@@ -378,9 +524,12 @@ to resolve match-arm execution or every other oracle family's provenance.
   availability reuses the canonical lexer; the existing test-only role query
   retains its separate contract. Out-of-line resolution remains owned by
   existing `FileFacts::role_provenance`, not by the admission consumer.
-- `crates/ripr/src/analysis/seam_cache.rs`: classified `1.23`, sharded `0.29`,
-  compact `0.29` invalidate stale false credit. File-fact `1.15` from #4748 is preserved;
+- `crates/ripr/src/analysis/seam_cache.rs`: classified `1.25`, sharded `0.31`,
+  compact `0.31` invalidate stale false credit. File-fact `1.15` from #4748 is preserved;
   the query reads existing indexed source, so no file-fact migration is needed.
+  The new classified generation also rejects favorable results from published
+  candidate 740098f5, whose post-reveal pairing could re-use refused assertions.
+  The statement-prefix refinement changes no serialized fact shape.
 
 ## Metrics
 

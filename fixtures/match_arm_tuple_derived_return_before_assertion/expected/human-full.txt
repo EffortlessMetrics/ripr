@@ -32,12 +32,12 @@ Evidence
   - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1);
   - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, "receipt-1");
   - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, "request_identity_v2");
-  - observed assertion argument value 1 at line 21
-  - observed assertion argument value "receipt-1" at line 22
-  - observed assertion argument value 0 at line 22
-  - observed assertion argument value "request_identity_v2" at line 24
-  - observed assertion argument value 0 at line 24
-  - observed assertion argument value 1 at line 24
+  - source assertion argument value 1 at line 21
+  - source assertion argument value "receipt-1" at line 22
+  - source assertion argument value 0 at line 22
+  - source assertion argument value "request_identity_v2" at line 24
+  - source assertion argument value 0 at line 24
+  - source assertion argument value 1 at line 24
 
 Weakness
   - No strong discriminator was detected
@@ -74,12 +74,12 @@ Evidence
   - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal.len(), 1);
   - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].0.id, "receipt-1");
   - related test tests/projection.rs:5 request_only_projection_observes_join uses strong exact value oracle: assert_eq!(terminal[0].1, "request_identity_v2");
-  - observed assertion argument value 1 at line 21
-  - observed assertion argument value "receipt-1" at line 22
-  - observed assertion argument value 0 at line 22
-  - observed assertion argument value "request_identity_v2" at line 24
-  - observed assertion argument value 0 at line 24
-  - observed assertion argument value 1 at line 24
+  - source assertion argument value 1 at line 21
+  - source assertion argument value "receipt-1" at line 22
+  - source assertion argument value 0 at line 22
+  - source assertion argument value "request_identity_v2" at line 24
+  - source assertion argument value 0 at line 24
+  - source assertion argument value 1 at line 24
 
 Weakness
   - No strong discriminator was detected

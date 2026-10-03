@@ -738,11 +738,21 @@ mod tests {
 
     #[test]
     fn exact_error_guidance_requires_variant_alignment() {
-        let mut owner = function("src/lib.rs", "compute");
-        owner.returns = vec![ReturnFact {
-            line: 5,
-            text: "return Err(CalcError::TooLarge);".to_string(),
-        }];
+        let source = r#"#[derive(Debug, PartialEq)]
+pub enum CalcError { TooLarge, TooLarger }
+pub fn compute(input: i32) -> Result<i32, CalcError> {
+    if input > 10 {
+        return Err(CalcError::TooLarge);
+    }
+    Err(CalcError::TooLarger)
+}
+"#;
+        let indexed_test = |name: &str, input: i32, variant: &str| {
+            let test_source = format!(
+                "use demo::{{compute, CalcError}};\n#[test]\nfn {name}() {{\nlet err = compute({input}).unwrap_err();\nassert_eq!(err, CalcError::{variant});\n}}\n"
+            );
+            parser_backed_index(&[("src/lib.rs", source), ("tests/errors.rs", &test_source)])
+        };
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:5:error_path_alignment".to_string()),
             location: SourceLocation::new("src/lib.rs", 5, 1),
@@ -755,20 +765,7 @@ mod tests {
             expected_sinks: Vec::new(),
             required_oracles: Vec::new(),
         };
-        let unrelated = RustIndex {
-            functions: vec![owner.clone()],
-            tests: vec![test_with_oracle(
-                "tests/errors.rs",
-                "negative_error",
-                "compute(-1)",
-                oracle_fact(
-                    "assert_eq!(err, CalcError::TooLarger);",
-                    OracleKind::ExactErrorVariant,
-                    OracleStrength::Strong,
-                ),
-            )],
-            ..RustIndex::default()
-        };
+        let unrelated = indexed_test("negative_error", -1, "TooLarger");
         let unrelated_finding = classify_probe(&probe, &unrelated, true, None);
         // The near-miss oracle (`TooLarger`) does not observe this probe, so
         // the finding stays unobserved — but for a changed `Err(...)`
@@ -787,20 +784,7 @@ mod tests {
                 .any(|line| line.contains("no assertion repair is indicated"))
         );
 
-        let aligned = RustIndex {
-            functions: vec![owner],
-            tests: vec![test_with_oracle(
-                "tests/errors.rs",
-                "large_error",
-                "compute(100)",
-                oracle_fact(
-                    "assert_eq!(err, CalcError::TooLarge);",
-                    OracleKind::ExactErrorVariant,
-                    OracleStrength::Strong,
-                ),
-            )],
-            ..RustIndex::default()
-        };
+        let aligned = indexed_test("large_error", 100, "TooLarge");
         let aligned_finding = classify_probe(&probe, &aligned, true, None);
         assert_eq!(aligned_finding.class, ExposureClass::Exposed);
         assert!(aligned_finding.recommended_next_step.is_none());
@@ -1355,37 +1339,25 @@ mod tests {
     #[test]
     fn given_boundary_predicate_when_tests_skip_equal_value_then_activation_names_missing_boundary()
     {
-        let function = FunctionSummary {
-            body: r#"pub fn score(amount: i32, threshold: i32) -> i32 {
+        let source = r#"pub fn score(amount: i32, threshold: i32) -> i32 {
     if amount >= threshold {
         amount - 10
     } else {
         amount
     }
-}"#
-            .to_string(),
-            start_line: 1,
-            end_line: 7,
-            ..function("src/lib.rs", "score")
-        };
-        let index = RustIndex {
-            functions: vec![function],
-            tests: vec![
-                test(
-                    "tests/score.rs",
-                    "below_threshold_has_no_discount",
-                    "score(50, 100)",
-                    "assert_eq!(score(50, 100), 50);",
-                ),
-                test(
-                    "tests/score.rs",
-                    "far_above_threshold_discounts",
-                    "score(10_000, 100)",
-                    "assert_eq!(score(10_000, 100), 9_990);",
-                ),
-            ],
-            ..RustIndex::default()
-        };
+}
+"#;
+        let tests = r#"use demo::score;
+#[test]
+fn below_threshold_has_no_discount() {
+    assert_eq!(score(50, 100), 50);
+}
+#[test]
+fn far_above_threshold_discounts() {
+    assert_eq!(score(10_000, 100), 9_990);
+}
+"#;
+        let index = parser_backed_index(&[("src/lib.rs", source), ("tests/score.rs", tests)]);
         let probe = Probe {
             id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
             location: SourceLocation::new("src/lib.rs", 2, 1),
@@ -2132,6 +2104,24 @@ mod tests {
             item: Default::default(),
             impl_context: Default::default(),
         }
+    }
+
+    /// Admission-sensitive tests need actual parser facts and exact function /
+    /// assertion coordinates; fabricated TestSummary rows cannot establish them.
+    fn parser_backed_index(sources: &[(&str, &str)]) -> RustIndex {
+        let mut index = RustIndex::default();
+        index.package_names.insert("demo".to_string());
+        for (path, source) in sources {
+            let facts = crate::analysis::rust_index::summarize_file(
+                PathBuf::from(path),
+                (*source).to_string(),
+            );
+            assert!(!facts.used_lexical_fallback, "{path}");
+            index.functions.extend(facts.functions.iter().cloned());
+            index.tests.extend(facts.tests.iter().cloned());
+            index.files.insert(PathBuf::from(path), facts);
+        }
+        index
     }
 
     fn test(file: &str, name: &str, call: &str, assertion: &str) -> TestSummary {

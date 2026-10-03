@@ -70,6 +70,35 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn empty_local_macro_calls_preserve_real_call_text_and_original_source() -> Result<(), String> {
+        let source = "fn owner(x: i32) -> i32 { x }\r\nmacro_rules! discard_tokens { ($($ignored:tt)*) => {} }\r\n#[test]\r\nfn boundary() {\r\n discard_tokens!(owner(100), \"日本語 🦀\"); assert_eq!(owner(90), 90);\r\n}\r\n";
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        assert_eq!(facts.source, source);
+        assert_eq!(facts.tests.len(), 1);
+        assert!(facts.tests[0].body.contains("discard_tokens!(owner(100)"));
+        let calls: Vec<_> = facts.tests[0]
+            .calls
+            .iter()
+            .filter(|call| call.name == "owner")
+            .collect();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].line, 5);
+        assert!(!calls[0].text.contains("owner(100)"));
+        assert!(calls[0].text.contains("assert_eq!(owner(90), 90)"));
+        assert_eq!(facts.tests[0].assertions.len(), 1);
+        // A nonempty transcriber is not this denial authority.
+        let nonempty = source.replace("=> {}", "=> { let _marker = (); }");
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), &nonempty)?;
+        assert!(
+            facts.tests[0]
+                .calls
+                .iter()
+                .any(|call| call.text.contains("owner(100)"))
+        );
+        Ok(())
+    }
+
+    #[test]
     fn parser_raw_oracles_ignore_discarded_property_assertions() -> Result<(), String> {
         let source = "fn owner(x: i32) -> i32 { x }\n#[test]\nfn boundary() {\n let _ = owner(1);\n proptest! { ensure!(owner(1) == 1, \"discarded\"); }\n}\n";
         let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
