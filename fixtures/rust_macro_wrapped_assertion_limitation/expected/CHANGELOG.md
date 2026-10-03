@@ -304,3 +304,15 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+## Pending — rust_macro_wrapped_assertion_limitation (10)
+
+Reason:
+RIPR-SPEC-0001: quarantine unresolved property macro promotion and honor producer-owned typed limitations in human triage; ordinary discriminator controls remain unchanged
+
+Command:
+`cargo xtask goldens bless rust_macro_wrapped_assertion_limitation --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

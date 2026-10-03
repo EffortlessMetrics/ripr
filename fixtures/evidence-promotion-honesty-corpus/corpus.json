@@ -5,6 +5,252 @@
   "description": "Cross-language pinned adversarial corpus: evidence may not promote to exposed/strong unless it structurally matches the seam.",
   "cases": [
     {
+      "id": "rust_property_macro_noop_named_test",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/property_macro_noop_named_test",
+      "vector": "test_declaration_is_not_an_independent_owner_call",
+      "probe_family": "predicate",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "no_static_path"
+        },
+        {
+          "type": "must_disclose_limitation_detail"
+        },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_reach_unresolved"
+        },
+        {
+          "type": "must_not_claim_no_tests_found"
+        },
+        {
+          "type": "must_not_emit_repair_packet"
+        }
+      ]
+    },
+    {
+      "id": "rust_property_macro_unrelated_package",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/property_macro_unrelated_package",
+      "vector": "known_unrelated_package_does_not_suppress_gap",
+      "probe_family": "predicate",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "no_static_path"
+        }
+      ]
+    },
+    {
+      "id": "rust_property_macro_lexical_fallback",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/property_macro_lexical_fallback",
+      "vector": "parse_failure_cannot_promote_opaque_tokens",
+      "probe_family": "predicate",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "no_static_path"
+        },
+        {
+          "type": "must_disclose_limitation_detail"
+        },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_reach_unresolved"
+        },
+        {
+          "type": "must_not_claim_no_tests_found"
+        },
+        {
+          "type": "must_not_emit_repair_packet"
+        }
+      ]
+    },
+    {
+      "id": "rust_property_macro_noop_qualified_collision",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/property_macro_noop_qualified_collision",
+      "vector": "qualified_lexical_mention_is_not_resolved_reach",
+      "probe_family": "predicate",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "no_static_path"
+        },
+        {
+          "type": "must_disclose_limitation_detail"
+        },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_reach_unresolved"
+        },
+        {
+          "type": "must_not_claim_no_tests_found"
+        },
+        {
+          "type": "must_not_emit_repair_packet"
+        }
+      ]
+    },
+    {
+      "id": "rust_property_macro_noop_property_assertion",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/property_macro_noop_property_assertion",
+      "vector": "unresolved_property_macro_noop_property_assertion",
+      "probe_family": "predicate",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "no_static_path"
+        },
+        {
+          "type": "must_disclose_limitation_detail"
+        },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_reach_unresolved"
+        },
+        {
+          "type": "must_not_claim_no_tests_found"
+        },
+        {
+          "type": "must_not_emit_repair_packet"
+        }
+      ]
+    },
+    {
+      "id": "rust_property_macro_noop_proptest",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/property_macro_noop_proptest",
+      "vector": "unresolved_property_macro_noop_proptest",
+      "probe_family": "predicate",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "no_static_path"
+        },
+        {
+          "type": "must_disclose_limitation_detail"
+        },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_reach_unresolved"
+        },
+        {
+          "type": "must_not_claim_no_tests_found"
+        },
+        {
+          "type": "must_not_emit_repair_packet"
+        }
+      ]
+    },
+    {
+      "id": "rust_property_macro_noop_quickcheck",
+      "language": "rust",
+      "tier": "pure",
+      "source_fixture": "fixtures/property_macro_noop_quickcheck",
+      "vector": "unresolved_property_macro_noop_quickcheck",
+      "probe_family": "predicate",
+      "assertions": [
+        {
+          "type": "must_not_report_clean"
+        },
+        {
+          "type": "expected_finding_count",
+          "count": 1
+        },
+        {
+          "type": "must_not_promote"
+        },
+        {
+          "type": "expected_class",
+          "class": "no_static_path"
+        },
+        {
+          "type": "must_disclose_limitation_detail"
+        },
+        {
+          "type": "must_emit_limitation",
+          "expected_limit_kind": "rust_macro_reach_unresolved"
+        },
+        {
+          "type": "must_not_claim_no_tests_found"
+        },
+        {
+          "type": "must_not_emit_repair_packet"
+        }
+      ]
+    },
+    {
       "id": "rust_error_path_diagnostic_absent",
       "language": "rust",
       "tier": "pure",

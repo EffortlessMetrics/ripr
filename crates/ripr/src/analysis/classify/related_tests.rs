@@ -54,6 +54,9 @@ pub(in crate::analysis) struct RelatedTestCandidateIndex {
     by_test_stem: BTreeMap<String, Vec<usize>>,
     by_function_name: BTreeMap<String, Vec<usize>>,
     common_tokens: CommonTestTokens,
+    // Deny-only, per-pass memo. No-property suites leave it empty, so probes
+    // do not rescan ordinary bodies or property token trees.
+    property_only_calls: BTreeMap<usize, BTreeSet<String>>,
     all_tests: Vec<usize>,
     /// Run-scoped reveal memo filled lazily from the same index; valid for
     /// exactly as long as the candidate lists above are.
@@ -77,6 +80,11 @@ impl RelatedTestCandidateIndex {
 
         for (test_index, test) in index.tests.iter().enumerate() {
             candidates.all_tests.push(test_index);
+            let refused =
+                crate::analysis::extract::property_macros::property_only_call_names(&test.body);
+            if !refused.is_empty() {
+                candidates.property_only_calls.insert(test_index, refused);
+            }
 
             for call in &test.calls {
                 push_index(&mut candidates.by_call_name, call.name.clone(), test_index);
@@ -707,7 +715,19 @@ fn find_related_tests_with_candidates<'a>(
         // Compute calls_owner BEFORE the package-prefix guard so a cross-crate
         // test that genuinely calls a uniquely-named owner is not filtered out
         // before the strong signal can save it.
+        let property_only_owner_call = match candidates {
+            RelatedTestCandidates::Indexed(candidates) => candidates
+                .property_only_calls
+                .get(&test_index)
+                .is_some_and(|names| names.contains(owner_name)),
+            #[cfg(test)]
+            RelatedTestCandidates::FullScan => {
+                crate::analysis::extract::property_macros::property_only_call_names(&test.body)
+                    .contains(owner_name)
+            }
+        };
         let calls_owner = !owner_name.is_empty()
+            && !property_only_owner_call
             && (test.calls.iter().any(|call| call.name == owner_name)
                 || body_contains_owner_call(&test.body, owner_name));
         // #3714: captured `calls` facts only — the same authority as
@@ -796,6 +816,13 @@ fn find_related_tests_with_candidates<'a>(
             })
         });
 
+        // Token text discarded by a property macro cannot re-enter through
+        // raw-body, test-name or file-name affinity. An independent ordinary
+        // helper/seam route remains eligible and is judged by its usual owner.
+        if property_only_owner_call && !calls_helper_entry && !calls_seam_callee {
+            continue;
+        }
+
         // #2971: Only apply the package-prefix guard to weak signals — tests
         // that do not directly call the owner, OR tests that call a bare name
         // that is ambiguous across crates. A cross-crate test that calls a
@@ -883,7 +910,7 @@ fn find_related_tests_with_candidates<'a>(
         // M1 — the per-test re-resolution was O(tests x functions)).
         let helper_chain_reaches = !calls_owner
             && !assertions_reference_owner
-            && !same_file_or_named
+            && (!same_file_or_named || property_only_owner_call)
             && calls_helper_entry;
 
         if !calls_owner
@@ -5867,8 +5894,8 @@ try_parse_summary(raw).map_err(Into::into)"
     }
 
     #[test]
-    fn given_parser_indexed_proptest_and_quickcheck_when_relating_then_only_marked_tests()
-    -> Result<(), String> {
+    fn given_unresolved_property_macros_when_relating_then_no_invented_tests() -> Result<(), String>
+    {
         let source = r#"
 pub fn gate(x: u32) -> bool {
     x > 10
@@ -5916,21 +5943,10 @@ quickcheck! {
             .iter()
             .map(|(test, _)| test.name.as_str())
             .collect::<Vec<_>>();
-        if !names.contains(&"gate_threshold") {
-            return Err(format!(
-                "proptest #[test] must relate through the parser facts: {names:?}"
-            ));
-        }
-        if !names.contains(&"qc_gate") {
-            return Err(format!(
-                "quickcheck! fn must relate through the parser facts: {names:?}"
-            ));
-        }
-        if names.contains(&"unmarked") {
-            return Err(format!(
-                "unmarked proptest fn must not relate as a test: {names:?}"
-            ));
-        }
+        assert!(
+            names.is_empty(),
+            "opaque macros must not mint tests: {names:?}"
+        );
         Ok(())
     }
 }

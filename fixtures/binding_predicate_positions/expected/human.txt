@@ -9,7 +9,7 @@ Analysis outcome: findings below (analysis complete; complete_with_findings).
 
 Start here:
   State: limited by static analysis (static_limited)
-  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  Safe next action: review the unresolved static path and existing tests before treating this as repair-ready.
   File: fixtures/binding_predicate_positions/input/src/lib.rs:3
   Static exposure: no path (no_static_path, warning, confidence 0.48)
   Why no path: no related test was found that reaches this change

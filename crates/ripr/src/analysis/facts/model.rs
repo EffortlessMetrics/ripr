@@ -429,6 +429,15 @@ pub enum SourceRoleProvenanceEdgeKind {
     Include,
 }
 
+/// An opaque property-macro invocation, retained only to name a limitation.
+/// These lexical mentions never establish functions, tests, calls or oracles.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnresolvedPropertyMacroFact {
+    pub name: String,
+    pub line: usize,
+    pub mentioned_identifiers: Vec<String>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileFacts {
     pub path: PathBuf,
@@ -448,6 +457,10 @@ pub struct FileFacts {
     /// producer here yet. The lexical fallback emits no module declarations.
     #[serde(default)]
     pub module_declarations: Vec<ModuleDeclarationFact>,
+    /// Opaque property blocks from the existing source parse. No expansion or
+    /// executable-test authority is inferred from the macro's spelling.
+    #[serde(default)]
+    pub unresolved_property_macros: Vec<UnresolvedPropertyMacroFact>,
     /// Source-role provenance for this file occurrence (#3533): the ordered
     /// edge chain from the compilation unit whose declarations and include
     /// edges composed this file's roles, plus the earliest edge in the chain

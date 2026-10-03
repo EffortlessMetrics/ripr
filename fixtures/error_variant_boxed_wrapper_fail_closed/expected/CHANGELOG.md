@@ -191,3 +191,15 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+## Pending — error_variant_boxed_wrapper_fail_closed (14)
+
+Reason:
+RIPR-SPEC-0001: quarantine unresolved property macro promotion and honor producer-owned typed limitations in human triage; ordinary discriminator controls remain unchanged
+
+Command:
+`cargo xtask goldens bless error_variant_boxed_wrapper_fail_closed --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+- `expected/human-full.txt`

@@ -3615,6 +3615,7 @@ fn producer_rejects_same_file_production_helper_as_test_target() -> Result<(), S
             probe_shapes: Vec::new(),
             used_lexical_fallback: false,
             module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
             role_provenance: Default::default(),
             source: "fn discounted_total_helper() {}".to_string(),
         },

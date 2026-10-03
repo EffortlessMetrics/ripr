@@ -120,3 +120,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — error_variant_wrapper_wrong_receiver_pin (11)
+
+Reason:
+RIPR-SPEC-0001: quarantine unresolved property macro promotion and honor producer-owned typed limitations in human triage; ordinary discriminator controls remain unchanged
+
+Command:
+`cargo xtask goldens bless error_variant_wrapper_wrong_receiver_pin --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

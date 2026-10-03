@@ -3,6 +3,7 @@ mod literals;
 mod mask;
 mod oracles;
 mod probe_shapes;
+pub(crate) mod property_macros;
 mod returns;
 mod shadow;
 mod text;

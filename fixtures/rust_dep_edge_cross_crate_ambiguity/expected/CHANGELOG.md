@@ -139,3 +139,7 @@ Updated:
 - `expected/check.json`
 - `expected/human.txt`
 - `expected/human-full.txt`
+
+## #5051 plain no-path guidance
+
+Only the selected untyped no-path safe-action sentence changes. Static-limited state, selection, classification, full output and JSON remain unchanged.

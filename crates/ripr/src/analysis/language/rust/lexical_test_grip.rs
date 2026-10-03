@@ -434,6 +434,7 @@ mod tests {
             probe_shapes: Vec::new(),
             used_lexical_fallback: true,
             module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
             role_provenance: Default::default(),
             source: source.to_string(),
         }

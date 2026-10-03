@@ -157,9 +157,16 @@ pub(crate) fn render_human_triage(
                 );
             }
         }
-        HumanTriageState::StaticLimited => out.push_str(
-            "  Safe next action: inspect the named static limitation before treating this as repair-ready.\n",
-        ),
+        HumanTriageState::StaticLimited => {
+            let plain_no_path = triage.selected.is_some_and(|finding| {
+                finding.class == ExposureClass::NoStaticPath && finding.static_limit_kind.is_none()
+            });
+            out.push_str(if plain_no_path {
+                "  Safe next action: review the unresolved static path and existing tests before treating this as repair-ready.\n"
+            } else {
+                "  Safe next action: inspect the named static limitation before treating this as repair-ready.\n"
+            });
+        }
         HumanTriageState::PreviewLimited => {
             // #2273: the shared repair-packet validator is the only authority
             // on packet completeness, and the line must name the real blocker:
@@ -655,13 +662,16 @@ fn has_repair_route(finding: &Finding) -> bool {
 }
 
 fn is_static_limited(finding: &Finding) -> bool {
-    matches!(
-        finding.class,
-        ExposureClass::NoStaticPath
-            | ExposureClass::InfectionUnknown
-            | ExposureClass::PropagationUnknown
-            | ExposureClass::StaticUnknown
-    )
+    // The producer's named limitation remains authoritative even when its
+    // conservative class is reachable_unrevealed or weakly_exposed.
+    finding.static_limit_kind.is_some()
+        || matches!(
+            finding.class,
+            ExposureClass::NoStaticPath
+                | ExposureClass::InfectionUnknown
+                | ExposureClass::PropagationUnknown
+                | ExposureClass::StaticUnknown
+        )
 }
 
 fn is_preview_limited(finding: &Finding) -> bool {

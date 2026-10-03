@@ -231,6 +231,39 @@ fn is_expression_keyword(word: &str) -> bool {
     )
 }
 
+/// Borrow the existing Rust literal/comment boundaries without allocating a
+/// masked source. A lifetime is code; malformed literals consume the suffix.
+pub(crate) fn non_code_token_end(text: &str, index: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let tail = text.get(index..)?;
+    let end = if tail.starts_with("//") {
+        skip_line(bytes, index)
+    } else if tail.starts_with("/*") {
+        skip_block_comment(bytes, index)
+    } else if tail.starts_with('"') {
+        skip_string(bytes, index + 1)
+    } else if tail.starts_with('\'') {
+        let end = skip_char_or_lifetime(text, index);
+        if end == index + 1 {
+            return None;
+        }
+        end
+    } else {
+        let prefix = ["br", "cr", "r"]
+            .into_iter()
+            .find(|prefix| tail.starts_with(*prefix))?;
+        if index > 0
+            && bytes
+                .get(index - 1)
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_' || *byte >= 0x80)
+        {
+            return None;
+        }
+        skip_raw_string(bytes, index + prefix.len())?
+    };
+    Some(end.min(text.len()))
+}
+
 fn skip_line(bytes: &[u8], mut index: usize) -> usize {
     while bytes.get(index).is_some_and(|b| *b != b'\n') {
         index += 1;

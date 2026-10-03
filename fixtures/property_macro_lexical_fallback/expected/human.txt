@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/property_macro_lexical_fallback/input
+
+Summary: 1 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 1 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Analysis outcome: limitations below (analysis incomplete; partial_with_limitations).
+  The 1 finding(s) below cover only the analyzed scope; behavior outside it has no finding.
+  Limitation: some changed files were not analyzed during language analysis (language_scope_unsupported at language_adapter); file: tests/opaque.rs; affected items: 1; recovery: inspect the failure (inspect_failure) — An unchanged test file was indexed by lexical fallback after the reference parser refused it, so related-test evidence for a classified owner was weaker or missing. Check whether tests in the named file already exercise the change before trusting a no-path or weak result; rewrite nightly-only syntax or move those tests to a parser-valid file.
+
+Start here:
+  State: limited by static analysis (static_limited)
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/property_macro_lexical_fallback/input/src/lib.rs:2
+  Static exposure: no path (no_static_path, warning, confidence 0.48)
+  Why no path: no static path from a related test to this change was found
+  Changed behavior: amount >= discount_threshold
+  Missing discriminator (1 of 4): No detected boundary input for the changed predicate
+  Next step: Inspect the property macro's definition and collected tests, then run its existing test suite; this limitation does not establish a missing test.
+  Evidence: reach unknown · infection unknown · propagation unknown · observation no · discriminator no
+    - reach unknown: Property macro expansion and owner execution are unresolved
+    - infection unknown: Property macro expansion and owner execution are unresolved
+    - 4 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/property_macro_lexical_fallback/input --diff fixtures/property_macro_lexical_fallback/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root fixtures/property_macro_lexical_fallback/input --diff fixtures/property_macro_lexical_fallback/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope
+  analyzed: 1 changed Rust file(s), 1 changed expression(s), and 0 statically linked related
+  test(s). This is not a coverage assessment. A test may already exercise these changes through
+  macros, helper-call chains, or integration tests that ripr's static model does not yet trace; if
+  none does, add co-located tests that observe the changed behavior.

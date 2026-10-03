@@ -210,7 +210,7 @@ line; longer guidance wraps onto four-space continuation lines.
 | `top_gap` | A non-preview, non-exposed finding was selected as the first safe repair or inspection candidate. |
 | `no_actionable_gap` | Only `exposed` visible findings were selected; the output is not runtime proof or test adequacy. |
 | `preview_limited` | The selected finding is from a preview-language adapter; evidence is advisory until the preview contract explicitly promotes it. |
-| `static_limited` | The selected finding is no-path or unknown; inspect the named static limitation before treating it as repair-ready. |
+| `static_limited` | The selected finding is no-path, unknown, or carries a producer-owned typed static limitation. A typed limitation remains authoritative even when the retained classification is `reachable_unrevealed` or `weakly_exposed`; inspect the named limitation before treating it as repair-ready. When a selected `no_static_path` finding has no typed limitation, review the unresolved static path and existing tests instead. The finding classification does not change. |
 | `missing_scope` | The run produced no findings because no analysis scope was provided. This empty output is not an all-clear. |
 
 The `preview_limited` safe next action distinguishes repair-packet

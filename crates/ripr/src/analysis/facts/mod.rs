@@ -98,12 +98,13 @@ pub use model::{
     HarnessSubjectClaim, HarnessSubjectFact, LetBindingFact, LiteralFact, ModuleDeclarationFact,
     ModulePathTarget, OracleFact, ProbeShapeFact, ResolvedIncludeParent, ReturnFact,
     RustIncludeLimitation, RustIndex, SourceRoleProvenance, SourceRoleProvenanceEdge,
-    SourceRoleProvenanceEdgeKind, TestFact, TestSummary,
+    SourceRoleProvenanceEdgeKind, TestFact, TestSummary, UnresolvedPropertyMacroFact,
 };
 // Hot evidence loops hash each indexed file once and validate by digest.
-pub(crate) use model::source_digest;
+pub(crate) use model::WorkspaceFileAuthority;
 #[cfg(test)]
-pub(crate) use model::{WorkspaceFileAuthority, WorkspaceRootAuthority};
+pub(crate) use model::WorkspaceRootAuthority;
+pub(crate) use model::source_digest;
 
 /// Phase tracing extends the existing opt-in latency stream; normal output is
 /// unchanged. A cancelled intermediate index is never returned as complete.

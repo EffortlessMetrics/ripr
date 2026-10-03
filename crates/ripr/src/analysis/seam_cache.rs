@@ -267,7 +267,13 @@ pub(crate) struct CachedSeamLimitInfo {
 /// `1.22` -> `1.23`: shared parser-backed admission precedes bare assert_eq
 /// return-value matching/observation (#4478). Deferred, uncollected, disabled
 /// or ambiguously bound assertions cannot retain warm oracle credit.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.23";
+/// `1.24` is reserved by the existing #5027 execution-admission candidate.
+/// `1.25` is reserved by #5027's same-test pairing repair.
+/// `1.26`: quarantine unproven property-macro evidence after #4835.
+/// Old favorable property-macro classifications and absent-limit results miss.
+/// `1.27`: deny property-only call reach and opaque lexical-fallback tests;
+/// reject known unrelated-package mentions after the published quarantine.
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.27";
 /// `0.2` → `0.3`: same semantic transition as the outer cache (#3273 /
 /// #3286) — sharded entries derive from the same facts and cannot bypass
 /// the outer generation bump.
@@ -328,7 +334,9 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "1.23";
 /// `0.27` was reserved by the unmerged owner-execution admission draft.
 /// `0.28`: diagnostic-free extraction/ErrorPath confirmation (#4748).
 /// `0.28` -> `0.29`: shared return-oracle admission (#4478), same outer transition.
-const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.29";
+/// `0.30`/`0.31` are reserved by #5027 admission/pairing; `0.32` quarantines property macros.
+/// `0.33`: property-only call/fallback admission and package-scoped mentions.
+const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.33";
 
 /// Compact-classified seam cache schema. This cache stores the same
 /// `ClassifiedSeam` envelope shape as the full repo exposure cache, but
@@ -391,7 +399,9 @@ const SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.29";
 /// `0.27` was reserved by the unmerged owner-execution admission draft.
 /// `0.28`: diagnostic-free extraction/ErrorPath confirmation (#4748).
 /// `0.28` -> `0.29`: shared return-oracle admission (#4478), same outer transition.
-pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.29";
+/// `0.30`/`0.31` are reserved by #5027 admission/pairing; `0.32` quarantines property macros.
+/// `0.33`: property-only call/fallback admission and package-scoped mentions.
+pub(crate) const COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION: &str = "0.33";
 
 /// Compact class-count cache used by repo badge rendering. It keys off
 /// the same workspace state as the full fact cache, but stores only
@@ -513,7 +523,11 @@ pub(crate) const COUNT_CACHE_SCHEMA_VERSION: &str = "0.2";
 /// parser-backed files.
 /// `1.14` -> `1.15`: assertion diagnostics no longer manufacture error kinds
 /// or unwrap-error-bound pins (#4748); old TestFact.assertions must not replay.
-pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.15";
+/// `1.16`: opaque property-macro mention facts replace invented functions,
+/// tests and prop_assert oracles from #4835. Pre-quarantine facts cannot replay.
+/// `1.17`: property assertion arguments are opaque calls; fallback cannot
+/// fabricate property-body functions/tests. Published 1.16 facts must miss.
+pub(crate) const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "1.17";
 
 /// Keep the best-effort classified-seam cache from turning a successful live
 /// analysis into an unbounded post-analysis stall on large repos. Larger live
@@ -3553,7 +3567,7 @@ mod tests {
         // 1.12 -> 1.13: impl_context records the function's impl self type (#4558).
         // 1.13 -> 1.14: `FunctionFact` gains the parser's item container
         // (#4478); a warm pre-bump hit would read every owner as `Unknown`.
-        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.15");
+        assert_eq!(FILE_FACT_CACHE_SCHEMA_VERSION, "1.17");
         // 1.4 -> 1.5: metadata-sourced harness validation (#3634) flips
         // verdicts for workspaces the manifest emulation approximated.
         // 1.5 -> 1.6: the #3636 reachability authority excludes
@@ -3599,7 +3613,7 @@ mod tests {
         // 1.19 -> 1.20: owner-return pins (#4478) confirm return-value
         // probes the token rule left unconfirmed.
         // 1.22 -> 1.23: integrate shared return-oracle admission after #4748.
-        assert_eq!(CACHE_SCHEMA_VERSION, "1.23");
+        assert_eq!(CACHE_SCHEMA_VERSION, "1.27");
         // 0.12 -> 0.13 through 0.14 / 0.15 / 0.16 / 0.17 / 0.18: same
         // #3731 semantic transition as the outer classified-seam cache,
         // for the sharded and compact envelopes.
@@ -3622,8 +3636,45 @@ mod tests {
         // 0.26 (sharded) / 0.26 (compact): owner-return pins (#4478) —
         // same semantic transition as the outer cache.
         // 0.28 -> 0.29: same combined semantic transition as the outer cache.
-        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.29");
-        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.29");
+        assert_eq!(SHARDED_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.33");
+        assert_eq!(COMPACT_CLASSIFIED_SEAM_CACHE_SCHEMA_VERSION, "0.33");
+    }
+
+    #[test]
+    fn file_fact_generation_before_property_quarantine_is_a_miss() -> Result<(), String> {
+        use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+        let scratch = integrity_scratch("property-quarantine-generation")?;
+        let cache = RepoFileFactCache::at_dir(scratch.0.clone());
+        let file = Path::new("src/property.rs");
+        let source = "macro_rules! proptest { ($($t:tt)*) => {} }\nproptest! { #[test] fn phantom() { assert_eq!(gate(10), true); } }";
+        let current_facts = RaRustSyntaxAdapter.summarize_file(file, source)?;
+        assert!(current_facts.tests.is_empty());
+        assert_eq!(current_facts.unresolved_property_macros.len(), 1);
+        let mut old_facts = current_facts.clone();
+        let invented = RaRustSyntaxAdapter
+            .summarize_file(file, "#[test] fn phantom() { assert_eq!(gate(10), true); }")?;
+        old_facts.tests = invented.tests;
+        old_facts.functions = invented.functions;
+        old_facts.unresolved_property_macros.clear();
+        let current_key = RepoFileFactCacheKey::new(file, source.as_bytes());
+        for predecessor in ["1.15", "1.16"] {
+            let old_key = RepoFileFactCacheKey {
+                schema_version: predecessor.to_string(),
+                ..current_key.clone()
+            };
+            cache.store_file_facts(&old_key, &old_facts)?;
+            assert!(matches!(cache.load_file_facts(&old_key), CacheLoad::Hit(_)));
+            assert!(matches!(
+                cache.load_file_facts(&current_key),
+                CacheLoad::Miss
+            ));
+        }
+        cache.store_file_facts(&current_key, &current_facts)?;
+        match cache.load_file_facts(&current_key) {
+            CacheLoad::Hit(facts) => assert_eq!(facts, current_facts),
+            other => return Err(format!("quarantined facts did not round trip: {other:?}")),
+        }
+        Ok(())
     }
 
     #[test]

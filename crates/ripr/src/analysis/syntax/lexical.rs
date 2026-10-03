@@ -22,6 +22,38 @@ impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
 
 pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
     let source = text.clone();
+    let opaque = crate::analysis::extract::property_macros::opaque_property_macros(&text);
+    let mut unresolved_property_macros = Vec::new();
+    let mut previous_offset = 0;
+    let mut macro_line = 1;
+    for item in &opaque {
+        macro_line += text[previous_offset..item.range.start]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        previous_offset = item.range.start;
+        unresolved_property_macros.push(crate::analysis::facts::UnresolvedPropertyMacroFact {
+            name: item.name.to_string(),
+            line: macro_line,
+            mentioned_identifiers: crate::analysis::extract::property_macros::mentioned_identifiers(
+                &text[item.body_start..item.range.end],
+            ),
+        });
+    }
+    // Only macro-bearing fallback files need offsets; ordinary fallback keeps
+    // its previous allocation path. The source itself is never overlaid.
+    let line_starts = if opaque.is_empty() {
+        Vec::new()
+    } else {
+        let mut offset = 0;
+        text.split_inclusive('\n')
+            .map(|line| {
+                let start = offset;
+                offset += line.len();
+                start
+            })
+            .collect::<Vec<_>>()
+    };
     let lines: Vec<&str> = text.lines().collect();
     let mut functions = Vec::new();
     let mut tests = Vec::new();
@@ -33,6 +65,15 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
 
     while i < lines.len() {
         let trimmed = lines[i].trim();
+        let first_token = line_starts
+            .get(i)
+            .map(|start| start + lines[i].len() - lines[i].trim_start().len());
+        if first_token.is_some_and(|offset| opaque.iter().any(|item| item.range.contains(&offset)))
+        {
+            pending_test = false;
+            i += 1;
+            continue;
+        }
         if trimmed.starts_with("#[test]")
             || trimmed.starts_with("#[tokio::test")
             || trimmed.starts_with("#[async_std::test")
@@ -111,7 +152,7 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                     end_line,
                     body: body.clone(),
                     calls,
-                    assertions: extract_assertions(&body, start_line),
+                    assertions: property_safe_lexical_assertions(&body, start_line),
                     literals,
                     attrs: Vec::new(),
                     // Parser-only shadow facts (#3727 Slice A): empty under
@@ -158,9 +199,35 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         // parse; out-of-line test modules under fallback files keep the
         // fail-closed standalone roles (#3533).
         module_declarations: Vec::new(),
+        unresolved_property_macros,
         role_provenance: super::super::facts::SourceRoleProvenance::default(),
         source,
     }
+}
+
+/// Opaque property bodies cannot manufacture lexical assertion oracles.
+fn property_safe_lexical_assertions(
+    body: &str,
+    start_line: usize,
+) -> Vec<crate::analysis::facts::OracleFact> {
+    let macros = crate::analysis::extract::property_macros::opaque_property_macros(body);
+    if macros.is_empty() {
+        return extract_assertions(body, start_line);
+    }
+    let mut previous_offset = 0;
+    let mut line = start_line;
+    let mut assertions = Vec::new();
+    for (offset, part) in
+        crate::analysis::extract::property_macros::outside_property_macros(body, &macros)
+    {
+        line += body[previous_offset..offset]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        previous_offset = offset;
+        assertions.extend(extract_assertions(part, line));
+    }
+    assertions
 }
 
 fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {

@@ -3,6 +3,25 @@
 This log captures repo knowledge that should survive individual PRs and chat
 sessions. It is intentionally short and actionable.
 
+## 2026-10-02: property macro spelling is not execution provenance (#4789)
+
+The #4835 overlay indexed token-tree functions as tests and accepted
+`prop_assert*` names as strong oracles. Exact native CLI controls subsequently
+reported `exposed` for a no-op property assertion whose test passed both correct
+and wrong owner behavior, and for no-op property blocks that collected zero
+tests. Indexing-only goldens did not discriminate these failures.
+
+The corrective quarantine restores opaque parser authority. Property blocks
+retain only source-level macro/identifier mentions to name the existing macro-reach
+limitation; these are not function, test, call or oracle evidence. Calls
+appearing only inside property assertions remain unresolved too; an independent
+ordinary call or helper path keeps its own evidence. Parser-failure fallback
+cannot synthesize tests from opaque token trees, and known unrelated packages
+cannot use a shared identifier to suppress a real gap. No broad macro resolver
+or role migration is introduced. The old blank overlay is removed, including its allocation and second parse on files
+with no property macros. Framework execution and static support remain separate
+claims; a syntax-only fixture cannot establish the former.
+
 ## 2026-10-02: Assertion diagnostics are not error observers (#4748)
 
 `assert_eq!(rdr.len(), 10, "read error")` observes a successful length, not
@@ -179,21 +198,12 @@ Both commands share `output::file_write::create_output_dir`; do not special-case
 one command's prefix or flag in the other.
 ## 2026-09-29: `proptest!` / `quickcheck!` bodies are token trees (#4789)
 
-The Rust grammar does not turn a macro call's body into items. A
-`#[test] fn name(x in 0u32..100) { prop_assert_eq!(gate(x), x > 10); }`
-inside `proptest! { .. }` is therefore not a test, and neither is a
-`quickcheck!` fn, until the inner bytes are copied into a same-length
-overlay (other bytes blanked to spaces) and reparsed.
-
-The overlay must blank proptest strategy parameter lists (`x in
-strategy`, including nested `any::<Vec<(u32, u32)>>()`). Those tokens
-are not a Rust param list; leaving them in place makes the grammar drop
-the function body, so the owner call and oracle never appear.
-
-A `proptest!` fn is a test only when it spells `#[test]`. Every
-`quickcheck!` fn is a test, with `#[quickcheck]` recorded so the test-
-style normalizer keeps the parser-backed `TestFact`. Do not expand
-lookalikes, comments, strings, or macros nested in a function body.
+The outer Rust grammar retains macro bodies as opaque token trees. An overlay
+can recover source-shaped functions and assertions, but cannot establish that
+these items are emitted or executed. The initial #4835 overlay promoted that
+syntax into test/oracle evidence; the 2026-10-02 quarantine above supersedes
+that authority after no-op and zero-test controls disproved it. Property macro
+support requires independently established provenance before promotion.
 
 ## 2026-09-16: Parallel-build test flakes are shared-state mechanisms (#3742)
 

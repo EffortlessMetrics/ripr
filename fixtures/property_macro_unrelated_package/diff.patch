@@ -1,0 +1,14 @@
+--- a/crates/a/src/lib.rs
++++ b/crates/a/src/lib.rs
+@@ -1,5 +1,5 @@
+ pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {
+-    if amount > discount_threshold {
++    if amount >= discount_threshold {
+         amount - 10
+     } else {
+         amount
+--- a/crates/b/src/lib.rs
++++ b/crates/b/src/lib.rs
+@@ -1,1 +1,2 @@
++// Unrelated package remains unrelated.
+ macro_rules! proptest { ($($tt:tt)*) => {} }
