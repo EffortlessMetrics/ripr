@@ -7645,20 +7645,40 @@ fn routed_rust_job_block_any(
     mut predicate: impl FnMut(&str) -> bool,
 ) -> bool {
     let job_header = format!("{job}:");
+    let mut in_jobs = false;
     let mut in_block = false;
     for line in workflow.lines() {
+        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
+            in_jobs = line.trim() == "jobs:";
+            in_block = false;
+            continue;
+        }
         let job_level_key = line.starts_with("  ")
             && !line.starts_with("   ")
             && line.trim_end().ends_with(':')
             && !line.trim_start().starts_with('-');
         if job_level_key {
-            in_block = line.trim() == job_header;
+            in_block = in_jobs && line.trim() == job_header;
             continue;
         }
         if in_block && !line.is_empty() && !line.starts_with(' ') {
             break;
         }
-        if in_block && predicate(line) {
+        if in_block && line.starts_with("    ") && !line.starts_with("     ") && predicate(line) {
+            return true;
+        }
+    }
+    false
+}
+
+fn routed_rust_concurrency_group_has_isolation(workflow: &str, isolation: &str) -> bool {
+    let mut in_concurrency = false;
+    for line in workflow.lines() {
+        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
+            in_concurrency = line.trim() == "concurrency:";
+            continue;
+        }
+        if in_concurrency && line.starts_with("  group:") && line.ends_with(isolation) {
             return true;
         }
     }
@@ -7714,10 +7734,7 @@ fn routed_rust_workflow_contract_violations_with_reusable(
         );
     }
     let isolation = format!("${{{{ {SOURCE_RUST_IGNORED_EVENT} && '-label-ignore' || '' }}}}");
-    if !workflow
-        .lines()
-        .any(|line| line.trim_start().starts_with("group:") && line.ends_with(&isolation))
-    {
+    if !routed_rust_concurrency_group_has_isolation(workflow, &isolation) {
         violations.push("source ignored label event lacks concurrency isolation".to_string());
     }
 
