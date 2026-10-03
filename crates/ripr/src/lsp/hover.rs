@@ -56,6 +56,13 @@ pub(super) fn finding_hover_response(finding: &Finding, diagnostic: &Diagnostic)
 /// Bound on findings rendered in one line hover; the rest are counted.
 const MAX_LINE_HOVER_FINDINGS: usize = 5;
 
+/// Actionable-profile guidance for a line that has snapshot findings but no
+/// published diagnostic. Names routes that exist for every LSP client: the
+/// server key `diagnosticProfile` (initializationOptions or the pulled
+/// `ripr` configuration section) and `diagnostic_profile` under the `lsp`
+/// table in `ripr.toml`. `ripr.diagnosticProfile` is the VS Code settings-UI name.
+const ACTIONABLE_PROFILE_UNPUBLISHED_FINDINGS_GUIDANCE: &str = "The `actionable` diagnostic profile publishes only current `weakly_exposed`, `reachable_unrevealed` or `no_static_path` findings with a producer-backed repair route (a named missing discriminator and a fix site), so these are not diagnostics. Set `diagnosticProfile` to `full` (VS Code setting `ripr.diagnosticProfile`) or `[lsp] diagnostic_profile = \"full\"` in `ripr.toml` to publish them with their Inspect finding quick fix.";
+
 /// Hover for a position with no published diagnostic but with snapshot
 /// findings on its line — the findings the code lens on that line shows.
 /// Under the `actionable` profile these are route-less or exposed findings
@@ -74,10 +81,7 @@ pub(super) fn line_findings_hover_response(
         ),
     ];
     if profile == LspDiagnosticProfile::Actionable {
-        lines.push(
-            "The `actionable` diagnostic profile publishes only current `weakly_exposed`, `reachable_unrevealed` or `no_static_path` findings with a producer-backed repair route (a named missing discriminator and a fix site), so these are not diagnostics. Set `ripr.diagnosticProfile` to `full` to publish them with their Inspect finding quick fix."
-                .to_string(),
-        );
+        lines.push(ACTIONABLE_PROFILE_UNPUBLISHED_FINDINGS_GUIDANCE.to_string());
     } else {
         lines.push(
             "They have no published diagnostic under the current severity configuration."

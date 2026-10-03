@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- LSP: the actionable-profile line-findings hover names the editor-neutral
+  `diagnosticProfile` key and `[lsp] diagnostic_profile = "full"` in
+  `ripr.toml`, and labels `ripr.diagnosticProfile` as the VS Code setting,
+  instead of telling every client to set the VS Code-only name (#5094).
 - Rust finding output preserves the matched related-test/oracle count before
   bounded packing. JSON, SARIF, and human totals agree while retained rows and
   exposure classification remain unchanged. (#5146)

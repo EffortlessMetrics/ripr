@@ -21033,7 +21033,6 @@ fn hover_describes_unpublished_snapshot_findings_on_the_line() -> Result<(), Str
         "`no_static_path` predicate `weight_grams > 2_000`",
         "* reach no: No static test path found for the changed owner",
         "`probe:pricing:14:predicate`",
-        "Set `ripr.diagnosticProfile` to `full`",
     ] {
         assert!(
             markup.value.contains(expected),
@@ -21041,6 +21040,7 @@ fn hover_describes_unpublished_snapshot_findings_on_the_line() -> Result<(), Str
             markup.value
         );
     }
+    assert_actionable_line_hover_names_existing_full_profile_routes(&markup.value);
     // Editor users cannot run a server executeCommand with JSON arguments.
     for unexpected in ["ripr.collectContext", "finding_id"] {
         assert!(
@@ -21059,6 +21059,95 @@ fn hover_describes_unpublished_snapshot_findings_on_the_line() -> Result<(), Str
     // generic hover (no fabricated finding text).
     let generic = backend.hover_for_position(&hover_params(uri, 30, 0));
     assert!(generic.is_none(), "unexpected hover: {generic:?}");
+    Ok(())
+}
+
+fn actionable_line_hover_route_defects(markdown: &str) -> Vec<&'static str> {
+    // The server key must appear as its own markdown span. `ripr.diagnosticProfile`
+    // contains the substring `diagnosticProfile` but not the span `` `diagnosticProfile` ``.
+    let mut defects = Vec::new();
+    if !markdown.contains("`diagnosticProfile`") {
+        defects.push("missing LSP server key `diagnosticProfile`");
+    }
+    if !markdown.contains("[lsp] diagnostic_profile = \"full\"") {
+        defects.push("missing editor-neutral ripr.toml `[lsp] diagnostic_profile` route");
+    }
+    if !markdown.contains("`ripr.toml`") {
+        defects.push("missing `ripr.toml`");
+    }
+    if !markdown.contains("VS Code setting `ripr.diagnosticProfile`") {
+        defects.push("VS Code settings-UI name is missing or not labeled as VS Code");
+    }
+    if markdown.contains("Set `ripr.diagnosticProfile` to `full` to publish") {
+        defects.push("still presents the VS Code-only setting as the exclusive route");
+    }
+    defects
+}
+
+fn assert_actionable_line_hover_names_existing_full_profile_routes(markdown: &str) {
+    let defects = actionable_line_hover_route_defects(markdown);
+    assert!(
+        defects.is_empty(),
+        "line hover route defects {defects:?}:\n{markdown}"
+    );
+}
+
+fn line_findings_hover_markdown(
+    findings: &[&Finding],
+    profile: crate::config::LspDiagnosticProfile,
+) -> Result<String, String> {
+    match super::hover::line_findings_hover_response(findings, profile).contents {
+        HoverContents::Markup(markup) => Ok(markup.value),
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn actionable_line_hover_names_editor_neutral_full_profile_routes() -> Result<(), String> {
+    let finding = sample_finding();
+    let markdown =
+        line_findings_hover_markdown(&[&finding], crate::config::LspDiagnosticProfile::Actionable)?;
+    assert_actionable_line_hover_names_existing_full_profile_routes(&markdown);
+    Ok(())
+}
+
+#[test]
+fn exclusive_vscode_setting_route_is_rejected_as_insufficient() {
+    // Pre-fix wording from origin/main: the VS Code settings-UI name as the
+    // only instruction. A non-VS Code user following it has no such setting.
+    let exclusive_vscode_route = "The `actionable` diagnostic profile publishes only current `weakly_exposed`, `reachable_unrevealed` or `no_static_path` findings with a producer-backed repair route (a named missing discriminator and a fix site), so these are not diagnostics. Set `ripr.diagnosticProfile` to `full` to publish them with their Inspect finding quick fix.";
+    let defects = actionable_line_hover_route_defects(exclusive_vscode_route);
+    assert!(
+        defects.contains(&"missing LSP server key `diagnosticProfile`"),
+        "{defects:?}"
+    );
+    assert!(
+        defects.contains(&"missing editor-neutral ripr.toml `[lsp] diagnostic_profile` route"),
+        "{defects:?}"
+    );
+    assert!(defects.contains(&"missing `ripr.toml`"), "{defects:?}");
+    assert!(
+        defects.contains(&"still presents the VS Code-only setting as the exclusive route"),
+        "{defects:?}"
+    );
+}
+
+#[test]
+fn full_profile_line_hover_does_not_instruct_a_profile_switch() -> Result<(), String> {
+    // Alternate control: under `full`, unpublished findings are a severity
+    // configuration issue, not a missing `diagnosticProfile` setting.
+    let finding = sample_finding();
+    let markdown =
+        line_findings_hover_markdown(&[&finding], crate::config::LspDiagnosticProfile::Full)?;
+    if markdown.contains("Set `diagnosticProfile`") || markdown.contains("ripr.diagnosticProfile") {
+        return Err(format!(
+            "full-profile line hover must not instruct switching the diagnostic profile:\n{markdown}"
+        ));
+    }
+    assert!(
+        markdown.contains("current severity configuration"),
+        "{markdown}"
+    );
     Ok(())
 }
 
