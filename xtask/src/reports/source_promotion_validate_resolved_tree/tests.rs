@@ -52,6 +52,23 @@ mod tests {
         ]
     }
 
+    #[test]
+    fn green_historical_diagnostics_cannot_earn_current_acceptance() -> Result<(), String> {
+        let root = TempRoot::create("historical-native-authority")?;
+        let preflight = serde_json::json!({"schema": "ripr.source_promotion_preflight.v1"});
+        let bytes = serde_json::to_vec(&preflight).map_err(|error| error.to_string())?;
+        let mut options = parse_args(&valid_args())?;
+        options.repo = root.path().to_path_buf();
+        options.preflight = root.path().join("preflight.json");
+        options.preflight_sha256 = format!("{:x}", Sha256::digest(&bytes));
+        fs::write(&options.preflight, bytes).map_err(|error| error.to_string())?;
+        let reason = super::require_current_acceptance_after_diagnostics(&options, &preflight)
+            .err().ok_or_else(|| "green historical diagnostics earned current authority".to_string())?;
+        if !reason.contains("requires preflight v2") {
+            return Err(format!("historical diagnostics refused the wrong boundary: {reason}"));
+        }
+        Ok(())
+    }
     fn valid_fixture_state() -> ValidationState {
         let empty_digest = format!("{:x}", Sha256::digest(b""));
         let mut state = ValidationState::new(super::InputEcho {

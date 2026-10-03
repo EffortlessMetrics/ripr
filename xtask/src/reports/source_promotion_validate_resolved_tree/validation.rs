@@ -11,7 +11,15 @@ fn validate(
     )?;
     state.inputs.preflight_path = Some(preflight_path);
     validate_preflight(&preflight, &options.source_parent)?;
-    super::source_promotion_acceptance::revalidate(&preflight, &options.repo)?;
+    // Historical v1 may exercise disposable geometry diagnostics (including
+    // the J5 known-negative), but cannot earn successful validation: the
+    // final native v2 gate below remains unconditional after green commands.
+    // Current v2 inputs also require acceptance before diagnostics begin.
+    if preflight.get("schema").and_then(Value::as_str)
+        == Some("ripr.source_promotion_preflight.v2")
+    {
+        super::source_promotion_acceptance::revalidate(&preflight, &options.repo)?;
+    }
     if string_field(&preflight, "swarm_parent")? != options.swarm_parent {
         return Err("preflight swarm parent does not match exact input".to_string());
     }
@@ -84,21 +92,8 @@ fn validate(
 
     let execution_result =
         validate_materialized_tree(options, state, &checker, &materialized.root, evidence_root);
-    let execution_result = execution_result.and_then(|()| {
-        let final_bytes = super::source_promotion_verify::revalidate_bound_preflight(
-            &options.preflight,
-            &options.preflight_sha256,
-            &options.repo,
-        )?;
-        let final_preflight: Value = serde_json::from_slice(&final_bytes)
-            .map_err(|error| format!("decode final acceptance preflight: {error}"))?;
-        if final_preflight != preflight {
-            return Err(
-                "native acceptance preflight changed during resolved-tree validation".into(),
-            );
-        }
-        Ok(())
-    });
+    let execution_result = execution_result
+        .and_then(|()| require_current_acceptance_after_diagnostics(options, &preflight));
 
     let cleanup = materialized.cleanup();
     state.worktree_remove_succeeded = cleanup.worktree_remove_succeeded;
@@ -447,4 +442,18 @@ mod manifest_disposition_tests {
         };
         Ok(())
     }
+}
+
+fn require_current_acceptance_after_diagnostics(options: &Options, preflight: &Value) -> Result<(), String> {
+    let final_bytes = super::source_promotion_verify::revalidate_bound_preflight(
+        &options.preflight,
+        &options.preflight_sha256,
+        &options.repo,
+    )?;
+    let final_preflight: Value = serde_json::from_slice(&final_bytes)
+        .map_err(|error| format!("decode final acceptance preflight: {error}"))?;
+    if &final_preflight != preflight {
+        return Err("native acceptance preflight changed during resolved-tree validation".into());
+    }
+    Ok(())
 }
