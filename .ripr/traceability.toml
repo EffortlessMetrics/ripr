@@ -716,6 +716,8 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::doctor_core_report_fails_closed_for_missing_root",
   "crates/ripr/src/cli/commands.rs::tests::doctor_json_and_tool_failures_return_errors",
   "crates/ripr/src/cli/commands.rs::tests::doctor_human_projection_fails_for_missing_root",
+  "crates/ripr/src/cli/commands/doctor.rs::tests::doctor_core_report_fails_closed_for_file_root",
+  "crates/ripr/src/cli/commands/doctor.rs::tests::doctor_human_projection_fails_for_file_root",
   "crates/ripr/src/cli/commands.rs::tests::doctor_json_flag_accepts_explicit_root",
   "crates/ripr/src/output/doctor.rs::tests::render_text_names_checks_without_evidence_and_passes",
   "crates/ripr/src/output/doctor.rs::tests::doctor_timeout_evidence_preserves_fractional_durations",
@@ -727,8 +729,16 @@ tests = [
   "crates/ripr/src/output/doctor.rs::tests::old_workspace_compiler_is_advisory_for_analysis_and_fails_source_build",
   "crates/ripr/src/output/doctor.rs::tests::rust_root_with_missing_cargo_discloses_verification_limitation",
   "crates/ripr/src/output/doctor.rs::tests::doctor_cargo_probe_uses_selected_root",
+  "crates/ripr/src/output/doctor.rs::tests::a_missing_root_skips_root_bound_probes_instead_of_blaming_the_tools",
+  "crates/ripr/src/output/doctor.rs::tests::a_file_root_is_not_reported_as_missing",
+  "crates/ripr/src/output/doctor.rs::tests::a_directory_named_like_a_file_still_passes_root_directory",
+  "crates/ripr/src/output/doctor.rs::tests::doctor_root_path_classify_follows_symlinks_and_splits_file_from_missing",
+  "crates/ripr/src/output/doctor.rs::tests::an_unreadable_root_is_not_reported_as_missing",
+  "crates/ripr/src/output/doctor.rs::tests::a_symlink_into_an_unreadable_directory_is_not_reported_as_a_file",
+  "crates/ripr/src/output/doctor.rs::tests::doctor_root_path_recovery_guidance_does_not_borrow_sibling_wording",
   "crates/ripr/src/cli/commands/doctor.rs::tests::source_build_profile_keeps_enabled_language_runtime_failure_advisory",
   "crates/ripr/tests/cli_smoke.rs::doctor_discloses_missing_verification_tools_but_still_checks_manifest",
+  "crates/ripr/tests/cli_smoke.rs::doctor_file_root_is_not_reported_as_missing",
   "crates/ripr/tests/cli_help_hierarchy.rs::doctor_exit_code_guide_distinguishes_analysis_and_source_build"
 ]
 fixtures = []

@@ -2460,6 +2460,46 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn doctor_core_report_fails_closed_for_file_root() -> Result<(), String> {
+        // #5101: an existing file passed as --root must fail as "not a
+        // directory", not as "does not exist".
+        let dir = unique_command_test_dir("doctor-file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let root = dir.join("Cargo.toml");
+        std::fs::write(&root, "[package]\nname = \"file-root\"\n")
+            .map_err(|err| format!("write file root: {err}"))?;
+        if !root.is_file() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(format!(
+                "file-root fixture is not a file: {}",
+                root.display()
+            ));
+        }
+
+        let report = output::doctor::evaluate_doctor_core(&root, &detect_languages(&root));
+        let root_check = report
+            .checks
+            .iter()
+            .find(|check| check.name == "root_directory")
+            .ok_or_else(|| "missing root-directory check".to_string())?;
+        let evidence = root_check.evidence.as_deref().unwrap_or_default();
+        let result = if report.status != output::doctor::DoctorStatus::Fail
+            || root_check.status != output::doctor::DoctorCheckStatus::Fail
+            || !evidence.contains("is not a directory")
+            || evidence.contains("does not exist")
+        {
+            Err(format!(
+                "file root should fail as not-a-directory, got status={:?} check={root_check:?}",
+                report.status
+            ))
+        } else {
+            Ok(())
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
     // Deterministic missing-tool and empty-report-passes assertions live with
     // the moved model in `output::doctor::tests` now
     // (`doctor_tool_check_fails_closed_for_guaranteed_missing_tool`,
@@ -2488,6 +2528,22 @@ mod tests {
         let root_arg = root.to_string_lossy().into_owned();
         if doctor(&args(&["--root", &root_arg])).is_ok() {
             return Err("human doctor unexpectedly passed for missing root".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn doctor_human_projection_fails_for_file_root() -> Result<(), String> {
+        let dir = unique_command_test_dir("doctor-human-file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let root = dir.join("afile.txt");
+        std::fs::write(&root, "not a workspace\n")
+            .map_err(|err| format!("write file root: {err}"))?;
+        let root_arg = root.to_string_lossy().into_owned();
+        let result = doctor(&args(&["--root", &root_arg]));
+        let _ = std::fs::remove_dir_all(&dir);
+        if result.is_ok() {
+            return Err("human doctor unexpectedly passed for a file root".to_string());
         }
         Ok(())
     }

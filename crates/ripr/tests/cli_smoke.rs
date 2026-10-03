@@ -10501,6 +10501,107 @@ fn doctor_outside_git_or_on_a_missing_root_recommends_a_command_that_can_run() -
     Ok(())
 }
 
+fn json_skip_reason(parsed: &serde_json::Value, name: &str, reason: &str) -> bool {
+    parsed["checks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|check| check["name"] == name)
+        .is_some_and(|check| {
+            check["status"].as_str() == Some("skipped")
+                && check["evidence"]
+                    .as_str()
+                    .is_some_and(|evidence| evidence.ends_with(reason))
+        })
+}
+
+#[test]
+fn doctor_file_root_is_not_reported_as_missing() -> Result<(), String> {
+    // #5101: passing an existing file as --root (Cargo.toml is the common
+    // slip) used to print "root directory does not exist" on the human
+    // path, skip reasons, first-command guidance, and doctor --json.
+    let dir = unique_temp_workspace("doctor-file-root");
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let file = dir.join("Cargo.toml");
+    std::fs::write(
+        &file,
+        "[package]\nname = \"file-root\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .map_err(|err| err.to_string())?;
+    if !file.is_file() || file.is_dir() {
+        ignore_remove_dir_all(&dir);
+        return Err(format!(
+            "file-root fixture must be a regular file: {}",
+            file.display()
+        ));
+    }
+    let root = file.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert_failure(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let resolved = file
+        .canonicalize()
+        .map_err(|err| format!("canonicalize file root: {err}"))?;
+    let resolved_display = resolved.display().to_string();
+    let physical = resolved_display
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&resolved_display)
+        .to_string();
+    let human_ok = stdout.contains("is not a directory")
+        && !stdout.contains("root directory does not exist")
+        && stdout.contains("- cargo check skipped: the root is not a directory")
+        && stdout.contains("- rustc check skipped: the root is not a directory")
+        && stdout.contains("- Git work tree check skipped: the root is not a directory")
+        && stdout.contains(&format!(
+            "- Recommended first command: {}",
+            first_command_at(&physical, "")
+        ))
+        && stdout.contains(
+            "- The selected root exists but is not a directory; rerun with `--root <path>` naming the repository directory, not a file inside it",
+        )
+        && !stdout.contains("- The selected root does not exist;")
+        && !stderr.contains("working-tree change probe failed");
+
+    let json_output = run_ripr(&["doctor", "--root", &root, "--json"]);
+    assert_failure(&json_output);
+    let json_stdout = String::from_utf8_lossy(&json_output.stdout);
+    let parsed: serde_json::Value = match serde_json::from_str(&json_stdout) {
+        Ok(value) => value,
+        Err(error) => {
+            ignore_remove_dir_all(&dir);
+            return Err(format!(
+                "doctor --json did not parse: {error}\nstdout:\n{json_stdout}"
+            ));
+        }
+    };
+    let json_evidence = parsed["checks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|check| check["name"] == "root_directory")
+        .and_then(|check| check["evidence"].as_str())
+        .unwrap_or("");
+    let json_ok = json_evidence.contains("is not a directory")
+        && !json_evidence.contains("does not exist")
+        && json_skip_reason(&parsed, "git_repository", "the root is not a directory")
+        && json_skip_reason(&parsed, "tool_cargo", "the root is not a directory")
+        && json_skip_reason(&parsed, "tool_rustc", "the root is not a directory");
+
+    ignore_remove_dir_all(&dir);
+    if !human_ok {
+        return Err(format!(
+            "a file root must not be reported as missing\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        ));
+    }
+    if !json_ok {
+        return Err(format!(
+            "doctor --json must split file-root from missing: evidence={json_evidence:?}\n{json_stdout}"
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn doctor_recommends_worktree_check_on_dirty_worktree() -> Result<(), String> {
     // First-run honesty: doctor must not route a user with uncommitted edits to

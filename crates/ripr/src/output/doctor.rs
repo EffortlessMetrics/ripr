@@ -10,6 +10,11 @@
 //! `--json`, calls into this module to evaluate the core checks and probe
 //! tool availability, and prints either the JSON report or the human-prose
 //! projection.
+//!
+//! `Path::is_dir()` is false for a missing path and for an existing file.
+//! Doctor classifies those states once ([`DoctorRootPath`]) so the
+//! `root_directory` evidence, skip reasons, and MissingRoot guidance cannot
+//! claim an existing file does not exist (#5101).
 
 use crate::config::{CONFIG_FILE_NAME, RiprConfig, load_for_root};
 use crate::domain::LanguageId;
@@ -37,14 +42,16 @@ pub(crate) const DOCTOR_FAILED_LINE: &str =
 /// First command doctor prints after the checks. Git-backed routes are only
 /// recommended when the `tool_git` check actually passed (#4735). A root Git
 /// refuses gets the repository-free scan instead of a command that cannot run
-/// there (#4531); a missing root keeps a runnable recovery command naming its
-/// lossless root spelling (#5010) plus the `--root` guidance (#4606 review),
-/// and is never probed for work-tree changes.
+/// there (#4531); an unusable root (missing, or present but not a directory)
+/// keeps a runnable recovery command naming its lossless root spelling (#5010)
+/// plus `--root` guidance that names the actual filesystem state (#4606
+/// review, #5101), and is never probed for work-tree changes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DoctorFirstCommand {
     /// `root_directory` failed while git runs: render the runnable recovery
-    /// command with its lossless root spelling, plus the rerun-with-`--root`
-    /// guidance, and never probe the work tree (#4531, #5010).
+    /// command with its lossless root spelling, plus `--root` guidance that
+    /// distinguishes a missing path from an existing non-directory, and never
+    /// probe the work tree (#4531, #5010, #5101).
     MissingRoot,
     /// `git_repository` failed while git itself runs: the repository-free scan
     /// is the only route that can run here.
@@ -148,16 +155,15 @@ impl DoctorFirstCommand {
     /// variant renders its own line.
     pub(crate) fn recommendation_lines_for(self, root: &Path) -> Vec<String> {
         match self {
-            // The recovery command names the lossless spelling of the missing
+            // The recovery command names the lossless spelling of the unusable
             // root exactly as the runnable variants do (#5010); the guidance
-            // line says what to replace it with, since the path it names does
-            // not exist yet (#4606 review).
+            // line says what to replace it with (#4606 review, #5101).
             Self::MissingRoot => {
                 let mut lines =
                     Self::recommendation_lines(Self::DefaultCheck.command_line_for_root(root));
                 lines.push(
-                    "- The selected root does not exist; rerun with `--root <path>` naming an \
-                     existing repository directory"
+                    DoctorRootPath::classify(root)
+                        .recovery_guidance()
                         .to_string(),
                 );
                 lines
@@ -668,6 +674,108 @@ pub(crate) struct DoctorCoreEvaluation {
     pub(crate) config: Result<RiprConfig, String>,
 }
 
+/// How `--root` addresses the filesystem for doctor core checks.
+///
+/// `Path::is_dir()` is false both when the path is missing and when it
+/// exists as a non-directory. Classify once and reuse the result for the
+/// `root_directory` evidence, skip reasons, and MissingRoot guidance (#5101).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DoctorRootPath {
+    Directory,
+    Missing,
+    NotADirectory,
+    Unreadable,
+}
+
+impl DoctorRootPath {
+    fn classify(root: &Path) -> Self {
+        match std::fs::metadata(root) {
+            Ok(metadata) if metadata.is_dir() => Self::Directory,
+            Ok(_) => Self::NotADirectory,
+            // `metadata` follows symlinks. A dangling symlink is `NotFound`
+            // after follow, but the typed name still exists on disk.
+            Err(error) => match std::fs::symlink_metadata(root) {
+                Ok(_) => {
+                    // A dangling symlink is `NotFound` after follow. Any other
+                    // follow error with a live name (PermissionDenied on the
+                    // target) is unreadability, not "exists but is not a
+                    // directory".
+                    if error.kind() == std::io::ErrorKind::NotFound {
+                        Self::NotADirectory
+                    } else {
+                        Self::Unreadable
+                    }
+                }
+                Err(symlink_error) => {
+                    let missing = error.kind() == std::io::ErrorKind::NotFound
+                        && symlink_error.kind() == std::io::ErrorKind::NotFound;
+                    if missing {
+                        Self::Missing
+                    } else {
+                        Self::Unreadable
+                    }
+                }
+            },
+        }
+    }
+
+    fn unusable_skip_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Directory => None,
+            Self::Missing => Some("the root directory does not exist"),
+            Self::NotADirectory => Some("the root is not a directory"),
+            Self::Unreadable => Some("the root directory cannot be read"),
+        }
+    }
+
+    fn root_directory_evidence(self, root: &Path) -> (DoctorStatus, String) {
+        match self {
+            Self::Directory => (
+                DoctorStatus::Pass,
+                format!("root directory exists at {}", human_path(root)),
+            ),
+            Self::Missing => (
+                DoctorStatus::Fail,
+                format!("root directory does not exist at {}", human_path(root)),
+            ),
+            Self::NotADirectory => (
+                DoctorStatus::Fail,
+                format!(
+                    "root is not a directory at {}; pass the workspace directory",
+                    human_path(root)
+                ),
+            ),
+            Self::Unreadable => (
+                DoctorStatus::Fail,
+                format!(
+                    "cannot determine whether {} is a directory",
+                    human_path(root)
+                ),
+            ),
+        }
+    }
+
+    fn recovery_guidance(self) -> &'static str {
+        match self {
+            Self::NotADirectory => {
+                "- The selected root exists but is not a directory; rerun with `--root <path>` \
+                 naming the repository directory, not a file inside it"
+            }
+            Self::Unreadable => {
+                "- The selected root could not be read; check permissions and rerun with \
+                 `--root <path>` naming an accessible repository directory"
+            }
+            Self::Missing => {
+                "- The selected root does not exist; rerun with `--root <path>` naming an \
+                 existing repository directory"
+            }
+            // MissingRoot re-classifies at render time. If the path became a
+            // directory after evaluation, do not claim it is absent.
+            Self::Directory => "- Rerun with `--root <path>` naming the repository directory",
+        }
+    }
+}
+
 /// Evaluate the doctor core checks (root, Cargo.toml, config, tool
 /// availability) and return just the typed report.
 #[cfg(test)]
@@ -813,22 +921,9 @@ fn evaluate_doctor_core_with_probe_for_profile(
     report.profile = profile;
     let config = load_for_root(root);
     let rust_scope = rust_toolchain_scope(&config, detected);
-    if root.is_dir() {
-        report.add_check(
-            "root_directory",
-            DoctorStatus::Pass,
-            Some(format!("root directory exists at {}", human_path(root))),
-        );
-    } else {
-        report.add_check(
-            "root_directory",
-            DoctorStatus::Fail,
-            Some(format!(
-                "root directory does not exist at {}",
-                human_path(root)
-            )),
-        );
-    }
+    let root_path = DoctorRootPath::classify(root);
+    let (root_status, root_evidence) = root_path.root_directory_evidence(root);
+    report.add_check("root_directory", root_status, Some(root_evidence));
     if let RustToolchainScope::NotInScope(reason) = &rust_scope {
         report.add_skipped_check("cargo_toml", format!("Cargo.toml check skipped: {reason}"));
     } else if root.join("Cargo.toml").exists() {
@@ -847,39 +942,41 @@ fn evaluate_doctor_core_with_probe_for_profile(
             Some(format!("no Cargo.toml found at {}", human_path(root))),
         );
     }
-    match root.is_dir().then(|| work_tree_probe(root)).flatten() {
-        None if !root.is_dir() => report.add_skipped_check(
+    match root_path.unusable_skip_reason() {
+        Some(reason) => report.add_skipped_check(
             "git_repository",
-            "Git work tree check skipped: the root directory does not exist".to_string(),
+            format!("Git work tree check skipped: {reason}"),
         ),
-        Some(WorkTreeProbe::Inside) => report.add_check(
-            "git_repository",
-            DoctorStatus::Pass,
-            Some(format!("inside a Git work tree at {}", human_path(root))),
-        ),
-        Some(WorkTreeProbe::Refused(message)) => {
-            report.add_check("git_repository", DoctorStatus::Fail, Some(message));
-        }
-        Some(WorkTreeProbe::Outside) => report.add_check(
-            "git_repository",
-            DoctorStatus::Fail,
-            Some(format!(
-                "not inside a Git work tree at {}; the diff-scoped commands read committed \
-                 history and cannot run here. For a repository-free scan, run `ripr check --root \
-                 {} --format repo-exposure-md`",
-                human_path(root),
-                root.display()
-            )),
-        ),
-        None => report.add_check(
-            "git_repository",
-            DoctorStatus::Fail,
-            Some(format!(
-                "could not determine whether {} is inside a Git work tree; the git tool check \
-                 below carries the reason",
-                human_path(root)
-            )),
-        ),
+        None => match work_tree_probe(root) {
+            Some(WorkTreeProbe::Inside) => report.add_check(
+                "git_repository",
+                DoctorStatus::Pass,
+                Some(format!("inside a Git work tree at {}", human_path(root))),
+            ),
+            Some(WorkTreeProbe::Refused(message)) => {
+                report.add_check("git_repository", DoctorStatus::Fail, Some(message));
+            }
+            Some(WorkTreeProbe::Outside) => report.add_check(
+                "git_repository",
+                DoctorStatus::Fail,
+                Some(format!(
+                    "not inside a Git work tree at {}; the diff-scoped commands read committed \
+                     history and cannot run here. For a repository-free scan, run `ripr check --root \
+                     {} --format repo-exposure-md`",
+                    human_path(root),
+                    root.display()
+                )),
+            ),
+            None => report.add_check(
+                "git_repository",
+                DoctorStatus::Fail,
+                Some(format!(
+                    "could not determine whether {} is inside a Git work tree; the git tool check \
+                     below carries the reason",
+                    human_path(root)
+                )),
+            ),
+        },
     }
     match &config {
         Ok(config) => report.add_check(
@@ -898,34 +995,29 @@ fn evaluate_doctor_core_with_probe_for_profile(
     }
     for tool in DOCTOR_TOOLS {
         let name = format!("tool_{tool}");
-        match &rust_scope {
-            RustToolchainScope::NotInScope(reason)
-                if RUST_TOOLCHAIN_TOOLS.contains(&tool) && profile == DoctorProfile::Analysis =>
-            {
-                report.add_skipped_check(&name, format!("{tool} check skipped: {reason}"));
-            }
-            // The toolchain is probed in the selected root; a missing root
-            // fails the spawn and would read as a missing tool (#4531).
-            _ if RUST_TOOLCHAIN_TOOLS.contains(&tool) && !root.is_dir() => {
-                report.add_skipped_check(
-                    &name,
-                    format!("{tool} check skipped: the root directory does not exist"),
-                );
-            }
-            _ => {
-                let (status, evidence) = probe_tool(tool, root);
-                if RUST_TOOLCHAIN_TOOLS.contains(&tool)
-                    && profile == DoctorProfile::Analysis
-                    && status == DoctorStatus::Fail
-                {
-                    report.add_advisory_check(
-                        &name,
-                        analysis_advisory_toolchain_evidence(tool, &evidence),
-                    );
-                } else {
-                    report.add_check(&name, status, Some(evidence));
-                }
-            }
+        if let RustToolchainScope::NotInScope(reason) = &rust_scope
+            && RUST_TOOLCHAIN_TOOLS.contains(&tool)
+            && profile == DoctorProfile::Analysis
+        {
+            report.add_skipped_check(&name, format!("{tool} check skipped: {reason}"));
+            continue;
+        }
+        // The toolchain is probed in the selected root; an unusable root
+        // fails the spawn and would read as a missing tool (#4531, #5101).
+        if RUST_TOOLCHAIN_TOOLS.contains(&tool)
+            && let Some(reason) = root_path.unusable_skip_reason()
+        {
+            report.add_skipped_check(&name, format!("{tool} check skipped: {reason}"));
+            continue;
+        }
+        let (status, evidence) = probe_tool(tool, root);
+        if RUST_TOOLCHAIN_TOOLS.contains(&tool)
+            && profile == DoctorProfile::Analysis
+            && status == DoctorStatus::Fail
+        {
+            report.add_advisory_check(&name, analysis_advisory_toolchain_evidence(tool, &evidence));
+        } else {
+            report.add_check(&name, status, Some(evidence));
         }
     }
     // Typed language surface for generated CI (#2072): mirror exactly the
@@ -2009,25 +2101,333 @@ mod tests {
             "ripr-doctor-missing-root-{}-does-not-exist",
             std::process::id()
         ));
-        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Rust]);
-        if probed != ["git"] {
+        if root.exists() {
             return Err(format!(
-                "only git may be probed for a missing root: {probed:?}"
+                "missing-root fixture must not exist: {}",
+                root.display()
             ));
         }
-        if check(&report, "root_directory")?.status != DoctorCheckStatus::Fail {
-            return Err("the missing root itself must still fail doctor".to_string());
+        let (report, probed) = evaluate_without_rust_toolchain(&root, &[LanguageId::Rust]);
+        assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "does not exist",
+            "is not a directory",
+            "the root directory does not exist",
+        )?;
+        json_root_directory_evidence_distinguishes(&report, "does not exist", "is not a directory")
+    }
+
+    #[test]
+    fn a_file_root_is_not_reported_as_missing() -> Result<(), String> {
+        // #5101: Path::is_dir() is false for both a missing path and an
+        // existing file, so doctor claimed Cargo.toml passed as --root did
+        // not exist. The missing-root control above must keep "does not
+        // exist"; this case must not.
+        let dir = unique_test_dir("file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create fixture dir: {err}"))?;
+        let file = dir.join("Cargo.toml");
+        std::fs::write(
+            &file,
+            "[package]\nname = \"not-a-dir\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|err| format!("write fixture file: {err}"))?;
+        if !file.is_file() || file.is_dir() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(format!(
+                "file-root fixture must be a regular file: {}",
+                file.display()
+            ));
+        }
+        let (report, probed) = evaluate_without_rust_toolchain(&file, &[LanguageId::Rust]);
+        let result = assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "is not a directory",
+            "does not exist",
+            "the root is not a directory",
+        );
+        let json_result = match result {
+            Ok(()) => json_root_directory_evidence_distinguishes(
+                &report,
+                "is not a directory",
+                "does not exist",
+            ),
+            Err(error) => Err(error),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        json_result
+    }
+
+    #[test]
+    fn a_directory_named_like_a_file_still_passes_root_directory() -> Result<(), String> {
+        // Negative of #5101: a directory whose last component looks like a
+        // file must not take the not-a-directory arm.
+        let dir = unique_test_dir("dir-named-Cargo.toml");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create fixture dir: {err}"))?;
+        if !dir.is_dir() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(format!(
+                "directory fixture must be a directory: {}",
+                dir.display()
+            ));
+        }
+        let (report, _probed) = evaluate_without_rust_toolchain(&dir, &[LanguageId::Rust]);
+        let found = check(&report, "root_directory")?;
+        let evidence = found.evidence.as_deref().unwrap_or_default();
+        let result = if found.status != DoctorCheckStatus::Pass
+            || !evidence.contains("root directory exists")
+            || evidence.contains("does not exist")
+            || evidence.contains("is not a directory")
+        {
+            Err(format!(
+                "a directory named like a file must pass root_directory: {found:?}"
+            ))
+        } else {
+            Ok(())
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn doctor_root_path_classify_follows_symlinks_and_splits_file_from_missing()
+    -> Result<(), String> {
+        let missing = unique_test_dir("classify-missing");
+        if missing.exists() {
+            return Err(format!(
+                "missing classify fixture must not exist: {}",
+                missing.display()
+            ));
+        }
+        if DoctorRootPath::classify(&missing) != DoctorRootPath::Missing {
+            return Err(format!(
+                "missing path classified as {:?}",
+                DoctorRootPath::classify(&missing)
+            ));
+        }
+
+        let dir = unique_test_dir("classify-dir");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+        let file = dir.join("afile.txt");
+        std::fs::write(&file, "not a workspace\n").map_err(|err| format!("write file: {err}"))?;
+        let mut failures = Vec::new();
+        if DoctorRootPath::classify(&dir) != DoctorRootPath::Directory {
+            failures.push(format!(
+                "directory classified as {:?}",
+                DoctorRootPath::classify(&dir)
+            ));
+        }
+        if DoctorRootPath::classify(&file) != DoctorRootPath::NotADirectory {
+            failures.push(format!(
+                "file classified as {:?}",
+                DoctorRootPath::classify(&file)
+            ));
+        }
+
+        #[cfg(unix)]
+        {
+            let link_to_dir = dir.join("link-to-dir");
+            std::os::unix::fs::symlink(&dir, &link_to_dir)
+                .map_err(|err| format!("symlink to dir: {err}"))?;
+            if DoctorRootPath::classify(&link_to_dir) != DoctorRootPath::Directory {
+                failures.push(format!(
+                    "symlink-to-dir classified as {:?}",
+                    DoctorRootPath::classify(&link_to_dir)
+                ));
+            }
+            let link_to_file = dir.join("link-to-file");
+            std::os::unix::fs::symlink(&file, &link_to_file)
+                .map_err(|err| format!("symlink to file: {err}"))?;
+            if DoctorRootPath::classify(&link_to_file) != DoctorRootPath::NotADirectory {
+                failures.push(format!(
+                    "symlink-to-file classified as {:?}",
+                    DoctorRootPath::classify(&link_to_file)
+                ));
+            }
+            let dangling = dir.join("dangling");
+            std::os::unix::fs::symlink(dir.join("no-such-target"), &dangling)
+                .map_err(|err| format!("dangling symlink: {err}"))?;
+            if DoctorRootPath::classify(&dangling) != DoctorRootPath::NotADirectory {
+                failures.push(format!(
+                    "dangling symlink classified as {:?}",
+                    DoctorRootPath::classify(&dangling)
+                ));
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_root_is_not_reported_as_missing() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = unique_test_dir("unreadable-parent");
+        std::fs::create_dir_all(parent.join("blocked"))
+            .map_err(|err| format!("create unreadable fixture: {err}"))?;
+        let child = parent.join("blocked");
+        let restore = |mode: u32| -> Result<(), String> {
+            std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(mode))
+                .map_err(|err| format!("restore parent mode {mode:#o}: {err}"))
+        };
+        restore(0o000)?;
+        let classified = DoctorRootPath::classify(&child);
+        let (report, probed) = evaluate_without_rust_toolchain(&child, &[LanguageId::Rust]);
+        restore(0o755)?;
+        let _ = std::fs::remove_dir_all(&parent);
+        if classified != DoctorRootPath::Unreadable {
+            return Err(format!("unreadable child classified as {classified:?}"));
+        }
+        assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "cannot determine",
+            "does not exist",
+            "the root directory cannot be read",
+        )?;
+        json_root_directory_evidence_distinguishes(&report, "cannot determine", "does not exist")
+    }
+
+    /// `metadata` follows the link; `symlink_metadata` sees the live name.
+    /// A follow `PermissionDenied` must not inherit the dangling-link
+    /// `NotADirectory` arm (#5101).
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_into_an_unreadable_directory_is_not_reported_as_a_file() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = unique_test_dir("unreadable-symlink-follow");
+        let jail = parent.join("jail");
+        let target = jail.join("actual_dir");
+        std::fs::create_dir_all(&target)
+            .map_err(|err| format!("create unreadable follow target: {err}"))?;
+        let link = parent.join("link-to-jailed-dir");
+        std::os::unix::fs::symlink(&target, &link)
+            .map_err(|err| format!("symlink into jail: {err}"))?;
+        let restore = |mode: u32| -> Result<(), String> {
+            std::fs::set_permissions(&jail, std::fs::Permissions::from_mode(mode))
+                .map_err(|err| format!("restore jail mode {mode:#o}: {err}"))
+        };
+        restore(0o000)?;
+        let classified = DoctorRootPath::classify(&link);
+        let (report, probed) = evaluate_without_rust_toolchain(&link, &[LanguageId::Rust]);
+        restore(0o755)?;
+        let _ = std::fs::remove_dir_all(&parent);
+        if classified != DoctorRootPath::Unreadable {
+            return Err(format!(
+                "symlink into an unreadable directory classified as {classified:?}"
+            ));
+        }
+        assert_unusable_root_skips_root_bound_probes(
+            &report,
+            &probed,
+            "cannot determine",
+            "is not a directory",
+            "the root directory cannot be read",
+        )?;
+        json_root_directory_evidence_distinguishes(
+            &report,
+            "cannot determine",
+            "is not a directory",
+        )
+    }
+
+    #[test]
+    fn doctor_root_path_recovery_guidance_does_not_borrow_sibling_wording() {
+        let missing = DoctorRootPath::Missing.recovery_guidance();
+        let file = DoctorRootPath::NotADirectory.recovery_guidance();
+        let unreadable = DoctorRootPath::Unreadable.recovery_guidance();
+        let directory = DoctorRootPath::Directory.recovery_guidance();
+        assert!(
+            missing.contains("does not exist") && !missing.contains("is not a directory"),
+            "missing guidance: {missing}"
+        );
+        assert!(
+            file.contains("exists but is not a directory") && !file.contains("does not exist"),
+            "file guidance: {file}"
+        );
+        assert!(
+            unreadable.contains("could not be read") && !unreadable.contains("does not exist"),
+            "unreadable guidance: {unreadable}"
+        );
+        assert!(
+            !directory.contains("does not exist") && !directory.contains("is not a directory"),
+            "directory re-classify guidance must not claim absence or a file: {directory}"
+        );
+    }
+
+    /// Shared #4531/#5101 oracle: an unusable root still fails
+    /// `root_directory`, skips root-bound probes, and must not borrow the
+    /// sibling state's wording.
+    fn assert_unusable_root_skips_root_bound_probes(
+        report: &DoctorReport,
+        probed: &[String],
+        root_evidence_fragment: &str,
+        absent_evidence_fragment: &str,
+        skip_reason: &str,
+    ) -> Result<(), String> {
+        if probed != ["git"] {
+            return Err(format!(
+                "only git may be probed for an unusable root: {probed:?}"
+            ));
+        }
+        let root_check = check(report, "root_directory")?;
+        if root_check.status != DoctorCheckStatus::Fail {
+            return Err(format!(
+                "an unusable root itself must still fail doctor: {root_check:?}"
+            ));
+        }
+        let evidence = root_check.evidence.as_deref().unwrap_or_default();
+        if !evidence.contains(root_evidence_fragment) {
+            return Err(format!(
+                "root_directory evidence missing {root_evidence_fragment:?}: {evidence:?}"
+            ));
+        }
+        if evidence.contains(absent_evidence_fragment) {
+            return Err(format!(
+                "root_directory evidence must not claim {absent_evidence_fragment:?}: {evidence:?}"
+            ));
         }
         for name in ["tool_cargo", "tool_rustc", "git_repository"] {
-            let found = check(&report, name)?;
-            if found.status != DoctorCheckStatus::Skipped
-                || !found
-                    .evidence
-                    .as_deref()
-                    .is_some_and(|text| text.ends_with("the root directory does not exist"))
-            {
-                return Err(format!("{name} must be skipped with the reason: {found:?}"));
+            let found = check(report, name)?;
+            let skip_evidence = found.evidence.as_deref().unwrap_or_default();
+            if found.status != DoctorCheckStatus::Skipped || !skip_evidence.ends_with(skip_reason) {
+                return Err(format!(
+                    "{name} must be skipped with {skip_reason:?}: {found:?}"
+                ));
             }
+            if skip_evidence.contains(absent_evidence_fragment) {
+                return Err(format!(
+                    "{name} skip reason must not claim {absent_evidence_fragment:?}: {found:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn json_root_directory_evidence_distinguishes(
+        report: &DoctorReport,
+        present: &str,
+        absent: &str,
+    ) -> Result<(), String> {
+        let parsed: serde_json::Value = serde_json::from_str(&report.render_json()?)
+            .map_err(|error| format!("parse doctor JSON: {error}"))?;
+        let evidence = parsed["checks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|check| check["name"] == "root_directory")
+            .and_then(|check| check["evidence"].as_str())
+            .ok_or_else(|| format!("JSON omitted root_directory evidence: {parsed}"))?;
+        if !evidence.contains(present) || evidence.contains(absent) {
+            return Err(format!(
+                "JSON root_directory evidence must contain {present:?} and not {absent:?}: {evidence:?}"
+            ));
         }
         Ok(())
     }
@@ -2797,6 +3197,39 @@ mod tests {
                 ],
                 "the missing-root recovery names the runnable command and the --root guidance"
             );
+        }
+        let file_root_dir = unique_test_dir("missing-root-guidance-file");
+        std::fs::create_dir_all(&file_root_dir)
+            .map_err(|error| format!("create file-root fixture: {error}"))?;
+        let file_root = file_root_dir.join("Cargo.toml");
+        std::fs::write(&file_root, "[package]\nname = \"file-root\"\n")
+            .map_err(|error| format!("write file-root fixture: {error}"))?;
+        let file_guidance = DoctorFirstCommand::MissingRoot.recommendation_lines_for(&file_root);
+        let _ = std::fs::remove_dir_all(&file_root_dir);
+        if file_guidance
+            .iter()
+            .all(|line| !line.contains("exists but is not a directory"))
+            || file_guidance
+                .iter()
+                .any(|line| line.contains("does not exist"))
+        {
+            return Err(format!(
+                "a file root must get not-a-directory guidance, not missing-path guidance: {file_guidance:?}"
+            ));
+        }
+        let existing_dir = unique_test_dir("missing-root-guidance-dir");
+        std::fs::create_dir_all(&existing_dir)
+            .map_err(|error| format!("create directory-root fixture: {error}"))?;
+        let directory_guidance =
+            DoctorFirstCommand::MissingRoot.recommendation_lines_for(&existing_dir);
+        let _ = std::fs::remove_dir_all(&existing_dir);
+        if directory_guidance
+            .iter()
+            .any(|line| line.contains("does not exist") || line.contains("is not a directory"))
+        {
+            return Err(format!(
+                "MissingRoot re-classifying an existing directory must not claim it is absent or a file: {directory_guidance:?}"
+            ));
         }
         // An unavailable relative root is bound to the producing directory,
         // but `..` must retain filesystem traversal rather than lexical cleanup.
