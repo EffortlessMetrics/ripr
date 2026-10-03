@@ -7203,7 +7203,14 @@ fn agent_receipt_attempt_flag_selects_one_attempt_and_refusals_name_ids()
         run_command(env!("CARGO_BIN_EXE_ripr"), Some(root), &args)
     }
 
+    struct ReceiptScratch(PathBuf);
+    impl Drop for ReceiptScratch {
+        fn drop(&mut self) {
+            ignore_remove_dir_all(&self.0);
+        }
+    }
     let root = unbuilt_repair_fixture("agent-receipt-attempt-selection")?;
+    let _root_cleanup = ReceiptScratch(root.clone());
 
     // Attempt A: prepared, then failed by a committed production-only edit.
     // The gap stays open (no test was added), so a fresh attempt for the same
@@ -7365,6 +7372,179 @@ fn agent_receipt_attempt_flag_selects_one_attempt_and_refusals_name_ids()
         attempt_b.as_str(),
         "{receipt}"
     );
+    // The installed journeys use authored synthetic seam identities. This
+    // control projects their committed command grammar onto this genuine Rust
+    // repair attempt; it does not execute the three installed-language fixtures.
+    let corpus: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        workspace_root().join("fixtures/blind_journey_execute/corpus.json"),
+    )?)?;
+    let scenarios = corpus["scenarios"].as_array().ok_or("corpus scenarios")?;
+    let launch = unique_temp_workspace("installed-receipt-command-launch");
+    let _launch_cleanup = ReceiptScratch(launch.clone());
+    std::fs::create_dir_all(&launch)?;
+    let out = root.join("target/ripr/reports/agent-receipt.json");
+    let mut positive_rows = 0usize;
+    for (language, authored_seam) in [
+        ("rust", "seam-tier-boundary-equality"),
+        ("python", "seam-discount-boundary-equality"),
+        ("typescript", "seam-pricing-threshold-equality"),
+    ] {
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(workspace_root().join(format!(
+                "fixtures/blind_journey_installed_{language}/manifest.json"
+            )))?)?;
+        assert_eq!(manifest["journey"]["eligible_items"][0], authored_seam);
+        let template = manifest["journey"]["printed_command_templates"]["agent_receipt"]
+            .as_str()
+            .ok_or("receipt template")?;
+        let tokens: Vec<&str> = template.split_whitespace().collect();
+        let prefix = tokens
+            .get(..3)
+            .ok_or_else(|| format!("{language} receipt template has fewer than three tokens"))?;
+        assert_eq!(prefix, &["ripr", "agent", "receipt"], "{language}");
+        let seam_position = tokens
+            .iter()
+            .position(|token| *token == "--seam-id")
+            .ok_or("template seam flag")?;
+        assert_eq!(
+            tokens.get(seam_position + 1),
+            Some(&authored_seam),
+            "{language} receipt template seam value",
+        );
+        let mut language_rows = 0usize;
+        for row in scenarios.iter().filter(|row| {
+            row["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with(&format!("installed_{language}_")))
+                && row["expected"]["terminal"] == "passed_blind_journey"
+        }) {
+            let actions = row["journey"]["actions"]
+                .as_array()
+                .ok_or("journey actions")?;
+            let commands: Vec<&str> = actions
+                .iter()
+                .filter_map(|action| {
+                    action["input_bytes"]
+                        .as_str()
+                        .filter(|input| input.starts_with("argv:ripr agent receipt "))
+                })
+                .collect();
+            assert_eq!(commands.len(), 1, "{}", row["id"]);
+            let (authored_root, tail) = commands[0]
+                .strip_prefix("argv:ripr agent receipt --root '")
+                .ok_or("literal receipt root")?
+                .split_once("' --attempt ")
+                .ok_or("literal receipt attempt")?;
+            let (authored_attempt, _) = tail.split_once(' ').ok_or("attempt value")?;
+            let expected = format!(
+                "argv:{}",
+                template
+                    .replace("<selected-root>", &format!("'{authored_root}'"))
+                    .replace("<repair-attempt-id>", authored_attempt)
+            );
+            assert_eq!(commands[0], expected, "{}", row["id"]);
+            language_rows += 1;
+        }
+        assert_eq!(language_rows, 3, "{language} positive rows");
+        positive_rows += language_rows;
+        // Tokenize before substituting paths: no shell, help shortcut, or
+        // scripted executor stands in for the actual public CLI below.
+        let args: Vec<String> = tokens[1..]
+            .iter()
+            .map(|token| match *token {
+                "<selected-root>" => root.display().to_string(),
+                "<repair-attempt-id>" => attempt_b.clone(),
+                value if value == authored_seam => BOUNDARY_GAP_SEAM_ID.to_string(),
+                value => value.to_string(),
+            })
+            .collect();
+        let invoke = |args: &[String]| {
+            let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+            spawn_command(
+                env!("CARGO_BIN_EXE_ripr"),
+                Some(&launch),
+                &borrowed,
+                &[],
+                None,
+                Some(&[]),
+            )
+        };
+        let accepted = invoke(&args)?;
+        assert_success(&accepted);
+        // --out deliberately writes the JSON file instead of printing JSON.
+        assert!(accepted.stdout.is_empty(), "{language} --out stdout");
+        let bound: serde_json::Value = serde_json::from_slice(&std::fs::read(&out)?)?;
+        assert_eq!(bound["status"], "advisory");
+        assert_eq!(
+            bound["provenance"]["verify_artifact"]["sha256"]
+                .as_str()
+                .ok_or("bound verify digest")?,
+            receipt["provenance"]["verify_artifact"]["sha256"]
+                .as_str()
+                .ok_or("control verify digest")?,
+        );
+        assert_eq!(bound["repair_attempt"]["attempt_id"], attempt_b);
+        assert_eq!(bound["seam"]["seam_id"], BOUNDARY_GAP_SEAM_ID);
+        assert_eq!(
+            bound["provenance"]["repo_root"]
+                .as_str()
+                .ok_or("bound receipt root")?,
+            receipt["provenance"]["repo_root"]
+                .as_str()
+                .ok_or("control receipt root")?,
+        );
+        assert!(
+            !launch
+                .join("target/ripr/reports/agent-receipt.json")
+                .exists()
+        );
+        std::fs::remove_file(&out)?;
+        for (omitted, diagnostic) in [
+            ("all", "agent receipt requires --verify-json <path>"),
+            (
+                "--verify-json",
+                "agent receipt requires --verify-json <path>",
+            ),
+            ("--seam-id", "agent receipt requires --seam-id"),
+            (
+                "--json",
+                "agent receipt requires --json (the supported output for this subcommand)",
+            ),
+        ] {
+            let mut incomplete = Vec::new();
+            let mut index = 0usize;
+            while index < args.len() {
+                let token = args[index].as_str();
+                let remove = token == omitted
+                    || (omitted == "all"
+                        && matches!(token, "--verify-json" | "--seam-id" | "--json"));
+                if remove {
+                    index += if token == "--json" { 1 } else { 2 };
+                } else {
+                    incomplete.push(args[index].clone());
+                    index += 1;
+                }
+            }
+            let refused = invoke(&incomplete)?;
+            assert_failure(&refused);
+            assert!(
+                String::from_utf8_lossy(&refused.stderr).contains(diagnostic),
+                "{language} {omitted}: {}",
+                String::from_utf8_lossy(&refused.stderr)
+            );
+            assert!(
+                !out.exists(),
+                "{language} {omitted} must not write a receipt"
+            );
+            assert!(
+                !launch
+                    .join("target/ripr/reports/agent-receipt.json")
+                    .exists()
+            );
+        }
+    }
+    assert_eq!(positive_rows, 9);
+    std::fs::remove_dir_all(launch)?;
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

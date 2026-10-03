@@ -242,6 +242,8 @@ jobs:
             target/nextest/ci/python-symlink-source-admission-cli-${{ github.run_id }}-${{ github.run_attempt }}.txt
             target/ripr/reports/repair-card-usability.json
             target/ripr/reports/repair-card-usability.md
+            target/ripr/reports/blind-journey-execute.json
+            target/ripr/reports/blind-journey-execute.md
           if-no-files-found: warn
           retention-days: 5
 

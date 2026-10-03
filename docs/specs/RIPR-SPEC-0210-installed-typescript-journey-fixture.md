@@ -105,6 +105,14 @@ named scenario's candidate identities bind the manifest snapshot its
 `scenario_snapshot_bindings` entry designates — never the unchanged `base`
 snapshot and never another variant.
 
+The receipt template and three positive scripted receipt inputs include the
+workflow verification artifact, the language's authored seam identity and JSON
+output required by the public parser. The existing public CLI receipt-attempt
+control projects each committed template onto a genuine Rust repair attempt and
+checks receipt binding plus incomplete-argument refusals. That parser/control
+proof does not execute the authored installed-language fixture or establish blind
+acceptance; the real candidate-bound installed journey remains separate.
+
 ## Required Evidence
 
 - `cargo xtask check-fixture-contracts` recomputes every snapshot digest and

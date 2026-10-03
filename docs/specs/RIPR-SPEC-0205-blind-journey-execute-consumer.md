@@ -112,6 +112,12 @@ scripted evidence supports.
 
 ## Required Evidence
 
+- The required native committed-corpus test regenerates the JSON/Markdown
+  assessment; the existing always-uploaded required-test artifact retains those
+  exact two report paths alongside JUnit and run context. Acceptance requires
+  that actual test to pass on the recorded checkout, plus matching current corpus
+  counts and input digests. Report file existence alone is not fresh execution
+  proof, and the scripted assessment does not qualify an installed candidate.
 - `cargo xtask blind-journey-execute` rebuilds the assessment in CI, checks
   the committed corpus against the live executor, validates the decision
   receipt, and writes `target/ripr/reports/blind-journey-execute.{md,json}`.

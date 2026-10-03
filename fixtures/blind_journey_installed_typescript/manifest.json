@@ -152,7 +152,7 @@
    "agent_status": "ripr agent status --root <selected-root>",
    "repair_before": "ripr agent repair --root <selected-root> --seam-id seam-pricing-threshold-equality --phase before",
    "repair_after": "ripr agent repair --root <selected-root> --attempt <repair-attempt-id> --phase after",
-   "agent_receipt": "ripr agent receipt --root <selected-root> --attempt <repair-attempt-id> --out target/ripr/reports/agent-receipt.json",
+   "agent_receipt": "ripr agent receipt --root <selected-root> --attempt <repair-attempt-id> --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-pricing-threshold-equality --json --out target/ripr/reports/agent-receipt.json",
    "verification": "vitest run test/pricing.test.ts"
   },
   "substitution_contract": "<selected-root> and <repair-attempt-id> are the only placeholders; the product prints concrete values and the scripted transcript records the printed bytes literally, executed from a foreign launch directory against the selected root; the printed vitest command runs in the documented npm environment selected by the retained lockfile."

@@ -11228,6 +11228,7 @@ fixtures = [
   "fixtures/blind_journey_execute",
 ]
 code = [
+  ".github/workflows/rust-gates.yml",
   "xtask/src/blind_journey_execute.rs",
   "xtask/src/reports/blind_journey_execute.rs",
   "xtask/src/fixture_contracts/general_validators.rs",
@@ -11385,6 +11386,7 @@ id = "RIPR-SPEC-0207"
 name = "Installed Rust journey fixture"
 spec = "docs/specs/RIPR-SPEC-0207-installed-rust-journey-fixture.md"
 tests = [
+  "crates/ripr/tests/cli_smoke.rs::agent_receipt_attempt_flag_selects_one_attempt_and_refusals_name_ids",
   "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::committed_installed_rust_manifest_binds_the_snapshot_bytes",
   "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::committed_installed_rust_scenarios_exist_in_the_executor_corpus",
   "xtask/src/fixture_contracts/general_validators.rs::installed_rust_fixture_tests::unknown_installed_rust_scenario_is_reported_missing",
@@ -11400,6 +11402,7 @@ fixtures = [
   "fixtures/blind_journey_execute",
 ]
 code = [
+  "crates/ripr/tests/cli_smoke.rs",
   "xtask/src/fixture_contracts/general_validators.rs",
   "xtask/src/fixture_contracts/installed_journey.rs",
   "xtask/src/blind_journey_execute.rs",
@@ -11416,6 +11419,7 @@ id = "RIPR-SPEC-0209"
 name = "Installed Python journey fixture"
 spec = "docs/specs/RIPR-SPEC-0209-installed-python-journey-fixture.md"
 tests = [
+  "crates/ripr/tests/cli_smoke.rs::agent_receipt_attempt_flag_selects_one_attempt_and_refusals_name_ids",
   "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::committed_installed_python_manifest_binds_the_snapshot_bytes",
   "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::committed_installed_python_scenarios_exist_in_the_executor_corpus",
   "xtask/src/fixture_contracts/general_validators.rs::installed_python_fixture_tests::unknown_installed_python_scenario_is_reported_missing",
@@ -11432,6 +11436,7 @@ fixtures = [
   "fixtures/blind_journey_execute",
 ]
 code = [
+  "crates/ripr/tests/cli_smoke.rs",
   "xtask/src/fixture_contracts/general_validators.rs",
   "xtask/src/fixture_contracts/installed_journey.rs",
   "xtask/src/blind_journey_execute.rs",
@@ -11483,6 +11488,7 @@ id = "RIPR-SPEC-0210"
 name = "Installed TypeScript journey fixture"
 spec = "docs/specs/RIPR-SPEC-0210-installed-typescript-journey-fixture.md"
 tests = [
+  "crates/ripr/tests/cli_smoke.rs::agent_receipt_attempt_flag_selects_one_attempt_and_refusals_name_ids",
   "xtask/src/fixture_contracts/general_validators.rs::installed_typescript_fixture_tests::committed_installed_typescript_manifest_binds_the_snapshot_bytes",
   "xtask/src/fixture_contracts/general_validators.rs::installed_typescript_fixture_tests::committed_installed_typescript_scenarios_exist_in_the_executor_corpus",
   "xtask/src/fixture_contracts/general_validators.rs::installed_typescript_fixture_tests::unknown_installed_typescript_scenario_is_reported_missing",
@@ -11499,6 +11505,7 @@ fixtures = [
   "fixtures/blind_journey_execute",
 ]
 code = [
+  "crates/ripr/tests/cli_smoke.rs",
   "xtask/src/fixture_contracts/general_validators.rs",
   "xtask/src/fixture_contracts/installed_journey.rs",
   "xtask/src/blind_journey_execute.rs",

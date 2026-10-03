@@ -3727,7 +3727,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-tier-boundary-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -5027,7 +5027,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/tier-fixture-境界' --attempt ra-tier-boundary-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-tier-boundary-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -5204,7 +5204,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/nested/../tier-fixture-境界' --attempt ra-tier-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed rust journey/nested/../tier-fixture-境界' --attempt ra-tier-boundary-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-tier-boundary-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -5391,7 +5391,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-discount-boundary-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -6775,7 +6775,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-discount-boundary-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -7079,7 +7079,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed python journey/discount-fixture-境界' --attempt ra-discount-boundary-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-discount-boundary-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -7276,7 +7276,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed typescript journey/pricing-fixture-境界' --attempt ra-pricing-threshold-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed typescript journey/pricing-fixture-境界' --attempt ra-pricing-threshold-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-pricing-threshold-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -7483,7 +7483,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed typescript journey/nested/../pricing-fixture-境界' --attempt ra-pricing-threshold-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed typescript journey/nested/../pricing-fixture-境界' --attempt ra-pricing-threshold-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-pricing-threshold-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
@@ -9809,7 +9809,7 @@
      {
       "kind": "receipt_execution",
       "subject": "ripr agent receipt",
-      "input_bytes": "argv:ripr agent receipt --root '/srv/installed typescript journey/pricing-fixture-境界' --attempt ra-pricing-threshold-0001 --out target/ripr/reports/agent-receipt.json",
+      "input_bytes": "argv:ripr agent receipt --root '/srv/installed typescript journey/pricing-fixture-境界' --attempt ra-pricing-threshold-0001 --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-pricing-threshold-equality --json --out target/ripr/reports/agent-receipt.json",
       "output_bytes": "receipt:movement-improved",
       "operator_visible": true,
       "intervention": null,
