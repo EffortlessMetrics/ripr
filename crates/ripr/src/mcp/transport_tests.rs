@@ -11,7 +11,13 @@ async fn read_frame<R: AsyncRead + Unpin>(
 #[tokio::test]
 async fn empty_or_syntax_invalid_eof_before_initialize_is_normal() -> Result<(), String> {
     for input in [b"".as_slice(), b"{unfinished".as_slice()] {
-        serve(input, Vec::<u8>::new(), WorkspaceStatus::resolve(None)).await?;
+        serve(
+            input,
+            Vec::<u8>::new(),
+            WorkspaceStatus::resolve_with_root(None).0,
+            None,
+        )
+        .await?;
     }
     Ok(())
 }

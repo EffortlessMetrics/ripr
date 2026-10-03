@@ -11523,3 +11523,54 @@ metrics = [
   "unit_test_pass_rate",
   "blind_journey_execute_positive_scenarios",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0211"
+name = "MCP workspace session evidence"
+spec = "docs/specs/RIPR-SPEC-0211-mcp-workspace-session-evidence.md"
+tests = [
+  "crates/ripr/src/mcp/workspace.rs::tests::complete_zero_and_incomplete_zero_stay_distinct",
+  "crates/ripr/src/mcp/workspace.rs::tests::unsupported_input_never_becomes_a_snapshot",
+  "crates/ripr/src/mcp/workspace.rs::tests::list_get_snapshot_before_any_refresh_fail_closed",
+  "crates/ripr/src/mcp/workspace.rs::tests::in_flight_session_reports_analysis_in_flight",
+  "crates/ripr/src/mcp/workspace.rs::tests::stale_snapshot_identity_fails_closed_with_current_identity",
+  "crates/ripr/src/mcp/workspace.rs::tests::snapshot_resource_binds_identity_and_typed_outcome",
+  "crates/ripr/src/mcp/workspace.rs::tests::unknown_item_fails_closed_and_never_fabricates_evidence",
+  "crates/ripr/src/mcp/workspace.rs::tests::session_document_projects_attempt_state_and_built_in_profile",
+  "crates/ripr/src/mcp/workspace.rs::tests::failure_detail_is_bounded_and_documents_carry_schema",
+  "crates/ripr/src/mcp/workspace.rs::tests::refresh_document_reports_failure_without_dropping_last_known_good",
+  "crates/ripr/src/mcp/workspace.rs::tests::portable_snapshot_identity_ignores_the_concrete_root",
+  "crates/ripr/src/mcp/workspace.rs::tests::reserved_failure_vocabulary_stays_named",
+  "crates/ripr/src/mcp/gaps.rs::tests::canonical_id_prefers_the_producer_gap_identity",
+  "crates/ripr/src/mcp/gaps.rs::tests::fallback_identity_uses_the_finding_id",
+  "crates/ripr/src/mcp/gaps.rs::tests::evidence_document_never_declares_repair_readiness",
+  "crates/ripr/src/mcp/gaps.rs::tests::complete_and_incomplete_evidence_stay_distinct",
+  "crates/ripr/src/mcp/gaps.rs::tests::resource_uri_parsing_is_strict",
+  "crates/ripr/src/mcp/protocol.rs::tests::status_tool_description_names_payload_scope_and_analysis_boundary",
+  "crates/ripr/src/mcp/protocol.rs::tests::tool_descriptions_state_positive_contracts_and_bounds",
+  "crates/ripr/src/mcp/protocol.rs::tests::status_resource_description_states_session_not_evidence",
+  "crates/ripr/src/mcp/protocol.rs::tests::resource_templates_expose_snapshot_and_gap_routes",
+  "crates/ripr/src/mcp/protocol.rs::tests::failure_vocabulary_covers_the_issue_contract",
+  "crates/ripr/src/mcp/protocol.rs::tests::instructions_name_the_progressive_flow_and_the_cli_route",
+  "crates/ripr/src/mcp/server_tests.rs::sdk_server_metadata_preserves_bounded_status_instructions",
+  "crates/ripr/src/mcp/server_tests.rs::sdk_server_declares_snapshot_and_gap_resource_templates",
+  "crates/ripr/src/mcp/server_tests.rs::list_gaps_before_any_refresh_is_a_typed_no_snapshot_failure",
+  "crates/ripr/src/mcp/server_tests.rs::get_gap_rejects_bad_arguments_at_the_dispatch_edge",
+  "crates/ripr/src/mcp/server.rs::tests",
+  "crates/ripr/src/mcp/transport.rs::tests",
+  "crates/ripr/tests/mcp_sdk.rs",
+  "crates/ripr/tests/mcp_stdio.rs::gap_tools_fail_closed_before_the_first_refresh",
+]
+code = [
+  "crates/ripr/src/mcp/workspace.rs",
+  "crates/ripr/src/mcp/gaps.rs",
+  "crates/ripr/src/mcp/protocol.rs",
+  "crates/ripr/src/mcp/server.rs",
+  "crates/ripr/src/mcp/transport.rs",
+  "crates/ripr/src/mcp/mod.rs",
+  "crates/ripr/src/workspace_status.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
+]

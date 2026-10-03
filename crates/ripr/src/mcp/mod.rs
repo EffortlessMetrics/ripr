@@ -1,7 +1,9 @@
 mod framing;
+mod gaps;
 mod protocol;
 mod server;
 mod transport;
+mod workspace;
 mod writer;
 
 use std::path::PathBuf;
@@ -9,24 +11,30 @@ use std::path::PathBuf;
 pub(super) const MAX_MESSAGE_BYTES: usize = 256 * 1024;
 pub(super) const MAX_RESPONSE_BYTES: usize = 128 * 1024;
 
-pub(crate) const MCP_HELP: &str = r#"Expose RIPR's bounded, read-only workspace status over the Model Context Protocol.
+pub(crate) const MCP_HELP: &str = r#"Expose RIPR's bounded, read-only workspace session over the Model Context Protocol.
 
 Usage: ripr mcp [--stdio] [--root PATH]
 
 Options:
   --stdio       Serve newline-delimited MCP JSON-RPC over stdin/stdout. This is
-                the default and only transport in the first supported slice.
+                the default and only transport in the supported slices.
   --root PATH   Use this exact repository root. Without it, RIPR starts at the
                 current directory and walks ancestors to the nearest supported
                 repository marker.
   --help, -h    Print this help.
   --version, -V Print the MCP server version.
 
-The MCP surface is read-only. It exposes `ripr_workspace_status` and
-`ripr://workspace/status`; it does not edit source, execute verification or
-mutation, load project-local provider configuration, or embed a model provider.
-It does not analyze the diff either: run `ripr check --format json` for findings.
-Protocol messages are the only stdout output. Operational failures use stderr.
+The MCP surface is read-only. It exposes tools `ripr_workspace_status`,
+`ripr_refresh`, `ripr_list_gaps`, and `ripr_get_gap`, the resource
+`ripr://workspace/status`, and the resource templates
+`ripr://snapshot/{snapshot_id}` and `ripr://gap/{canonical_item_id}`.
+`ripr_refresh` runs one bounded static analysis per call through the same
+shared check authority as `ripr check`; the other tools read the committed
+snapshot and never re-run analysis. The server does not edit source, execute
+verification or mutation commands, load project-local provider configuration,
+or embed a model provider, and no evidence document is ever a repair
+authorization. Protocol messages are the only stdout output. Operational
+failures use stderr.
 "#;
 
 pub fn run(args: &[String]) -> Result<(), String> {

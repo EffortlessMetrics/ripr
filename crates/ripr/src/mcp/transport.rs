@@ -252,14 +252,21 @@ impl<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin + Send + 'static> Transp
     }
 }
 pub(super) async fn serve_stdio(explicit_root: Option<PathBuf>) -> Result<(), String> {
+    let (status, analysis_root) = WorkspaceStatus::resolve_with_root(explicit_root);
     serve(
         tokio::io::stdin(),
         tokio::io::stdout(),
-        WorkspaceStatus::resolve(explicit_root),
+        status,
+        analysis_root,
     )
     .await
 }
-async fn serve<R, W>(reader: R, writer: W, status: WorkspaceStatus) -> Result<(), String>
+async fn serve<R, W>(
+    reader: R,
+    writer: W,
+    status: WorkspaceStatus,
+    analysis_root: Option<PathBuf>,
+) -> Result<(), String>
 where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -273,8 +280,8 @@ where
         pending_protocol_error: None,
         writer_needs_drain: false,
     };
-    let server =
-        McpServer::new(status).map_err(|_error| "MCP status projection failed".to_owned())?;
+    let server = McpServer::new(status, analysis_root)
+        .map_err(|_error| "MCP status projection failed".to_owned())?;
     let service = match server.serve(transport).await {
         Ok(service) => service,
         Err(error) => {

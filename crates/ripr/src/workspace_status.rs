@@ -155,7 +155,12 @@ pub(crate) enum NoAuthority {
 }
 
 impl WorkspaceStatus {
-    pub fn resolve(explicit_root: Option<PathBuf>) -> Self {
+    /// Resolve the status and retain the validated canonical root path for
+    /// in-process consumers that must operate from the same root (the MCP
+    /// refresh path runs the shared check authority from it). The path is
+    /// process-local state only: the serialized status document keeps the
+    /// hashed identity and never carries an absolute path.
+    pub(crate) fn resolve_with_root(explicit_root: Option<PathBuf>) -> (Self, Option<PathBuf>) {
         let resolved = resolve_root(explicit_root);
         let workspace_state = if resolved.root.state == RootState::Validated {
             WorkspaceState::Ready
@@ -166,7 +171,7 @@ impl WorkspaceStatus {
             project_config_state: resolved.project_config_state,
         };
 
-        Self {
+        let status = Self {
             schema_version: WORKSPACE_STATUS_SCHEMA_VERSION,
             workspace_state,
             root: resolved.root,
@@ -187,7 +192,8 @@ impl WorkspaceStatus {
                 "or claim runtime correctness."
             ),
             limitations: limitations(resolved.project_config_state),
-        }
+        };
+        (status, resolved.canonical_root)
     }
 }
 
@@ -211,6 +217,10 @@ fn limitations(project_config_state: ProjectConfigState) -> Vec<&'static str> {
 struct ResolvedRoot {
     root: RootStatus,
     project_config_state: ProjectConfigState,
+    /// The validated canonical root path, retained process-locally for
+    /// in-process consumers (MCP refresh). Always `None` for an unavailable
+    /// root and never part of the serialized status document.
+    canonical_root: Option<PathBuf>,
 }
 
 fn resolve_root(explicit_root: Option<PathBuf>) -> ResolvedRoot {
@@ -286,6 +296,7 @@ fn validate_root(root: PathBuf, source: RootSource) -> ResolvedRoot {
             error_code: None,
         },
         project_config_state,
+        canonical_root: Some(canonical),
     }
 }
 
@@ -303,6 +314,7 @@ fn unavailable_root_with_source(source: RootSource, error_code: RootErrorCode) -
             error_code: Some(error_code),
         },
         project_config_state: ProjectConfigState::Unavailable,
+        canonical_root: None,
     }
 }
 
@@ -394,7 +406,7 @@ mod tests {
         std::fs::write(root.join("ripr.toml"), "mode = \"draft\"\n")
             .map_err(|error| error.to_string())?;
 
-        let status = WorkspaceStatus::resolve(Some(root.clone()));
+        let status = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
         let encoded = serde_json::to_string(&status).map_err(|error| error.to_string())?;
         let canonical = root
             .canonicalize()
@@ -440,7 +452,7 @@ mod tests {
         std::fs::write(root.join("pyproject.toml"), "[project]\nname = \"p\"\n")
             .map_err(|error| error.to_string())?;
 
-        let without = WorkspaceStatus::resolve(Some(root.clone()));
+        let without = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
         if without.configuration.project_config_state != ProjectConfigState::BuiltInDefaultsOnly {
             return Err("a root without ripr.toml must use built-in defaults".to_string());
         }
@@ -453,7 +465,7 @@ mod tests {
 
         std::fs::write(root.join("ripr.toml"), "mode = \"draft\"\n")
             .map_err(|error| error.to_string())?;
-        let with = WorkspaceStatus::resolve(Some(root.clone()));
+        let with = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
         if with.configuration.project_config_state != ProjectConfigState::DetectedNotLoaded
             || !with.limitations.contains(&DETECTED)
         {
@@ -464,7 +476,7 @@ mod tests {
         }
         std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
 
-        let missing = WorkspaceStatus::resolve(Some(root));
+        let missing = WorkspaceStatus::resolve_with_root(Some(root)).0;
         if missing.workspace_state != WorkspaceState::Unavailable
             || missing.limitations.contains(&DETECTED)
         {
@@ -479,7 +491,7 @@ mod tests {
     #[test]
     fn invalid_explicit_root_fails_closed_without_path_disclosure() -> Result<(), String> {
         let root = temporary_root("missing");
-        let status = WorkspaceStatus::resolve(Some(root.clone()));
+        let status = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
         let encoded = serde_json::to_string(&status).map_err(|error| error.to_string())?;
 
         if status.workspace_state != WorkspaceState::Unavailable {
@@ -500,7 +512,7 @@ mod tests {
         let root = temporary_root("git-only");
         std::fs::create_dir_all(root.join(".git")).map_err(|error| error.to_string())?;
 
-        let status = WorkspaceStatus::resolve(Some(root.clone()));
+        let status = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
 
         if status.workspace_state != WorkspaceState::Ready {
             return Err("a .git-only repository must not be rejected as unmarked".to_string());
@@ -527,7 +539,7 @@ mod tests {
         std::fs::write(root.join(".git"), "gitdir: /elsewhere\n")
             .map_err(|error| error.to_string())?;
 
-        let status = WorkspaceStatus::resolve(Some(root.clone()));
+        let status = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
 
         if status.workspace_state != WorkspaceState::Ready {
             return Err("a gitfile-only repository must not be rejected as unmarked".to_string());
@@ -549,7 +561,7 @@ mod tests {
         std::fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = []\n")
             .map_err(|error| error.to_string())?;
 
-        let status = WorkspaceStatus::resolve(Some(root.clone()));
+        let status = WorkspaceStatus::resolve_with_root(Some(root.clone())).0;
 
         if status.workspace_state != WorkspaceState::Ready {
             return Err("a .git plus project-file root must stay ready".to_string());

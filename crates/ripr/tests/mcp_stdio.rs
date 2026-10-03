@@ -748,9 +748,117 @@ fn unsupported_inline_version_is_rejected_and_next_request_recovers() -> Result<
         || recovered
             .pointer("/result/tools")
             .and_then(Value::as_array)
-            .is_none_or(|tools| tools.len() != 1)
+            .is_none_or(|tools| tools.len() != 4)
     {
-        return Err("valid inline request did not recover the single status tool".into());
+        return Err("valid inline request did not recover the four-tool slice surface".into());
+    }
+    Ok(())
+}
+
+/// The evidence tools fail closed on the wire before the first refresh:
+/// a stock-shaped raw client gets typed structured failures (never a
+/// partial document), and the snapshot/gap resource reads route through the
+/// same typed state. No analysis runs in this control.
+#[test]
+fn gap_tools_fail_closed_before_the_first_refresh() -> Result<(), String> {
+    let root = workspace_root()?;
+    let request_bytes = [
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "discover",
+            "method": "server/discover",
+            "params": { "_meta": current_meta() }
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "templates",
+            "method": "resources/templates/list",
+            "params": { "_meta": current_meta() }
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "list",
+            "method": "tools/call",
+            "params": {
+                "_meta": current_meta(),
+                "name": "ripr_list_gaps",
+                "arguments": {}
+            }
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "get",
+            "method": "tools/call",
+            "params": {
+                "_meta": current_meta(),
+                "name": "ripr_get_gap",
+                "arguments": { "gap_id": "gap:any" }
+            }
+        }))?,
+        line(json!({
+            "jsonrpc": "2.0",
+            "id": "snapshot",
+            "method": "resources/read",
+            "params": {
+                "_meta": current_meta(),
+                "uri": "ripr://snapshot/snapshot:sha256:absent"
+            }
+        }))?,
+    ]
+    .concat();
+    let output = run_mcp(&root, &[&request_bytes])?;
+    let responses = response_lines(&output)?;
+    if responses.len() != 5 {
+        return Err(format!("expected 5 MCP responses, got {}", responses.len()));
+    }
+    let templates = responses[1]
+        .pointer("/result/resourceTemplates")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "resources/templates/list omitted resourceTemplates".to_string())?;
+    let template_uris = templates
+        .iter()
+        .filter_map(|template| template.pointer("/uriTemplate").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    for expected in [
+        "ripr://snapshot/{snapshot_id}",
+        "ripr://gap/{canonical_item_id}",
+    ] {
+        if !template_uris.contains(&expected) {
+            return Err(format!(
+                "resource templates lost {expected}: {template_uris:?}"
+            ));
+        }
+    }
+    for (index, id) in [(2, "list"), (3, "get")] {
+        let response = &responses[index];
+        if response.pointer("/id").and_then(Value::as_str) != Some(id) {
+            return Err(format!("{id} response lost its request id: {response}"));
+        }
+        if response.pointer("/result/isError").and_then(Value::as_bool) != Some(true) {
+            return Err(format!(
+                "{id} must fail closed with isError before refresh: {response}"
+            ));
+        }
+        if response
+            .pointer("/result/structuredContent/failure/code")
+            .and_then(Value::as_str)
+            != Some("no_snapshot")
+        {
+            return Err(format!(
+                "{id} must fail closed with typed no_snapshot: {response}"
+            ));
+        }
+    }
+    let snapshot = &responses[4];
+    if snapshot.pointer("/error/code").and_then(Value::as_i64) != Some(-32602) {
+        return Err(format!(
+            "unknown snapshot resource must stay a current-version resource miss: {snapshot}"
+        ));
+    }
+    if snapshot.pointer("/error/data/code").and_then(Value::as_str) != Some("no_snapshot") {
+        return Err(format!(
+            "unknown snapshot resource lost its typed state: {snapshot}"
+        ));
     }
     Ok(())
 }

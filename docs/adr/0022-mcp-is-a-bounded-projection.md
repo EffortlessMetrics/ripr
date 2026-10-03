@@ -2,7 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-08-27
-- Related: #1599, #3087, #3088, #3094
+- Related: #1599, #3087, #3088, #3094, #3089 (slice B: status, refresh,
+  bounded gap lists, and evidence resources)
 
 ## Context
 
@@ -147,3 +148,32 @@ controls cover receive cancellation, partial-write cancellation, giant readable
 IDs and the real official SDK clients. The earlier giant-ID and cancellation
 behavioral failures remain historical evidence; successor verification must
 bind native exits and nonzero selections to its own candidate.
+
+## Slice B (#3089): refresh, bounded gap lists, and evidence resources
+
+The status-only slice above was extended by #3089 without moving any
+authority into the transport. The server remains a bounded adapter over
+shared RIPR authority:
+
+- `ripr_refresh` runs one bounded static analysis per call through the
+  shared `app::check_workspace` authority — the same in-process analysis
+  `ripr check` and the language server run. Analysis is read-only static
+  evidence production, not execution authority; the adapter still declares
+  source-edit, verification-execution, mutation-execution, and
+  model-provider authority as none.
+- The session keeps one in-memory completed snapshot (content-addressed
+  `snapshot:sha256:` identity over the typed `AnalysisOutcome` and the
+  canonical item identities). A cancelled or superseded attempt is never
+  committed; a failed attempt never replaces the last-known-good snapshot.
+- `ripr_list_gaps` serves the snapshot's stored shared diagnostic-budget
+  selection (`lsp::diagnostic_budget`); the adapter never re-ranks and
+  discloses every omitted identity and reason.
+- `ripr_get_gap` and `ripr://gap/{canonical_item_id}` serve one canonical
+  item's complete bounded evidence. Readiness is always a hard negative
+  (`repair_packet_ready: false`); bounded repair surfaces, CommandSpec
+  routes, and repair-attempt resources belong to #3090, and the
+  repair-attempt link stays an explicit null.
+- Project-local configuration stays detected-not-loaded; refresh runs with
+  built-in defaults. No LSP protocol object is parsed and no VS Code
+  artifact is read as authority: MCP and LSP remain peers over the same
+  producers.
