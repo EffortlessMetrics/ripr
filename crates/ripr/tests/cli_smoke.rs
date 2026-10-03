@@ -7494,6 +7494,12 @@ fn agent_verify_rejects_plausible_uncommitted_json() -> Result<(), Box<dyn std::
     ]);
     assert_failure(&output);
     assert!(String::from_utf8_lossy(&output.stderr).contains("canonical repo-exposure artifact"));
+    let diagnostic = String::from_utf8_lossy(&output.stderr);
+    assert!(diagnostic.contains("legacy or unknown producer"));
+    assert!(diagnostic.contains(env!("CARGO_PKG_VERSION")));
+    assert!(diagnostic.contains("recovered.repo-exposure.json"));
+    assert!(diagnostic.contains("Replace this input"));
+    assert!(!diagnostic.contains("missing field"));
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

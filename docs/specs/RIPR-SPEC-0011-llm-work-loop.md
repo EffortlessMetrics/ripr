@@ -673,6 +673,26 @@ it does not execute the command or grant edit authority.
 
 ## Metrics
 
+### Legacy repo-exposure refusal (#5115)
+
+If canonical artifact parsing fails, a JSON document with string schema_version,
+scope `repo`, an array of seams and no artifact envelope receives an explicit
+legacy/unknown-producer refusal. The diagnostic names the current RIPR contract
+and a selected-root regeneration command, writing `recovered.repo-exposure.json`
+directly within that root so no workflow directory must already exist. It names
+the affected input for replacement without treating a shared-consumer label as
+a CLI option. The selected root is bound at production for foreign-CWD replay.
+This diagnosis never accepts
+legacy evidence or authenticates an executable. Malformed/unrelated JSON and
+present-but-invalid envelopes retain canonical parsing errors. Existing current
+artifact commitment and root/currentness validation still govern acceptance.
+Recovery labels the Bash/Git Bash form and the PowerShell form translated by
+the existing Markdown command helper. If that helper refuses translation, the
+diagnostic labels the command Bash/Git Bash only and names PowerShell recovery
+as unavailable. Root apostrophes and dollar signs remain literal path text.
+Printed recovery still requires the current installed RIPR executable; this
+partial repair does not bind PATH or qualify installed binary substitution.
+
 - `agent_loop_status_available`
 - `agent_workflow_manifest_available`
 - `agent_receipt_provenance_available`

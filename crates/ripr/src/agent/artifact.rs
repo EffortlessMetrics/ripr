@@ -218,6 +218,25 @@ pub(crate) fn validate_repo_exposure_artifact(
     label: &str,
 ) -> Result<ValidatedArtifact, String> {
     let document: RepoExposureDocument = serde_json::from_str(raw).map_err(|err| {
+        if is_unversioned_repo_exposure(raw) {
+            let bash_recovery = super::loop_commands::check_repo_exposure_command(
+                &super::loop_commands::bound_root(&root.to_string_lossy()),
+                "draft",
+                "recovered.repo-exposure.json",
+            );
+            let recovery = match crate::output::markdown::powershell_command(&bash_recovery) {
+                Some(powershell) => {
+                    format!("Bash/Git Bash: `{bash_recovery}`; PowerShell: `{powershell}`")
+                }
+                None => format!(
+                    "Bash/Git Bash only: `{bash_recovery}` (PowerShell recovery unavailable)"
+                ),
+            };
+            return format!(
+                "agent verify {label} artifact is not a canonical repo-exposure artifact: no RIPR producer envelope (legacy or unknown producer); expected the current RIPR {} repo-exposure contract. Regenerate with the current installed RIPR executable. {recovery}. Replace this input with the regenerated artifact; the legacy artifact was not accepted",
+                env!("CARGO_PKG_VERSION")
+            );
+        }
         format!("agent verify {label} artifact is not a canonical repo-exposure artifact: {err}")
     })?;
     let RepoExposureDocument {
@@ -386,6 +405,18 @@ pub(crate) fn validate_repo_exposure_artifact(
         analysis_profile: identity.analysis.profile,
         content_sha256: identity.content_sha256,
     })
+}
+
+/// Classify only the old repo-exposure shape after canonical parsing refused it.
+/// This diagnosis never admits an artifact or authenticates a producer version.
+fn is_unversioned_repo_exposure(raw: &str) -> bool {
+    let Ok(Value::Object(document)) = serde_json::from_str::<Value>(raw) else {
+        return false;
+    };
+    !document.contains_key("artifact")
+        && document.get("schema_version").is_some_and(Value::is_string)
+        && document.get("scope").and_then(Value::as_str) == Some("repo")
+        && document.get("seams").is_some_and(Value::is_array)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1008,6 +1039,106 @@ fn replace_content_commitment(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_repo_exposure_has_actionable_rooted_recovery() -> Result<(), String> {
+        // Released v0.10.0 (c08d474a) renders schema 0.3, scope repo and
+        // seams, without the later producer-owned artifact envelope.
+        let raw = r#"{"schema_version":"0.3","scope":"repo","seams":[]}"#;
+        let root = Path::new("selected root");
+        let expected = super::super::loop_commands::check_repo_exposure_command(
+            &super::super::loop_commands::bound_root("selected root"),
+            "draft",
+            "recovered.repo-exposure.json",
+        );
+        let error = validate_repo_exposure_artifact(root, raw, "before")
+            .err()
+            .ok_or("legacy artifact was accepted")?;
+        for text in [
+            "legacy or unknown producer",
+            env!("CARGO_PKG_VERSION"),
+            expected.as_str(),
+            "Replace this input",
+        ] {
+            if !error.contains(text) {
+                return Err(format!("legacy recovery omitted {text}: {error}"));
+            }
+        }
+        if error.contains("missing field") {
+            return Err("legacy recovery exposed an opaque schema error".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_recovery_binds_relative_root_and_does_not_invent_label_flags() -> Result<(), String> {
+        let raw = r#"{"schema_version":"0.3","scope":"repo","seams":[]}"#;
+        let bound = super::super::loop_commands::bound_root("selected root");
+        let expected = super::super::loop_commands::check_repo_exposure_command(
+            &bound,
+            "draft",
+            "recovered.repo-exposure.json",
+        );
+        for label in ["receipt before", "repair attempt before", "packet input"] {
+            let error = validate_repo_exposure_artifact(Path::new("selected root"), raw, label)
+                .err()
+                .ok_or("legacy artifact was accepted")?;
+            if !error.contains(&expected) || error.contains(&format!("--{label}")) {
+                return Err(format!("invalid rooted/shared-consumer recovery: {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_diagnosis_does_not_reclassify_unrelated_or_enveloped_json() -> Result<(), String> {
+        for raw in [
+            "not JSON",
+            r#"{"schema_version":"1","scope":"repo","seams":[]"#,
+            r#"{"scope":"repo","seams":[]}"#,
+            r#"{"schema_version":"1","scope":"file","seams":[]}"#,
+            r#"{"schema_version":"1","scope":"repo","seams":{}}"#,
+            r#"{"schema_version":"1","scope":"repo","seams":[],"artifact":null}"#,
+            r#"{"schema_version":"1","scope":"repo","seams":[],"artifact":{}}"#,
+        ] {
+            let error = validate_repo_exposure_artifact(Path::new("."), raw, "after")
+                .err()
+                .ok_or("invalid artifact was accepted")?;
+            if !error.contains("not a canonical repo-exposure artifact")
+                || error.contains("legacy or unknown producer")
+            {
+                return Err(format!("unrelated/enveloped JSON misclassified: {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_recovery_labels_shells_and_quotes_literal_root_characters() -> Result<(), String> {
+        let raw = r#"{"schema_version":"0.3","scope":"repo","seams":[]}"#;
+        let error = validate_repo_exposure_artifact(Path::new("selected's $root"), raw, "before")
+            .err()
+            .ok_or("legacy artifact was accepted")?;
+        for text in ["Bash/Git Bash:", "PowerShell:", "selected''s $root"] {
+            if !error.contains(text) {
+                return Err(format!(
+                    "shell-labeled literal recovery omitted {text}: {error}"
+                ));
+            }
+        }
+        let unsupported =
+            validate_repo_exposure_artifact(Path::new("selected>root"), raw, "before")
+                .err()
+                .ok_or("legacy artifact was accepted")?;
+        if !unsupported.contains("Bash/Git Bash only:")
+            || !unsupported.contains("PowerShell recovery unavailable")
+        {
+            return Err(format!(
+                "unsupported PowerShell route was advertised: {unsupported}"
+            ));
+        }
+        Ok(())
+    }
+
     use super::*;
 
     fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
