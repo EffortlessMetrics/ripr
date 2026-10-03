@@ -129,6 +129,7 @@ suite('Distribution manifest fallback', () => {
     const distribution = resolveDistributionRequest('0.11.0', {
       ...catalog,
       schema: 2,
+      producer: { tool: 'xtask release-distribution-catalog', schema: 'distribution-catalog/1' },
       distributionGeneration: 'a'.repeat(64),
       manifestSha256: digest,
       targetSetDigest: 'b'.repeat(64)
@@ -184,6 +185,7 @@ suite('Distribution manifest fallback', () => {
     const distribution = resolveDistributionRequest('0.11.0', {
       ...catalog,
       schema: 2,
+      producer: { tool: 'xtask release-distribution-catalog', schema: 'distribution-catalog/1' },
       distributionGeneration: 'a'.repeat(64),
       manifestSha256: 'b'.repeat(64),
       targetSetDigest: 'c'.repeat(64)
@@ -229,6 +231,7 @@ suite('Distribution manifest fallback', () => {
     const distribution = resolveDistributionRequest('0.11.0', {
       ...catalog,
       schema: 2,
+      producer: { tool: 'xtask release-distribution-catalog', schema: 'distribution-catalog/1' },
       distributionGeneration: 'a'.repeat(64),
       manifestSha256: 'b'.repeat(64),
       targetSetDigest: 'c'.repeat(64)
@@ -265,6 +268,7 @@ suite('Distribution manifest fallback', () => {
     const distribution = resolveDistributionRequest('0.11.0', {
       ...catalog,
       schema: 2,
+      producer: { tool: 'xtask release-distribution-catalog', schema: 'distribution-catalog/1' },
       distributionGeneration: 'a'.repeat(64),
       manifestSha256: 'b'.repeat(64),
       targetSetDigest: 'c'.repeat(64)
