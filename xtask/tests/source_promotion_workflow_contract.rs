@@ -239,6 +239,34 @@ fn require_order(text: &str, before: &str, after: &str) -> Result<(), String> {
 }
 
 fn validate_admission_workflow_contract(workflow: &str) -> Result<(), String> {
+    let enforcement_calls: Vec<_> = workflow
+        .split("source-promotion enforce-admission-workflow \\")
+        .skip(1)
+        .map(|tail| {
+            tail.lines()
+                .skip(1)
+                .take(3)
+                .map(str::trim)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    if enforcement_calls.len() != 2 {
+        return Err("expected two admission enforcement commands".to_string());
+    }
+    for (call, packet) in enforcement_calls.iter().zip([
+        "$ADMISSION_ROOT/downloaded/workflow-packet",
+        "$ADMISSION_FINAL_EVIDENCE",
+    ]) {
+        if *call
+            != [
+                format!("--packet \"{packet}\" \\"),
+                "--workspace-root \"$ADMISSION_ROOT\" \\".to_string(),
+                "--expected-status admitted".to_string(),
+            ]
+        {
+            return Err("each enforcement command requires its owned workspace root".to_string());
+        }
+    }
     for required in [
         "name: Source Promotion Admission",
         "  workflow_call:",
@@ -766,6 +794,45 @@ fn admission_workflow_has_closed_exact_transport_and_terminal_order() -> Result<
 
 #[test]
 fn admission_workflow_contract_rejects_security_and_order_mutations() -> Result<(), String> {
+    let original = admission_workflow_text()?;
+    let root_flag = "--workspace-root \"$ADMISSION_ROOT\"";
+    let enforce_marker = "source-promotion enforce-admission-workflow";
+    for occurrence in [0, 1] {
+        let start = original
+            .match_indices(enforce_marker)
+            .nth(occurrence)
+            .ok_or("missing enforcement mutation target")?
+            .0;
+        let offset = original[start..]
+            .find(root_flag)
+            .ok_or("missing enforcement root mutation target")?
+            + start;
+        for replacement in ["", "--workspace-root \"$ADMISSION_WORKSPACE\""] {
+            let mut mutated = original.clone();
+            mutated.replace_range(offset..offset + root_flag.len(), replacement);
+            if validate_admission_workflow_contract(&mutated).is_ok() {
+                return Err(format!(
+                    "accepted enforcement root mutation at call {occurrence}"
+                ));
+            }
+        }
+    }
+    let mut finalizer_only = original.clone();
+    for occurrence in [1, 0] {
+        let start = finalizer_only
+            .match_indices(enforce_marker)
+            .nth(occurrence)
+            .ok_or("missing finalizer-only mutation target")?
+            .0;
+        let offset = finalizer_only[start..]
+            .find(root_flag)
+            .ok_or("missing finalizer-only root target")?
+            + start;
+        finalizer_only.replace_range(offset..offset + root_flag.len(), "");
+    }
+    if validate_admission_workflow_contract(&finalizer_only).is_ok() {
+        return Err("accepted root flags absent from both enforcement calls".to_string());
+    }
     let workflow = admission_workflow_text()?;
     let mutations = [
         (
@@ -884,6 +951,21 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     ));
     fs::copy(&xtask, &staged)
         .map_err(|error| format!("failed to stage production J5 xtask copy: {error}"))?;
+    // Reuse Cargo's owned Linux build cache while still compiling and enumerating
+    // the actual reviewed tree. Windows keeps isolated targets because nested
+    // Cargo may replace this running integration executable there.
+    #[cfg(unix)]
+    let owned_target = xtask
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("production checker has no owned target directory")?;
+    let cache_command = |mut command: Command| {
+        #[cfg(unix)]
+        command.env("CARGO_TARGET_DIR", owned_target);
+        #[cfg(not(unix))]
+        let _ = &mut command;
+        command
+    };
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -930,7 +1012,7 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
                 .and_then(Value::as_str)
                 .ok_or_else(|| format!("production J5 request is missing {key}"))
         };
-        let output = Command::new(&staged)
+        let output = cache_command(Command::new(&staged))
             .current_dir(&repo_root)
             .args([
                 "source-promotion",
@@ -1187,7 +1269,7 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
                 ));
             }
             let live_out = workspace.join("public-live-validation");
-            let output = Command::new(&staged)
+            let output = cache_command(Command::new(&staged))
                 .current_dir(&fixture_repo)
                 .args([
                     "source-promotion",

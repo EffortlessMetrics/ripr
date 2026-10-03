@@ -717,9 +717,10 @@ fn require_validation_result(
     };
     if observed != expected || successful != (expected == "validated") {
         return Err(format!(
-            "{} validator disposition mismatch: expected {expected}, observed {observed}; {}",
+            "{} validator disposition mismatch: expected {expected}, observed {observed}; {}; failure_reasons={}",
             profile.as_str(),
-            diagnostics
+            diagnostics,
+            report.get("failure_reasons").unwrap_or(&Value::Null)
         ));
     }
     if profile == SyntheticProfile::J5Negative {
