@@ -465,7 +465,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "source-promotion publish-candidate-ref --construction-packet <dir> --source-main-ref <ref> --remote origin --target-ref <refs/heads/promote/0.11.0-...> (--expected-absent | --expected-old <sha>) [--out <dir>]",
         "source-promotion run-admission-workflow <exact identity and locator inputs> --requested-identity <file> --requested-identity-sha256 <digest> --workspace-root <dir> --out <dir>",
         "source-promotion verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest>",
-        "source-promotion enforce-admission-workflow --packet <dir> --expected-status admitted",
+        "source-promotion enforce-admission-workflow --packet <dir> --workspace-root <dir> --expected-status admitted",
         "source-promotion finalize-admission-workflow --admission-packet <dir> --workspace-root <dir> --out <dir>",
         "targeted-test-outcome --before <path> --after <path>",
         "mutation-calibration [root] --mutants-json <path>",
@@ -1374,7 +1374,7 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             "Independently verifies one immutable workflow admission packet and its closed mutation-attempt contract.",
         ),
         command_entry(
-            "source-promotion enforce-admission-workflow --packet <dir> --expected-status admitted",
+            "source-promotion enforce-admission-workflow --packet <dir> --workspace-root <dir> --expected-status admitted",
             "report_only",
             "none",
             false,

@@ -194,11 +194,24 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
     ) {
         Ok(evidence) => {
             let mut report = construction_success_report(&evidence);
-            let bytes = super::source_promotion_verify::revalidate_bound_preflight(
+            let bytes = match super::source_promotion_verify::revalidate_bound_preflight(
                 &options.preflight,
                 &evidence.identity.preflight_sha256,
                 &options.repo,
-            )?;
+            ) {
+                Ok(bytes) => bytes,
+                Err(reason) => {
+                    let report = construction_rejection_report(
+                        Some(&evidence.identity), Some(&options.candidate_ref), &reason, true,
+                    );
+                    return write_reserved_rejection_or_combine(
+                        &reservation, "exact_join_construction", CONSTRUCTION_REPORT, &report,
+                        "Exact-join construction",
+                        "A rejected construction packet grants no ref, merge, release, or publication authority.",
+                        reason,
+                    );
+                }
+            };
             report["native_acceptance_preflight_bytes"] =
                 Value::String(String::from_utf8(bytes).map_err(|error| {
                     format!("native acceptance preflight is not UTF-8: {error}")

@@ -620,7 +620,11 @@ fn verify_command(args: &[String]) -> Result<(), String> {
 }
 
 fn enforce_command(args: &[String]) -> Result<(), String> {
-    let values = parse_args(args, ENFORCE, &["--packet", "--expected-status"])?;
+    let values = parse_args(
+        args,
+        ENFORCE,
+        &["--packet", "--expected-status", "--workspace-root"],
+    )?;
     let expected = required(&values, "--expected-status")?;
     if expected != "admitted" {
         return Err("--expected-status must be admitted".to_string());
@@ -635,7 +639,8 @@ fn enforce_command(args: &[String]) -> Result<(), String> {
     }
     let preflight = root.join("evidence/locators/preflight/input");
     let expected_digest = required_json_string(&report["locators"]["preflight"], "sha256")?;
-    let repo = std::env::current_dir().map_err(|error| format!("current source repo: {error}"))?;
+    let workspace = PathBuf::from(required(&values, "--workspace-root")?);
+    let repo = controller_repository_path(&workspace, &report)?;
     super::source_promotion_verify::revalidate_bound_preflight(&preflight, expected_digest, &repo)?;
     Ok(())
 }
@@ -2342,7 +2347,7 @@ fn parse_args(
 }
 
 fn usage() -> String {
-    "usage: cargo xtask source-promotion (run-admission-workflow <exact inputs and requested identity> | verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest> | enforce-admission-workflow --packet <dir> --expected-status admitted)".to_string()
+    "usage: cargo xtask source-promotion (run-admission-workflow <exact inputs and requested identity> | verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest> | enforce-admission-workflow --packet <dir> --workspace-root <dir> --expected-status admitted)".to_string()
 }
 
 fn required<'a>(values: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str, String> {

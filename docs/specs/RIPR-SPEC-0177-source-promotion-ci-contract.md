@@ -325,7 +325,7 @@ produces the final normalized `workflow-disposition.json`,
 `workflow-disposition.md`, and `packet-index.json`; its available final packet
 also uploads with `if: always()`. `source-promotion
 verify-admission-workflow` checks the packet,
-and `source-promotion enforce-admission-workflow --expected-status admitted`
+and `source-promotion enforce-admission-workflow --workspace-root <runner-owned-root> --expected-status admitted`
 is the sole terminal green predicate. The normalized disposition schema is
 `ripr.source_promotion_admission_workflow.v1`, the packet schema is
 `ripr.source_promotion_admission_workflow_packet.v1`, and the only statuses are
