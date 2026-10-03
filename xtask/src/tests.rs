@@ -10924,18 +10924,22 @@ fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
         );
     }
     let scoped = "jobs:\n  route:\n\n    # direct mapping key\n    if: exact\n    steps:\n      - run: echo test\nenv:\n  route:\n    if: wrong\n";
-    assert!(routed_rust_job_block_any(scoped, "route", |line| line
-        .trim()
-        == "if: exact"));
-    assert!(!routed_rust_job_block_any(scoped, "route", |line| line
-        .trim()
-        == "if: wrong"));
+    assert!(crate::routed_rust_job_block_any(
+        scoped,
+        "route",
+        |line| line.trim() == "if: exact"
+    ));
+    assert!(!crate::routed_rust_job_block_any(
+        scoped,
+        "route",
+        |line| line.trim() == "if: wrong"
+    ));
     for unsupported in [
         "jobs:\n  route:\n   if: exact\n",
         "jobs:\n  route:\n    if: >-\n      exact\n",
         "env:\n  route:\n    if: exact\n",
     ] {
-        assert!(!routed_rust_job_block_any(
+        assert!(!crate::routed_rust_job_block_any(
             unsupported,
             "route",
             |line| line.trim() == "if: exact"
