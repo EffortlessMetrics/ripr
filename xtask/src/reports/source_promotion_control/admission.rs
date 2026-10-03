@@ -1,4 +1,7 @@
 fn parse_builder_options(args: &[String]) -> Result<BuilderOptions, String> {
+    parse_builder_options_in(args, current_repo()?)
+}
+fn parse_builder_options_in(args: &[String], repo: PathBuf) -> Result<BuilderOptions, String> {
     let parsed = parse_command_args(
         args,
         SOURCE_PROMOTION_TRUSTED_BUILDER_SUBCOMMAND,
@@ -15,7 +18,6 @@ fn parse_builder_options(args: &[String]) -> Result<BuilderOptions, String> {
     let workflow_source_sha = parsed.required("--workflow-source-sha")?;
     validate_exact_hex("--source-parent", &source_parent, 40)?;
     validate_exact_hex("--workflow-source-sha", &workflow_source_sha, 40)?;
-    let repo = current_repo()?;
     let executable =
         resolve_candidate_path(&repo, &PathBuf::from(parsed.required("--executable")?));
     let cargo_target_dir = resolve_candidate_path(
@@ -39,16 +41,31 @@ fn parse_builder_options(args: &[String]) -> Result<BuilderOptions, String> {
 }
 
 fn write_trusted_builder_receipt(args: &[String]) -> Result<(), String> {
+    write_trusted_builder_receipt_in(args, None)
+}
+fn write_trusted_builder_receipt_in(
+    args: &[String],
+    context: Option<&super::source_promotion_admission_fixture::OwnedFixtureContext>,
+) -> Result<(), String> {
     let out = control_out_from_args(args, DEFAULT_BUILDER_OUT)?;
-    let options = match parse_builder_options(args) {
+    let options = match context.map_or_else(
+        || parse_builder_options(args),
+        |context| parse_builder_options_in(args, context.repository().to_path_buf()),
+    ) {
         Ok(options) => options,
         Err(reason) => {
-            let repo = current_repo()?;
+            let repo = context.map_or_else(current_repo, |context| {
+                Ok(context.repository().to_path_buf())
+            })?;
             let mut owned_roots = supplied_protected_roots(
                 &repo,
                 args,
                 &[
-                    ("--cargo-target-dir", "isolated Cargo target directory", false),
+                    (
+                        "--cargo-target-dir",
+                        "isolated Cargo target directory",
+                        false,
+                    ),
                     ("--executable", "built xtask executable", false),
                 ],
             );
@@ -249,6 +266,9 @@ fn validate_live_builder(
 }
 
 fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> {
+    parse_admission_options_in(args, current_repo()?)
+}
+fn parse_admission_options_in(args: &[String], repo: PathBuf) -> Result<AdmissionOptions, String> {
     let parsed = parse_command_args(
         args,
         SOURCE_PROMOTION_ADMIT_RESOLVED_TREE_SUBCOMMAND,
@@ -268,7 +288,6 @@ fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> 
         ],
         &[],
     )?;
-    let repo = current_repo()?;
     let identity = PromotionIdentity::from_values(&parsed)?;
     let resolve = |key: &str| -> Result<PathBuf, String> {
         Ok(resolve_candidate_path(
@@ -280,11 +299,7 @@ fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> 
     let builder_packet = resolve("--builder-packet")?;
     let integration_index = resolve("--integration-index")?;
     let integration_index_sha256 = parsed.required("--integration-index-sha256")?;
-    validate_exact_hex(
-        "--integration-index-sha256",
-        &integration_index_sha256,
-        64,
-    )?;
+    validate_exact_hex("--integration-index-sha256", &integration_index_sha256, 64)?;
     let preflight = resolve("--preflight")?;
     let resolution_manifest = resolve("--resolution-manifest")?;
     Ok(AdmissionOptions {
@@ -304,20 +319,43 @@ fn parse_admission_options(args: &[String]) -> Result<AdmissionOptions, String> 
 }
 
 fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
+    admit_resolved_tree_in(args, None)
+}
+fn admit_resolved_tree_in(
+    args: &[String],
+    context: Option<&super::source_promotion_admission_fixture::OwnedFixtureContext>,
+) -> Result<(), String> {
     let out = control_out_from_args(args, DEFAULT_ADMISSION_OUT)?;
-    let options = match parse_admission_options(args) {
+    let options = match context.map_or_else(
+        || parse_admission_options(args),
+        |context| parse_admission_options_in(args, context.repository().to_path_buf()),
+    ) {
         Ok(options) => options,
         Err(reason) => {
-            let repo = current_repo()?;
+            let repo = context.map_or_else(current_repo, |context| {
+                Ok(context.repository().to_path_buf())
+            })?;
             let owned_roots = supplied_protected_roots(
                 &repo,
                 args,
                 &[
-                    ("--validation-packet", "resolved-tree validation packet", false),
+                    (
+                        "--validation-packet",
+                        "resolved-tree validation packet",
+                        false,
+                    ),
                     ("--builder-packet", "trusted-builder packet", false),
-                    ("--integration-index", "integration receipt sidecar directory", true),
+                    (
+                        "--integration-index",
+                        "integration receipt sidecar directory",
+                        true,
+                    ),
                     ("--preflight", "finalized P1 preflight", false),
-                    ("--resolution-manifest", "complete resolution manifest", false),
+                    (
+                        "--resolution-manifest",
+                        "complete resolution manifest",
+                        false,
+                    ),
                 ],
             );
             let protected_roots = borrowed_protected_roots(&owned_roots);
@@ -347,10 +385,7 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
             options.validation_packet.as_path(),
             "resolved-tree validation packet",
         ),
-        (
-            options.builder_packet.as_path(),
-            "trusted-builder packet",
-        ),
+        (options.builder_packet.as_path(), "trusted-builder packet"),
         (integration_root, "integration receipt sidecar directory"),
         (
             options.integration_index.as_path(),
@@ -364,7 +399,13 @@ fn admit_resolved_tree(args: &[String]) -> Result<(), String> {
     ];
     reject_control_packet_output_overlap(&options.repo, &options.out, &protected_roots)?;
 
-    match validate_current_admission(&options) {
+    let validation = match context {
+        Some(context) => context
+            .validate_preflight(&options.preflight, &options.repo)
+            .and_then(|()| validate_admission(&options)),
+        None => validate_current_admission(&options),
+    };
+    match validation {
         Ok(evidence) => {
             let report = admission_success_report(&evidence);
             write_control_packet_protected(
@@ -640,8 +681,7 @@ fn validate_builder_receipt(
     validation: &Value,
     options: &AdmissionOptions,
 ) -> Result<String, String> {
-    let executable =
-        validate_builder_receipt_contract(builder, validation, &options.identity)?;
+    let executable = validate_builder_receipt_contract(builder, validation, &options.identity)?;
     let expected_lock = file_sha256(&options.repo.join("Cargo.lock"), "Cargo.lock")?;
     if json_string(builder, "cargo_lock_sha256") != Some(expected_lock.as_str()) {
         return Err(
@@ -665,19 +705,32 @@ fn validate_builder_receipt_contract(
         builder,
         "trusted builder receipt",
         &[
-            "schema", "status", "source_parent", "workflow_source_sha", "clean_checkout",
-            "rust_toolchain", "cargo_lock_sha256", "locked_build", "isolated_cargo_target_dir",
-            "executable_sha256", "failure_reasons", "authoritative_commit_attempted",
-            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
-            "merge_command_attempts", "merge_command", "ref_mutation_attempted", "push_attempted",
+            "schema",
+            "status",
+            "source_parent",
+            "workflow_source_sha",
+            "clean_checkout",
+            "rust_toolchain",
+            "cargo_lock_sha256",
+            "locked_build",
+            "isolated_cargo_target_dir",
+            "executable_sha256",
+            "failure_reasons",
+            "authoritative_commit_attempted",
+            "commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+            "merge_command",
+            "ref_mutation_attempted",
+            "push_attempted",
         ],
         &["non_claims"],
     )?;
     if json_string(builder, "schema") != Some(BUILDER_SCHEMA)
         || json_string(builder, "status") != Some("built")
         || json_string(builder, "source_parent") != Some(identity.source_parent.as_str())
-        || json_string(builder, "workflow_source_sha")
-            != Some(identity.source_parent.as_str())
+        || json_string(builder, "workflow_source_sha") != Some(identity.source_parent.as_str())
         || json_bool(builder, "clean_checkout") != Some(true)
         || json_string(builder, "rust_toolchain")
             .is_none_or(|value| !value.starts_with(&format!("rustc {RUST_TOOLCHAIN} ")))

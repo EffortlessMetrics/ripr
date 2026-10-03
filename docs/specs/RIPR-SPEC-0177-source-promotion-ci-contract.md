@@ -280,6 +280,15 @@ authority. The live profile rejects synthetic fixture selection. The bounded
 their `fixture_identity` is emitted by the production harness and cannot be
 chosen as an arbitrary command or path.
 
+An admitted `positive_synthetic` packet proves source-owned fixture geometry
+only. Its private in-process controller uses the generated fixture identity,
+the verified indexed input closure, and the canonically contained fixture
+repository. It grants no current native acceptance authority. Synthetic
+construction omits retained native acceptance bytes; public live validation,
+admission, construction, and publication continue to require genuine v2 native
+acceptance. Public live controller commands expose no geometry override; only
+the closed source-owned positive fixture workflow can invoke it.
+
 The live harness fetches the exact carrier commit into its runner-owned clone
 and validates the commit header before invoking the controller. Possession of
 either parent alone is insufficient to materialize or admit a combined

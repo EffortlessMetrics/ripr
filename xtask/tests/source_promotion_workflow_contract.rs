@@ -906,6 +906,14 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     let result = (|| {
         let mut request = j5_request_identity(&repo_root, &root)?;
         request["execution_profile"] = Value::String(profile.to_string());
+        if profile == "positive_synthetic" {
+            request["reviewed_tree_sha"] = Value::String(git_output(
+                &repo_root,
+                &["rev-parse", "HEAD^{tree}"],
+                &[],
+                None,
+            )?);
+        }
         let request_bytes = serde_json::to_vec_pretty(&request)
             .map_err(|error| format!("failed to serialize production J5 request: {error}"))?;
         let request_sha256 = format!("{:x}", Sha256::digest(&request_bytes));
@@ -973,10 +981,247 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
             .output()
             .map_err(|error| format!("failed to run production J5 workflow: {error}"))?;
         if profile == "positive_synthetic" {
-            let validation: Value = serde_json::from_slice(&fs::read(
-                workspace.join("synthetic-fixture/fixture-repository/.git/source-promotion-admission-fixture/validation-packet/resolved-tree-validation.json"),
-            ).map_err(|error| format!("missing historical diagnostic receipt: {error}"))?)
-                .map_err(|error| format!("decode historical diagnostic receipt: {error}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "positive workflow failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            let finalized = workspace.join("final-workflow-packet");
+            let final_output = Command::new(&staged)
+                .current_dir(&repo_root)
+                .args([
+                    "source-promotion",
+                    "finalize-admission-workflow",
+                    "--admission-packet",
+                    path_text(&packet)?,
+                    "--workspace-root",
+                    path_text(&workspace)?,
+                    "--out",
+                    path_text(&finalized)?,
+                ])
+                .output()
+                .map_err(|error| format!("positive finalizer launch: {error}"))?;
+            if !final_output.status.success() {
+                return Err(format!(
+                    "positive finalizer failed: {}",
+                    String::from_utf8_lossy(&final_output.stderr)
+                ));
+            }
+            let construction: Value = serde_json::from_slice(
+                &fs::read(workspace.join("exact-join-construction/exact-join-construction.json"))
+                    .map_err(|error| format!("positive construction receipt: {error}"))?,
+            )
+            .map_err(|error| error.to_string())?;
+            if construction["status"] != "constructed"
+                || construction
+                    .get("native_acceptance_preflight_bytes")
+                    .is_some()
+            {
+                return Err("synthetic construction claimed native authority or failed".to_string());
+            }
+            let fixture_repo = workspace.join("synthetic-fixture/fixture-repository");
+            for workflow_packet in [&packet, &finalized] {
+                let enforcement = Command::new(&staged)
+                    .current_dir(&repo_root)
+                    .args([
+                        "source-promotion",
+                        "enforce-admission-workflow",
+                        "--packet",
+                        path_text(workflow_packet)?,
+                        "--workspace-root",
+                        path_text(&workspace)?,
+                        "--expected-status",
+                        "admitted",
+                    ])
+                    .output()
+                    .map_err(|error| format!("positive enforcement launch: {error}"))?;
+                if !enforcement.status.success() {
+                    return Err(format!(
+                        "positive enforcement failed: {}",
+                        String::from_utf8_lossy(&enforcement.stderr)
+                    ));
+                }
+            }
+            let refs_before = git_output(&fixture_repo, &["show-ref"], &[], None)?;
+            let publisher = Command::new(&staged)
+                .current_dir(&fixture_repo)
+                .args([
+                    "source-promotion",
+                    "publish-candidate-ref",
+                    "--construction-packet",
+                    path_text(&workspace.join("exact-join-construction"))?,
+                    "--source-main-ref",
+                    "refs/heads/main",
+                    "--remote",
+                    "origin",
+                    "--target-ref",
+                    construction["candidate_ref"]
+                        .as_str()
+                        .ok_or("missing construction candidate ref")?,
+                    "--expected-absent",
+                    "--out",
+                    path_text(&workspace.join("public-publication-refusal"))?,
+                ])
+                .output()
+                .map_err(|error| format!("public publisher launch: {error}"))?;
+            if publisher.status.success()
+                || git_output(&fixture_repo, &["show-ref"], &[], None)? != refs_before
+            {
+                return Err(format!(
+                    "synthetic construction escaped public publication boundary: {}",
+                    String::from_utf8_lossy(&publisher.stderr)
+                ));
+            }
+            let evidence = fixture_repo.join(".git/source-promotion-admission-fixture");
+            let preflight_path = evidence.join("preflight.json");
+            let resolution_path = evidence.join("resolution.json");
+            let preflight_bytes = fs::read(&preflight_path).map_err(|error| error.to_string())?;
+            let preflight: Value =
+                serde_json::from_slice(&preflight_bytes).map_err(|error| error.to_string())?;
+            let resolution_bytes = fs::read(&resolution_path).map_err(|error| error.to_string())?;
+            let normalized: Value = serde_json::from_slice(
+                &fs::read(packet.join("workflow-disposition.json"))
+                    .map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let closure = packet.join("evidence");
+            let integration = closure.join("locators/integration_packet/integration-index.json");
+            let admission_out = workspace.join("public-admission-refusal");
+            let admission = Command::new(&staged)
+                .current_dir(&fixture_repo)
+                .args([
+                    "source-promotion",
+                    "admit-resolved-tree",
+                    "--source-parent",
+                    preflight["source_parent"].as_str().ok_or("source")?,
+                    "--swarm-parent",
+                    preflight["swarm_parent"].as_str().ok_or("swarm")?,
+                    "--join-tree",
+                    preflight["dry_merge"]["reviewed_resolved_tree"]
+                        .as_str()
+                        .ok_or("tree")?,
+                    "--preflight",
+                    path_text(&preflight_path)?,
+                    "--preflight-sha256",
+                    &format!("{:x}", Sha256::digest(&preflight_bytes)),
+                    "--resolution-manifest",
+                    path_text(&resolution_path)?,
+                    "--resolution-sha256",
+                    &format!("{:x}", Sha256::digest(&resolution_bytes)),
+                    "--validation-packet",
+                    path_text(&evidence.join("validation-packet"))?,
+                    "--builder-packet",
+                    path_text(&closure.join("trusted-builder"))?,
+                    "--integration-index",
+                    path_text(&integration)?,
+                    "--integration-index-sha256",
+                    normalized["locators"]["integration_packet"]["sha256"]
+                        .as_str()
+                        .ok_or("integration digest")?,
+                    "--out",
+                    path_text(&admission_out)?,
+                ])
+                .output()
+                .map_err(|error| error.to_string())?;
+            if admission.status.success()
+                || !String::from_utf8_lossy(&admission.stderr).contains("requires preflight v2")
+            {
+                return Err(format!(
+                    "public admission missed native boundary: {}",
+                    String::from_utf8_lossy(&admission.stderr)
+                ));
+            }
+            let live_construction_out = workspace.join("public-construction-refusal");
+            let live_construction = Command::new(&staged)
+                .current_dir(&fixture_repo)
+                .args([
+                    "source-promotion",
+                    "construct-exact-join",
+                    "--admission-packet",
+                    path_text(&closure.join("resolved-tree-admission"))?,
+                    "--validation-packet",
+                    path_text(&evidence.join("validation-packet"))?,
+                    "--integration-index",
+                    path_text(&integration)?,
+                    "--integration-index-sha256",
+                    normalized["locators"]["integration_packet"]["sha256"]
+                        .as_str()
+                        .ok_or("integration digest")?,
+                    "--preflight",
+                    path_text(&preflight_path)?,
+                    "--resolution-manifest",
+                    path_text(&resolution_path)?,
+                    "--qualification-receipt",
+                    path_text(&closure.join("locators/qualification_receipt/input"))?,
+                    "--qualification-receipt-sha256",
+                    normalized["locators"]["qualification_receipt"]["sha256"]
+                        .as_str()
+                        .ok_or("qualification digest")?,
+                    "--source-main-ref",
+                    "refs/heads/main",
+                    "--swarm-ref",
+                    normalized["protected_w7_ref"].as_str().ok_or("W7 ref")?,
+                    "--candidate-ref",
+                    "refs/heads/promote/0.11.0-public-refusal",
+                    "--out",
+                    path_text(&live_construction_out)?,
+                ])
+                .output()
+                .map_err(|error| error.to_string())?;
+            let refused: Value = serde_json::from_slice(
+                &fs::read(live_construction_out.join("exact-join-construction.json"))
+                    .map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            if live_construction.status.success()
+                || !String::from_utf8_lossy(&live_construction.stderr)
+                    .contains("requires preflight v2")
+                || refused["authoritative_commit_attempted"] != false
+                || refused["commit_tree_attempts"] != 0
+                || git_output(&fixture_repo, &["show-ref"], &[], None)? != refs_before
+            {
+                return Err(format!(
+                    "public construction missed native boundary: {} receipt={refused}",
+                    String::from_utf8_lossy(&live_construction.stderr)
+                ));
+            }
+            let live_out = workspace.join("public-live-validation");
+            let output = Command::new(&staged)
+                .current_dir(&fixture_repo)
+                .args([
+                    "source-promotion",
+                    "validate-resolved-tree",
+                    "--source-parent",
+                    preflight["source_parent"]
+                        .as_str()
+                        .ok_or("missing source parent")?,
+                    "--swarm-parent",
+                    preflight["swarm_parent"]
+                        .as_str()
+                        .ok_or("missing swarm parent")?,
+                    "--reviewed-tree",
+                    preflight["dry_merge"]["reviewed_resolved_tree"]
+                        .as_str()
+                        .ok_or("missing tree")?,
+                    "--preflight",
+                    path_text(&preflight_path)?,
+                    "--preflight-sha256",
+                    &format!("{:x}", Sha256::digest(&preflight_bytes)),
+                    "--resolution-manifest",
+                    path_text(&resolution_path)?,
+                    "--resolution-sha256",
+                    &format!("{:x}", Sha256::digest(&resolution_bytes)),
+                    "--out",
+                    path_text(&live_out)?,
+                ])
+                .output()
+                .map_err(|error| format!("actual public validator launch: {error}"))?;
+            let validation: Value = serde_json::from_slice(
+                &fs::read(live_out.join("resolved-tree-validation.json"))
+                    .map_err(|error| format!("missing historical diagnostic receipt: {error}"))?,
+            )
+            .map_err(|error| format!("decode historical diagnostic receipt: {error}"))?;
             let required = [
                 "check-network-policy",
                 "check-process-policy",
@@ -1084,7 +1329,15 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     })();
     let staged_cleanup = fs::remove_file(&staged)
         .map_err(|error| format!("failed to clean staged production J5 xtask copy: {error}"));
-    let cleanup = fs::remove_dir_all(&root)
-        .map_err(|error| format!("failed to clean production J5 test root: {error}"));
+    let cleanup = if result.is_ok() {
+        fs::remove_dir_all(&root)
+            .map_err(|error| format!("failed to clean production J5 test root: {error}"))
+    } else {
+        eprintln!(
+            "Retained production workflow failure evidence at {}",
+            root.display()
+        );
+        Ok(())
+    };
     result.and(staged_cleanup).and(cleanup)
 }

@@ -213,7 +213,18 @@ fn run(args: &[String]) -> Result<(), String> {
         "--out",
         &path_text(&builder_out)?,
     ]);
-    let builder_result = invoke_controller(&options.controller_repo, &builder_args);
+    let builder_result = match options.synthetic_fixture.as_ref() {
+        Some(fixture)
+            if fixture.profile
+                == super::source_promotion_admission_fixture::SyntheticProfile::Positive =>
+        {
+            super::source_promotion_control::run_source_owned_fixture(
+                fixture.context(),
+                &builder_args,
+            )
+        }
+        _ => invoke_controller(&options.controller_repo, &builder_args),
+    };
 
     let admission_args = strings(&[
         "admit-resolved-tree",
@@ -243,7 +254,18 @@ fn run(args: &[String]) -> Result<(), String> {
         &path_text(&admission_out)?,
     ]);
     let admission_result = if builder_result.is_ok() {
-        invoke_controller(&options.controller_repo, &admission_args)
+        match options.synthetic_fixture.as_ref() {
+            Some(fixture)
+                if fixture.profile
+                    == super::source_promotion_admission_fixture::SyntheticProfile::Positive =>
+            {
+                super::source_promotion_control::run_source_owned_fixture(
+                    fixture.context(),
+                    &admission_args,
+                )
+            }
+            _ => invoke_controller(&options.controller_repo, &admission_args),
+        }
     } else {
         builder_result.as_ref().map(|_| ()).map_err(Clone::clone)
     };
@@ -442,7 +464,22 @@ fn finalize(args: &[String]) -> Result<(), String> {
             &path_text(&construction_out)?,
         ]);
         construction_error = match controller_repository_path(&workspace, &report) {
-            Ok(controller_repo) => invoke_controller(&controller_repo, &command).err(),
+            Ok(controller_repo) => {
+                if json_string(&report, "execution_profile") == Some("positive_synthetic") {
+                    super::source_promotion_admission_fixture::context_from_verified_workflow(
+                        &controller_repo,
+                        &report,
+                    )
+                    .and_then(|context| {
+                        super::source_promotion_control::run_source_owned_fixture(
+                            &context, &command,
+                        )
+                    })
+                    .err()
+                } else {
+                    invoke_controller(&controller_repo, &command).err()
+                }
+            }
             Err(error) => Some(error),
         };
         construction_report =
@@ -641,7 +678,18 @@ fn enforce_command(args: &[String]) -> Result<(), String> {
     let expected_digest = required_json_string(&report["locators"]["preflight"], "sha256")?;
     let workspace = PathBuf::from(required(&values, "--workspace-root")?);
     let repo = controller_repository_path(&workspace, &report)?;
-    super::source_promotion_verify::revalidate_bound_preflight(&preflight, expected_digest, &repo)?;
+    if json_string(&report, "execution_profile") == Some("positive_synthetic") {
+        let context = super::source_promotion_admission_fixture::context_from_verified_workflow(
+            &repo, &report,
+        )?;
+        context.validate_preflight(&preflight, &repo)?;
+    } else {
+        super::source_promotion_verify::revalidate_bound_preflight(
+            &preflight,
+            expected_digest,
+            &repo,
+        )?;
+    }
     Ok(())
 }
 

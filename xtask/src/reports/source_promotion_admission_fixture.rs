@@ -65,6 +65,110 @@ pub(crate) struct SyntheticFixture {
     pub(crate) fixture_identity: String,
     pub(crate) refs_after_setup: BTreeMap<String, String>,
     pub(crate) refs_after_validation: BTreeMap<String, String>,
+    context: OwnedFixtureContext,
+}
+
+/// Only deterministic fixture preparation or verified workflow reconstruction
+/// can create this context. It never supplies current native authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct OwnedFixtureContext {
+    profile: SyntheticProfile,
+    repository: PathBuf,
+    source: String,
+    swarm: String,
+    tree: String,
+    preflight_sha256: String,
+}
+
+impl OwnedFixtureContext {
+    pub(super) fn repository(&self) -> &Path {
+        &self.repository
+    }
+    pub(super) fn validate_preflight(&self, path: &Path, repo: &Path) -> Result<(), String> {
+        if self.profile != SyntheticProfile::Positive {
+            return Err(
+                "private geometry authority requires the positive source-owned profile".into(),
+            );
+        }
+        if repo.canonicalize().map_err(|error| error.to_string())? != self.repository {
+            return Err("synthetic geometry escaped its source-owned repository".into());
+        }
+        let bytes = super::source_promotion_verify::read_preflight_bytes(path)?;
+        if digest_bytes(&bytes) != self.preflight_sha256 {
+            return Err("synthetic preflight bytes moved".into());
+        }
+        let preflight: Value = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        super::source_promotion_verify::validate_preflight(&preflight, &self.source)?;
+        if string(&preflight, "schema") != Some("ripr.source_promotion_preflight.v1")
+            || string(&preflight, "swarm_parent") != Some(self.swarm.as_str())
+            || preflight
+                .pointer("/dry_merge/reviewed_resolved_tree")
+                .and_then(Value::as_str)
+                != Some(self.tree.as_str())
+        {
+            return Err("synthetic geometry identity differs from its generated context".into());
+        }
+        Ok(())
+    }
+}
+
+impl SyntheticFixture {
+    pub(super) fn context(&self) -> &OwnedFixtureContext {
+        &self.context
+    }
+}
+
+/// Caller has already verified the complete indexed workflow packet and resolved
+/// its controller repository canonically inside the requested workspace.
+pub(super) fn context_from_verified_workflow(
+    repo: &Path,
+    report: &Value,
+) -> Result<OwnedFixtureContext, String> {
+    if string(report, "execution_profile") != Some("positive_synthetic")
+        || string(report, "reviewed_tree_carrier_sha") != Some("not_required")
+    {
+        return Err("synthetic geometry requires the closed positive source-owned profile".into());
+    }
+    let value = |field: &str| {
+        string(report, field).ok_or_else(|| format!("synthetic context missing {field}"))
+    };
+    let locator = |field: &str| {
+        report
+            .pointer(&format!("/locators/{field}/sha256"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("synthetic context missing {field} digest"))
+    };
+    let source = value("source_parent_sha")?;
+    let swarm = value("w7_peeled_sha")?;
+    let tree = value("reviewed_tree_sha")?;
+    let expected = digest_bytes(
+        format!(
+            "positive_synthetic:{source}:{swarm}:{tree}:{}:{}:{}:{}",
+            locator("preflight")?,
+            locator("resolution_manifest")?,
+            locator("validation_packet")?,
+            locator("integration_packet")?
+        )
+        .as_bytes(),
+    );
+    if value("fixture_identity")? != expected {
+        return Err("synthetic workflow fixture identity differs from its indexed inputs".into());
+    }
+    let repository = repo.canonicalize().map_err(|error| error.to_string())?;
+    if repository.file_name().and_then(|name| name.to_str()) != Some("fixture-repository") {
+        return Err("synthetic context requires the generated fixture repository".into());
+    }
+    if git_output(&repository, &["rev-parse", &format!("{source}^{{tree}}")])? != tree {
+        return Err("positive geometry must review the exact source-parent tree".into());
+    }
+    Ok(OwnedFixtureContext {
+        profile: SyntheticProfile::Positive,
+        repository,
+        source: source.into(),
+        swarm: swarm.into(),
+        tree: tree.into(),
+        preflight_sha256: locator("preflight")?.into(),
+    })
 }
 
 /// Materialize one source-owned fixture without moving the invoking checkout.
@@ -148,17 +252,45 @@ pub(crate) fn prepare_source_owned_fixture(
     )?;
 
     let refs_after_setup = snapshot_refs(&repository)?;
+    let context = OwnedFixtureContext {
+        profile,
+        repository: repository
+            .canonicalize()
+            .map_err(|error| error.to_string())?,
+        source: source_parent.clone(),
+        swarm: swarm_parent.clone(),
+        tree: reviewed_tree.clone(),
+        preflight_sha256: preflight.sha256.clone(),
+    };
     let validation_root = evidence.join("validation-packet");
-    let validation_result = run_validator(
-        &repository,
-        &source_parent,
-        &swarm_parent,
-        &reviewed_tree,
-        &preflight,
-        &resolution,
-        &validation_root,
-    )?;
-    require_validation_disposition(profile, &validation_result, &validation_root)?;
+    if profile == SyntheticProfile::Positive {
+        let result = run_owned_validator(
+            &context,
+            &source_parent,
+            &swarm_parent,
+            &reviewed_tree,
+            &preflight,
+            &resolution,
+            &validation_root,
+        );
+        require_validation_result(
+            profile,
+            result.is_ok(),
+            result.err().as_deref().unwrap_or(""),
+            &validation_root,
+        )?;
+    } else {
+        let validation_result = run_validator(
+            &repository,
+            &source_parent,
+            &swarm_parent,
+            &reviewed_tree,
+            &preflight,
+            &resolution,
+            &validation_root,
+        )?;
+        require_validation_disposition(profile, &validation_result, &validation_root)?;
+    }
     let refs_after_validation = snapshot_refs(&repository)?;
     if refs_after_validation != refs_after_setup {
         return Err("source-owned fixture validator changed repository refs".to_string());
@@ -203,7 +335,42 @@ pub(crate) fn prepare_source_owned_fixture(
         fixture_identity,
         refs_after_setup,
         refs_after_validation,
+        context,
     })
+}
+
+fn run_owned_validator(
+    context: &OwnedFixtureContext,
+    source: &str,
+    swarm: &str,
+    tree: &str,
+    preflight: &LocatorMaterial,
+    resolution: &LocatorMaterial,
+    out: &Path,
+) -> Result<(), String> {
+    let args = [
+        "validate-resolved-tree",
+        "--source-parent",
+        source,
+        "--swarm-parent",
+        swarm,
+        "--reviewed-tree",
+        tree,
+        "--preflight",
+        path_text(&preflight.path)?,
+        "--preflight-sha256",
+        &preflight.sha256,
+        "--resolution-manifest",
+        path_text(&resolution.path)?,
+        "--resolution-sha256",
+        &resolution.sha256,
+        "--out",
+        path_text(out)?,
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+    super::source_promotion_validate_resolved_tree::validate_source_owned_fixture(&args, context)
 }
 
 /// Create the terminal qualification only after admission exists, so its
@@ -525,21 +692,34 @@ fn require_validation_disposition(
     output: &Output,
     packet: &Path,
 ) -> Result<(), String> {
+    require_validation_result(
+        profile,
+        output.status.success(),
+        &combined_output(output),
+        packet,
+    )
+}
+fn require_validation_result(
+    profile: SyntheticProfile,
+    successful: bool,
+    diagnostics: &str,
+    packet: &Path,
+) -> Result<(), String> {
     let report = read_json(
         &packet.join(VALIDATION_REPORT),
         "resolved-tree validation receipt",
     )
-    .map_err(|error| format!("{error}; {}", combined_output(output)))?;
+    .map_err(|error| format!("{error}; {diagnostics}"))?;
     let observed = string(&report, "status").unwrap_or("missing");
     let expected = match profile {
         SyntheticProfile::Positive => "validated",
         SyntheticProfile::J5Negative => "rejected",
     };
-    if observed != expected || output.status.success() != (expected == "validated") {
+    if observed != expected || successful != (expected == "validated") {
         return Err(format!(
             "{} validator disposition mismatch: expected {expected}, observed {observed}; {}",
             profile.as_str(),
-            combined_output(output)
+            diagnostics
         ));
     }
     if profile == SyntheticProfile::J5Negative {
@@ -1056,6 +1236,65 @@ mod tests {
             return Err("J5 failure oracle accepted an unknown authority field".to_string());
         }
         remove_test_roots(&[&root])
+    }
+
+    #[test]
+    fn reconstructed_geometry_requires_closed_profile_and_indexed_fixture_identity()
+    -> Result<(), String> {
+        let root = unique_test_root("geometry-context");
+        let repository = root.join("fixture-repository");
+        fs::create_dir_all(&repository).map_err(|error| error.to_string())?;
+        let graph = build_carrier_graph(&repository)?;
+        let source = graph.source_parent;
+        let swarm = graph.swarm_parent;
+        let tree = graph.source_tree;
+        let digest = "d".repeat(64);
+        let identity = digest_bytes(
+            format!(
+                "positive_synthetic:{source}:{swarm}:{tree}:{digest}:{digest}:{digest}:{digest}"
+            )
+            .as_bytes(),
+        );
+        let report = serde_json::json!({"execution_profile":"positive_synthetic", "reviewed_tree_carrier_sha":"not_required",
+            "source_parent_sha":source,"w7_peeled_sha":swarm,"reviewed_tree_sha":tree,"fixture_identity":identity,
+            "locators":{"preflight":{"sha256":digest},"resolution_manifest":{"sha256":digest},
+                "validation_packet":{"sha256":digest},"integration_packet":{"sha256":digest}}});
+        let result = (|| {
+            super::context_from_verified_workflow(&repository, &report)?;
+            for field in [
+                "execution_profile",
+                "fixture_identity",
+                "reviewed_tree_carrier_sha",
+                "reviewed_tree_sha",
+            ] {
+                let mut changed = report.clone();
+                changed[field] = Value::String("live".into());
+                if super::context_from_verified_workflow(&repository, &changed).is_ok() {
+                    return Err(format!("geometry context accepted changed {field}"));
+                }
+            }
+            let mut changed = report.clone();
+            changed["locators"]["preflight"]["sha256"] = Value::String("e".repeat(64));
+            if super::context_from_verified_workflow(&repository, &changed).is_ok() {
+                return Err("geometry context accepted changed indexed digest".into());
+            }
+            let mut changed = report.clone();
+            changed["reviewed_tree_sha"] = Value::String(graph.reviewed_tree.clone());
+            changed["fixture_identity"] = Value::String(digest_bytes(
+                format!(
+                    "positive_synthetic:{source}:{swarm}:{}:{digest}:{digest}:{digest}:{digest}",
+                    graph.reviewed_tree
+                )
+                .as_bytes(),
+            ));
+            if super::context_from_verified_workflow(&repository, &changed).is_ok() {
+                return Err(
+                    "self-consistent forged geometry escaped the exact source-tree boundary".into(),
+                );
+            }
+            Ok(())
+        })();
+        result.and(remove_test_roots(&[&root]))
     }
 
     #[test]
