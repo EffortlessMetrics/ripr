@@ -8,6 +8,10 @@ const LOCK_POLL_MS = 50;
 const LOCK_HEARTBEAT_MS = 30_000;
 const MANAGED_VERSION_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
+export type ManagedManifestSelection = 'preferred_exact' | 'fallback_exact_after_preferred_absent';
+export type PreferredManifestObservation = 'accepted' | 'direct_not_found';
+export type FallbackManifestObservation = 'not_requested' | 'accepted';
+
 export interface InstallReceiptV1 {
   readonly schemaVersion: 1;
   readonly installationState: 'complete';
@@ -25,6 +29,16 @@ export interface InstallReceiptV1 {
    * admitted under a different manifest cannot be reused.
    */
   readonly manifestSha256?: string;
+  /**
+   * Exact manifest location observed when these bytes were admitted.
+   * This is provenance/observation evidence only: cache currentness remains
+   * bound to distributionIdentity + manifestSha256, so identical RC bytes are
+   * not redownloaded merely to relabel them as stable.
+   */
+  readonly selectedManifestUrl?: string;
+  readonly manifestSelection?: ManagedManifestSelection;
+  readonly preferredManifestObservation?: PreferredManifestObservation;
+  readonly fallbackManifestObservation?: FallbackManifestObservation;
   /**
    * Placement-neutral identity of the distribution descriptor that produced
    * this install. Absent on legacy receipts; a distribution-bound request
@@ -71,6 +85,14 @@ export interface ResolvedArchive {
    * the resolved distribution; the staged receipt binds to it below.
    */
   readonly admittedManifestSha256?: string;
+  /**
+   * Exact manifest URL used to select this archive. Observation only; it is
+   * retained in the completed receipt but is deliberately not a cache key.
+   */
+  readonly selectedManifestUrl?: string;
+  readonly manifestSelection?: ManagedManifestSelection;
+  readonly preferredManifestObservation?: PreferredManifestObservation;
+  readonly fallbackManifestObservation?: FallbackManifestObservation;
 }
 
 export interface ManagedServerInstallOperations {
@@ -84,6 +106,10 @@ export interface ManagedServerInstallOperations {
 export interface ManagedServerReceiptIdentity {
   readonly assetDigest: string;
   readonly installationState: 'complete';
+  readonly selectedManifestUrl?: string;
+  readonly manifestSelection?: ManagedManifestSelection;
+  readonly preferredManifestObservation?: PreferredManifestObservation;
+  readonly fallbackManifestObservation?: FallbackManifestObservation;
 }
 
 export function validateManagedServerVersion(version: string): string {
@@ -102,7 +128,19 @@ export function combineActiveManagedServerIdentity<T extends { readonly binaryVe
   return {
     ...active,
     assetDigest: installation.receipt.archiveSha256,
-    installationState: 'complete'
+    installationState: 'complete',
+    ...(installation.receipt.selectedManifestUrl !== undefined
+      ? { selectedManifestUrl: installation.receipt.selectedManifestUrl }
+      : {}),
+    ...(installation.receipt.manifestSelection !== undefined
+      ? { manifestSelection: installation.receipt.manifestSelection }
+      : {}),
+    ...(installation.receipt.preferredManifestObservation !== undefined
+      ? { preferredManifestObservation: installation.receipt.preferredManifestObservation }
+      : {}),
+    ...(installation.receipt.fallbackManifestObservation !== undefined
+      ? { fallbackManifestObservation: installation.receipt.fallbackManifestObservation }
+      : {})
   };
 }
 
@@ -278,6 +316,18 @@ async function stageAndPromote(
         : {}),
       ...(resolved.admittedManifestSha256 !== undefined
         ? { manifestSha256: resolved.admittedManifestSha256 }
+        : {}),
+      ...(resolved.selectedManifestUrl !== undefined
+        ? { selectedManifestUrl: resolved.selectedManifestUrl }
+        : {}),
+      ...(resolved.manifestSelection !== undefined
+        ? { manifestSelection: resolved.manifestSelection }
+        : {}),
+      ...(resolved.preferredManifestObservation !== undefined
+        ? { preferredManifestObservation: resolved.preferredManifestObservation }
+        : {}),
+      ...(resolved.fallbackManifestObservation !== undefined
+        ? { fallbackManifestObservation: resolved.fallbackManifestObservation }
         : {})
     };
     await fs.promises.rm(archivePath, { force: true });

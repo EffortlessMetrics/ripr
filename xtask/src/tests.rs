@@ -10826,6 +10826,167 @@ fn routed_rust_workflow_contract_rejects_missing_receipt_or_route_assertion() ->
 }
 
 #[test]
+fn source_routed_rust_ignored_labels_cannot_replace_proof() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    for (snippet, expected) in [
+        (
+            "if: github.event_name != 'pull_request' || contains(fromJSON",
+            "proof-event guard",
+        ),
+        ("'-label-ignore'", "concurrency isolation"),
+        (
+            "'Ripr Rust Small Ignored Label Event'",
+            "required result name",
+        ),
+        (
+            "if: always() && (github.event_name != 'pull_request'",
+            "proof-event guard",
+        ),
+    ] {
+        let mutated = workflow.replacen(snippet, "REMOVED_CONTROL", 1);
+        let violations = routed_rust_workflow_contract_violations(&mutated, None, None);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains(expected))
+        {
+            return Err(format!(
+                "removal of {snippet} was not rejected: {violations:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?.replace("\r\n", "\n");
+    for (job, key, expected) in [
+        ("route", "if:", "proof-event guard"),
+        ("detect-docs-only", "if:", "proof-event guard"),
+        ("result", "if:", "proof-event guard"),
+        ("result", "name:", "required result name"),
+    ] {
+        let start = workflow
+            .find(&format!("\n  {job}:\n"))
+            .ok_or("canonical workflow lacks the selected job")?;
+        let rest = &workflow[start + 1..];
+        let mut end = rest.len();
+        let mut offset = 0;
+        for line in rest.split_inclusive('\n') {
+            if offset > 0 && line.starts_with("  ") && !line.starts_with("   ") {
+                end = offset;
+                break;
+            }
+            offset += line.len();
+        }
+        let block = &rest[..end];
+        let control = block
+            .lines()
+            .find(|line| line.starts_with(&format!("    {key}")))
+            .ok_or("canonical workflow lacks the selected direct control")?;
+        let step = if key == "name:" {
+            format!(
+                "      - id: scope_control\n        {}\n        run: echo scope-control\n",
+                control.trim()
+            )
+        } else {
+            format!(
+                "      - name: Scope control\n        {}\n        run: echo scope-control\n",
+                control.trim()
+            )
+        };
+        let relocated = block.replacen(&format!("{control}\n"), "", 1).replacen(
+            "    steps:\n",
+            &format!("    steps:\n{step}"),
+            1,
+        );
+        let mutated = workflow.replacen(block, &relocated, 1);
+        assert_ne!(mutated, workflow);
+        assert!(
+            routed_rust_workflow_contract_violations(&mutated, None, None)
+                .iter()
+                .any(|violation| violation.contains(expected)),
+            "relocated {job}.{key} must be rejected"
+        );
+    }
+    let group = workflow
+        .lines()
+        .find(|line| line.starts_with("  group:"))
+        .ok_or("canonical workflow lacks its concurrency group")?;
+    let without_group = workflow.replacen(&format!("{group}\n"), "", 1);
+    for relocated in [
+        without_group.replacen("env:\n", &format!("env:\n{group}\n"), 1),
+        without_group.replacen("    steps:\n", &format!("    steps:\n      - name: Scope control\n        env:\n        {group}\n        run: echo scope-control\n"), 1),
+    ] {
+        assert_ne!(relocated, workflow);
+        assert!(
+            routed_rust_workflow_contract_violations(&relocated, None, None)
+                .iter()
+                .any(|violation| violation.contains("concurrency isolation")),
+            "group outside workflow concurrency must be rejected"
+        );
+    }
+    let scoped = "jobs:\n  route:\n\n    # direct mapping key\n    if: exact\n    steps:\n      - run: echo test\nenv:\n  route:\n    if: wrong\n";
+    assert!(crate::routed_rust_job_block_any(
+        scoped,
+        "route",
+        |line| line.trim() == "if: exact"
+    ));
+    assert!(!crate::routed_rust_job_block_any(
+        scoped,
+        "route",
+        |line| line.trim() == "if: wrong"
+    ));
+    for unsupported in [
+        "jobs:\n  route:\n   if: exact\n",
+        "jobs:\n  route:\n    if: >-\n      exact\n",
+        "env:\n  route:\n    if: exact\n",
+    ] {
+        assert!(!crate::routed_rust_job_block_any(
+            unsupported,
+            "route",
+            |line| line.trim() == "if: exact"
+        ));
+    }
+    let isolation = format!(
+        "${{{{ {} && '-label-ignore' || '' }}}}",
+        crate::SOURCE_RUST_IGNORED_EVENT
+    );
+    for value in [
+        format!("shared # {isolation}"),
+        format!("shared\t# {isolation}"),
+        format!("\"shared{isolation}\""),
+        format!("'shared{isolation}'"),
+        format!(">-\n    shared{isolation}"),
+    ] {
+        let mutated = workflow.replacen(group, &format!("  group: {value}"), 1);
+        assert_ne!(mutated, workflow);
+        assert!(
+            !crate::routed_rust_concurrency_group_has_isolation(&mutated, &isolation),
+            "inline comment or unsupported scalar must not establish isolation"
+        );
+        assert!(
+            routed_rust_workflow_contract_violations(&mutated, None, None)
+                .iter()
+                .any(|violation| violation.contains("concurrency isolation"))
+        );
+    }
+    for comment in [" # retained explanation", "\t# retained explanation"] {
+        let annotated = workflow.replacen(group, &format!("{group}{comment}"), 1);
+        assert_ne!(annotated, workflow);
+        assert!(
+            crate::routed_rust_concurrency_group_has_isolation(&annotated, &isolation),
+            "a real plain group value retains isolation before a trailing comment"
+        );
+        assert_eq!(
+            routed_rust_workflow_contract_violations(&annotated, None, None).len(),
+            0
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn routed_rust_workflow_contract_rejects_self_hosted_reintroduction() {
     // ripr#1446: self-hosted runner authority belongs to ripr-swarm. The source
     // contract must reject any attempt to bring it back, including a lane that is

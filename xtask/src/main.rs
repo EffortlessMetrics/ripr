@@ -7645,21 +7645,57 @@ fn routed_rust_job_block_any(
     mut predicate: impl FnMut(&str) -> bool,
 ) -> bool {
     let job_header = format!("{job}:");
+    let mut in_jobs = false;
     let mut in_block = false;
     for line in workflow.lines() {
+        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
+            in_jobs = line.trim() == "jobs:";
+            in_block = false;
+            continue;
+        }
         let job_level_key = line.starts_with("  ")
             && !line.starts_with("   ")
             && line.trim_end().ends_with(':')
             && !line.trim_start().starts_with('-');
         if job_level_key {
-            in_block = line.trim() == job_header;
+            in_block = in_jobs && line.trim() == job_header;
             continue;
         }
         if in_block && !line.is_empty() && !line.starts_with(' ') {
             break;
         }
-        if in_block && predicate(line) {
+        if in_block && line.starts_with("    ") && !line.starts_with("     ") && predicate(line) {
             return true;
+        }
+    }
+    false
+}
+
+fn routed_rust_concurrency_group_has_isolation(workflow: &str, isolation: &str) -> bool {
+    let mut in_concurrency = false;
+    for line in workflow.lines() {
+        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
+            in_concurrency = line.trim() == "concurrency:";
+            continue;
+        }
+        if in_concurrency && let Some(value) = line.strip_prefix("  group: ") {
+            let value = value.trim_start();
+            // Only the workflow's plain scalar style is supported. Text in
+            // a YAML comment must never satisfy the isolation contract.
+            if value.starts_with(['\'', '"', '|', '>']) {
+                return false;
+            }
+            let comment = value.char_indices().find_map(|(index, character)| {
+                (character == '#'
+                    && (index == 0
+                        || value[..index]
+                            .chars()
+                            .next_back()
+                            .is_some_and(char::is_whitespace)))
+                .then_some(index)
+            });
+            let value = &value[..comment.unwrap_or(value.len())];
+            return value.trim_end().ends_with(isolation);
         }
     }
     false
@@ -7680,6 +7716,9 @@ fn routed_rust_workflow_contract_violations(
     routed_rust_workflow_contract_violations_with_reusable(workflow, None, settings, lane_whitelist)
 }
 
+const SOURCE_RUST_EVENT_GUARD: &str = r#"github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')"#;
+const SOURCE_RUST_IGNORED_EVENT: &str = "github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci'))";
+
 fn routed_rust_workflow_contract_violations_with_reusable(
     workflow: &str,
     _reusable_workflow: Option<&str>,
@@ -7687,6 +7726,33 @@ fn routed_rust_workflow_contract_violations_with_reusable(
     lane_whitelist: Option<&str>,
 ) -> Vec<String> {
     let mut violations = Vec::new();
+
+    for job in ["route", "detect-docs-only"] {
+        if !routed_rust_job_block_any(workflow, job, |line| {
+            line.trim() == format!("if: {SOURCE_RUST_EVENT_GUARD}")
+        }) {
+            violations.push(format!(
+                "source routed Rust job `{job}` lacks the exact proof-event guard"
+            ));
+        }
+    }
+    if !routed_rust_job_block_any(workflow, "result", |line| {
+        line.trim() == format!("if: always() && ({SOURCE_RUST_EVENT_GUARD})")
+    }) {
+        violations.push("source routed Rust result lacks the exact proof-event guard".to_string());
+    }
+    let result_name = format!(
+        "name: ${{{{ {SOURCE_RUST_IGNORED_EVENT} && 'Ripr Rust Small Ignored Label Event' || 'Ripr Rust Small Result' }}}}"
+    );
+    if !routed_rust_job_block_any(workflow, "result", |line| line.trim() == result_name) {
+        violations.push(
+            "source ignored label event must not occupy the required result name".to_string(),
+        );
+    }
+    let isolation = format!("${{{{ {SOURCE_RUST_IGNORED_EVENT} && '-label-ignore' || '' }}}}");
+    if !routed_rust_concurrency_group_has_isolation(workflow, &isolation) {
+        violations.push("source ignored label event lacks concurrency isolation".to_string());
+    }
 
     // ripr#1446: the source repository proves its own pull requests on
     // GitHub-hosted runners. Self-hosted capacity is `ripr-swarm` authority. This
@@ -7707,7 +7773,7 @@ fn routed_rust_workflow_contract_violations_with_reusable(
             "org runner query negative assertion",
             "org_runner_query_attempted=false",
         ),
-        ("normalized result job", "name: Ripr Rust Small Result"),
+        ("normalized result job", "Ripr Rust Small Result"),
         (
             "hosted rust route predicate",
             "needs.route.outputs.route == 'github_hosted_rust'",
