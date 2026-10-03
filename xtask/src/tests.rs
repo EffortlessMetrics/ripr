@@ -10866,7 +10866,9 @@ fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
         ("result", "if:", "proof-event guard"),
         ("result", "name:", "required result name"),
     ] {
-        let start = workflow.find(&format!("\n  {job}:\n")).unwrap();
+        let start = workflow
+            .find(&format!("\n  {job}:\n"))
+            .ok_or("canonical workflow lacks the selected job")?;
         let rest = &workflow[start + 1..];
         let mut end = rest.len();
         let mut offset = 0;
@@ -10881,7 +10883,7 @@ fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
         let control = block
             .lines()
             .find(|line| line.starts_with(&format!("    {key}")))
-            .unwrap();
+            .ok_or("canonical workflow lacks the selected direct control")?;
         let step = if key == "name:" {
             format!(
                 "      - id: scope_control\n        {}\n        run: echo scope-control\n",
@@ -10910,7 +10912,7 @@ fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
     let group = workflow
         .lines()
         .find(|line| line.starts_with("  group:"))
-        .unwrap();
+        .ok_or("canonical workflow lacks its concurrency group")?;
     let without_group = workflow.replacen(&format!("{group}\n"), "", 1);
     for relocated in [
         without_group.replacen("env:\n", &format!("env:\n{group}\n"), 1),
