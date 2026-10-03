@@ -1329,7 +1329,25 @@ fn production_workflow_fixture(profile: &str) -> Result<(), String> {
                         || row["exit_code"].as_i64() != Some(0)
                 })
             {
-                return Err("historical diagnostic did not execute all green commands".to_string());
+                let mut failed_logs = Vec::new();
+                for row in commands.iter().filter(|row| row["state"] != "passed") {
+                    for stream in ["stdout_path", "stderr_path"] {
+                        if let Some(log) = row[stream].as_str() {
+                            match fs::read(live_out.join(log)) {
+                                Ok(bytes) => {
+                                    let tail = &bytes[bytes.len().saturating_sub(8192)..];
+                                    failed_logs.push(String::from_utf8_lossy(tail).into_owned());
+                                }
+                                Err(error) => {
+                                    failed_logs.push(format!("{log}: unavailable: {error}"))
+                                }
+                            }
+                        }
+                    }
+                }
+                return Err(format!(
+                    "historical diagnostic did not execute all green commands: receipt={validation}; bounded_failed_output={failed_logs:?}"
+                ));
             }
             if output.status.success()
                 || validation["status"].as_str() != Some("rejected")
