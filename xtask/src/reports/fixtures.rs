@@ -401,6 +401,7 @@ pub(crate) fn is_manifest_only_fixture_dir(path: &Path) -> bool {
                     | "blind_journey_execute"
                     | "blind_journey_installed_rust"
                     | "blind_journey_installed_python"
+                    | "blind_journey_installed_typescript"
                     | "bun-ub-cross-language-dogfood"
                     | "convergence"
                     | "cross-language-oracle-graph-corpus"

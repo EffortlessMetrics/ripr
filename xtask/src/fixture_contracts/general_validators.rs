@@ -2512,6 +2512,772 @@ mod installed_rust_fixture_tests {
     }
 }
 
+pub(crate) const INSTALLED_TYPESCRIPT_FIXTURE_SCHEMA_VERSION: &str =
+    "blind_journey_installed_typescript_fixture.v1";
+
+/// The installed-TypeScript journey fixture (#4519, RIPR-SPEC-0210) is a
+/// manifest-only fixture directory: `manifest.json` binds the retained
+/// npm/Vitest repository snapshots (the positive threshold-boundary pair plus
+/// every rebindable, imported, shadowed, computed and nonliteral negative
+/// variant) by per-file SHA-256 and records the reproducible git identities,
+/// and this validator owns that contract so a hand-edited snapshot or
+/// manifest cannot make a scripted journey claim a fixture it does not bind.
+pub(crate) fn validate_blind_journey_installed_typescript_fixture(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/blind_journey_installed_typescript");
+    for required in ["SPEC.md", "manifest.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "blind journey installed typescript fixture is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0210") {
+            violations.push(
+                "blind journey installed typescript SPEC.md must name its RIPR-SPEC-0210 \
+                 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "blind journey installed typescript SPEC.md must contain the `{heading}` \
+                     section"
+                ));
+            }
+        }
+    }
+    let manifest_path = root.join("manifest.json");
+    if !manifest_path.exists() {
+        return Ok(());
+    }
+    let manifest = match read_json_value(&manifest_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(format!(
+                "blind journey installed typescript manifest is invalid: {err}"
+            ));
+            return Ok(());
+        }
+    };
+    for violation in installed_typescript_manifest_violations(root, &manifest) {
+        violations.push(violation);
+    }
+    let corpus_path = Path::new("fixtures/blind_journey_execute/corpus.json");
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    for missing in installed_typescript_missing_scenarios(&manifest, &corpus) {
+        violations.push(missing);
+    }
+    for violation in installed_typescript_scenario_binding_violations(&manifest, &corpus) {
+        violations.push(violation);
+    }
+    Ok(())
+}
+
+fn installed_typescript_sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// One recorded git identity is a lowercase 40-hex SHA-1 object id; anything
+/// else cannot be the reproducible commit or tree identity the fixture claims.
+fn installed_typescript_git_identity_wellformed(value: Option<&Value>) -> bool {
+    value.and_then(Value::as_str).is_some_and(|identity| {
+        identity.len() == 40
+            && identity
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    })
+}
+
+/// Every snapshot file binding recomputed against the bytes on disk, plus the
+/// edit-cage invariants the scripted journeys rely on.
+fn installed_typescript_manifest_violations(root: &Path, manifest: &Value) -> Vec<String> {
+    let mut violations = Vec::new();
+    let fixture_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            violations.push(format!(
+                "blind journey installed typescript fixture root cannot be resolved: {error}"
+            ));
+            return violations;
+        }
+    };
+    if json_string_field(manifest, "schema_version").as_deref()
+        != Some(INSTALLED_TYPESCRIPT_FIXTURE_SCHEMA_VERSION)
+    {
+        violations.push(format!(
+            "blind journey installed typescript manifest schema_version must be \
+             {INSTALLED_TYPESCRIPT_FIXTURE_SCHEMA_VERSION}"
+        ));
+    }
+    let Some(snapshots) = manifest
+        .get("repository")
+        .and_then(|repository| repository.get("snapshots"))
+        .and_then(Value::as_object)
+    else {
+        violations.push(
+            "blind journey installed typescript manifest is missing repository.snapshots"
+                .to_string(),
+        );
+        return violations;
+    };
+    for (name, snapshot) in snapshots {
+        let snapshot_dir = root.join("repository").join(name);
+        let confined_dir = match snapshot_dir.canonicalize() {
+            Ok(resolved) if resolved.starts_with(&fixture_root) => resolved,
+            Ok(_) => {
+                violations.push(format!(
+                    "blind journey installed typescript snapshot `{name}` escapes the fixture \
+                     root"
+                ));
+                continue;
+            }
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed typescript snapshot `{name}` directory cannot be \
+                     resolved: {error}"
+                ));
+                continue;
+            }
+        };
+        if !installed_typescript_git_identity_wellformed(snapshot.get("commit"))
+            || !installed_typescript_git_identity_wellformed(snapshot.get("tree"))
+        {
+            violations.push(format!(
+                "blind journey installed typescript snapshot `{name}` must record well-formed \
+                 commit and tree identities"
+            ));
+        }
+        let Some(files) = snapshot.get("files").and_then(Value::as_object) else {
+            violations.push(format!(
+                "blind journey installed typescript snapshot `{name}` is missing its file \
+                 digest bindings"
+            ));
+            continue;
+        };
+        for (relative, digest) in files {
+            let Some(expected) = digest.as_str() else {
+                violations.push(format!(
+                    "blind journey installed typescript snapshot `{name}` file `{relative}` \
+                     records a non-string digest"
+                ));
+                continue;
+            };
+            let path = confined_dir.join(relative);
+            let path = match path.canonicalize() {
+                Ok(resolved) if resolved.starts_with(&fixture_root) => resolved,
+                Ok(_) => {
+                    violations.push(format!(
+                        "blind journey installed typescript snapshot `{name}` file \
+                         `{relative}` escapes the fixture root"
+                    ));
+                    continue;
+                }
+                Err(error) => {
+                    violations.push(format!(
+                        "blind journey installed typescript snapshot `{name}` file \
+                         `{relative}` cannot be read: {error}"
+                    ));
+                    continue;
+                }
+            };
+            let body = match std::fs::read(&path) {
+                Ok(body) => body,
+                Err(error) => {
+                    violations.push(format!(
+                        "blind journey installed typescript snapshot `{name}` file \
+                         `{relative}` cannot be read: {error}"
+                    ));
+                    continue;
+                }
+            };
+            if installed_typescript_sha256_hex(&body) != expected {
+                violations.push(format!(
+                    "blind journey installed typescript snapshot `{name}` file `{relative}` \
+                     drifted from its recorded digest"
+                ));
+            }
+        }
+        let mut on_disk = Vec::new();
+        installed_typescript_collect_snapshot_files(
+            &confined_dir,
+            Path::new(""),
+            &mut on_disk,
+            &mut violations,
+            name,
+        );
+        for relative in on_disk {
+            if !files.contains_key(relative.as_str()) {
+                violations.push(format!(
+                    "blind journey installed typescript snapshot `{name}` file `{relative}` is \
+                     not bound in the manifest"
+                ));
+            }
+        }
+    }
+    let journey = manifest.get("journey");
+    let string_list = |key: &str| {
+        journey
+            .and_then(|journey| journey.get(key))
+            .and_then(Value::as_array)
+            .map(|entries| entries.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+            .unwrap_or_default()
+    };
+    let cage = string_list("expected_edit_cage");
+    let forbidden = string_list("forbidden_edits");
+    let edit_target = journey
+        .and_then(|journey| journey.get("selected_repair"))
+        .and_then(|repair| repair.get("edit_target"))
+        .and_then(Value::as_str);
+    match edit_target {
+        Some(target) if cage.contains(&target) => {}
+        Some(_) => {
+            violations.push(
+                "blind journey installed typescript selected repair edit target must lie \
+                 inside the expected edit cage"
+                    .to_string(),
+            );
+        }
+        None => {
+            violations.push(
+                "blind journey installed typescript manifest is missing \
+                 journey.selected_repair.edit_target"
+                    .to_string(),
+            );
+        }
+    }
+    if cage.iter().any(|entry| forbidden.contains(entry)) {
+        violations.push(
+            "blind journey installed typescript expected edit cage and forbidden edits must \
+             not overlap"
+                .to_string(),
+        );
+    }
+    violations
+}
+
+/// Fail-closed inventory of one retained snapshot directory: every regular
+/// file is reported with its manifest-relative `/`-separated path so a
+/// behavior-affecting snapshot file cannot stay unbound from the manifest.
+fn installed_typescript_collect_snapshot_files(
+    dir: &Path,
+    prefix: &Path,
+    files: &mut Vec<String>,
+    violations: &mut Vec<String>,
+    snapshot: &str,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!(
+                "blind journey installed typescript snapshot `{snapshot}` directory {} \
+                 cannot be read: {error}",
+                normalize_path(dir)
+            ));
+            return;
+        }
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed typescript snapshot `{snapshot}` directory {} \
+                     cannot be enumerated: {error}",
+                    normalize_path(dir)
+                ));
+                continue;
+            }
+        };
+        let relative = prefix.join(entry.file_name());
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) => {
+                violations.push(format!(
+                    "blind journey installed typescript snapshot `{snapshot}` path {} cannot \
+                     be inspected: {error}",
+                    normalize_path(&relative)
+                ));
+                continue;
+            }
+        };
+        if file_type.is_dir() {
+            installed_typescript_collect_snapshot_files(
+                &entry.path(),
+                &relative,
+                files,
+                violations,
+                snapshot,
+            );
+        } else if file_type.is_file() {
+            files.push(normalize_path(&relative));
+        } else {
+            violations.push(format!(
+                "blind journey installed typescript snapshot `{snapshot}` path {} is not a \
+                 regular file, so it is not digest-bound",
+                normalize_path(&relative)
+            ));
+        }
+    }
+}
+
+/// Every scripted scenario the manifest names must bind its recorded
+/// candidate identities to the same manifest snapshots, so a renamed row
+/// cannot claim an unrelated repository while this gate stays green.
+fn installed_typescript_scenario_binding_violations(
+    manifest: &Value,
+    corpus: &Value,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    let Some(ids) = manifest
+        .get("journey_scenario_ids")
+        .and_then(Value::as_array)
+    else {
+        return violations;
+    };
+    let named: BTreeSet<&str> = ids.iter().filter_map(Value::as_str).collect();
+    if named.is_empty() {
+        return violations;
+    }
+    let Some(snapshots) = manifest
+        .get("repository")
+        .and_then(|repository| repository.get("snapshots"))
+        .and_then(Value::as_object)
+    else {
+        return violations;
+    };
+    let Some(base_commit) = snapshots
+        .get("base")
+        .and_then(|snapshot| snapshot.get("commit"))
+        .and_then(Value::as_str)
+    else {
+        violations.push(
+            "blind journey installed typescript manifest is missing the base snapshot commit"
+                .to_string(),
+        );
+        return violations;
+    };
+    let bindings = manifest
+        .get("scenario_snapshot_bindings")
+        .and_then(Value::as_object);
+    let Some(scenarios) = corpus.get("scenarios").and_then(Value::as_array) else {
+        return violations;
+    };
+    for scenario in scenarios {
+        let Some(id) = scenario.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if !named.contains(id) {
+            continue;
+        }
+        let candidate = scenario
+            .get("journey")
+            .and_then(|journey| journey.get("candidate"));
+        let candidate_base = candidate
+            .and_then(|candidate| candidate.get("base"))
+            .and_then(Value::as_str);
+        if candidate_base != Some(base_commit) {
+            violations.push(format!(
+                "blind journey installed typescript scenario `{id}` candidate base must bind \
+                 the base snapshot commit"
+            ));
+        }
+        let head = candidate
+            .and_then(|candidate| candidate.get("head"))
+            .and_then(Value::as_str);
+        let tree = candidate
+            .and_then(|candidate| candidate.get("tree"))
+            .and_then(Value::as_str);
+        let Some(designated) = bindings
+            .and_then(|bindings| bindings.get(id))
+            .and_then(Value::as_str)
+        else {
+            violations.push(format!(
+                "blind journey installed typescript scenario `{id}` must name its designated \
+                 snapshot in scenario_snapshot_bindings"
+            ));
+            continue;
+        };
+        if designated == "base" {
+            violations.push(format!(
+                "blind journey installed typescript scenario `{id}` must not designate the \
+                 unchanged base snapshot as its candidate head"
+            ));
+            continue;
+        }
+        let Some(snapshot) = snapshots.get(designated) else {
+            violations.push(format!(
+                "blind journey installed typescript scenario `{id}` designates unknown \
+                 snapshot `{designated}`"
+            ));
+            continue;
+        };
+        let head_binds_designated = snapshot.get("commit").and_then(Value::as_str) == head
+            && snapshot.get("tree").and_then(Value::as_str) == tree;
+        if !head_binds_designated {
+            violations.push(format!(
+                "blind journey installed typescript scenario `{id}` candidate head and tree \
+                 must bind its designated snapshot `{designated}`"
+            ));
+        }
+    }
+    violations
+}
+
+/// Every scripted scenario the manifest names must exist in the committed
+/// RIPR-SPEC-0205 executor corpus, so the fixture cannot claim journey rows
+/// the gate does not execute.
+fn installed_typescript_missing_scenarios(manifest: &Value, corpus: &Value) -> Vec<String> {
+    let mut missing = Vec::new();
+    let Some(ids) = manifest
+        .get("journey_scenario_ids")
+        .and_then(Value::as_array)
+    else {
+        missing.push(
+            "blind journey installed typescript manifest is missing journey_scenario_ids"
+                .to_string(),
+        );
+        return missing;
+    };
+    let corpus_ids: BTreeSet<String> = corpus
+        .get("scenarios")
+        .and_then(Value::as_array)
+        .map(|scenarios| {
+            scenarios
+                .iter()
+                .filter_map(|scenario| json_string_field(scenario, "id"))
+                .collect()
+        })
+        .unwrap_or_default();
+    for id in ids {
+        let Some(id) = id.as_str() else {
+            missing.push(
+                "blind journey installed typescript journey_scenario_ids must be strings"
+                    .to_string(),
+            );
+            continue;
+        };
+        if !corpus_ids.contains(id) {
+            missing.push(format!(
+                "blind journey installed typescript scenario `{id}` is missing from the blind \
+                 journey execute corpus"
+            ));
+        }
+    }
+    missing
+}
+
+#[cfg(test)]
+mod installed_typescript_fixture_tests {
+    use super::*;
+
+    #[test]
+    fn committed_installed_typescript_manifest_binds_the_snapshot_bytes() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures/blind_journey_installed_typescript");
+        let manifest = read_json_value(&root.join("manifest.json"))?;
+        let violations = installed_typescript_manifest_violations(&root, &manifest);
+        if !violations.is_empty() {
+            return Err(format!(
+                "committed installed typescript manifest drifted: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn committed_installed_typescript_scenarios_exist_in_the_executor_corpus() -> Result<(), String>
+    {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let manifest = read_json_value(
+            &workspace.join("fixtures/blind_journey_installed_typescript/manifest.json"),
+        )?;
+        let corpus =
+            read_json_value(&workspace.join("fixtures/blind_journey_execute/corpus.json"))?;
+        let missing = installed_typescript_missing_scenarios(&manifest, &corpus);
+        if !missing.is_empty() {
+            return Err(format!(
+                "committed installed typescript fixture names missing corpus scenarios: \
+                 {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_installed_typescript_scenario_is_reported_missing() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_typescript_not_a_real_scenario"]
+        });
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_typescript_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("installed_typescript_not_a_real_scenario"))
+        {
+            return Err(format!(
+                "an unknown installed typescript scenario must be reported, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn drifted_snapshot_digest_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-typescript-fixture-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("src/pricing.ts"),
+            b"export function drifted() {}\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_TYPESCRIPT_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                "files": {"src/pricing.ts":
+                    "0000000000000000000000000000000000000000000000000000000000000000"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["test/pricing.test.ts"],
+                "forbidden_edits": ["src/pricing.ts"],
+                "selected_repair": {"edit_target": "test/pricing.test.ts"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_typescript_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("drifted"))
+        {
+            return Err(format!(
+                "a drifted snapshot digest must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_identity_binding_accepts_only_lowercase_hex() -> Result<(), String> {
+        let valid: Value = serde_json::json!("5d48dbf2080a1596bfb267593402ab8b38cd63fa");
+        if !installed_typescript_git_identity_wellformed(Some(&valid)) {
+            return Err("a lowercase 40-hex git identity must be accepted".to_string());
+        }
+        for invalid in [
+            serde_json::json!("5D48DBF2080A1596BFB267593402AB8B38CD63FA"),
+            serde_json::json!("5d48dbf2"),
+            serde_json::json!("zz48dbf2080a1596bfb267593402ab8b38cd63fa"),
+            serde_json::json!(
+                "5d48dbf2080a1596bfb267593402ab8b38cd63fa5d48dbf2080a1596bfb267593402ab8b38cd63fa"
+            ),
+            serde_json::json!(40),
+        ] {
+            if installed_typescript_git_identity_wellformed(Some(&invalid)) {
+                return Err(format!(
+                    "an ill-formed git identity must be rejected: {invalid}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unlisted_snapshot_file_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-typescript-extra-file-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("src/pricing.ts"),
+            b"export function extra() {}\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("src/helper.ts"),
+            b"export function helper() {}\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_TYPESCRIPT_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                "files": {"src/pricing.ts":
+                    "70180cb1d03b8e6d59f1a1ad0de771b1ea19f7f0f3762a60c9bd2947bd4b6d6c"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["test/pricing.test.ts"],
+                "forbidden_edits": ["src/pricing.ts"],
+                "selected_repair": {"edit_target": "test/pricing.test.ts"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_typescript_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("not bound in the manifest"))
+        {
+            return Err(format!(
+                "an unlisted snapshot file must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scenario_candidate_must_bind_the_manifest_snapshots() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_typescript_positive_journey_emits_receipt"],
+            "scenario_snapshot_bindings": {
+                "installed_typescript_positive_journey_emits_receipt": "head"
+            },
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                    "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                    "files": {}
+                },
+                "head": {
+                    "commit": "94339d4e11d39461f5fec6893453cd9073609f5a",
+                    "tree": "8da68b121a26fbbb50a96d2c11c54a3628db4dc9",
+                    "files": {}
+                }
+            }}
+        });
+        let bound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "94339d4e11d39461f5fec6893453cd9073609f5a",
+                "tree": "8da68b121a26fbbb50a96d2c11c54a3628db4dc9"
+            }}
+        }]});
+        if !installed_typescript_scenario_binding_violations(&manifest, &bound).is_empty() {
+            return Err("a snapshot-bound scenario candidate must be accepted".to_string());
+        }
+        let unbound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "0000000000000000000000000000000000000000",
+                "tree": "8da68b121a26fbbb50a96d2c11c54a3628db4dc9"
+            }}
+        }]});
+        let violations = installed_typescript_scenario_binding_violations(&manifest, &unbound);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind its designated snapshot"))
+        {
+            return Err(format!(
+                "an unbound scenario candidate head must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scenario_must_bind_its_designated_snapshot() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": [
+                "installed_typescript_let_binding_variant_unresolved",
+                "installed_typescript_shadowing_variant_unresolved"
+            ],
+            "scenario_snapshot_bindings": {
+                "installed_typescript_let_binding_variant_unresolved": "variant-let-binding"
+            },
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                    "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                    "files": {}
+                },
+                "variant-let-binding": {
+                    "commit": "0df41e78033463d4a506a12189a77d2889d5b61c",
+                    "tree": "30f83a8fc868a7bc2d91981fb14bb5a03a6b95b0",
+                    "files": {}
+                },
+                "variant-shadowing": {
+                    "commit": "d7a7d61fd7e3998de2d306d8f834b1fe45708fcc",
+                    "tree": "cd6aef1e0edfa31d25c0aa794c86d1ba8e02da11",
+                    "files": {}
+                }
+            }}
+        });
+        let wrong_snapshot: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_let_binding_variant_unresolved",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "d7a7d61fd7e3998de2d306d8f834b1fe45708fcc",
+                "tree": "cd6aef1e0edfa31d25c0aa794c86d1ba8e02da11"
+            }}
+        }]});
+        let violations =
+            installed_typescript_scenario_binding_violations(&manifest, &wrong_snapshot);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind its designated snapshot"))
+        {
+            return Err(format!(
+                "a scenario bound to the wrong variant snapshot must be rejected, got: \
+                 {violations:?}"
+            ));
+        }
+        let missing_binding: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_shadowing_variant_unresolved",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "d7a7d61fd7e3998de2d306d8f834b1fe45708fcc",
+                "tree": "cd6aef1e0edfa31d25c0aa794c86d1ba8e02da11"
+            }}
+        }]});
+        let violations =
+            installed_typescript_scenario_binding_violations(&manifest, &missing_binding);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must name its designated snapshot"))
+        {
+            return Err(format!(
+                "a scenario without a designated-snapshot binding must be rejected, got: \
+                 {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+}
+
 pub(crate) const INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION: &str =
     "blind_journey_installed_python_fixture.v1";
 
