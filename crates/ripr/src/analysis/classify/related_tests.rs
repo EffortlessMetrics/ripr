@@ -2173,7 +2173,11 @@ pub(in crate::analysis) fn body_contains_owner_call(body: &str, owner_name: &str
     if owner_name.is_empty() {
         return false;
     }
+    let opaque = crate::analysis::extract::property_macros::opaque_property_macros(body);
     body.match_indices(owner_name).any(|(start, _)| {
+        if opaque.iter().any(|item| item.range.contains(&start)) {
+            return false;
+        }
         let end = start.saturating_add(owner_name.len());
         let before_ok = start == 0
             || !body
@@ -2200,6 +2204,17 @@ mod tests {
         DeltaKind, OracleKind, OracleStrength, ProbeFamily, ProbeId, SourceLocation, SymbolId,
     };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn opaque_declarations_do_not_supply_body_owner_calls() {
+        for body in ["proptest! { fn gate() {} }", "proptest! { gate(1); }"] {
+            assert!(!body_contains_owner_call(body, "gate"), "{body}");
+        }
+        assert!(body_contains_owner_call(
+            "proptest! { fn gate() {} } gate(1);",
+            "gate"
+        ));
+    }
 
     #[test]
     fn candidate_index_bounds_large_unrelated_test_set() {

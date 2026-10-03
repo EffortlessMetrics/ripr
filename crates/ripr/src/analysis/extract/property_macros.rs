@@ -113,6 +113,33 @@ pub(crate) fn outside_property_macros<'a>(
         })
 }
 
+/// Preserve byte and line coordinates for existing raw-body scanners while
+/// refusing every token inside an opaque property invocation. The original
+/// function/file bytes remain the source and ownership authority.
+pub(crate) fn property_safe_scanner_text(text: &str) -> std::borrow::Cow<'_, str> {
+    let opaque = opaque_property_macros(text);
+    if opaque.is_empty() {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut safe = String::with_capacity(text.len());
+    let mut start = 0;
+    for item in opaque {
+        safe.push_str(&text[start..item.range.start]);
+        safe.extend(text[item.range.clone()].bytes().map(|byte| {
+            if byte == b'\n' {
+                '\n'
+            } else if byte == b'\r' {
+                '\r'
+            } else {
+                ' '
+            }
+        }));
+        start = item.range.end;
+    }
+    safe.push_str(&text[start..]);
+    std::borrow::Cow::Owned(safe)
+}
+
 /// Identifier mentions are diagnostic only. Literal/comment text is excluded.
 pub(crate) fn mentioned_identifiers(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
@@ -198,7 +225,7 @@ pub(crate) fn lexical_call_names(text: &str) -> std::collections::BTreeSet<Strin
         if !declaration_name
             && !declaration_keyword
             && enum_depth.is_none()
-            && text[cursor..].trim_start().starts_with('(')
+            && call_follows_identifier(text, start, cursor)
         {
             names.insert(name.to_string());
         }
@@ -208,6 +235,27 @@ pub(crate) fn lexical_call_names(text: &str) -> std::collections::BTreeSet<Strin
         previous_word = name;
     }
     names
+}
+
+fn call_follows_identifier(text: &str, start: usize, end: usize) -> bool {
+    let tail = text[end..].trim_start();
+    if tail.starts_with('(') {
+        return true;
+    }
+    if !tail.starts_with("::<") {
+        return false;
+    }
+    let Some(arguments) = text[end..].find('>').map(|offset| end + offset + 1) else {
+        return false;
+    };
+    // Reuse the call producer's generic-argument boundary. This lexical
+    // subtraction grants no call fact or namespace authority of its own.
+    // Function types can contain parentheses within the generic arguments.
+    // Accept only the parenthesis bound to this exact identifier by the
+    // existing call producer; later unrelated calls cannot defeat refusal.
+    text[arguments..].match_indices('(').any(|(offset, _)| {
+        super::calls::call_name_bounds_before_paren(text, arguments + offset) == Some((start, end))
+    })
 }
 
 /// Per-test refusal set. A genuine outside-span occurrence defeats refusal.
@@ -253,6 +301,47 @@ fn skip_trivia(text: &str, mut cursor: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ordinary_turbofish_calls_cancel_property_only_refusal() {
+        for call in [
+            "owner::<u32>(2)",
+            "super::owner::<Vec<u32>>(2)",
+            "owner::<for<'a> fn(&'a str)>(2)",
+        ] {
+            let body = format!("prop_assert_eq!(owner(1),1); assert_eq!({call},2);");
+            assert!(!property_only_call_names(&body).contains("owner"), "{call}");
+        }
+        assert!(property_only_call_names("prop_assert_eq!(owner::<u32>(1),1);").contains("owner"));
+        for outside in [
+            "owner::<Vec<u32>>::new()",
+            "owner::<u32>; other(2)",
+            "owner::for<'a>(2)",
+        ] {
+            let body = format!("prop_assert_eq!(owner(1),1); {outside};");
+            assert!(
+                property_only_call_names(&body).contains("owner"),
+                "{outside}"
+            );
+        }
+    }
+
+    #[test]
+    fn raw_scanner_view_excludes_opaque_oracles_without_changing_coordinates() {
+        let body = "fn test() {\r\n proptest! { ensure!(owner(1) == 1, \"discarded 日本語 🦀\"); }\r\n ensure!(owner(2) == 2, \"real\");\r\n}";
+        let safe = property_safe_scanner_text(body);
+        assert_eq!(safe.len(), body.len());
+        assert_eq!(safe.find("owner(2)"), body.find("owner(2)"));
+        assert!(!safe.contains("owner(1)"));
+        assert_eq!(
+            safe.bytes().filter(|byte| *byte == b'\n').count(),
+            body.bytes().filter(|byte| *byte == b'\n').count()
+        );
+        assert!(matches!(
+            property_safe_scanner_text("owner(2)"),
+            std::borrow::Cow::Borrowed(_)
+        ));
+    }
 
     #[test]
     fn property_spans_respect_literals_comments_and_function_lookalikes() {

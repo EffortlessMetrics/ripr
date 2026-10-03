@@ -103,7 +103,10 @@ fn property_safe_call_text(
     text
 }
 
-fn call_name_bounds_before_paren(line: &str, paren_index: usize) -> Option<(usize, usize)> {
+pub(super) fn call_name_bounds_before_paren(
+    line: &str,
+    paren_index: usize,
+) -> Option<(usize, usize)> {
     let bytes = line.as_bytes();
     let mut end = paren_index;
     while end > 0 && bytes[end - 1].is_ascii_whitespace() {

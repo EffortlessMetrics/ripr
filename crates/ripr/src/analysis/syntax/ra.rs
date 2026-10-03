@@ -1355,7 +1355,10 @@ fn extract_parser_oracles(
     // RIPR-SPEC-0106 (Part A): pre-scan the function body for `unwrap_err`/
     // `expect_err` variable bindings so assertions on those variables can be
     // upgraded to ExactErrorVariant.
-    let function_text = function.syntax().text().to_string();
+    let original_function_text = function.syntax().text().to_string();
+    let function_text = crate::analysis::extract::property_macros::property_safe_scanner_text(
+        &original_function_text,
+    );
     let bound_error_vars = unwrap_err_bound_variables(&function_text);
 
     let mut assertions = Vec::new();
@@ -1460,10 +1463,9 @@ fn extract_parser_oracles(
             let_bindings: &let_bindings,
         },
     );
-    for oracle in
-        extract_line_scanned_oracles(&function.syntax().text().to_string(), function_start)
-            .into_iter()
-            .filter(|oracle| !guarded_matches.match_start_lines.contains(&oracle.line))
+    for oracle in extract_line_scanned_oracles(&function_text, function_start)
+        .into_iter()
+        .filter(|oracle| !guarded_matches.match_start_lines.contains(&oracle.line))
     {
         assertions.push(oracle);
     }

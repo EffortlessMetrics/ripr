@@ -70,6 +70,27 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn parser_raw_oracles_ignore_discarded_property_assertions() -> Result<(), String> {
+        let source = "fn owner(x: i32) -> i32 { x }\n#[test]\nfn boundary() {\n let _ = owner(1);\n proptest! { ensure!(owner(1) == 1, \"discarded\"); }\n}\n";
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        assert_eq!(facts.tests.len(), 1);
+        assert!(facts.tests[0].assertions.is_empty());
+        let positive = source.replace(
+            " proptest! { ensure!(owner(1) == 1, \"discarded\"); }",
+            " ensure!(owner(1) == 1, \"ordinary\");",
+        );
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), &positive)?;
+        assert_eq!(facts.tests.len(), 1);
+        assert!(
+            facts.tests[0]
+                .assertions
+                .iter()
+                .any(|oracle| oracle.text.contains("owner(1)"))
+        );
+        Ok(())
+    }
+
+    #[test]
     fn property_macro_names_do_not_grant_assertion_authority() {
         for name in ["prop_assert", "prop_assert_eq", "prop_assert_ne"] {
             assert!(!is_assertion_macro(name));

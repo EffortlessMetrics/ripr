@@ -155,6 +155,9 @@ fn property_macro_quarantine_matches_runtime_collection_and_discrimination() -> 
     let assertion = "assert_eq!(discounted_total(100, 100), 90);";
     for (name, tests, exposed, test_count, limit) in [
         ("ordinary", format!("#[test]\nfn boundary() {{ {assertion} }}\n"), true, 1, None),
+        ("generic_direct", "macro_rules! prop_assert_eq { ($($args:tt)*) => {} }\n#[test]\nfn boundary() { prop_assert_eq!(discounted_total(100,100),90); assert_eq!(discounted_total::<for<'a> fn(&'a str)>(100,100),90); }\n".to_string(), true, 1, None),
+        ("discarded_ensure", "macro_rules! proptest { ($($args:tt)*) => {} }\n#[test]\nfn boundary() {\n let _ = discounted_total(100,100);\n proptest! { ensure!(discounted_total(100,100) == 90, \"discarded\"); }\n}\n".to_string(), false, 1, None),
+        ("opaque_declaration", "macro_rules! proptest { ($($args:tt)*) => {} }\n#[test]\nfn boundary() { proptest! { fn discounted_total() {} } }\n".to_string(), false, 1, None),
         ("noop_named_test", "macro_rules! prop_assert_eq { ($($args:tt)*) => {} }\n#[cfg(test)] mod tests {\n#[test]\nfn discounted_total() { prop_assert_eq!(super::discounted_total(100,100),90); }\n}\n".to_string(), false, 1, Some("rust_macro_reach_unresolved")),
         ("mixed_named_direct", "macro_rules! prop_assert_eq { ($($args:tt)*) => {} }\n#[cfg(test)] mod tests {\n#[test]\nfn discounted_total() { prop_assert_eq!(super::discounted_total(100,100),90); assert_eq!(super::discounted_total(100,100),90); }\n}\n".to_string(), true, 1, None),
         ("mixed_direct", format!("macro_rules! prop_assert_eq {{ ($($args:tt)*) => {{}} }}\n#[test]\nfn boundary() {{ prop_assert_eq!(discounted_total(100, 100), 90); {assertion} }}\n"), true, 1, None),
@@ -170,7 +173,12 @@ fn property_macro_quarantine_matches_runtime_collection_and_discrimination() -> 
         let scratch = Scratch::new()?;
         let root = &scratch.directory;
         std::fs::write(root.join("Cargo.toml"), "[package]\nname=\"property_quarantine\"\nversion=\"0.1.0\"\nedition=\"2024\"\n").map_err(|error| error.to_string())?;
-        let source = format!("{OWNER}\n{tests}");
+        let owner = if name == "generic_direct" {
+            OWNER.replace("discounted_total(", "discounted_total<T>(")
+        } else {
+            OWNER.to_string()
+        };
+        let source = format!("{owner}\n{tests}");
         if limit.is_some() {
             let retained = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join(format!("../../fixtures/property_macro_{name}/input/src/lib.rs"));
@@ -179,16 +187,50 @@ fn property_macro_quarantine_matches_runtime_collection_and_discrimination() -> 
         }
 
         std::fs::write(root.join("src/lib.rs"), &source).map_err(|error| error.to_string())?;
-        std::fs::write(root.join("diff.patch"), DIFF).map_err(|error| error.to_string())?;
+        let diff = if name == "generic_direct" {
+            DIFF.replace("discounted_total(", "discounted_total<T>(")
+        } else {
+            DIFF.to_string()
+        };
+        std::fs::write(root.join("diff.patch"), diff).map_err(|error| error.to_string())?;
         let report = check_workspace(CheckInput {
             root: root.clone(), diff_file: Some(root.join("diff.patch")), mode: Mode::Fast,
             format: OutputFormat::Json, include_unchanged_tests: true, ..CheckInput::default()
         })?;
         assert_eq!(report.findings.len(), 1, "{name}: one intended predicate");
-        if name != "mixed_helper" && name != "mixed_named_direct" { assert_eq!(report.findings[0].class == ExposureClass::Exposed, exposed, "{name}"); }
+        if name != "mixed_helper" && name != "mixed_named_direct" && name != "generic_direct" { assert_eq!(report.findings[0].class == ExposureClass::Exposed, exposed, "{name}"); }
         let json: serde_json::Value = serde_json::from_str(&render_check(&report, &OutputFormat::Json)?).map_err(|error| error.to_string())?;
         let finding = &json["findings"][0];
         assert_eq!(finding["oracle_strength"], if exposed || name.starts_with("mixed_") { "strong" } else { "none" }, "{name}");
+        // Generic argument value transfer has an independent static limitation.
+        // This control proves retained call/oracle authority and runtime discrimination,
+        // rather than granting stronger boundary activation from opaque text.
+        if name == "generic_direct" {
+            assert_eq!(finding["ripr"]["reach"]["state"], "yes", "ordinary generic call retains reach: {finding}");
+            assert_eq!(finding["related_tests"].as_array().map(Vec::len), Some(1), "ordinary generic call retains its test: {finding}");
+            // Hold owner, generic call, diff and ordinary assertion fixed. Removing
+            // only the opaque invocation establishes the ordinary producer baseline.
+            let baseline_source = source.replace("prop_assert_eq!(discounted_total(100,100),90); ", "");
+            assert_ne!(baseline_source, source, "baseline must remove the opaque invocation");
+            assert!(!baseline_source.contains("prop_assert_eq!("), "baseline must have no opaque invocation");
+            std::fs::write(root.join("src/lib.rs"), &baseline_source).map_err(|error| error.to_string())?;
+            let baseline = check_workspace(CheckInput {
+                root: root.clone(), diff_file: Some(root.join("diff.patch")), mode: Mode::Fast,
+                format: OutputFormat::Json, include_unchanged_tests: true, ..CheckInput::default()
+            })?;
+            std::fs::write(root.join("src/lib.rs"), &source).map_err(|error| error.to_string())?;
+            assert_eq!(baseline.findings.len(), 1, "generic ordinary baseline");
+            assert_eq!(report.findings[0].class, baseline.findings[0].class, "opacity cannot change ordinary generic classification");
+            assert_eq!(report.findings[0].activation, baseline.findings[0].activation, "opacity cannot change ordinary generic activation support");
+            let baseline: serde_json::Value = serde_json::from_str(&render_check(&baseline, &OutputFormat::Json)?).map_err(|error| error.to_string())?;
+            let baseline = &baseline["findings"][0];
+            assert_eq!(baseline["oracle_strength"], "strong", "generic ordinary baseline: {baseline}");
+            assert_eq!(baseline["related_tests"].as_array().map(Vec::len), Some(1));
+            for stage in ["reach", "infect", "propagate"] {
+                assert_eq!(finding["ripr"][stage]["state"], baseline["ripr"][stage]["state"], "generic ordinary {stage} baseline: candidate={finding}; baseline={baseline}");
+            }
+            assert_eq!(finding["static_limit_kind"], baseline["static_limit_kind"], "generic ordinary support limit must survive");
+        }
         if name == "mixed_named_direct" {
             assert_eq!(finding["ripr"]["reach"]["state"], "yes", "qualified ordinary call survives the declaration name: {finding}");
             assert_eq!(finding["related_tests"].as_array().map(Vec::len), Some(1));
@@ -196,6 +238,26 @@ fn property_macro_quarantine_matches_runtime_collection_and_discrimination() -> 
         if name == "mixed_helper" {
             assert_eq!(finding["ripr"]["reach"]["state"], "yes", "independent helper route: {finding}");
             assert!(finding["related_tests"].as_array().is_some_and(|tests| tests.iter().any(|test| test["relation_reason"] == "helper_owner_call")), "independent helper route: {finding}");
+        }
+        if name == "opaque_declaration" {
+            // File proximity remains a suggestion, never a direct call. Opaque
+            // expansion uncertainty must not become proof that tests are absent.
+            let related = finding["related_tests"].as_array().ok_or("missing related tests")?;
+            assert_eq!(related.len(), 1, "opaque declaration proximity: {finding}");
+            assert_eq!(related[0]["relation_reason"], "same_test_file", "opaque declaration cannot supply a direct call: {finding}");
+            assert_eq!(finding["ripr"]["reach"]["state"], "weak", "opaque declaration cannot supply positive reach: {finding}");
+            let baseline_source = source.replace("proptest! { fn discounted_total() {} }", "proptest! {}");
+            assert_ne!(baseline_source, source, "baseline must remove the opaque declaration");
+            std::fs::write(root.join("src/lib.rs"), &baseline_source).map_err(|error| error.to_string())?;
+            let baseline = check_workspace(CheckInput {
+                root: root.clone(), diff_file: Some(root.join("diff.patch")), mode: Mode::Fast,
+                format: OutputFormat::Json, include_unchanged_tests: true, ..CheckInput::default()
+            })?;
+            std::fs::write(root.join("src/lib.rs"), &source).map_err(|error| error.to_string())?;
+            assert_eq!(baseline.findings.len(), 1, "empty opaque ordinary baseline");
+            assert_eq!(report.findings[0].class, baseline.findings[0].class, "opaque declaration cannot add classification authority");
+            assert_eq!(report.findings[0].related_tests, baseline.findings[0].related_tests, "opaque declaration cannot add a relation");
+            assert_eq!(report.findings[0].ripr.reach.state, baseline.findings[0].ripr.reach.state, "opaque declaration cannot add reach authority");
         }
         if limit == Some("rust_macro_reach_unresolved") {
             for stage in ["reach", "infect", "propagate"] {

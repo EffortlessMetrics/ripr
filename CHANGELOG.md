@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Rust analysis: ordinary turbofish calls remain eligible beside unresolved
+  property macros. Opaque declarations cannot supply owner reach, and discarded
+  property bodies cannot supply raw-scanned assertion oracles. These boundaries
+  preserve ordinary source authority without assuming macro expansion. (#5131)
 - Python: a changed source path missing from the working tree now carries an
   exact-path `changed_file_absent_from_worktree` limitation and checkout recovery.
   It is excluded from analyzed-file counts and preview samples; available findings
