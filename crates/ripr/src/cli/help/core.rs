@@ -208,6 +208,8 @@ Options:
                            formats, --gap-ledger, or managed [perl] producer
                            packet generation (pass --perl-facts PATH
                            explicitly instead).
+                           Stdin (--diff -) is not supported: save stdin to
+                           a named diff file and pass --diff PATH instead.
   --git-timeout SECS       Cooperative deadline in seconds for each git
                            invocation in the diff-load path. A git command
                            that exceeds the deadline is terminated and the
@@ -316,6 +318,8 @@ Options:
                analyzer version) fails closed with a typed error naming the
                mismatched fields. --diff/--base passed alongside --from are
                assertions verified against the recording, not overrides.
+               Stdin (--diff -) cannot verify a recorded diff identity;
+               create and reuse the artifact with a named --diff PATH.
   --mode MODE  instant, draft, fast, deep, or ready. Defaults to draft.
                With --from, this feeds the identity recomputation: an
                artifact written with a non-default --mode is consumable only
@@ -349,6 +353,8 @@ Options:
   --from PATH  Load findings from a check artifact written by
                `ripr check --write-artifact PATH` instead of re-running the
                analysis (same fail-closed identity gate as explain --from).
+               Stdin (--diff -) cannot verify a recorded diff identity;
+               create and reuse the artifact with a named --diff PATH.
                --max-related-tests is a render-time knob honored fresh,
                including beyond the check --json render cap.
   --mode MODE  How much of the workspace is indexed: instant (changed

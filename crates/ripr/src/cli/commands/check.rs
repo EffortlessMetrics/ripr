@@ -537,6 +537,15 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // requested artifact. --worktree runs record the base-to-worktree diff
     // source, which is re-resolvable at reuse time.
     if let Some(path) = write_artifact.as_ref() {
+        // #5112: analysis consumes stdin for this sentinel, but artifact
+        // identity re-reads a named file. A literal '-' in the cwd must
+        // never let those unrelated bytes stand in for the consumed input.
+        if input.diff_file.as_deref() == Some(Path::new("-")) {
+            return Err(format!(
+                "--write-artifact {} cannot be combined with --diff -: stdin bytes are not retained in the artifact identity; save stdin to a named diff file, then pass --diff <path> with --write-artifact",
+                path.display()
+            ));
+        }
         // #4951/#4958: Windows strips trailing dots and spaces from EVERY
         // path component, not only the final one. `--write-artifact artifact.`
         // would silently write `artifact` (and the literal final name cannot
