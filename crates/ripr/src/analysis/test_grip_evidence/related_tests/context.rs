@@ -121,6 +121,8 @@ pub(in crate::analysis::test_grip_evidence) struct CompactTest<'a> {
     pub(in crate::analysis::test_grip_evidence) target_affinity_owner_call_names: BTreeSet<String>,
     pub(in crate::analysis::test_grip_evidence) ambiguous_target_affinity_owner_call_names:
         BTreeSet<String>,
+    /// Only stripped lines relevant to import-affinity and owner-import readers.
+    /// All other body facts remain in the borrowed test summary.
     pub(in crate::analysis::test_grip_evidence) code_lines: Vec<String>,
     /// Per-test facts; build through [`CompactTest::value_facts`] so the
     /// whole-file part comes from `file_value_scan`, never a fresh scan.
@@ -291,6 +293,9 @@ impl<'a> CompactGripContext<'a> {
                     .body
                     .lines()
                     .map(strip_comments_and_strings)
+                    // Filter after stripping: removing a quoted segment can
+                    // itself form a qualified path in the existing scanner.
+                    .filter(|line| is_import_relevant_line(line))
                     .collect::<Vec<_>>();
                 let module_import_aliases = module_import_aliases_by_file.get(&test.file);
                 let mut helper_owner_call_names = helper_owner_call_names_for_test(
@@ -560,6 +565,81 @@ impl<'a> CompactGripContext<'a> {
 #[cfg(test)]
 mod candidate_index_tests {
     use super::*;
+
+    #[test]
+    fn retained_import_lines_preserve_unbounded_affinity_and_owner_matching() -> Result<(), String>
+    {
+        use crate::analysis::rust_index::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+
+        let path = PathBuf::from("src/lib.rs");
+        let facts = RaRustSyntaxAdapter
+            .summarize_file(&path, "#[test] fn sample() { assert_eq!(1, 1); }")?;
+        let mut index = RustIndex {
+            tests: facts.tests.clone(),
+            functions: facts.functions.clone(),
+            ..RustIndex::default()
+        };
+        index.files.insert(path, facts);
+        let large_ordinary = "    let ordinary = 1;\n".repeat(4096);
+        for body in [
+            large_ordinary.as_str(),
+            "use crate::owner;\ncrate::owner();\nordinary();",
+            "  use owner;\nuseful();\nmodule::owner_extra();",
+            "let text = \"crate::hidden\"; // module::comment\nordinary();",
+            "use \"owner\";\n: \"discard\" :owner;\nuse\tother;",
+            "r#\"raw::text\"#;\n/* block::owner */\n'\"'; module::owner;",
+            ":\"discard\":owner;",
+            "use café;\r\nmodule::café();\r\nordinary();",
+            "use unfinished\n\"unterminated::owner\nmodule::visible();",
+        ] {
+            let Some(test) = index.tests.first_mut() else {
+                return Err("fixture must contain a parsed test".to_string());
+            };
+            test.body = body.to_string();
+            let full_lines = body
+                .lines()
+                .map(strip_comments_and_strings)
+                .collect::<Vec<_>>();
+            let mut context = CompactGripContext::new(&index);
+            let Some(compact) = context.tests.first_mut() else {
+                return Err("context must retain the test".to_string());
+            };
+            let retained = compact.code_lines.clone();
+            let useful_count = full_lines
+                .iter()
+                .filter(|line| line.contains("::") || line.trim_start().starts_with("use "))
+                .count();
+            assert_eq!(
+                retained.len(),
+                useful_count,
+                "irrelevant lines retained: {body}"
+            );
+            assert_eq!(
+                import_affinity_tokens(&retained),
+                import_affinity_tokens(&full_lines)
+            );
+            for owner in [
+                "",
+                "owner",
+                "owner_extra",
+                "hidden",
+                "comment",
+                "other",
+                "café",
+                "visible",
+            ] {
+                compact.code_lines = retained.clone();
+                let filtered = test_imports_owner_compact(compact, owner);
+                compact.code_lines = full_lines.clone();
+                assert_eq!(
+                    filtered,
+                    test_imports_owner_compact(compact, owner),
+                    "{owner}: {body}"
+                );
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn owned_deadline_stops_context_test_loops_without_completing_context() -> Result<(), String> {
