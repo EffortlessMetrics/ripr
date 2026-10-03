@@ -4430,11 +4430,18 @@ mod tests {
             ENFORCE,
             "--packet",
             &path_text(&partial_packet)?,
+            "--workspace-root",
+            &path_text(&partial_root)?,
             "--expected-status",
             "admitted",
         ]);
-        if enforce_command(&enforce_args).is_ok() {
-            return Err("rejected constructor packet escaped terminal enforcement".to_string());
+        let reason = enforce_command(&enforce_args)
+            .err()
+            .ok_or_else(|| "rejected packet escaped terminal enforcement".to_string())?;
+        if !reason.contains("disposition is rejected") {
+            return Err(format!(
+                "partial constructor enforcement refused the wrong boundary: {reason}"
+            ));
         }
         fs::remove_dir_all(&partial_root)
             .map_err(|error| format!("failed to clean partial constructor fixture: {error}"))?;
@@ -4456,11 +4463,18 @@ mod tests {
             ENFORCE,
             "--packet",
             &path_text(&absent_packet)?,
+            "--workspace-root",
+            &path_text(&absent_root)?,
             "--expected-status",
             "admitted",
         ]);
-        if enforce_command(&enforce_args).is_ok() {
-            return Err("absent-output rejection escaped terminal enforcement".to_string());
+        let reason = enforce_command(&enforce_args)
+            .err()
+            .ok_or_else(|| "rejected packet escaped terminal enforcement".to_string())?;
+        if !reason.contains("disposition is rejected") {
+            return Err(format!(
+                "absent constructor enforcement refused the wrong boundary: {reason}"
+            ));
         }
         fs::remove_dir_all(&absent_root)
             .map_err(|error| format!("failed to clean absent constructor fixture: {error}"))?;

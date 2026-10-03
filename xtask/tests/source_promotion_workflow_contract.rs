@@ -853,6 +853,15 @@ fn admission_workflow_does_not_accept_caller_selected_authority() -> Result<(), 
 
 #[test]
 fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), String> {
+    production_workflow_fixture("j5_negative")
+}
+
+#[test]
+fn green_historical_diagnostics_are_rejected_by_the_real_final_gate() -> Result<(), String> {
+    production_workflow_fixture("positive_synthetic")
+}
+
+fn production_workflow_fixture(profile: &str) -> Result<(), String> {
     let xtask = PathBuf::from(env!("CARGO_BIN_EXE_xtask"));
     // Stage a private copy of the xtask binary beside the original. The suite
     // runs a nested `cargo test -p xtask` concurrently
@@ -895,7 +904,8 @@ fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), S
     fs::create_dir(&root)
         .map_err(|error| format!("failed to create production J5 test root: {error}"))?;
     let result = (|| {
-        let request = j5_request_identity(&repo_root, &root)?;
+        let mut request = j5_request_identity(&repo_root, &root)?;
+        request["execution_profile"] = Value::String(profile.to_string());
         let request_bytes = serde_json::to_vec_pretty(&request)
             .map_err(|error| format!("failed to serialize production J5 request: {error}"))?;
         let request_sha256 = format!("{:x}", Sha256::digest(&request_bytes));
@@ -950,7 +960,7 @@ fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), S
                 "--operation-mode",
                 "constructor_dry_run",
                 "--execution-profile",
-                "j5_negative",
+                profile,
                 "--requested-identity",
                 path_text(&request_path)?,
                 "--requested-identity-sha256",
@@ -962,6 +972,63 @@ fn production_j5_rejection_is_a_self_verifying_workflow_packet() -> Result<(), S
             ])
             .output()
             .map_err(|error| format!("failed to run production J5 workflow: {error}"))?;
+        if profile == "positive_synthetic" {
+            let validation: Value = serde_json::from_slice(&fs::read(
+                workspace.join("synthetic-fixture/fixture-repository/.git/source-promotion-admission-fixture/validation-packet/resolved-tree-validation.json"),
+            ).map_err(|error| format!("missing historical diagnostic receipt: {error}"))?)
+                .map_err(|error| format!("decode historical diagnostic receipt: {error}"))?;
+            let required = [
+                "check-network-policy",
+                "check-process-policy",
+                "check-workflows",
+                "check-file-policy",
+                "check-dependencies",
+                "check-generated-clean",
+                "check-executable-files",
+                "check-command-catalog",
+                "check-spec-format",
+                "check-traceability",
+                "check-doc-artifacts",
+                "check-public-api",
+                "check-architecture",
+            ];
+            let commands = validation["commands"]
+                .as_array()
+                .ok_or_else(|| "historical diagnostic commands missing".to_string())?;
+            if commands.len() != required.len()
+                || commands.iter().zip(required).any(|(row, name)| {
+                    row["command"].as_str() != Some(name)
+                        || row["state"].as_str() != Some("passed")
+                        || row["exit_code"].as_i64() != Some(0)
+                })
+            {
+                return Err("historical diagnostic did not execute all green commands".to_string());
+            }
+            if output.status.success()
+                || validation["status"].as_str() != Some("rejected")
+                || !validation["failure_reasons"]
+                    .as_array()
+                    .is_some_and(|reasons| {
+                        reasons.iter().any(|reason| {
+                            reason
+                                .as_str()
+                                .is_some_and(|value| value.contains("requires preflight v2"))
+                        })
+                    })
+                || validation["materialization"]["worktree_remove_succeeded"].as_bool()
+                    != Some(true)
+                || validation["materialization"]["directory_removed"].as_bool() != Some(true)
+                || validation["repository_observation"]["ref_mutation_observed"].as_bool()
+                    != Some(false)
+                || validation["repository_observation"]["worktree_registry_changed"].as_bool()
+                    != Some(false)
+            {
+                return Err(format!(
+                    "green historical diagnostics escaped final native gate: {validation}"
+                ));
+            }
+            return Ok(());
+        }
         if output.status.success()
             || !String::from_utf8_lossy(&output.stderr)
                 .contains("produced a complete rejected packet")

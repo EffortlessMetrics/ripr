@@ -10,7 +10,7 @@ not replace their semantics or make publication implicit.
 Before P0, merge the source control repair that consumes preflight v2 / handoff
 acceptance v2, then drain the source-writing queue under #1814. A green producer
 gate or historical v1 receipt does not qualify the selected candidate. Native
-#1609 selection and #2769 complete-bundle acceptance must bind that exact
+selection (#1609) and complete-bundle acceptance (#2769) must bind that exact
 candidate, manifest, owner roster and retained packet bytes. No acceptance
 record is manufactured by the controller or inferred from CI.
 

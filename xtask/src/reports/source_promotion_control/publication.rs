@@ -293,7 +293,10 @@ fn revalidate_publication_acceptance(options: &PublicationOptions) -> Result<(),
                 .to_string()
         })?
         .as_bytes();
-    if bytes.len() > 320 * 1024 * 1024 || digest_bytes(bytes) != identity.preflight_sha256 {
+    if bytes.len() > 320 * 1024 * 1024 {
+        return Err("publication native acceptance preflight exceeds byte budget".into());
+    }
+    if digest_bytes(bytes) != identity.preflight_sha256 {
         return Err("publication native acceptance preflight digest differs".into());
     }
     let preflight: Value = serde_json::from_slice(bytes)
