@@ -132,6 +132,29 @@ surface. They exclude repository automation and non-production trees such as
 `node_modules/`, tests, examples, benches, and `src/tests.rs`. Passing a
 fixture workspace as `--root` remains valid and analyzes that fixture normally.
 
+## Implicit Check And Cache Roots
+
+Without `--root`, `ripr check` first searches for a Cargo workspace, then the
+nearest Cargo package or JavaScript/Python workspace declaration, then a
+verified Git work-tree root. `ripr cache` shares this resolver. Explicit
+`--root` remains authoritative.
+
+A `.git` entry alone is not proof of a Git root. An inert ancestor marker must
+not move a standalone project's analysis away from its current directory or
+lose marker-based Python detection (#5111). Valid repositories, linked-worktree
+Git files, and nested repository boundaries remain supported. If Git establishes
+that a candidate is inside an enclosing work tree, the walk may continue to the
+actual root. A refused or unverified marker remains a traversal barrier without
+being selected as a root; a Cargo package or workspace declaration at or below
+that barrier can still choose the root. Otherwise the current directory stays
+selected, including when analyzing a saved diff without Git installed.
+
+Root verification has a bounded deadline and captured output and ignores
+inherited Git repository selectors. Invocation failures other than missing Git
+must surface rather than widen the walk: `check` names the explicit `--root`
+recovery and `cache` names `RIPR_CACHE_DIR`. These rules change root selection
+only, not analysis classification or exit policy.
+
 ## Pilot Packet
 
 The first public pilot path should converge on these user-facing files:
@@ -260,6 +283,11 @@ blocking by default.
 Defaults-first adoption evidence should cover:
 
 - documentation for every default surface listed above;
+- implicit-root saved-diff analysis beneath invalid Git markers matching the
+  explicit-root and genuine-repository positives with nonzero changed files,
+  probes, findings and related tests;
+- shared cache-root parity, real nested and linked-worktree boundaries,
+  inherited-selector isolation, and the gitless saved-diff route;
 - built-in missing-config behavior matching the generated init profile's
   default policy behavior;
 - fast/normal/deep operator mode vocabulary pinned to concrete analysis scopes;

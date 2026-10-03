@@ -14,6 +14,7 @@ use crate::cli::parse::{
 };
 use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
+use crate::git::WorkTreeRootProbe;
 use crate::output;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -85,13 +86,28 @@ pub(super) fn resolve_workspace_root(start: &Path) -> Result<Option<PathBuf>, St
         if manifest_declares_workspace(&ancestor.join("Cargo.toml")) {
             return Ok(Some(ancestor.to_path_buf()));
         }
-        // A git top level bounds the walk: a workspace in an enclosing
-        // repository never claims a nested, independent repository.
-        if ancestor.join(".git").exists() {
-            break;
+        // Verified roots and unverified markers bound the walk: an enclosing
+        // workspace must not claim a repository Git cannot inspect either.
+        match implicit_git_boundary(ancestor)? {
+            Some(WorkTreeRootProbe::Root | WorkTreeRootProbe::Unverified) => break,
+            Some(WorkTreeRootProbe::InsideWorkTree) | None => {}
         }
     }
     Ok(None)
+}
+
+fn implicit_git_boundary(dir: &Path) -> Result<Option<WorkTreeRootProbe>, String> {
+    if !dir.join(".git").exists() {
+        return Ok(None);
+    }
+    crate::git::probe_work_tree_root(dir)
+        .map(Some)
+        .map_err(|error| {
+            format!(
+                "{error}; cannot verify implicit Git root at {}",
+                dir.display()
+            )
+        })
 }
 
 fn manifest_declares_workspace(manifest: &Path) -> bool {
@@ -131,13 +147,14 @@ impl ImplicitRootReason {
 /// A `[workspace]` manifest anywhere above wins. Otherwise the nearest
 /// ancestor holding a `Cargo.toml`, a JavaScript or Python workspace
 /// declaration (`pnpm-workspace.yaml`, a `package.json` with `workspaces`,
-/// a `pyproject.toml` with `[tool.uv.workspace]`), or a `.git` entry is the
+/// a `pyproject.toml` with `[tool.uv.workspace]`), or a verified Git top level is the
 /// root. So a run from `repo/src` of a single-crate repo analyzes the crate
 /// instead of silently scoping the diff to `src/` and reporting a clean,
 /// complete result (#4610), and a run from one package of a pnpm/npm/yarn/bun
 /// or uv monorepo analyzes the workspace, where sibling-package tests are
 /// visible (#4553). The walk stops at the git top level so a stray manifest
-/// outside the repository is never adopted.
+/// outside the repository is never adopted. An unverified `.git` entry bounds
+/// traversal without becoming a root; absent a local manifest, retain `start`.
 pub(super) fn resolve_project_root(
     start: &Path,
 ) -> Result<Option<(PathBuf, ImplicitRootReason)>, String> {
@@ -157,11 +174,15 @@ pub(super) fn resolve_project_root(
         if let Some(reason) = non_cargo_workspace_marker(ancestor) {
             return Ok(Some((ancestor.to_path_buf(), reason)));
         }
-        if ancestor.join(".git").exists() {
-            return Ok(Some((
-                ancestor.to_path_buf(),
-                ImplicitRootReason::GitTopLevel,
-            )));
+        match implicit_git_boundary(ancestor)? {
+            Some(WorkTreeRootProbe::Root) => {
+                return Ok(Some((
+                    ancestor.to_path_buf(),
+                    ImplicitRootReason::GitTopLevel,
+                )));
+            }
+            Some(WorkTreeRootProbe::Unverified) => break,
+            Some(WorkTreeRootProbe::InsideWorkTree) | None => {}
         }
     }
     Ok(None)
@@ -195,7 +216,10 @@ fn non_cargo_workspace_marker(dir: &Path) -> Option<ImplicitRootReason> {
 }
 
 fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String> {
-    let Some((root, reason)) = resolve_project_root(Path::new("."))? else {
+    let resolved = resolve_project_root(Path::new(".")).map_err(|error| {
+        format!("{error}; pass --root PATH to select the analysis root explicitly")
+    })?;
+    let Some((root, reason)) = resolved else {
         return Ok(());
     };
     let current = std::fs::canonicalize(".")
@@ -1507,7 +1531,7 @@ mod tests {
             let repo = root.join("repo");
             let nested = repo.join(nested);
             std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
-            std::fs::create_dir_all(repo.join(".git")).map_err(|error| error.to_string())?;
+            crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
             std::fs::write(repo.join(manifest), contents).map_err(|error| error.to_string())?;
             // A package-level manifest between the start and the workspace
             // root must not stop the walk.
@@ -1540,7 +1564,7 @@ mod tests {
         let root = outside_workspace_fixture("project-root-package")?;
         let nested = root.join("src/inner");
         std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
-        std::fs::create_dir_all(root.join(".git")).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&root, &["init", "-b", "main"])?;
         std::fs::write(
             root.join("Cargo.toml"),
             "[package]\nname = \"package-only\"\nversion = \"0.1.0\"\n",
@@ -1564,7 +1588,7 @@ mod tests {
         let repo = root.join("repo");
         let nested = repo.join("packages/utils");
         std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
-        std::fs::create_dir_all(repo.join(".git")).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
         // A workspace marker above the work tree belongs to something else.
         std::fs::write(root.join("pnpm-workspace.yaml"), "packages: []\n")
             .map_err(|error| error.to_string())?;
@@ -1588,7 +1612,7 @@ mod tests {
         let repo = outer.join("repo");
         let nested = repo.join("web/src");
         std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
-        std::fs::create_dir_all(repo.join(".git")).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
         // A manifest outside the repository must never be adopted.
         std::fs::write(
             outer.join("Cargo.toml"),
@@ -1613,7 +1637,7 @@ mod tests {
         let inner = outer.join("vendor/tool");
         let nested = inner.join("src");
         std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
-        std::fs::create_dir_all(inner.join(".git")).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&inner, &["init", "-b", "main"])?;
         std::fs::write(outer.join("Cargo.toml"), "[workspace]\nmembers = []\n")
             .map_err(|error| error.to_string())?;
         std::fs::write(
@@ -1630,6 +1654,119 @@ mod tests {
             Some((expected?, ImplicitRootReason::Package)),
             "an enclosing workspace must not cross the nested repository's git boundary"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_does_not_promote_an_invalid_git_marker() -> Result<(), String> {
+        for is_file in [false, true] {
+            let root = outside_workspace_fixture("project-root-inert-git")?;
+            let project = root.join("project");
+            std::fs::create_dir_all(&project).map_err(|error| error.to_string())?;
+            if is_file {
+                std::fs::write(root.join(".git"), "gitdir: missing\n")
+                    .map_err(|error| error.to_string())?;
+            } else {
+                std::fs::create_dir(root.join(".git")).map_err(|error| error.to_string())?;
+            }
+            let resolved = resolve_project_root(&project);
+            std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+            assert_eq!(resolved?, None, "an invalid marker is not a Git top level");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_does_not_cross_an_unverified_git_boundary() -> Result<(), String> {
+        let outer = outside_workspace_fixture("project-root-unverified-boundary")?;
+        let marker = outer.join("unverified");
+        let project = marker.join("project");
+        std::fs::create_dir_all(&project).map_err(|error| error.to_string())?;
+        std::fs::write(outer.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|error| error.to_string())?;
+        std::fs::write(marker.join(".git"), "gitdir: missing\n")
+            .map_err(|error| error.to_string())?;
+        let resolved = resolve_project_root(&project);
+        std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+        assert_eq!(resolved?, None, "a refused marker must not widen discovery");
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_passes_an_inert_marker_inside_a_real_repository() -> Result<(), String> {
+        let root = outside_workspace_fixture("project-root-inert-inside-git")?;
+        let nested = root.join("inert/src");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&root, &["init", "-b", "main"])?;
+        std::fs::create_dir(root.join("inert/.git")).map_err(|error| error.to_string())?;
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&root).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::GitTopLevel))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_recognizes_a_linked_worktree_git_file() -> Result<(), String> {
+        let outer = outside_workspace_fixture("project-root-linked-worktree")?;
+        let repo = outer.join("repo");
+        let linked = outer.join("linked");
+        std::fs::create_dir_all(&repo).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &repo,
+            &[
+                "-c",
+                "user.name=RIPR test",
+                "-c",
+                "user.email=ripr@example.invalid",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "seed linked worktree",
+            ],
+        )?;
+        let linked_arg = linked.to_str().ok_or("fixture linked path is not UTF-8")?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &repo,
+            &["worktree", "add", "--detach", linked_arg, "HEAD"],
+        )?;
+        assert!(linked.join(".git").is_file(), "fixture must use a Git file");
+        let nested = linked.join("src");
+        std::fs::create_dir(&nested).map_err(|error| error.to_string())?;
+        std::fs::write(outer.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|error| error.to_string())?;
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&linked).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::GitTopLevel))
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_root_keeps_exact_git_path_bytes() -> Result<(), String> {
+        use std::os::unix::ffi::OsStringExt;
+        for name in [b" whitespace \n".to_vec(), b"non-utf8-\xff".to_vec()] {
+            let outer = outside_workspace_fixture("project-root-exact-bytes")?;
+            let repo = outer.join(std::ffi::OsString::from_vec(name));
+            let nested = repo.join("src");
+            std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+            crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
+            let resolved = resolve_project_root(&nested);
+            let expected = std::fs::canonicalize(&repo).map_err(|error| error.to_string());
+            std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+            assert_eq!(
+                resolved?,
+                Some((expected?, ImplicitRootReason::GitTopLevel))
+            );
+        }
         Ok(())
     }
 

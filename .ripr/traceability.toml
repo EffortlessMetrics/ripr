@@ -803,6 +803,18 @@ id = "RIPR-SPEC-0009"
 name = "defaults-first adoption"
 spec = "docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md"
 tests = [
+  "crates/ripr/tests/cli_smoke/implicit_git_root.rs::invalid_ancestor_git_markers_preserve_python_and_cache_context",
+  "crates/ripr/tests/cli_smoke/implicit_git_root.rs::inherited_git_selectors_cannot_certify_an_inert_ancestor",
+  "crates/ripr/tests/cli_smoke/implicit_git_root.rs::gitless_saved_diff_does_not_cross_a_nested_repository_boundary",
+  "crates/ripr/tests/cli_smoke/implicit_git_root.rs::git_launch_failure_stops_root_discovery_with_consumer_recovery",
+  "crates/ripr/src/cli/commands/check.rs::tests::project_root_does_not_promote_an_invalid_git_marker",
+  "crates/ripr/src/cli/commands/check.rs::tests::project_root_does_not_cross_an_unverified_git_boundary",
+  "crates/ripr/src/cli/commands/check.rs::tests::project_root_passes_an_inert_marker_inside_a_real_repository",
+  "crates/ripr/src/cli/commands/check.rs::tests::project_root_recognizes_a_linked_worktree_git_file",
+  "crates/ripr/src/cli/commands/check.rs::tests::project_root_keeps_exact_git_path_bytes",
+  "crates/ripr/src/git.rs::tests::work_tree_root_probe_preserves_exact_prefix_bytes",
+  "crates/ripr/src/git.rs::tests::work_tree_root_timeout_omits_inapplicable_deadline_guidance",
+  "crates/ripr/tests/cli_smoke/implicit_git_root.rs::fixed_root_probe_timeout_names_only_effective_consumer_recovery",
   "crates/ripr/src/config.rs::tests::generated_init_config_is_conservative_and_parseable",
   "crates/ripr/src/config.rs::tests::generated_init_config_matches_checked_in_example",
   "crates/ripr/src/analysis/workspace/discover.rs::tests::discover_skips_default_excluded_directories",
@@ -892,6 +904,9 @@ fixtures = [
   "fixtures/weak_error_oracle"
 ]
 code = [
+  "crates/ripr/src/cli/commands/check.rs",
+  "crates/ripr/src/cli/commands/cache.rs",
+  "crates/ripr/src/git.rs",
   "crates/ripr/src/analysis/workspace/discover.rs",
   "crates/ripr/src/config.rs",
   "crates/ripr/src/cli/mod.rs",
