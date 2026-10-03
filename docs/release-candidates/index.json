@@ -32,8 +32,8 @@
     {
       "release": "0.11.0",
       "path": "docs/release-candidates/0.11.0-live-head-selection.json",
-      "sha256": "dcdc8a100dd825be5b76e7c5485c476db617116d1c2e3036322afec486577868",
-      "schema_generation": "ripr_swarm_live_head_release_authority/1.0",
+      "sha256": "1a65a687ce7749341f45da2088459e04e07d8d1b18264e5d058c597a6b0fa25b",
+      "schema_generation": "ripr_swarm_live_head_release_authority/1.1",
       "authority_issue": 2379,
       "state": "active_selection_template",
       "projection_of": null,
@@ -51,7 +51,7 @@
     {
       "release": "0.11.0",
       "path": "docs/release-candidates/0.11.0-live-head-selection.md",
-      "sha256": "de987ff5ee054b59df9fa3bfc4545d708a6e9227e01e6283053368a4ed4de028",
+      "sha256": "79a819e10d1204ba37034780d16a9fc212378f378d3f7f16f9dc1d692884901a",
       "schema_generation": "markdown_projection",
       "authority_issue": 2379,
       "state": "active_selection_template",

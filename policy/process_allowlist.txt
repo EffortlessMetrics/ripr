@@ -1,5 +1,7 @@
 # Allowlisted process-spawn surfaces.
 #
+# SPEC-0148 native acceptance adapter inventory: xtask/src/reports/release/candidate_harness/live_head/handoff/native.rs uses the existing run::capture_bytes_in_dir_with_budget / OwnedProcess spawn owner for one fixed-host read-only gh request per native decision, with 30-second and strict byte/drain budgets; no new direct spawn site.
+#
 # Format:
 # path|pattern|max_count|owner|reason
 #
@@ -82,6 +84,7 @@ xtask/src/reports/pr_evidence.rs|Command::new|4|pr-evidence-retry-proof|#4367: t
 xtask/src/reports/source_promotion.rs|Command::new|7|source-promotion-preflight|RIPR-SPEC-0148: read-only source-promotion preflight invokes bounded Git probes in separately rooted source, swarm, and disposable repositories to verify exact parents, immutable ref identity, ancestry, changed paths, object availability, and dry-merge output; no shell or product command execution.
 xtask/src/reports/source_promotion.rs|use std::process::Command|1|source-promotion-preflight|RIPR-SPEC-0148: source-promotion preflight imports Command for bounded Git observation and disposable-repository construction only.
 xtask/src/run.rs|Command::new|14|repo-policy|xtask run helpers are the repository command runner for Cargo, git, fixture execution, extension build orchestration, release upload orchestration, supply-chain report capture, bounded latency probes, byte-exact host-run receipt capture, stdout-to-file report inputs, cwd-bound packaged-release smoke, timeout-race regression coverage, and Unix process-group termination; #3803 moved Windows process-tree termination into the shared Job Object owner (`ripr::process_owner`), so no Windows kill shell is spawned from here.
+xtask/src/run/input_tests.rs|Command::new|1|candidate-custody-process-control|#4510 / RIPR-SPEC-0134: Unix test-only cancellation control starts one sleep child through the existing OwnedProcess owner, drops it, and checks primary reaping; no production launch route is added.
 xtask/src/version.rs|Command::new|1|release-version-bump|#2711: gated version-bump validation invokes `cargo metadata --no-deps --format-version 1` after coordinated manifest updates and restores the originals on validation failure.
 xtask/src/version.rs|use std::process::Command|1|release-version-bump|#2711: version-bump validation imports Command for the bounded cargo metadata probe only.
 xtask/tests/help_hierarchy.rs|Command::new|1|xtask-help-tests|#3502: rendered-help integration tests execute the built xtask binary to verify bounded, exhaustive, per-command, and invalid-command help routing; no production subprocess is introduced.

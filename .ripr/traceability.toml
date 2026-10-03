@@ -7342,6 +7342,17 @@ id = "RIPR-SPEC-0148"
 name = "exact source-promotion preflight"
 spec = "docs/specs/RIPR-SPEC-0148-source-promotion-preflight.md"
 tests = [
+  "xtask/src/reports/source_promotion.rs::tests::public_preflight_requires_complete_native_handoff_inputs",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_accepts_independently_selected_applicable_subset",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_parses_crlf_without_changing_raw_decision_identity",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_rereads_decisions_before_receipt_and_binds_source_identity",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_refuses_absent_decisions_and_generic_successful_ci",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_refuses_identity_roster_proof_and_decision_drift",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_refuses_omitted_failed_skipped_and_zero_qualification_rows",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_refuses_tampered_manifest_bundle_and_packets",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_refuses_stale_incomplete_or_unknown_qualification_acceptance",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_refuses_wrong_issue_comment_host_and_untrusted_issuer",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs::native_handoff_preserves_explicitly_unselected_configured_subjects",
   "xtask/src/reports/source_promotion.rs::tests::requires_an_immutable_swarm_ref",
   "xtask/src/reports/source_promotion.rs::tests::rejects_a_branch_or_wrongly_named_swarm_ref",
   "xtask/src/reports/source_promotion.rs::tests::version_observation_reads_exact_parent_not_checkout_files",
@@ -7359,6 +7370,8 @@ fixtures = [
   "fixtures/source_promotion/SPEC.md",
 ]
 code = [
+  "xtask/src/reports/release/candidate_harness/live_head/handoff.rs",
+  "xtask/src/reports/release/candidate_harness/live_head/handoff/native.rs",
   "xtask/src/reports/source_promotion.rs",
   "xtask/src/command.rs",
   "xtask/src/dispatch.rs",
@@ -8960,6 +8973,28 @@ id = "RIPR-SPEC-0144"
 name = "temporary 0.11 release-control lens"
 spec = "docs/specs/RIPR-SPEC-0144-release-control-lens.md"
 tests = [
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::direct_manifest_custody_does_not_require_historical_registry",
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::producer_output_without_independently_accepted_digest_is_not_authority",
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::direct_manifest_refuses_templates_missing_bindings_and_predicted_source",
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::direct_manifest_revalidation_refuses_raw_packet_or_manifest_substitution",
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::direct_manifest_refuses_wrong_readback_and_unprotected_pin",
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::direct_manifest_binds_actual_committed_package_inputs",
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::direct_manifest_rejects_unknown_fields_and_future_self_issued_grants",
+  "xtask/src/reports/release/candidate_harness/live_head/tests.rs::direct_manifest_hash_match_cannot_supply_missing_or_stale_owner_acceptance",
+  "xtask/src/reports/release/candidate_harness/live_head/source_tests.rs::direct_source_admission_refuses_moved_ref_wrong_tree_origin_and_same_version_substitution",
+  "xtask/src/reports/release/candidate_harness/input.rs::tests::actual_read_limit_rejects_growth_without_consuming_the_tail",
+  "xtask/src/reports/release/candidate_harness/live_head/budget_tests.rs::direct_manifest_caps_proof_inputs_and_aggregate_bytes",
+  "xtask/src/reports/release/candidate_harness/live_head/budget_tests.rs::owned_reads_require_regular_contained_files_and_available_budget",
+  "xtask/src/reports/release_negative.rs::tests::direct_manifest_mode_requires_explicit_complete_digest_pinned_inputs",
+  "xtask/src/reports/release_negative.rs::tests::qualified_failure_hint_names_the_actual_written_report",
+  "xtask/src/run/input_tests.rs::byte_input_round_trips_more_than_pipe_capacity",
+  "xtask/src/run/input_tests.rs::byte_input_nonreader_timeout_and_early_exit_are_bounded_and_reaped",
+  "xtask/src/run/input_tests.rs::dropping_owned_byte_command_reaps_the_cancelled_primary",
+  "xtask/src/run/input_tests.rs::bounded_byte_capture_rejects_stdout_and_stderr_overflow_and_reaps_child",
+  "xtask/src/run/input_tests.rs::bounded_byte_drain_requires_terminal_output",
+  "xtask/src/reports/release/candidate_harness/source/inventory/tests.rs::replacement_objects_cannot_change_inventory_or_admit_substituted_checkout",
+  "xtask/src/reports/release/candidate_harness/source/inventory/tests.rs::source_inventory_and_checkout_enforce_independent_precise_budgets",
+  "xtask/src/reports/release/candidate_harness/source/inventory/tests.rs::batch_size_identity_cannot_expand_the_reviewed_source_inventory",
   "xtask/src/reports/release_control.rs::tests::complete_snapshot_is_ready_and_only_required_rows_are_merge_eligible",
   "xtask/src/reports/release_control.rs::tests::missing_candidate_selection_is_exposed_as_scope_pending",
   "xtask/src/reports/release_control.rs::tests::missing_disposition_fails_closed",
@@ -8987,12 +9022,19 @@ tests = [
   "xtask/src/reports/candidate_control.rs::tests::negative_candidate_state_fixture_covers_each_false_ready_boundary",
 ]
 fixtures = [
+  "xtask/src/reports/release/candidate_harness/live_head/fixtures/last-integrated.commit",
   "fixtures/benches_harness_evidence",
   "fixtures/release_control/complete.json",
   "fixtures/release_control/reconcile-required.json",
   "fixtures/release_control/candidate-state-negative.json",
 ]
 code = [
+  "xtask/src/reports/release/candidate_harness/live_head.rs",
+  "xtask/src/reports/release/candidate_harness/live_head/input.rs",
+  "xtask/src/reports/release/candidate_harness/input.rs",
+  "xtask/src/reports/release/candidate_harness/source.rs",
+  "xtask/src/reports/release/candidate_harness/source/inventory.rs",
+  "xtask/src/reports/source_promotion.rs",
   "xtask/src/reports/release_control.rs",
   "xtask/src/reports/candidate_control.rs",
   "xtask/src/command.rs",

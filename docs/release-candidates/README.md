@@ -12,8 +12,8 @@ An artifact is current authority only with a registered row, a matching raw-byte
 |---|---|---|---|---|
 | [`0.11.0-hard-cut.json`](0.11.0-hard-cut.json) | `historical_evidence_only` | #2893 | [`0.11.0-live-head-selection.json`](0.11.0-live-head-selection.json) | `a706647fe1642f211c33f16bd849487524ad621eea38b5cacb3159afeb40fdc7` |
 | [`0.11.0-hard-cut.md`](0.11.0-hard-cut.md) | `historical_evidence_only` | #2893 | projection of [`0.11.0-hard-cut.json`](0.11.0-hard-cut.json) | `6f09c026e1e649958eff244349e4b12e624baae803dcbbc4e58518ac3b904ae5` |
-| [`0.11.0-live-head-selection.json`](0.11.0-live-head-selection.json) | `active_selection_template` | #2379 | - | `dcdc8a100dd825be5b76e7c5485c476db617116d1c2e3036322afec486577868` |
-| [`0.11.0-live-head-selection.md`](0.11.0-live-head-selection.md) | `active_selection_template` | #2379 | projection of [`0.11.0-live-head-selection.json`](0.11.0-live-head-selection.json) | `de987ff5ee054b59df9fa3bfc4545d708a6e9227e01e6283053368a4ed4de028` |
+| [`0.11.0-live-head-selection.json`](0.11.0-live-head-selection.json) | `active_selection_template` | #2379 | - | `1a65a687ce7749341f45da2088459e04e07d8d1b18264e5d058c597a6b0fa25b` |
+| [`0.11.0-live-head-selection.md`](0.11.0-live-head-selection.md) | `active_selection_template` | #2379 | projection of [`0.11.0-live-head-selection.json`](0.11.0-live-head-selection.json) | `79a819e10d1204ba37034780d16a9fc212378f378d3f7f16f9dc1d692884901a` |
 | [`0.11.0-replacement-freeze.json`](0.11.0-replacement-freeze.json) | `historical_evidence_only` | #2354 | [`0.11.0-live-head-selection.json`](0.11.0-live-head-selection.json) | `f5b59af6cb8a7062c77744102eab185e6f0c14174708510af60c0861f35b88b0` |
 
 ## Lifecycle reasons

@@ -51150,15 +51150,27 @@ fn golden_comparison_runs_consume_the_cache_the_runner_cleared() -> Result<(), S
 
 #[test]
 fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest should have a repository parent".to_string())?;
+    let jq_root = temp_dir("release-pin-ruleset-jq");
+    let result = release_pin_ruleset_contract(repo_root, &jq_root);
+    ignore_remove_dir_all(&jq_root);
+    result
+}
+
+fn release_pin_ruleset_contract(repo_root: &Path, jq_root: &Path) -> Result<(), String> {
+    use crate::reports::release::candidate_harness::{AdmittedSource, QualificationInput};
+    use sha2::Digest;
     const REQUIRED_PATTERN: &str = "refs/tags/ripr-release-*";
     const SHORT_PATTERN: &str = "ripr-release-*";
-    const JQ_PREDICATE: &str = r#"(.target == "tag" and .enforcement == "active") and (.conditions.ref_name.include == [$tag]) and (any(.rules[]?; .type == "update")) and (any(.rules[]?; .type == "deletion"))"#;
+    const JQ_PREDICATE: &str = r#"(.target == "tag" and .enforcement == "active") and (.conditions.ref_name.include == [$tag]) and (any(.rules[]?; .type == "update")) and (any(.rules[]?; .type == "deletion")) and (.conditions.ref_name.exclude == []) and (.bypass_actors == [])"#;
 
-    let fixture: Value = serde_json::from_str(include_str!(
-        "../../fixtures/release_control/pin-ruleset.json"
-    ))
+    let fixture: Value = serde_json::from_slice(
+        &fs::read(repo_root.join("fixtures/release_control/pin-ruleset.json"))
+            .map_err(|error| format!("failed to read pin ruleset fixture: {error}"))?,
+    )
     .map_err(|error| format!("failed to parse pin ruleset fixture: {error}"))?;
-
     let accepts_required_pin = |ruleset: &Value| {
         ruleset.get("name").and_then(Value::as_str) == Some("release-transaction-pins")
             && ruleset.get("target").and_then(Value::as_str) == Some("tag")
@@ -51171,6 +51183,14 @@ fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> 
                         && include.first().and_then(Value::as_str) == Some(REQUIRED_PATTERN)
                 })
             && ruleset
+                .pointer("/conditions/ref_name/exclude")
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty)
+            && ruleset
+                .get("bypass_actors")
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty)
+            && ruleset
                 .get("rules")
                 .and_then(Value::as_array)
                 .is_some_and(|rules| {
@@ -51182,27 +51202,57 @@ fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> 
                         })
                 })
     };
-
+    let mut invalid = Vec::new();
+    for (name, patterns) in [
+        ("short", serde_json::json!([SHORT_PATTERN])),
+        (
+            "mixed",
+            serde_json::json!([REQUIRED_PATTERN, SHORT_PATTERN]),
+        ),
+        ("branch", serde_json::json!(["refs/heads/ripr-release-*"])),
+        (
+            "mismatched",
+            serde_json::json!(["refs/tags/another-release-*"]),
+        ),
+    ] {
+        let mut changed = fixture.clone();
+        changed["conditions"]["ref_name"]["include"] = patterns;
+        invalid.push((name, changed));
+    }
+    for (name, pointer, replacement) in [
+        (
+            "excluded",
+            "/conditions/ref_name/exclude",
+            serde_json::json!(["refs/tags/ripr-release-0.11.0-hidden"]),
+        ),
+        (
+            "bypass",
+            "/bypass_actors",
+            serde_json::json!([{"actor_id": 1, "actor_type": "RepositoryRole", "bypass_mode": "always"}]),
+        ),
+        (
+            "missing-exclusions",
+            "/conditions/ref_name/exclude",
+            Value::Null,
+        ),
+        ("missing-bypass", "/bypass_actors", Value::Null),
+    ] {
+        let mut changed = fixture.clone();
+        *changed
+            .pointer_mut(pointer)
+            .ok_or_else(|| format!("fixture lacks {pointer}"))? = replacement;
+        invalid.push((name, changed));
+    }
     if !accepts_required_pin(&fixture) {
         return Err("fully qualified tag ruleset fixture was rejected".to_string());
     }
-
-    let mut short = fixture.clone();
-    short["conditions"]["ref_name"]["include"] = serde_json::json!([SHORT_PATTERN]);
-    if accepts_required_pin(&short) {
-        return Err("unqualified tag pattern was accepted as a protected pin".to_string());
+    for (name, ruleset) in &invalid {
+        if accepts_required_pin(ruleset) {
+            return Err(format!(
+                "invalid {name} ruleset was accepted as a protected pin"
+            ));
+        }
     }
-
-    let mut mixed = fixture.clone();
-    mixed["conditions"]["ref_name"]["include"] =
-        serde_json::json!([REQUIRED_PATTERN, SHORT_PATTERN]);
-    if accepts_required_pin(&mixed) {
-        return Err("mixed qualified and unqualified patterns were accepted".to_string());
-    }
-
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "xtask manifest should have a repository parent".to_string())?;
     let runbook = fs::read_to_string(repo_root.join("docs/RELEASE_TRANSACTION.md"))
         .map_err(|error| format!("failed to read release transaction runbook: {error}"))?;
     if !runbook.contains("--arg tag \"refs/tags/ripr-release-*\"")
@@ -51215,10 +51265,8 @@ fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> 
     {
         return Err("runbook does not carry the fully qualified ruleset pattern".to_string());
     }
-
-    let jq_root = temp_dir("release-pin-ruleset-jq");
     let run_jq_predicate = |ruleset: &Value, name: &str| -> Result<bool, String> {
-        let path = jq_root.join(name);
+        let path = jq_root.join(format!("{name}.json"));
         let input = serde_json::to_vec(ruleset)
             .map_err(|error| format!("failed to serialize jq predicate fixture: {error}"))?;
         fs::write(&path, input)
@@ -51234,46 +51282,44 @@ fn release_pin_ruleset_requires_fully_qualified_tag_ref() -> Result<(), String> 
             JQ_PREDICATE.to_string(),
             path_text.to_string(),
         ];
-        // The jq executable may be a Windows package-manager shim. Keep its
-        // inherited cwd stable while it is spawned: another test must not
-        // switch to and remove a temporary cwd in this window.
         let _cwd_guard = super::acquire_test_cwd_read_guard();
         command_success_owned("jq", &args)
     };
-
-    if !run_jq_predicate(&fixture, "full.json")? {
+    if !run_jq_predicate(&fixture, "full")? {
         return Err("documented jq predicate rejected the full fixture".to_string());
     }
-    if run_jq_predicate(&short, "short.json")? {
-        return Err("documented jq predicate accepted the short fixture".to_string());
+    for (name, ruleset) in &invalid {
+        if run_jq_predicate(ruleset, name)? {
+            return Err(format!(
+                "documented jq predicate accepted the {name} fixture"
+            ));
+        }
     }
-    if run_jq_predicate(&mixed, "mixed.json")? {
-        return Err("documented jq predicate accepted the mixed fixture".to_string());
-    }
-
-    let template: Value = serde_json::from_str(include_str!(
-        "../../docs/release-candidates/0.11.0-live-head-selection.json"
-    ))
-    .map_err(|error| format!("failed to parse live-head template: {error}"))?;
-    let remote_binding = template
-        .pointer("/pin_recipe/remote_binding")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "live-head template remote binding is missing".to_string())?;
-    if !remote_binding.contains(REQUIRED_PATTERN)
-        || remote_binding.contains("matches ripr-release-*")
+    let artifact = "docs/release-candidates/0.11.0-live-head-selection.json";
+    let template_bytes = fs::read(repo_root.join(artifact))
+        .map_err(|error| format!("failed to read live-head template: {error}"))?;
+    let template: Value = serde_json::from_slice(&template_bytes)
+        .map_err(|error| format!("failed to parse live-head template: {error}"))?;
+    if template.get("schema_version").and_then(Value::as_str) != Some("1.1")
+        || template.get("status").and_then(Value::as_str) != Some("active_selection_template")
+        || template.get("candidate") != Some(&Value::Null)
+        || template.get("pin") != Some(&Value::Null)
     {
-        return Err("live-head template does not carry the fully qualified pattern".to_string());
+        return Err("live-head schema-1.1 template must not carry a candidate pin".to_string());
     }
-    if template
-        .pointer("/pin_recipe/protected_candidate_tag_format")
-        .and_then(Value::as_str)
-        != Some(
-            "refs/tags/ripr-release-0.11.0-<SWARM_PARENT> (protected candidate tag; local verifier ref remains refs/ripr/release-0.11.0-<SWARM_PARENT>)",
-        )
-    {
-        return Err("candidate tag format drifted from the release contract".to_string());
+    let input = QualificationInput::new(
+        repo_root.to_path_buf(),
+        jq_root.join("unused-source"),
+        PathBuf::from(artifact),
+    )?
+    .with_approved_manifest_digest(format!("{:x}", sha2::Sha256::digest(&template_bytes)))?;
+    match AdmittedSource::admit(&input, "0.11.0") {
+        Err(error) if error.contains("not pinned_exact_head") => Ok(()),
+        Err(error) => Err(format!("wrong template admission refusal: {error}")),
+        Ok(_) => {
+            Err("correctly hashed selection template acquired candidate authority".to_string())
+        }
     }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------

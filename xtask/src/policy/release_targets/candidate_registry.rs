@@ -313,9 +313,24 @@ pub(crate) struct ValidatedRegistry {
 /// A granted resolution: the registered row the supplied bytes match.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CandidateGrant {
-    pub(crate) registered_path: String,
-    pub(crate) state: LifecycleState,
-    pub(crate) candidate_sha: Option<String>,
+    row: ArtifactRow,
+}
+
+impl CandidateGrant {
+    pub(crate) fn registered_path(&self) -> &str {
+        &self.row.path
+    }
+    #[cfg(test)]
+    pub(crate) fn state(&self) -> LifecycleState {
+        self.row.state
+    }
+    pub(crate) fn candidate(&self) -> Option<&CandidateIdentity> {
+        self.row.candidate.as_ref()
+    }
+    pub(crate) fn candidate_sha(&self) -> Option<&str> {
+        self.candidate()
+            .and_then(|candidate| candidate.sha.as_deref())
+    }
 }
 
 /// Resolve supplied artifact bytes for one operation. The supplied path is
@@ -354,11 +369,7 @@ pub(crate) fn resolve_candidate_authority(
             operation.as_str()
         ));
     }
-    Ok(CandidateGrant {
-        registered_path: row.path.clone(),
-        state: row.state,
-        candidate_sha: row.candidate.as_ref().and_then(|c| c.sha.clone()),
-    })
+    Ok(CandidateGrant { row: row.clone() })
 }
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {

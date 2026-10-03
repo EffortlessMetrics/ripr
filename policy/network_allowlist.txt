@@ -1,5 +1,7 @@
 # Allowlisted network surfaces.
 #
+# SPEC-0148 native acceptance adapter inventory: xtask/src/reports/release/candidate_harness/live_head/handoff/native.rs invokes bounded gh api --hostname github.com --method GET for exact ripr-swarm issue comments only. It reuses existing operator credentials, never writes or logs in, and admits no caller-selected host or cached-response fallback. The lexical network scanner does not match gh invocations; this records the actual network surface without adding an unused scanner exception.
+#
 # Format:
 # path|pattern|max_count|owner|reason
 #

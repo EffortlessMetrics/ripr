@@ -4,6 +4,8 @@
 //! registry, then apply one targeted edit, so each reported rule is
 //! attributable to that edit. The numbered controls follow the issue.
 
+mod source_fixture;
+
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -244,7 +246,7 @@ fn the_hard_cut_receipt_alone_is_never_current_authority() {
     let cited =
         resolve_candidate_authority(&registry, "0.11.0", &bytes, CandidateOperation::CiteHistory);
     assert_eq!(
-        cited.map(|grant| (grant.registered_path, grant.state)),
+        cited.map(|grant| (grant.registered_path().to_string(), grant.state())),
         Ok((
             HARD_CUT_JSON.to_string(),
             LifecycleState::HistoricalEvidenceOnly
@@ -284,7 +286,7 @@ fn a_renamed_hard_cut_copy_still_classifies_as_historical_by_digest() {
         CandidateOperation::CiteHistory,
     );
     assert_eq!(
-        grant.map(|grant| (grant.registered_path, grant.state)),
+        grant.map(|grant| (grant.registered_path().to_string(), grant.state())),
         Ok((
             HARD_CUT_JSON.to_string(),
             LifecycleState::HistoricalEvidenceOnly
@@ -388,7 +390,7 @@ fn a_template_cannot_satisfy_an_exact_candidate_prerequisite() {
         CandidateOperation::SelectionRule,
     );
     assert_eq!(
-        selection.map(|grant| grant.state),
+        selection.map(|grant| grant.state()),
         Ok(LifecycleState::ActiveSelectionTemplate)
     );
 
@@ -725,7 +727,7 @@ fn retiring_the_template_to_a_pinned_candidate_keeps_historical_rows() {
         CandidateOperation::ExactCandidate,
     );
     assert_eq!(
-        pinned.map(|grant| (grant.state, grant.candidate_sha)),
+        pinned.map(|grant| (grant.state(), grant.candidate_sha().map(str::to_string))),
         Ok((
             LifecycleState::PinnedExactCandidate,
             Some(PINNED_SHA.to_string())

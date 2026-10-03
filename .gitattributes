@@ -22,3 +22,7 @@ fixtures/*/diff.patch whitespace=-blank-at-eol
 # Judged-panel diffs are byte-exact frozen captures bound by recorded digests.
 # Trailing whitespace in them is source content and must not be rewritten.
 metrics/rust-judged-behavior-panel/diffs/*.diff -whitespace
+
+# Exact Git commit object used only by the custody boundary fixture. Its signed
+# header contains significant space-only continuation lines; never normalize it.
+xtask/src/reports/release/candidate_harness/live_head/fixtures/last-integrated.commit -text -whitespace

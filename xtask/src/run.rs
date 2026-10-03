@@ -588,6 +588,79 @@ pub(crate) fn capture_bytes_in_dir_with_timeout(
     timeout: Duration,
     error_context: &str,
 ) -> Result<TimedBytesOutput, String> {
+    capture_bytes_with_input(
+        program,
+        args,
+        (cwd, None),
+        envs,
+        env_remove,
+        (timeout, None),
+        error_context,
+    )
+}
+
+/// Bounded binary input/output for Git's batch protocol. The existing process
+/// owner retains child/descendant custody while stdin is written concurrently.
+#[cfg(all(test, unix))]
+pub(crate) fn capture_bytes_in_dir_with_input_timeout(
+    program: &Path,
+    args: &[String],
+    cwd: &Path,
+    input: &[u8],
+    env_remove: &[&str],
+    timeout: Duration,
+    error_context: &str,
+) -> Result<TimedBytesOutput, String> {
+    capture_bytes_with_input(
+        program,
+        args,
+        (cwd, Some(input)),
+        &[],
+        env_remove,
+        (timeout, None),
+        error_context,
+    )
+}
+
+/// Explicit resource limits for selected-source Git capture. Other callers
+/// retain their existing behavior; the owned process lifecycle is shared.
+#[derive(Clone, Copy)]
+pub(crate) struct ByteCaptureBudget {
+    pub(crate) timeout: Duration,
+    pub(crate) stdout_bytes: usize,
+    pub(crate) stderr_bytes: usize,
+}
+
+pub(crate) fn capture_bytes_in_dir_with_budget(
+    program: &Path,
+    args: &[String],
+    source: (&Path, Option<&[u8]>),
+    env_remove: &[&str],
+    budget: ByteCaptureBudget,
+    error_context: &str,
+) -> Result<TimedBytesOutput, String> {
+    capture_bytes_with_input(
+        program,
+        args,
+        source,
+        &[],
+        env_remove,
+        (budget.timeout, Some(budget)),
+        error_context,
+    )
+}
+
+fn capture_bytes_with_input(
+    program: &Path,
+    args: &[String],
+    source: (&Path, Option<&[u8]>),
+    envs: &[(&str, &str)],
+    env_remove: &[&str],
+    deadline: (Duration, Option<ByteCaptureBudget>),
+    error_context: &str,
+) -> Result<TimedBytesOutput, String> {
+    let (cwd, input) = source;
+    let (timeout, budget) = deadline;
     let started = Instant::now();
     let mut command = Command::new(program);
     command.args(args).current_dir(cwd);
@@ -600,6 +673,9 @@ pub(crate) fn capture_bytes_in_dir_with_timeout(
     }
     // Same owned-subprocess spawn as `capture_output_with_timeout` (#3803).
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    if input.is_some() {
+        command.stdin(Stdio::piped());
+    }
     let mut child = OwnedProcess::spawn(command)
         .map_err(|err| format!("failed to run {error_context}: {err}"))?;
     let stdout = child
@@ -610,8 +686,31 @@ pub(crate) fn capture_bytes_in_dir_with_timeout(
         .stderr_pipe()
         .take()
         .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
-    let (stdout_handle, stdout_rx) = spawn_byte_reader_channel(stdout);
-    let (stderr_handle, stderr_rx) = spawn_byte_reader_channel(stderr);
+    let (stdout_handle, stdout_rx) =
+        spawn_byte_reader_channel(stdout, budget.map(|v| ("stdout", v.stdout_bytes)));
+    let (stderr_handle, stderr_rx) =
+        spawn_byte_reader_channel(stderr, budget.map(|v| ("stderr", v.stderr_bytes)));
+    let input_completion = if let Some(bytes) = input {
+        let mut stdin = child
+            .stdin_pipe()
+            .take()
+            .ok_or_else(|| format!("failed to capture stdin for {error_context}"))?;
+        let bytes = bytes.to_vec();
+        let (sender, receiver) = mpsc::channel();
+        // Closing stdin after the write supplies batch EOF. No join can hold the
+        // caller past the owned process deadline/drain grace.
+        let _input_writer = thread::Builder::new()
+            .name("bounded-process-stdin".to_string())
+            .spawn(move || {
+                let result = stdin.write_all(&bytes);
+                drop(stdin);
+                let _ = sender.send(result);
+            })
+            .map_err(|error| format!("start stdin writer for {error_context}: {error}"))?;
+        Some(receiver)
+    } else {
+        None
+    };
     let wait_outcome =
         wait_for_child_with_deadline(&mut child, started, Some(timeout), error_context)?;
     let stdout = drain_byte_reader_bounded(
@@ -620,6 +719,7 @@ pub(crate) fn capture_bytes_in_dir_with_timeout(
         POST_KILL_DRAIN_GRACE,
         "stdout",
         error_context,
+        budget.is_some(),
     )?;
     let stderr = drain_byte_reader_bounded(
         stderr_rx,
@@ -627,7 +727,22 @@ pub(crate) fn capture_bytes_in_dir_with_timeout(
         POST_KILL_DRAIN_GRACE,
         "stderr",
         error_context,
+        budget.is_some(),
     )?;
+    if let Some(receiver) = input_completion {
+        let result = receiver
+            .recv_timeout(POST_KILL_DRAIN_GRACE)
+            .map_err(|error| format!("stdin completion for {error_context}: {error}"))?;
+        if let Err(error) = result {
+            // A deadline kill closes the reader while a large stdin write may
+            // still be blocked. Preserve that observed timeout, rather than
+            // replacing it with its expected BrokenPipe consequence. Early
+            // exit and every other writer/drain failure still refuse.
+            if !wait_outcome.timed_out || error.kind() != std::io::ErrorKind::BrokenPipe {
+                return Err(format!("write stdin for {error_context}: {error}"));
+            }
+        }
+    }
     Ok(TimedBytesOutput {
         status: Some(wait_outcome.status),
         stdout,
@@ -898,6 +1013,22 @@ fn read_stream_bytes<T: Read>(mut stream: T) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn read_stream_bytes_limited(
+    stream: impl Read,
+    name: &str,
+    limit: usize,
+) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    stream
+        .take((limit as u64).saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("read bounded {name}: {error}"))?;
+    if bytes.len() > limit {
+        return Err(format!("{name} exceeds its {limit}-byte output budget"));
+    }
+    Ok(bytes)
+}
+
 fn stream_to_file<T: Read>(mut stream: T, mut file: fs::File) -> Result<usize, String> {
     let mut total = 0usize;
     let mut buf = [0u8; 64 * 1024];
@@ -959,13 +1090,17 @@ fn spawn_stream_reader_channel<T: Read + Send + 'static>(
 
 fn spawn_byte_reader_channel<T: Read + Send + 'static>(
     stream: T,
+    limit: Option<(&'static str, usize)>,
 ) -> (
     thread::JoinHandle<()>,
     mpsc::Receiver<Result<Vec<u8>, String>>,
 ) {
     let (tx, rx) = mpsc::channel();
     let handle = thread::spawn(move || {
-        let result = read_stream_bytes(stream);
+        let result = match limit {
+            Some((name, bytes)) => read_stream_bytes_limited(stream, name, bytes),
+            None => read_stream_bytes(stream),
+        };
         let _ = tx.send(result);
     });
     (handle, rx)
@@ -1030,14 +1165,19 @@ fn drain_byte_reader_bounded(
     grace: Duration,
     stream_name: &str,
     error_context: &str,
+    require_complete: bool,
 ) -> Result<Vec<u8>, String> {
     match rx.recv_timeout(grace) {
         Ok(result) => result,
+        Err(mpsc::RecvTimeoutError::Timeout) if require_complete => Err(format!(
+            "{stream_name} drain exceeded post-kill grace ({}s) for {error_context}; byte output is not established",
+            grace.as_secs()
+        )),
+        // Preserve established uncapped callers' timeout/reporting contract.
         Err(mpsc::RecvTimeoutError::Timeout) => Ok(format!(
             "[ripr-xtask: {stream_name} drain exceeded post-kill grace ({}s) for {error_context}; output truncated]",
             grace.as_secs()
-        )
-        .into_bytes()),
+        ).into_bytes()),
         Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
             "{stream_name} reader thread disconnected while running {error_context}"
         )),
@@ -1794,3 +1934,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "run/input_tests.rs"]
+mod input_tests;

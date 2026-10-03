@@ -16,6 +16,8 @@ mod process;
 mod product_copy;
 pub(crate) mod proof_packs;
 mod release_targets;
+
+pub(crate) use release_targets::{CandidateAuthoritySnapshot, capture_candidate_authority};
 mod static_language;
 mod test_inventory;
 mod workflows;

@@ -62,6 +62,116 @@ const ROLLING_KEYS: &[&str] = &["issue", "justification"];
 
 const KNOWN_TABLE_HEADERS: &[&str] = &["release", "parent", "prerequisite", "rolling"];
 
+/// Validated controller bytes, distinct from the immutable source checkout.
+/// No caller can construct this custody from identity strings.
+pub(crate) struct CandidateAuthoritySnapshot {
+    root: std::path::PathBuf,
+    release: String,
+    artifact_path: String,
+    manifest: Vec<u8>,
+    artifact_tree: candidate_registry::ArtifactTree,
+    grant: candidate_registry::CandidateGrant,
+}
+
+impl CandidateAuthoritySnapshot {
+    pub(crate) fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+    pub(crate) fn candidate_sha(&self) -> Result<&str, String> {
+        self.grant
+            .candidate_sha()
+            .ok_or_else(|| "validated pin lacks source SHA".to_string())
+    }
+    pub(crate) fn candidate_tree(&self) -> Result<&str, String> {
+        self.grant
+            .candidate()
+            .and_then(|value| value.tree.as_deref())
+            .ok_or_else(|| "validated pin lacks source tree".to_string())
+    }
+    pub(crate) fn candidate_ref(&self) -> Result<&str, String> {
+        self.grant
+            .candidate()
+            .and_then(|value| value.git_ref.as_deref())
+            .ok_or_else(|| "validated pin lacks immutable ref".to_string())
+    }
+    pub(crate) fn revalidate(&self) -> Result<(), String> {
+        let fresh = capture_candidate_authority(&self.root, &self.release, &self.artifact_path)?;
+        if self.manifest != fresh.manifest || self.artifact_tree != fresh.artifact_tree {
+            return Err(
+                "controller policy/registry/artifact bytes changed after admission".to_string(),
+            );
+        }
+        Ok(())
+    }
+    pub(crate) fn custody_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "controller_root": self.root,
+            "release": self.release,
+            "registered_artifact": self.artifact_path,
+            "policy_sha256": candidate_registry::sha256_hex(&self.manifest),
+            "registry_sha256": self.artifact_tree.files.get(candidate_registry::REGISTRY_PATH)
+                .map(|bytes| candidate_registry::sha256_hex(bytes)),
+            "artifact_sha256": self.artifact_tree.files.get(&self.artifact_path)
+                .map(|bytes| candidate_registry::sha256_hex(bytes)),
+            "candidate_sha": self.grant.candidate_sha(),
+            "candidate_tree": self.grant.candidate().and_then(|value| value.tree.as_deref()),
+            "candidate_ref": self.grant.candidate().and_then(|value| value.git_ref.as_deref()),
+        })
+    }
+}
+
+pub(crate) fn capture_candidate_authority(
+    root: &std::path::Path,
+    release: &str,
+    artifact_path: &str,
+) -> Result<CandidateAuthoritySnapshot, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("resolve controller root: {error}"))?;
+    if root.to_str().is_none() {
+        return Err("qualification controller root must be UTF-8".to_string());
+    }
+    let manifest = std::fs::read(root.join(RELEASE_TARGETS_MANIFEST_PATH))
+        .map_err(|error| format!("read controller release policy: {error}"))?;
+    let text =
+        std::str::from_utf8(&manifest).map_err(|error| format!("release policy UTF-8: {error}"))?;
+    let mut outcome = evaluate_release_targets(RELEASE_TARGETS_MANIFEST_PATH, text);
+    let artifact_tree = candidate_registry::read_artifact_tree(&root);
+    attach_candidate_registry_from_tree(&mut outcome, &artifact_tree);
+    if !outcome.violations.is_empty() {
+        return Err(format!(
+            "controller policy/registry is not established: {:?}",
+            outcome.violations
+        ));
+    }
+    let registry = outcome
+        .candidate_registry
+        .as_ref()
+        .ok_or_else(|| "controller candidate registry missing".to_string())?
+        .validated()?;
+    let bytes = artifact_tree
+        .files
+        .get(artifact_path)
+        .ok_or_else(|| "explicit candidate artifact is not in controller snapshot".to_string())?;
+    let grant = candidate_registry::resolve_candidate_authority(
+        &registry,
+        release,
+        bytes,
+        candidate_registry::CandidateOperation::ExactCandidate,
+    )?;
+    if grant.registered_path() != artifact_path {
+        return Err("explicit artifact must name its exact registered row".to_string());
+    }
+    Ok(CandidateAuthoritySnapshot {
+        root,
+        release: release.to_string(),
+        artifact_path: artifact_path.to_string(),
+        manifest,
+        artifact_tree,
+        grant,
+    })
+}
+
 /// The four committed roles. `conditional_issues` is deliberately absent: a
 /// conditional issue carries an intended destination without entering the
 /// committed denominator.
@@ -173,6 +283,14 @@ pub(crate) fn check_release_targets() -> Result<(), String> {
 /// Evaluate the candidate-artifact registry under `root` against the
 /// manifest's releases and fold its violations into the one check result.
 fn attach_candidate_registry(outcome: &mut ReleaseTargetsOutcome, root: &std::path::Path) {
+    let tree = candidate_registry::read_artifact_tree(root);
+    attach_candidate_registry_from_tree(outcome, &tree);
+}
+
+fn attach_candidate_registry_from_tree(
+    outcome: &mut ReleaseTargetsOutcome,
+    tree: &candidate_registry::ArtifactTree,
+) {
     let controllers = outcome
         .releases
         .iter()
@@ -181,8 +299,7 @@ fn attach_candidate_registry(outcome: &mut ReleaseTargetsOutcome, root: &std::pa
             goal_issue: release.goal_issue,
         })
         .collect::<Vec<_>>();
-    let tree = candidate_registry::read_artifact_tree(root);
-    let registry = candidate_registry::evaluate_candidate_registry(&tree, &controllers);
+    let registry = candidate_registry::evaluate_candidate_registry(tree, &controllers);
     outcome
         .violations
         .extend(registry.violations.iter().cloned());

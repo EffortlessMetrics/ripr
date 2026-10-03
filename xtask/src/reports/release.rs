@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
 
+pub(crate) mod candidate_harness;
+use candidate_harness::CandidateExecution;
+
 const REPORT_WORK_DIR: &str = "target/ripr/release-readiness";
 const INSTALL_ROOT: &str = "target/ripr/release-readiness/install";
 const PILOT_OUT: &str = "target/ripr/release-readiness/pilot";
@@ -682,7 +685,11 @@ fn validate_binary_identity(workspace_digest: &str, installed_digest: &str) -> R
     Ok(())
 }
 
-fn validate_installed_version(success: bool, stdout: &str, version: &str) -> Result<(), String> {
+pub(crate) fn validate_installed_version(
+    success: bool,
+    stdout: &str,
+    version: &str,
+) -> Result<(), String> {
     if !success || !stdout.contains(&format!("ripr {version}")) {
         return Err(
             "installed binary version output did not identify the packaged crate version"
@@ -692,7 +699,7 @@ fn validate_installed_version(success: bool, stdout: &str, version: &str) -> Res
     Ok(())
 }
 
-fn validate_doctor_result(success: bool, doctor_json: &Value) -> Result<(), String> {
+pub(crate) fn validate_doctor_result(success: bool, doctor_json: &Value) -> Result<(), String> {
     if !success || doctor_json.get("status").and_then(Value::as_str) != Some("pass") {
         return Err(
             "installed ripr doctor did not report pass for the external fixture".to_string(),
@@ -1780,6 +1787,12 @@ fn run_authentic_repo_exposure_journey(binary: &Path) -> Result<Vec<String>, Str
 
 pub(crate) fn create_authentic_repo_exposure_fixture()
 -> Result<AuthenticRepoExposureFixture, String> {
+    create_authentic_fixture_with_execution(CandidateExecution::Legacy(Path::new("ripr")))
+}
+
+pub(crate) fn create_authentic_fixture_with_execution(
+    execution: CandidateExecution<'_>,
+) -> Result<AuthenticRepoExposureFixture, String> {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock is before Unix epoch: {err}"))?
@@ -1788,49 +1801,78 @@ pub(crate) fn create_authentic_repo_exposure_fixture()
         "ripr-release-exposure-{}-{stamp}",
         std::process::id()
     ));
+    if matches!(execution, CandidateExecution::Qualified(_)) {
+        fs::create_dir(&root)
+            .map_err(|error| format!("create exclusive authentic fixture: {error}"))?;
+    }
     let result = (|| {
         fs::create_dir_all(root.join("src"))
             .map_err(|err| format!("create authentic fixture source failed: {err}"))?;
         fs::create_dir_all(root.join("tests"))
             .map_err(|err| format!("create authentic fixture tests failed: {err}"))?;
         for relative in ["Cargo.toml", "src/lib.rs", "tests/pricing.rs"] {
-            let source = Path::new("fixtures/boundary_gap/input").join(relative);
             let destination = root.join(relative);
-            fs::copy(&source, &destination).map_err(|err| {
-                format!(
-                    "copy authentic fixture {} to {} failed: {err}",
-                    crate::normalize_path(&source),
-                    crate::normalize_path(&destination)
-                )
-            })?;
+            match execution {
+                CandidateExecution::Legacy(_) => {
+                    let source = Path::new("fixtures/boundary_gap/input").join(relative);
+                    fs::copy(&source, &destination)
+                        .map_err(|error| format!("copy legacy authentic fixture: {error}"))?;
+                }
+                CandidateExecution::Qualified(candidate) => {
+                    fs::write(&destination, candidate.fixture_bytes(relative)?)
+                        .map_err(|error| format!("write admitted authentic fixture: {error}"))?;
+                }
+            }
         }
-        run_fixture_git_command(&root, &["init", "--quiet", "--template="], "initialize")?;
-        run_fixture_git_command(
+        if let CandidateExecution::Qualified(candidate) = execution {
+            candidate.revalidate()?;
+            fs::create_dir(root.join(".cargo"))
+                .map_err(|error| format!("create owned fixture Cargo directory: {error}"))?;
+            fs::create_dir(root.join("target"))
+                .map_err(|error| format!("create owned fixture Cargo target: {error}"))?;
+            fs::write(root.join(".cargo/config.toml"),
+                "[env]\nTEMP = { value = 'target', relative = true, force = true }\nTMP = { value = 'target', relative = true, force = true }\nTMPDIR = { value = 'target', relative = true, force = true }\n")
+                .map_err(|error| format!("write owned fixture Cargo config: {error}"))?;
+            fs::write(root.join(".gitignore"), "target/\n")
+                .map_err(|error| format!("write owned fixture target exclusion: {error}"))?;
+            candidate.revalidate()?;
+        }
+        execution.fixture_git(&root, &["init", "--quiet", "--template="], "initialize")?;
+        if matches!(execution, CandidateExecution::Qualified(_)) {
+            for (key, value) in [("core.autocrlf", "false"), ("core.fsmonitor", "false")] {
+                execution.fixture_git(
+                    &root,
+                    &["config", "--local", key, value],
+                    "configure owned fixture Git",
+                )?;
+            }
+        }
+        execution.fixture_git(
             &root,
             &["config", "user.name", "RIPR Release Fixture"],
             "configure user name",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["config", "user.email", "release-fixture@example.invalid"],
             "configure user email",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["config", "commit.gpgSign", "false"],
             "disable signing",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "add", "."],
             "stage before state",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "commit", "-m", "fixture before"],
             "commit before state",
         )?;
-        let before_commit = fixture_head(&root)?;
+        let before_commit = execution.fixture_head(&root)?;
 
         let tests_path = root.join("tests/pricing.rs");
         let mut tests = fs::OpenOptions::new()
@@ -1848,21 +1890,21 @@ pub(crate) fn create_authentic_repo_exposure_fixture()
         writeln!(tests, "}}")
             .map_err(|err| format!("write authentic fixture test close failed: {err}"))?;
         drop(tests);
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "add", "."],
             "stage after state",
         )?;
-        run_fixture_git_command(
+        execution.fixture_git(
             &root,
             &["-c", "core.hooksPath=", "commit", "-m", "fixture after"],
             "commit after state",
         )?;
-        let after_commit = fixture_head(&root)?;
+        let after_commit = execution.fixture_head(&root)?;
         if before_commit == after_commit {
             return Err("authentic fixture before and after commits are identical".to_string());
         }
-        let ancestor = run_fixture_git_command(
+        let ancestor = execution.fixture_git(
             &root,
             &["merge-base", "--is-ancestor", &before_commit, &after_commit],
             "compare fixture commits",
@@ -1938,12 +1980,26 @@ pub(crate) fn produce_authentic_chain_in_fixture(
     before_commit: &str,
     after_commit: &str,
 ) -> Result<Vec<String>, String> {
+    produce_authentic_chain_with_execution(
+        candidate_harness::CandidateExecution::Legacy(binary),
+        root,
+        before_commit,
+        after_commit,
+    )
+}
+
+pub(crate) fn produce_authentic_chain_with_execution(
+    execution: candidate_harness::CandidateExecution<'_>,
+    root: &Path,
+    before_commit: &str,
+    after_commit: &str,
+) -> Result<Vec<String>, String> {
     let before_name = "before.repo-exposure.json";
     let after_name = "after.repo-exposure.json";
-    checkout_fixture_commit(root, before_commit)?;
-    let _before = run_producer_check(binary, root, before_name)?;
-    checkout_fixture_commit(root, after_commit)?;
-    let _after = run_producer_check(binary, root, after_name)?;
+    execution.fixture_checkout(root, before_commit)?;
+    let _before = run_producer_with_execution(execution, root, before_name)?;
+    execution.fixture_checkout(root, after_commit)?;
+    let _after = run_producer_with_execution(execution, root, after_name)?;
     validate_authentic_artifact(&root.join(before_name), before_commit, "before")?;
     validate_authentic_artifact(&root.join(after_name), after_commit, "after")?;
     let before_value = read_json_value(&root.join(before_name))?;
@@ -1958,7 +2014,7 @@ pub(crate) fn produce_authentic_chain_in_fixture(
                 .to_string(),
         );
     }
-    run_analysis_outcome_check(binary, root)?;
+    run_analysis_outcome_check(execution, root)?;
     let verify_args = vec![
         "agent".to_string(),
         "verify".to_string(),
@@ -1970,7 +2026,7 @@ pub(crate) fn produce_authentic_chain_in_fixture(
         after_name.to_string(),
         "--json".to_string(),
     ];
-    let verify = run_command_in_dir(binary, &verify_args, root, "authentic agent verify")?;
+    let verify = execution.run(&verify_args, root, "authentic agent verify")?;
     if !verify.success {
         return Err(format!(
             "authentic agent verify failed: {}",
@@ -1992,7 +2048,7 @@ pub(crate) fn produce_authentic_chain_in_fixture(
         "--out".to_string(),
         "agent-receipt.json".to_string(),
     ];
-    let receipt = run_command_in_dir(binary, &receipt_args, root, "authentic agent receipt")?;
+    let receipt = execution.run(&receipt_args, root, "authentic agent receipt")?;
     if !receipt.success || !root.join("agent-receipt.json").is_file() {
         return Err(format!(
             "authentic agent receipt failed: {}",
@@ -2009,8 +2065,8 @@ pub(crate) fn produce_authentic_chain_in_fixture(
     ])
 }
 
-pub(crate) fn run_producer_check(
-    binary: &Path,
+pub(crate) fn run_producer_with_execution(
+    execution: candidate_harness::CandidateExecution<'_>,
     root: &Path,
     artifact_name: &str,
 ) -> Result<Value, String> {
@@ -2023,7 +2079,7 @@ pub(crate) fn run_producer_check(
         "--format".to_string(),
         "repo-exposure-json".to_string(),
     ];
-    let result = run_command_in_dir(binary, &args, root, "authentic repo-exposure producer")?;
+    let result = execution.run(&args, root, "authentic repo-exposure producer")?;
     if !result.success {
         return Err(format!(
             "producer check failed: {}",
@@ -2037,7 +2093,10 @@ pub(crate) fn run_producer_check(
     Ok(value)
 }
 
-fn run_analysis_outcome_check(binary: &Path, root: &Path) -> Result<(), String> {
+fn run_analysis_outcome_check(
+    execution: candidate_harness::CandidateExecution<'_>,
+    root: &Path,
+) -> Result<(), String> {
     let args = vec![
         "check".to_string(),
         "--root".to_string(),
@@ -2047,7 +2106,7 @@ fn run_analysis_outcome_check(binary: &Path, root: &Path) -> Result<(), String> 
         "--format".to_string(),
         "json".to_string(),
     ];
-    let result = run_command_in_dir(binary, &args, root, "authentic analysis outcome producer")?;
+    let result = execution.run(&args, root, "authentic analysis outcome producer")?;
     if !result.success {
         return Err(format!(
             "analysis outcome producer failed: {}",

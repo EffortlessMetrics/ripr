@@ -168,6 +168,25 @@ after movement succeeds but discloses `historical_noncurrent`.
   different seam moves.
 - The editor repair-loop fixture consumes bound artifacts and records explicit
   currentness.
+- Selected-source execution of that existing corpus uses an all-or-none
+  `--controller-root`, `--candidate-source-root`, `--candidate-artifact` group.
+  Without `--candidate-manifest-sha256`, the historical registry mode grants
+  authority only to exact registered controller bytes. With that explicit
+  independently accepted digest, direct #1609 schema-1.1 admission binds the
+  single manifest and exact accepted prerequisite bytes under SPEC-0144;
+  neither mode falls back to the other or to unqualified smoke.
+  actual source HEAD/tree/ref and raw committed input bytes are checked
+  independently. Canonical source/controller roots must not be equal or nested;
+  distinct worktrees of one repository are valid. Qualified Cargo package/install
+  use explicit owned roots.
+  Ordinary archive entries must match committed blobs; only Cargo's original
+  manifest, normalized manifest, lock and VCS metadata have explicit generated
+  rules. Archive and installed executable bytes are revalidated before
+  consumption by installed doctor and the authentic chain. Controller-owned
+  reports disclose `qualification_mode`, custody and the exclusive evidence
+  root. Without the group, the command remains unqualified legacy smoke;
+  partial/refused qualification never falls back. These unlocked checks are
+  not authenticated provenance or full release qualification (#4510).
 - The integrated installed-candidate negative corpus (`cargo xtask
   release-negative-corpus --version <version>`, #2824) runs the packaged
   candidate through the authentic readiness chain in a controlled external
@@ -286,3 +305,58 @@ For portable workspace identities, CRLF is normalized to LF before hashing;
 standalone CR bytes are preserved so invalid input cannot collide with valid LF
 input. Changing this normalization is an identity-algorithm change and requires
 a new identity version. The prior `input:v2:` shape is unsupported.
+
+
+### Selected-source resource and object custody (#4510)
+
+Metadata and blob batches use the same `git --no-replace-objects` contract.
+Ambient replacement objects cannot alter the raw candidate bytes. A checkout
+that substitutes those bytes, including via skip-worktree flags, refuses.
+
+Source limits are independent of the direct manifest's 64 MiB input limit:
+16,384 ordinary blobs, 16 MiB per blob, and 128 MiB total retained blob bytes.
+Git metadata stdout is capped at 8 MiB and stderr at 1 MiB. The ordinary-blob
+census includes declared sizes before body capture. Batch stdout is capped at
+the exact sum of those body sizes and Git's per-object headers/terminators;
+changed batch identities or sizes refuse. Readers consume at most limit+1
+bytes. Oversized output or missing terminal drain output is a refusal for
+this budgeted source mode, reported as `byte_budgeted_strict_terminal_drain`.
+No truncated-output placeholder is admitted in that mode. A reader closes its pipe as soon as its byte limit
+is exceeded, but the parent keeps the existing child wait/deadline and cleanup
+path. Overflow can therefore be reported after that deadline; byte limits do
+not promise immediate process cancellation. Existing uncapped byte-capture
+callers retain their prior drain-placeholder and timeout-reporting behavior.
+
+Checkout revalidation uses the shared observed regular-file snapshot reader,
+with each read capped at the already admitted blob length plus one. Empty
+ordinary files are permitted. The retained source budget is checked again.
+These are unlocked observations with the same stated race limits as manifest
+custody. The batch buffer and retained blob map can coexist transiently; the
+128 MiB limit names retained blob bytes, not total process resident memory.
+
+The 2026-10-02 review census had 5,411 ordinary blobs, 58,566,161 body bytes,
+1,949,776 bytes in the largest blob, and 647,658 metadata bytes. That observation
+motivates the limits and is not a promise about the final release candidate.
+
+Full custody is intentionally checked before and after each qualified child
+command, including fixture Git commands. Each check rereads retained manifest
+evidence, the source checkout, archive and executable, and reruns source Git
+identity/range observations. Its work is linear in those bytes/files per check;
+the corpus multiplies that work by twice its child-command count. Hundreds of
+commands over a roughly 59 MB checkout can therefore reread tens of GB before
+archive/executable/evidence costs. The 1.31-second engineering inventory and
+checkout observation is not a per-command or complete corpus benchmark. Actual
+qualification must retain its elapsed observations; no low-overhead claim is
+made. Reducing this boundary needs separately proved invalidation semantics.
+
+
+### Source-handoff acceptance is distinct from execution custody
+
+The #4510 direct-manifest digest adapter prepares and observes exact candidate
+inputs; its caller-supplied digest does not independently establish release
+selection or complete qualification. SPEC-0148's source-promotion consumer now
+requires native #1609/#2766/#2769 decision observations and the complete
+#2769 bundle, with exact raw digest, roster, row, proof-input and candidate
+bindings. Historical registry admission and local corpus results cannot issue
+that handoff. Native owner trust and unlocked snapshot limitations remain
+explicit; this does not add cryptographic signatures or a new provenance system.

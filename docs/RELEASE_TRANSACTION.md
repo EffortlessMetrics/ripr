@@ -113,28 +113,21 @@ Historical candidate-only `C -> T`, hard-cut, replacement-freeze, and
 candidate-ref receipts remain audit evidence but are superseded. They are not
 the active `0.11.0` authority, denominator, pin, source parent, or permission.
 
-Lifecycle currentness for every retained artifact under
-`docs/release-candidates/` is machine-checked, not inferred from prose (#3842).
-The digest-bound registry
-[`docs/release-candidates/index.json`](release-candidates/index.json) and its
-derived projection [`README.md`](release-candidates/README.md) are validated by
-`cargo xtask check-release-targets`. An artifact is current only with a
-registry row, a matching raw-byte SHA-256, a state permitted for the operation
-(`active_selection_template` for the selection rule; `pinned_exact_candidate`
-for qualification, source preflight/sync, and publication), and every
-state-specific identity. `historical_evidence_only` rows may be cited but
-satisfy no prerequisite; `invalid` rows satisfy nothing. A filename, version
-string, "hard cut" wording, or presence in the directory confers no authority,
-and unregistered files fail the check. When #1609 records the exact candidate,
-register it as `pinned_exact_candidate` and retire the template row to
-`historical_evidence_only`; historical rows and receipt bytes are not
-rewritten.
+Retained artifacts under `docs/release-candidates/` retain their #3842
+lifecycle metadata and `cargo xtask check-release-targets` policy validation.
+Changing a template's schema updates its own raw digest and human projection;
+it does not activate a pin or rewrite historical receipt bytes. The broad
+#3924 consumer-integration work remains deferred for 0.11.x. Direct #1609
+schema-1.1 admission below binds the independently reviewed manifest and exact
+owner packets without treating milestone policy as live-head selection.
+Historical registry mode stays separately available and never becomes a
+fallback from refused direct inputs.
 
 Stop at once when a repository identity, owner, version, exact input, receipt,
 expected head, policy state, or publication authorization is ambiguous. Green
 CI, a ship packet, J, or K is evidence only; none authorizes publication.
 
-## 1. Reset truth, source queue, and hold
+## 1. Reset truth and pre-cut queue observations
 
 Use fresh checkouts. Ordinary source-repository development PRs are drift:
 redirect them to swarm or classify them as release/security work before the
@@ -173,32 +166,33 @@ set -euo pipefail
 # [LOCAL-MUTATING] repo=packet; capture exact heads and pin files
 test -z "$(git -C "$SOURCE_ROOT" status --short)"
 test -z "$(git -C "$SWARM_ROOT" status --short)"
-SOURCE_PARENT="$(git -C "$SOURCE_ROOT" rev-parse refs/remotes/origin/main)"
+SOURCE_OBSERVED_HEAD="$(git -C "$SOURCE_ROOT" rev-parse refs/remotes/origin/main)"
 SWARM_PARENT="$(git -C "$SWARM_ROOT" rev-parse refs/remotes/origin/main)"
-test "$(git -C "$SOURCE_ROOT" rev-parse "$SOURCE_PARENT^{commit}")" = "$SOURCE_PARENT"
+test "$(git -C "$SOURCE_ROOT" rev-parse "$SOURCE_OBSERVED_HEAD^{commit}")" = "$SOURCE_OBSERVED_HEAD"
 test "$(git -C "$SWARM_ROOT" rev-parse "$SWARM_PARENT^{commit}")" = "$SWARM_PARENT"
-printf '%s\n' "$SOURCE_PARENT" > "$PACKET_ROOT/SOURCE_PARENT"
+printf '%s\n' "$SOURCE_OBSERVED_HEAD" > "$PACKET_ROOT/source-observed-head"
 printf '%s\n' "$SWARM_PARENT" > "$PACKET_ROOT/SWARM_PARENT"
 ```
 
 ```bash
 set -euo pipefail
 # [READ-ONLY] repo=packet+source+swarm; load pins and reject drift
-SOURCE_PARENT="$(tr -d '\r\n' < "$PACKET_ROOT/SOURCE_PARENT")"
+SOURCE_OBSERVED_HEAD="$(tr -d '\r\n' < "$PACKET_ROOT/source-observed-head")"
 SWARM_PARENT="$(tr -d '\r\n' < "$PACKET_ROOT/SWARM_PARENT")"
-test "$(git -C "$SOURCE_ROOT" rev-parse refs/remotes/origin/main)" = "$SOURCE_PARENT"
+# SOURCE_OBSERVED_HEAD is observation only; source #1769 binds SOURCE_PARENT later.
 test "$(git -C "$SWARM_ROOT" rev-parse refs/remotes/origin/main)" = "$SWARM_PARENT"
 ```
 
 The queue snapshot is produced by the two `gh pr list` calls above and bound
-to those exact parent SHAs. Keep the producer output, not a hand-edited table:
+to the exact observed heads. Source observation is not a held SOURCE_PARENT.
+Keep the producer output, not a hand-edited table:
 
 ```bash
 set -euo pipefail
 # [LOCAL-MUTATING] repo=packet+swarm; copy and validate the checked-in selection template before W
 LIVE_HEAD_TEMPLATE="docs/release-candidates/0.11.0-live-head-selection.json"
 cp "$LIVE_HEAD_TEMPLATE" "$PACKET_ROOT/live-head-selection-template.json"
-jq -e '.schema_version == "1.0" and .status == "active_selection_template" and .selection_rule != null and .protected_candidate_tag == null' "$LIVE_HEAD_TEMPLATE" >/dev/null
+jq -e '.schema_version == "1.1" and .status == "active_selection_template" and .candidate == null and .source_parent == null' "$LIVE_HEAD_TEMPLATE" >/dev/null
 TEMPLATE_SHA256="$(sha256sum "$LIVE_HEAD_TEMPLATE" | awk '{print $1}')"
 cargo xtask check-release-targets
 jq -e --arg path "$LIVE_HEAD_TEMPLATE" --arg sha "$TEMPLATE_SHA256" '[.artifacts[] | select(.path == $path and .sha256 == $sha and .state == "active_selection_template" and .projection_of == null)] | length == 1' docs/release-candidates/index.json >/dev/null
@@ -206,26 +200,27 @@ jq -e --arg path "$LIVE_HEAD_TEMPLATE" --arg sha "$TEMPLATE_SHA256" '[.artifacts
 
 ```bash
 set -euo pipefail
-# [LOCAL-MUTATING] repo=packet; produce and bind the live-head selection JSON
+# [LOCAL-MUTATING] repo=packet; retain observations, not candidate admission
 gh pr list --repo EffortlessMetrics/ripr-swarm --state open --limit 100 --json number,title,headRefName,headRefOid,baseRefName,isDraft,updatedAt > "$PACKET_ROOT/swarm-open-prs.json"
 gh pr list --repo EffortlessMetrics/ripr --state open --limit 100 --json number,title,headRefName,headRefOid,baseRefName,isDraft,updatedAt > "$PACKET_ROOT/source-open-prs.json"
-jq -n --arg captured_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg source_parent "$SOURCE_PARENT" --arg swarm_parent "$SWARM_PARENT" --arg template_sha256 "$TEMPLATE_SHA256" --slurpfile template "$PACKET_ROOT/live-head-selection-template.json" --slurpfile swarm "$PACKET_ROOT/swarm-open-prs.json" --slurpfile source "$PACKET_ROOT/source-open-prs.json" '{schema_version: 1, producer: "gh pr list + checked-in live-head template", captured_at_utc: $captured_at, template_sha256: $template_sha256, selection_rule: $template[0].selection_rule, source_parent: $source_parent, swarm_parent: $swarm_parent, queues: {swarm: $swarm[0], source: $source[0]}}' > "$PACKET_ROOT/live-head-selection.json"
-jq -e --arg source_parent "$SOURCE_PARENT" --arg swarm_parent "$SWARM_PARENT" '.source_parent == $source_parent and .swarm_parent == $swarm_parent' "$PACKET_ROOT/live-head-selection.json" >/dev/null
+jq -n --arg observed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg source_observed_head "$SOURCE_OBSERVED_HEAD" --arg swarm_parent "$SWARM_PARENT" --slurpfile swarm "$PACKET_ROOT/swarm-open-prs.json" --slurpfile source "$PACKET_ROOT/source-open-prs.json" '{schema_version: 1, kind: "precut_queue_observation", observed_at_utc: $observed_at, source_observed_head: $source_observed_head, swarm_parent: $swarm_parent, queues: {swarm: $swarm[0], source: $source[0]}, claim: "observation only; not a candidate manifest or source hold"}' > "$PACKET_ROOT/precut-queue-observation.json"
 ```
 
-If either exact parent moves before J, stop, record a new producer snapshot, and
-re-run the queue disposition. Do not update only a SHA field in place; the
-selection JSON, queue outputs, receipts, and authority bindings are one packet.
-
-Hold `SOURCE_PARENT` until J is transported. If source main moves, stop and
-reconcile; never silently update the variable.
+Before W, swarm movement extends the denominator and requires a new current
+#2766/#2768/#3807 handoff. Source observations may change during this stage;
+source #1769 does not select or hold SOURCE_PARENT until swarm qualification.
+After that later source hold, movement invalidates the corresponding source
+transaction. Never update only a SHA in an existing immutable receipt.
 
 ## 2. Guarded swarm pin
 
 `W` is the first successful push of the protected candidate tag below. The
-checked-in live-head selection template is updated and validated immediately
-before W; after W, any `origin/main` movement is drift/invalidation, never a
-silent membership update.
+checked-in schema-1.1 template is copied, not activated in place. Before W,
+#2766 selected claims, #2768 denominator and #3807 audit must have current
+accepted owner packets. The final manifest binds their raw bytes and actual
+candidate/package identities. The template and a producer-emitted sidecar do
+not establish those approvals. After W, unrelated main movement is outside the
+candidate, never a silent membership update.
 
 ```bash
 set -euo pipefail
@@ -253,7 +248,7 @@ gh api "repos/EffortlessMetrics/ripr-swarm/rulesets/${PIN_RULESET_ID}" > "$PIN_R
 # fail-closed policy contract to cover only the tag namespace. The checked-in
 # fixture/test proves that local contract; it does not prove GitHub server
 # acceptance or rejection. Verify live settings through the read-only receipt.
-jq -e --arg tag "refs/tags/ripr-release-*" '(.target == "tag" and .enforcement == "active") and (.conditions.ref_name.include == [$tag]) and (any(.rules[]?; .type == "update")) and (any(.rules[]?; .type == "deletion"))' "$PIN_RULESET" >/dev/null
+jq -e --arg tag "refs/tags/ripr-release-*" '(.target == "tag" and .enforcement == "active") and (.conditions.ref_name.include == [$tag]) and (any(.rules[]?; .type == "update")) and (any(.rules[]?; .type == "deletion")) and (.conditions.ref_name.exclude == []) and (.bypass_actors == [])' "$PIN_RULESET" >/dev/null
 ```
 
 ```bash
@@ -288,28 +283,73 @@ PIN_DIGEST="$(sha256sum "$PACKET_ROOT/pin-remote.sha" | awk '{print $1}')"
 
 ```bash
 set -euo pipefail
-# [LOCAL-MUTATING] repo=packet; instantiate and hash every active selection-template field after W
-MERGE_BASE="$(git -C "$SWARM_ROOT" merge-base "$SOURCE_PARENT" "$SWARM_PARENT")"
-ORDERED_SWARM_RANGE_SHA256="$(git -C "$SWARM_ROOT" rev-list --first-parent --reverse "$MERGE_BASE..$SWARM_PARENT" | sha256sum | awk '{print $1}')"
-ALL_REACHABLE="$(git -C "$SWARM_ROOT" rev-list --count "$SWARM_PARENT")"
-FIRST_PARENT="$(git -C "$SWARM_ROOT" rev-list --first-parent --count "$SWARM_PARENT")"
-PIN_RULESET_SHA256="$(sha256sum "$PIN_RULESET" | awk '{print $1}')"
-PIN_DIGEST="$(sha256sum "$PACKET_ROOT/pin-remote.sha" | awk '{print $1}')"
-jq -n --arg captured_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg template_sha256 "$TEMPLATE_SHA256" --arg source_parent "$SOURCE_PARENT" --arg swarm_parent "$SWARM_PARENT" --arg protected_tag "$SWARM_REF" --arg verifier_ref "$VERIFIER_REF" --arg merge_base "$MERGE_BASE" --arg ordered "$ORDERED_SWARM_RANGE_SHA256" --arg pin_ruleset_id "$PIN_RULESET_ID" --arg pin_ruleset_sha256 "$PIN_RULESET_SHA256" --arg pin_digest "$PIN_DIGEST" --argjson all_reachable "$ALL_REACHABLE" --argjson first_parent "$FIRST_PARENT" --slurpfile template "$PACKET_ROOT/live-head-selection-template.json" --slurpfile queues "$PACKET_ROOT/live-head-selection.json" '{schema_version: "1.0", kind: $template[0].kind, release_line: $template[0].release_line, authority_issue: $template[0].authority_issue, status: "pinned_exact_head", producer: "release-transaction W", captured_at_utc: $captured_at, template_sha256: $template_sha256, selection_rule: $template[0].selection_rule, selection_ref: $template[0].selection_ref, selected_swarm_parent: $swarm_parent, local_verifier_ref: $verifier_ref, protected_candidate_tag: $protected_tag, source_parent: $source_parent, merge_base: $merge_base, counts: {all_reachable: $all_reachable, first_parent: $first_parent}, ordered_swarm_range_sha256: $ordered, pin_ruleset: {id: $pin_ruleset_id, sha256: $pin_ruleset_sha256}, pin_digest: $pin_digest, required_claims: $template[0].required_claims, non_claims: $template[0].non_claims, supersedes: $template[0].supersedes, reason: $template[0].reason, binding_rule: $template[0].binding_rule, pin_update_rule: $template[0].pin_update_rule, status_transition: $template[0].status_transition, post_pin_branch_policy: $template[0].post_pin_branch_policy, ancestry_policy: $template[0].ancestry_policy, pin_recipe: $template[0].pin_recipe, execution_claim_audit: $template[0].execution_claim_audit, queues: $queues[0]}' > "$PACKET_ROOT/live-head-selection.json"
-jq -e --arg template_sha256 "$TEMPLATE_SHA256" --arg source_parent "$SOURCE_PARENT" --arg swarm_parent "$SWARM_PARENT" --arg merge_base "$MERGE_BASE" --arg tag "$SWARM_REF" --arg verifier "$VERIFIER_REF" --arg ruleset "$PIN_RULESET_ID" --arg ruleset_sha "$PIN_RULESET_SHA256" --arg ordered "$ORDERED_SWARM_RANGE_SHA256" --arg pin_digest "$PIN_DIGEST" '.status == "pinned_exact_head" and .template_sha256 == $template_sha256 and .source_parent == $source_parent and .selected_swarm_parent == $swarm_parent and .merge_base == $merge_base and .protected_candidate_tag == $tag and .local_verifier_ref == $verifier and .pin_ruleset.id == $ruleset and .pin_ruleset.sha256 == $ruleset_sha and .ordered_swarm_range_sha256 == $ordered and .pin_digest == $pin_digest' "$PACKET_ROOT/live-head-selection.json" >/dev/null
-cmp "$LIVE_HEAD_TEMPLATE" "$PACKET_ROOT/live-head-selection-template.json" >/dev/null
-test "$(sha256sum "$PACKET_ROOT/live-head-selection-template.json" | awk '{print $1}')" = "$TEMPLATE_SHA256"
+# [LOCAL-MUTATING] repo=packet; assemble the one schema-1.1 manifest after W
+# These are existing accepted owner packets, not files synthesized to make this step pass.
+SELECTED_CLAIMS_PACKET="${SELECTED_CLAIMS_PACKET:?set controller-relative accepted #2766 packet}"
+DENOMINATOR_PACKET="${DENOMINATOR_PACKET:?set controller-relative accepted #2768 packet}"
+AUDIT_PACKET="${AUDIT_PACKET:?set controller-relative accepted #3807 packet}"
+# #2768 supplies the reviewed schema-1.1 projection: topo-order/reverse and
+# first-parent/reverse full-SHA+LF digests from SPEC-0144, not historical JSON hashes.
+DENOMINATOR_RANGE_JSON="${DENOMINATOR_RANGE_JSON:?set accepted #2768 range projection}"
+# References to the selected candidate's exact proof-input bytes, using SPEC-0144 Evidence fields.
+PROOF_INPUTS_JSON="${PROOF_INPUTS_JSON:?set accepted proof-input reference list}"
+# Supplied by the trusted controller from exact native owner decisions, not generated here.
+OWNER_ACCEPTANCE_JSON="${OWNER_ACCEPTANCE_JSON:?set reviewed selection/denominator/audit acceptance envelopes}"
+CONTROLLER_ROOT="${CONTROLLER_ROOT:?set absolute independent controller root}"
+CANDIDATE_TREE="$(git -C "$SWARM_ROOT" rev-parse "$SWARM_PARENT^{tree}")"
+test "$(git -C "$SWARM_ROOT" rev-parse HEAD)" = "$SWARM_PARENT"
+test -z "$(git -C "$SWARM_ROOT" status --porcelain=v1 --untracked-files=all)"
+# Copy readbacks into this controller's packet; paths remain relative and bytes are retained.
+PIN_READBACK_PATH="${PIN_READBACK_PATH:?set controller-relative pin-remote.sha}"
+PIN_RULESET_PATH="${PIN_RULESET_PATH:?set controller-relative pin-ruleset.json}"
+jq --arg sha "$SWARM_PARENT" --arg tree "$CANDIDATE_TREE" --arg ref "$SWARM_REF" \
+  --arg workspace_sha "$(git -C "$SWARM_ROOT" show "$SWARM_PARENT:Cargo.toml" | sha256sum | awk '{print $1}')" \
+  --arg package_sha "$(git -C "$SWARM_ROOT" show "$SWARM_PARENT:crates/ripr/Cargo.toml" | sha256sum | awk '{print $1}')" \
+  --arg lock_sha "$(git -C "$SWARM_ROOT" show "$SWARM_PARENT:Cargo.lock" | sha256sum | awk '{print $1}')" \
+  --arg selection "$SELECTED_CLAIMS_PACKET" --arg selection_sha "$(sha256sum "$CONTROLLER_ROOT/$SELECTED_CLAIMS_PACKET" | awk '{print $1}')" \
+  --arg denominator "$DENOMINATOR_PACKET" --arg denominator_sha "$(sha256sum "$CONTROLLER_ROOT/$DENOMINATOR_PACKET" | awk '{print $1}')" \
+  --arg audit "$AUDIT_PACKET" --arg audit_sha "$(sha256sum "$CONTROLLER_ROOT/$AUDIT_PACKET" | awk '{print $1}')" \
+  --arg readback "$PIN_READBACK_PATH" --arg readback_sha "$(sha256sum "$CONTROLLER_ROOT/$PIN_READBACK_PATH" | awk '{print $1}')" \
+  --arg ruleset "$PIN_RULESET_PATH" --arg ruleset_sha "$(sha256sum "$CONTROLLER_ROOT/$PIN_RULESET_PATH" | awk '{print $1}')" \
+  --slurpfile range "$DENOMINATOR_RANGE_JSON" --slurpfile proof "$PROOF_INPUTS_JSON" --slurpfile accepted "$OWNER_ACCEPTANCE_JSON" '
+  .status = "pinned_exact_head" |
+  .candidate = {repository: "EffortlessMetrics/ripr-swarm", sha: $sha, tree: $tree, ref: $ref,
+    package: {name: "ripr", version: .release_line, workspace_manifest_sha256: $workspace_sha,
+      package_manifest_sha256: $package_sha, lock_sha256: $lock_sha}} |
+  .range = $range[0] |
+  .prerequisites = {selected_claims: {packet: {owner_issue: 2766, path: $selection, sha256: $selection_sha}, acceptance: $accepted[0].selected_claims},
+    denominator: {packet: {owner_issue: 2768, path: $denominator, sha256: $denominator_sha}, acceptance: $accepted[0].denominator},
+    audit: {packet: {owner_issue: 3807, path: $audit, sha256: $audit_sha}, acceptance: $accepted[0].audit}} |
+  .pin = {remote_ref_readback: {owner_issue: 1609, path: $readback, sha256: $readback_sha},
+    ruleset: {owner_issue: 1609, path: $ruleset, sha256: $ruleset_sha}} |
+  .qualification.proof_inputs = $proof[0] |
+  .source_parent = null' "$PACKET_ROOT/live-head-selection-template.json" > "$PACKET_ROOT/live-head-selection.json"
+# Generate the handoff from this same DTO; no independent hand-authored identity projection.
+jq -r '["# Swarm candidate manifest", "", ("Candidate: " + .candidate.repository + "@" + .candidate.sha),
+  ("Tree: " + .candidate.tree), ("Ref: " + .candidate.ref),
+  ("Qualification: " + .qualification.state), "Source parent: unbound until source #1769", "", "Non-claims:"]
+  + (.non_claims | map("- " + .)) | .[]' "$PACKET_ROOT/live-head-selection.json" > "$PACKET_ROOT/live-head-selection.md"
+# STOP: retain this proposed output for #1609 acceptance. Hashing it is not approval.
+# Only after independent #1609 review, the trusted release operator supplies the accepted digest.
+ACCEPTED_MANIFEST_SHA256="${ACCEPTED_MANIFEST_SHA256:?obtain from the reviewed #1609 handoff, not this producer}"
+test "$(sha256sum "$PACKET_ROOT/live-head-selection.json" | awk '{print $1}')" = "$ACCEPTED_MANIFEST_SHA256"
 ```
 
 At every later receipt, read `refs/tags/$PIN_TAG` again and require the
 recorded SHA and the exact ruleset receipt to remain unchanged. The protected
 candidate tag, not the local verifier ref, is the W membership pin.
 
-The pin receipt records merge base, separately named all-reachable and
-first-parent counts, ordered SHA digests, exact ref resolution, open-PR
-dispositions, version/toolchain, and claims/non-claims. The existing
-source-preflight receipt owns the denominator/digest recipe; do not create a
-second recipe. Repin only for a release-invalidating exact-candidate
+The manifest records the accepted #2768 boundary, separately named
+all-reachable and first-parent counts/digests, record-set identity, exact
+candidate tree/ref/package, accepted owner packets and claims/non-claims.
+It does not predict SOURCE_PARENT or the later source-specific merge base.
+The schema-1.1 range uses the shared source-promotion recipe in SPEC-0144,
+with the #2768 boundary rather than the later source-specific merge base.
+Admission recomputes both Git ranges/counts/digests; record-set adjudication
+remains with #2768. The retained input budget is 64 proof references, 16 MiB
+per file and 64 MiB aggregate. Supported origin strings are the exact three
+spellings checked above. Files are observed unlocked snapshots, not atomic
+or authenticated custody. Repin only for a release-invalidating exact-candidate
 semantic/policy failure or source-preflight survivor failure. Main movement
 alone never repins. Changed inputs supersede the packet and require a new one.
 
@@ -335,17 +375,33 @@ git -C "$QUAL_ROOT" rev-parse HEAD
 (cd "$QUAL_ROOT" && cargo xtask check-pr)
 (cd "$QUAL_ROOT" && cargo xtask check-generated-clean)
 (cd "$QUAL_ROOT" && cargo xtask check-doc-index)
-QUALIFICATION_RECEIPT="$PACKET_ROOT/hosted-qualification-receipt.json"
-QUALIFICATION_RUN_URL="${QUALIFICATION_RUN_URL:?set the routed hosted qualification URL}"
-QUALIFICATION_RUN_ID="${QUALIFICATION_RUN_ID:?set the hosted qualification run ID}"
-QUALIFICATION_HEAD_SHA="${QUALIFICATION_HEAD_SHA:?set the hosted qualification headSha}"
-gh api "repos/EffortlessMetrics/ripr/actions/runs/${QUALIFICATION_RUN_ID}" > "$PACKET_ROOT/hosted-qualification-live.json"
-jq -n --arg swarm "$SWARM_PARENT" --arg head "$QUALIFICATION_HEAD_SHA" --arg url "$QUALIFICATION_RUN_URL" --arg id "$QUALIFICATION_RUN_ID" --slurpfile run "$PACKET_ROOT/hosted-qualification-live.json" '{schema_version: 1, swarm_parent: $swarm, headSha: $head, run_id: $id, routed_ci_url: $url, status: $run[0].status, conclusion: $run[0].conclusion}' > "$QUALIFICATION_RECEIPT"
-jq -e --arg swarm "$SWARM_PARENT" --arg head "$SWARM_PARENT" --arg id "$QUALIFICATION_RUN_ID" '.swarm_parent == $swarm and .headSha == $head and .run_id == $id and .status == "completed" and .conclusion == "success" and (.routed_ci_url | startswith("https://"))' "$QUALIFICATION_RECEIPT" >/dev/null
+# These are preparation checks only. Do not manufacture an acceptance receipt
+# from an arbitrary successful hosted run or its head SHA.
+# #2769 must independently review the complete exact-candidate bundle first.
+SELECTION_DECISION="${SELECTION_DECISION:?native #1609 acceptance-comment URL}"
+QUALIFICATION_DECISION="${QUALIFICATION_DECISION:?native #2769 complete-bundle acceptance-comment URL}"
+QUALIFICATION_BUNDLE="${QUALIFICATION_BUNDLE:?controller-relative accepted complete qualification bundle}"
 ```
 
 A missing, timed-out, or differently headed hosted result is unavailable, not
-a pass. Run the existing exact-pair preflight with exact SHA declarations; its
+a pass. A generic successful CI run is never the #2769 acceptance record.
+The native decision and bundle field contract is in
+[SOURCE_PROMOTION_PREFLIGHT.md](SOURCE_PROMOTION_PREFLIGHT.md#native-selection-and-complete-qualification-admission). After #2769 accepts the complete exact-candidate bundle, source #1769
+rereads and dispositions the source queue, then binds the source parent:
+
+```bash
+set -euo pipefail
+# [READ-ONLY] repo=source; performed only after complete swarm qualification
+SOURCE_PARENT="$(git -C "$SOURCE_ROOT" rev-parse refs/remotes/origin/main)"
+test "$(git -C "$SOURCE_ROOT" rev-parse HEAD)" = "$SOURCE_PARENT"
+test -z "$(git -C "$SOURCE_ROOT" status --porcelain=v1 --untracked-files=all)"
+# [LOCAL-MUTATING] repo=packet; distinct later source transaction identity
+printf '%s\n' "$SOURCE_PARENT" > "$PACKET_ROOT/SOURCE_PARENT"
+MERGE_BASE="$(git -C "$SWARM_ROOT" merge-base "$SOURCE_PARENT" "$SWARM_PARENT")"
+```
+
+Source movement after this hold requires a new source generation. It does not
+retroactively mutate the swarm manifest. Run the existing exact-pair preflight with exact SHA declarations; its
 contract is [`SOURCE_PROMOTION_PREFLIGHT.md`](SOURCE_PROMOTION_PREFLIGHT.md)
 and [`RIPR-SPEC-0148`](specs/RIPR-SPEC-0148-source-promotion-preflight.md).
 The resolution reviewer produces `JOIN_TREE` as a full tree SHA in the
@@ -356,17 +412,24 @@ set -euo pipefail
 # [LOCAL-MUTATING] repo=swarm operator checkout; preflight writes local receipts, no J
 JOIN_TREE="${JOIN_TREE:?set to the separately reviewed full resolved-tree SHA from the resolution manifest}"
 assert_live_pin_guard
-test -s "$QUALIFICATION_RECEIPT"
-jq -e --arg swarm "$SWARM_PARENT" '.swarm_parent == $swarm and .headSha == $swarm and (.routed_ci_url | startswith("https://"))' "$QUALIFICATION_RECEIPT" >/dev/null
 (cd "$SWARM_ROOT" && cargo xtask source-promotion preflight \
   --source-parent "$SOURCE_PARENT" --swarm-parent "$SWARM_PARENT" \
   --swarm-ref "$SWARM_REF" --source-repo "$SOURCE_ROOT" --swarm-repo "$SWARM_ROOT" \
   --source-main "$SOURCE_PARENT" --swarm-main "$SWARM_PARENT" \
   --version "$VERSION" --resolved-tree "$JOIN_TREE" \
+  --controller-root "$PACKET_ROOT" --candidate-manifest live-head-selection.json \
+  --selection-decision "$SELECTION_DECISION" \
+  --qualification-bundle "$QUALIFICATION_BUNDLE" \
+  --qualification-decision "$QUALIFICATION_DECISION" \
   --out "$PACKET_ROOT/source-promotion")
 PREFLIGHT_JSON="$PACKET_ROOT/source-promotion/source-promotion-preflight.json"
 test "$(jq -r '.dry_merge.reviewed_resolved_tree // empty' "$PREFLIGHT_JSON")" = "$JOIN_TREE"
 ```
+
+The v2 receipt cannot be supplied to source main
+`82b2d7c262d229d5244263d458d10cd0189cb966`'s v1-only verifier. The transaction
+remains held until [ripr#1769](https://github.com/EffortlessMetrics/ripr/issues/1769)
+delivers coordinated v2 acceptance consumption; no v1 fallback waives it.
 
 Review every conflict path, survivor, swarm exclusion, authority candidate,
 and separately reviewed `JOIN_TREE`; record a resolution manifest. A clean

@@ -33,7 +33,7 @@ inspection.
 ## Behavior
 
 `cargo xtask source-promotion preflight` consumes complete source and swarm
-parent SHAs plus explicit local repository roots. It verifies origin identity,
+parent SHAs plus explicit local repository roots and mandatory native selection/qualification inputs. It verifies origin identity,
 exact commit identity, the held source main, and swarm-parent reachability. A
 disposable repository fetches both exact objects, computes the merge base and
 separately named all-reachable/first-parent counts, inventories changed paths,
@@ -66,8 +66,41 @@ optional reviewed resolved-tree SHA is recorded and verified in the supplied
 repository object store; absent that input, finalization is visibly missing.
 It does not create a join or modify either authoritative checkout.
 
+### Consumed native acceptance (receipt v2)
+
+The schema is `ripr.source_promotion_preflight.v2`. The source verifier at
+`EffortlessMetrics/ripr` main `82b2d7c262d229d5244263d458d10cd0189cb966`
+still accepts only v1; it must not consume this receipt until coordinated v2
+acceptance validation lands under
+[ripr#1769](https://github.com/EffortlessMetrics/ripr/issues/1769). There is no
+v1 acceptance-bypassing fallback. This is an integration blocker, not a waiver.
+
+Before the geometry probe, the command consumes the independently recorded
+#1609 selected-owner acceptance and #2769 complete-bundle acceptance using the
+existing direct-manifest custody owner. It retrieves the native #1609, bound
+#2766, and #2769 comments through a fixed-host, bounded, read-only GitHub
+adapter. Comment ID/repository/issue and trusted author association are checked;
+URLs and caller-written sidecars alone cannot admit a handoff.
+
+The acceptance binds candidate SHA/tree/ref, complete raw manifest digest,
+#2766 packet/decision-body digest, proof inputs, exact selected applicable-owner
+roster, complete required-row denominator and full qualification-bundle digest.
+Every selected required row is present, positive and nonzero; native-accepted
+configured exclusions/deferred subjects are separately retained and cannot
+silently become skipped selected subjects. No fixed seven-owner template list
+is imposed. Missing/refused live inputs never fall back to historical custody.
+
+The strict payload and count contracts are specified in
+[SOURCE_PROMOTION_PREFLIGHT.md](../SOURCE_PROMOTION_PREFLIGHT.md#native-selection-and-complete-qualification-admission).
+The command rechecks package/range/tree bytes through existing raw Git custody
+and observes decisions and retained packets again before writing its receipt.
+This consumes trusted operator judgments; it does not issue qualification,
+cryptographically authenticate human approval, or provide atomic provenance.
+Historical evidence and freeze-time `required_not_run` remain unchanged.
+
 ## Required Evidence
 
+- native selection/qualification decisions and complete accepted packet identities agree;
 - complete parent SHAs resolve exactly in their named repositories;
 - required protected candidate tag uses
   `refs/tags/ripr-release-<version>-<SWARM_PARENT>` and resolves in the
@@ -107,6 +140,16 @@ It does not create a join or modify either authoritative checkout.
 
 ## Test Mapping
 
+- `xtask/src/reports/release/candidate_harness/live_head/handoff/tests.rs`
+  injects read-only native source responses to discriminate valid applicable
+  subsets/configured exclusions from missing or untrusted native decisions,
+  wrong issue/host/comment, stale candidate/manifest/#2766/proof-input/roster,
+  incomplete or failed/skipped/zero rows, generic successful CI, unknown fields
+  and tampered bundle/packet bytes. No real release is dispatched by tests.
+- `source_promotion::tests::public_preflight_requires_complete_native_handoff_inputs`
+  runs the public command through mandatory input and native-reference refusal
+  before geometry; local geometry fixtures remain geometry-only evidence.
+
 - `xtask/src/reports/source_promotion.rs` unit tests cover SHA validation,
   digest order, strict remote identity (including suffix-trick rejection),
   authority-path classification, fixture shape, and disposable conflicting and
@@ -121,6 +164,8 @@ It does not create a join or modify either authoritative checkout.
 ## Implementation Mapping
 
 - `xtask/src/reports/source_promotion.rs`
+- `xtask/src/reports/release/candidate_harness/live_head/handoff.rs`
+- `xtask/src/reports/release/candidate_harness/live_head/handoff/native.rs`
 - `xtask/src/command.rs`
 - `xtask/src/dispatch.rs`
 - `docs/SOURCE_PROMOTION_PREFLIGHT.md`
