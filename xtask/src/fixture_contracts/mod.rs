@@ -19,12 +19,14 @@ use sha2::{Digest, Sha256};
 mod editor_validators;
 mod gap_validators;
 mod general_validators;
+mod installed_journey;
 mod report_validators;
 mod upstream_python;
 
 pub(crate) use editor_validators::*;
 pub(crate) use gap_validators::*;
 pub(crate) use general_validators::*;
+pub(crate) use installed_journey::*;
 pub(crate) use report_validators::*;
 
 pub(crate) fn check_fixture_contracts() -> Result<(), String> {

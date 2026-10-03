@@ -11401,6 +11401,7 @@ fixtures = [
 ]
 code = [
   "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/fixture_contracts/installed_journey.rs",
   "xtask/src/blind_journey_execute.rs",
   "xtask/src/reports/fixtures.rs",
 ]
@@ -11432,6 +11433,7 @@ fixtures = [
 ]
 code = [
   "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/fixture_contracts/installed_journey.rs",
   "xtask/src/blind_journey_execute.rs",
   "xtask/src/reports/fixtures.rs",
 ]
@@ -11498,6 +11500,7 @@ fixtures = [
 ]
 code = [
   "xtask/src/fixture_contracts/general_validators.rs",
+  "xtask/src/fixture_contracts/installed_journey.rs",
   "xtask/src/blind_journey_execute.rs",
   "xtask/src/reports/fixtures.rs",
 ]
