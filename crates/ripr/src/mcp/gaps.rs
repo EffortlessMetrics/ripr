@@ -15,9 +15,132 @@ pub(crate) const GAP_LIST_SCHEMA_VERSION: &str = "ripr-mcp-gap-list-v1";
 pub(crate) const GAP_SCHEMA_VERSION: &str = "ripr-mcp-gap-v1";
 
 /// `ripr_get_gap` / `ripr://gap/{canonical_item_id}` never authorizes an
-/// edit: bounded repair surfaces are owned by the repair slice (#3090), so
-/// the readiness block is a hard, explained negative.
-const REPAIR_PACKET_NOT_READY_REASON: &str = "repair transactions are owned by a later slice (#3090); this evidence document describes static exposure only and never authorizes an edit";
+/// edit by itself: the readiness block reports the producer repair-readiness
+/// facts projected at snapshot commit time, and `ripr_prepare_repair` (#3090)
+/// is the only route that binds a repair transaction — and only when every
+/// readiness gate is established.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RepairFixSite {
+    pub(crate) test_name: String,
+    pub(crate) file: String,
+    pub(crate) line: usize,
+    pub(crate) oracle: Option<String>,
+    pub(crate) oracle_kind: &'static str,
+}
+
+/// Producer-fact repair readiness for one canonical item, computed once when
+/// the snapshot is committed. The evaluation is a fail-closed conjunction of
+/// producer facts already on the finding; MCP never upgrades a missing fact
+/// and never runs its own classification:
+///
+/// 1. candidate actionability — the shared `#3281` predicate
+///    [`Finding::is_candidate_actionable`];
+/// 2. an established discriminator — the canonical gap names a non-empty
+///    normalized discriminator, activation names no missing discriminator,
+///    and `missing` names no `Missing discriminator value:` entry;
+/// 3. an established fix site — a strong, high-confidence directly-related
+///    test, on a path the shared edit-cage test-surface predicate accepts.
+///
+/// The first failing gate in this fixed order is the typed reason.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RepairReadiness {
+    pub(crate) ready: bool,
+    pub(crate) fix_site: Option<RepairFixSite>,
+    /// First failing gate (`not_candidate_actionable`, `missing_discriminator`,
+    /// `fix_site_not_established`, `fix_site_not_test_surface`); `None` only
+    /// when every gate is established.
+    pub(crate) ineligibility: Option<&'static str>,
+}
+
+impl RepairReadiness {
+    pub(crate) fn from_finding(finding: &Finding) -> Self {
+        if !finding.is_candidate_actionable() {
+            return Self {
+                ready: false,
+                fix_site: None,
+                ineligibility: Some("not_candidate_actionable"),
+            };
+        }
+        let discriminator_missing = finding
+            .canonical_gap
+            .as_ref()
+            .is_none_or(|gap| gap.normalized_discriminator.trim().is_empty())
+            || !finding.activation.missing_discriminators.is_empty()
+            || finding
+                .missing
+                .iter()
+                .any(|entry| entry.starts_with(crate::domain::MISSING_DISCRIMINATOR_VALUE_PREFIX));
+        if discriminator_missing {
+            return Self {
+                ready: false,
+                fix_site: None,
+                ineligibility: Some("missing_discriminator"),
+            };
+        }
+        // The gate contract is "a strong, high-confidence directly-related
+        // test on a shared edit-cage test-surface path", so the path
+        // predicate joins the search: a qualifying test-surface candidate
+        // later in the list wins over a non-surface candidate earlier.
+        let candidates = finding
+            .related_tests
+            .iter()
+            .filter(|test| {
+                test.oracle_strength == crate::domain::OracleStrength::Strong
+                    && test.relation_confidence == Some(crate::domain::RelationConfidence::High)
+            })
+            .map(|test| RepairFixSite {
+                test_name: test.name.clone(),
+                file: crate::analysis::stable_path_text(&test.file),
+                line: test.line,
+                oracle: test.oracle.clone(),
+                oracle_kind: test.oracle_kind.as_str(),
+            })
+            .collect::<Vec<_>>();
+        let Some(first) = candidates.first().cloned() else {
+            return Self {
+                ready: false,
+                fix_site: None,
+                ineligibility: Some("fix_site_not_established"),
+            };
+        };
+        let Some(fix_site) = candidates
+            .into_iter()
+            .find(|site| crate::analysis::is_test_surface_path(&site.file))
+        else {
+            return Self {
+                ready: false,
+                fix_site: Some(first),
+                ineligibility: Some("fix_site_not_test_surface"),
+            };
+        };
+        Self {
+            ready: true,
+            fix_site: Some(fix_site),
+            ineligibility: None,
+        }
+    }
+
+    pub(crate) fn reason(&self) -> &'static str {
+        match self.ineligibility {
+            Some("not_candidate_actionable") => {
+                "the producer did not establish the changed source as candidate-current, so no repair target is actionable (#3281)"
+            }
+            Some("missing_discriminator") => {
+                "the producer did not establish a discriminator for the changed behavior (no normalized discriminator, or a producer-named missing discriminator)"
+            }
+            Some("fix_site_not_established") => {
+                "no strong, high-confidence directly-related test establishes an exact fix site"
+            }
+            Some("fix_site_not_test_surface") => {
+                "the strongest established fix site is not a test surface; a production file is never the authored edit target"
+            }
+            Some(_other) => "the producer did not establish every repair-readiness fact",
+            None => {
+                "every evaluated producer fact is established: candidate-current source, an established discriminator, and a strong directly-related test fix site on a test surface"
+            }
+        }
+    }
+}
 
 pub(crate) struct GapItem {
     pub(crate) canonical_id: String,
@@ -29,8 +152,9 @@ pub(crate) struct GapItem {
     pub(crate) list_summary: Value,
     list_summary_bytes: usize,
     /// Complete bounded evidence document (without the per-request snapshot
-    /// binding and links, which are injected at serve time).
-    evidence_core: Value,
+    /// binding and links, which are injected at serve time). The repair
+    /// projection reads `changed_behavior` and the discriminator from it.
+    pub(crate) evidence_core: Value,
     pub(crate) evidence_bytes: usize,
     /// Producer candidate-actionability captured at projection time; the
     /// shared budget maps it to eligibility so MCP never invents its own.
@@ -39,6 +163,9 @@ pub(crate) struct GapItem {
     /// identity so an evidence change yields a new snapshot id instead of
     /// serving altered bytes under the old identity.
     pub(crate) evidence_sha256: String,
+    /// Producer-fact repair readiness projected at commit time; the evidence
+    /// core embeds it so the snapshot identity binds readiness changes too.
+    pub(crate) repair_readiness: RepairReadiness,
 }
 
 impl GapItem {
@@ -68,6 +195,7 @@ impl GapItem {
         let evidence_core = gap_evidence_core(finding, &canonical_id)?;
         let evidence_bytes = serialized_bytes(&evidence_core)?;
         let evidence_sha256 = evidence_sha256(&evidence_core)?;
+        let repair_readiness = RepairReadiness::from_finding(finding);
         Ok(Self {
             canonical_id,
             finding_id: finding.id.clone(),
@@ -78,6 +206,7 @@ impl GapItem {
             evidence_bytes,
             candidate_actionable: finding.is_candidate_actionable(),
             evidence_sha256,
+            repair_readiness,
         })
     }
 
@@ -104,7 +233,7 @@ impl GapItem {
                         "snapshot": format!("ripr://snapshot/{snapshot_id}"),
                         "gap": format!("ripr://gap/{}", self.canonical_id),
                         "repair_attempt": Value::Null,
-                        "repair_attempt_note": "ripr://repair-attempt/{attempt_id} is reserved for the repair slice (#3090)",
+                        "repair_attempt_note": "ripr://repair-attempt/{attempt_id} binds once ripr_prepare_repair creates the session transaction for this item (#3090)",
                     }),
                 );
                 object
@@ -122,6 +251,7 @@ impl GapItem {
 /// producer does not populate stay typed `null`/`absent` states in the
 /// serialized finding values rather than being back-filled here.
 fn gap_evidence_core(finding: &Finding, canonical_id: &str) -> Result<Value, String> {
+    let readiness = RepairReadiness::from_finding(finding);
     let activation = serde_json::to_value(&finding.activation)
         .map_err(|error| format!("serialize activation evidence: {error}"))?;
     let related_tests = finding
@@ -190,8 +320,10 @@ fn gap_evidence_core(finding: &Finding, canonical_id: &str) -> Result<Value, Str
         "source_currentness": source_currentness,
         "recommended_next_step": finding.recommended_next_step,
         "readiness": {
-            "repair_packet_ready": false,
-            "reason": REPAIR_PACKET_NOT_READY_REASON,
+            "repair_packet_ready": readiness.ready,
+            "reason": readiness.reason(),
+            "prepared_by": "#3090",
+            "evaluation_basis": "producer facts on the committed finding: candidate actionability (#3281), the canonical gap's normalized discriminator with no producer-named missing discriminator, and the strongest directly-related related-test grip",
         },
         "repair_boundary": {
             "allowed_edit_surface": "none_declared",
@@ -278,77 +410,85 @@ fn evidence_sha256(value: &Value) -> Result<String, String> {
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
+/// One fully-established candidate finding shared by the `gaps` and `repair`
+/// test suites: candidate-current source, a normalized discriminator, and one
+/// strong, high-confidence directly-related test on a test surface.
+#[cfg(test)]
+pub(crate) fn test_finding() -> Result<Finding, String> {
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, Probe, ProbeFamily, ProbeId, RelatedTest,
+        RiprEvidence, SourceLocation, StageEvidence, StageState,
+    };
+    let stage = || StageEvidence::new(StageState::Unknown, Confidence::Unknown, "test");
+    Ok(Finding {
+        id: "finding:test:1".to_string(),
+        canonical_gap: Some(crate::domain::FindingCanonicalGap {
+            id: "gap:test:1".to_string(),
+            language: "rust".to_string(),
+            file: "src/lib.rs".to_string(),
+            owner: "checkout".to_string(),
+            behavior_kind: "predicate".to_string(),
+            probe_kind: "predicate".to_string(),
+            normalized_discriminator: "total == 10000".to_string(),
+        }),
+        probe: Probe {
+            id: ProbeId("probe:test:1".to_string()),
+            location: SourceLocation::new("src/lib.rs", 12, 5),
+            owner: Some(crate::domain::SymbolId("symbol:checkout".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Value,
+            before: Some("total > 10000".to_string()),
+            after: Some("total >= 10000".to_string()),
+            expression: "total >= 10000".to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        },
+        class: crate::domain::ExposureClass::WeaklyExposed,
+        ripr: RiprEvidence {
+            reach: stage(),
+            infect: stage(),
+            propagate: stage(),
+            reveal: crate::domain::RevealEvidence {
+                observe: stage(),
+                discriminate: stage(),
+            },
+        },
+        confidence: 0.5,
+        evidence: vec!["the changed comparison reaches the checkout return".to_string()],
+        missing: vec!["No strong discriminator was detected".to_string()],
+        flow_sinks: Vec::new(),
+        activation: ActivationEvidence::default(),
+        stop_reasons: Vec::new(),
+        related_tests_matched_total: Some(1),
+        related_tests: vec![RelatedTest {
+            name: "checkout_totals".to_string(),
+            file: std::path::PathBuf::from("tests/checkout.rs"),
+            line: 40,
+            oracle: Some("assert_eq!(total, 10001)".to_string()),
+            oracle_kind: crate::domain::OracleKind::ExactValue,
+            oracle_strength: crate::domain::OracleStrength::Strong,
+            relation_reason: Some(crate::domain::RelationReason::DirectOwnerCall),
+            relation_confidence: Some(crate::domain::RelationConfidence::High),
+        }],
+        recommended_next_step: Some("add a boundary assertion for 10000".to_string()),
+        language: Some(crate::domain::LanguageId::Rust),
+        language_status: None,
+        owner_kind: None,
+        static_limit_kind: None,
+        changed_sink: Some("total".to_string()),
+        observed_sink: None,
+        oracle_alignment: None,
+        alignment_reason: None,
+        source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn finding() -> Result<Finding, String> {
-        use crate::domain::{
-            ActivationEvidence, Confidence, DeltaKind, Probe, ProbeFamily, ProbeId, RelatedTest,
-            RiprEvidence, SourceLocation, StageEvidence, StageState,
-        };
-        let stage = || StageEvidence::new(StageState::Unknown, Confidence::Unknown, "test");
-        Ok(Finding {
-            id: "finding:test:1".to_string(),
-            canonical_gap: Some(crate::domain::FindingCanonicalGap {
-                id: "gap:test:1".to_string(),
-                language: "rust".to_string(),
-                file: "src/lib.rs".to_string(),
-                owner: "checkout".to_string(),
-                behavior_kind: "predicate".to_string(),
-                probe_kind: "predicate".to_string(),
-                normalized_discriminator: "total == 10000".to_string(),
-            }),
-            probe: Probe {
-                id: ProbeId("probe:test:1".to_string()),
-                location: SourceLocation::new("src/lib.rs", 12, 5),
-                owner: Some(crate::domain::SymbolId("symbol:checkout".to_string())),
-                family: ProbeFamily::Predicate,
-                delta: DeltaKind::Value,
-                before: Some("total > 10000".to_string()),
-                after: Some("total >= 10000".to_string()),
-                expression: "total >= 10000".to_string(),
-                expected_sinks: Vec::new(),
-                required_oracles: Vec::new(),
-            },
-            class: crate::domain::ExposureClass::WeaklyExposed,
-            ripr: RiprEvidence {
-                reach: stage(),
-                infect: stage(),
-                propagate: stage(),
-                reveal: crate::domain::RevealEvidence {
-                    observe: stage(),
-                    discriminate: stage(),
-                },
-            },
-            confidence: 0.5,
-            evidence: vec!["the changed comparison reaches the checkout return".to_string()],
-            missing: vec!["No strong discriminator was detected".to_string()],
-            flow_sinks: Vec::new(),
-            activation: ActivationEvidence::default(),
-            stop_reasons: Vec::new(),
-            related_tests_matched_total: Some(1),
-            related_tests: vec![RelatedTest {
-                name: "checkout_totals".to_string(),
-                file: std::path::PathBuf::from("tests/checkout.rs"),
-                line: 40,
-                oracle: Some("assert_eq!(total, 10001)".to_string()),
-                oracle_kind: crate::domain::OracleKind::ExactValue,
-                oracle_strength: crate::domain::OracleStrength::Strong,
-                relation_reason: Some(crate::domain::RelationReason::DirectOwnerCall),
-                relation_confidence: Some(crate::domain::RelationConfidence::High),
-            }],
-            recommended_next_step: Some("add a boundary assertion for 10000".to_string()),
-            language: Some(crate::domain::LanguageId::Rust),
-            language_status: None,
-            owner_kind: None,
-            static_limit_kind: None,
-            changed_sink: Some("total".to_string()),
-            observed_sink: None,
-            oracle_alignment: None,
-            alignment_reason: None,
-            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
-        })
+        test_finding()
     }
 
     #[test]
@@ -417,23 +557,30 @@ mod tests {
     }
 
     #[test]
-    fn evidence_document_never_declares_repair_readiness() -> Result<(), String> {
+    fn evidence_document_reports_producer_repair_readiness() -> Result<(), String> {
         let item = GapItem::from_finding(&finding()?)?;
         let document = item.document("snapshot:sha256:abc");
         let readiness = document
             .pointer("/item/readiness/repair_packet_ready")
             .ok_or_else(|| "gap document lost its readiness block".to_string())?;
-        if readiness != &serde_json::json!(false) {
-            return Err("gap evidence must never become repair-ready".to_string());
+        if readiness != &serde_json::json!(true) {
+            return Err(format!(
+                "the fully established fixture finding must project repair readiness: {document}"
+            ));
         }
         let reason = document
             .pointer("/item/readiness/reason")
             .and_then(Value::as_str)
-            .ok_or_else(|| "readiness refusal needs its reason".to_string())?;
-        if !reason.contains("#3090") {
-            return Err(format!(
-                "readiness reason lost the repair-slice owner: {reason}"
-            ));
+            .ok_or_else(|| "readiness needs its evaluation reason".to_string())?;
+        if reason.is_empty() {
+            return Err("readiness reason must not be empty".to_string());
+        }
+        if document
+            .pointer("/item/readiness/prepared_by")
+            .and_then(Value::as_str)
+            != Some("#3090")
+        {
+            return Err("readiness lost the repair-slice owner".to_string());
         }
         if document.pointer("/item/repair_boundary/allowed_edit_surface")
             != Some(&serde_json::json!("none_declared"))
@@ -449,6 +596,48 @@ mod tests {
             .ok_or_else(|| "gap document lost its snapshot link".to_string())?;
         if snapshot_link != "ripr://snapshot/snapshot:sha256:abc" {
             return Err(format!("snapshot link drifted: {snapshot_link}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn readiness_stays_fail_closed_on_missing_producer_facts() -> Result<(), String> {
+        let mut no_discriminator = finding()?;
+        no_discriminator.canonical_gap = None;
+        let item = GapItem::from_finding(&no_discriminator)?;
+        if item.repair_readiness.ready
+            || item.repair_readiness.ineligibility != Some("missing_discriminator")
+        {
+            return Err(format!(
+                "a finding without a canonical gap must not be repair-ready: {:?}",
+                item.repair_readiness.ineligibility
+            ));
+        }
+
+        let mut base_deleted = finding()?;
+        base_deleted.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        let item = GapItem::from_finding(&base_deleted)?;
+        if item.repair_readiness.ready
+            || item.repair_readiness.ineligibility != Some("not_candidate_actionable")
+        {
+            return Err(format!(
+                "base-side evidence must not be repair-ready: {:?}",
+                item.repair_readiness.ineligibility
+            ));
+        }
+
+        let mut weak_grip = finding()?;
+        for test in &mut weak_grip.related_tests {
+            test.oracle_strength = crate::domain::OracleStrength::Weak;
+        }
+        let item = GapItem::from_finding(&weak_grip)?;
+        if item.repair_readiness.ready
+            || item.repair_readiness.ineligibility != Some("fix_site_not_established")
+        {
+            return Err(format!(
+                "a finding without a strong directly-related test must not be repair-ready: {:?}",
+                item.repair_readiness.ineligibility
+            ));
         }
         Ok(())
     }

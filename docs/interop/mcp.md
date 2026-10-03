@@ -46,6 +46,9 @@ ripr_workspace_status   → root, authority, session facts (no evidence)
 ripr_refresh            → one bounded static analysis, commits the snapshot
 ripr_list_gaps          → deterministic bounded working set (summaries only)
 ripr_get_gap            → one item's complete bounded evidence
+ripr_prepare_repair     → readiness-gated in-memory repair transaction
+ripr_get_repair_attempt → one session or durable attempt, read-only
+ripr_get_receipt_status → one attempt's receipt state, read-only
 ```
 
 Status and list calls never return the full evidence graph; read one item at
@@ -59,9 +62,14 @@ a time through the tool or the resource.
 | Tool (no arguments) | `ripr_refresh` |
 | Tool (`snapshot_id?`) | `ripr_list_gaps` |
 | Tool (`gap_id`, `snapshot_id?`) | `ripr_get_gap` |
+| Tool (`gap_id`, `snapshot_id?`) | `ripr_prepare_repair` |
+| Tool (`attempt_id`) | `ripr_get_repair_attempt` |
+| Tool (`receipt_id`) | `ripr_get_receipt_status` |
 | Resource (`application/json`) | `ripr://workspace/status` |
 | Resource template | `ripr://snapshot/{snapshot_id}` |
 | Resource template | `ripr://gap/{canonical_item_id}` |
+| Resource template | `ripr://repair-attempt/{attempt_id}` |
+| Resource template | `ripr://receipt/{receipt_id}` |
 
 `ripr_workspace_status` and `ripr://workspace/status` return the same JSON
 document, schema `ripr-mcp-workspace-status-v1`. It wraps:
@@ -121,11 +129,48 @@ before/after, delta kind, probe family), causal attribution (canonical gap
 owner, behavior kind, probe kind, normalized discriminator), discriminator
 availability and the producer's observed/missing evidence, related tests with
 oracle kind and strength, and typed limitation states for anything the
-producer did not establish. Readiness is always `repair_packet_ready: false`
-with its reason — this evidence never authorizes an edit — and the repair
-boundary is `none_declared`, prepared by the repair slice (#3090); the
-repair-attempt link is an explicit `null`. A missing field stays a typed
-state; MCP never fills it from prose.
+producer did not establish. The readiness block reports the committed
+producer repair-readiness facts (candidate actionability, an established
+discriminator, and a strong directly-related test fix site on a test
+surface) with the typed first-failing-gate reason when not ready — this
+evidence never authorizes an edit by itself — and the repair boundary is
+`none_declared` until `ripr_prepare_repair` binds a session transaction;
+then the repair-attempt link names that transaction instead of staying an
+explicit `null`. A missing field stays a typed state; MCP never fills it
+from prose.
+
+`ripr_prepare_repair` (`gap_id`, optional `snapshot_id`) evaluates those
+readiness facts for one canonical item and, only when every gate is
+established, creates — or replays — one bounded in-memory repair transaction
+bound to the current snapshot, the item, and the root identity. The packet
+carries a deterministic `repair-attempt-` identity, the fix site (test file,
+line, oracle), an `allowed_edit_surface` limited to that test file, the
+edit-cage `must_not_change` statements, stop conditions, the before-evidence
+identity, an empty `command_routes` list with the typed limitation (concrete
+typed `CommandSpec` routes are published only by the durable CLI before
+phase), the shared non-claims, and the resource links. An ineligible item
+returns `repair_packet_ready: false` with the typed ineligibility reason and
+`attempt: null` — no attempt is created and no field is guessed.
+
+`ripr_get_repair_attempt` (and `ripr://repair-attempt/{attempt_id}`) reads
+one transaction by identity: session transactions answer first; otherwise
+the durable attempt store of this workspace root is inventoried through the
+shared repair-attempt authority and a valid manifest projects its state,
+artifact digest bindings, after-phase bindings, and typed `CommandSpec`
+routes when the retained packet carries valid ones — each projected exactly,
+with the human display string marked as never execution authority. The
+host-local root path is intentionally not projected.
+
+`ripr_get_receipt_status` (and `ripr://receipt/{receipt_id}`) projects the
+current receipt state for one attempt identity (receipt ids are
+attempt-bound) onto the vocabulary `awaiting_edit`, `after_pending`,
+`verification_pending`, `improved`, `closed`, `unchanged`, `regressed`,
+`limited`, `stale`, `invalid`. Session transactions report `awaiting_edit`
+with an explicit `null` receipt; a finished durable attempt with a
+digest-bound terminal receipt projects the receipt document with its exact
+byte bindings and the movement-derived status. RIPR performs no verification
+and issues no receipt: the external client owns the edit, the verification
+execution, and the receipt under its own authority.
 
 The `ripr://snapshot/{snapshot_id}` resource returns bounded snapshot
 evidence: the snapshot identity, the typed `AnalysisOutcome`, the full
@@ -141,25 +186,33 @@ structured `data`), never with a partial document. The shared vocabulary:
 ```text
 workspace_unavailable  analysis_failed     unsupported_profile
 no_snapshot            analysis_in_flight  stale_snapshot
-item_not_found         result_too_large
+item_not_found         result_too_large    attempt_not_found
 config_invalid         workspace_ambiguous static_limitation
-cancelled              superseded
+cancelled              superseded          attempt_invalid
 ```
 
-The first seven are reachable in this slice; the rest are reserved for the
-slices that own those states (they are named now so the wire contract stays
-stable). Tool argument shape violations use standard Invalid Params; unknown
-tools use Method Not Found with the available names in `error.data`.
+Before the first successful refresh the evidence tools fail with
+`no_snapshot` and the repair-attempt / receipt reads fail with
+`attempt_not_found`; `superseded` is reachable for a session transaction
+bound to a snapshot that is no longer current; `attempt_invalid` reports a
+durable manifest that fails canonical validation; the rest stay reserved for
+the slices that own those states (they are named now so the wire contract
+stays stable). Tool argument shape violations use standard Invalid Params;
+unknown tools use Method Not Found with the available names in `error.data`.
 
 ## What it does not do
 
-It does not edit source, execute verify commands or mutation testing, prepare
-or create a repair transaction (that is #3090's slice; readiness here is
-always a hard negative), load project-local configuration or providers, embed
-a model, or offer a remote transport. It does not watch the worktree: the
-snapshot is current as of its completed `ripr_refresh`, so refresh again
-after edits. The session is in-memory; restarting the server drops the
-snapshot unless a new refresh commits one.
+It does not edit source, execute verify commands or mutation testing, run
+verification or issue receipts, or create durable repair attempts (durable
+attempt creation stays CLI-owned; the adapter's session transactions are
+in-memory and its durable-store reads are read-only). A prepared transaction
+never authorizes an edit, a command, or a merge by itself — the external
+client's approval and sandbox policy remains authoritative. It does not
+load project-local configuration or providers, embed a model, or offer a
+remote transport. It does not watch the worktree: the snapshot is current as
+of its completed `ripr_refresh`, so refresh again after edits. The session
+is in-memory; restarting the server drops the snapshot and every session
+transaction unless a new refresh commits one.
 
 An invalid root does not stop the server. Status reports
 `workspace_state: "unavailable"` with a `root.error_code`, and the tool result

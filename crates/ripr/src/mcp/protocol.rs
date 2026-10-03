@@ -3,6 +3,10 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::gaps::GAP_SCHEMA_VERSION;
+use super::repair::{
+    CODE_ATTEMPT_INVALID, CODE_ATTEMPT_NOT_FOUND, RECEIPT_STATUS_SCHEMA_VERSION, RECEIPT_TEMPLATE,
+    REPAIR_ATTEMPT_SCHEMA_VERSION, REPAIR_ATTEMPT_TEMPLATE, REPAIR_PACKET_SCHEMA_VERSION,
+};
 use super::workspace::{
     AttemptFailure, CODE_NO_SNAPSHOT, REFRESH_SCHEMA_VERSION, RESERVED_FAILURE_CODES,
     SESSION_SCHEMA_VERSION, SessionProfile, WorkspaceSession,
@@ -12,6 +16,9 @@ pub(super) const STATUS_TOOL_NAME: &str = "ripr_workspace_status";
 pub(super) const REFRESH_TOOL_NAME: &str = "ripr_refresh";
 pub(super) const LIST_GAPS_TOOL_NAME: &str = "ripr_list_gaps";
 pub(super) const GET_GAP_TOOL_NAME: &str = "ripr_get_gap";
+pub(super) const PREPARE_REPAIR_TOOL_NAME: &str = "ripr_prepare_repair";
+pub(super) const GET_REPAIR_ATTEMPT_TOOL_NAME: &str = "ripr_get_repair_attempt";
+pub(super) const GET_RECEIPT_STATUS_TOOL_NAME: &str = "ripr_get_receipt_status";
 pub(super) const STATUS_RESOURCE_URI: &str = "ripr://workspace/status";
 pub(super) const SNAPSHOT_RESOURCE_TEMPLATE: &str = "ripr://snapshot/{snapshot_id}";
 pub(super) const GAP_RESOURCE_TEMPLATE: &str = "ripr://gap/{canonical_item_id}";
@@ -30,6 +37,8 @@ fn failure_vocabulary() -> Vec<&'static str> {
         "stale_snapshot",
         "item_not_found",
         "result_too_large",
+        CODE_ATTEMPT_NOT_FOUND,
+        CODE_ATTEMPT_INVALID,
     ];
     codes.extend(RESERVED_FAILURE_CODES.iter().copied());
     codes
@@ -39,7 +48,7 @@ fn failure_vocabulary() -> Vec<&'static str> {
 /// this server does not, and the CLI route that runs analysis outside this
 /// session. Naming a route is not invoking it: the server still edits
 /// nothing and executes nothing (ADR 0022).
-pub(super) const INSTRUCTIONS: &str = "RIPR is a static analyzer that asks whether the current tests would notice if the behavior changed in a diff were wrong. This MCP server exposes one read-only workspace session. Call `ripr_workspace_status` for root discovery, authority, and session facts; call `ripr_refresh` to run one bounded static analysis and commit a completed snapshot; call `ripr_list_gaps` for the deterministically bounded working set of canonical items; then call `ripr_get_gap` (or read `ripr://gap/{canonical_item_id}`) for one item's complete bounded evidence. The server never edits source, runs tests or mutation, executes verification commands, or loads project-local provider configuration, and no evidence document is ever a repair authorization. To analyze outside this session, run the ripr CLI in the repository: `ripr check --format json` names each changed-behavior gap and its missing test input.";
+pub(super) const INSTRUCTIONS: &str = "RIPR is a static analyzer that asks whether the current tests would notice if the behavior changed in a diff were wrong. This MCP server exposes one read-only workspace session. Call `ripr_workspace_status` for root discovery, authority, and session facts; call `ripr_refresh` to run one bounded static analysis and commit a completed snapshot; call `ripr_list_gaps` for the deterministically bounded working set of canonical items; then call `ripr_get_gap` (or read `ripr://gap/{canonical_item_id}`) for one item's complete bounded evidence. When one item's producer repair-readiness facts are established, call `ripr_prepare_repair` to create (or replay) one bounded in-memory repair transaction bound to that snapshot and item, then read it back with `ripr_get_repair_attempt` or `ripr://repair-attempt/{attempt_id}` and inspect its receipt state with `ripr_get_receipt_status` or `ripr://receipt/{receipt_id}`; durable CLI attempts of this workspace are readable through the same routes. The server never edits source, runs tests or mutation, executes verification commands, launches processes, or loads project-local provider configuration, and no evidence document is ever a repair authorization: the external client's approval and sandbox policy remains authoritative for every command a returned route names. To analyze outside this session, run the ripr CLI in the repository: `ripr check --format json` names each changed-behavior gap and its missing test input.";
 
 const STATUS_TOOL_DESCRIPTION: &str = "Report the RIPR workspace and session state. The document contains repository-root discovery state (validated or unavailable, with repository markers and any root error code), launch-trust and authority facts (source edit, verification execution, mutation execution, and model provider are all none), and a session block: current desired input (workspace diff against the default branch, draft mode), current attempt state (no_snapshot, in_flight, completed, or failed), the last completed snapshot identity, last-known-good state, freshness as of the last refresh, the typed AnalysisOutcome of the committed snapshot, and the built-in profile and support facts. `workspace_state: ready` means only that a repository root was discovered — not that analysis ran or that no issues were found. This tool returns session facts only: no gap evidence. It never edits source, runs tests or mutation, executes verification commands, or loads project-local provider configuration. To run analysis, call ripr_refresh.";
 
@@ -47,13 +56,23 @@ const REFRESH_TOOL_DESCRIPTION: &str = "Run one bounded static analysis of the w
 
 const LIST_GAPS_TOOL_DESCRIPTION: &str = "Return the deterministic bounded working set of canonical items for the current completed snapshot (or for an explicitly named snapshot_id, which must match the current one or the call fails closed with stale_snapshot and the current identity). The response contains total, eligible, selected, and omitted counts; selected and complete serialized bytes; every omitted identity with its reason; the snapshot/profile/budget identity and selection basis; and one small summary per selected item (canonical_id, exposure class, language, file, line). Selection is the shared CLI/LSP budget authority over the snapshot's canonical items; MCP does not re-rank, never truncates silently, and infers no business risk. Overflow is disclosed with reasons and the omitted identities, and the continuation route is ripr_get_gap. Before the first successful ripr_refresh this tool fails closed with no_snapshot; while an attempt runs it reports analysis_in_flight; a document that cannot fit the response bound fails with result_too_large. Summaries carry no evidence detail; read one item with ripr_get_gap.";
 
-const GET_GAP_TOOL_DESCRIPTION: &str = "Return one canonical item's complete bounded evidence from the current completed snapshot (optional snapshot_id must match the current snapshot or the call fails closed with stale_snapshot). The document binds the item to its snapshot identity and contains: identity and location; the changed behavior (expression, before/after, delta kind, probe family); causal attribution (canonical gap owner, behavior kind, probe kind, normalized discriminator); discriminator availability and the producer's observed/missing evidence; related tests with oracle kind and strength; readiness, which is always repair_packet_ready = false with the reason — this evidence never authorizes an edit; a repair boundary of none_declared, prepared by the repair slice (#3090); and links to the snapshot resource and (as an explicit null) the reserved repair-attempt resource. Unknown ids fail closed with item_not_found; a document over the response bound fails with result_too_large. Before the first successful ripr_refresh this tool fails closed with no_snapshot; while an attempt runs it reports analysis_in_flight. Equivalent evidence reads: the tool ripr_get_gap and the resource ripr://gap/{canonical_item_id} return the same document.";
+const GET_GAP_TOOL_DESCRIPTION: &str = "Return one canonical item's complete bounded evidence from the current completed snapshot (optional snapshot_id must match the current snapshot or the call fails closed with stale_snapshot). The document binds the item to its snapshot identity and contains: identity and location; the changed behavior (expression, before/after, delta kind, probe family); causal attribution (canonical gap owner, behavior kind, probe kind, normalized discriminator); discriminator availability and the producer's observed/missing evidence; related tests with oracle kind and strength; readiness, whose repair_packet_ready now reports the committed producer repair-readiness facts (candidate actionability, an established discriminator, and a strong directly-related test fix site on a test surface) with the typed first-failing-gate reason when not ready — this evidence never authorizes an edit by itself; a repair boundary of none_declared until ripr_prepare_repair binds a transaction; and links to the snapshot resource and — once a session transaction exists for this item — the repair-attempt resource. Unknown ids fail closed with item_not_found; a document over the response bound fails with result_too_large. Before the first successful ripr_refresh this tool fails closed with no_snapshot; while an attempt runs it reports analysis_in_flight. Equivalent evidence reads: the tool ripr_get_gap and the resource ripr://gap/{canonical_item_id} return the same document.";
+
+const PREPARE_REPAIR_TOOL_DESCRIPTION: &str = "Evaluate the committed producer repair-readiness facts for one canonical item of the current completed snapshot and, only when every gate is established, create — or replay — one bounded in-memory repair transaction bound to that snapshot and item. Inputs: gap_id (required, a canonical item id from ripr_list_gaps) and optional snapshot_id, which must match the current snapshot or the call fails closed with stale_snapshot. When the route is complete the document carries: a deterministic root-bound RepairAttemptId in the shared repair-attempt grammar; snapshot, item, changed-behavior, and discriminator identities; the established fix site (test file, line, oracle) and the allowed_edit_surface limited to that test file; must_not_change and stop_conditions; the before evidence identity (snapshot id plus the item's evidence digest); an empty command_routes list with the typed reason (concrete typed CommandSpec routes are published only by the durable CLI before phase); limitations and non_claims; the attempt state awaiting_edit; and resource links (ripr://repair-attempt/{attempt_id}, ripr://receipt/{receipt_id}). Repeating the call for the same current snapshot, item, and root returns the identical document and never creates a second transaction. When a safe target, discriminator, fix site, or command is not established, the tool returns repair_packet_ready: false with the typed ineligibility reason and attempt: null — it never guesses a missing field and never creates a misleading attempt. This tool never edits source, never launches a process, and never executes verification or mutation commands; RIPR performs no edit and no verification, and the external client's approval and sandbox policy remains authoritative. Before the first successful ripr_refresh this tool fails closed with no_snapshot; while an attempt runs it reports analysis_in_flight; unknown ids fail closed with item_not_found. Session transactions are in-memory: restarting the server drops them, and durable attempts remain owned by the CLI repair workflow.";
+
+const GET_REPAIR_ATTEMPT_TOOL_DESCRIPTION: &str = "Read one repair transaction by its attempt identity, without executing anything it names. Session transactions created by ripr_prepare_repair answer first and report their immutable packet, state awaiting_edit, snapshot and root identity binding, and resource links. Otherwise the durable attempt store of this workspace root is inventoried through the shared repair-attempt authority: a valid manifest projects its state, repository head, seam identity, artifact digest bindings, follow-up command display string, typed CommandSpec routes when the retained packet carries valid ones (each projected exactly, with the human display marked as never execution authority and shell_required or manual modes visibly non-direct), limitations, non_claims, and after-phase bindings; the host-local root path is intentionally not projected. A manifest that fails canonical validation fails closed with attempt_invalid; an unknown identity fails closed with attempt_not_found. An attempt prepared against a snapshot that is no longer current fails closed with the reserved superseded state and the current snapshot identity. This tool never edits source, never launches a process, and never executes verification or mutation commands. Equivalent reads: the tool ripr_get_repair_attempt and the resource ripr://repair-attempt/{attempt_id} return the same document.";
+
+const GET_RECEIPT_STATUS_TOOL_DESCRIPTION: &str = "Read the current receipt state for one attempt identity (receipt ids are attempt-bound: one retained receipt per durable attempt). The status vocabulary is awaiting_edit, after_pending, verification_pending, improved, closed, unchanged, regressed, limited, stale, and invalid. Session transactions report awaiting_edit with an explicit null receipt: RIPR performs no verification and issues no receipt, so the external client owns the edit, the verification execution, and the receipt under its own authority. Durable attempts report their producer state mapped onto the same vocabulary, and a finished attempt with a digest-bound terminal receipt projects the receipt document with its exact byte bindings, the shared receipt-lifecycle state, and the movement-derived status; a manifest or receipt that fails canonical validation reports invalid or attempt_invalid rather than a reconstructed state. Status binds exact before/after/verify bytes, repository identity, the candidate item, and currentness, re-validated on every read; nothing is joined by mtime or latest-file convention. Static movement and focused runtime test execution remain separate evidence axes — this document reports static receipt state only. This tool never edits source, never launches a process, and never executes verification or mutation commands. Equivalent reads: the tool ripr_get_receipt_status and the resource ripr://receipt/{receipt_id} return the same document.";
 
 const STATUS_RESOURCE_DESCRIPTION: &str = "Bounded, read-only workspace discovery, authority, and session status: repository-root discovery state, configuration presence, launch-trust and authority facts, and the current analysis session (attempt state, last completed snapshot identity, typed AnalysisOutcome, profile facts). No gap evidence detail is exposed here; run ripr_refresh, then read items through ripr_get_gap.";
 
 const SNAPSHOT_RESOURCE_TEMPLATE_DESCRIPTION: &str = "Bounded evidence for one completed snapshot: the snapshot identity, the typed AnalysisOutcome, the full canonical item index (identities and locations, not evidence), and the stored bounded-selection summary. Read one item's complete evidence through ripr_get_gap or ripr://gap/{canonical_item_id}. An unknown or superseded snapshot id is rejected with a typed no_snapshot or stale_snapshot failure.";
 
-const GAP_RESOURCE_TEMPLATE_DESCRIPTION: &str = "One canonical item's complete bounded evidence, identical to the ripr_get_gap tool result: changed behavior, causal attribution, discriminator availability, related tests, and an explicit never-repair-ready boundary. The item must exist in the current completed snapshot or the read fails closed with item_not_found.";
+const GAP_RESOURCE_TEMPLATE_DESCRIPTION: &str = "One canonical item's complete bounded evidence, identical to the ripr_get_gap tool result: changed behavior, causal attribution, discriminator availability, related tests, and the committed producer repair-readiness block. The item must exist in the current completed snapshot or the read fails closed with item_not_found.";
+
+const REPAIR_ATTEMPT_TEMPLATE_DESCRIPTION: &str = "One repair transaction, identical to the ripr_get_repair_attempt tool result: session transactions created by ripr_prepare_repair, or a durable attempt manifest of this workspace root with its artifact digest bindings and typed CommandSpec routes when the retained packet carries valid ones. Unknown identities fail closed with attempt_not_found; a canonically invalid manifest fails closed with attempt_invalid; a transaction bound to a superseded snapshot fails closed with the reserved superseded state and the current snapshot identity. The read never edits source and never executes anything the attempt names.";
+
+const RECEIPT_TEMPLATE_DESCRIPTION: &str = "The receipt status document for one attempt identity, identical to the ripr_get_receipt_status tool result: the status vocabulary (awaiting_edit, after_pending, verification_pending, improved, closed, unchanged, regressed, limited, stale, invalid), the digest-bound receipt document when a durable attempt retained one, and the currentness basis. Receipt issuance is external authority — RIPR performs no verification and executes nothing on this read.";
 
 pub(super) fn tools_list_result() -> Value {
     json!({"tools": [
@@ -61,6 +80,9 @@ pub(super) fn tools_list_result() -> Value {
         refresh_tool_descriptor(),
         list_gaps_tool_descriptor(),
         get_gap_tool_descriptor(),
+        prepare_repair_tool_descriptor(),
+        get_repair_attempt_tool_descriptor(),
+        get_receipt_status_tool_descriptor(),
     ]})
 }
 
@@ -84,6 +106,20 @@ pub(super) fn resource_templates_list_result() -> Value {
             "description": GAP_RESOURCE_TEMPLATE_DESCRIPTION,
             "mimeType": "application/json",
         },
+        {
+            "uriTemplate": REPAIR_ATTEMPT_TEMPLATE,
+            "name": "ripr-repair-attempt",
+            "title": "RIPR repair attempt",
+            "description": REPAIR_ATTEMPT_TEMPLATE_DESCRIPTION,
+            "mimeType": "application/json",
+        },
+        {
+            "uriTemplate": RECEIPT_TEMPLATE,
+            "name": "ripr-receipt-status",
+            "title": "RIPR receipt status",
+            "description": RECEIPT_TEMPLATE_DESCRIPTION,
+            "mimeType": "application/json",
+        },
     ]})
 }
 
@@ -98,9 +134,9 @@ struct McpStatusDocument<'a> {
 #[derive(Serialize)]
 struct McpSurfaceStatus {
     transport: &'static str,
-    tools: [&'static str; 4],
+    tools: [&'static str; 7],
     resources: [&'static str; 1],
-    resource_templates: [&'static str; 2],
+    resource_templates: [&'static str; 4],
     bounds: McpBoundsStatus,
 }
 
@@ -129,9 +165,17 @@ pub(super) fn status_document(
                 REFRESH_TOOL_NAME,
                 LIST_GAPS_TOOL_NAME,
                 GET_GAP_TOOL_NAME,
+                PREPARE_REPAIR_TOOL_NAME,
+                GET_REPAIR_ATTEMPT_TOOL_NAME,
+                GET_RECEIPT_STATUS_TOOL_NAME,
             ],
             resources: [STATUS_RESOURCE_URI],
-            resource_templates: [SNAPSHOT_RESOURCE_TEMPLATE, GAP_RESOURCE_TEMPLATE],
+            resource_templates: [
+                SNAPSHOT_RESOURCE_TEMPLATE,
+                GAP_RESOURCE_TEMPLATE,
+                REPAIR_ATTEMPT_TEMPLATE,
+                RECEIPT_TEMPLATE,
+            ],
             bounds: McpBoundsStatus {
                 max_message_bytes,
                 max_response_bytes,
@@ -344,6 +388,79 @@ fn get_gap_tool_descriptor() -> Value {
         "outputSchema": gap_output_schema(),
         "annotations": {
             "title": "RIPR gap evidence",
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+        }
+    })
+}
+
+fn prepare_repair_tool_descriptor() -> Value {
+    json!({
+        "name": PREPARE_REPAIR_TOOL_NAME,
+        "title": "RIPR prepare repair",
+        "description": PREPARE_REPAIR_TOOL_DESCRIPTION,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "gap_id": { "type": "string", "minLength": 1 },
+                "snapshot_id": { "type": "string" }
+            },
+            "required": ["gap_id"],
+            "additionalProperties": false
+        },
+        "outputSchema": repair_packet_output_schema(),
+        "annotations": {
+            "title": "RIPR prepare repair",
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+        }
+    })
+}
+
+fn get_repair_attempt_tool_descriptor() -> Value {
+    json!({
+        "name": GET_REPAIR_ATTEMPT_TOOL_NAME,
+        "title": "RIPR repair attempt",
+        "description": GET_REPAIR_ATTEMPT_TOOL_DESCRIPTION,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attempt_id": { "type": "string", "minLength": 1 }
+            },
+            "required": ["attempt_id"],
+            "additionalProperties": false
+        },
+        "outputSchema": repair_attempt_output_schema(),
+        "annotations": {
+            "title": "RIPR repair attempt",
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+        }
+    })
+}
+
+fn get_receipt_status_tool_descriptor() -> Value {
+    json!({
+        "name": GET_RECEIPT_STATUS_TOOL_NAME,
+        "title": "RIPR receipt status",
+        "description": GET_RECEIPT_STATUS_TOOL_DESCRIPTION,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "receipt_id": { "type": "string", "minLength": 1 }
+            },
+            "required": ["receipt_id"],
+            "additionalProperties": false
+        },
+        "outputSchema": receipt_status_output_schema(),
+        "annotations": {
+            "title": "RIPR receipt status",
             "readOnlyHint": true,
             "destructiveHint": false,
             "idempotentHint": true,
@@ -614,8 +731,8 @@ fn status_output_schema() -> Value {
                     "tools": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "minItems": 4,
-                        "maxItems": 4
+                        "minItems": 7,
+                        "maxItems": 7
                     },
                     "resources": {
                         "type": "array",
@@ -626,8 +743,8 @@ fn status_output_schema() -> Value {
                     "resource_templates": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "minItems": 2,
-                        "maxItems": 2
+                        "minItems": 4,
+                        "maxItems": 4
                     },
                     "bounds": {
                         "type": "object",
@@ -795,6 +912,139 @@ fn gap_output_schema() -> Value {
     })
 }
 
+fn repair_packet_output_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "schema_version": { "type": "string", "const": REPAIR_PACKET_SCHEMA_VERSION },
+                    "snapshot_id": { "type": "string" },
+                    "requested_snapshot_id": { "type": ["string", "null"] },
+                    "repair_packet_ready": { "type": "boolean" },
+                    "ineligibility": { "type": "object" },
+                    "recovery": { "type": "string" },
+                    "item": { "type": "object" },
+                    "attempt": { "type": ["object", "null"] },
+                    "changed_behavior": { "type": ["object", "null"] },
+                    "discriminator": { "type": ["string", "null"] },
+                    "fix_site": { "type": ["object", "null"] },
+                    "allowed_edit_surface": { "type": "array", "items": { "type": "string" } },
+                    "must_not_change": { "type": "array", "items": { "type": "string" } },
+                    "stop_conditions": { "type": "array", "items": { "type": "string" } },
+                    "before_evidence": { "type": "object" },
+                    "command_routes": { "type": "array" },
+                    "command_route_limitation": { "type": "string" },
+                    "limitations": { "type": "array", "items": { "type": "string" } },
+                    "non_claims": { "type": "array", "items": { "type": "string" } },
+                    "links": { "type": "object" },
+                    "claim_boundary": { "type": "string" }
+                },
+                "required": [
+                    "schema_version",
+                    "snapshot_id",
+                    "requested_snapshot_id",
+                    "repair_packet_ready",
+                    "attempt",
+                    "claim_boundary"
+                ],
+                "additionalProperties": false
+            },
+            typed_failure_document_schema(REPAIR_PACKET_SCHEMA_VERSION)
+        ]
+    })
+}
+
+fn repair_attempt_output_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "schema_version": { "type": "string", "const": REPAIR_ATTEMPT_SCHEMA_VERSION },
+                    "attempt_id": { "type": "string" },
+                    "origin": { "type": "string", "enum": ["mcp_session", "durable_store"] },
+                    "state": { "type": "string" },
+                    "snapshot_id": { "type": ["string", "null"] },
+                    "canonical_id": { "type": ["string", "null"] },
+                    "root_identity": { "type": ["string", "null"] },
+                    "repository_head": { "type": ["string", "null"] },
+                    "seam_id": { "type": ["string", "null"] },
+                    "producer_version": { "type": ["string", "null"] },
+                    "created_unix_ms": { "type": ["integer", "null"] },
+                    "packet": { "type": ["object", "null"] },
+                    "artifacts": { "type": "array" },
+                    "next_command": { "type": ["string", "object", "null"] },
+                    "after": { "type": ["object", "null"] },
+                    "terminal_receipt": { "type": ["string", "null"] },
+                    "command_routes": { "type": "array" },
+                    "limitations": { "type": "array", "items": { "type": "string" } },
+                    "non_claims": { "type": "array", "items": { "type": "string" } },
+                    "links": { "type": "object" },
+                    "claim_boundary": { "type": "string" }
+                },
+                "required": [
+                    "schema_version",
+                    "attempt_id",
+                    "origin",
+                    "state",
+                    "links",
+                    "claim_boundary"
+                ],
+                "additionalProperties": false
+            },
+            typed_failure_document_schema(REPAIR_ATTEMPT_SCHEMA_VERSION)
+        ]
+    })
+}
+
+fn receipt_status_output_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "schema_version": { "type": "string", "const": RECEIPT_STATUS_SCHEMA_VERSION },
+                    "receipt_id": { "type": "string" },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "awaiting_edit",
+                            "after_pending",
+                            "verification_pending",
+                            "improved",
+                            "closed",
+                            "unchanged",
+                            "regressed",
+                            "limited",
+                            "stale",
+                            "invalid"
+                        ]
+                    },
+                    "attempt": { "type": "object" },
+                    "receipt": { "type": ["object", "null"] },
+                    "currentness": { "type": "object" },
+                    "limitations": { "type": "array", "items": { "type": "string" } },
+                    "non_claims": { "type": "array", "items": { "type": "string" } },
+                    "links": { "type": "object" },
+                    "claim_boundary": { "type": "string" }
+                },
+                "required": [
+                    "schema_version",
+                    "receipt_id",
+                    "status",
+                    "attempt",
+                    "receipt",
+                    "currentness",
+                    "claim_boundary"
+                ],
+                "additionalProperties": false
+            },
+            typed_failure_document_schema(RECEIPT_STATUS_SCHEMA_VERSION)
+        ]
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -819,9 +1069,9 @@ mod tests {
             .and_then(Value::as_array)
             .map(|tools| tools.len())
             .ok_or_else(|| "tools/list payload drifted".to_string())?;
-        if names != 4 {
+        if names != 7 {
             return Err(format!(
-                "expected the four-tool slice surface, got {names} tools"
+                "expected the seven-tool slice surface, got {names} tools"
             ));
         }
         let description = json_str(&tools, "/tools/0/description")?;
@@ -845,7 +1095,7 @@ mod tests {
     #[test]
     fn tool_descriptions_state_positive_contracts_and_bounds() -> Result<(), String> {
         let tools = tools_list_result();
-        let descriptions: [(&str, &str, &[&str]); 3] = [
+        let descriptions: [(&str, &str, &[&str]); 6] = [
             (
                 "/tools/1/description",
                 REFRESH_TOOL_NAME,
@@ -875,10 +1125,43 @@ mod tests {
                 GET_GAP_TOOL_NAME,
                 &[
                     "complete bounded evidence",
-                    "repair_packet_ready = false",
+                    "repair_packet_ready now reports the committed producer repair-readiness facts",
                     "never authorizes an edit",
                     "item_not_found",
                     "ripr://gap/{canonical_item_id}",
+                ],
+            ),
+            (
+                "/tools/4/description",
+                PREPARE_REPAIR_TOOL_NAME,
+                &[
+                    "create — or replay — one bounded in-memory repair transaction",
+                    "never guesses a missing field and never creates a misleading attempt",
+                    "never edits source, never launches a process",
+                    "the external client's approval and sandbox policy remains authoritative",
+                    "item_not_found",
+                ],
+            ),
+            (
+                "/tools/5/description",
+                GET_REPAIR_ATTEMPT_TOOL_NAME,
+                &[
+                    "Read one repair transaction by its attempt identity",
+                    "typed CommandSpec routes when the retained packet carries valid ones",
+                    "attempt_invalid",
+                    "attempt_not_found",
+                    "ripr://repair-attempt/{attempt_id}",
+                ],
+            ),
+            (
+                "/tools/6/description",
+                GET_RECEIPT_STATUS_TOOL_NAME,
+                &[
+                    "awaiting_edit, after_pending, verification_pending, improved, closed, unchanged, regressed, limited, stale, and invalid",
+                    "RIPR performs no verification and issues no receipt",
+                    "attempt-bound",
+                    "Static movement and focused runtime test execution remain separate evidence axes",
+                    "ripr://receipt/{receipt_id}",
                 ],
             ),
         ];
@@ -928,13 +1211,18 @@ mod tests {
             .pointer("/resourceTemplates")
             .and_then(Value::as_array)
             .ok_or_else(|| "resourceTemplates payload drifted".to_string())?;
-        if templates.len() != 2 {
+        if templates.len() != 4 {
             return Err(format!(
-                "expected two resource templates, got {}",
+                "expected four resource templates, got {}",
                 templates.len()
             ));
         }
-        for (index, expected) in [(0, SNAPSHOT_RESOURCE_TEMPLATE), (1, GAP_RESOURCE_TEMPLATE)] {
+        for (index, expected) in [
+            (0, SNAPSHOT_RESOURCE_TEMPLATE),
+            (1, GAP_RESOURCE_TEMPLATE),
+            (2, REPAIR_ATTEMPT_TEMPLATE),
+            (3, RECEIPT_TEMPLATE),
+        ] {
             let value = templates
                 .get(index)
                 .ok_or_else(|| format!("template {index} missing"))?;
@@ -973,6 +1261,8 @@ mod tests {
             "static_limitation",
             "cancelled",
             "superseded",
+            "attempt_not_found",
+            "attempt_invalid",
         ] {
             if !codes.contains(&required) {
                 return Err(format!("failure vocabulary lost {required}: {codes:?}"));
@@ -988,7 +1278,12 @@ mod tests {
             "ripr_refresh",
             "ripr_list_gaps",
             "ripr_get_gap",
+            "ripr_prepare_repair",
+            "ripr_get_repair_attempt",
+            "ripr_get_receipt_status",
             "ripr://gap/{canonical_item_id}",
+            "ripr://repair-attempt/{attempt_id}",
+            "ripr://receipt/{receipt_id}",
             "never edits source",
             "ripr check --format json",
         ] {

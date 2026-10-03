@@ -11543,7 +11543,6 @@ tests = [
   "crates/ripr/src/mcp/workspace.rs::tests::reserved_failure_vocabulary_stays_named",
   "crates/ripr/src/mcp/gaps.rs::tests::canonical_id_prefers_the_producer_gap_identity",
   "crates/ripr/src/mcp/gaps.rs::tests::fallback_identity_uses_the_finding_id",
-  "crates/ripr/src/mcp/gaps.rs::tests::evidence_document_never_declares_repair_readiness",
   "crates/ripr/src/mcp/gaps.rs::tests::complete_and_incomplete_evidence_stay_distinct",
   "crates/ripr/src/mcp/gaps.rs::tests::resource_uri_parsing_is_strict",
   "crates/ripr/src/mcp/protocol.rs::tests::status_tool_description_names_payload_scope_and_analysis_boundary",
@@ -11662,4 +11661,44 @@ metrics = [
   "orchestration_scorecard_rejected_rows",
   "orchestration_scorecard_real_attempts",
   "orchestration_scorecard_completion_rate_state",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0214"
+name = "MCP repair transaction projection"
+spec = "docs/specs/RIPR-SPEC-0214-mcp-repair-transaction-projection.md"
+tests = [
+  "crates/ripr/src/mcp/repair.rs::tests::complete_route_creates_one_replay_resistant_attempt",
+  "crates/ripr/src/mcp/repair.rs::tests::missing_producer_facts_never_create_a_misleading_attempt",
+  "crates/ripr/src/mcp/repair.rs::tests::stale_snapshot_and_unknown_items_fail_closed",
+  "crates/ripr/src/mcp/repair.rs::tests::attempt_identity_is_root_bound",
+  "crates/ripr/src/mcp/repair.rs::tests::superseded_attempt_fails_closed_after_refresh",
+  "crates/ripr/src/mcp/repair.rs::tests::receipt_status_for_session_attempt_awaits_the_external_edit",
+  "crates/ripr/src/mcp/repair.rs::tests::unknown_and_invalid_durable_attempts_fail_closed",
+  "crates/ripr/src/mcp/repair.rs::tests::receipt_status_vocabulary_maps_the_shared_lifecycle",
+  "crates/ripr/src/mcp/repair.rs::tests::regressed_movement_survives_the_presence_lifecycle",
+  "crates/ripr/src/mcp/repair.rs::tests::repair_reads_fail_closed_while_refresh_is_in_flight",
+  "crates/ripr/src/mcp/repair.rs::tests::evicted_transactions_keep_the_superseded_typed_code",
+  "crates/ripr/src/mcp/repair.rs::tests::command_spec_modes_round_trip_without_display_authority",
+  "crates/ripr/src/mcp/repair.rs::tests::argv_never_reconstructs_from_the_display_string",
+  "crates/ripr/src/mcp/gaps.rs::tests::evidence_document_reports_producer_repair_readiness",
+  "crates/ripr/src/mcp/gaps.rs::tests::readiness_stays_fail_closed_on_missing_producer_facts",
+  "crates/ripr/src/mcp/protocol.rs::tests",
+  "crates/ripr/src/mcp/server_tests.rs::prepare_repair_fails_closed_before_refresh",
+  "crates/ripr/src/mcp/server_tests.rs::repair_attempt_lookup_fails_closed_before_refresh",
+  "crates/ripr/src/mcp/server_tests.rs::receipt_status_fails_closed_before_refresh",
+  "crates/ripr/src/mcp/server_tests.rs::repair_tools_reject_bad_arguments_at_the_dispatch_edge",
+  "crates/ripr/tests/mcp_sdk.rs",
+  "crates/ripr/tests/mcp_stdio.rs",
+]
+code = [
+  "crates/ripr/src/mcp/repair.rs",
+  "crates/ripr/src/mcp/gaps.rs",
+  "crates/ripr/src/mcp/workspace.rs",
+  "crates/ripr/src/mcp/protocol.rs",
+  "crates/ripr/src/mcp/server.rs",
+]
+outputs = []
+metrics = [
+  "unit_test_pass_rate",
 ]

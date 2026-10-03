@@ -76,7 +76,7 @@ impl AttemptFailure {
         }
     }
 
-    fn with_data(mut self, data: Value) -> Self {
+    pub(crate) fn with_data(mut self, data: Value) -> Self {
         self.data = data;
         self
     }
@@ -283,6 +283,17 @@ pub(crate) struct WorkspaceSession {
     pub(crate) in_flight: bool,
     pub(crate) last_good: Option<Arc<Snapshot>>,
     pub(crate) last_failure: Option<AttemptFailure>,
+    /// Session repair transactions created by `ripr_prepare_repair`, keyed by
+    /// deterministic attempt identity. In-memory like the snapshot: a restart
+    /// drops it, and every transaction binds the snapshot identity it was
+    /// prepared against.
+    pub(crate) repairs: std::collections::BTreeMap<String, super::repair::RepairTransaction>,
+    /// Tombstones for session transactions evicted when a newer snapshot
+    /// supersedes them (`attempt_id` → the snapshot identity it was bound
+    /// to). Keeps the typed `superseded` failure reachable after the full
+    /// packet is pruned, without holding superseded packets in memory for
+    /// the lifetime of the session.
+    pub(crate) superseded_attempts: std::collections::BTreeMap<String, String>,
 }
 
 impl WorkspaceSession {
@@ -298,7 +309,10 @@ impl WorkspaceSession {
         }
     }
 
-    fn active_snapshot(&self, requested: Option<&str>) -> Result<&Arc<Snapshot>, AttemptFailure> {
+    pub(crate) fn active_snapshot(
+        &self,
+        requested: Option<&str>,
+    ) -> Result<&Arc<Snapshot>, AttemptFailure> {
         if self.in_flight {
             return Err(AttemptFailure::new(
                 CODE_ANALYSIS_IN_FLIGHT,
@@ -401,7 +415,22 @@ impl WorkspaceSession {
                 "list the current canonical ids with ripr_list_gaps, then retry",
             ));
         };
-        bounded_document(item.document(&snapshot.snapshot_id))
+        let mut document = item.document(&snapshot.snapshot_id);
+        // A live session transaction binds the reserved repair-attempt link;
+        // without one the link stays the explicit null the projection sets.
+        if let Some(attempt_id) =
+            self.live_repair_attempt(&snapshot.snapshot_id, &item.canonical_id)
+            && let Some(links) = document
+                .pointer_mut("/item/links")
+                .and_then(Value::as_object_mut)
+        {
+            links.insert(
+                "repair_attempt".to_string(),
+                Value::from(format!("ripr://repair-attempt/{attempt_id}")),
+            );
+            links.remove("repair_attempt_note");
+        }
+        bounded_document(document)
     }
 
     /// The `ripr://snapshot/{snapshot_id}` evidence resource: snapshot
@@ -664,7 +693,7 @@ fn omitted_reason_as_str(reason: OmittedDiagnosticReason) -> &'static str {
 
 /// Fail closed when even one bounded document cannot fit the wire cap: an
 /// over-cap response would otherwise terminate the transport.
-fn bounded_document(document: Value) -> Result<Value, AttemptFailure> {
+pub(crate) fn bounded_document(document: Value) -> Result<Value, AttemptFailure> {
     struct LengthWriter(usize);
 
     impl std::io::Write for LengthWriter {
@@ -774,6 +803,8 @@ mod tests {
             in_flight: false,
             last_good: Some(Arc::new(snapshot)),
             last_failure: None,
+            repairs: std::collections::BTreeMap::new(),
+            superseded_attempts: std::collections::BTreeMap::new(),
         })
     }
 
@@ -799,6 +830,8 @@ mod tests {
             in_flight: false,
             last_good: Some(Arc::new(limited_snapshot)),
             last_failure: None,
+            repairs: std::collections::BTreeMap::new(),
+            superseded_attempts: std::collections::BTreeMap::new(),
         };
         let _ = complete.list_gaps(None).map_err(|failure| failure.detail)?;
         let incomplete_doc = incomplete

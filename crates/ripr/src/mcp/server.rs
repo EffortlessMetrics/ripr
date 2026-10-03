@@ -1,4 +1,4 @@
-use super::{gaps, protocol, workspace};
+use super::{gaps, protocol, repair, workspace};
 use crate::workspace_status::WorkspaceStatus;
 use rmcp::{ErrorData, RoleServer, ServerHandler, model::*, service::RequestContext};
 use serde::de::DeserializeOwned;
@@ -157,6 +157,66 @@ impl McpServer {
                 "serialize gap evidence",
             ),
             Err(failure) => self.typed_failure(failure, gaps::GAP_SCHEMA_VERSION),
+        }
+    }
+
+    async fn prepare_repair_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["gap_id", "snapshot_id"])?;
+        let gap_id = required_string_argument(&arguments, "gap_id")?;
+        let requested = optional_string_argument(&arguments, "snapshot_id")?;
+        let mut session = self.session.lock().await;
+        match session.prepare_repair(&gap_id, requested.as_deref(), self.root_identity.as_deref()) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair::REPAIR_PACKET_SCHEMA_VERSION,
+                "serialize repair packet",
+            ),
+            Err(failure) => self.typed_failure(failure, repair::REPAIR_PACKET_SCHEMA_VERSION),
+        }
+    }
+
+    async fn get_repair_attempt_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["attempt_id"])?;
+        let attempt_id = required_string_argument(&arguments, "attempt_id")?;
+        let session = self.session.lock().await;
+        match session.repair_attempt_document(
+            &attempt_id,
+            self.analysis_root.as_deref(),
+            self.root_identity.as_deref(),
+        ) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair::REPAIR_ATTEMPT_SCHEMA_VERSION,
+                "serialize repair attempt",
+            ),
+            Err(failure) => self.typed_failure(failure, repair::REPAIR_ATTEMPT_SCHEMA_VERSION),
+        }
+    }
+
+    async fn get_receipt_status_tool(
+        &self,
+        arguments: Option<serde_json::Map<String, Value>>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        reject_unknown_arguments(&arguments, &["receipt_id"])?;
+        let receipt_id = required_string_argument(&arguments, "receipt_id")?;
+        let session = self.session.lock().await;
+        match session.receipt_status_document(
+            &receipt_id,
+            self.analysis_root.as_deref(),
+            self.root_identity.as_deref(),
+        ) {
+            Ok(document) => self.bounded_tool_result(
+                document,
+                repair::RECEIPT_STATUS_SCHEMA_VERSION,
+                "serialize receipt status",
+            ),
+            Err(failure) => self.typed_failure(failure, repair::RECEIPT_STATUS_SCHEMA_VERSION),
         }
     }
 
@@ -333,15 +393,25 @@ impl ServerHandler for McpServer {
             }
             protocol::LIST_GAPS_TOOL_NAME => self.list_gaps_tool(request.arguments).await,
             protocol::GET_GAP_TOOL_NAME => self.get_gap_tool(request.arguments).await,
+            protocol::PREPARE_REPAIR_TOOL_NAME => self.prepare_repair_tool(request.arguments).await,
+            protocol::GET_REPAIR_ATTEMPT_TOOL_NAME => {
+                self.get_repair_attempt_tool(request.arguments).await
+            }
+            protocol::GET_RECEIPT_STATUS_TOOL_NAME => {
+                self.get_receipt_status_tool(request.arguments).await
+            }
             _other => Err(ErrorData::new(
                 ErrorCode::METHOD_NOT_FOUND,
-                "unknown tool; available: ripr_workspace_status, ripr_refresh, ripr_list_gaps, ripr_get_gap",
+                "unknown tool; available: ripr_workspace_status, ripr_refresh, ripr_list_gaps, ripr_get_gap, ripr_prepare_repair, ripr_get_repair_attempt, ripr_get_receipt_status",
                 Some(serde_json::json!({
                     "available": [
                         protocol::STATUS_TOOL_NAME,
                         protocol::REFRESH_TOOL_NAME,
                         protocol::LIST_GAPS_TOOL_NAME,
                         protocol::GET_GAP_TOOL_NAME,
+                        protocol::PREPARE_REPAIR_TOOL_NAME,
+                        protocol::GET_REPAIR_ATTEMPT_TOOL_NAME,
+                        protocol::GET_RECEIPT_STATUS_TOOL_NAME,
                     ]
                 })),
             )),
@@ -389,6 +459,28 @@ impl ServerHandler for McpServer {
                 Err(failure) => Err(resource_failure("gap", &failure, None)),
             };
         }
+        if let Some(attempt_id) = repair::repair_attempt_resource_id(&request.uri) {
+            let session = self.session.lock().await;
+            return match session.repair_attempt_document(
+                attempt_id,
+                self.analysis_root.as_deref(),
+                self.root_identity.as_deref(),
+            ) {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure("repair-attempt", &failure, None)),
+            };
+        }
+        if let Some(receipt_id) = repair::receipt_resource_id(&request.uri) {
+            let session = self.session.lock().await;
+            return match session.receipt_status_document(
+                receipt_id,
+                self.analysis_root.as_deref(),
+                self.root_identity.as_deref(),
+            ) {
+                Ok(document) => self.resource_result(document, &request.uri),
+                Err(failure) => Err(resource_failure("receipt", &failure, None)),
+            };
+        }
         Err(ErrorData::resource_not_found(
             "unknown resource; available: ripr://workspace/status",
             Some(serde_json::json!({
@@ -396,6 +488,8 @@ impl ServerHandler for McpServer {
                 "resource_templates": [
                     protocol::SNAPSHOT_RESOURCE_TEMPLATE,
                     protocol::GAP_RESOURCE_TEMPLATE,
+                    repair::REPAIR_ATTEMPT_TEMPLATE,
+                    repair::RECEIPT_TEMPLATE,
                 ],
             })),
         ))

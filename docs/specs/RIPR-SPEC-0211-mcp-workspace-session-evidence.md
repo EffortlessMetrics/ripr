@@ -97,10 +97,13 @@ official SDK transport:
   kind, probe family), causal attribution (canonical gap owner, behavior
   kind, probe kind, normalized discriminator), discriminator availability,
   related tests with oracle kind/strength, typed limitations for producer
-  fields that are not established, and resource links. Readiness is always
-  `repair_packet_ready: false` with its reason; the repair boundary is
-  `none_declared` (prepared by #3090) and the repair-attempt link is an
-  explicit null. A missing field stays a typed state; MCP never fills it
+  fields that are not established, and resource links. This slice pinned
+  readiness as a hard `repair_packet_ready: false` negative; RIPR-SPEC-0214
+  (slice C, #3090) owns the committed producer repair-readiness evaluation
+  that replaced the pin, and it also owns binding the repair boundary and
+  the repair-attempt link when a session transaction exists — until then
+  the boundary stays `none_declared` and the link stays an explicit null. A
+  missing field stays a typed state; MCP never fills it
   from prose. `ripr://snapshot/{snapshot_id}` returns bounded snapshot
   evidence: identity, typed outcome, the full item index, and the stored
   selection summary.
@@ -126,15 +129,18 @@ official SDK transport:
   reads, complete-zero vs incomplete-zero distinctness, last-known-good
   retention across a failed refresh, bounded failure detail.
 - `cargo test -p ripr --lib mcp::gaps` — canonical identity projection
-  (producer gap id preferred, finding id fallback), never-repair-ready
-  evidence documents, strict resource-URI parsing.
+  (producer gap id preferred, finding id fallback), the readiness block this
+  slice pinned (the readiness evaluation itself is owned with
+  RIPR-SPEC-0214), strict resource-URI parsing.
 - `cargo test -p ripr --lib mcp` — descriptor contracts, positive
   LLM-facing tool descriptions, resource-template discovery, dispatch-edge
   argument rejection.
 - `crates/ripr/tests/mcp_sdk.rs` — the pinned official SDK client
-  discovers the four tools, the static resource, and both resource
-  templates across the `initialize` and `server/discover` lifecycles, and
-  the status tool/resource project the same session document.
+  discovers the slice-B tools (four at that slice; the surface is seven
+  tools and four templates after RIPR-SPEC-0214), the static resource, and
+  the resource templates across the `initialize` and `server/discover`
+  lifecycles, and the status tool/resource project the same session
+  document.
 - `crates/ripr/tests/mcp_stdio.rs` — raw-wire controls: tool/resource
   equality, rejection arms, and the new fail-closed control proving a
   stock-shaped client receives typed `no_snapshot` failures (and the
@@ -148,7 +154,9 @@ official SDK transport:
   tools; #3090 owns them, and this slice's `ripr_get_gap` leaves their
   links as explicit nulls so #3090 can extend the document without a
   breaking change.
-- No source edit or command execution; readiness is a hard negative.
+- No source edit or command execution. This slice pinned readiness as a
+  hard negative; RIPR-SPEC-0214 (slice C, #3090) owns the committed
+  producer repair-readiness evaluation that replaced that pin.
 - No custom LSP request expansion; MCP and LSP remain peers over shared
   producers.
 - No provider-specific configuration; project-local `ripr.toml` stays
@@ -177,16 +185,20 @@ official SDK transport:
 4. Two equivalent roots at equivalent inputs produce the same
    `snapshot:sha256:` identity, while each server's status document keeps
    its own host-local root hash.
-5. `ripr_get_gap` for any item reports `repair_packet_ready: false`, a
-   `none_declared` repair boundary, and an explicit-null repair-attempt
-   link; missing producer fields remain typed states.
+5. `ripr_get_gap` for any item reports the committed producer
+   repair-readiness facts (the evaluation is owned by RIPR-SPEC-0214, slice
+   C #3090, which superseded this slice's hard `repair_packet_ready: false`
+   pin), a `none_declared` repair boundary, and an explicit-null
+   repair-attempt link until a session transaction binds one; missing
+   producer fields remain typed states.
 
 ## Test Mapping
 
 - `crates/ripr/src/mcp/workspace.rs::tests` — session lifecycle, typed
   failures, identity portability, boundedness, last-known-good retention.
-- `crates/ripr/src/mcp/gaps.rs::tests` — canonical item projection and
-  never-repair-ready documents.
+- `crates/ripr/src/mcp/gaps.rs::tests` — canonical item projection and the
+  readiness block this slice pinned (the readiness evaluation itself is
+  owned with RIPR-SPEC-0214).
 - `crates/ripr/src/mcp/protocol.rs::tests` + `server_tests.rs` —
   descriptor and dispatch contracts.
 - `crates/ripr/tests/mcp_sdk.rs`, `crates/ripr/tests/mcp_stdio.rs` —
