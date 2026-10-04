@@ -303,6 +303,12 @@ pub(crate) fn agent_card_prose_lines(card: &RepairCardV1, packet_command: &str) 
     // The card's own typed next action and detail routes stay portable (#4666
     // portability contract) and are printed verbatim above.
     lines.push(format!("  full packet: {packet_command}"));
+    // A path with an apostrophe needs doubled quotes in PowerShell, so the
+    // bash line alone would split there. Same translator as every other
+    // plain-text command surface.
+    if let Some(form) = crate::output::markdown::powershell_text_variant(packet_command) {
+        lines.push(format!("  (PowerShell) {form}"));
+    }
     lines
 }
 

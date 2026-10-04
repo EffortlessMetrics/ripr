@@ -254,6 +254,16 @@ artifact_families = []
 description = "Advisory Windows lane (#2393): runs the suite twice on windows-latest and summarizes per-test verdicts. Since #4938 an always-on subset job (windows-advisory-subset) also runs a fast gap_artifacts/cache-warning/Windows-clippy filter on every subscribed pull_request action (opened, synchronize, reopened, labeled) with no labels required, advisory under the same contract. Test outcomes are advisory; missing or zero-subject evidence fails the job. Promotion to required is gated on #2430 and on stability across repeated runs."
 
 [[lane]]
+id = "printed-command-paste"
+posture = "advisory"
+workflow = ".github/workflows/printed-command-paste.yml"
+jobs = ["paste"]
+commands = ["cargo test -p ripr --test printed_command_paste"]
+estimated_lem = 18
+artifact_families = []
+description = "Advisory paste lane: runs every command ripr prints through bash, sh, zsh, PowerShell 7 and Windows PowerShell on Linux, macOS and Windows from a foreign directory against hostile root and file names, with argv recorders standing in for ripr and git. Nightly, on pull requests touching ripr source or the harness, and on dispatch. A shell the platform should provide but lacks fails the job."
+
+[[lane]]
 id = "future-clippy"
 posture = "advisory"
 workflow = "planned"

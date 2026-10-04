@@ -462,6 +462,9 @@ pub(crate) fn render_pilot_terminal(
         // uses the same builder, so the two lines cannot disagree (#3906).
         if let Some(command) = repair_start_command(context.root, entry) {
             out.push_str(&format!("  repair this seam: {command}\n"));
+            if let Some(form) = crate::output::markdown::powershell_text_variant(&command) {
+                out.push_str(&format!("  (PowerShell) {form}\n"));
+            }
         } else if !outline.is_not_applicable() {
             // The focused test above is a suggestion, not a repair offer. Say
             // so on the screen, so the README's "run the `ripr agent repair`
@@ -519,6 +522,9 @@ pub(crate) fn render_pilot_terminal(
     {
         out.push_str("Next, in order:\n");
         out.push_str(&format!("  1. {command}\n"));
+        if let Some(form) = crate::output::markdown::powershell_text_variant(&command) {
+            out.push_str(&format!("     (PowerShell) {form}\n"));
+        }
         out.push_str("  2. add the focused test named above (test files only)\n");
         out.push_str("  3. run the `--attempt ... --phase after` command that step 1 prints\n");
         out.push_str(

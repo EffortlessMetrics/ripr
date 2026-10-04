@@ -332,6 +332,11 @@ fn persist_before_repair_attempt(
         "ripr: attempt next command: {}",
         result.manifest.next_command
     );
+    let next_powershell =
+        crate::output::markdown::powershell_text_variant(&result.manifest.next_command);
+    if let Some(form) = &next_powershell {
+        eprintln!("ripr: attempt next command (PowerShell): {form}");
+    }
     print!(
         "{}",
         commands::before_phase_stdout(
@@ -346,6 +351,9 @@ fn persist_before_repair_attempt(
             "Next, after the test edit: {}",
             result.manifest.next_command
         );
+        if let Some(form) = &next_powershell {
+            println!("(PowerShell) {form}");
+        }
     }
     Ok(())
 }

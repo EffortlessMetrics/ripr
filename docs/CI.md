@@ -410,6 +410,45 @@ produced the identical `timed out waiting for response id 3`, and it reproduces
 5 of 5 on a Windows developer host. That is the lane doing its job — a platform
 question that could not be settled from one machine, settled by CI.
 
+### Advisory Printed-Command Paste Lane
+
+`.github/workflows/printed-command-paste.yml` runs the
+`printed_command_paste` integration test on Linux, macOS and Windows. ripr
+prints commands for people and agents to paste (`ripr explain`, `ripr agent
+repair --phase after`, regeneration and recovery lines, the commands inside
+JSON and the artifacts it writes), and each surface was once fixed by hand
+after a hostile path broke it (#5188, #5232, #5247, #5269).
+
+- **What runs.** The main flows run against one fixture whose root and source
+  file names hold spaces, apostrophes, typographic quotes, backticks, `$`,
+  `;` payloads and non-ASCII text. Every printed command is lifted out of the
+  output and pasted into bash, sh, zsh, PowerShell 7 and Windows PowerShell,
+  as the platform provides them, from a foreign working directory and from a
+  relative `--root`. A line labelled `(PowerShell)` is the PowerShell form of
+  the command before it; a command with none is pasted unchanged, which is the
+  contract `COMMAND_SHELL_DISCLOSURE` prints. JSON-carried commands are Bash
+  records and run at the repository root.
+- **Oracle.** `ripr` and `git` resolve to argv recorders. A command fails when
+  it does not reach the program exactly once, passes different argv in
+  different shells, passes an argument holding a fragment of a hostile name
+  that is not the whole path or finding id, names a `--root` that is not the
+  fixture (or none, from a foreign directory), or leaves a canary or any file
+  beside the shell.
+- **Known gaps.** `KNOWN_GAPS` in the test lists commands that do not paste
+  correctly yet, each with its surface and reason. The ledger is strict both
+  ways: a listed gap is reported, not failed, and a row whose gap stops
+  reproducing fails the lane until the row is deleted.
+- **Shells.** A shell named in `RIPR_PASTE_REQUIRE` that is missing fails the
+  run; the workflow sets it per OS. Anywhere else a missing shell is skipped
+  with a notice, which is how the test behaves in the required Rust lane. `RIPR_PASTE_REPORT=<file>`
+  writes every collected command as JSON lines, and `RIPR_PASTE_KEEP=1` keeps
+  the fixture.
+- **Selection.** A nightly schedule, `workflow_dispatch`, and pull requests
+  that touch `crates/ripr/src/**`, the harness files, `Cargo.lock` or the
+  workflow. The workflow is advisory, but the same test also runs as an
+  ordinary test in the required Rust lane (with whatever shells that runner
+  has), so a new unlisted gap fails that lane too until it is fixed or listed.
+
 ### Advisory Specification Maintenance Digest
 
 The Source of Truth workflow owns the advisory spec maintenance digest

@@ -206,6 +206,11 @@ mod markdown {
                     "- `{}` is missing; run `{}`",
                     command.artifact, command.command
                 ));
+                if let Some(form) =
+                    crate::output::markdown::powershell_text_variant(&command.command)
+                {
+                    lines.push(format!("  (PowerShell) `{form}`"));
+                }
             }
         }
         lines.push(String::new());
